@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from pydantic import BaseModel, Field, field_validator
 from pydantic import ValidationInfo
+from pydantic import BaseModel, Field
 
 
 class Settings(BaseModel):

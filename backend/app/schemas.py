@@ -10,6 +10,9 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import BackupMode, MovementType, SyncMode, SyncStatus
+from pydantic import BaseModel, Field, validator
+
+from .models import MovementType, SyncMode, SyncStatus
 
 
 class StoreBase(BaseModel):
@@ -26,6 +29,8 @@ class StoreResponse(StoreBase):
     id: int
 
     model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class DeviceBase(BaseModel):
@@ -48,6 +53,8 @@ class DeviceResponse(DeviceBase):
     store_id: int
 
     model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class RoleResponse(BaseModel):
@@ -55,6 +62,8 @@ class RoleResponse(BaseModel):
     name: str
 
     model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class UserBase(BaseModel):
@@ -82,6 +91,11 @@ class UserResponse(UserBase):
     @field_validator("roles", mode="before")
     @classmethod
     def _flatten_roles(cls, value):
+    class Config:
+        orm_mode = True
+
+    @validator("roles", pre=True)
+    def _flatten_roles(cls, value):  # type: ignore[override]
         if value is None:
             return []
         flattened = []
@@ -119,6 +133,8 @@ class MovementResponse(MovementBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class InventorySummary(BaseModel):
@@ -139,6 +155,8 @@ class SyncSessionResponse(BaseModel):
     error_message: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class SyncRequest(BaseModel):
@@ -172,3 +190,5 @@ class BackupJobResponse(BaseModel):
     triggered_by_id: Optional[int]
 
     model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True

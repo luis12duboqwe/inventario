@@ -12,6 +12,10 @@ from .routers import auth, backups, health, inventory, reports, stores, sync, us
 from .services.scheduler import BackgroundScheduler
 
 _scheduler: BackgroundScheduler | None = None
+from .routers import auth, health, inventory, reports, stores, sync, users
+from .services.sync import SyncScheduler
+
+_scheduler: SyncScheduler | None = None
 
 
 def _bootstrap_defaults() -> None:
@@ -28,6 +32,7 @@ async def lifespan(_: FastAPI):
     global _scheduler
     if settings.enable_background_scheduler:
         _scheduler = BackgroundScheduler()
+        _scheduler = SyncScheduler(settings.sync_interval_seconds)
         await _scheduler.start()
     try:
         yield
