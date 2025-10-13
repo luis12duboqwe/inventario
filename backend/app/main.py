@@ -1,71 +1,51 @@
-"""Main entry point for the simplified Softmobile API."""
+"""Punto de entrada para la aplicación FastAPI."""
 from __future__ import annotations
 
-from http import HTTPStatus
+from contextlib import asynccontextmanager
 
-from .domain import InMemoryRepository, SoftmobileError
-from .http import Response, Router, SimpleApp
+from fastapi import FastAPI
 
-app = SimpleApp()
+from . import crud
+from .config import settings
+from .database import Base, SessionLocal, engine
+from .routers import auth, health, inventory, reports, stores, sync, users
+from .services.sync import SyncScheduler
 
-
-def _reset_state() -> None:
-    app.state["repository"] = InMemoryRepository()
-
-
-def _reset_and_seed() -> None:
-    _reset_state()
+_scheduler: SyncScheduler | None = None
 
 
-app.reset_state = _reset_and_seed  # type: ignore[attr-defined]
-app.reset_state()
+def _bootstrap_defaults() -> None:
+    with SessionLocal() as session:
+        for role in ("admin", "manager", "auditor"):
+            crud.ensure_role(session, role)
+        session.commit()
 
 
-@app.exception_handler(SoftmobileError)
-def handle_domain_error(request, exc: SoftmobileError) -> Response:
-    return Response(status_code=exc.status_code, content=exc.to_dict())
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    _bootstrap_defaults()
+    global _scheduler
+    if settings.enable_background_scheduler:
+        _scheduler = SyncScheduler(settings.sync_interval_seconds)
+        await _scheduler.start()
+    try:
+        yield
+    finally:
+        if _scheduler is not None:
+            await _scheduler.stop()
 
 
-@app.get("/", status_code=HTTPStatus.OK)
-def root(_: object) -> dict[str, str]:
-    return {"message": "Softmobile API operational"}
+def create_app() -> FastAPI:
+    app = FastAPI(title=settings.title, version=settings.version, lifespan=lifespan)
+    app.include_router(health.router)
+    app.include_router(auth.router)
+    app.include_router(users.router)
+    app.include_router(stores.router)
+    app.include_router(inventory.router)
+    app.include_router(sync.router)
+    app.include_router(reports.router)
+    return app
 
 
-api_router = Router(prefix="/api/v1")
-
-
-@api_router.get("/health", status_code=HTTPStatus.OK)
-def health(_: object) -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@api_router.get("/stores/", status_code=HTTPStatus.OK)
-def list_stores(_: object) -> list[dict[str, object]]:
-    repo: InMemoryRepository = app.state["repository"]
-    return [store.to_dict() for store in repo.list_stores()]
-
-
-@api_router.post("/stores/", status_code=HTTPStatus.CREATED)
-def create_store(request, /) -> dict[str, object]:
-    repo: InMemoryRepository = app.state["repository"]
-    payload = request.body or {}
-    store = repo.create_store(payload)
-    return store.to_dict()
-
-
-@api_router.get("/stores/{store_id}/devices/", status_code=HTTPStatus.OK)
-def list_devices(_: object, store_id: str) -> list[dict[str, object]]:
-    repo: InMemoryRepository = app.state["repository"]
-    devices = repo.list_devices(store_id)
-    return [device.to_dict() for device in devices]
-
-
-@api_router.post("/stores/{store_id}/devices/", status_code=HTTPStatus.CREATED)
-def create_device(request, store_id: str) -> dict[str, object]:
-    repo: InMemoryRepository = app.state["repository"]
-    payload = request.body or {}
-    device = repo.create_device(store_id, payload)
-    return device.to_dict()
-
-
-app.include_router(api_router)
+app = create_app()

@@ -1,4 +1,4 @@
 """Colección de routers disponibles."""
-from . import health, stores  # noqa: F401
+from . import auth, health, inventory, reports, stores, sync, users  # noqa: F401
 
-__all__ = ["health", "stores"]
+__all__ = ["auth", "health", "inventory", "reports", "stores", "sync", "users"]
