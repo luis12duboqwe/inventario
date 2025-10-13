@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.db
+*.db-journal
+.env
+.venv/
+
+# VSCode
+.vscode/
+
+# Pytest cache
+.pytest_cache/
+
+# virtual environment for windows
+Scripts/
