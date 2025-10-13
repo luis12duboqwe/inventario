@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -71,9 +72,22 @@ class Store(Base):
     )
 
 
+class CommercialState(str, enum.Enum):
+    """Clasificación comercial del dispositivo en catálogo pro."""
+
+    NUEVO = "nuevo"
+    A = "A"
+    B = "B"
+    C = "C"
+
+
 class Device(Base):
     __tablename__ = "devices"
-    __table_args__ = (UniqueConstraint("store_id", "sku", name="uq_devices_store_sku"),)
+    __table_args__ = (
+        UniqueConstraint("store_id", "sku", name="uq_devices_store_sku"),
+        UniqueConstraint("imei", name="uq_devices_imei"),
+        UniqueConstraint("serial", name="uq_devices_serial"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
@@ -83,6 +97,21 @@ class Device(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
+    imei: Mapped[str | None] = mapped_column(String(18), nullable=True, unique=True, index=True)
+    serial: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True, index=True)
+    marca: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    modelo: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    color: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    capacidad_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estado_comercial: Mapped[CommercialState] = mapped_column(
+        Enum(CommercialState, name="estado_comercial"), nullable=False, default=CommercialState.NUEVO
+    )
+    proveedor: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    costo_unitario: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
+    margen_porcentaje: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
+    garantia_meses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lote: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    fecha_compra: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     store: Mapped[Store] = relationship("Store", back_populates="devices")
     movements: Mapped[list["InventoryMovement"]] = relationship(

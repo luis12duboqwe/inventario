@@ -25,6 +25,7 @@ import {
 import InventoryTable from "./InventoryTable";
 import MovementForm from "./MovementForm";
 import SyncPanel from "./SyncPanel";
+import AdvancedSearch from "./AdvancedSearch";
 
 type Props = {
   token: string;
@@ -45,6 +46,8 @@ type StatusCard = {
 };
 
 function Dashboard({ token }: Props) {
+  const enableCatalogPro =
+    (import.meta.env.VITE_SOFTMOBILE_ENABLE_CATALOG_PRO ?? "1") !== "0";
   const [stores, setStores] = useState<Store[]>([]);
   const [summary, setSummary] = useState<Summary[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -381,6 +384,7 @@ function Dashboard({ token }: Props) {
           </ul>
         )}
       </section>
+      {enableCatalogPro ? <AdvancedSearch token={token} /> : null}
     </div>
   );
 }

@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
 
-from ..models import BackupMode, MovementType, SyncMode, SyncStatus
+from ..models import BackupMode, CommercialState, MovementType, SyncMode, SyncStatus
 
 
 class StoreBase(BaseModel):
@@ -41,11 +41,62 @@ class DeviceBase(BaseModel):
         ge=Decimal("0"),
         description="Precio unitario referencial del dispositivo",
     )
+    imei: str | None = Field(default=None, max_length=18, description="IMEI del dispositivo")
+    serial: str | None = Field(default=None, max_length=120, description="Número de serie")
+    marca: str | None = Field(default=None, max_length=80, description="Marca comercial")
+    modelo: str | None = Field(default=None, max_length=120, description="Modelo detallado")
+    color: str | None = Field(default=None, max_length=60, description="Color principal")
+    capacidad_gb: int | None = Field(default=None, ge=0, description="Capacidad de almacenamiento en GB")
+    estado_comercial: CommercialState = Field(default=CommercialState.NUEVO)
+    proveedor: str | None = Field(default=None, max_length=120, description="Proveedor principal")
+    costo_unitario: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        description="Costo neto por unidad",
+    )
+    margen_porcentaje: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        description="Margen aplicado en porcentaje",
+    )
+    garantia_meses: int = Field(default=0, ge=0, description="Garantía ofrecida en meses")
+    lote: str | None = Field(default=None, max_length=80, description="Identificador de lote")
+    fecha_compra: date | None = Field(default=None, description="Fecha de compra al proveedor")
 
     @field_serializer("unit_price")
     @classmethod
     def _serialize_unit_price(cls, value: Decimal) -> float:
         return float(value)
+
+    @field_serializer("costo_unitario")
+    @classmethod
+    def _serialize_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("margen_porcentaje")
+    @classmethod
+    def _serialize_margin(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_validator("imei")
+    @classmethod
+    def validate_imei(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if normalized and not (10 <= len(normalized) <= 18):
+            raise ValueError("IMEI inválido")
+        return normalized or None
+
+    @field_validator("serial")
+    @classmethod
+    def validate_serial(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if normalized and len(normalized) < 4:
+            raise ValueError("Número de serie inválido")
+        return normalized or None
 
 
 class DeviceCreate(DeviceBase):
@@ -56,6 +107,39 @@ class DeviceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     quantity: int | None = Field(default=None, ge=0)
     unit_price: Decimal | None = Field(default=None, ge=Decimal("0"))
+    imei: str | None = Field(default=None, max_length=18)
+    serial: str | None = Field(default=None, max_length=120)
+    marca: str | None = Field(default=None, max_length=80)
+    modelo: str | None = Field(default=None, max_length=120)
+    color: str | None = Field(default=None, max_length=60)
+    capacidad_gb: int | None = Field(default=None, ge=0)
+    estado_comercial: CommercialState | None = Field(default=None)
+    proveedor: str | None = Field(default=None, max_length=120)
+    costo_unitario: Decimal | None = Field(default=None, ge=Decimal("0"))
+    margen_porcentaje: Decimal | None = Field(default=None, ge=Decimal("0"))
+    garantia_meses: int | None = Field(default=None, ge=0)
+    lote: str | None = Field(default=None, max_length=80)
+    fecha_compra: date | None = Field(default=None)
+
+    @field_validator("imei")
+    @classmethod
+    def validate_update_imei(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if normalized and not (10 <= len(normalized) <= 18):
+            raise ValueError("IMEI inválido")
+        return normalized or None
+
+    @field_validator("serial")
+    @classmethod
+    def validate_update_serial(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if normalized and len(normalized) < 4:
+            raise ValueError("Número de serie inválido")
+        return normalized or None
 
 
 class DeviceResponse(DeviceBase):
@@ -67,6 +151,31 @@ class DeviceResponse(DeviceBase):
     @computed_field(return_type=float)  # type: ignore[misc]
     def inventory_value(self) -> float:
         return float(self.quantity * self.unit_price)
+
+
+class DeviceSearchFilters(BaseModel):
+    imei: str | None = Field(default=None, max_length=18)
+    serial: str | None = Field(default=None, max_length=120)
+    capacidad_gb: int | None = Field(default=None, ge=0)
+    color: str | None = Field(default=None, max_length=60)
+    marca: str | None = Field(default=None, max_length=80)
+    modelo: str | None = Field(default=None, max_length=120)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("imei", "serial", "color", "marca", "modelo", mode="before")
+    @classmethod
+    def _normalize_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+
+class CatalogProDeviceResponse(DeviceResponse):
+    store_name: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RoleResponse(BaseModel):

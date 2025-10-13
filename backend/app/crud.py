@@ -1,15 +1,52 @@
 """Operaciones de base de datos para las entidades principales."""
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 
 from . import models, schemas
+
+
+def _ensure_unique_identifiers(
+    db: Session,
+    *,
+    imei: str | None,
+    serial: str | None,
+    exclude_device_id: int | None = None,
+) -> None:
+    if imei:
+        statement = select(models.Device).where(models.Device.imei == imei)
+        if exclude_device_id:
+            statement = statement.where(models.Device.id != exclude_device_id)
+        if db.scalars(statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
+    if serial:
+        statement = select(models.Device).where(models.Device.serial == serial)
+        if exclude_device_id:
+            statement = statement.where(models.Device.id != exclude_device_id)
+        if db.scalars(statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
+
+
+def _to_decimal(value: Decimal | float | int | None) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+def _recalculate_sale_price(device: models.Device) -> None:
+    base_cost = _to_decimal(device.costo_unitario)
+    margin = _to_decimal(device.margen_porcentaje)
+    sale_factor = Decimal("1") + (margin / Decimal("100"))
+    device.unit_price = (base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _log_action(
@@ -164,10 +201,26 @@ def create_device(
 ) -> models.Device:
     get_store(db, store_id)
     payload_data = payload.model_dump()
-    unit_price = payload_data.get("unit_price")
+    provided_fields = payload.model_fields_set
+    imei = payload_data.get("imei")
+    serial = payload_data.get("serial")
+    _ensure_unique_identifiers(db, imei=imei, serial=serial)
+    unit_price = payload_data.get("unit_price") if "unit_price" in provided_fields else None
     if unit_price is None:
-        payload_data["unit_price"] = Decimal("0")
+        payload_data.setdefault("unit_price", Decimal("0"))
+    if payload_data.get("costo_unitario") is None:
+        payload_data["costo_unitario"] = Decimal("0")
+    if payload_data.get("margen_porcentaje") is None:
+        payload_data["margen_porcentaje"] = Decimal("0")
+    if payload_data.get("estado_comercial") is None:
+        payload_data["estado_comercial"] = models.CommercialState.NUEVO
+    if payload_data.get("garantia_meses") is None:
+        payload_data["garantia_meses"] = 0
     device = models.Device(store_id=store_id, **payload_data)
+    if unit_price is None:
+        _recalculate_sale_price(device)
+    else:
+        device.unit_price = unit_price
     db.add(device)
     try:
         db.commit()
@@ -210,19 +263,54 @@ def update_device(
 ) -> models.Device:
     device = get_device(db, store_id, device_id)
     updated_fields = payload.model_dump(exclude_unset=True)
+    manual_price = None
+    if "unit_price" in updated_fields:
+        manual_price = updated_fields.pop("unit_price")
+    imei = updated_fields.get("imei")
+    serial = updated_fields.get("serial")
+    _ensure_unique_identifiers(
+        db,
+        imei=imei,
+        serial=serial,
+        exclude_device_id=device.id,
+    )
+
+    sensitive_before = {
+        "costo_unitario": device.costo_unitario,
+        "estado_comercial": device.estado_comercial,
+        "proveedor": device.proveedor,
+    }
+
     for key, value in updated_fields.items():
         setattr(device, key, value)
+    if manual_price is not None:
+        device.unit_price = manual_price
+    elif {"costo_unitario", "margen_porcentaje"}.intersection(updated_fields):
+        _recalculate_sale_price(device)
     db.commit()
     db.refresh(device)
 
-    if updated_fields:
+    fields_changed = list(updated_fields.keys())
+    if manual_price is not None:
+        fields_changed.append("unit_price")
+    if fields_changed:
+        sensitive_after = {
+            "costo_unitario": device.costo_unitario,
+            "estado_comercial": device.estado_comercial,
+            "proveedor": device.proveedor,
+        }
+        sensitive_changes = {
+            key: {"before": str(sensitive_before[key]), "after": str(value)}
+            for key, value in sensitive_after.items()
+            if sensitive_before.get(key) != value
+        }
         _log_action(
             db,
             action="device_updated",
             entity_type="device",
             entity_id=str(device.id),
             performed_by_id=performed_by_id,
-            details=str(updated_fields),
+            details=json.dumps({"fields": fields_changed, "sensitive": sensitive_changes}),
         )
         db.commit()
         db.refresh(device)
@@ -237,6 +325,28 @@ def list_devices(db: Session, store_id: int) -> list[models.Device]:
         .order_by(models.Device.sku.asc())
     )
     return list(db.scalars(statement))
+
+
+def search_devices(db: Session, filters: schemas.DeviceSearchFilters) -> list[models.Device]:
+    statement = (
+        select(models.Device)
+        .options(joinedload(models.Device.store))
+        .join(models.Store)
+    )
+    if filters.imei:
+        statement = statement.where(models.Device.imei == filters.imei)
+    if filters.serial:
+        statement = statement.where(models.Device.serial == filters.serial)
+    if filters.capacidad_gb is not None:
+        statement = statement.where(models.Device.capacidad_gb == filters.capacidad_gb)
+    if filters.color:
+        statement = statement.where(models.Device.color.ilike(f"%{filters.color}%"))
+    if filters.marca:
+        statement = statement.where(models.Device.marca.ilike(f"%{filters.marca}%"))
+    if filters.modelo:
+        statement = statement.where(models.Device.modelo.ilike(f"%{filters.modelo}%"))
+    statement = statement.order_by(models.Device.store_id.asc(), models.Device.sku.asc())
+    return list(db.scalars(statement).unique())
 
 
 def create_inventory_movement(

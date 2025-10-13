@@ -92,6 +92,14 @@ def create_device(
                     "message": "Ya existe un dispositivo con ese SKU en la sucursal.",
                 },
             ) from exc
+        if str(exc) == "device_identifier_conflict":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "device_identifier_conflict",
+                    "message": "El IMEI o número de serie ya fue registrado por otra sucursal.",
+                },
+            ) from exc
         raise
     return device
 
