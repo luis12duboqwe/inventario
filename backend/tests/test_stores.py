@@ -31,10 +31,18 @@ def test_inventory_flow(client) -> None:
     assert store_response.status_code == status.HTTP_201_CREATED
     store_id = store_response.json()["id"]
 
+    device_payload = {"sku": "SKU-001", "name": "Galaxy S24", "quantity": 5, "unit_price": 15000.0}
     device_payload = {"sku": "SKU-001", "name": "Galaxy S24", "quantity": 5}
     device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
     assert device_response.status_code == status.HTTP_201_CREATED
     device_id = device_response.json()["id"]
+
+    low_stock_payload = {"sku": "SKU-LOW", "name": "Moto G", "quantity": 2, "unit_price": 4500.0}
+    low_stock_response = client.post(
+        f"/stores/{store_id}/devices", json=low_stock_payload, headers=headers
+    )
+    assert low_stock_response.status_code == status.HTTP_201_CREATED
+    low_stock_id = low_stock_response.json()["id"]
 
     movement_payload = {"device_id": device_id, "movement_type": "entrada", "quantity": 10}
     movement_response = client.post(
@@ -45,6 +53,10 @@ def test_inventory_flow(client) -> None:
     summary_response = client.get("/inventory/summary", headers=headers)
     assert summary_response.status_code == status.HTTP_200_OK
     summary = summary_response.json()
+    assert summary[0]["total_items"] == 17
+    assert summary[0]["total_value"] == 15 * 15000.0 + 2 * 4500.0
+    assert any(device["unit_price"] == 15000.0 for device in summary[0]["devices"])
+    assert any(device["inventory_value"] == 2 * 4500.0 for device in summary[0]["devices"])
     assert summary[0]["total_items"] == 15
 
     sync_response = client.post("/sync/run", json={"store_id": store_id}, headers=headers)
@@ -53,6 +65,15 @@ def test_inventory_flow(client) -> None:
     logs_response = client.get("/reports/audit", headers=headers)
     assert logs_response.status_code == status.HTTP_200_OK
     assert any(log["action"] == "inventory_movement" for log in logs_response.json())
+
+    metrics_response = client.get("/reports/metrics", headers=headers)
+    assert metrics_response.status_code == status.HTTP_200_OK
+    metrics = metrics_response.json()
+    assert metrics["totals"]["total_units"] == 17
+    assert metrics["totals"]["total_value"] == summary[0]["total_value"]
+    assert metrics["top_stores"][0]["store_id"] == store_id
+    low_stock_devices = metrics["low_stock_devices"]
+    assert any(device["device_id"] == low_stock_id for device in low_stock_devices)
 
 
 def test_requires_authentication(client) -> None:

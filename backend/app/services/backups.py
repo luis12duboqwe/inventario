@@ -45,6 +45,24 @@ def render_snapshot_pdf(snapshot: dict[str, Any]) -> bytes:
             elements.append(Spacer(1, 12))
             continue
 
+        table_data = [["SKU", "Nombre", "Cantidad", "Precio", "Valor total"]]
+        store_total = 0.0
+        for device in devices:
+            unit_price = float(device.get("unit_price", 0.0))
+            total_value = float(device.get("inventory_value", device["quantity"] * unit_price))
+            store_total += total_value
+            table_data.append(
+                [
+                    device["sku"],
+                    device["name"],
+                    str(device["quantity"]),
+                    f"${unit_price:,.2f}",
+                    f"${total_value:,.2f}",
+                ]
+            )
+
+        elements.append(Paragraph(f"Valor total de la sucursal: ${store_total:,.2f}", styles["Normal"]))
+        elements.append(Spacer(1, 6))
         table_data = [["SKU", "Nombre", "Cantidad"]]
         for device in devices:
             table_data.append([device["sku"], device["name"], str(device["quantity"])])

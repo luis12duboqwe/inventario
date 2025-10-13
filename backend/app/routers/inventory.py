@@ -1,6 +1,8 @@
 """Operaciones sobre inventario, movimientos y reportes puntuales."""
 from __future__ import annotations
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
@@ -78,11 +80,16 @@ def inventory_summary(
             for device in store.devices
         ]
         total_items = sum(device.quantity for device in store.devices)
+        total_value = sum(
+            Decimal(device.quantity) * (device.unit_price or Decimal("0"))
+            for device in store.devices
+        )
         summaries.append(
             schemas.InventorySummary(
                 store_id=store.id,
                 store_name=store.name,
                 total_items=total_items,
+                total_value=total_value,
                 devices=devices,
             )
         )

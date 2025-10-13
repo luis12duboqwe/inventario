@@ -36,3 +36,12 @@ def inventory_pdf(
         "Content-Disposition": "attachment; filename=softmobile_inventario.pdf",
     }
     return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+
+
+@router.get("/metrics", response_model=schemas.InventoryMetricsResponse)
+def inventory_metrics(
+    low_stock_threshold: int = Query(default=5, ge=0, le=100),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("admin", "manager", "auditor")),
+):
+    return crud.compute_inventory_metrics(db, low_stock_threshold=low_stock_threshold)

@@ -1,3 +1,4 @@
+# Softmobile 2025 v2.2.1
 # Softmobile 2025 v2.2
 
 Plataforma empresarial para la gestión centralizada de inventarios, sincronización entre sucursales y control operativo integral de cadenas de tiendas con experiencia visual moderna de tema oscuro.
@@ -9,6 +10,7 @@ Softmobile 2025 se compone de dos módulos cooperantes:
 1. **Softmobile Inventario (frontend)**: cliente React + Vite pensado para ejecutarse en cada tienda. Permite registrar movimientos, disparar sincronizaciones, generar respaldos manuales y descargar reportes PDF con un diseño oscuro y acentos cian.
 2. **Softmobile Central (backend)**: API FastAPI que consolida catálogos, controla la seguridad, genera reportes, coordina sincronizaciones automáticas/manuales y ejecuta respaldos programados.
 
+La versión v2.2.1 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
 La versión v2.2 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
 
 ## Capacidades implementadas
@@ -16,6 +18,7 @@ La versión v2.2 trabaja en modo local (sin nube) pero está preparada para empa
 - **API empresarial FastAPI** con modelos SQLAlchemy para tiendas, dispositivos, movimientos, usuarios, roles, sesiones de sincronización, bitácoras y respaldos.
 - **Seguridad por roles** con autenticación JWT, alta inicial segura (`/auth/bootstrap`), administración de usuarios y auditoría completa.
 - **Gestión de inventario** con movimientos de entrada/salida/ajuste, actualización de dispositivos y reportes consolidados por tienda.
+- **Valuación y métricas financieras** con precios unitarios, ranking de sucursales y alertas de stock bajo expuestos vía `/reports/metrics` y el panel React.
 - **Sincronización programada y bajo demanda** mediante un orquestador asincrónico que ejecuta tareas periódicas configurables.
 - **Respaldos empresariales** con generación automática/manual de PDF y archivos comprimidos JSON usando ReportLab; historial consultable vía API.
 - **Módulo de actualizaciones** que consulta el feed corporativo (`/updates/*`) para verificar versiones publicadas y descargar instaladores.
@@ -156,6 +159,7 @@ requirements.txt
    - Tema oscuro con acentos cian siguiendo la línea gráfica corporativa.
    - Panel de operaciones para seleccionar sucursales, visualizar inventarios y registrar movimientos.
    - Botones para sincronización manual, generación de respaldos y descarga de reporte PDF.
+   - Historial de respaldos, tarjetas de valor total y widgets con ranking de sucursales y alertas de stock bajo.
    - Historial de respaldos y métricas de stock en tiempo real.
 
 ## Reportes y respaldos
@@ -163,6 +167,12 @@ requirements.txt
 - **Descarga PDF**: `GET /reports/inventory/pdf` genera un reporte en tema oscuro con el inventario consolidado (también accesible desde el frontend).
 - **Respaldos manuales**: `POST /backups/run` crea un PDF y un ZIP con la instantánea del inventario; devuelve la ruta y tamaño generado.
 - **Respaldos automáticos**: el orquestador (`services/scheduler.py`) ejecuta respaldos cada `SOFTMOBILE_BACKUP_INTERVAL_SECONDS` y registra el historial en la tabla `backup_jobs`.
+
+## Analítica empresarial
+
+- **Métricas globales**: `GET /reports/metrics` devuelve el número de sucursales, dispositivos, unidades totales y el valor financiero del inventario.
+- **Ranking por valor**: el mismo endpoint incluye las cinco sucursales con mayor valor inventariado para priorizar decisiones comerciales.
+- **Alertas de stock bajo**: ajusta el parámetro `low_stock_threshold` para recibir hasta diez dispositivos críticos, con precios unitarios y valor actual.
 
 ## Módulo de actualizaciones
 

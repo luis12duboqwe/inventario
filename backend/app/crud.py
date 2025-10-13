@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, NoResultFound
@@ -30,6 +31,10 @@ def _log_action(
     db.add(log)
     db.flush()
     return log
+
+
+def _device_value(device: models.Device) -> Decimal:
+    return Decimal(device.quantity) * (device.unit_price or Decimal("0"))
 
 
 def ensure_role(db: Session, name: str) -> models.Role:
@@ -158,6 +163,10 @@ def create_device(
     performed_by_id: int | None = None,
 ) -> models.Device:
     get_store(db, store_id)
+    payload_data = payload.model_dump()
+    if "unit_price" not in payload_data:
+        payload_data["unit_price"] = Decimal("0")
+    device = models.Device(store_id=store_id, **payload_data)
     device = models.Device(store_id=store_id, **payload.model_dump())
     db.add(device)
     try:
@@ -279,6 +288,63 @@ def create_inventory_movement(
 def list_inventory_summary(db: Session) -> list[models.Store]:
     statement = select(models.Store).options(joinedload(models.Store.devices)).order_by(models.Store.name.asc())
     return list(db.scalars(statement).unique())
+
+
+def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> dict[str, object]:
+    stores = list_inventory_summary(db)
+
+    total_devices = 0
+    total_units = 0
+    total_value = Decimal("0")
+    store_metrics: list[dict[str, object]] = []
+    low_stock: list[dict[str, object]] = []
+
+    for store in stores:
+        device_count = len(store.devices)
+        store_units = sum(device.quantity for device in store.devices)
+        store_value = sum(_device_value(device) for device in store.devices)
+
+        total_devices += device_count
+        total_units += store_units
+        total_value += store_value
+
+        store_metrics.append(
+            {
+                "store_id": store.id,
+                "store_name": store.name,
+                "device_count": device_count,
+                "total_units": store_units,
+                "total_value": store_value,
+            }
+        )
+
+        for device in store.devices:
+            if device.quantity <= low_stock_threshold:
+                low_stock.append(
+                    {
+                        "store_id": store.id,
+                        "store_name": store.name,
+                        "device_id": device.id,
+                        "sku": device.sku,
+                        "name": device.name,
+                        "quantity": device.quantity,
+                        "unit_price": device.unit_price or Decimal("0"),
+                    }
+                )
+
+    store_metrics.sort(key=lambda item: item["total_value"], reverse=True)
+    low_stock.sort(key=lambda item: (item["quantity"], item["name"]))
+
+    return {
+        "totals": {
+            "stores": len(stores),
+            "devices": total_devices,
+            "total_units": total_units,
+            "total_value": total_value,
+        },
+        "top_stores": store_metrics[:5],
+        "low_stock_devices": low_stock[:10],
+    }
 
 
 def record_sync_session(
@@ -420,6 +486,8 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                         "name": device.name,
                         "quantity": device.quantity,
                         "store_id": device.store_id,
+                        "unit_price": float(device.unit_price or Decimal("0")),
+                        "inventory_value": float(_device_value(device)),
                     }
                     for device in store.devices
                 ],

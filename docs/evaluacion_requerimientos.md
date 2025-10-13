@@ -1,8 +1,10 @@
+## Evaluación de cumplimiento — Softmobile 2025 v2.2.1
 ## Evaluación de cumplimiento — Softmobile 2025 v2.2
 
 Este documento se debe revisar tras **cada** iteración de desarrollo para validar que el proyecto cumple con el plan funcional vigente. Si detectas brechas, corrige el código y vuelve a ejecutar esta evaluación hasta cerrar todos los pendientes.
 
 ## 1. Resumen general del proyecto
+- **Cobertura actual**: Softmobile Central ofrece autenticación con roles, inventario integral, valuación financiera, sincronizaciones automáticas/manuales, respaldos empresariales, reportes PDF y verificación de actualizaciones. Softmobile Inventario provee un cliente React oscuro listo para tiendas, enlazado con el backend.
 - **Cobertura actual**: Softmobile Central ofrece autenticación con roles, inventario integral, sincronizaciones automáticas/manuales, respaldos empresariales, reportes PDF y verificación de actualizaciones. Softmobile Inventario provee un cliente React oscuro listo para tiendas, enlazado con el backend.
 - **Faltante**: Ajustes futuros para despliegues en la nube y monitoreo avanzado (por definir en versiones posteriores).
 
@@ -15,6 +17,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 | Interfaz moderna con tema oscuro | ✅ Cumplido | Frontend React en `frontend/` con tema oscuro empresarial. |
 | Instalación local con opción futura en la nube | ✅ Cumplido | Plantillas PyInstaller e Inno Setup para Windows; documentación lista. |
 | Reportes y respaldos automáticos | ✅ Cumplido | Endpoint PDF, respaldos manuales/automáticos y scheduler configurables. |
+| Analítica avanzada del inventario | ✅ Cumplido | Métricas financieras, ranking de sucursales y alertas de stock bajo en `/reports/metrics`. |
 
 ## 3. Arquitectura del sistema
 - **Implementado**: Servicio central con FastAPI/SQLAlchemy, scheduler de sincronización y pruebas automatizadas.
@@ -52,4 +55,5 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 ## 9. Notas adicionales
 - Repite esta evaluación en cada commit importante.
 - Documenta las acciones correctivas aplicadas y mantén sincronizados README, AGENTS y este archivo.
+- Para la versión v2.2.1 no se detectan brechas pendientes; cualquier mejora adicional queda planificada para la hoja de ruta 2.3.
 - Para la versión v2.2 no se detectan brechas pendientes; cualquier mejora adicional queda planificada para la hoja de ruta 2.3.

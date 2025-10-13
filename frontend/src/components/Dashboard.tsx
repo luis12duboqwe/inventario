@@ -1,4 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import type {
+  BackupJob,
+  Device,
+  InventoryMetrics,
+  MovementInput,
+  Store,
+  Summary,
+  ReleaseInfo,
+  UpdateStatus,
+} from "../api";
 import type { BackupJob, Device, MovementInput, Store, Summary, ReleaseInfo, UpdateStatus } from "../api";
 import {
   downloadInventoryPdf,
@@ -8,6 +18,7 @@ import {
   getSummary,
   getReleaseHistory,
   getUpdateStatus,
+  getInventoryMetrics,
   registerMovement,
   runBackup,
   triggerSync,
@@ -32,6 +43,13 @@ function Dashboard({ token }: Props) {
   const [backupHistory, setBackupHistory] = useState<BackupJob[]>([]);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [releaseHistory, setReleaseHistory] = useState<ReleaseInfo[]>([]);
+  const [metrics, setMetrics] = useState<InventoryMetrics | null>(null);
+
+  const currencyFormatter = useMemo(
+    () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
+    []
+  );
+  const formatCurrency = (value: number) => currencyFormatter.format(value);
 
   const selectedStore = useMemo(
     () => stores.find((store) => store.id === selectedStoreId) ?? null,
@@ -42,6 +60,10 @@ function Dashboard({ token }: Props) {
     const fetchInitial = async () => {
       try {
         setLoading(true);
+        const [storesData, summaryData, metricsData, backupData, statusData, releasesData] = await Promise.all([
+          getStores(token),
+          getSummary(token),
+          getInventoryMetrics(token),
         const [storesData, summaryData, backupData, statusData, releasesData] = await Promise.all([
           getStores(token),
           getSummary(token),
@@ -51,6 +73,7 @@ function Dashboard({ token }: Props) {
         ]);
         setStores(storesData);
         setSummary(summaryData);
+        setMetrics(metricsData);
         setBackupHistory(backupData);
         setUpdateStatus(statusData);
         setReleaseHistory(releasesData);
@@ -87,6 +110,12 @@ function Dashboard({ token }: Props) {
   }, [selectedStoreId, token]);
 
   const refreshSummary = async () => {
+    const [summaryData, metricsData] = await Promise.all([
+      getSummary(token),
+      getInventoryMetrics(token),
+    ]);
+    setSummary(summaryData);
+    setMetrics(metricsData);
     const summaryData = await getSummary(token);
     setSummary(summaryData);
   };
@@ -127,6 +156,21 @@ function Dashboard({ token }: Props) {
   };
 
   const totalDevices = useMemo(
+    () => metrics?.totals.devices ?? summary.reduce((acc, store) => acc + store.devices.length, 0),
+    [metrics, summary]
+  );
+  const totalItems = useMemo(
+    () => metrics?.totals.total_units ?? summary.reduce((acc, store) => acc + store.total_items, 0),
+    [metrics, summary]
+  );
+  const totalValue = useMemo(
+    () => metrics?.totals.total_value ?? summary.reduce((acc, store) => acc + store.devices.reduce((deviceAcc, device) => deviceAcc + device.inventory_value, 0), 0),
+    [metrics, summary]
+  );
+  const lastBackup = backupHistory.at(0) ?? null;
+  const latestRelease = updateStatus?.latest_release ?? null;
+  const lowStockDevices = metrics?.low_stock_devices ?? [];
+  const topStores = metrics?.top_stores ?? [];
     () => summary.reduce((acc, store) => acc + store.devices.length, 0),
     [summary]
   );
@@ -156,6 +200,10 @@ function Dashboard({ token }: Props) {
         <div className="status-card">
           <h3>Unidades en stock</h3>
           <span>{totalItems}</span>
+        </div>
+        <div className="status-card">
+          <h3>Valor total</h3>
+          <span>{formatCurrency(totalValue)}</span>
         </div>
         <div className="status-card">
           <h3>Último respaldo</h3>
@@ -199,6 +247,22 @@ function Dashboard({ token }: Props) {
       <section className="card">
         <h2>Inventario actual</h2>
         <InventoryTable devices={devices} />
+      </section>
+
+      <section className="card">
+        <h2>Top sucursales por valor</h2>
+        {topStores.length === 0 ? (
+          <p>No hay datos suficientes para calcular el ranking.</p>
+        ) : (
+          <ul className="metrics-list">
+            {topStores.map((storeMetric) => (
+              <li key={storeMetric.store_id}>
+                <strong>{storeMetric.store_name}</strong> · {storeMetric.device_count} dispositivos · {storeMetric.total_units} unidades ·
+                <span> {formatCurrency(storeMetric.total_value)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="card">
@@ -253,6 +317,22 @@ function Dashboard({ token }: Props) {
             ))}
           </ul>
         ) : null}
+      </section>
+
+      <section className="card">
+        <h2>Alertas de inventario bajo</h2>
+        {lowStockDevices.length === 0 ? (
+          <p>No hay alertas por ahora.</p>
+        ) : (
+          <ul className="metrics-list">
+            {lowStockDevices.map((device) => (
+              <li key={device.device_id}>
+                <strong>{device.sku}</strong> · {device.name} ({device.quantity} uds) — {device.store_name} ·
+                <span> {formatCurrency(device.inventory_value)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );

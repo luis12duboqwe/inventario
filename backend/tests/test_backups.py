@@ -34,6 +34,7 @@ def test_backup_generation_and_pdf(client, tmp_path) -> None:
     assert store_response.status_code == status.HTTP_201_CREATED
     store_id = store_response.json()["id"]
 
+    device_payload = {"sku": "SKU-XYZ", "name": "iPhone 15", "quantity": 3, "unit_price": 18999.99}
     device_payload = {"sku": "SKU-XYZ", "name": "iPhone 15", "quantity": 3}
     device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
     assert device_response.status_code == status.HTTP_201_CREATED

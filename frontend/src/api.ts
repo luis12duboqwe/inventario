@@ -16,6 +16,8 @@ export type Device = {
   name: string;
   quantity: number;
   store_id: number;
+  unit_price: number;
+  inventory_value: number;
 };
 
 export type MovementInput = {
@@ -29,6 +31,40 @@ export type Summary = {
   store_id: number;
   store_name: string;
   total_items: number;
+  total_value: number;
+  devices: Device[];
+};
+
+export type StoreValueMetric = {
+  store_id: number;
+  store_name: string;
+  device_count: number;
+  total_units: number;
+  total_value: number;
+};
+
+export type LowStockDevice = {
+  store_id: number;
+  store_name: string;
+  device_id: number;
+  sku: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  inventory_value: number;
+};
+
+export type InventoryMetrics = {
+  totals: {
+    stores: number;
+    devices: number;
+    total_units: number;
+    total_value: number;
+  };
+  top_stores: StoreValueMetric[];
+  low_stock_devices: LowStockDevice[];
+};
+
   devices: Device[];
 };
 
@@ -173,4 +209,12 @@ export function getUpdateStatus(token: string): Promise<UpdateStatus> {
 
 export function getReleaseHistory(token: string, limit = 10): Promise<ReleaseInfo[]> {
   return request<ReleaseInfo[]>(`/updates/history?limit=${limit}`, { method: "GET" }, token);
+}
+
+export function getInventoryMetrics(token: string, lowStockThreshold = 5): Promise<InventoryMetrics> {
+  return request<InventoryMetrics>(
+    `/reports/metrics?low_stock_threshold=${lowStockThreshold}`,
+    { method: "GET" },
+    token
+  );
 }

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -28,6 +32,16 @@ class DeviceBase(BaseModel):
     sku: str = Field(..., max_length=80, description="Identificador único del producto")
     name: str = Field(..., max_length=120, description="Descripción del dispositivo")
     quantity: int = Field(default=0, ge=0, description="Cantidad disponible en inventario")
+    unit_price: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        description="Precio unitario referencial del dispositivo",
+    )
+
+    @field_serializer("unit_price")
+    @classmethod
+    def _serialize_unit_price(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class DeviceCreate(DeviceBase):
@@ -37,6 +51,7 @@ class DeviceCreate(DeviceBase):
 class DeviceUpdate(BaseModel):
     name: Optional[str] = Field(default=None, max_length=120)
     quantity: Optional[int] = Field(default=None, ge=0)
+    unit_price: Optional[Decimal] = Field(default=None, ge=Decimal("0"))
 
 
 class DeviceResponse(DeviceBase):
@@ -44,6 +59,10 @@ class DeviceResponse(DeviceBase):
     store_id: int
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(return_type=float)  # type: ignore[misc]
+    def inventory_value(self) -> float:
+        return float(self.quantity * self.unit_price)
 
 
 class RoleResponse(BaseModel):
@@ -121,6 +140,64 @@ class InventorySummary(BaseModel):
     store_id: int
     store_name: str
     total_items: int
+    total_value: Decimal
+    devices: list[DeviceResponse]
+
+    @field_serializer("total_value")
+    @classmethod
+    def _serialize_total_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class StoreValueMetric(BaseModel):
+    store_id: int
+    store_name: str
+    device_count: int
+    total_units: int
+    total_value: Decimal
+
+    @field_serializer("total_value")
+    @classmethod
+    def _serialize_metric_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class LowStockDevice(BaseModel):
+    store_id: int
+    store_name: str
+    device_id: int
+    sku: str
+    name: str
+    quantity: int
+    unit_price: Decimal
+
+    @field_serializer("unit_price")
+    @classmethod
+    def _serialize_low_stock_price(cls, value: Decimal) -> float:
+        return float(value)
+
+    @computed_field(return_type=float)  # type: ignore[misc]
+    def inventory_value(self) -> float:
+        return float(self.quantity * self.unit_price)
+
+
+class InventoryTotals(BaseModel):
+    stores: int
+    devices: int
+    total_units: int
+    total_value: Decimal
+
+    @field_serializer("total_value")
+    @classmethod
+    def _serialize_totals_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InventoryMetricsResponse(BaseModel):
+    totals: InventoryTotals
+    top_stores: list[StoreValueMetric]
+    low_stock_devices: list[LowStockDevice]
+
     devices: list[DeviceResponse]
 
 
