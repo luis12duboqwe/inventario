@@ -64,6 +64,8 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(stores.router)
     app.include_router(inventory.router)
+    app.include_router(purchases.router)
+    app.include_router(sales.router)
     app.include_router(sync.router)
     app.include_router(transfers.router)
     app.include_router(updates.router)

@@ -878,6 +878,421 @@ def create_backup_job(
     return job
 
 
+def list_purchase_orders(
+    db: Session, *, store_id: int | None = None, limit: int = 50
+) -> list[models.PurchaseOrder]:
+    statement = (
+        select(models.PurchaseOrder)
+        .options(
+            joinedload(models.PurchaseOrder.items),
+            joinedload(models.PurchaseOrder.returns),
+        )
+        .order_by(models.PurchaseOrder.created_at.desc())
+        .limit(limit)
+    )
+    if store_id is not None:
+        statement = statement.where(models.PurchaseOrder.store_id == store_id)
+    return list(db.scalars(statement).unique())
+
+
+def get_purchase_order(db: Session, order_id: int) -> models.PurchaseOrder:
+    statement = (
+        select(models.PurchaseOrder)
+        .where(models.PurchaseOrder.id == order_id)
+        .options(
+            joinedload(models.PurchaseOrder.items),
+            joinedload(models.PurchaseOrder.returns),
+        )
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("purchase_not_found") from exc
+
+
+def create_purchase_order(
+    db: Session,
+    payload: schemas.PurchaseOrderCreate,
+    *,
+    created_by_id: int | None = None,
+) -> models.PurchaseOrder:
+    if not payload.items:
+        raise ValueError("purchase_items_required")
+
+    get_store(db, payload.store_id)
+
+    order = models.PurchaseOrder(
+        store_id=payload.store_id,
+        supplier=payload.supplier,
+        notes=payload.notes,
+        created_by_id=created_by_id,
+    )
+    db.add(order)
+    db.flush()
+
+    for item in payload.items:
+        if item.quantity_ordered <= 0:
+            raise ValueError("purchase_invalid_quantity")
+        if item.unit_cost < 0:
+            raise ValueError("purchase_invalid_quantity")
+
+        device = get_device(db, payload.store_id, item.device_id)
+        order_item = models.PurchaseOrderItem(
+            purchase_order_id=order.id,
+            device_id=device.id,
+            quantity_ordered=item.quantity_ordered,
+            unit_cost=_to_decimal(item.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        )
+        db.add(order_item)
+
+    db.commit()
+    db.refresh(order)
+
+    _log_action(
+        db,
+        action="purchase_order_created",
+        entity_type="purchase_order",
+        entity_id=str(order.id),
+        performed_by_id=created_by_id,
+        details=json.dumps({"store_id": order.store_id, "supplier": order.supplier}),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def receive_purchase_order(
+    db: Session,
+    order_id: int,
+    payload: schemas.PurchaseReceiveRequest,
+    *,
+    received_by_id: int,
+    reason: str | None = None,
+) -> models.PurchaseOrder:
+    order = get_purchase_order(db, order_id)
+    if order.status in {models.PurchaseStatus.CANCELADA, models.PurchaseStatus.COMPLETADA}:
+        raise ValueError("purchase_not_receivable")
+    if not payload.items:
+        raise ValueError("purchase_items_required")
+
+    items_by_device = {item.device_id: item for item in order.items}
+    reception_details: dict[str, int] = {}
+
+    for receive_item in payload.items:
+        order_item = items_by_device.get(receive_item.device_id)
+        if order_item is None:
+            raise LookupError("purchase_item_not_found")
+        pending = order_item.quantity_ordered - order_item.quantity_received
+        if receive_item.quantity <= 0 or receive_item.quantity > pending:
+            raise ValueError("purchase_invalid_quantity")
+
+        order_item.quantity_received += receive_item.quantity
+
+        device = get_device(db, order.store_id, order_item.device_id)
+        current_quantity = device.quantity
+        new_quantity = current_quantity + receive_item.quantity
+        current_cost_total = _to_decimal(device.costo_unitario) * _to_decimal(current_quantity)
+        incoming_cost_total = _to_decimal(order_item.unit_cost) * _to_decimal(receive_item.quantity)
+        divisor = _to_decimal(new_quantity or 1)
+        average_cost = (current_cost_total + incoming_cost_total) / divisor
+        device.quantity = new_quantity
+        device.costo_unitario = average_cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        _recalculate_sale_price(device)
+
+        db.add(
+            models.InventoryMovement(
+                store_id=order.store_id,
+                device_id=device.id,
+                movement_type=models.MovementType.IN,
+                quantity=receive_item.quantity,
+                reason=reason,
+                performed_by_id=received_by_id,
+            )
+        )
+        reception_details[str(device.id)] = receive_item.quantity
+
+    if all(item.quantity_received == item.quantity_ordered for item in order.items):
+        order.status = models.PurchaseStatus.COMPLETADA
+        order.closed_at = datetime.utcnow()
+    else:
+        order.status = models.PurchaseStatus.PARCIAL
+
+    db.commit()
+    db.refresh(order)
+
+    _log_action(
+        db,
+        action="purchase_order_received",
+        entity_type="purchase_order",
+        entity_id=str(order.id),
+        performed_by_id=received_by_id,
+        details=json.dumps({"items": reception_details, "status": order.status.value}),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def cancel_purchase_order(
+    db: Session,
+    order_id: int,
+    *,
+    cancelled_by_id: int,
+    reason: str | None = None,
+) -> models.PurchaseOrder:
+    order = get_purchase_order(db, order_id)
+    if order.status in {models.PurchaseStatus.CANCELADA, models.PurchaseStatus.COMPLETADA}:
+        raise ValueError("purchase_not_cancellable")
+
+    order.status = models.PurchaseStatus.CANCELADA
+    order.closed_at = datetime.utcnow()
+    if reason:
+        order.notes = (order.notes or "") + f" | Cancelación: {reason}" if order.notes else reason
+
+    db.commit()
+    db.refresh(order)
+
+    _log_action(
+        db,
+        action="purchase_order_cancelled",
+        entity_type="purchase_order",
+        entity_id=str(order.id),
+        performed_by_id=cancelled_by_id,
+        details=json.dumps({"status": order.status.value, "reason": reason}),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def register_purchase_return(
+    db: Session,
+    order_id: int,
+    payload: schemas.PurchaseReturnCreate,
+    *,
+    processed_by_id: int,
+    reason: str | None = None,
+) -> models.PurchaseReturn:
+    order = get_purchase_order(db, order_id)
+    order_item = next((item for item in order.items if item.device_id == payload.device_id), None)
+    if order_item is None:
+        raise LookupError("purchase_item_not_found")
+    if payload.quantity <= 0:
+        raise ValueError("purchase_invalid_quantity")
+
+    received_total = order_item.quantity_received
+    returned_total = sum(ret.quantity for ret in order.returns if ret.device_id == payload.device_id)
+    if payload.quantity > received_total - returned_total:
+        raise ValueError("purchase_return_exceeds_received")
+
+    device = get_device(db, order.store_id, payload.device_id)
+    if device.quantity < payload.quantity:
+        raise ValueError("purchase_return_insufficient_stock")
+    device.quantity -= payload.quantity
+
+    db.add(
+        models.InventoryMovement(
+            store_id=order.store_id,
+            device_id=device.id,
+            movement_type=models.MovementType.OUT,
+            quantity=payload.quantity,
+            reason=payload.reason or reason,
+            performed_by_id=processed_by_id,
+        )
+    )
+
+    purchase_return = models.PurchaseReturn(
+        purchase_order_id=order.id,
+        device_id=device.id,
+        quantity=payload.quantity,
+        reason=payload.reason,
+        processed_by_id=processed_by_id,
+    )
+    db.add(purchase_return)
+    db.commit()
+    db.refresh(purchase_return)
+
+    _log_action(
+        db,
+        action="purchase_return_registered",
+        entity_type="purchase_order",
+        entity_id=str(order.id),
+        performed_by_id=processed_by_id,
+        details=json.dumps({"device_id": payload.device_id, "quantity": payload.quantity}),
+    )
+    db.commit()
+    db.refresh(order)
+    return purchase_return
+
+
+def list_sales(db: Session, *, store_id: int | None = None, limit: int = 50) -> list[models.Sale]:
+    statement = (
+        select(models.Sale)
+        .options(joinedload(models.Sale.items), joinedload(models.Sale.returns))
+        .order_by(models.Sale.created_at.desc())
+        .limit(limit)
+    )
+    if store_id is not None:
+        statement = statement.where(models.Sale.store_id == store_id)
+    return list(db.scalars(statement).unique())
+
+
+def get_sale(db: Session, sale_id: int) -> models.Sale:
+    statement = (
+        select(models.Sale)
+        .where(models.Sale.id == sale_id)
+        .options(joinedload(models.Sale.items), joinedload(models.Sale.returns))
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("sale_not_found") from exc
+
+
+def create_sale(
+    db: Session,
+    payload: schemas.SaleCreate,
+    *,
+    performed_by_id: int,
+    reason: str | None = None,
+) -> models.Sale:
+    if not payload.items:
+        raise ValueError("sale_items_required")
+
+    get_store(db, payload.store_id)
+
+    sale = models.Sale(
+        store_id=payload.store_id,
+        customer_name=payload.customer_name,
+        payment_method=models.PaymentMethod(payload.payment_method),
+        discount_percent=_to_decimal(payload.discount_percent or 0),
+        notes=payload.notes,
+        performed_by_id=performed_by_id,
+    )
+    db.add(sale)
+    db.flush()
+
+    gross_total = Decimal("0")
+    for item in payload.items:
+        if item.quantity <= 0:
+            raise ValueError("sale_invalid_quantity")
+        device = get_device(db, payload.store_id, item.device_id)
+        if device.quantity < item.quantity:
+            raise ValueError("sale_insufficient_stock")
+
+        line_unit_price = _to_decimal(device.unit_price)
+        line_total = line_unit_price * _to_decimal(item.quantity)
+        gross_total += line_total
+
+        device.quantity -= item.quantity
+
+        sale_item = models.SaleItem(
+            sale_id=sale.id,
+            device_id=device.id,
+            quantity=item.quantity,
+            unit_price=line_unit_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            total_line=line_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        )
+        db.add(sale_item)
+
+        db.add(
+            models.InventoryMovement(
+                store_id=payload.store_id,
+                device_id=device.id,
+                movement_type=models.MovementType.OUT,
+                quantity=item.quantity,
+                reason=reason,
+                performed_by_id=performed_by_id,
+            )
+        )
+
+    discount_percent = sale.discount_percent / Decimal("100")
+    discount_amount = (gross_total * discount_percent).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    sale.total_amount = (gross_total - discount_amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    db.commit()
+    db.refresh(sale)
+
+    _log_action(
+        db,
+        action="sale_registered",
+        entity_type="sale",
+        entity_id=str(sale.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"store_id": sale.store_id, "total_amount": float(sale.total_amount)}),
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def register_sale_return(
+    db: Session,
+    payload: schemas.SaleReturnCreate,
+    *,
+    processed_by_id: int,
+    reason: str | None = None,
+) -> list[models.SaleReturn]:
+    sale = get_sale(db, payload.sale_id)
+    if not payload.items:
+        raise ValueError("sale_return_items_required")
+
+    returns: list[models.SaleReturn] = []
+    items_by_device = {item.device_id: item for item in sale.items}
+
+    for item in payload.items:
+        sale_item = items_by_device.get(item.device_id)
+        if sale_item is None:
+            raise LookupError("sale_item_not_found")
+        if item.quantity <= 0:
+            raise ValueError("sale_return_invalid_quantity")
+
+        returned_total = sum(
+            existing.quantity for existing in sale.returns if existing.device_id == item.device_id
+        )
+        if item.quantity > sale_item.quantity - returned_total:
+            raise ValueError("sale_return_invalid_quantity")
+
+        device = get_device(db, sale.store_id, item.device_id)
+        device.quantity += item.quantity
+
+        sale_return = models.SaleReturn(
+            sale_id=sale.id,
+            device_id=item.device_id,
+            quantity=item.quantity,
+            reason=item.reason,
+            processed_by_id=processed_by_id,
+        )
+        db.add(sale_return)
+        returns.append(sale_return)
+
+        db.add(
+            models.InventoryMovement(
+                store_id=sale.store_id,
+                device_id=item.device_id,
+                movement_type=models.MovementType.IN,
+                quantity=item.quantity,
+                reason=item.reason or reason,
+                performed_by_id=processed_by_id,
+            )
+        )
+
+    db.commit()
+    for sale_return in returns:
+        db.refresh(sale_return)
+
+    _log_action(
+        db,
+        action="sale_return_registered",
+        entity_type="sale",
+        entity_id=str(sale.id),
+        performed_by_id=processed_by_id,
+        details=json.dumps({"items": [item.model_dump() for item in payload.items]}),
+    )
+    db.commit()
+    return returns
+
+
 def list_backup_jobs(db: Session, limit: int = 50) -> list[models.BackupJob]:
     statement = (
         select(models.BackupJob)

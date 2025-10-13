@@ -430,6 +430,234 @@ class AuditLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PurchaseOrderItemCreate(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity_ordered: int = Field(..., ge=1)
+    unit_cost: Decimal = Field(..., ge=Decimal("0"))
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseOrderCreate(BaseModel):
+    store_id: int = Field(..., ge=1)
+    supplier: str = Field(..., max_length=120)
+    notes: str | None = Field(default=None, max_length=255)
+    items: list[PurchaseOrderItemCreate]
+
+    @field_validator("supplier")
+    @classmethod
+    def _validate_supplier(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Proveedor requerido")
+        return normalized
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_items(cls, value: list[PurchaseOrderItemCreate]) -> list[PurchaseOrderItemCreate]:
+        if not value:
+            raise ValueError("Debes incluir artículos en la orden de compra.")
+        return value
+
+
+class PurchaseOrderItemResponse(BaseModel):
+    id: int
+    purchase_order_id: int
+    device_id: int
+    quantity_ordered: int
+    quantity_received: int
+    unit_cost: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseReturnCreate(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=5, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("El motivo debe tener al menos 5 caracteres.")
+        return normalized
+
+
+class PurchaseReturnResponse(BaseModel):
+    id: int
+    purchase_order_id: int
+    device_id: int
+    quantity: int
+    reason: str
+    processed_by_id: int | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderResponse(BaseModel):
+    id: int
+    store_id: int
+    supplier: str
+    status: PurchaseStatus
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+    created_by_id: int | None
+    closed_at: datetime | None
+    items: list[PurchaseOrderItemResponse]
+    returns: list[PurchaseReturnResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseReceiveItem(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
+class PurchaseReceiveRequest(BaseModel):
+    items: list[PurchaseReceiveItem]
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_items(cls, value: list[PurchaseReceiveItem]) -> list[PurchaseReceiveItem]:
+        if not value:
+            raise ValueError("Debes indicar artículos a recibir.")
+        return value
+
+
+class SaleItemCreate(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
+class SaleCreate(BaseModel):
+    store_id: int = Field(..., ge=1)
+    customer_name: str | None = Field(default=None, max_length=120)
+    payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
+    discount_percent: Decimal | None = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    notes: str | None = Field(default=None, max_length=255)
+    items: list[SaleItemCreate]
+
+    @field_validator("customer_name")
+    @classmethod
+    def _normalize_customer(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_sale_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_sale_items(cls, value: list[SaleItemCreate]) -> list[SaleItemCreate]:
+        if not value:
+            raise ValueError("Debes agregar artículos a la venta.")
+        return value
+
+
+class SaleItemResponse(BaseModel):
+    id: int
+    sale_id: int
+    device_id: int
+    quantity: int
+    unit_price: Decimal
+    discount_amount: Decimal
+    total_line: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("unit_price", "discount_amount", "total_line")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SaleResponse(BaseModel):
+    id: int
+    store_id: int
+    customer_name: str | None
+    payment_method: PaymentMethod
+    discount_percent: Decimal
+    total_amount: Decimal
+    notes: str | None
+    created_at: datetime
+    performed_by_id: int | None
+    items: list[SaleItemResponse]
+    returns: list["SaleReturnResponse"] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("discount_percent", "total_amount")
+    @classmethod
+    def _serialize_sale_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SaleReturnItem(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=5, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_sale_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("El motivo debe tener al menos 5 caracteres.")
+        return normalized
+
+
+class SaleReturnCreate(BaseModel):
+    sale_id: int = Field(..., ge=1)
+    items: list[SaleReturnItem]
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_return_items(cls, value: list[SaleReturnItem]) -> list[SaleReturnItem]:
+        if not value:
+            raise ValueError("Debes indicar artículos a devolver.")
+        return value
+
+
+class SaleReturnResponse(BaseModel):
+    id: int
+    sale_id: int
+    device_id: int
+    quantity: int
+    reason: str
+    processed_by_id: int | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BackupRunRequest(BaseModel):
     nota: str | None = Field(default=None, max_length=255)
 
@@ -476,6 +704,21 @@ __all__ = [
     "MovementBase",
     "MovementCreate",
     "MovementResponse",
+    "PurchaseOrderCreate",
+    "PurchaseOrderItemCreate",
+    "PurchaseOrderItemResponse",
+    "PurchaseOrderResponse",
+    "PurchaseReceiveItem",
+    "PurchaseReceiveRequest",
+    "PurchaseReturnCreate",
+    "PurchaseReturnResponse",
+    "SaleCreate",
+    "SaleItemCreate",
+    "SaleItemResponse",
+    "SaleResponse",
+    "SaleReturnCreate",
+    "SaleReturnItem",
+    "SaleReturnResponse",
     "ReleaseInfo",
     "RoleResponse",
     "StoreBase",
