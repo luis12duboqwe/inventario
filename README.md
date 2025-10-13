@@ -25,51 +25,39 @@ La comunicación entre módulos se realiza mediante sincronizaciones programadas
 ```
 backend/
   app/
-    api/
-    core/
-    db/
-    models/
-    schemas/
-    services/
+    domain.py
+    http.py
+    main.py
   tests/
 README.md
 ```
 
-### Backend (`backend/`)
-El directorio `backend/` contiene una API inicial basada en **FastAPI** y **SQLAlchemy** que funciona como punto de partida para el módulo Softmobile Central. Incluye:
+### Backend minimalista (`backend/app`)
+Para poder ejecutar pruebas en entornos sin conexión a internet ni dependencias externas, el backend incluye:
 
-- Modelos de datos para tiendas (`Store`) y dispositivos (`Device`).
-- Servicios de dominio para registrar y consultar sucursales y equipos.
-- Endpoints versionados (`/api/v1`) con operaciones CRUD básicas para tiendas y dispositivos.
-- Pruebas automatizadas con Pytest utilizando una base de datos temporal en memoria.
+- **Capa HTTP mínima** (`http.py`): expone una pequeña infraestructura de ruteo y un `TestClient` compatible con Pytest sin requerir FastAPI.
+- **Dominio in-memory** (`domain.py`): modelos de tiendas y dispositivos gestionados con estructuras en memoria, reglas de negocio para unicidad y validaciones básicas.
+- **Aplicación principal** (`main.py`): define rutas versionadas (`/api/v1`) para operaciones de salud, tiendas y dispositivos reutilizando la capa mínima.
 
-## Configuración rápida del backend
-1. Crear un entorno virtual e instalar dependencias:
-   ```bash
-   cd backend
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-2. Ejecutar las pruebas automatizadas:
-   ```bash
-   pytest
-   ```
-3. Iniciar la API en modo desarrollo:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-4. Revisar la documentación interactiva en `http://127.0.0.1:8000/docs`.
+Este andamiaje permite validar la lógica central en entornos offline. Cuando se disponga de dependencias externas se puede reemplazar por una implementación completa en FastAPI/SQLAlchemy manteniendo las mismas reglas de negocio.
 
-La API utiliza SQLite por defecto (`softmobile.db`). El archivo se genera automáticamente al ejecutar la aplicación. Para entornos más avanzados se recomienda configurar PostgreSQL ajustando la variable de entorno `SOFTMOBILE_SQLITE_DB_FILE` o extendiendo la configuración.
+### Pruebas (`backend/tests`)
+Las pruebas ejercitan los endpoints simulados mediante el `TestClient` propio. Cubren casos positivos y negativos para tiendas y dispositivos, asegurando que los códigos de estado y mensajes de error se mantengan estables.
 
-## Flujo de trabajo
-1. Cada tienda registra productos y movimientos de inventario.
+## Ejecución de pruebas
+```
+cd backend
+pytest
+```
+Las pruebas no requieren instalación adicional porque toda la lógica depende exclusivamente de la biblioteca estándar de Python.
+
+## Flujo de trabajo funcional
+1. Cada tienda registra productos y movimientos de inventario en su instalación local.
 2. El sistema sincroniza automáticamente la información con la base central cada 30 minutos.
 3. Softmobile Central compila los datos para generar reportes globales.
 4. Administradores revisan, aprueban y exportan la información consolidada.
 
-## Módulos funcionales previstos
+## Módulos previstos
 - **Inventario**: gestión, búsqueda y reportes locales.
 - **Central**: sincronización y control global de sucursales.
 - **Seguridad**: usuarios, permisos y logs de auditoría.
@@ -79,19 +67,9 @@ La API utiliza SQLite por defecto (`softmobile.db`). El archivo se genera autom�
 ## Requisitos técnicos sugeridos
 - **Sistema operativo**: Windows 10/11 (64 bits).
 - **Lenguajes**: Python para backend; JavaScript/HTML5 para la interfaz.
-- **Librerías**: ReportLab, PyInstaller, SQLite3, Flask o FastAPI.
+- **Librerías futuras**: ReportLab, PyInstaller, SQLite3, framework web (FastAPI, Flask u otro) según disponibilidad del entorno.
 - **Bases de datos**: SQLite para instalaciones locales y PostgreSQL para el sistema central.
 - **Instalador**: Inno Setup Compiler.
-
-## Etapas de desarrollo
-1. Diseño y estructura de carpetas (completado con este andamiaje inicial).
-2. Construcción de la interfaz visual y módulos base.
-3. Implementación de sincronización y logs automáticos.
-4. Desarrollo del módulo central con dashboard global.
-5. Pruebas, empaquetado y generación de instaladores (.exe).
-
-## Lineamientos de diseño
-La interfaz debe mantener un estilo tecnológico con tema oscuro: fondos gris oscuro, acentos azul cian y textos en blanco o gris claro. Se prioriza la limpieza visual, la organización y la facilidad de navegación.
 
 ## Próximos pasos sugeridos
 - Definir el stack definitivo del frontend (framework, librerías UI, gestor de estado).
