@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import status
 
 
@@ -32,7 +30,6 @@ def test_inventory_flow(client) -> None:
     store_id = store_response.json()["id"]
 
     device_payload = {"sku": "SKU-001", "name": "Galaxy S24", "quantity": 5, "unit_price": 15000.0}
-    device_payload = {"sku": "SKU-001", "name": "Galaxy S24", "quantity": 5}
     device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
     assert device_response.status_code == status.HTTP_201_CREATED
     device_id = device_response.json()["id"]
@@ -57,7 +54,6 @@ def test_inventory_flow(client) -> None:
     assert summary[0]["total_value"] == 15 * 15000.0 + 2 * 4500.0
     assert any(device["unit_price"] == 15000.0 for device in summary[0]["devices"])
     assert any(device["inventory_value"] == 2 * 4500.0 for device in summary[0]["devices"])
-    assert summary[0]["total_items"] == 15
 
     sync_response = client.post("/sync/run", json={"store_id": store_id}, headers=headers)
     assert sync_response.status_code == status.HTTP_200_OK

@@ -164,10 +164,10 @@ def create_device(
 ) -> models.Device:
     get_store(db, store_id)
     payload_data = payload.model_dump()
-    if "unit_price" not in payload_data:
+    unit_price = payload_data.get("unit_price")
+    if unit_price is None:
         payload_data["unit_price"] = Decimal("0")
     device = models.Device(store_id=store_id, **payload_data)
-    device = models.Device(store_id=store_id, **payload.model_dump())
     db.add(device)
     try:
         db.commit()

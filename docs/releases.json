@@ -2,15 +2,9 @@
   "producto": "Softmobile 2025",
   "releases": [
     {
-      "version": "2.2.1",
-      "release_date": "2025-02-20",
-      "notes": "Agrega valuación de inventario, métricas empresariales y panel React con alertas de stock bajo.",
-      "download_url": "https://descargas.softmobile.example.com/Softmobile-2.2.1.exe"
-    },
-    {
       "version": "2.2.0",
       "release_date": "2025-02-01",
-      "notes": "Version estable v2.2 con sincronización automática, respaldos PDF/ZIP y panel React empresarial.",
+      "notes": "Versión estable v2.2 con sincronización automática, valuación de inventario y panel React empresarial.",
       "download_url": "https://descargas.softmobile.example.com/Softmobile-2.2.0.exe"
     },
     {
