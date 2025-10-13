@@ -152,6 +152,25 @@ pytest
 
 Todas las suites deben finalizar en verde para considerar estable una nueva iteración.
 
+## Checklist de verificación integral
+
+1. **Backend listo**
+   - Instala dependencias (`pip install -r requirements.txt`) y ejecuta `uvicorn backend.app.main:app --reload`.
+   - Confirma que `/health` devuelve `{"status": "ok"}` y que los endpoints autenticados responden tras hacer bootstrap.
+2. **Pruebas en verde**
+   - Corre `pytest` en la raíz y verifica que los seis casos incluidos (salud, tiendas, inventario, sincronización y respaldos)
+     terminen sin fallos.
+3. **Frontend compilado**
+   - En la carpeta `frontend/` ejecuta `npm install` seguido de `npm run build`; ambos comandos deben finalizar sin errores.
+   - Para revisar interactivamente usa `npm run dev -- --host 0.0.0.0 --port 4173` y autentícate con el usuario administrador creado.
+4. **Operación end-to-end**
+   - Abre `http://127.0.0.1:4173` y valida desde el panel que las tarjetas de métricas, la tabla de inventario y el historial de
+     respaldos cargan datos reales desde el backend.
+   - Ejecuta una sincronización manual y genera un respaldo desde el frontend para garantizar que el orquestador atiende las
+     peticiones.
+
+Una versión sólo se declara lista para entrega cuando el checklist se ha completado íntegramente en el entorno objetivo.
+
 ## Frontend — Softmobile Inventario
 
 1. **Requisitos previos**
