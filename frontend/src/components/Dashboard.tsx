@@ -25,6 +25,11 @@ import {
 import InventoryTable from "./InventoryTable";
 import MovementForm from "./MovementForm";
 import SyncPanel from "./SyncPanel";
+import AdvancedSearch from "./AdvancedSearch";
+import TransferOrders from "./TransferOrders";
+import Purchases from "./Purchases";
+import Sales from "./Sales";
+import Returns from "./Returns";
 
 type Props = {
   token: string;
@@ -45,6 +50,12 @@ type StatusCard = {
 };
 
 function Dashboard({ token }: Props) {
+  const enableCatalogPro =
+    (import.meta.env.VITE_SOFTMOBILE_ENABLE_CATALOG_PRO ?? "1") !== "0";
+  const enableTransfers =
+    (import.meta.env.VITE_SOFTMOBILE_ENABLE_TRANSFERS ?? "1") !== "0";
+  const enablePurchasesSales =
+    (import.meta.env.VITE_SOFTMOBILE_ENABLE_PURCHASES_SALES ?? "1") !== "0";
   const [stores, setStores] = useState<Store[]>([]);
   const [summary, setSummary] = useState<Summary[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -139,6 +150,14 @@ function Dashboard({ token }: Props) {
       await Promise.all([refreshSummary(), getDevices(token, selectedStoreId).then(setDevices)]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo registrar el movimiento");
+    }
+  };
+
+  const refreshInventoryAfterTransfer = async () => {
+    await refreshSummary();
+    if (selectedStoreId) {
+      const devicesData = await getDevices(token, selectedStoreId);
+      setDevices(devicesData);
     }
   };
 
@@ -381,6 +400,37 @@ function Dashboard({ token }: Props) {
           </ul>
         )}
       </section>
+      {enableCatalogPro ? <AdvancedSearch token={token} /> : null}
+      {enablePurchasesSales ? (
+        <>
+          <Purchases
+            token={token}
+            stores={stores}
+            defaultStoreId={selectedStoreId}
+            onInventoryRefresh={refreshInventoryAfterTransfer}
+          />
+          <Sales
+            token={token}
+            stores={stores}
+            defaultStoreId={selectedStoreId}
+            onInventoryRefresh={refreshInventoryAfterTransfer}
+          />
+          <Returns
+            token={token}
+            stores={stores}
+            defaultStoreId={selectedStoreId}
+            onInventoryRefresh={refreshInventoryAfterTransfer}
+          />
+        </>
+      ) : null}
+      {enableTransfers ? (
+        <TransferOrders
+          token={token}
+          stores={stores}
+          defaultOriginId={selectedStoreId}
+          onRefreshInventory={refreshInventoryAfterTransfer}
+        />
+      ) : null}
     </div>
   );
 }

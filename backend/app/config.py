@@ -35,6 +35,30 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_BACKUP_SCHEDULER", "1")
         not in {"0", "false", "False"}
     )
+    enable_catalog_pro: bool = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_CATALOG_PRO", "0")
+        not in {"0", "false", "False"}
+    )
+    enable_transfers: bool = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_TRANSFERS", "0")
+        not in {"0", "false", "False"}
+    )
+    enable_purchases_sales: bool = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_PURCHASES_SALES", "0")
+        not in {"0", "false", "False"}
+    )
+    enable_analytics_adv: bool = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_ANALYTICS_ADV", "0")
+        not in {"0", "false", "False"}
+    )
+    enable_2fa: bool = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_2FA", "0")
+        not in {"0", "false", "False"}
+    )
+    enable_hybrid_prep: bool = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_HYBRID_PREP", "0")
+        not in {"0", "false", "False"}
+    )
     backup_interval_seconds: int = Field(
         default_factory=lambda: int(os.getenv("SOFTMOBILE_BACKUP_INTERVAL_SECONDS", "43200"))
     )

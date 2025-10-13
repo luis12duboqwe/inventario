@@ -401,6 +401,69 @@ textarea:focus {
   gap: 0.75rem;
 }
 
+.catalog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.catalog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.catalog-form .form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+button.ghost {
+  background: rgba(0, 191, 255, 0.1);
+  color: var(--accent);
+  border: 1px solid rgba(0, 191, 255, 0.25);
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 191, 255, 0.12);
+}
+
+.table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+.table-wrapper thead {
+  background: rgba(0, 191, 255, 0.1);
+  color: var(--accent);
+}
+
+.table-wrapper th,
+.table-wrapper td {
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid rgba(0, 191, 255, 0.08);
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.table-wrapper tbody tr:hover {
+  background: rgba(0, 191, 255, 0.08);
+}
+
+.error-text {
+  color: #ff8f89;
+}
+
 .metrics-list li {
   background: rgba(13, 17, 23, 0.8);
   padding: 0.85rem 1rem;
@@ -482,6 +545,171 @@ textarea:focus {
 
 .accent-link:hover {
   border-color: var(--accent);
+}
+
+.panel {
+  background-color: var(--bg-secondary);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 191, 255, 0.1);
+  padding: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+
+.panel__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.panel__subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+}
+
+.transfer-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.transfer-form .form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.transfer-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.transfer-form input,
+.transfer-form select {
+  background-color: rgba(13, 17, 23, 0.6);
+  border: 1px solid rgba(0, 191, 255, 0.25);
+  border-radius: 8px;
+  padding: 0.6rem;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.transfer-form .form-span {
+  grid-column: 1 / -1;
+}
+
+.transfer-list table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: rgba(13, 17, 23, 0.45);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.transfer-list th,
+.transfer-list td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(0, 191, 255, 0.08);
+}
+
+.transfer-list tbody tr:hover {
+  background-color: rgba(0, 191, 255, 0.06);
+}
+
+.transfer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.table-responsive {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 191, 255, 0.12);
+}
+
+.table-responsive table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: rgba(13, 17, 23, 0.45);
+}
+
+.table-responsive th,
+.table-responsive td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(0, 191, 255, 0.08);
+}
+
+.compact-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.compact-list li + li {
+  margin-top: 0.25rem;
+}
+
+.returns-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.returns-grid form {
+  background-color: rgba(13, 17, 23, 0.55);
+  border: 1px solid rgba(0, 191, 255, 0.1);
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.btn--primary {
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
+  border: none;
+  color: #ffffff;
+}
+
+.btn--ghost {
+  background: transparent;
+  border: 1px solid rgba(0, 191, 255, 0.35);
+  color: var(--accent);
+}
+
+.btn--danger {
+  background: rgba(218, 54, 51, 0.2);
+  border: 1px solid rgba(218, 54, 51, 0.4);
+  color: #ff8f8f;
 }
 
 @media (max-width: 720px) {

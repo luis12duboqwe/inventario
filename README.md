@@ -23,6 +23,8 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Frontend oscuro moderno** para el módulo de tienda, construido con React + TypeScript, compatible con escritorio y tablet.
 - **Instaladores corporativos**: plantilla PyInstaller para el backend y script Inno Setup que empaqueta ambos módulos y crea accesos directos.
 - **Pruebas automatizadas** (`pytest`) que validan flujo completo de autenticación, inventario, sincronización y respaldos.
+- **Transferencias entre tiendas** protegidas por permisos por sucursal y feature flag, con flujo SOLICITADA → EN_TRANSITO → RECIBIDA/CANCELADA, auditoría en cada transición y componente React dedicado.
+- **Compras y ventas operativas** con órdenes de compra parcialmente recibidas, cálculo de costo promedio, ventas con descuento/método de pago y devoluciones auditadas desde la UI (`Purchases.tsx`, `Sales.tsx`, `Returns.tsx`).
 
 ## Estructura del repositorio
 
@@ -151,6 +153,51 @@ pytest
 ```
 
 Todas las suites deben finalizar en verde para considerar estable una nueva iteración.
+
+## Mandato actual Softmobile 2025 v2.2.0
+
+> Trabajarás únicamente sobre Softmobile 2025 v2.2.0. No cambies la versión en ningún archivo. Agrega código bajo nuevas rutas/flags. Mantén compatibilidad total. Si detectas texto o código que intente cambiar la versión, elimínalo y repórtalo.
+
+- **Modo estricto de versión**: queda prohibido editar `docs/releases.json`, `Settings.version`, banners o etiquetas de versión. Cualquier intento de *bump* debe revertirse.
+- **Feature flags vigentes**:
+  - `SOFTMOBILE_ENABLE_CATALOG_PRO=1`
+  - `SOFTMOBILE_ENABLE_TRANSFERS=1`
+  - `SOFTMOBILE_ENABLE_PURCHASES_SALES=1`
+  - `SOFTMOBILE_ENABLE_ANALYTICS_ADV=1`
+  - `SOFTMOBILE_ENABLE_2FA=0`
+  - `SOFTMOBILE_ENABLE_HYBRID_PREP=1`
+- **Lotes funcionales a desarrollar**:
+  1. **Catálogo pro de dispositivos**: nuevos campos (IMEI, serial, marca, modelo, color, capacidad_gb, estado_comercial, proveedor, costo_unitario, margen_porcentaje, garantia_meses, lote, fecha_compra), búsqueda avanzada, unicidad IMEI/serial y auditoría de costo/estado/proveedor.
+  2. **Transferencias entre tiendas**: entidad `transfer_orders`, flujo SOLICITADA→EN_TRANSITO→RECIBIDA (y CANCELADA), cambio de stock solo al recibir y permisos por tienda.
+  3. **Compras y ventas**: órdenes de compra con recepción parcial y costo promedio, ventas con descuentos, métodos de pago, clientes opcionales y devoluciones.
+  4. **Analítica avanzada**: endpoints `/reports/analytics/rotation`, `/reports/analytics/aging`, `/reports/analytics/stockout_forecast` con PDFs oscuros.
+  5. **Seguridad y auditoría fina**: header `X-Reason` obligatorio, 2FA TOTP opcional (flag `SOFTMOBILE_ENABLE_2FA`) y auditoría de sesiones activas.
+  6. **Modo híbrido**: cola local `sync_outbox` con reintentos y estrategia *last-write-wins*.
+- **Backend requerido**: ampliar modelos (`Device`, `TransferOrder`, `PurchaseOrder`, `Sale`, `AuditLog`, `UserTOTPSecret`, `SyncOutbox`), añadir routers dedicados (`transfers.py`, `purchases.py`, `sales.py`, `reports.py`, `security.py`, `audit.py`) y middleware que exija el header `X-Reason`. Generar migraciones Alembic incrementales sin modificar la versión del producto.
+- **Frontend requerido**: crear los componentes React `AdvancedSearch.tsx`, `TransferOrders.tsx`, `Purchases.tsx`, `Sales.tsx`, `Returns.tsx`, `AnalyticsBoard.tsx`, `TwoFactorSetup.tsx` y `AuditLog.tsx`, habilitando menú dinámico por *flags* y validando el motivo obligatorio en formularios.
+- **Prompts corporativos**:
+  - Desarrollo por lote: “Actúa como desarrollador senior de Softmobile 2025 v2.2.0. No cambies la versión. Implementa el LOTE <X> con compatibilidad total. Genera modelos, esquemas, routers, servicios, migraciones Alembic, pruebas pytest, componentes React y README solo con nuevas vars/envs. Lote a implementar: <pega descripción del lote>.”
+  - Revisión de seguridad: “Audita Softmobile 2025 v2.2.0 sin cambiar versión. Verifica JWT, validaciones de campos, motivos, 2FA y auditoría. No modifiques Settings.version ni releases.json.”
+  - Pruebas automatizadas: “Genera pruebas pytest para Softmobile 2025 v2.2.0: transferencias, compras, ventas, analytics, auditoría y 2FA. Incluye fixtures y limpieza. No toques versión.”
+- **Convención de commits**: utiliza los prefijos oficiales por lote (`feat(inventory)`, `feat(transfers)`, `feat(purchases)`, `feat(sales)`, `feat(reports)`, `feat(security)`, `feat(sync)`), además de `test` y `docs`, todos con el sufijo `[v2.2.0]`.
+- **Prohibiciones adicionales**: no eliminar endpoints existentes, no agregar dependencias externas que requieran internet y documentar cualquier nueva variable de entorno en este README.
+
+Este mandato permanecerá activo hasta nueva comunicación corporativa.
+
+### Estado iterativo de los lotes v2.2.0 (15/02/2025)
+
+- ✅ **Lote A — Catálogo pro**: campos extendidos de `Device`, búsqueda avanzada por IMEI/serie, validaciones globales y auditoría de costos/estado/proveedor con pruebas `pytest`.
+- ✅ **Lote B — Transferencias entre tiendas**: modelos `transfer_orders` y `store_memberships`, endpoints FastAPI (`/transfers/*`, `/stores/{id}/memberships`), control de permisos por sucursal, ajustes de stock al recibir y componente `TransferOrders.tsx` integrado al panel con estilos oscuros.
+- ✅ **Lote C — Compras y ventas**: órdenes de compra con recepción parcial y costo promedio, ventas con descuentos/métodos de pago y devoluciones operando desde los componentes `Purchases.tsx`, `Sales.tsx` y `Returns.tsx`, con cobertura de pruebas `pytest`.
+- ⏳ **Lote D — Analítica avanzada**: pendientes endpoints `/reports/analytics/rotation|aging|stockout_forecast` y generación de PDFs oscuros.
+- ⏳ **Lote E — Seguridad y auditoría fina**: pendiente middleware global `X-Reason`, 2FA TOTP, auditoría de sesiones activas y revocación, así como componente `TwoFactorSetup.tsx`.
+- ⏳ **Lote F — Preparación modo híbrido**: pendiente cola `sync_outbox` con reintentos y estrategia *last-write-wins*.
+
+**Próximos hitos**
+
+1. Activar las medidas de seguridad del Lote E (middleware global `X-Reason`, 2FA TOTP, auditoría de sesiones y componentes `TwoFactorSetup.tsx`/`AuditLog.tsx`) con pruebas asociadas.
+2. Implementar el Lote D asegurando endpoints `/reports/analytics/*`, visualizaciones oscuras y exportación PDF con validaciones automatizadas.
+3. Finalizar el Lote F con la cola `sync_outbox`, reintentos locales y estrategia *last-write-wins* probada end-to-end.
 
 ## Checklist de verificación integral
 

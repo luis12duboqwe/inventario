@@ -10,7 +10,20 @@ from . import crud
 from .config import settings
 from .core.roles import DEFAULT_ROLES
 from .database import Base, SessionLocal, engine
-from .routers import auth, backups, health, inventory, reports, stores, sync, updates, users
+from .routers import (
+    auth,
+    backups,
+    health,
+    inventory,
+    purchases,
+    reports,
+    sales,
+    stores,
+    sync,
+    transfers,
+    updates,
+    users,
+)
 from .services.scheduler import BackgroundScheduler
 
 _scheduler: BackgroundScheduler | None = None
@@ -53,7 +66,10 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(stores.router)
     app.include_router(inventory.router)
+    app.include_router(purchases.router)
+    app.include_router(sales.router)
     app.include_router(sync.router)
+    app.include_router(transfers.router)
     app.include_router(updates.router)
     app.include_router(backups.router)
     app.include_router(reports.router)
