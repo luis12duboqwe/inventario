@@ -1,7 +1,6 @@
-# Softmobile 2025 v2.2.1
-# Softmobile 2025 v2.2
+# Softmobile 2025 v2.2.0
 
-Plataforma empresarial para la gestión centralizada de inventarios, sincronización entre sucursales y control operativo integral de cadenas de tiendas con experiencia visual moderna de tema oscuro.
+Plataforma empresarial para la gestión centralizada de inventarios, sincronización entre sucursales y control operativo integral de cadenas de tiendas con una experiencia visual moderna en tema oscuro.
 
 ## Arquitectura general
 
@@ -10,8 +9,7 @@ Softmobile 2025 se compone de dos módulos cooperantes:
 1. **Softmobile Inventario (frontend)**: cliente React + Vite pensado para ejecutarse en cada tienda. Permite registrar movimientos, disparar sincronizaciones, generar respaldos manuales y descargar reportes PDF con un diseño oscuro y acentos cian.
 2. **Softmobile Central (backend)**: API FastAPI que consolida catálogos, controla la seguridad, genera reportes, coordina sincronizaciones automáticas/manuales y ejecuta respaldos programados.
 
-La versión v2.2.1 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
-La versión v2.2 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
+La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
 
 ## Capacidades implementadas
 
@@ -36,11 +34,6 @@ backend/
     database.py
     main.py
     models.py
-    schemas.py
-    security.py
-    services/
-      backups.py
-      scheduler.py
     routers/
       __init__.py
       auth.py
@@ -50,14 +43,21 @@ backend/
       reports.py
       stores.py
       sync.py
+      updates.py
       users.py
+    schemas/
+      __init__.py
+    security.py
+    services/
+      inventory.py
+      scheduler.py
   tests/
     conftest.py
     test_backups.py
     test_health.py
     test_stores.py
+    test_updates.py
 frontend/
-  index.html
   package.json
   tsconfig.json
   vite.config.ts
@@ -78,6 +78,7 @@ installers/
   softmobile_backend.spec
 docs/
   evaluacion_requerimientos.md
+  releases.json
 AGENTS.md
 README.md
 requirements.txt
@@ -93,7 +94,7 @@ requirements.txt
 
    ```bash
    python -m venv .venv
-   source .venv/bin/activate  # En Windows: .venv\\Scripts\\activate
+   source .venv/bin/activate  # En Windows: .venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
@@ -107,10 +108,10 @@ requirements.txt
    | `SOFTMOBILE_SYNC_INTERVAL_SECONDS` | Intervalo de sincronización automática | `1800` (30 minutos) |
    | `SOFTMOBILE_ENABLE_SCHEDULER` | Activa/desactiva tareas periódicas | `1` |
    | `SOFTMOBILE_ENABLE_BACKUP_SCHEDULER` | Controla los respaldos automáticos | `1` |
-| `SOFTMOBILE_BACKUP_INTERVAL_SECONDS` | Intervalo de respaldos automáticos | `43200` (12 horas) |
-| `SOFTMOBILE_BACKUP_DIR` | Carpeta destino de los respaldos | `./backups` |
-| `SOFTMOBILE_UPDATE_FEED_PATH` | Ruta al feed JSON de versiones corporativas | `./docs/releases.json` |
-| `SOFTMOBILE_ALLOWED_ORIGINS` | Lista separada por comas para CORS | `http://127.0.0.1:5173` |
+   | `SOFTMOBILE_BACKUP_INTERVAL_SECONDS` | Intervalo de respaldos automáticos | `43200` (12 horas) |
+   | `SOFTMOBILE_BACKUP_DIR` | Carpeta destino de los respaldos | `./backups` |
+   | `SOFTMOBILE_UPDATE_FEED_PATH` | Ruta al feed JSON de versiones corporativas | `./docs/releases.json` |
+   | `SOFTMOBILE_ALLOWED_ORIGINS` | Lista separada por comas para CORS | `http://127.0.0.1:5173` |
 
 4. **Ejecución**
 
@@ -140,6 +141,36 @@ requirements.txt
 
    - El archivo de configuración se encuentra en `backend/alembic.ini` y las versiones en `backend/alembic/versions/`.
 
+## Pruebas automatizadas
+
+Antes de ejecutar las pruebas asegúrate de instalar las dependencias del backend con el comando `pip install -r requirements.txt`.
+Esto incluye bibliotecas como **httpx**, requeridas por `fastapi.testclient` para validar los endpoints.
+
+```bash
+pytest
+```
+
+Todas las suites deben finalizar en verde para considerar estable una nueva iteración.
+
+## Checklist de verificación integral
+
+1. **Backend listo**
+   - Instala dependencias (`pip install -r requirements.txt`) y ejecuta `uvicorn backend.app.main:app --reload`.
+   - Confirma que `/health` devuelve `{"status": "ok"}` y que los endpoints autenticados responden tras hacer bootstrap.
+2. **Pruebas en verde**
+   - Corre `pytest` en la raíz y verifica que los seis casos incluidos (salud, tiendas, inventario, sincronización y respaldos)
+     terminen sin fallos.
+3. **Frontend compilado**
+   - En la carpeta `frontend/` ejecuta `npm install` seguido de `npm run build`; ambos comandos deben finalizar sin errores.
+   - Para revisar interactivamente usa `npm run dev -- --host 0.0.0.0 --port 4173` y autentícate con el usuario administrador creado.
+4. **Operación end-to-end**
+   - Abre `http://127.0.0.1:4173` y valida desde el panel que las tarjetas de métricas, la tabla de inventario y el historial de
+     respaldos cargan datos reales desde el backend.
+   - Ejecuta una sincronización manual y genera un respaldo desde el frontend para garantizar que el orquestador atiende las
+     peticiones.
+
+Una versión sólo se declara lista para entrega cuando el checklist se ha completado íntegramente en el entorno objetivo.
+
 ## Frontend — Softmobile Inventario
 
 1. **Requisitos previos**
@@ -160,7 +191,6 @@ requirements.txt
    - Panel de operaciones para seleccionar sucursales, visualizar inventarios y registrar movimientos.
    - Botones para sincronización manual, generación de respaldos y descarga de reporte PDF.
    - Historial de respaldos, tarjetas de valor total y widgets con ranking de sucursales y alertas de stock bajo.
-   - Historial de respaldos y métricas de stock en tiempo real.
 
 ## Reportes y respaldos
 
@@ -194,10 +224,10 @@ requirements.txt
 pytest
 ```
 
-Las pruebas levantan una base SQLite en memoria, deshabilitan las tareas periódicas y cubren autenticación, inventario, sincronización y respaldos.
+Las pruebas levantan una base SQLite en memoria, deshabilitan las tareas periódicas y cubren autenticación, inventario, sincronización, reportes y módulo de actualizaciones.
 
 ## Proceso de revisión continua
 
-1. Tras **cada** cambio ejecuta `pytest` y revisa `docs/evaluacion_requerimientos.md`.
-2. Si detectas brechas respecto al plan Softmobile 2025 v2.2, corrige el código y repite la evaluación.
-3. Mantén este ciclo iterativo hasta que el sistema esté plenamente funcional y listo para despliegue productivo. Estas instrucciones también están en `AGENTS.md` para que ningún colaborador omita la revisión.
+- Revisa `docs/evaluacion_requerimientos.md` en cada iteración.
+- Mantén actualizado `docs/releases.json` con la versión vigente y su historial.
+- Documenta las acciones correctivas aplicadas para asegurar que la versión v2.2.0 se mantenga estable.

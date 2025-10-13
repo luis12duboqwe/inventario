@@ -1,11 +1,9 @@
-## Evaluación de cumplimiento — Softmobile 2025 v2.2.1
-## Evaluación de cumplimiento — Softmobile 2025 v2.2
+## Evaluación de cumplimiento — Softmobile 2025 v2.2.0
 
 Este documento se debe revisar tras **cada** iteración de desarrollo para validar que el proyecto cumple con el plan funcional vigente. Si detectas brechas, corrige el código y vuelve a ejecutar esta evaluación hasta cerrar todos los pendientes.
 
 ## 1. Resumen general del proyecto
 - **Cobertura actual**: Softmobile Central ofrece autenticación con roles, inventario integral, valuación financiera, sincronizaciones automáticas/manuales, respaldos empresariales, reportes PDF y verificación de actualizaciones. Softmobile Inventario provee un cliente React oscuro listo para tiendas, enlazado con el backend.
-- **Cobertura actual**: Softmobile Central ofrece autenticación con roles, inventario integral, sincronizaciones automáticas/manuales, respaldos empresariales, reportes PDF y verificación de actualizaciones. Softmobile Inventario provee un cliente React oscuro listo para tiendas, enlazado con el backend.
 - **Faltante**: Ajustes futuros para despliegues en la nube y monitoreo avanzado (por definir en versiones posteriores).
 
 ## 2. Objetivos técnicos y funcionales
@@ -26,10 +24,9 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 
 ## 4. Flujo de trabajo básico
 1. Las tiendas registran movimientos desde el frontend React o directamente vía API según la necesidad operativa.
-1. Las tiendas podrán registrar movimientos mediante la API (falta la interfaz local dedicada).
 2. La sincronización programada cada 30 minutos está operativa y es configurable.
 3. El sistema central genera reportes de inventario y bitácoras de auditoría.
-4. El panel visual está disponible en el frontend y permite revisar/aprobar información consolidada.
+4. El panel visual permite revisar y aprobar información consolidada.
 
 ## 5. Módulos principales
 | Módulo | Estado |
@@ -50,10 +47,9 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 3. Mantener automatizados los procesos de empaquetado y liberación.
 
 ## 8. Lineamientos visuales y estilo
-- El backend está listo; se requiere avanzar en el frontend con tema oscuro y experiencia moderna.
+- El frontend mantiene tema oscuro, tipografía tecnológica y acentos cian.
 
 ## 9. Notas adicionales
 - Repite esta evaluación en cada commit importante.
 - Documenta las acciones correctivas aplicadas y mantén sincronizados README, AGENTS y este archivo.
-- Para la versión v2.2.1 no se detectan brechas pendientes; cualquier mejora adicional queda planificada para la hoja de ruta 2.3.
-- Para la versión v2.2 no se detectan brechas pendientes; cualquier mejora adicional queda planificada para la hoja de ruta 2.3.
+- Para la versión v2.2.0 no se detectan brechas pendientes; cualquier mejora adicional queda planificada para la hoja de ruta 2.3.

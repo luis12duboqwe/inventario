@@ -14,7 +14,6 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("SOFTMOBILE_DATABASE_URL", "sqlite:///./softmobile.db")
     )
     title: str = Field(default="Softmobile Central")
-    version: str = Field(default="2.2.1")
     version: str = Field(default="2.2.0")
     secret_key: str = Field(
         default_factory=lambda: os.getenv(
@@ -29,7 +28,8 @@ class Settings(BaseModel):
         default_factory=lambda: int(os.getenv("SOFTMOBILE_SYNC_INTERVAL_SECONDS", "1800"))
     )
     enable_background_scheduler: bool = Field(
-        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_SCHEDULER", "1") not in {"0", "false", "False"}
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_SCHEDULER", "1")
+        not in {"0", "false", "False"}
     )
     enable_backup_scheduler: bool = Field(
         default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_BACKUP_SCHEDULER", "1")
