@@ -15,6 +15,7 @@ class Settings(BaseModel):
     )
     title: str = Field(default="Softmobile Central")
     version: str = Field(default="2.2.1")
+    version: str = Field(default="2.2.0")
     secret_key: str = Field(
         default_factory=lambda: os.getenv(
             "SOFTMOBILE_SECRET_KEY",

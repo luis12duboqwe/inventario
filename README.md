@@ -1,4 +1,5 @@
 # Softmobile 2025 v2.2.1
+# Softmobile 2025 v2.2
 
 Plataforma empresarial para la gestión centralizada de inventarios, sincronización entre sucursales y control operativo integral de cadenas de tiendas con experiencia visual moderna de tema oscuro.
 
@@ -10,6 +11,7 @@ Softmobile 2025 se compone de dos módulos cooperantes:
 2. **Softmobile Central (backend)**: API FastAPI que consolida catálogos, controla la seguridad, genera reportes, coordina sincronizaciones automáticas/manuales y ejecuta respaldos programados.
 
 La versión v2.2.1 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
+La versión v2.2 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
 
 ## Capacidades implementadas
 
@@ -158,6 +160,7 @@ requirements.txt
    - Panel de operaciones para seleccionar sucursales, visualizar inventarios y registrar movimientos.
    - Botones para sincronización manual, generación de respaldos y descarga de reporte PDF.
    - Historial de respaldos, tarjetas de valor total y widgets con ranking de sucursales y alertas de stock bajo.
+   - Historial de respaldos y métricas de stock en tiempo real.
 
 ## Reportes y respaldos
 

@@ -5,6 +5,9 @@ from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import BackupMode, MovementType, SyncMode, SyncStatus
 
@@ -194,6 +197,8 @@ class InventoryMetricsResponse(BaseModel):
     totals: InventoryTotals
     top_stores: list[StoreValueMetric]
     low_stock_devices: list[LowStockDevice]
+
+    devices: list[DeviceResponse]
 
 
 class SyncSessionResponse(BaseModel):

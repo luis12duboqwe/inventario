@@ -65,6 +65,9 @@ export type InventoryMetrics = {
   low_stock_devices: LowStockDevice[];
 };
 
+  devices: Device[];
+};
+
 export type BackupJob = {
   id: number;
   mode: "automatico" | "manual";

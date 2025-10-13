@@ -9,6 +9,7 @@ import type {
   ReleaseInfo,
   UpdateStatus,
 } from "../api";
+import type { BackupJob, Device, MovementInput, Store, Summary, ReleaseInfo, UpdateStatus } from "../api";
 import {
   downloadInventoryPdf,
   fetchBackupHistory,
@@ -63,6 +64,9 @@ function Dashboard({ token }: Props) {
           getStores(token),
           getSummary(token),
           getInventoryMetrics(token),
+        const [storesData, summaryData, backupData, statusData, releasesData] = await Promise.all([
+          getStores(token),
+          getSummary(token),
           fetchBackupHistory(token),
           getUpdateStatus(token),
           getReleaseHistory(token),
@@ -112,6 +116,8 @@ function Dashboard({ token }: Props) {
     ]);
     setSummary(summaryData);
     setMetrics(metricsData);
+    const summaryData = await getSummary(token);
+    setSummary(summaryData);
   };
 
   const handleMovement = async (payload: MovementInput) => {
@@ -165,6 +171,15 @@ function Dashboard({ token }: Props) {
   const latestRelease = updateStatus?.latest_release ?? null;
   const lowStockDevices = metrics?.low_stock_devices ?? [];
   const topStores = metrics?.top_stores ?? [];
+    () => summary.reduce((acc, store) => acc + store.devices.length, 0),
+    [summary]
+  );
+  const totalItems = useMemo(
+    () => summary.reduce((acc, store) => acc + store.total_items, 0),
+    [summary]
+  );
+  const lastBackup = backupHistory.at(0) ?? null;
+  const latestRelease = updateStatus?.latest_release ?? null;
 
   return (
     <div className="card" style={{ flex: 1 }}>

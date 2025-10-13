@@ -63,6 +63,9 @@ def render_snapshot_pdf(snapshot: dict[str, Any]) -> bytes:
 
         elements.append(Paragraph(f"Valor total de la sucursal: ${store_total:,.2f}", styles["Normal"]))
         elements.append(Spacer(1, 6))
+        table_data = [["SKU", "Nombre", "Cantidad"]]
+        for device in devices:
+            table_data.append([device["sku"], device["name"], str(device["quantity"])])
 
         table = Table(table_data, hAlign="LEFT")
         table.setStyle(
