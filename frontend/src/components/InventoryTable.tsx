@@ -17,7 +17,7 @@ function InventoryTable({ devices }: Props) {
   }
 
   return (
-    <table>
+    <table className="inventory-table">
       <thead>
         <tr>
           <th>SKU</th>

@@ -30,6 +30,20 @@ type Props = {
   token: string;
 };
 
+type StatusBadge = {
+  tone: "warning" | "success";
+  text: string;
+};
+
+type StatusCard = {
+  id: string;
+  icon: string;
+  title: string;
+  value: string;
+  caption: string;
+  badge?: StatusBadge;
+};
+
 function Dashboard({ token }: Props) {
   const [stores, setStores] = useState<Store[]>([]);
   const [summary, setSummary] = useState<Summary[]>([]);
@@ -171,50 +185,87 @@ function Dashboard({ token }: Props) {
   const lowStockDevices = metrics?.low_stock_devices ?? [];
   const topStores = metrics?.top_stores ?? [];
 
+  const statusCards: StatusCard[] = [
+    {
+      id: "stores",
+      icon: "🏢",
+      title: "Sucursales",
+      value: `${stores.length}`,
+      caption: "Configuradas",
+    },
+    {
+      id: "devices",
+      icon: "📱",
+      title: "Dispositivos",
+      value: `${totalDevices}`,
+      caption: "Catalogados",
+    },
+    {
+      id: "units",
+      icon: "📦",
+      title: "Unidades",
+      value: `${totalItems}`,
+      caption: "En stock",
+    },
+    {
+      id: "value",
+      icon: "💰",
+      title: "Valor total",
+      value: formatCurrency(totalValue),
+      caption: "Inventario consolidado",
+    },
+    {
+      id: "backup",
+      icon: "🛡️",
+      title: "Último respaldo",
+      value: lastBackup
+        ? new Date(lastBackup.executed_at).toLocaleString("es-MX")
+        : "Aún no se generan respaldos",
+      caption: lastBackup ? lastBackup.mode : "Programado cada 12 h",
+    },
+    {
+      id: "version",
+      icon: "⚙️",
+      title: "Versión",
+      value: updateStatus?.current_version ?? "Desconocida",
+      caption: updateStatus?.latest_version
+        ? `Última: ${updateStatus.latest_version}`
+        : "Historial actualizado",
+      badge: updateStatus?.is_update_available
+        ? { tone: "warning" as const, text: `Actualizar a ${updateStatus.latest_version}` }
+        : { tone: "success" as const, text: "Sistema al día" },
+    },
+  ];
+
   return (
-    <div className="card" style={{ flex: 1 }}>
-      <h2>Panel de operaciones</h2>
-      {loading ? <p>Cargando datos iniciales…</p> : null}
-      {message ? <p style={{ color: "#4ade80" }}>{message}</p> : null}
-      {error ? <p style={{ color: "#f87171" }}>{error}</p> : null}
+    <div className="dashboard">
+      <section className="card">
+        <header className="card-header">
+          <div>
+            <h2>Panel de operaciones</h2>
+            <p className="card-subtitle">Monitorea el pulso de las tiendas en tiempo real.</p>
+          </div>
+          {loading ? <span className="pill neutral">Cargando datos iniciales…</span> : null}
+        </header>
+        {message ? <div className="alert success">{message}</div> : null}
+        {error ? <div className="alert error">{error}</div> : null}
 
-      <div className="status-grid">
-        <div className="status-card">
-          <h3>Sucursales</h3>
-          <span>{stores.length} configuradas</span>
+        <div className="status-grid">
+          {statusCards.map((cardInfo) => (
+            <article key={cardInfo.id} className="status-card">
+              <span className="status-card-icon" aria-hidden>{cardInfo.icon}</span>
+              <div className="status-card-body">
+                <h3>{cardInfo.title}</h3>
+                <p className="status-value">{cardInfo.value}</p>
+                <span className="status-caption">{cardInfo.caption}</span>
+              </div>
+              {cardInfo.badge ? <span className={`badge ${cardInfo.badge.tone}`}>{cardInfo.badge.text}</span> : null}
+            </article>
+          ))}
         </div>
-        <div className="status-card">
-          <h3>Dispositivos catalogados</h3>
-          <span>{totalDevices}</span>
-        </div>
-        <div className="status-card">
-          <h3>Unidades en stock</h3>
-          <span>{totalItems}</span>
-        </div>
-        <div className="status-card">
-          <h3>Valor total</h3>
-          <span>{formatCurrency(totalValue)}</span>
-        </div>
-        <div className="status-card">
-          <h3>Último respaldo</h3>
-          <span>
-            {lastBackup
-              ? new Date(lastBackup.executed_at).toLocaleString("es-MX")
-              : "Aún no se generan respaldos"}
-          </span>
-        </div>
-        <div className="status-card">
-          <h3>Versión instalada</h3>
-          <span>{updateStatus?.current_version ?? "Desconocida"}</span>
-          {updateStatus?.is_update_available ? (
-            <p className="badge warning">Actualizar a {updateStatus.latest_version}</p>
-          ) : (
-            <p className="badge success">Sistema actualizado</p>
-          )}
-        </div>
-      </div>
+      </section>
 
-      <section className="card" style={{ marginTop: 24 }}>
+      <section className="card">
         <h2>Seleccionar sucursal</h2>
         <select
           value={selectedStoreId ?? ""}
@@ -227,7 +278,7 @@ function Dashboard({ token }: Props) {
           ))}
         </select>
         {selectedStore ? (
-          <p style={{ color: "#94a3b8" }}>
+          <p className="muted-text">
             {selectedStore.location ? `${selectedStore.location} · ` : ""}
             Zona horaria: {selectedStore.timezone}
           </p>
@@ -242,7 +293,7 @@ function Dashboard({ token }: Props) {
       <section className="card">
         <h2>Top sucursales por valor</h2>
         {topStores.length === 0 ? (
-          <p>No hay datos suficientes para calcular el ranking.</p>
+          <p className="muted-text">No hay datos suficientes para calcular el ranking.</p>
         ) : (
           <ul className="metrics-list">
             {topStores.map((storeMetric) => (
@@ -261,22 +312,29 @@ function Dashboard({ token }: Props) {
       </section>
 
       <section className="card">
-        <h2>Sincronización y reportes</h2>
+        <h2>
+          <span role="img" aria-label="reportes">
+            🗂
+          </span>{" "}
+          Sincronización y reportes
+        </h2>
         <SyncPanel
           onSync={handleSync}
           syncStatus={syncStatus}
           onDownloadPdf={() => downloadInventoryPdf(token)}
           onBackup={handleBackup}
         />
-        <div style={{ marginTop: 18 }}>
-          <h3 style={{ color: "#38bdf8" }}>Historial de respaldos</h3>
+        <div className="section-divider">
+          <h3>Historial de respaldos</h3>
           {backupHistory.length === 0 ? (
-            <p>No existen respaldos previos.</p>
+            <p className="muted-text">No existen respaldos previos.</p>
           ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            <ul className="history-list">
               {backupHistory.map((backup) => (
-                <li key={backup.id} style={{ marginBottom: 8 }}>
-                  <span className="badge">{backup.mode}</span> · {new Date(backup.executed_at).toLocaleString("es-MX")} · tamaño {(backup.total_size_bytes / 1024).toFixed(1)} KB
+                <li key={backup.id}>
+                  <span className="badge neutral">{backup.mode}</span>
+                  <span>{new Date(backup.executed_at).toLocaleString("es-MX")}</span>
+                  <span>{(backup.total_size_bytes / 1024).toFixed(1)} KB</span>
                 </li>
               ))}
             </ul>
@@ -290,17 +348,17 @@ function Dashboard({ token }: Props) {
           <p>
             Última liberación corporativa:
             <strong> {latestRelease.version}</strong> · {new Date(latestRelease.release_date).toLocaleDateString("es-MX")} ·
-            <a href={latestRelease.download_url} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>
+            <a className="accent-link" href={latestRelease.download_url} target="_blank" rel="noreferrer">
               Descargar instalador
             </a>
           </p>
         ) : (
-          <p>No se han publicado versiones en el feed.</p>
+          <p className="muted-text">No se han publicado versiones en el feed.</p>
         )}
         {releaseHistory.length > 0 ? (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          <ul className="history-list releases">
             {releaseHistory.map((release) => (
-              <li key={release.version} style={{ marginBottom: 8 }}>
+              <li key={release.version}>
                 <strong>{release.version}</strong> · {new Date(release.release_date).toLocaleDateString("es-MX")} · {release.notes}
               </li>
             ))}
@@ -311,7 +369,7 @@ function Dashboard({ token }: Props) {
       <section className="card">
         <h2>Alertas de inventario bajo</h2>
         {lowStockDevices.length === 0 ? (
-          <p>No hay alertas por ahora.</p>
+          <p className="muted-text">No hay alertas por ahora.</p>
         ) : (
           <ul className="metrics-list">
             {lowStockDevices.map((device) => (
