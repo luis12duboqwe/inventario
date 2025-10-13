@@ -8,6 +8,10 @@ from fastapi import FastAPI
 from . import crud
 from .config import settings
 from .database import Base, SessionLocal, engine
+from .routers import auth, backups, health, inventory, reports, stores, sync, users
+from .services.scheduler import BackgroundScheduler
+
+_scheduler: BackgroundScheduler | None = None
 from .routers import auth, health, inventory, reports, stores, sync, users
 from .services.sync import SyncScheduler
 
@@ -27,6 +31,7 @@ async def lifespan(_: FastAPI):
     _bootstrap_defaults()
     global _scheduler
     if settings.enable_background_scheduler:
+        _scheduler = BackgroundScheduler()
         _scheduler = SyncScheduler(settings.sync_interval_seconds)
         await _scheduler.start()
     try:
@@ -44,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(stores.router)
     app.include_router(inventory.router)
     app.include_router(sync.router)
+    app.include_router(backups.router)
     app.include_router(reports.router)
     return app
 

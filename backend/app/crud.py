@@ -336,3 +336,146 @@ def list_audit_logs(db: Session, limit: int = 100) -> list[models.AuditLog]:
 
 def count_users(db: Session) -> int:
     return db.scalar(select(func.count(models.User.id))) or 0
+
+
+def create_backup_job(
+    db: Session,
+    *,
+    mode: models.BackupMode,
+    pdf_path: str,
+    archive_path: str,
+    total_size_bytes: int,
+    notes: str | None,
+    triggered_by_id: int | None,
+) -> models.BackupJob:
+    job = models.BackupJob(
+        mode=mode,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        total_size_bytes=total_size_bytes,
+        notes=notes,
+        triggered_by_id=triggered_by_id,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    _log_action(
+        db,
+        action="backup_generated",
+        entity_type="backup",
+        entity_id=str(job.id),
+        performed_by_id=triggered_by_id,
+        details=f"modo={mode.value}; tamaño={total_size_bytes}",
+    )
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def list_backup_jobs(db: Session, limit: int = 50) -> list[models.BackupJob]:
+    statement = (
+        select(models.BackupJob)
+        .order_by(models.BackupJob.executed_at.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(statement))
+
+
+def build_inventory_snapshot(db: Session) -> dict[str, object]:
+    stores_stmt = (
+        select(models.Store)
+        .options(joinedload(models.Store.devices))
+        .order_by(models.Store.name.asc())
+    )
+    stores = list(db.scalars(stores_stmt).unique())
+
+    users_stmt = (
+        select(models.User)
+        .options(joinedload(models.User.roles).joinedload(models.UserRole.role))
+        .order_by(models.User.username.asc())
+    )
+    users = list(db.scalars(users_stmt).unique())
+
+    movements_stmt = select(models.InventoryMovement).order_by(models.InventoryMovement.created_at.desc())
+    movements = list(db.scalars(movements_stmt))
+
+    sync_stmt = select(models.SyncSession).order_by(models.SyncSession.started_at.desc())
+    sync_sessions = list(db.scalars(sync_stmt))
+
+    audit_stmt = select(models.AuditLog).order_by(models.AuditLog.created_at.desc())
+    audits = list(db.scalars(audit_stmt))
+
+    snapshot = {
+        "stores": [
+            {
+                "id": store.id,
+                "name": store.name,
+                "location": store.location,
+                "timezone": store.timezone,
+                "devices": [
+                    {
+                        "id": device.id,
+                        "sku": device.sku,
+                        "name": device.name,
+                        "quantity": device.quantity,
+                        "store_id": device.store_id,
+                    }
+                    for device in store.devices
+                ],
+            }
+            for store in stores
+        ],
+        "users": [
+            {
+                "id": user.id,
+                "username": user.username,
+                "full_name": user.full_name,
+                "is_active": user.is_active,
+                "roles": [role.role.name for role in user.roles],
+                "created_at": user.created_at.isoformat(),
+            }
+            for user in users
+        ],
+        "movements": [
+            {
+                "id": movement.id,
+                "store_id": movement.store_id,
+                "device_id": movement.device_id,
+                "movement_type": movement.movement_type.value,
+                "quantity": movement.quantity,
+                "reason": movement.reason,
+                "performed_by_id": movement.performed_by_id,
+                "created_at": movement.created_at.isoformat(),
+            }
+            for movement in movements
+        ],
+        "sync_sessions": [
+            {
+                "id": sync_session.id,
+                "store_id": sync_session.store_id,
+                "mode": sync_session.mode.value,
+                "status": sync_session.status.value,
+                "started_at": sync_session.started_at.isoformat(),
+                "finished_at": sync_session.finished_at.isoformat()
+                if sync_session.finished_at
+                else None,
+                "triggered_by_id": sync_session.triggered_by_id,
+                "error_message": sync_session.error_message,
+            }
+            for sync_session in sync_sessions
+        ],
+        "audit_logs": [
+            {
+                "id": audit.id,
+                "action": audit.action,
+                "entity_type": audit.entity_type,
+                "entity_id": audit.entity_id,
+                "details": audit.details,
+                "performed_by_id": audit.performed_by_id,
+                "created_at": audit.created_at.isoformat(),
+            }
+            for audit in audits
+        ],
+    }
+    return snapshot

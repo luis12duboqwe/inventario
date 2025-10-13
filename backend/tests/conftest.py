@@ -48,6 +48,7 @@ def client(db_session: Session) -> Iterator[TestClient]:
     """Entrega un cliente de pruebas con la aplicación configurada en memoria."""
 
     settings.enable_background_scheduler = False
+    settings.enable_backup_scheduler = False
 
     app = create_app()
 

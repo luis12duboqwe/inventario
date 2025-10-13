@@ -1,0 +1,223 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  BackupJob,
+  Device,
+  MovementInput,
+  Store,
+  Summary,
+  downloadInventoryPdf,
+  fetchBackupHistory,
+  getDevices,
+  getStores,
+  getSummary,
+  registerMovement,
+  runBackup,
+  triggerSync,
+} from "../api";
+import InventoryTable from "./InventoryTable";
+import MovementForm from "./MovementForm";
+import SyncPanel from "./SyncPanel";
+
+type Props = {
+  token: string;
+};
+
+function Dashboard({ token }: Props) {
+  const [stores, setStores] = useState<Store[]>([]);
+  const [summary, setSummary] = useState<Summary[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [backupHistory, setBackupHistory] = useState<BackupJob[]>([]);
+
+  const selectedStore = useMemo(
+    () => stores.find((store) => store.id === selectedStoreId) ?? null,
+    [stores, selectedStoreId]
+  );
+
+  useEffect(() => {
+    const fetchInitial = async () => {
+      try {
+        setLoading(true);
+        const [storesData, summaryData, backupData] = await Promise.all([
+          getStores(token),
+          getSummary(token),
+          fetchBackupHistory(token),
+        ]);
+        setStores(storesData);
+        setSummary(summaryData);
+        setBackupHistory(backupData);
+        if (storesData.length > 0) {
+          setSelectedStoreId(storesData[0].id);
+          const devicesData = await getDevices(token, storesData[0].id);
+          setDevices(devicesData);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No fue posible cargar los datos iniciales");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInitial();
+  }, [token]);
+
+  useEffect(() => {
+    const loadDevices = async () => {
+      if (!selectedStoreId) {
+        setDevices([]);
+        return;
+      }
+      try {
+        const devicesData = await getDevices(token, selectedStoreId);
+        setDevices(devicesData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No fue posible cargar los dispositivos");
+      }
+    };
+
+    loadDevices();
+  }, [selectedStoreId, token]);
+
+  const refreshSummary = async () => {
+    const summaryData = await getSummary(token);
+    setSummary(summaryData);
+  };
+
+  const handleMovement = async (payload: MovementInput) => {
+    if (!selectedStoreId) {
+      return;
+    }
+    try {
+      setError(null);
+      await registerMovement(token, selectedStoreId, payload);
+      setMessage("Movimiento registrado correctamente");
+      await Promise.all([refreshSummary(), getDevices(token, selectedStoreId).then(setDevices)]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo registrar el movimiento");
+    }
+  };
+
+  const handleSync = async () => {
+    try {
+      setSyncStatus("Sincronizando…");
+      await triggerSync(token, selectedStoreId ?? undefined);
+      setSyncStatus("Sincronización completada");
+    } catch (err) {
+      setSyncStatus(err instanceof Error ? err.message : "Error durante la sincronización");
+    }
+  };
+
+  const handleBackup = async () => {
+    try {
+      setError(null);
+      const job = await runBackup(token, "Respaldo manual desde tienda");
+      setBackupHistory((current) => [job, ...current].slice(0, 10));
+      setMessage("Respaldo generado y almacenado en el servidor central");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo generar el respaldo");
+    }
+  };
+
+  const totalDevices = useMemo(
+    () => summary.reduce((acc, store) => acc + store.devices.length, 0),
+    [summary]
+  );
+  const totalItems = useMemo(
+    () => summary.reduce((acc, store) => acc + store.total_items, 0),
+    [summary]
+  );
+  const lastBackup = backupHistory.at(0) ?? null;
+
+  return (
+    <div className="card" style={{ flex: 1 }}>
+      <h2>Panel de operaciones</h2>
+      {loading ? <p>Cargando datos iniciales…</p> : null}
+      {message ? <p style={{ color: "#4ade80" }}>{message}</p> : null}
+      {error ? <p style={{ color: "#f87171" }}>{error}</p> : null}
+
+      <div className="status-grid">
+        <div className="status-card">
+          <h3>Sucursales</h3>
+          <span>{stores.length} configuradas</span>
+        </div>
+        <div className="status-card">
+          <h3>Dispositivos catalogados</h3>
+          <span>{totalDevices}</span>
+        </div>
+        <div className="status-card">
+          <h3>Unidades en stock</h3>
+          <span>{totalItems}</span>
+        </div>
+        <div className="status-card">
+          <h3>Último respaldo</h3>
+          <span>
+            {lastBackup
+              ? new Date(lastBackup.executed_at).toLocaleString("es-MX")
+              : "Aún no se generan respaldos"}
+          </span>
+        </div>
+      </div>
+
+      <section className="card" style={{ marginTop: 24 }}>
+        <h2>Seleccionar sucursal</h2>
+        <select
+          value={selectedStoreId ?? ""}
+          onChange={(event) => setSelectedStoreId(event.target.value ? Number(event.target.value) : null)}
+        >
+          {stores.map((store) => (
+            <option key={store.id} value={store.id}>
+              {store.name}
+            </option>
+          ))}
+        </select>
+        {selectedStore ? (
+          <p style={{ color: "#94a3b8" }}>
+            {selectedStore.location ? `${selectedStore.location} · ` : ""}
+            Zona horaria: {selectedStore.timezone}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="card">
+        <h2>Inventario actual</h2>
+        <InventoryTable devices={devices} />
+      </section>
+
+      <section className="card">
+        <h2>Registrar movimiento</h2>
+        <MovementForm devices={devices} onSubmit={handleMovement} />
+      </section>
+
+      <section className="card">
+        <h2>Sincronización y reportes</h2>
+        <SyncPanel
+          onSync={handleSync}
+          syncStatus={syncStatus}
+          onDownloadPdf={() => downloadInventoryPdf(token)}
+          onBackup={handleBackup}
+        />
+        <div style={{ marginTop: 18 }}>
+          <h3 style={{ color: "#38bdf8" }}>Historial de respaldos</h3>
+          {backupHistory.length === 0 ? (
+            <p>No existen respaldos previos.</p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {backupHistory.map((backup) => (
+                <li key={backup.id} style={{ marginBottom: 8 }}>
+                  <span className="badge">{backup.mode}</span> · {new Date(backup.executed_at).toLocaleString("es-MX")} ·
+                  tamaño {(backup.total_size_bytes / 1024).toFixed(1)} KB
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default Dashboard;

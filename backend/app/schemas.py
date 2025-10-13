@@ -4,6 +4,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .models import BackupMode, MovementType, SyncMode, SyncStatus
 from pydantic import BaseModel, Field, validator
 
 from .models import MovementType, SyncMode, SyncStatus
@@ -22,6 +28,7 @@ class StoreCreate(StoreBase):
 class StoreResponse(StoreBase):
     id: int
 
+    model_config = ConfigDict(from_attributes=True)
     class Config:
         orm_mode = True
 
@@ -45,6 +52,7 @@ class DeviceResponse(DeviceBase):
     id: int
     store_id: int
 
+    model_config = ConfigDict(from_attributes=True)
     class Config:
         orm_mode = True
 
@@ -53,6 +61,7 @@ class RoleResponse(BaseModel):
     id: int
     name: str
 
+    model_config = ConfigDict(from_attributes=True)
     class Config:
         orm_mode = True
 
@@ -77,6 +86,11 @@ class UserResponse(UserBase):
     created_at: datetime
     roles: list[RoleResponse]
 
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("roles", mode="before")
+    @classmethod
+    def _flatten_roles(cls, value):
     class Config:
         orm_mode = True
 
@@ -118,6 +132,7 @@ class MovementResponse(MovementBase):
     performed_by_id: Optional[int]
     created_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)
     class Config:
         orm_mode = True
 
@@ -139,6 +154,7 @@ class SyncSessionResponse(BaseModel):
     triggered_by_id: Optional[int]
     error_message: Optional[str]
 
+    model_config = ConfigDict(from_attributes=True)
     class Config:
         orm_mode = True
 
@@ -156,5 +172,23 @@ class AuditLogResponse(BaseModel):
     performed_by_id: Optional[int]
     created_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BackupRunRequest(BaseModel):
+    nota: Optional[str] = Field(default=None, max_length=255)
+
+
+class BackupJobResponse(BaseModel):
+    id: int
+    mode: BackupMode
+    executed_at: datetime
+    pdf_path: str
+    archive_path: str
+    total_size_bytes: int
+    notes: Optional[str]
+    triggered_by_id: Optional[int]
+
+    model_config = ConfigDict(from_attributes=True)
     class Config:
         orm_mode = True

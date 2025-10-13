@@ -42,6 +42,13 @@ class SyncMode(str, enum.Enum):
     MANUAL = "manual"
 
 
+class BackupMode(str, enum.Enum):
+    """Origen del respaldo generado."""
+
+    AUTOMATIC = "automatico"
+    MANUAL = "manual"
+
+
 class Store(Base):
     __tablename__ = "stores"
 
@@ -110,6 +117,7 @@ class User(Base):
     movements: Mapped[list["InventoryMovement"]] = relationship("InventoryMovement", back_populates="performed_by")
     sync_sessions: Mapped[list["SyncSession"]] = relationship("SyncSession", back_populates="triggered_by")
     logs: Mapped[list["AuditLog"]] = relationship("AuditLog", back_populates="performed_by")
+    backup_jobs: Mapped[list["BackupJob"]] = relationship("BackupJob", back_populates="triggered_by")
 
 
 class UserRole(Base):
@@ -177,3 +185,20 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     performed_by: Mapped[User | None] = relationship("User", back_populates="logs")
+
+
+class BackupJob(Base):
+    __tablename__ = "backup_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    mode: Mapped[BackupMode] = mapped_column(Enum(BackupMode, name="backup_mode"), nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    pdf_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    archive_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    total_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    triggered_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    triggered_by: Mapped[User | None] = relationship("User", back_populates="backup_jobs")
