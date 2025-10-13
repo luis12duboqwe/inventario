@@ -23,6 +23,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 
 ## 4. Flujo de trabajo básico
 1. Las tiendas registran movimientos desde el frontend React o directamente vía API según la necesidad operativa.
+1. Las tiendas podrán registrar movimientos mediante la API (falta la interfaz local dedicada).
 2. La sincronización programada cada 30 minutos está operativa y es configurable.
 3. El sistema central genera reportes de inventario y bitácoras de auditoría.
 4. El panel visual está disponible en el frontend y permite revisar/aprobar información consolidada.
