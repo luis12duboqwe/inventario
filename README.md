@@ -35,7 +35,7 @@ README.md
 ### Backend minimalista (`backend/app`)
 Para poder ejecutar pruebas en entornos sin conexión a internet ni dependencias externas, el backend incluye:
 
-- **Capa HTTP mínima** (`http.py`): expone una pequeña infraestructura de ruteo y un `TestClient` compatible con Pytest sin requerir FastAPI.
+- **Capa HTTP mínima** (`http.py`): expone una pequeña infraestructura de ruteo y un `TestClient` compatible con Pytest sin requerir FastAPI, con soporte para respuestas estándar 404/405 y la cabecera `Allow` cuando corresponde.
 - **Dominio in-memory** (`domain.py`): modelos de tiendas y dispositivos gestionados con estructuras en memoria, reglas de negocio para unicidad y validaciones básicas.
 - **Aplicación principal** (`main.py`): define rutas versionadas (`/api/v1`) para operaciones de salud, tiendas y dispositivos reutilizando la capa mínima.
 

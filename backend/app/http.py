@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from typing import Any, Callable, Dict, Iterable, Optional
 
 
 @dataclass
 class Response:
-    """Simple response object mimicking the interface of requests.Response."""
+    """Simple response object mimicking the interface of :mod:`requests`."""
 
     status_code: int
     content: Any = None
+    headers: dict[str, str] = field(default_factory=dict)
 
     def json(self) -> Any:
         return self.content
@@ -110,21 +111,48 @@ class SimpleApp:
     # --- request processing -----------------------------------------
     def handle_request(self, method: str, path: str, *, json: Any | None = None) -> Response:
         request = Request(method=method, path=path, body=json)
+        normalized_method = method.upper()
+        allowed_methods: set[str] = set()
+
         for route in self.routes:
-            params = route.matches(method, path)
-            if params is None:
+            match = route.pattern.match(path)
+            if not match:
                 continue
+
+            allowed_methods.update(route.methods)
+            if normalized_method not in route.methods:
+                continue
+
+            params = match.groupdict()
             try:
-                result = route.endpoint(request, **{name: value for name, value in params.items()})
+                result = route.endpoint(request, **params)
             except Exception as exc:  # pragma: no cover - basic dispatch path
                 response = self._handle_exception(request, exc)
                 if response is None:
                     raise
                 return response
+
             if isinstance(result, Response):
                 return result
             return Response(status_code=route.status_code, content=result)
-        return Response(status_code=int(HTTPStatus.NOT_FOUND), content={"error": {"code": "not_found", "message": "Endpoint not found"}})
+
+        if allowed_methods:
+            allow_header = ", ".join(sorted(allowed_methods))
+            return Response(
+                status_code=int(HTTPStatus.METHOD_NOT_ALLOWED),
+                content={
+                    "error": {
+                        "code": "method_not_allowed",
+                        "message": "El método no está permitido para este endpoint.",
+                    }
+                },
+                headers={"Allow": allow_header},
+            )
+
+        return Response(
+            status_code=int(HTTPStatus.NOT_FOUND),
+            content={"error": {"code": "not_found", "message": "Endpoint not found"}},
+        )
 
     def _handle_exception(self, request: Request, exc: Exception) -> Response | None:
         for exc_type, handler in self.exception_handlers.items():
@@ -158,6 +186,8 @@ class Router:
 
 class TestClient:
     """Client that mirrors the API of fastapi.testclient for our tests."""
+
+    __test__ = False  # Prevent pytest from treating the class as a test container
 
     def __init__(self, app: SimpleApp) -> None:
         self.app = app
