@@ -90,24 +90,6 @@ class TransferStatus(str, enum.Enum):
     CANCELADA = "CANCELADA"
 
 
-class PurchaseStatus(str, enum.Enum):
-    """Estados de seguimiento para órdenes de compra."""
-
-    PENDIENTE = "PENDIENTE"
-    PARCIAL = "PARCIAL"
-    COMPLETADA = "COMPLETADA"
-    CANCELADA = "CANCELADA"
-
-
-class PaymentMethod(str, enum.Enum):
-    """Formas de pago admitidas en ventas."""
-
-    EFECTIVO = "EFECTIVO"
-    TARJETA = "TARJETA"
-    TRANSFERENCIA = "TRANSFERENCIA"
-    OTRO = "OTRO"
-
-
 class Device(Base):
     __tablename__ = "devices"
     __table_args__ = (
@@ -334,152 +316,6 @@ class TransferOrderItem(Base):
     device: Mapped[Device] = relationship("Device")
 
 
-class PurchaseOrder(Base):
-    __tablename__ = "purchase_orders"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    supplier: Mapped[str] = mapped_column(String(120), nullable=False)
-    status: Mapped[PurchaseStatus] = mapped_column(
-        Enum(PurchaseStatus, name="purchase_status"),
-        nullable=False,
-        default=PurchaseStatus.PENDIENTE,
-    )
-    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-    created_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    store: Mapped[Store] = relationship("Store", backref="purchase_orders")
-    created_by: Mapped[User | None] = relationship("User", foreign_keys=[created_by_id])
-    items: Mapped[list["PurchaseOrderItem"]] = relationship(
-        "PurchaseOrderItem", back_populates="purchase_order", cascade="all, delete-orphan"
-    )
-    returns: Mapped[list["PurchaseReturn"]] = relationship(
-        "PurchaseReturn", back_populates="purchase_order", cascade="all, delete-orphan"
-    )
-
-
-class PurchaseOrderItem(Base):
-    __tablename__ = "purchase_order_items"
-    __table_args__ = (
-        UniqueConstraint("purchase_order_id", "device_id", name="uq_purchase_item_unique"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    purchase_order_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("purchase_orders.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    device_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    quantity_ordered: Mapped[int] = mapped_column(Integer, nullable=False)
-    quantity_received: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
-
-    purchase_order: Mapped[PurchaseOrder] = relationship("PurchaseOrder", back_populates="items")
-    device: Mapped[Device] = relationship("Device")
-
-
-class PurchaseReturn(Base):
-    __tablename__ = "purchase_returns"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    purchase_order_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("purchase_orders.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    device_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    reason: Mapped[str] = mapped_column(String(255), nullable=False)
-    processed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-
-    purchase_order: Mapped[PurchaseOrder] = relationship("PurchaseOrder", back_populates="returns")
-    device: Mapped[Device] = relationship("Device")
-    processed_by: Mapped[User | None] = relationship("User")
-
-
-class Sale(Base):
-    __tablename__ = "sales"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    payment_method: Mapped[PaymentMethod] = mapped_column(
-        Enum(PaymentMethod, name="payment_method"), nullable=False, default=PaymentMethod.EFECTIVO
-    )
-    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
-    total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
-    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    performed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-
-    store: Mapped[Store] = relationship("Store", backref="sales")
-    performed_by: Mapped[User | None] = relationship("User")
-    items: Mapped[list["SaleItem"]] = relationship(
-        "SaleItem", back_populates="sale", cascade="all, delete-orphan"
-    )
-    returns: Mapped[list["SaleReturn"]] = relationship(
-        "SaleReturn", back_populates="sale", cascade="all, delete-orphan"
-    )
-
-
-class SaleItem(Base):
-    __tablename__ = "sale_items"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    sale_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("sales.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    device_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    discount_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
-    total_line: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-
-    sale: Mapped[Sale] = relationship("Sale", back_populates="items")
-    device: Mapped[Device] = relationship("Device")
-
-
-class SaleReturn(Base):
-    __tablename__ = "sale_returns"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    sale_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("sales.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    device_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    reason: Mapped[str] = mapped_column(String(255), nullable=False)
-    processed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-
-    sale: Mapped[Sale] = relationship("Sale", back_populates="returns")
-    device: Mapped[Device] = relationship("Device")
-    processed_by: Mapped[User | None] = relationship("User")
-
-
 class StoreMembership(Base):
     __tablename__ = "store_memberships"
     __table_args__ = (
@@ -517,14 +353,6 @@ __all__ = [
     "TransferOrderItem",
     "TransferStatus",
     "StoreMembership",
-    "PurchaseOrder",
-    "PurchaseOrderItem",
-    "PurchaseReturn",
-    "PurchaseStatus",
-    "PaymentMethod",
-    "Sale",
-    "SaleItem",
-    "SaleReturn",
     "User",
     "UserRole",
 ]
