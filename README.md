@@ -25,6 +25,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Pruebas automatizadas** (`pytest`) que validan flujo completo de autenticación, inventario, sincronización y respaldos.
 - **Transferencias entre tiendas** protegidas por permisos por sucursal y feature flag, con flujo SOLICITADA → EN_TRANSITO → RECIBIDA/CANCELADA, auditoría en cada transición y componente React dedicado.
 - **Compras y ventas operativas** con órdenes de compra parcialmente recibidas, cálculo de costo promedio, ventas con descuento/método de pago y devoluciones auditadas desde la UI (`Purchases.tsx`, `Sales.tsx`, `Returns.tsx`).
+- **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
 
 ## Estructura del repositorio
 
@@ -42,6 +43,7 @@ backend/
       backups.py
       health.py
       inventory.py
+      pos.py
       reports.py
       stores.py
       sync.py
@@ -74,6 +76,12 @@ frontend/
       LoginForm.tsx
       MovementForm.tsx
       SyncPanel.tsx
+      POS/
+        POSDashboard.tsx
+        POSCart.tsx
+        POSPayment.tsx
+        POSReceipt.tsx
+        POSSettings.tsx
 installers/
   README.md
   SoftmobileInstaller.iss
@@ -142,6 +150,31 @@ requirements.txt
      ```
 
    - El archivo de configuración se encuentra en `backend/alembic.ini` y las versiones en `backend/alembic/versions/`.
+
+## Punto de venta directo (POS)
+
+El módulo POS complementa el flujo de compras/ventas con un carrito dinámico, borradores corporativos y generación de recibos PDF en segundos.
+
+### Endpoints clave
+
+- `POST /pos/sale`: registra ventas y borradores. Requiere cabecera `X-Reason` y un cuerpo `POSSaleRequest` con `confirm=true` para ventas finales o `save_as_draft=true` para almacenar borradores. Valida stock, aplica descuentos por artículo y calcula impuestos configurables.
+- `GET /pos/receipt/{sale_id}`: devuelve el recibo PDF (tema oscuro) listo para impresión o envío. Debe consumirse con JWT válido.
+- `GET /pos/config?store_id=<id>`: lee la configuración POS por sucursal (impuestos, prefijo de factura, impresora y accesos rápidos).
+- `PUT /pos/config`: actualiza la configuración. Exige cabecera `X-Reason` y un payload `POSConfigUpdate` con el identificador de la tienda y los nuevos parámetros.
+
+### Interfaz React
+
+- `POSDashboard.tsx`: orquesta la experiencia POS, permite buscar por IMEI/modelo/nombre, mostrar accesos rápidos y coordinar carrito/pago/recibo.
+- `POSCart.tsx`: edita cantidades, descuentos por línea y alerta cuando el stock disponible es insuficiente.
+- `POSPayment.tsx`: controla método de pago, descuento global, confirmación visual y motivo corporativo antes de enviar la venta o guardar borradores.
+- `POSReceipt.tsx`: descarga o envía el PDF inmediatamente después de la venta.
+- `POSSettings.tsx`: define impuestos, prefijo de factura, impresora y productos frecuentes.
+
+### Consideraciones operativas
+
+- Todos los POST/PUT del POS deben incluir un motivo (`X-Reason`) con al menos 5 caracteres.
+- El flujo admite ventas rápidas (botones configurables), guardado de borradores y notificaciones visuales de éxito/errores.
+- Al registrar una venta se generan movimientos de inventario, auditoría y un evento en la cola `sync_outbox` para sincronización híbrida.
 
 ## Pruebas automatizadas
 

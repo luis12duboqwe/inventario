@@ -2,6 +2,7 @@ import Purchases from "../Purchases";
 import Returns from "../Returns";
 import Sales from "../Sales";
 import TransferOrders from "../TransferOrders";
+import POSDashboard from "../POS/POSDashboard";
 import { useDashboard } from "./DashboardContext";
 
 function OperationsSection() {
@@ -19,6 +20,12 @@ function OperationsSection() {
       {enablePurchasesSales ? (
         <>
           <Purchases
+            token={token}
+            stores={stores}
+            defaultStoreId={selectedStoreId}
+            onInventoryRefresh={refreshInventoryAfterTransfer}
+          />
+          <POSDashboard
             token={token}
             stores={stores}
             defaultStoreId={selectedStoreId}
