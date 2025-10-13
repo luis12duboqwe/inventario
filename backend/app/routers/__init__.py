@@ -1,24 +1,34 @@
 """Colección de routers disponibles."""
-from . import (
+from . import (  # noqa: F401
+    audit,
     auth,
     backups,
     health,
     inventory,
+    purchases,
     reports,
+    sales,
+    security,
     stores,
     sync,
+    transfers,
     updates,
     users,
-)  # noqa: F401
+)
 
 __all__ = [
+    "audit",
     "auth",
     "backups",
     "health",
     "inventory",
+    "purchases",
     "reports",
+    "sales",
+    "security",
     "stores",
     "sync",
+    "transfers",
     "updates",
     "users",
 ]

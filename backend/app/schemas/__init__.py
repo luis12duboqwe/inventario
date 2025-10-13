@@ -7,7 +7,17 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
 
-from ..models import BackupMode, MovementType, SyncMode, SyncStatus
+from ..models import (
+    BackupMode,
+    CommercialState,
+    MovementType,
+    PaymentMethod,
+    PurchaseStatus,
+    SyncMode,
+    SyncStatus,
+    SyncOutboxStatus,
+    TransferStatus,
+)
 
 
 class StoreBase(BaseModel):
@@ -41,11 +51,62 @@ class DeviceBase(BaseModel):
         ge=Decimal("0"),
         description="Precio unitario referencial del dispositivo",
     )
+    imei: str | None = Field(default=None, max_length=18, description="IMEI del dispositivo")
+    serial: str | None = Field(default=None, max_length=120, description="Número de serie")
+    marca: str | None = Field(default=None, max_length=80, description="Marca comercial")
+    modelo: str | None = Field(default=None, max_length=120, description="Modelo detallado")
+    color: str | None = Field(default=None, max_length=60, description="Color principal")
+    capacidad_gb: int | None = Field(default=None, ge=0, description="Capacidad de almacenamiento en GB")
+    estado_comercial: CommercialState = Field(default=CommercialState.NUEVO)
+    proveedor: str | None = Field(default=None, max_length=120, description="Proveedor principal")
+    costo_unitario: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        description="Costo neto por unidad",
+    )
+    margen_porcentaje: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        description="Margen aplicado en porcentaje",
+    )
+    garantia_meses: int = Field(default=0, ge=0, description="Garantía ofrecida en meses")
+    lote: str | None = Field(default=None, max_length=80, description="Identificador de lote")
+    fecha_compra: date | None = Field(default=None, description="Fecha de compra al proveedor")
 
     @field_serializer("unit_price")
     @classmethod
     def _serialize_unit_price(cls, value: Decimal) -> float:
         return float(value)
+
+    @field_serializer("costo_unitario")
+    @classmethod
+    def _serialize_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("margen_porcentaje")
+    @classmethod
+    def _serialize_margin(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_validator("imei")
+    @classmethod
+    def validate_imei(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if normalized and not (10 <= len(normalized) <= 18):
+            raise ValueError("IMEI inválido")
+        return normalized or None
+
+    @field_validator("serial")
+    @classmethod
+    def validate_serial(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if normalized and len(normalized) < 4:
+            raise ValueError("Número de serie inválido")
+        return normalized or None
 
 
 class DeviceCreate(DeviceBase):
@@ -56,6 +117,39 @@ class DeviceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     quantity: int | None = Field(default=None, ge=0)
     unit_price: Decimal | None = Field(default=None, ge=Decimal("0"))
+    imei: str | None = Field(default=None, max_length=18)
+    serial: str | None = Field(default=None, max_length=120)
+    marca: str | None = Field(default=None, max_length=80)
+    modelo: str | None = Field(default=None, max_length=120)
+    color: str | None = Field(default=None, max_length=60)
+    capacidad_gb: int | None = Field(default=None, ge=0)
+    estado_comercial: CommercialState | None = Field(default=None)
+    proveedor: str | None = Field(default=None, max_length=120)
+    costo_unitario: Decimal | None = Field(default=None, ge=Decimal("0"))
+    margen_porcentaje: Decimal | None = Field(default=None, ge=Decimal("0"))
+    garantia_meses: int | None = Field(default=None, ge=0)
+    lote: str | None = Field(default=None, max_length=80)
+    fecha_compra: date | None = Field(default=None)
+
+    @field_validator("imei")
+    @classmethod
+    def validate_update_imei(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if normalized and not (10 <= len(normalized) <= 18):
+            raise ValueError("IMEI inválido")
+        return normalized or None
+
+    @field_validator("serial")
+    @classmethod
+    def validate_update_serial(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if normalized and len(normalized) < 4:
+            raise ValueError("Número de serie inválido")
+        return normalized or None
 
 
 class DeviceResponse(DeviceBase):
@@ -67,6 +161,107 @@ class DeviceResponse(DeviceBase):
     @computed_field(return_type=float)  # type: ignore[misc]
     def inventory_value(self) -> float:
         return float(self.quantity * self.unit_price)
+
+
+class DeviceSearchFilters(BaseModel):
+    imei: str | None = Field(default=None, max_length=18)
+    serial: str | None = Field(default=None, max_length=120)
+    capacidad_gb: int | None = Field(default=None, ge=0)
+    color: str | None = Field(default=None, max_length=60)
+    marca: str | None = Field(default=None, max_length=80)
+    modelo: str | None = Field(default=None, max_length=120)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("imei", "serial", "color", "marca", "modelo", mode="before")
+    @classmethod
+    def _normalize_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+
+class CatalogProDeviceResponse(DeviceResponse):
+    store_name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StoreMembershipBase(BaseModel):
+    user_id: int = Field(..., ge=1)
+    store_id: int = Field(..., ge=1)
+    can_create_transfer: bool = Field(default=False)
+    can_receive_transfer: bool = Field(default=False)
+
+
+class StoreMembershipResponse(StoreMembershipBase):
+    id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StoreMembershipUpdate(StoreMembershipBase):
+    pass
+
+
+class TransferOrderItemBase(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
+class TransferOrderItemCreate(TransferOrderItemBase):
+    pass
+
+
+class TransferOrderTransition(BaseModel):
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class TransferOrderCreate(BaseModel):
+    origin_store_id: int = Field(..., ge=1)
+    destination_store_id: int = Field(..., ge=1)
+    reason: str | None = Field(default=None, max_length=255)
+    items: list[TransferOrderItemCreate]
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_reason(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_items(cls, value: list[TransferOrderItemCreate]) -> list[TransferOrderItemCreate]:
+        if not value:
+            raise ValueError("Debes incluir al menos un dispositivo en la transferencia.")
+        return value
+
+
+class TransferOrderItemResponse(TransferOrderItemBase):
+    id: int
+    transfer_order_id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TransferOrderResponse(BaseModel):
+    id: int
+    origin_store_id: int
+    destination_store_id: int
+    status: TransferStatus
+    reason: str | None
+    created_at: datetime
+    updated_at: datetime
+    dispatched_at: datetime | None
+    received_at: datetime | None
+    cancelled_at: datetime | None
+    items: list[TransferOrderItemResponse]
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RoleResponse(BaseModel):
@@ -115,12 +310,46 @@ class UserResponse(UserBase):
 
 class TokenResponse(BaseModel):
     access_token: str
+    session_id: int
     token_type: str = "bearer"
 
 
 class TokenPayload(BaseModel):
     sub: str
     exp: int
+    jti: str
+
+
+class TOTPSetupResponse(BaseModel):
+    secret: str
+    otpauth_url: str
+
+
+class TOTPActivateRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class TOTPStatusResponse(BaseModel):
+    is_active: bool
+    activated_at: datetime | None
+    last_verified_at: datetime | None
+
+
+class ActiveSessionResponse(BaseModel):
+    id: int
+    user_id: int
+    session_token: str
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+    revoked_by_id: int | None
+    revoke_reason: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SessionRevokeRequest(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=255)
 
 
 class MovementBase(BaseModel):
@@ -206,6 +435,48 @@ class InventoryMetricsResponse(BaseModel):
     low_stock_devices: list[LowStockDevice]
 
 
+class RotationMetric(BaseModel):
+    store_id: int
+    store_name: str
+    device_id: int
+    sku: str
+    name: str
+    sold_units: int
+    received_units: int
+    rotation_rate: float
+
+
+class AnalyticsRotationResponse(BaseModel):
+    items: list[RotationMetric]
+
+
+class AgingMetric(BaseModel):
+    device_id: int
+    sku: str
+    name: str
+    store_name: str
+    days_in_stock: int
+    quantity: int
+
+
+class AnalyticsAgingResponse(BaseModel):
+    items: list[AgingMetric]
+
+
+class StockoutForecastMetric(BaseModel):
+    device_id: int
+    sku: str
+    name: str
+    store_name: str
+    average_daily_sales: float
+    projected_days: int | None
+    quantity: int
+
+
+class AnalyticsForecastResponse(BaseModel):
+    items: list[StockoutForecastMetric]
+
+
 class SyncSessionResponse(BaseModel):
     id: int
     store_id: int | None
@@ -223,6 +494,40 @@ class SyncRequest(BaseModel):
     store_id: int | None = Field(default=None, ge=1)
 
 
+class SyncOutboxEntryResponse(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: str
+    operation: str
+    payload: dict[str, Any]
+    attempt_count: int
+    last_attempt_at: datetime | None
+    status: SyncOutboxStatus
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _parse_payload(cls, value: Any) -> dict[str, Any]:
+        if isinstance(value, str):
+            try:
+                import json
+
+                return json.loads(value)
+            except Exception:  # pragma: no cover - fallback to empty payload
+                return {}
+        if isinstance(value, dict):
+            return value
+        return {}
+
+
+class SyncOutboxReplayRequest(BaseModel):
+    ids: list[int] = Field(..., min_length=1)
+
+
 class AuditLogResponse(BaseModel):
     id: int
     action: str
@@ -230,6 +535,234 @@ class AuditLogResponse(BaseModel):
     entity_id: str
     details: str | None
     performed_by_id: int | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderItemCreate(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity_ordered: int = Field(..., ge=1)
+    unit_cost: Decimal = Field(..., ge=Decimal("0"))
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseOrderCreate(BaseModel):
+    store_id: int = Field(..., ge=1)
+    supplier: str = Field(..., max_length=120)
+    notes: str | None = Field(default=None, max_length=255)
+    items: list[PurchaseOrderItemCreate]
+
+    @field_validator("supplier")
+    @classmethod
+    def _validate_supplier(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Proveedor requerido")
+        return normalized
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_items(cls, value: list[PurchaseOrderItemCreate]) -> list[PurchaseOrderItemCreate]:
+        if not value:
+            raise ValueError("Debes incluir artículos en la orden de compra.")
+        return value
+
+
+class PurchaseOrderItemResponse(BaseModel):
+    id: int
+    purchase_order_id: int
+    device_id: int
+    quantity_ordered: int
+    quantity_received: int
+    unit_cost: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseReturnCreate(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=5, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("El motivo debe tener al menos 5 caracteres.")
+        return normalized
+
+
+class PurchaseReturnResponse(BaseModel):
+    id: int
+    purchase_order_id: int
+    device_id: int
+    quantity: int
+    reason: str
+    processed_by_id: int | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderResponse(BaseModel):
+    id: int
+    store_id: int
+    supplier: str
+    status: PurchaseStatus
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+    created_by_id: int | None
+    closed_at: datetime | None
+    items: list[PurchaseOrderItemResponse]
+    returns: list[PurchaseReturnResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseReceiveItem(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
+class PurchaseReceiveRequest(BaseModel):
+    items: list[PurchaseReceiveItem]
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_items(cls, value: list[PurchaseReceiveItem]) -> list[PurchaseReceiveItem]:
+        if not value:
+            raise ValueError("Debes indicar artículos a recibir.")
+        return value
+
+
+class SaleItemCreate(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
+class SaleCreate(BaseModel):
+    store_id: int = Field(..., ge=1)
+    customer_name: str | None = Field(default=None, max_length=120)
+    payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
+    discount_percent: Decimal | None = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    notes: str | None = Field(default=None, max_length=255)
+    items: list[SaleItemCreate]
+
+    @field_validator("customer_name")
+    @classmethod
+    def _normalize_customer(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_sale_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_sale_items(cls, value: list[SaleItemCreate]) -> list[SaleItemCreate]:
+        if not value:
+            raise ValueError("Debes agregar artículos a la venta.")
+        return value
+
+
+class SaleItemResponse(BaseModel):
+    id: int
+    sale_id: int
+    device_id: int
+    quantity: int
+    unit_price: Decimal
+    discount_amount: Decimal
+    total_line: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("unit_price", "discount_amount", "total_line")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SaleResponse(BaseModel):
+    id: int
+    store_id: int
+    customer_name: str | None
+    payment_method: PaymentMethod
+    discount_percent: Decimal
+    total_amount: Decimal
+    notes: str | None
+    created_at: datetime
+    performed_by_id: int | None
+    items: list[SaleItemResponse]
+    returns: list["SaleReturnResponse"] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("discount_percent", "total_amount")
+    @classmethod
+    def _serialize_sale_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SaleReturnItem(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=5, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_sale_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("El motivo debe tener al menos 5 caracteres.")
+        return normalized
+
+
+class SaleReturnCreate(BaseModel):
+    sale_id: int = Field(..., ge=1)
+    items: list[SaleReturnItem]
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_return_items(cls, value: list[SaleReturnItem]) -> list[SaleReturnItem]:
+        if not value:
+            raise ValueError("Debes indicar artículos a devolver.")
+        return value
+
+
+class SaleReturnResponse(BaseModel):
+    id: int
+    sale_id: int
+    device_id: int
+    quantity: int
+    reason: str
+    processed_by_id: int | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -281,6 +814,32 @@ __all__ = [
     "MovementBase",
     "MovementCreate",
     "MovementResponse",
+    "TOTPSetupResponse",
+    "TOTPActivateRequest",
+    "TOTPStatusResponse",
+    "ActiveSessionResponse",
+    "SessionRevokeRequest",
+    "PurchaseOrderCreate",
+    "PurchaseOrderItemCreate",
+    "PurchaseOrderItemResponse",
+    "PurchaseOrderResponse",
+    "PurchaseReceiveItem",
+    "PurchaseReceiveRequest",
+    "PurchaseReturnCreate",
+    "PurchaseReturnResponse",
+    "SaleCreate",
+    "SaleItemCreate",
+    "SaleItemResponse",
+    "SaleResponse",
+    "SaleReturnCreate",
+    "SaleReturnItem",
+    "SaleReturnResponse",
+    "RotationMetric",
+    "AnalyticsRotationResponse",
+    "AgingMetric",
+    "AnalyticsAgingResponse",
+    "StockoutForecastMetric",
+    "AnalyticsForecastResponse",
     "ReleaseInfo",
     "RoleResponse",
     "StoreBase",
@@ -289,6 +848,8 @@ __all__ = [
     "StoreUpdate",
     "StoreValueMetric",
     "SyncRequest",
+    "SyncOutboxEntryResponse",
+    "SyncOutboxReplayRequest",
     "SyncSessionResponse",
     "TokenPayload",
     "TokenResponse",

@@ -92,6 +92,14 @@ def create_device(
                     "message": "Ya existe un dispositivo con ese SKU en la sucursal.",
                 },
             ) from exc
+        if str(exc) == "device_identifier_conflict":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "device_identifier_conflict",
+                    "message": "El IMEI o número de serie ya fue registrado por otra sucursal.",
+                },
+            ) from exc
         raise
     return device
 
@@ -109,3 +117,49 @@ def list_devices(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "store_not_found", "message": "La sucursal solicitada no existe."},
         ) from exc
+
+
+@router.get(
+    "/{store_id}/memberships",
+    response_model=list[schemas.StoreMembershipResponse],
+)
+def list_store_memberships(
+    store_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        crud.get_store(db, store_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La sucursal solicitada no existe.") from exc
+    return crud.list_store_memberships(db, store_id)
+
+
+@router.put(
+    "/{store_id}/memberships/{user_id}",
+    response_model=schemas.StoreMembershipResponse,
+)
+def upsert_membership(
+    payload: schemas.StoreMembershipUpdate,
+    store_id: int = Path(..., ge=1),
+    user_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    if payload.store_id != store_id or payload.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Los identificadores del cuerpo deben coincidir con la ruta.",
+        )
+    try:
+        crud.get_store(db, store_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La sucursal solicitada no existe.") from exc
+    membership = crud.upsert_store_membership(
+        db,
+        user_id=user_id,
+        store_id=store_id,
+        can_create_transfer=payload.can_create_transfer,
+        can_receive_transfer=payload.can_receive_transfer,
+    )
+    return membership

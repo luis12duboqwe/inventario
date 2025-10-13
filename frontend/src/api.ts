@@ -18,6 +18,30 @@ export type Device = {
   store_id: number;
   unit_price: number;
   inventory_value: number;
+  imei?: string | null;
+  serial?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  color?: string | null;
+  capacidad_gb?: number | null;
+  estado_comercial?: "nuevo" | "A" | "B" | "C";
+  proveedor?: string | null;
+  costo_unitario?: number;
+  margen_porcentaje?: number;
+  garantia_meses?: number;
+  lote?: string | null;
+  fecha_compra?: string | null;
+};
+
+export type CatalogDevice = Device & { store_name: string };
+
+export type DeviceSearchFilters = {
+  imei?: string;
+  serial?: string;
+  capacidad_gb?: number;
+  color?: string;
+  marca?: string;
+  modelo?: string;
 };
 
 export type MovementInput = {
@@ -33,6 +57,152 @@ export type Summary = {
   total_items: number;
   total_value: number;
   devices: Device[];
+};
+
+export type StoreMembership = {
+  id: number;
+  user_id: number;
+  store_id: number;
+  can_create_transfer: boolean;
+  can_receive_transfer: boolean;
+  created_at: string;
+};
+
+export type StoreMembershipInput = {
+  user_id: number;
+  store_id: number;
+  can_create_transfer: boolean;
+  can_receive_transfer: boolean;
+};
+
+export type TransferOrderItem = {
+  id: number;
+  transfer_order_id: number;
+  device_id: number;
+  quantity: number;
+};
+
+export type TransferOrder = {
+  id: number;
+  origin_store_id: number;
+  destination_store_id: number;
+  status: "SOLICITADA" | "EN_TRANSITO" | "RECIBIDA" | "CANCELADA";
+  reason?: string | null;
+  created_at: string;
+  updated_at: string;
+  dispatched_at?: string | null;
+  received_at?: string | null;
+  cancelled_at?: string | null;
+  items: TransferOrderItem[];
+};
+
+export type TransferOrderInput = {
+  origin_store_id: number;
+  destination_store_id: number;
+  reason?: string;
+  items: { device_id: number; quantity: number }[];
+};
+
+export type PurchaseOrderItem = {
+  id: number;
+  purchase_order_id: number;
+  device_id: number;
+  quantity_ordered: number;
+  quantity_received: number;
+  unit_cost: number;
+};
+
+export type PurchaseOrder = {
+  id: number;
+  store_id: number;
+  supplier: string;
+  status: "PENDIENTE" | "PARCIAL" | "COMPLETADA" | "CANCELADA";
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by_id?: number | null;
+  closed_at?: string | null;
+  items: PurchaseOrderItem[];
+  returns: PurchaseReturn[];
+};
+
+export type PurchaseOrderInput = {
+  store_id: number;
+  supplier: string;
+  notes?: string;
+  items: { device_id: number; quantity_ordered: number; unit_cost: number }[];
+};
+
+export type PurchaseReceiveInput = {
+  items: { device_id: number; quantity: number }[];
+};
+
+export type PurchaseReturnInput = {
+  device_id: number;
+  quantity: number;
+  reason: string;
+};
+
+export type PurchaseReturn = {
+  id: number;
+  purchase_order_id: number;
+  device_id: number;
+  quantity: number;
+  reason: string;
+  processed_by_id?: number | null;
+  created_at: string;
+};
+
+export type SaleItem = {
+  id: number;
+  sale_id: number;
+  device_id: number;
+  quantity: number;
+  unit_price: number;
+  discount_amount: number;
+  total_line: number;
+};
+
+export type Sale = {
+  id: number;
+  store_id: number;
+  customer_name?: string | null;
+  payment_method: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";
+  discount_percent: number;
+  total_amount: number;
+  notes?: string | null;
+  created_at: string;
+  performed_by_id?: number | null;
+  items: SaleItem[];
+  returns: SaleReturn[];
+};
+
+export type SaleInput = {
+  store_id: number;
+  customer_name?: string;
+  payment_method: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO";
+  discount_percent?: number;
+  notes?: string;
+  items: { device_id: number; quantity: number }[];
+};
+
+export type SaleReturnInput = {
+  sale_id: number;
+  items: { device_id: number; quantity: number; reason: string }[];
+};
+
+export type SaleReturn = {
+  id: number;
+  sale_id: number;
+  device_id: number;
+  quantity: number;
+  reason: string;
+  processed_by_id?: number | null;
+  created_at: string;
+};
+
+export type TransferTransitionInput = {
+  reason?: string;
 };
 
 export type StoreValueMetric = {
@@ -63,6 +233,100 @@ export type InventoryMetrics = {
   };
   top_stores: StoreValueMetric[];
   low_stock_devices: LowStockDevice[];
+};
+
+export type AuditLogEntry = {
+  id: number;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  details?: string | null;
+  performed_by_id?: number | null;
+  created_at: string;
+};
+
+export type RotationMetric = {
+  store_id: number;
+  store_name: string;
+  device_id: number;
+  sku: string;
+  name: string;
+  sold_units: number;
+  received_units: number;
+  rotation_rate: number;
+};
+
+export type AnalyticsRotation = {
+  items: RotationMetric[];
+};
+
+export type AgingMetric = {
+  device_id: number;
+  sku: string;
+  name: string;
+  store_name: string;
+  days_in_stock: number;
+  quantity: number;
+};
+
+export type AnalyticsAging = {
+  items: AgingMetric[];
+};
+
+export type StockoutForecastMetric = {
+  device_id: number;
+  sku: string;
+  name: string;
+  store_name: string;
+  average_daily_sales: number;
+  projected_days: number | null;
+  quantity: number;
+};
+
+export type AnalyticsForecast = {
+  items: StockoutForecastMetric[];
+};
+
+export type TOTPStatus = {
+  is_active: boolean;
+  activated_at?: string | null;
+  last_verified_at?: string | null;
+};
+
+export type TOTPSetup = {
+  secret: string;
+  otpauth_url: string;
+};
+
+export type ActiveSession = {
+  id: number;
+  user_id: number;
+  session_token: string;
+  created_at: string;
+  last_used_at?: string | null;
+  revoked_at?: string | null;
+  revoked_by_id?: number | null;
+  revoke_reason?: string | null;
+};
+
+export type SessionRevokeInput = {
+  reason: string;
+};
+
+export type SyncOutboxStatus = "PENDING" | "SENT" | "FAILED";
+
+export type SyncOutboxEntry = {
+  id: number;
+  entity_type: string;
+  entity_id: string;
+  operation: string;
+  payload: Record<string, unknown>;
+  attempt_count: number;
+  last_attempt_at?: string | null;
+  status: SyncOutboxStatus;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type BackupJob = {
@@ -152,11 +416,170 @@ export function getDevices(token: string, storeId: number): Promise<Device[]> {
   return request<Device[]>(`/stores/${storeId}/devices`, { method: "GET" }, token);
 }
 
+export function searchCatalogDevices(
+  token: string,
+  filters: DeviceSearchFilters
+): Promise<CatalogDevice[]> {
+  const params = new URLSearchParams();
+  if (filters.imei) params.append("imei", filters.imei);
+  if (filters.serial) params.append("serial", filters.serial);
+  if (typeof filters.capacidad_gb === "number") params.append("capacidad_gb", String(filters.capacidad_gb));
+  if (filters.color) params.append("color", filters.color);
+  if (filters.marca) params.append("marca", filters.marca);
+  if (filters.modelo) params.append("modelo", filters.modelo);
+  const query = params.toString();
+  const path = query ? `/inventory/devices/search?${query}` : "/inventory/devices/search";
+  return request<CatalogDevice[]>(path, { method: "GET" }, token);
+}
+
 export function registerMovement(token: string, storeId: number, payload: MovementInput) {
   return request(`/inventory/stores/${storeId}/movements`, {
     method: "POST",
     body: JSON.stringify(payload),
   }, token);
+}
+
+export function listStoreMemberships(token: string, storeId: number): Promise<StoreMembership[]> {
+  return request(`/stores/${storeId}/memberships`, { method: "GET" }, token);
+}
+
+export function upsertStoreMembership(
+  token: string,
+  storeId: number,
+  userId: number,
+  payload: StoreMembershipInput
+): Promise<StoreMembership> {
+  return request(`/stores/${storeId}/memberships/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function listTransfers(token: string, storeId?: number): Promise<TransferOrder[]> {
+  const query = typeof storeId === "number" ? `?store_id=${storeId}` : "";
+  const path = query ? `/transfers/${query}` : "/transfers";
+  return request(path, { method: "GET" }, token);
+}
+
+export function createTransferOrder(
+  token: string,
+  payload: TransferOrderInput
+): Promise<TransferOrder> {
+  return request("/transfers", { method: "POST", body: JSON.stringify(payload) }, token);
+}
+
+export function dispatchTransferOrder(
+  token: string,
+  transferId: number,
+  payload: TransferTransitionInput
+): Promise<TransferOrder> {
+  return request(`/transfers/${transferId}/dispatch`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function receiveTransferOrder(
+  token: string,
+  transferId: number,
+  payload: TransferTransitionInput
+): Promise<TransferOrder> {
+  return request(`/transfers/${transferId}/receive`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function cancelTransferOrder(
+  token: string,
+  transferId: number,
+  payload: TransferTransitionInput
+): Promise<TransferOrder> {
+  return request(`/transfers/${transferId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function listPurchaseOrders(token: string, storeId?: number): Promise<PurchaseOrder[]> {
+  const query = typeof storeId === "number" ? `?store_id=${storeId}` : "";
+  const path = query ? `/purchases/${query}` : "/purchases";
+  return request<PurchaseOrder[]>(path, { method: "GET" }, token);
+}
+
+export function createPurchaseOrder(
+  token: string,
+  payload: PurchaseOrderInput
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>("/purchases", { method: "POST", body: JSON.stringify(payload) }, token);
+}
+
+export function receivePurchaseOrder(
+  token: string,
+  orderId: number,
+  payload: PurchaseReceiveInput,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    `/purchases/${orderId}/receive`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function cancelPurchaseOrder(
+  token: string,
+  orderId: number,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    `/purchases/${orderId}/cancel`,
+    { method: "POST", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function registerPurchaseReturn(
+  token: string,
+  orderId: number,
+  payload: PurchaseReturnInput,
+  reason: string
+): Promise<PurchaseReturn> {
+  return request<PurchaseReturn>(
+    `/purchases/${orderId}/returns`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listSales(token: string, storeId?: number): Promise<Sale[]> {
+  const query = typeof storeId === "number" ? `?store_id=${storeId}` : "";
+  const path = query ? `/sales/${query}` : "/sales";
+  return request<Sale[]>(path, { method: "GET" }, token);
+}
+
+export function createSale(
+  token: string,
+  payload: SaleInput,
+  reason: string
+): Promise<Sale> {
+  return request<Sale>(
+    "/sales",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function registerSaleReturn(
+  token: string,
+  payload: SaleReturnInput,
+  reason: string
+): Promise<SaleReturn[]> {
+  return request<SaleReturn[]>(
+    "/sales/returns",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function triggerSync(token: string, storeId?: number) {
@@ -214,4 +637,101 @@ export function getInventoryMetrics(token: string, lowStockThreshold = 5): Promi
     { method: "GET" },
     token
   );
+}
+
+export function getRotationAnalytics(token: string): Promise<AnalyticsRotation> {
+  return request<AnalyticsRotation>("/reports/analytics/rotation", { method: "GET" }, token);
+}
+
+export function getAgingAnalytics(token: string): Promise<AnalyticsAging> {
+  return request<AnalyticsAging>("/reports/analytics/aging", { method: "GET" }, token);
+}
+
+export function getForecastAnalytics(token: string): Promise<AnalyticsForecast> {
+  return request<AnalyticsForecast>("/reports/analytics/stockout_forecast", { method: "GET" }, token);
+}
+
+export async function downloadAnalyticsPdf(token: string): Promise<void> {
+  const response = await fetch(`${API_URL}/reports/analytics/pdf`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF analítico");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_analytics.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export function getTotpStatus(token: string): Promise<TOTPStatus> {
+  return request<TOTPStatus>("/security/2fa/status", { method: "GET" }, token);
+}
+
+export function setupTotp(token: string): Promise<TOTPSetup> {
+  return request<TOTPSetup>("/security/2fa/setup", { method: "POST" }, token);
+}
+
+export function activateTotp(token: string, code: string): Promise<TOTPStatus> {
+  return request<TOTPStatus>(
+    "/security/2fa/activate",
+    { method: "POST", body: JSON.stringify({ code }) },
+    token
+  );
+}
+
+export function disableTotp(token: string): Promise<void> {
+  return request<void>("/security/2fa/disable", { method: "POST" }, token);
+}
+
+export function listActiveSessions(token: string, userId?: number): Promise<ActiveSession[]> {
+  const query = userId ? `?user_id=${userId}` : "";
+  return request<ActiveSession[]>(`/security/sessions${query}`, { method: "GET" }, token);
+}
+
+export function revokeSession(token: string, sessionId: number, reason: string): Promise<ActiveSession> {
+  return request<ActiveSession>(
+    `/security/sessions/${sessionId}/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function listSyncOutbox(token: string, statusFilter?: SyncOutboxStatus): Promise<SyncOutboxEntry[]> {
+  const query = statusFilter ? `?status_filter=${statusFilter}` : "";
+  return request<SyncOutboxEntry[]>(`/sync/outbox${query}`, { method: "GET" }, token);
+}
+
+export function retrySyncOutbox(token: string, ids: number[], reason: string): Promise<SyncOutboxEntry[]> {
+  return request<SyncOutboxEntry[]>(
+    "/sync/outbox/retry",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function getAuditLogs(token: string, limit = 100, action?: string): Promise<AuditLogEntry[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (action) {
+    params.append("action", action);
+  }
+  return request<AuditLogEntry[]>(`/audit/logs?${params.toString()}`, { method: "GET" }, token);
 }

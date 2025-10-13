@@ -11,3 +11,4 @@ reportlab==4.1.0
 apscheduler==3.10.4
 alembic==1.13.2
 packaging==24.1
+pyotp==2.9.0
