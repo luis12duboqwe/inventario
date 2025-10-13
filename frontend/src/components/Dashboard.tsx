@@ -26,6 +26,7 @@ import InventoryTable from "./InventoryTable";
 import MovementForm from "./MovementForm";
 import SyncPanel from "./SyncPanel";
 import AdvancedSearch from "./AdvancedSearch";
+import TransferOrders from "./TransferOrders";
 
 type Props = {
   token: string;
@@ -142,6 +143,14 @@ function Dashboard({ token }: Props) {
       await Promise.all([refreshSummary(), getDevices(token, selectedStoreId).then(setDevices)]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo registrar el movimiento");
+    }
+  };
+
+  const refreshInventoryAfterTransfer = async () => {
+    await refreshSummary();
+    if (selectedStoreId) {
+      const devicesData = await getDevices(token, selectedStoreId);
+      setDevices(devicesData);
     }
   };
 
@@ -385,6 +394,14 @@ function Dashboard({ token }: Props) {
         )}
       </section>
       {enableCatalogPro ? <AdvancedSearch token={token} /> : null}
+      {enableTransfers ? (
+        <TransferOrders
+          token={token}
+          stores={stores}
+          defaultOriginId={selectedStoreId}
+          onRefreshInventory={refreshInventoryAfterTransfer}
+        />
+      ) : null}
     </div>
   );
 }

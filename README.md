@@ -23,6 +23,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Frontend oscuro moderno** para el módulo de tienda, construido con React + TypeScript, compatible con escritorio y tablet.
 - **Instaladores corporativos**: plantilla PyInstaller para el backend y script Inno Setup que empaqueta ambos módulos y crea accesos directos.
 - **Pruebas automatizadas** (`pytest`) que validan flujo completo de autenticación, inventario, sincronización y respaldos.
+- **Transferencias entre tiendas** protegidas por permisos por sucursal y feature flag, con flujo SOLICITADA → EN_TRANSITO → RECIBIDA/CANCELADA, auditoría en cada transición y componente React dedicado.
 
 ## Estructura del repositorio
 
@@ -181,6 +182,22 @@ Todas las suites deben finalizar en verde para considerar estable una nueva iter
 - **Prohibiciones adicionales**: no eliminar endpoints existentes, no agregar dependencias externas que requieran internet y documentar cualquier nueva variable de entorno en este README.
 
 Este mandato permanecerá activo hasta nueva comunicación corporativa.
+
+### Estado iterativo de los lotes v2.2.0 (15/02/2025)
+
+- ✅ **Lote A — Catálogo pro**: campos extendidos de `Device`, búsqueda avanzada por IMEI/serie, validaciones globales y auditoría de costos/estado/proveedor con pruebas `pytest`.
+- ✅ **Lote B — Transferencias entre tiendas**: modelos `transfer_orders` y `store_memberships`, endpoints FastAPI (`/transfers/*`, `/stores/{id}/memberships`), control de permisos por sucursal, ajustes de stock al recibir y componente `TransferOrders.tsx` integrado al panel con estilos oscuros.
+- ⏳ **Lote C — Compras y ventas**: pendientes órdenes de compra con recepción parcial, ventas con descuentos/métodos de pago y devoluciones, más componentes `Purchases.tsx`, `Sales.tsx` y `Returns.tsx`.
+- ⏳ **Lote D — Analítica avanzada**: pendientes endpoints `/reports/analytics/rotation|aging|stockout_forecast` y generación de PDFs oscuros.
+- ⏳ **Lote E — Seguridad y auditoría fina**: pendiente middleware global `X-Reason`, 2FA TOTP, auditoría de sesiones activas y revocación, así como componente `TwoFactorSetup.tsx`.
+- ⏳ **Lote F — Preparación modo híbrido**: pendiente cola `sync_outbox` con reintentos y estrategia *last-write-wins*.
+
+**Próximos hitos**
+
+1. Desarrollar Lote C completo con cálculos de costo promedio, devoluciones y pruebas automatizadas.
+2. Activar las medidas de seguridad del Lote E (header obligatorio, 2FA, auditoría de sesiones) antes de desplegar analítica avanzada.
+3. Implementar el Lote D asegurando gráficos oscuros y exportación PDF, incluyendo pruebas de endpoints.
+4. Finalizar Lote F con almacenamiento local robusto y políticas de resolución de conflictos.
 
 ## Checklist de verificación integral
 

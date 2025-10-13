@@ -59,6 +59,54 @@ export type Summary = {
   devices: Device[];
 };
 
+export type StoreMembership = {
+  id: number;
+  user_id: number;
+  store_id: number;
+  can_create_transfer: boolean;
+  can_receive_transfer: boolean;
+  created_at: string;
+};
+
+export type StoreMembershipInput = {
+  user_id: number;
+  store_id: number;
+  can_create_transfer: boolean;
+  can_receive_transfer: boolean;
+};
+
+export type TransferOrderItem = {
+  id: number;
+  transfer_order_id: number;
+  device_id: number;
+  quantity: number;
+};
+
+export type TransferOrder = {
+  id: number;
+  origin_store_id: number;
+  destination_store_id: number;
+  status: "SOLICITADA" | "EN_TRANSITO" | "RECIBIDA" | "CANCELADA";
+  reason?: string | null;
+  created_at: string;
+  updated_at: string;
+  dispatched_at?: string | null;
+  received_at?: string | null;
+  cancelled_at?: string | null;
+  items: TransferOrderItem[];
+};
+
+export type TransferOrderInput = {
+  origin_store_id: number;
+  destination_store_id: number;
+  reason?: string;
+  items: { device_id: number; quantity: number }[];
+};
+
+export type TransferTransitionInput = {
+  reason?: string;
+};
+
 export type StoreValueMetric = {
   store_id: number;
   store_name: string;
@@ -194,6 +242,68 @@ export function searchCatalogDevices(
 
 export function registerMovement(token: string, storeId: number, payload: MovementInput) {
   return request(`/inventory/stores/${storeId}/movements`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function listStoreMemberships(token: string, storeId: number): Promise<StoreMembership[]> {
+  return request(`/stores/${storeId}/memberships`, { method: "GET" }, token);
+}
+
+export function upsertStoreMembership(
+  token: string,
+  storeId: number,
+  userId: number,
+  payload: StoreMembershipInput
+): Promise<StoreMembership> {
+  return request(`/stores/${storeId}/memberships/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function listTransfers(token: string, storeId?: number): Promise<TransferOrder[]> {
+  const query = typeof storeId === "number" ? `?store_id=${storeId}` : "";
+  const path = query ? `/transfers/${query}` : "/transfers";
+  return request(path, { method: "GET" }, token);
+}
+
+export function createTransferOrder(
+  token: string,
+  payload: TransferOrderInput
+): Promise<TransferOrder> {
+  return request("/transfers", { method: "POST", body: JSON.stringify(payload) }, token);
+}
+
+export function dispatchTransferOrder(
+  token: string,
+  transferId: number,
+  payload: TransferTransitionInput
+): Promise<TransferOrder> {
+  return request(`/transfers/${transferId}/dispatch`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function receiveTransferOrder(
+  token: string,
+  transferId: number,
+  payload: TransferTransitionInput
+): Promise<TransferOrder> {
+  return request(`/transfers/${transferId}/receive`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function cancelTransferOrder(
+  token: string,
+  transferId: number,
+  payload: TransferTransitionInput
+): Promise<TransferOrder> {
+  return request(`/transfers/${transferId}/cancel`, {
     method: "POST",
     body: JSON.stringify(payload),
   }, token);

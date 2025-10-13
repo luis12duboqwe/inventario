@@ -7,6 +7,16 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
 
+from datetime import datetime
+
+from ..models import (
+    BackupMode,
+    CommercialState,
+    MovementType,
+    SyncMode,
+    SyncStatus,
+    TransferStatus,
+)
 from ..models import BackupMode, CommercialState, MovementType, SyncMode, SyncStatus
 
 
@@ -174,6 +184,82 @@ class DeviceSearchFilters(BaseModel):
 
 class CatalogProDeviceResponse(DeviceResponse):
     store_name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StoreMembershipBase(BaseModel):
+    user_id: int = Field(..., ge=1)
+    store_id: int = Field(..., ge=1)
+    can_create_transfer: bool = Field(default=False)
+    can_receive_transfer: bool = Field(default=False)
+
+
+class StoreMembershipResponse(StoreMembershipBase):
+    id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StoreMembershipUpdate(StoreMembershipBase):
+    pass
+
+
+class TransferOrderItemBase(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
+class TransferOrderItemCreate(TransferOrderItemBase):
+    pass
+
+
+class TransferOrderTransition(BaseModel):
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class TransferOrderCreate(BaseModel):
+    origin_store_id: int = Field(..., ge=1)
+    destination_store_id: int = Field(..., ge=1)
+    reason: str | None = Field(default=None, max_length=255)
+    items: list[TransferOrderItemCreate]
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_reason(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_items(cls, value: list[TransferOrderItemCreate]) -> list[TransferOrderItemCreate]:
+        if not value:
+            raise ValueError("Debes incluir al menos un dispositivo en la transferencia.")
+        return value
+
+
+class TransferOrderItemResponse(TransferOrderItemBase):
+    id: int
+    transfer_order_id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TransferOrderResponse(BaseModel):
+    id: int
+    origin_store_id: int
+    destination_store_id: int
+    status: TransferStatus
+    reason: str | None
+    created_at: datetime
+    updated_at: datetime
+    dispatched_at: datetime | None
+    received_at: datetime | None
+    cancelled_at: datetime | None
+    items: list[TransferOrderItemResponse]
 
     model_config = ConfigDict(from_attributes=True)
 
