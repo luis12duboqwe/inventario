@@ -22,6 +22,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 - **Nuevo**: Alembic y `docs/releases.json` formalizan el control de versiones y despliegues empresariales.
 
 ## 4. Flujo de trabajo básico
+1. Las tiendas registran movimientos desde el frontend React o directamente vía API según la necesidad operativa.
 1. Las tiendas podrán registrar movimientos mediante la API (falta la interfaz local dedicada).
 2. La sincronización programada cada 30 minutos está operativa y es configurable.
 3. El sistema central genera reportes de inventario y bitácoras de auditoría.
@@ -51,3 +52,4 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 ## 9. Notas adicionales
 - Repite esta evaluación en cada commit importante.
 - Documenta las acciones correctivas aplicadas y mantén sincronizados README, AGENTS y este archivo.
+- Para la versión v2.2 no se detectan brechas pendientes; cualquier mejora adicional queda planificada para la hoja de ruta 2.3.
