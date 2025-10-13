@@ -18,6 +18,30 @@ export type Device = {
   store_id: number;
   unit_price: number;
   inventory_value: number;
+  imei?: string | null;
+  serial?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  color?: string | null;
+  capacidad_gb?: number | null;
+  estado_comercial?: "nuevo" | "A" | "B" | "C";
+  proveedor?: string | null;
+  costo_unitario?: number;
+  margen_porcentaje?: number;
+  garantia_meses?: number;
+  lote?: string | null;
+  fecha_compra?: string | null;
+};
+
+export type CatalogDevice = Device & { store_name: string };
+
+export type DeviceSearchFilters = {
+  imei?: string;
+  serial?: string;
+  capacidad_gb?: number;
+  color?: string;
+  marca?: string;
+  modelo?: string;
 };
 
 export type MovementInput = {
@@ -150,6 +174,22 @@ export function getSummary(token: string): Promise<Summary[]> {
 
 export function getDevices(token: string, storeId: number): Promise<Device[]> {
   return request<Device[]>(`/stores/${storeId}/devices`, { method: "GET" }, token);
+}
+
+export function searchCatalogDevices(
+  token: string,
+  filters: DeviceSearchFilters
+): Promise<CatalogDevice[]> {
+  const params = new URLSearchParams();
+  if (filters.imei) params.append("imei", filters.imei);
+  if (filters.serial) params.append("serial", filters.serial);
+  if (typeof filters.capacidad_gb === "number") params.append("capacidad_gb", String(filters.capacidad_gb));
+  if (filters.color) params.append("color", filters.color);
+  if (filters.marca) params.append("marca", filters.marca);
+  if (filters.modelo) params.append("modelo", filters.modelo);
+  const query = params.toString();
+  const path = query ? `/inventory/devices/search?${query}` : "/inventory/devices/search";
+  return request<CatalogDevice[]>(path, { method: "GET" }, token);
 }
 
 export function registerMovement(token: string, storeId: number, payload: MovementInput) {
