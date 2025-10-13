@@ -141,6 +141,17 @@ requirements.txt
 
    - El archivo de configuración se encuentra en `backend/alembic.ini` y las versiones en `backend/alembic/versions/`.
 
+## Pruebas automatizadas
+
+Antes de ejecutar las pruebas asegúrate de instalar las dependencias del backend con el comando `pip install -r requirements.txt`.
+Esto incluye bibliotecas como **httpx**, requeridas por `fastapi.testclient` para validar los endpoints.
+
+```bash
+pytest
+```
+
+Todas las suites deben finalizar en verde para considerar estable una nueva iteración.
+
 ## Frontend — Softmobile Inventario
 
 1. **Requisitos previos**
