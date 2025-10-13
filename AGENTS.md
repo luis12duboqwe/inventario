@@ -7,9 +7,49 @@
 5. **Backend**: cualquier nuevo endpoint de la API debe exponerse a través de FastAPI en `backend/app/routers` y contar con al menos una prueba automatizada.
 6. **Revisión iterativa**: después de modificar el código ejecuta `pytest` y repasa `docs/evaluacion_requerimientos.md`; si encuentras brechas con el plan Softmobile 2025 v2.2 corrige y repite el proceso hasta cumplirlo por completo.
 7. **Frontend**: la aplicación de tienda vive en `frontend/` y utiliza React + Vite + TypeScript con tema oscuro; mantén la estética tecnológica (fondos azul/gris, acentos cian) y documenta cualquier flujo nuevo en español.
-8. **Finalización completa**: cada vez que leas este archivo o el `README.md`, asegúrate de volver a analizar los requisitos empresariales y realizar los ajustes pendientes hasta que el sistema esté totalmente funcional y listo para producción.
-9. **Actualizaciones**: mantén el feed `docs/releases.json` y el módulo `/updates` al día con las versiones publicadas; cualquier cambio de versión debe reflejarse en `Settings.version`, documentación y pruebas.
-10. **Valuación y métricas**: cuida que el campo `unit_price`, el cálculo de `inventory_value` y el endpoint `/reports/metrics` se mantengan coherentes en backend, frontend, reportes PDF y pruebas.
+8. **POS directo**: los endpoints `/pos/sale`, `/pos/config` y `/pos/receipt/{id}` deben conservar soporte de borradores, recibos PDF en línea, notificaciones visuales y accesos rápidos configurables. Toda operación sensible requiere cabecera `X-Reason` ≥5 caracteres.
+9. **Finalización completa**: cada vez que leas este archivo o el `README.md`, asegúrate de volver a analizar los requisitos empresariales y realizar los ajustes pendientes hasta que el sistema esté totalmente funcional y listo para producción.
+10. **Actualizaciones**: mantén el feed `docs/releases.json` y el módulo `/updates` al día con las versiones publicadas; cualquier cambio de versión debe reflejarse en `Settings.version`, documentación y pruebas.
+11. **Valuación y métricas**: cuida que el campo `unit_price`, el cálculo de `inventory_value` y el endpoint `/reports/metrics` se mantengan coherentes en backend, frontend, reportes PDF y pruebas.
+
+### Centro de Control — Guía operativa colaborativa
+
+Sigue esta estructura para implementar y mantener el Centro de Control Softmobile Inventario según el mandato v2.2.0. Cualquier incorporación nueva debe respetar el idioma español, el tema oscuro (#0D1117 / #161B22) con acento cian #00BFFF, tipografías Inter o Poppins, bordes de 10px y transiciones `all 0.3s ease`.
+
+| Área | Componentes/Archivos | Acciones obligatorias |
+| --- | --- | --- |
+| **Visual global** | `frontend/src/styles.css`, `frontend/src/App.tsx`, `frontend/src/components/Toast.tsx`, `frontend/src/components/ModalConfirm.tsx`, `frontend/src/components/FilterSidebar.tsx` | Implementar cuadrícula fluida con CSS Grid, efectos hover con sombra dinámica, animación `.fade-in`, loader global y sistema de notificaciones tipo Slack (Toast en esquinas inferiores). Iconografía con HeroIcons/Lucide. Añadir modal de confirmación previa a acciones críticas y filtro lateral avanzado por tienda/estado. |
+| **Analítica y reportes** | `frontend/src/components/AnalyticsBoard.tsx`, `frontend/src/components/ExportPDFButton.tsx` | Crear mini-gráficos (barras y circulares) con Recharts, indicadores animados (stock, valor, rotación) y botones "Exportar PDF"/"Ver tendencias" conectados a `/reports/analytics/rotation`, `/reports/analytics/aging`, `/reports/analytics/stockout_forecast`. Mantener tema oscuro y permitir descarga de PDF corporativo. |
+| **Inventario** | `frontend/src/components/AdvancedSearch.tsx`, `frontend/src/components/DeviceDetailModal.tsx` | Integrar búsqueda avanzada por IMEI/nombre/modelo y modal de detalle/edición rápida con validaciones de stock y auditoría. |
+| **Operaciones** | `frontend/src/components/Purchases.tsx`, `frontend/src/components/Sales.tsx`, `frontend/src/components/Returns.tsx`, `frontend/src/components/TransferOrders.tsx`, `frontend/src/components/POS/*` | Formularios dinámicos (react-hook-form o yup) con motivo obligatorio `X-Reason`, badges de estado (SOLICITADA, EN_TRANSITO, RECIBIDA, CANCELADA) y auditoría visual. Mantener control de stock, borradores POS, confirmaciones previas y sincronización con backend. |
+| **Seguridad** | `frontend/src/components/TwoFactorSetup.tsx`, `frontend/src/components/AuditLog.tsx` | Soportar 2FA TOTP opcional (activado sólo si `SOFTMOBILE_ENABLE_2FA=1`), listado de auditoría, motivo obligatorio antes de acciones sensibles y consumo del middleware `X-Reason`. |
+| **Sincronización híbrida** | `frontend/src/components/SyncQueuePanel.tsx` | Monitorear cola `sync_outbox`, mostrar última sincronización, pendientes con contador regresivo y botón "Forzar sincronización". |
+| **Notificaciones y reportes** | `frontend/src/components/POS/POSReceipt.tsx`, `frontend/src/components/ExportPDFButton.tsx` | Asegurar generación de PDF oscuro (logo, tienda, cliente, totales) con opciones de impresión/envío por correo y hooks de auditoría. |
+
+### Flujo de trabajo sugerido
+
+1. **Planificación por lotes**: agrupa tareas en Lotes A–F del mandato y documenta cada cambio en `README.md` y en esta guía.
+2. **Prompt corporativo para IA**: reutiliza siempre que necesites soporte automatizado el siguiente texto (sin traducir):
+
+   > "Actúa como desarrollador senior de Softmobile 2025 v2.2.0. No cambies la versión. Implementa los componentes faltantes del frontend según esta guía. Crea los archivos React indicados, con compatibilidad total y estética oscura. Sigue las normas de AGENTS.md y README.md. Mantén compatibilidad con backend FastAPI. Lote activo: interfaz completa del Centro de Control."
+
+3. **Integración frontend-backend**:
+   - Respetar middleware `X-Reason` para acciones sensibles (ventas, transferencias, auditoría, seguridad).
+   - Conectar los componentes nuevos a los endpoints oficiales `/pos/*`, `/reports/analytics/*`, `/transfers/*`, `/purchases/*`, `/sales/*`, `/returns/*`, `/security/*`, `/audit/*`, `/sync/outbox`.
+   - Mantener validaciones de stock, permisos por sucursal y registro en `AuditLog`.
+
+4. **Documentación viva**: cada vez que agregues componentes, endpoints o banderas nuevas, refleja el cambio en el `README.md` bajo la sección del Centro de Control.
+
+5. **Pruebas mínimas**:
+   - `pytest` desde la raíz.
+   - `npm run build` en `frontend/` sin *warnings*.
+   - `GET /health` debe devolver `{"status": "ok"}`.
+
+6. **Checklist visual previo a entregar**:
+   - Tarjetas con animaciones suaves y mini-gráficos funcionando.
+   - Formularios de compras/ventas/transferencias/retornos operativos con auditoría.
+   - Paneles de analítica, seguridad (2FA cuando aplique) y sincronización híbrida completos.
+   - Notificaciones, loader global y confirmaciones visuales presentes.
 
 ## Mandato operativo vigente — Softmobile 2025 v2.2.0
 

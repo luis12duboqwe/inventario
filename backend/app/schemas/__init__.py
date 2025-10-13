@@ -3,21 +3,21 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
-
-from datetime import datetime
 
 from ..models import (
     BackupMode,
     CommercialState,
     MovementType,
+    PaymentMethod,
+    PurchaseStatus,
     SyncMode,
+    SyncOutboxStatus,
     SyncStatus,
     TransferStatus,
 )
-from ..models import BackupMode, CommercialState, MovementType, SyncMode, SyncStatus
 
 
 class StoreBase(BaseModel):
@@ -658,6 +658,16 @@ class PurchaseReceiveRequest(BaseModel):
 class SaleItemCreate(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
+    discount_percent: Decimal | None = Field(
+        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
+    )
+
+    @field_validator("discount_percent")
+    @classmethod
+    def _normalize_discount(cls, value: Decimal | None) -> Decimal:
+        if value is None:
+            return Decimal("0")
+        return value
 
 
 class SaleCreate(BaseModel):
@@ -715,6 +725,8 @@ class SaleResponse(BaseModel):
     customer_name: str | None
     payment_method: PaymentMethod
     discount_percent: Decimal
+    subtotal_amount: Decimal
+    tax_amount: Decimal
     total_amount: Decimal
     notes: str | None
     created_at: datetime
@@ -724,7 +736,7 @@ class SaleResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_serializer("discount_percent", "total_amount")
+    @field_serializer("discount_percent", "subtotal_amount", "tax_amount", "total_amount")
     @classmethod
     def _serialize_sale_amount(cls, value: Decimal) -> float:
         return float(value)
@@ -767,6 +779,112 @@ class SaleReturnResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class POSCartItem(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+    discount_percent: Decimal | None = Field(
+        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
+    )
+
+    @field_validator("discount_percent")
+    @classmethod
+    def _normalize_pos_discount(cls, value: Decimal | None) -> Decimal:
+        if value is None:
+            return Decimal("0")
+        return value
+
+
+class POSSaleRequest(BaseModel):
+    store_id: int = Field(..., ge=1)
+    customer_name: str | None = Field(default=None, max_length=120)
+    payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
+    discount_percent: Decimal | None = Field(
+        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
+    )
+    notes: str | None = Field(default=None, max_length=255)
+    items: list[POSCartItem]
+    draft_id: int | None = Field(default=None, ge=1)
+    save_as_draft: bool = Field(default=False)
+    confirm: bool = Field(default=False)
+    apply_taxes: bool = Field(default=True)
+
+    @field_validator("customer_name")
+    @classmethod
+    def _normalize_pos_customer(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_pos_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_pos_items(cls, value: list[POSCartItem]) -> list[POSCartItem]:
+        if not value:
+            raise ValueError("Debes agregar dispositivos al carrito.")
+        return value
+
+
+class POSDraftResponse(BaseModel):
+    id: int
+    store_id: int
+    payload: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class POSSaleResponse(BaseModel):
+    status: Literal["draft", "registered"]
+    sale: SaleResponse | None = None
+    draft: POSDraftResponse | None = None
+    receipt_url: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class POSConfigResponse(BaseModel):
+    store_id: int
+    tax_rate: Decimal
+    invoice_prefix: str
+    printer_name: str | None
+    printer_profile: str | None
+    quick_product_ids: list[int]
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("tax_rate")
+    @classmethod
+    def _serialize_tax(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class POSConfigUpdate(BaseModel):
+    store_id: int = Field(..., ge=1)
+    tax_rate: Decimal = Field(..., ge=Decimal("0"), le=Decimal("100"))
+    invoice_prefix: str = Field(..., min_length=1, max_length=12)
+    printer_name: str | None = Field(default=None, max_length=120)
+    printer_profile: str | None = Field(default=None, max_length=255)
+    quick_product_ids: list[int] = Field(default_factory=list)
+
+    @field_validator("quick_product_ids")
+    @classmethod
+    def _validate_quick_products(cls, value: list[int]) -> list[int]:
+        normalized = []
+        for item in value:
+            if int(item) < 1:
+                raise ValueError("Los identificadores rápidos deben ser positivos.")
+            normalized.append(int(item))
+        return normalized
 
 class BackupRunRequest(BaseModel):
     nota: str | None = Field(default=None, max_length=255)
@@ -829,6 +947,12 @@ __all__ = [
     "SaleReturnCreate",
     "SaleReturnItem",
     "SaleReturnResponse",
+    "POSCartItem",
+    "POSSaleRequest",
+    "POSSaleResponse",
+    "POSDraftResponse",
+    "POSConfigResponse",
+    "POSConfigUpdate",
     "ReleaseInfo",
     "RoleResponse",
     "StoreBase",

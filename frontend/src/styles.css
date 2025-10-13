@@ -67,6 +67,23 @@ button.secondary {
   border: 1px solid rgba(0, 191, 255, 0.4);
 }
 
+button.ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid rgba(0, 191, 255, 0.2);
+}
+
+button.link {
+  background: transparent;
+  color: var(--accent);
+  border: none;
+  padding: 0;
+}
+
+button.link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
 .fade-in {
   animation: fadeIn 0.4s ease-in-out;
 }
@@ -157,6 +174,65 @@ button.secondary {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.quick-actions .muted-text {
+  margin-right: 0.75rem;
+}
+
+.warning-row {
+  background-color: rgba(218, 54, 51, 0.08);
+}
+
+.alert.warning.inline {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.totals-panel {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1.5rem;
+  margin: 1.25rem 0;
+}
+
+.totals-panel div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.totals-panel .highlight {
+  color: var(--accent);
+  font-size: 1.2rem;
+}
+
+.actions-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+}
+
+.sale-summary {
+  display: flex;
+  gap: 1.5rem;
+  margin: 1rem 0;
+}
+
+.sale-summary div {
+  display: flex;
+  flex-direction: column;
 }
 
 .dashboard {

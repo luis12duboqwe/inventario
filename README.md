@@ -25,6 +25,69 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Pruebas automatizadas** (`pytest`) que validan flujo completo de autenticación, inventario, sincronización y respaldos.
 - **Transferencias entre tiendas** protegidas por permisos por sucursal y feature flag, con flujo SOLICITADA → EN_TRANSITO → RECIBIDA/CANCELADA, auditoría en cada transición y componente React dedicado.
 - **Compras y ventas operativas** con órdenes de compra parcialmente recibidas, cálculo de costo promedio, ventas con descuento/método de pago y devoluciones auditadas desde la UI (`Purchases.tsx`, `Sales.tsx`, `Returns.tsx`).
+- **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
+
+## Centro de Control — Mandato de interfaz v2.2.0
+
+El Centro de Control de Softmobile Inventario debe entregarse completo siguiendo el estilo oscuro corporativo (fondos #0D1117 y #161B22, acentos cian #00BFFF), tipografías Inter/Poppins, bordes redondeados de 10px y transiciones `all 0.3s ease`. El siguiente resumen guía las colaboraciones:
+
+| Área | Componentes y archivos clave | Entregables requeridos |
+| --- | --- | --- |
+| **Visual global** | `frontend/src/styles.css`, `frontend/src/App.tsx`, `frontend/src/components/Toast.tsx`, `frontend/src/components/ModalConfirm.tsx`, `frontend/src/components/FilterSidebar.tsx` | Cuadrícula fluida con CSS Grid para tarjetas, efecto hover con sombra dinámica, animación `.fade-in` global, loader centralizado durante llamadas API, toasts estilo Slack en esquinas inferiores, modal de confirmación previa a acciones sensibles y barra lateral de filtros por tienda/estado. Iconografía con HeroIcons o Lucide. |
+| **Analítica y reportes** | `frontend/src/components/AnalyticsBoard.tsx`, `frontend/src/components/ExportPDFButton.tsx`, `frontend/src/components/AnalyticsMiniCards.tsx` (mini tarjetas opcionales) | Indicadores animados (stock, valor, rotación), mini-gráficos con Recharts (barras y circulares), botones "Exportar PDF" y "Ver tendencias" conectados a `/reports/analytics/rotation`, `/reports/analytics/aging` y `/reports/analytics/stockout_forecast`. PDF en tema oscuro con ReportLab desde el backend. |
+| **Inventario** | `frontend/src/components/AdvancedSearch.tsx`, `frontend/src/components/DeviceDetailModal.tsx` | Búsqueda por IMEI/nombre/modelo, detalle editable en modal con validaciones de stock y registro en auditoría. |
+| **Operaciones** | `frontend/src/components/Purchases.tsx`, `frontend/src/components/Sales.tsx`, `frontend/src/components/Returns.tsx`, `frontend/src/components/TransferOrders.tsx`, `frontend/src/components/POS/*` | Formularios con react-hook-form o yup, badges de estado (SOLICITADA, EN_TRANSITO, RECIBIDA, CANCELADA), motivo obligatorio `X-Reason`, auditoría visible, control de stock en tiempo real, borradores POS, confirmaciones visuales y generación de recibo PDF. |
+| **Seguridad** | `frontend/src/components/TwoFactorSetup.tsx`, `frontend/src/components/AuditLog.tsx` | Flujo de 2FA TOTP opcional (activar sólo cuando `SOFTMOBILE_ENABLE_2FA=1`), listado de eventos de auditoría, captura del motivo `X-Reason` antes de ejecutar acciones críticas. |
+| **Sincronización híbrida** | `frontend/src/components/SyncQueuePanel.tsx` | Monitor de `sync_outbox` con estado actual, última sincronización, contador de reintentos (ej. "3 operaciones en espera, reintento en 30s") y botón "Forzar sincronización". |
+| **Notificaciones y reportes** | `frontend/src/components/Toast.tsx`, `frontend/src/components/POS/POSReceipt.tsx`, `frontend/src/components/ExportPDFButton.tsx` | Sistema de notificaciones global, recibos PDF (logo, tienda, cliente, totales, botones "Imprimir" / "Enviar por correo"), exportación PDF oscura en reportes. |
+
+### Componentes React obligatorios
+
+Todos los siguientes archivos deben existir en `frontend/src/components/` (o la subcarpeta indicada) respetando el estilo anterior:
+
+```
+AdvancedSearch.tsx
+AnalyticsBoard.tsx
+AnalyticsMiniCards.tsx
+AuditLog.tsx
+DeviceDetailModal.tsx
+FilterSidebar.tsx
+ModalConfirm.tsx
+Purchases.tsx
+Returns.tsx
+Sales.tsx
+SyncQueuePanel.tsx
+Toast.tsx
+TransferOrders.tsx
+TwoFactorSetup.tsx
+POS/POSDashboard.tsx
+POS/POSCart.tsx
+POS/POSPayment.tsx
+POS/POSReceipt.tsx
+POS/POSSettings.tsx
+```
+
+### Integración de backend
+
+- Middleware `X-Reason` obligatorio para ventas, transferencias, auditoría y operaciones sensibles. El frontend debe solicitar y enviar el motivo antes de confirmar.
+- Endpoints habilitados: `/pos/sale`, `/pos/receipt/{id}`, `/pos/config`, `/transfers/*`, `/purchases/*`, `/sales/*`, `/returns/*`, `/reports/analytics/rotation`, `/reports/analytics/aging`, `/reports/analytics/stockout_forecast`, `/audit/*`, `/security/*`, `/sync/outbox`.
+- Generación de PDFs corporativos con ReportLab y tema oscuro para recibos, analítica y respaldos.
+
+### Prompt corporativo para automatizaciones
+
+Utiliza este mensaje cuando se requiera asistencia de IA en desarrollo:
+
+> "Actúa como desarrollador senior de Softmobile 2025 v2.2.0. No cambies la versión. Implementa los componentes faltantes del frontend según esta guía. Crea los archivos React indicados, con compatibilidad total y estética oscura. Sigue las normas de AGENTS.md y README.md. Mantén compatibilidad con backend FastAPI. Lote activo: interfaz completa del Centro de Control."
+
+### Checklist previo a entrega
+
+1. Tarjetas e indicadores con animaciones suaves y mini-gráficos activos.
+2. Formularios de compras, ventas, transferencias y devoluciones con validaciones, auditoría y motivo `X-Reason`.
+3. Paneles de analítica avanzada con exportación PDF y botones de tendencias.
+4. Flujo de 2FA opcional y auditoría disponible.
+5. Monitor de sincronización híbrida con contador de reintentos y botón de forzado.
+6. Toasts, loader global, modales de confirmación y filtros avanzados visibles.
+7. `pytest` en la raíz sin errores nuevos, `npm run build` en `frontend/` sin *warnings* y `GET /health` respondiendo `{"status": "ok"}`.
 
 ## Estructura del repositorio
 
@@ -42,6 +105,7 @@ backend/
       backups.py
       health.py
       inventory.py
+      pos.py
       reports.py
       stores.py
       sync.py
@@ -74,6 +138,12 @@ frontend/
       LoginForm.tsx
       MovementForm.tsx
       SyncPanel.tsx
+      POS/
+        POSDashboard.tsx
+        POSCart.tsx
+        POSPayment.tsx
+        POSReceipt.tsx
+        POSSettings.tsx
 installers/
   README.md
   SoftmobileInstaller.iss
@@ -142,6 +212,31 @@ requirements.txt
      ```
 
    - El archivo de configuración se encuentra en `backend/alembic.ini` y las versiones en `backend/alembic/versions/`.
+
+## Punto de venta directo (POS)
+
+El módulo POS complementa el flujo de compras/ventas con un carrito dinámico, borradores corporativos y generación de recibos PDF en segundos.
+
+### Endpoints clave
+
+- `POST /pos/sale`: registra ventas y borradores. Requiere cabecera `X-Reason` y un cuerpo `POSSaleRequest` con `confirm=true` para ventas finales o `save_as_draft=true` para almacenar borradores. Valida stock, aplica descuentos por artículo y calcula impuestos configurables.
+- `GET /pos/receipt/{sale_id}`: devuelve el recibo PDF (tema oscuro) listo para impresión o envío. Debe consumirse con JWT válido.
+- `GET /pos/config?store_id=<id>`: lee la configuración POS por sucursal (impuestos, prefijo de factura, impresora y accesos rápidos).
+- `PUT /pos/config`: actualiza la configuración. Exige cabecera `X-Reason` y un payload `POSConfigUpdate` con el identificador de la tienda y los nuevos parámetros.
+
+### Interfaz React
+
+- `POSDashboard.tsx`: orquesta la experiencia POS, permite buscar por IMEI/modelo/nombre, mostrar accesos rápidos y coordinar carrito/pago/recibo.
+- `POSCart.tsx`: edita cantidades, descuentos por línea y alerta cuando el stock disponible es insuficiente.
+- `POSPayment.tsx`: controla método de pago, descuento global, confirmación visual y motivo corporativo antes de enviar la venta o guardar borradores.
+- `POSReceipt.tsx`: descarga o envía el PDF inmediatamente después de la venta.
+- `POSSettings.tsx`: define impuestos, prefijo de factura, impresora y productos frecuentes.
+
+### Consideraciones operativas
+
+- Todos los POST/PUT del POS deben incluir un motivo (`X-Reason`) con al menos 5 caracteres.
+- El flujo admite ventas rápidas (botones configurables), guardado de borradores y notificaciones visuales de éxito/errores.
+- Al registrar una venta se generan movimientos de inventario, auditoría y un evento en la cola `sync_outbox` para sincronización híbrida.
 
 ## Pruebas automatizadas
 
