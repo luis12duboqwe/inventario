@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
+from ..core.roles import GESTION_ROLES, REPORTE_ROLES
 from ..database import get_db
 from ..security import require_roles
 
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/sync", tags=["sincronizacion"])
 def trigger_sync(
     payload: schemas.SyncRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager")),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     store_id = payload.store_id
     if store_id is not None:
@@ -38,6 +39,6 @@ def trigger_sync(
 def list_sessions(
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager", "auditor")),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     return crud.list_sync_sessions(db, limit=limit)

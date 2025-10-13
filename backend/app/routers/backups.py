@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..config import settings
+from ..core.roles import ADMIN, REPORTE_ROLES
 from ..database import get_db
 from ..security import require_roles
 from ..services import backups as backup_services
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/backups", tags=["respaldos"])
 def run_backup(
     payload: schemas.BackupRunRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin")),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     notes = payload.nota or "Respaldo manual"
     job = backup_services.generate_backup(
@@ -33,6 +34,6 @@ def run_backup(
 @router.get("/history", response_model=list[schemas.BackupJobResponse])
 def backup_history(
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager", "auditor")),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     return crud.list_backup_jobs(db, limit=100)
