@@ -49,8 +49,6 @@ type StatusCard = {
 function Dashboard({ token }: Props) {
   const enableCatalogPro =
     (import.meta.env.VITE_SOFTMOBILE_ENABLE_CATALOG_PRO ?? "1") !== "0";
-  const enableTransfers =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_TRANSFERS ?? "1") !== "0";
   const [stores, setStores] = useState<Store[]>([]);
   const [summary, setSummary] = useState<Summary[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);

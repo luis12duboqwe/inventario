@@ -38,19 +38,3 @@
 - **Prohibiciones adicionales**: no agregar dependencias que requieran internet, no eliminar endpoints existentes y no modificar `docs/releases.json` salvo notas internas sin afectar la versión.
 
 Cumple estas directrices en todas las entregas hasta nuevo aviso.
-
-### Estado operativo iterativo — 15/02/2025
-
-- ✅ **Lote A — Catálogo pro de dispositivos**: campos ampliados, búsquedas avanzadas, auditoría de cambios sensibles y pruebas automatizadas.
-- ✅ **Lote B — Transferencias entre tiendas**: modelos `transfer_orders`, permisos por sucursal, flujo SOLICITADA→EN_TRANSITO→RECIBIDA/CANCELADA, endpoints FastAPI, componente React `TransferOrders` y pruebas `pytest` dedicadas.
-- ⏳ **Lote C — Compras y ventas simples**: pendiente implementar órdenes de compra con recepción parcial, ventas con descuentos/métodos de pago y devoluciones.
-- ⏳ **Lote D — Analítica avanzada**: pendientes endpoints `/reports/analytics/*` y generación de PDF oscuro.
-- ⏳ **Lote E — Seguridad y auditoría fina**: pendiente middleware `X-Reason`, 2FA TOTP, auditoría de sesiones y motivo obligatorio en ajustes.
-- ⏳ **Lote F — Modo híbrido**: pendiente cola `sync_outbox` con reintentos y resolución *last-write-wins*.
-
-**Próximos pasos**
-
-1. Desarrollar Lote C asegurando costo promedio y devoluciones, más pruebas y UI (`Purchases.tsx`, `Sales.tsx`, `Returns.tsx`).
-2. Activar controles de seguridad del Lote E (header obligatorio, 2FA, auditoría de sesiones) antes de extender analítica.
-3. Implementar Lote D y generar reportes PDF oscuros bajo flag `SOFTMOBILE_ENABLE_ANALYTICS_ADV`.
-4. Completar Lote F con `sync_outbox` persistente y pruebas de reintentos locales.

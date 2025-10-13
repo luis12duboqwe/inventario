@@ -17,6 +17,7 @@ from ..models import (
     SyncStatus,
     TransferStatus,
 )
+from ..models import BackupMode, CommercialState, MovementType, SyncMode, SyncStatus
 
 
 class StoreBase(BaseModel):
