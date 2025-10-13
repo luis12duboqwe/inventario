@@ -1,148 +1,79 @@
 # Softmobile 2025 v2.2
 
-Sistema empresarial para la gestión centralizada de inventarios, sincronización de sucursales y control operativo integral de cadenas de tiendas.
+Sistema integral para la gestión centralizada de inventarios y control operativo en múltiples tiendas o puntos de venta.
 
-## Arquitectura general
+## Resumen general
+Softmobile 2025 v2.2 unifica el seguimiento de inventario, sincronización entre sucursales y generación de reportes dentro de una plataforma moderna, rápida y segura. El sistema puede instalarse de forma local y está preparado para evolucionar hacia despliegues en la nube.
 
-Softmobile 2025 se compone de dos módulos cooperantes:
+## Arquitectura funcional
+El sistema se divide en dos módulos principales:
 
-1. **Softmobile Inventario**: aplicación local por tienda responsable de capturar movimientos (entradas, salidas y ajustes) y preparar paquetes de sincronización.
-2. **Softmobile Central**: servicio FastAPI que consolida catálogos, controla la seguridad, genera reportes y coordina la sincronización automática/manual.
+1. **Softmobile Inventario**: aplicación local para cada tienda donde se gestionan entradas, salidas, precios y reportes.
+2. **Softmobile Central**: plataforma maestra que consolida la información de todas las tiendas en una base de datos central.
 
-La versión v2.2 trabaja en modo local (sin nube) pero incorpora un plan de expansión futura hacia despliegues híbridos.
+La comunicación entre módulos se realiza mediante sincronizaciones programadas cada 30 minutos y sincronizaciones manuales opcionales. La versión v2.2 contempla conexiones locales con posibilidad de migrar a la nube en iteraciones futuras.
 
-## Capacidades implementadas
-
-- **API empresarial FastAPI** con esquemas Pydantic y modelos SQLAlchemy para tiendas, dispositivos, movimientos, usuarios, roles, sesiones de sincronización y bitácoras de auditoría.
-- **Seguridad por roles** con autenticación JWT, alta inicial segura (`/auth/bootstrap`), creación y administración de usuarios, y protección granular de endpoints.
-- **Gestión de inventario** con movimientos de entrada/salida/ajuste, actualización de dispositivos y reportes consolidados por tienda.
-- **Sincronización** automática (intervalo configurable) y manual por sucursal, registrando cada sesión en la base central.
-- **Auditoría** con bitácoras consultables (`/reports/audit`) que documentan altas, cambios y sincronizaciones.
-- **Pruebas automatizadas** que validan el flujo completo desde el alta del administrador hasta la ejecución de reportes.
+## Objetivos clave
+- Administrar inventarios de varias tiendas desde un punto centralizado.
+- Ejecutar sincronizaciones automáticas cada 30 minutos y bajo demanda manual.
+- Proteger la información mediante controles de acceso y registros de auditoría.
+- Entregar una interfaz moderna de tema oscuro con experiencia fluida.
+- Facilitar instalaciones locales y futuras opciones de infraestructura en la nube.
+- Automatizar reportes y respaldos de información.
 
 ## Estructura del repositorio
-
 ```
 backend/
-  __init__.py
-  alembic.ini
   app/
-    __init__.py
-    config.py
-    crud.py
-    database.py
+    domain.py
+    http.py
     main.py
-    models.py
-    schemas.py
-    security.py
-    services/
-      sync.py
-    routers/
-      __init__.py
-      auth.py
-      health.py
-      inventory.py
-      reports.py
-      stores.py
-      sync.py
-      users.py
   tests/
-    conftest.py
-    test_health.py
-    test_stores.py
-docs/
-  evaluacion_requerimientos.md
-AGENTS.md
 README.md
-requirements.txt
 ```
 
-## Configuración
+### Backend minimalista (`backend/app`)
+Para poder ejecutar pruebas en entornos sin conexión a internet ni dependencias externas, el backend incluye:
 
-1. **Requisitos previos**
-   - Python 3.11+
-   - Pip con salida a internet para instalar dependencias
+- **Capa HTTP mínima** (`http.py`): expone una pequeña infraestructura de ruteo y un `TestClient` compatible con Pytest sin requerir FastAPI, con soporte para respuestas estándar 404/405 y la cabecera `Allow` cuando corresponde.
+- **Dominio in-memory** (`domain.py`): modelos de tiendas y dispositivos gestionados con estructuras en memoria, reglas de negocio para unicidad y validaciones básicas.
+- **Aplicación principal** (`main.py`): define rutas versionadas (`/api/v1`) para operaciones de salud, tiendas y dispositivos reutilizando la capa mínima.
 
-2. **Instalación de dependencias**
+Este andamiaje permite validar la lógica central en entornos offline. Cuando se disponga de dependencias externas se puede reemplazar por una implementación completa en FastAPI/SQLAlchemy manteniendo las mismas reglas de negocio.
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # En Windows: .venv\\Scripts\\activate
-   pip install -r requirements.txt
-   ```
+### Pruebas (`backend/tests`)
+Las pruebas ejercitan los endpoints simulados mediante el `TestClient` propio. Cubren casos positivos y negativos para tiendas y dispositivos, asegurando que los códigos de estado y mensajes de error se mantengan estables.
 
-3. **Variables de entorno relevantes**
-
-   | Variable | Descripción | Valor por defecto |
-   | --- | --- | --- |
-   | `SOFTMOBILE_DATABASE_URL` | Cadena de conexión SQLAlchemy | `sqlite:///./softmobile.db` |
-   | `SOFTMOBILE_SECRET_KEY` | Clave usada para firmar JWT | `softmobile-super-secreto-cambia-esto` |
-   | `SOFTMOBILE_TOKEN_MINUTES` | Minutos de vigencia de los tokens | `60` |
-   | `SOFTMOBILE_SYNC_INTERVAL_SECONDS` | Intervalo de sincronización automática | `1800` (30 minutos) |
-   | `SOFTMOBILE_ENABLE_SCHEDULER` | Habilita (1) o deshabilita (0) el planificador | `1` |
-
-   Ajusta estos valores antes de ejecutar la aplicación en entornos productivos.
-
-## Puesta en marcha
-
-1. **Arrancar la API**
-
-   ```bash
-   uvicorn backend.app.main:app --reload
-   ```
-
-   La documentación interactiva estará disponible en `http://127.0.0.1:8000/docs`.
-
-2. **Alta inicial (bootstrap)**
-
-   El primer usuario debe crearse vía `POST /auth/bootstrap`. Este paso asigna el rol `admin` automáticamente y bloquea futuros bootstraps.
-
-   ```json
-   {
-     "username": "admin",
-     "password": "Cambiar123!",
-     "full_name": "Administración General",
-     "roles": ["admin"]
-   }
-   ```
-
-3. **Autenticación**
-
-   Usa `POST /auth/token` (OAuth2 Password) para obtener un token JWT. Inclúyelo en cada petición protegida mediante `Authorization: Bearer <token>`.
-
-4. **Gestión de usuarios y roles**
-
-   - `POST /users`: crear nuevos usuarios (solo administradores).
-   - `PUT /users/{id}/roles`: reasignar roles.
-   - Roles disponibles iniciales: `admin`, `manager`, `auditor` (pueden ampliarse según necesidades).
-
-5. **Inventario y dispositivos**
-
-   - `POST /stores` crea sucursales (admin/manager).
-   - `POST /stores/{id}/devices` registra dispositivos.
-   - `PATCH /inventory/stores/{id}/devices/{device_id}` actualiza atributos.
-   - `POST /inventory/stores/{id}/movements` registra entradas, salidas o ajustes de stock.
-   - `GET /inventory/summary` consolida el inventario por tienda.
-
-6. **Sincronización y reportes**
-
-   - El servicio ejecuta sincronizaciones automáticas según `SOFTMOBILE_SYNC_INTERVAL_SECONDS`.
-   - `POST /sync/run` dispara sincronizaciones manuales por tienda.
-   - `GET /sync/sessions` lista el historial de sincronizaciones.
-   - `GET /reports/audit` consulta la bitácora de auditoría.
-
-## Pruebas automatizadas
-
-```bash
+## Ejecución de pruebas
+```
+cd backend
 pytest
 ```
+Las pruebas no requieren instalación adicional porque toda la lógica depende exclusivamente de la biblioteca estándar de Python.
 
-Las pruebas se ejecutan con SQLite en memoria, desactivan el planificador de sincronización y cubren el flujo completo del backend.
+## Flujo de trabajo funcional
+1. Cada tienda registra productos y movimientos de inventario en su instalación local.
+2. El sistema sincroniza automáticamente la información con la base central cada 30 minutos.
+3. Softmobile Central compila los datos para generar reportes globales.
+4. Administradores revisan, aprueban y exportan la información consolidada.
 
-## Proceso de revisión continua
+## Módulos previstos
+- **Inventario**: gestión, búsqueda y reportes locales.
+- **Central**: sincronización y control global de sucursales.
+- **Seguridad**: usuarios, permisos y logs de auditoría.
+- **Instalación**: creación automática de carpetas, bases de datos y accesos directos.
+- **Actualización**: verificación y despliegue de nuevas versiones.
 
-1. Tras cada modificación ejecuta `pytest` y revisa `docs/evaluacion_requerimientos.md` para confirmar que el sistema sigue cumpliendo el plan Softmobile 2025 v2.2.
-2. Si se detectan brechas, corrige inmediatamente el código, actualiza la documentación y vuelve a repetir el análisis.
-3. Mantén este ciclo iterativo hasta que todas las funcionalidades empresariales estén completas y verificadas.
+## Requisitos técnicos sugeridos
+- **Sistema operativo**: Windows 10/11 (64 bits).
+- **Lenguajes**: Python para backend; JavaScript/HTML5 para la interfaz.
+- **Librerías futuras**: ReportLab, PyInstaller, SQLite3, framework web (FastAPI, Flask u otro) según disponibilidad del entorno.
+- **Bases de datos**: SQLite para instalaciones locales y PostgreSQL para el sistema central.
+- **Instalador**: Inno Setup Compiler.
 
-Estas instrucciones también se encuentran en `AGENTS.md` para asegurar que cualquier colaborador repita la evaluación constantemente.
+## Próximos pasos sugeridos
+- Definir el stack definitivo del frontend (framework, librerías UI, gestor de estado).
+- Modelar a detalle la lógica de sincronización entre tiendas y sistema central.
+- Incorporar autenticación y autorización basadas en roles.
+- Añadir pipelines de CI/CD para pruebas, empaquetado y despliegue.
+- Documentar procedimientos de instalación para tiendas y administradores.
