@@ -12,11 +12,15 @@ from .config import settings
 from .core.roles import DEFAULT_ROLES
 from .database import Base, SessionLocal, engine
 from .routers import (
+    audit,
     auth,
     backups,
     health,
     inventory,
+    purchases,
     reports,
+    sales,
+    security,
     stores,
     sync,
     transfers,
