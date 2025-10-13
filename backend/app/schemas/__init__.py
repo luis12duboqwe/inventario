@@ -7,17 +7,17 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
 
-from datetime import datetime
-
 from ..models import (
     BackupMode,
     CommercialState,
     MovementType,
+    PaymentMethod,
+    PurchaseStatus,
     SyncMode,
+    SyncOutboxStatus,
     SyncStatus,
     TransferStatus,
 )
-from ..models import BackupMode, CommercialState, MovementType, SyncMode, SyncStatus
 
 
 class StoreBase(BaseModel):
