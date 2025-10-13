@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
+from ..core.roles import ADMIN, normalize_roles
 from ..database import get_db
 from ..security import create_access_token, hash_password, require_active_user, verify_password
 
@@ -19,8 +20,16 @@ def bootstrap_admin(payload: schemas.UserCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El sistema ya cuenta con usuarios registrados.",
         )
-    role_names = set(payload.roles or []) | {"admin"}
-    user = crud.create_user(db, payload, password_hash=hash_password(payload.password), role_names=role_names)
+    try:
+        role_names = normalize_roles(payload.roles) | {ADMIN}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    user = crud.create_user(
+        db,
+        payload,
+        password_hash=hash_password(payload.password),
+        role_names=sorted(role_names),
+    )
     return user
 
 

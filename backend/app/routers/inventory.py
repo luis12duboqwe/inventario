@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
+from ..core.roles import GESTION_ROLES, REPORTE_ROLES
 from ..database import get_db
 from ..security import require_roles
 
@@ -22,7 +23,7 @@ def register_movement(
     payload: schemas.MovementCreate,
     store_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager")),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
         movement = crud.create_inventory_movement(
@@ -52,7 +53,7 @@ def update_device(
     store_id: int = Path(..., ge=1),
     device_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager")),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
         device = crud.update_device(
@@ -70,7 +71,7 @@ def update_device(
 @router.get("/summary", response_model=list[schemas.InventorySummary])
 def inventory_summary(
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager", "auditor")),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     stores = crud.list_inventory_summary(db)
     summaries: list[schemas.InventorySummary] = []
