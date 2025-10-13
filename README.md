@@ -235,9 +235,9 @@ Una versión sólo se declara lista para entrega cuando el checklist se ha compl
 
 3. **Características clave**
    - Tema oscuro con acentos cian siguiendo la línea gráfica corporativa.
-   - Panel de operaciones para seleccionar sucursales, visualizar inventarios y registrar movimientos.
-   - Botones para sincronización manual, generación de respaldos y descarga de reporte PDF.
-   - Historial de respaldos, tarjetas de valor total y widgets con ranking de sucursales y alertas de stock bajo.
+   - Panel modular con secciones de Inventario, Operaciones, Analítica, Seguridad y Sincronización.
+   - Sección de inventario con tarjetas de salud, tabla por sucursal, búsqueda avanzada y alertas de stock bajo.
+   - Área de sincronización con acciones de respaldo, descarga de PDF e inspección de la cola híbrida.
 
 ## Reportes y respaldos
 

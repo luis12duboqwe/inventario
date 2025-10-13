@@ -35,20 +35,6 @@ type Props = {
   token: string;
 };
 
-type StatusBadge = {
-  tone: "warning" | "success";
-  text: string;
-};
-
-type StatusCard = {
-  id: string;
-  icon: string;
-  title: string;
-  value: string;
-  caption: string;
-  badge?: StatusBadge;
-};
-
 function Dashboard({ token }: Props) {
   const enableCatalogPro =
     (import.meta.env.VITE_SOFTMOBILE_ENABLE_CATALOG_PRO ?? "1") !== "0";
