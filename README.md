@@ -25,10 +25,6 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Pruebas automatizadas** (`pytest`) que validan flujo completo de autenticación, inventario, sincronización y respaldos.
 - **Transferencias entre tiendas** protegidas por permisos por sucursal y feature flag, con flujo SOLICITADA → EN_TRANSITO → RECIBIDA/CANCELADA, auditoría en cada transición y componente React dedicado.
 - **Compras y ventas operativas** con órdenes de compra parcialmente recibidas, cálculo de costo promedio, ventas con descuento/método de pago y devoluciones auditadas desde la UI (`Purchases.tsx`, `Sales.tsx`, `Returns.tsx`).
-- **Analítica avanzada y reportes oscuros** mediante los endpoints `/reports/analytics/*`, generación de PDFs nocturnos en `analytics.py` y el panel `AnalyticsBoard.tsx`.
-- **Seguridad reforzada y auditoría** con header obligatorio `X-Reason`, 2FA TOTP opcional, sesiones activas revocables desde `TwoFactorSetup.tsx` y `AuditLog.tsx`, ahora alineadas con identificadores incrementales por sesión.
-- **Modo híbrido preparado** gracias a la cola local `sync_outbox` con reintentos *last-write-wins* integrada en el dashboard.
-- **Panel modular por secciones** que divide el dashboard en áreas de Inventario, Operaciones, Analítica, Seguridad y Sincronización, con alertas globales descartables y navegación dinámica según *feature flags* vigentes.
 
 ## Estructura del repositorio
 
@@ -193,15 +189,15 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 - ✅ **Lote A — Catálogo pro**: campos extendidos de `Device`, búsqueda avanzada por IMEI/serie, validaciones globales y auditoría de costos/estado/proveedor con pruebas `pytest`.
 - ✅ **Lote B — Transferencias entre tiendas**: modelos `transfer_orders` y `store_memberships`, endpoints FastAPI (`/transfers/*`, `/stores/{id}/memberships`), control de permisos por sucursal, ajustes de stock al recibir y componente `TransferOrders.tsx` integrado al panel con estilos oscuros.
 - ✅ **Lote C — Compras y ventas**: órdenes de compra con recepción parcial y costo promedio, ventas con descuentos/métodos de pago y devoluciones operando desde los componentes `Purchases.tsx`, `Sales.tsx` y `Returns.tsx`, con cobertura de pruebas `pytest`.
-- ✅ **Lote D — Analítica avanzada**: endpoints `/reports/analytics/rotation|aging|stockout_forecast`, cálculo en `crud`, servicio `analytics.py` para PDF oscuro y componente `AnalyticsBoard.tsx` consumiendo los datos con descarga.
-- ✅ **Lote E — Seguridad y auditoría fina**: middleware global `X-Reason`, rutas `/security/*` para TOTP y sesiones activas (expuestas con IDs incrementales), almacenamiento `user_totp_secrets`/`active_sessions`, componente `TwoFactorSetup.tsx` y vista `AuditLog.tsx`.
-- ✅ **Lote F — Preparación modo híbrido**: modelo `sync_outbox`, reintentos *last-write-wins*, endpoints `/sync/outbox` y panel en dashboard para observar y reagendar la cola local.
+- ⏳ **Lote D — Analítica avanzada**: pendientes endpoints `/reports/analytics/rotation|aging|stockout_forecast` y generación de PDFs oscuros.
+- ⏳ **Lote E — Seguridad y auditoría fina**: pendiente middleware global `X-Reason`, 2FA TOTP, auditoría de sesiones activas y revocación, así como componente `TwoFactorSetup.tsx`.
+- ⏳ **Lote F — Preparación modo híbrido**: pendiente cola `sync_outbox` con reintentos y estrategia *last-write-wins*.
 
 **Próximos hitos**
 
-1. Levantar telemetría de uso por sección del dashboard para priorizar mejoras de UX y redistribuir indicadores según retroalimentación de tiendas.
-2. Documentar el playbook de activación 2FA cuando `SOFTMOBILE_ENABLE_2FA` cambie a 1, incorporando el endpoint `/security/2fa/status` ya protegido por flag.
-3. Diseñar comparativas históricas en la sección de Analítica reutilizando los endpoints actuales como fuente primaria.
+1. Activar las medidas de seguridad del Lote E (middleware global `X-Reason`, 2FA TOTP, auditoría de sesiones y componentes `TwoFactorSetup.tsx`/`AuditLog.tsx`) con pruebas asociadas.
+2. Implementar el Lote D asegurando endpoints `/reports/analytics/*`, visualizaciones oscuras y exportación PDF con validaciones automatizadas.
+3. Finalizar el Lote F con la cola `sync_outbox`, reintentos locales y estrategia *last-write-wins* probada end-to-end.
 
 ## Checklist de verificación integral
 

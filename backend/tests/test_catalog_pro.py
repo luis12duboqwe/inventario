@@ -82,7 +82,7 @@ def test_advanced_catalog_search_and_audit(client) -> None:
     update_response = client.patch(
         f"/inventory/stores/{store_a_id}/devices/{device_id}",
         json={"costo_unitario": 19000.0, "proveedor": "Apple Direct"},
-        headers={**headers, "X-Reason": "Actualizacion costo"},
+        headers=headers,
     )
     assert update_response.status_code == status.HTTP_200_OK
     assert update_response.json()["unit_price"] > sale_price

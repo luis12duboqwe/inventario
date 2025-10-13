@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import json
-import uuid
 from collections.abc import Iterable
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func, select
@@ -808,62 +807,6 @@ def list_sync_outbox(
     return list(db.scalars(statement))
 
 
-def reset_outbox_entries(db: Session, entry_ids: Iterable[int]) -> list[models.SyncOutbox]:
-    ids = list(entry_ids)
-    if not ids:
-        return []
-    statement = select(models.SyncOutbox).where(models.SyncOutbox.id.in_(ids))
-    entries = list(db.scalars(statement))
-    if not entries:
-        return []
-    for entry in entries:
-        entry.status = models.SyncOutboxStatus.PENDING
-        entry.attempt_count = 0
-        entry.error_message = None
-        entry.last_attempt_at = None
-    db.commit()
-    return entries
-
-
-def mark_outbox_attempt(
-    db: Session,
-    entry_id: int,
-    *,
-    success: bool,
-    error_message: str | None = None,
-) -> models.SyncOutbox:
-    statement = select(models.SyncOutbox).where(models.SyncOutbox.id == entry_id)
-    entry = db.scalars(statement).first()
-    if entry is None:
-        raise LookupError("outbox_not_found")
-    entry.attempt_count += 1
-    entry.last_attempt_at = datetime.utcnow()
-    if success:
-        entry.status = models.SyncOutboxStatus.SENT
-        entry.error_message = None
-    else:
-        entry.status = models.SyncOutboxStatus.FAILED
-        entry.error_message = error_message
-    db.commit()
-    db.refresh(entry)
-    return entry
-
-
-def list_audit_logs(
-    db: Session,
-    limit: int = 100,
-    *,
-    action: str | None = None,
-    entity_type: str | None = None,
-) -> list[models.AuditLog]:
-    statement = select(models.AuditLog).order_by(models.AuditLog.created_at.desc()).limit(limit)
-    if action:
-        statement = statement.where(models.AuditLog.action == action)
-    if entity_type:
-        statement = statement.where(models.AuditLog.entity_type == entity_type)
-    return list(db.scalars(statement))
-
-
 def get_store_membership(db: Session, *, user_id: int, store_id: int) -> models.StoreMembership | None:
     statement = select(models.StoreMembership).where(
         models.StoreMembership.user_id == user_id,
@@ -984,19 +927,6 @@ def create_transfer_order(
     )
     db.commit()
     db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload={
-            "id": order.id,
-            "status": order.status.value,
-            "origin_store_id": order.origin_store_id,
-            "destination_store_id": order.destination_store_id,
-            "updated_at": (order.updated_at or order.created_at).isoformat(),
-        },
-    )
     return order
 
 
@@ -1052,17 +982,6 @@ def dispatch_transfer_order(
     )
     db.commit()
     db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        operation="STATUS_UPDATE",
-        payload={
-            "id": order.id,
-            "status": order.status.value,
-            "dispatched_at": order.dispatched_at.isoformat() if order.dispatched_at else None,
-        },
-    )
     return order
 
 
@@ -1155,17 +1074,6 @@ def receive_transfer_order(
     )
     db.commit()
     db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        operation="STATUS_UPDATE",
-        payload={
-            "id": order.id,
-            "status": order.status.value,
-            "received_at": order.received_at.isoformat() if order.received_at else None,
-        },
-    )
     return order
 
 
@@ -1205,17 +1113,6 @@ def cancel_transfer_order(
     )
     db.commit()
     db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        operation="STATUS_UPDATE",
-        payload={
-            "id": order.id,
-            "status": order.status.value,
-            "cancelled_at": order.cancelled_at.isoformat() if order.cancelled_at else None,
-        },
-    )
     return order
 
 
@@ -1358,19 +1255,6 @@ def create_purchase_order(
     )
     db.commit()
     db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload={
-            "id": order.id,
-            "status": order.status.value,
-            "store_id": order.store_id,
-            "supplier": order.supplier,
-            "created_at": order.created_at.isoformat(),
-        },
-    )
     return order
 
 
@@ -1443,17 +1327,6 @@ def receive_purchase_order(
     )
     db.commit()
     db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        operation="STATUS_UPDATE",
-        payload={
-            "id": order.id,
-            "status": order.status.value,
-            "closed_at": order.closed_at.isoformat() if order.closed_at else None,
-        },
-    )
     return order
 
 
@@ -1486,18 +1359,6 @@ def cancel_purchase_order(
     )
     db.commit()
     db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        operation="STATUS_UPDATE",
-        payload={
-            "id": order.id,
-            "status": order.status.value,
-            "closed_at": order.closed_at.isoformat() if order.closed_at else None,
-            "reason": reason,
-        },
-    )
     return order
 
 
@@ -1558,18 +1419,6 @@ def register_purchase_return(
     )
     db.commit()
     db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        operation="RETURN",
-        payload={
-            "id": order.id,
-            "device_id": payload.device_id,
-            "quantity": payload.quantity,
-            "created_at": purchase_return.created_at.isoformat(),
-        },
-    )
     return purchase_return
 
 
@@ -1671,18 +1520,6 @@ def create_sale(
     )
     db.commit()
     db.refresh(sale)
-    enqueue_sync_outbox(
-        db,
-        entity_type="sale",
-        entity_id=str(sale.id),
-        operation="UPSERT",
-        payload={
-            "id": sale.id,
-            "store_id": sale.store_id,
-            "total_amount": float(sale.total_amount),
-            "created_at": sale.created_at.isoformat(),
-        },
-    )
     return sale
 
 
@@ -1750,17 +1587,6 @@ def register_sale_return(
         details=json.dumps({"items": [item.model_dump() for item in payload.items]}),
     )
     db.commit()
-    enqueue_sync_outbox(
-        db,
-        entity_type="sale",
-        entity_id=str(sale.id),
-        operation="RETURN",
-        payload={
-            "id": sale.id,
-            "items": [item.model_dump() for item in payload.items],
-            "processed_at": datetime.utcnow().isoformat(),
-        },
-    )
     return returns
 
 

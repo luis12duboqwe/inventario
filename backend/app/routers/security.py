@@ -22,7 +22,6 @@ def _ensure_2fa_enabled() -> None:
 
 @router.get("/2fa/status", response_model=schemas.TOTPStatusResponse)
 def totp_status(current_user=Depends(require_roles(ADMIN, GERENTE)), db: Session = Depends(get_db)):
-    _ensure_2fa_enabled()
     record = crud.get_totp_secret(db, current_user.id)
     if record is None:
         return schemas.TOTPStatusResponse(is_active=False, activated_at=None, last_verified_at=None)
