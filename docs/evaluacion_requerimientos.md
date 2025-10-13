@@ -11,7 +11,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 | --- | --- | --- |
 | Gestión centralizada de inventarios | ✅ Cumplido | CRUD de sucursales/dispositivos, movimientos y reportes de inventario listos. |
 | Sincronizaciones automáticas/manuales | ✅ Cumplido | Planificador configurable y endpoint manual con historial de sesiones. |
-| Seguridad y control de acceso | ✅ Cumplido | JWT con roles (`admin`, `manager`, `auditor`) y bitácoras de auditoría. |
+| Seguridad y control de acceso | ✅ Cumplido | JWT con roles (`ADMIN`, `GERENTE`, `OPERADOR`) y bitácoras de auditoría. |
 | Interfaz moderna con tema oscuro | ✅ Cumplido | Frontend React en `frontend/` con tema oscuro empresarial. |
 | Instalación local con opción futura en la nube | ✅ Cumplido | Plantillas PyInstaller e Inno Setup para Windows; documentación lista. |
 | Reportes y respaldos automáticos | ✅ Cumplido | Endpoint PDF, respaldos manuales/automáticos y scheduler configurables. |

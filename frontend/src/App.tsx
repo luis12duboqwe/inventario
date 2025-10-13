@@ -29,32 +29,37 @@ function App() {
 
   if (!token) {
     return (
-      <div className="app-shell">
-        <aside className="sidebar">
-          <h1>Softmobile Inventario</h1>
-          <p>Cliente local para capturar movimientos y sincronizar con el servidor central.</p>
-          <p className="badge">Versión tienda · Tema oscuro</p>
-        </aside>
-        <main className="content">
-          <div className="card">
-            <h2>Ingreso seguro</h2>
+      <div className="app-root login-mode">
+        <main className="login-wrapper fade-in">
+          <section className="card brand-card">
+            <h1>Softmobile Inventario</h1>
+            <p>
+              Cliente corporativo para sincronizar existencias, capturar movimientos y generar respaldos con un solo
+              panel.
+            </p>
+            <p className="badge">Versión tienda · Tema oscuro</p>
+          </section>
+          <section className="card login-card">
+            <h2 className="accent-title">Ingreso seguro</h2>
             <LoginForm loading={loading} error={error} onSubmit={handleLogin} />
-          </div>
+          </section>
         </main>
       </div>
     );
   }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <h1>Softmobile Inventario</h1>
-        <p>Sesión activa para captura y sincronización.</p>
+    <div className="app-root">
+      <header className="topbar fade-in">
+        <div>
+          <h1>Softmobile Inventario</h1>
+          <p className="topbar-subtitle">Sesión activa para captura, reportes y sincronización multi‑tienda.</p>
+        </div>
         <button type="button" onClick={handleLogout}>
           Cerrar sesión
         </button>
-      </aside>
-      <main className="content">
+      </header>
+      <main className="app-container fade-in">
         <Dashboard token={token} />
       </main>
     </div>

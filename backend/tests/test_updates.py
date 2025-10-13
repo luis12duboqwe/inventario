@@ -3,6 +3,7 @@ import json
 from fastapi import status
 
 from backend.app.config import settings
+from backend.app.core.roles import ADMIN
 
 
 def _auth_headers(client) -> dict[str, str]:
@@ -10,7 +11,7 @@ def _auth_headers(client) -> dict[str, str]:
         "username": "admin",
         "password": "MuySegura123",
         "full_name": "Admin General",
-        "roles": ["admin"],
+        "roles": [ADMIN],
     }
     response = client.post("/auth/bootstrap", json=payload)
     assert response.status_code == status.HTTP_201_CREATED

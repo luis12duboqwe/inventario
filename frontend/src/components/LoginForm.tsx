@@ -17,7 +17,7 @@ function LoginForm({ loading, error, onSubmit }: Props) {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="form-grid">
       <label htmlFor="username">Usuario</label>
       <input
         id="username"
@@ -40,9 +40,9 @@ function LoginForm({ loading, error, onSubmit }: Props) {
         onChange={(event) => setPassword(event.target.value)}
       />
 
-      {error ? <p style={{ color: "#f87171", marginTop: "4px" }}>{error}</p> : null}
+      {error ? <div className="alert error">{error}</div> : null}
 
-      <button type="submit" disabled={loading} style={{ marginTop: "12px" }}>
+      <button type="submit" disabled={loading} className="submit-button">
         {loading ? "Conectando…" : "Ingresar"}
       </button>
     </form>

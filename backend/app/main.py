@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import crud
 from .config import settings
+from .core.roles import DEFAULT_ROLES
 from .database import Base, SessionLocal, engine
 from .routers import auth, backups, health, inventory, reports, stores, sync, updates, users
 from .services.scheduler import BackgroundScheduler
@@ -17,7 +18,7 @@ _scheduler: BackgroundScheduler | None = None
 
 def _bootstrap_defaults() -> None:
     with SessionLocal() as session:
-        for role in ("admin", "manager", "auditor"):
+        for role in DEFAULT_ROLES:
             crud.ensure_role(session, role)
         session.commit()
 

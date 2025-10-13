@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
+from ..core.roles import GESTION_ROLES, REPORTE_ROLES
 from ..database import get_db
 from ..security import require_roles
 
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/stores", tags=["stores"])
 def create_store(
     payload: schemas.StoreCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager")),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
         store = crud.create_store(db, payload, performed_by_id=current_user.id if current_user else None)
@@ -39,7 +40,7 @@ def create_store(
 @router.get("", response_model=list[schemas.StoreResponse])
 def list_stores(
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager")),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     return crud.list_stores(db)
 
@@ -48,7 +49,7 @@ def list_stores(
 def retrieve_store(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager")),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
         return crud.get_store(db, store_id)
@@ -68,7 +69,7 @@ def create_device(
     payload: schemas.DeviceCreate,
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager")),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
         device = crud.create_device(
@@ -99,7 +100,7 @@ def create_device(
 def list_devices(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles("admin", "manager", "auditor")),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     try:
         return crud.list_devices(db, store_id)

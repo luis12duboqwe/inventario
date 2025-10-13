@@ -20,7 +20,7 @@ function SyncPanel({ onSync, onBackup, onDownloadPdf, syncStatus }: Props) {
   };
 
   return (
-    <div>
+    <div className="sync-panel">
       <div className="actions">
         <button type="button" disabled={processing} onClick={() => handleAction(onSync)}>
           Sincronizar ahora
@@ -32,7 +32,8 @@ function SyncPanel({ onSync, onBackup, onDownloadPdf, syncStatus }: Props) {
           Generar respaldo
         </button>
       </div>
-      {syncStatus ? <p style={{ marginTop: 12 }}>{syncStatus}</p> : null}
+      {processing ? <p className="processing">Procesando…</p> : null}
+      {syncStatus ? <span className="pill accent">{syncStatus}</span> : null}
     </div>
   );
 }
