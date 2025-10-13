@@ -9,7 +9,6 @@ import type {
   ReleaseInfo,
   UpdateStatus,
 } from "../api";
-import type { BackupJob, Device, MovementInput, Store, Summary, ReleaseInfo, UpdateStatus } from "../api";
 import {
   downloadInventoryPdf,
   fetchBackupHistory,
@@ -64,9 +63,6 @@ function Dashboard({ token }: Props) {
           getStores(token),
           getSummary(token),
           getInventoryMetrics(token),
-        const [storesData, summaryData, backupData, statusData, releasesData] = await Promise.all([
-          getStores(token),
-          getSummary(token),
           fetchBackupHistory(token),
           getUpdateStatus(token),
           getReleaseHistory(token),
@@ -116,8 +112,6 @@ function Dashboard({ token }: Props) {
     ]);
     setSummary(summaryData);
     setMetrics(metricsData);
-    const summaryData = await getSummary(token);
-    setSummary(summaryData);
   };
 
   const handleMovement = async (payload: MovementInput) => {
@@ -164,22 +158,18 @@ function Dashboard({ token }: Props) {
     [metrics, summary]
   );
   const totalValue = useMemo(
-    () => metrics?.totals.total_value ?? summary.reduce((acc, store) => acc + store.devices.reduce((deviceAcc, device) => deviceAcc + device.inventory_value, 0), 0),
+    () =>
+      metrics?.totals.total_value ??
+      summary.reduce(
+        (acc, store) => acc + store.devices.reduce((deviceAcc, device) => deviceAcc + device.inventory_value, 0),
+        0
+      ),
     [metrics, summary]
   );
   const lastBackup = backupHistory.at(0) ?? null;
   const latestRelease = updateStatus?.latest_release ?? null;
   const lowStockDevices = metrics?.low_stock_devices ?? [];
   const topStores = metrics?.top_stores ?? [];
-    () => summary.reduce((acc, store) => acc + store.devices.length, 0),
-    [summary]
-  );
-  const totalItems = useMemo(
-    () => summary.reduce((acc, store) => acc + store.total_items, 0),
-    [summary]
-  );
-  const lastBackup = backupHistory.at(0) ?? null;
-  const latestRelease = updateStatus?.latest_release ?? null;
 
   return (
     <div className="card" style={{ flex: 1 }}>
@@ -257,8 +247,8 @@ function Dashboard({ token }: Props) {
           <ul className="metrics-list">
             {topStores.map((storeMetric) => (
               <li key={storeMetric.store_id}>
-                <strong>{storeMetric.store_name}</strong> · {storeMetric.device_count} dispositivos · {storeMetric.total_units} unidades ·
-                <span> {formatCurrency(storeMetric.total_value)}</span>
+                <strong>{storeMetric.store_name}</strong> · {storeMetric.device_count} dispositivos · {storeMetric.total_units}
+                unidades ·<span> {formatCurrency(storeMetric.total_value)}</span>
               </li>
             ))}
           </ul>
@@ -286,8 +276,7 @@ function Dashboard({ token }: Props) {
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {backupHistory.map((backup) => (
                 <li key={backup.id} style={{ marginBottom: 8 }}>
-                  <span className="badge">{backup.mode}</span> · {new Date(backup.executed_at).toLocaleString("es-MX")} ·
-                  tamaño {(backup.total_size_bytes / 1024).toFixed(1)} KB
+                  <span className="badge">{backup.mode}</span> · {new Date(backup.executed_at).toLocaleString("es-MX")} · tamaño {(backup.total_size_bytes / 1024).toFixed(1)} KB
                 </li>
               ))}
             </ul>
