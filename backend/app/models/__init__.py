@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -71,9 +72,31 @@ class Store(Base):
     )
 
 
+class CommercialState(str, enum.Enum):
+    """Clasificación comercial del dispositivo en catálogo pro."""
+
+    NUEVO = "nuevo"
+    A = "A"
+    B = "B"
+    C = "C"
+
+
+class TransferStatus(str, enum.Enum):
+    """Estados posibles de una orden de transferencia."""
+
+    SOLICITADA = "SOLICITADA"
+    EN_TRANSITO = "EN_TRANSITO"
+    RECIBIDA = "RECIBIDA"
+    CANCELADA = "CANCELADA"
+
+
 class Device(Base):
     __tablename__ = "devices"
-    __table_args__ = (UniqueConstraint("store_id", "sku", name="uq_devices_store_sku"),)
+    __table_args__ = (
+        UniqueConstraint("store_id", "sku", name="uq_devices_store_sku"),
+        UniqueConstraint("imei", name="uq_devices_imei"),
+        UniqueConstraint("serial", name="uq_devices_serial"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
@@ -83,6 +106,21 @@ class Device(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
+    imei: Mapped[str | None] = mapped_column(String(18), nullable=True, unique=True, index=True)
+    serial: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True, index=True)
+    marca: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    modelo: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    color: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    capacidad_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estado_comercial: Mapped[CommercialState] = mapped_column(
+        Enum(CommercialState, name="estado_comercial"), nullable=False, default=CommercialState.NUEVO
+    )
+    proveedor: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    costo_unitario: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
+    margen_porcentaje: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
+    garantia_meses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lote: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    fecha_compra: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     store: Mapped[Store] = relationship("Store", back_populates="devices")
     movements: Mapped[list["InventoryMovement"]] = relationship(
@@ -206,6 +244,99 @@ class BackupJob(Base):
     triggered_by: Mapped[User | None] = relationship("User", back_populates="backup_jobs")
 
 
+class TransferOrder(Base):
+    __tablename__ = "transfer_orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    origin_store_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    destination_store_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[TransferStatus] = mapped_column(
+        Enum(TransferStatus, name="transfer_status"),
+        nullable=False,
+        default=TransferStatus.SOLICITADA,
+    )
+    requested_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    dispatched_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    received_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    cancelled_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    origin_store: Mapped[Store] = relationship(
+        "Store", foreign_keys=[origin_store_id], backref="transfer_orders_out"
+    )
+    destination_store: Mapped[Store] = relationship(
+        "Store", foreign_keys=[destination_store_id], backref="transfer_orders_in"
+    )
+    requested_by: Mapped[User | None] = relationship("User", foreign_keys=[requested_by_id])
+    dispatched_by: Mapped[User | None] = relationship("User", foreign_keys=[dispatched_by_id])
+    received_by: Mapped[User | None] = relationship("User", foreign_keys=[received_by_id])
+    cancelled_by: Mapped[User | None] = relationship("User", foreign_keys=[cancelled_by_id])
+    items: Mapped[list["TransferOrderItem"]] = relationship(
+        "TransferOrderItem", back_populates="transfer_order", cascade="all, delete-orphan"
+    )
+
+
+class TransferOrderItem(Base):
+    __tablename__ = "transfer_order_items"
+    __table_args__ = (
+        UniqueConstraint("transfer_order_id", "device_id", name="uq_transfer_item_unique"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    transfer_order_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("transfer_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    transfer_order: Mapped[TransferOrder] = relationship(
+        "TransferOrder", back_populates="items"
+    )
+    device: Mapped[Device] = relationship("Device")
+
+
+class StoreMembership(Base):
+    __tablename__ = "store_memberships"
+    __table_args__ = (
+        UniqueConstraint("user_id", "store_id", name="uq_membership_user_store"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    store_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    can_create_transfer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    can_receive_transfer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    user: Mapped[User] = relationship("User", backref="store_memberships")
+    store: Mapped[Store] = relationship("Store", backref="memberships")
+
+
 __all__ = [
     "AuditLog",
     "BackupJob",
@@ -218,6 +349,10 @@ __all__ = [
     "SyncMode",
     "SyncSession",
     "SyncStatus",
+    "TransferOrder",
+    "TransferOrderItem",
+    "TransferStatus",
+    "StoreMembership",
     "User",
     "UserRole",
 ]

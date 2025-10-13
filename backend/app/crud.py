@@ -1,15 +1,52 @@
 """Operaciones de base de datos para las entidades principales."""
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 
 from . import models, schemas
+
+
+def _ensure_unique_identifiers(
+    db: Session,
+    *,
+    imei: str | None,
+    serial: str | None,
+    exclude_device_id: int | None = None,
+) -> None:
+    if imei:
+        statement = select(models.Device).where(models.Device.imei == imei)
+        if exclude_device_id:
+            statement = statement.where(models.Device.id != exclude_device_id)
+        if db.scalars(statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
+    if serial:
+        statement = select(models.Device).where(models.Device.serial == serial)
+        if exclude_device_id:
+            statement = statement.where(models.Device.id != exclude_device_id)
+        if db.scalars(statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
+
+
+def _to_decimal(value: Decimal | float | int | None) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+def _recalculate_sale_price(device: models.Device) -> None:
+    base_cost = _to_decimal(device.costo_unitario)
+    margin = _to_decimal(device.margen_porcentaje)
+    sale_factor = Decimal("1") + (margin / Decimal("100"))
+    device.unit_price = (base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _log_action(
@@ -164,10 +201,26 @@ def create_device(
 ) -> models.Device:
     get_store(db, store_id)
     payload_data = payload.model_dump()
-    unit_price = payload_data.get("unit_price")
+    provided_fields = payload.model_fields_set
+    imei = payload_data.get("imei")
+    serial = payload_data.get("serial")
+    _ensure_unique_identifiers(db, imei=imei, serial=serial)
+    unit_price = payload_data.get("unit_price") if "unit_price" in provided_fields else None
     if unit_price is None:
-        payload_data["unit_price"] = Decimal("0")
+        payload_data.setdefault("unit_price", Decimal("0"))
+    if payload_data.get("costo_unitario") is None:
+        payload_data["costo_unitario"] = Decimal("0")
+    if payload_data.get("margen_porcentaje") is None:
+        payload_data["margen_porcentaje"] = Decimal("0")
+    if payload_data.get("estado_comercial") is None:
+        payload_data["estado_comercial"] = models.CommercialState.NUEVO
+    if payload_data.get("garantia_meses") is None:
+        payload_data["garantia_meses"] = 0
     device = models.Device(store_id=store_id, **payload_data)
+    if unit_price is None:
+        _recalculate_sale_price(device)
+    else:
+        device.unit_price = unit_price
     db.add(device)
     try:
         db.commit()
@@ -210,19 +263,54 @@ def update_device(
 ) -> models.Device:
     device = get_device(db, store_id, device_id)
     updated_fields = payload.model_dump(exclude_unset=True)
+    manual_price = None
+    if "unit_price" in updated_fields:
+        manual_price = updated_fields.pop("unit_price")
+    imei = updated_fields.get("imei")
+    serial = updated_fields.get("serial")
+    _ensure_unique_identifiers(
+        db,
+        imei=imei,
+        serial=serial,
+        exclude_device_id=device.id,
+    )
+
+    sensitive_before = {
+        "costo_unitario": device.costo_unitario,
+        "estado_comercial": device.estado_comercial,
+        "proveedor": device.proveedor,
+    }
+
     for key, value in updated_fields.items():
         setattr(device, key, value)
+    if manual_price is not None:
+        device.unit_price = manual_price
+    elif {"costo_unitario", "margen_porcentaje"}.intersection(updated_fields):
+        _recalculate_sale_price(device)
     db.commit()
     db.refresh(device)
 
-    if updated_fields:
+    fields_changed = list(updated_fields.keys())
+    if manual_price is not None:
+        fields_changed.append("unit_price")
+    if fields_changed:
+        sensitive_after = {
+            "costo_unitario": device.costo_unitario,
+            "estado_comercial": device.estado_comercial,
+            "proveedor": device.proveedor,
+        }
+        sensitive_changes = {
+            key: {"before": str(sensitive_before[key]), "after": str(value)}
+            for key, value in sensitive_after.items()
+            if sensitive_before.get(key) != value
+        }
         _log_action(
             db,
             action="device_updated",
             entity_type="device",
             entity_id=str(device.id),
             performed_by_id=performed_by_id,
-            details=str(updated_fields),
+            details=json.dumps({"fields": fields_changed, "sensitive": sensitive_changes}),
         )
         db.commit()
         db.refresh(device)
@@ -237,6 +325,28 @@ def list_devices(db: Session, store_id: int) -> list[models.Device]:
         .order_by(models.Device.sku.asc())
     )
     return list(db.scalars(statement))
+
+
+def search_devices(db: Session, filters: schemas.DeviceSearchFilters) -> list[models.Device]:
+    statement = (
+        select(models.Device)
+        .options(joinedload(models.Device.store))
+        .join(models.Store)
+    )
+    if filters.imei:
+        statement = statement.where(models.Device.imei == filters.imei)
+    if filters.serial:
+        statement = statement.where(models.Device.serial == filters.serial)
+    if filters.capacidad_gb is not None:
+        statement = statement.where(models.Device.capacidad_gb == filters.capacidad_gb)
+    if filters.color:
+        statement = statement.where(models.Device.color.ilike(f"%{filters.color}%"))
+    if filters.marca:
+        statement = statement.where(models.Device.marca.ilike(f"%{filters.marca}%"))
+    if filters.modelo:
+        statement = statement.where(models.Device.modelo.ilike(f"%{filters.modelo}%"))
+    statement = statement.order_by(models.Device.store_id.asc(), models.Device.sku.asc())
+    return list(db.scalars(statement).unique())
 
 
 def create_inventory_movement(
@@ -398,6 +508,335 @@ def list_audit_logs(db: Session, limit: int = 100) -> list[models.AuditLog]:
         .limit(limit)
     )
     return list(db.scalars(statement))
+
+
+def get_store_membership(db: Session, *, user_id: int, store_id: int) -> models.StoreMembership | None:
+    statement = select(models.StoreMembership).where(
+        models.StoreMembership.user_id == user_id,
+        models.StoreMembership.store_id == store_id,
+    )
+    return db.scalars(statement).first()
+
+
+def upsert_store_membership(
+    db: Session,
+    *,
+    user_id: int,
+    store_id: int,
+    can_create_transfer: bool,
+    can_receive_transfer: bool,
+) -> models.StoreMembership:
+    membership = get_store_membership(db, user_id=user_id, store_id=store_id)
+    if membership is None:
+        membership = models.StoreMembership(
+            user_id=user_id,
+            store_id=store_id,
+            can_create_transfer=can_create_transfer,
+            can_receive_transfer=can_receive_transfer,
+        )
+        db.add(membership)
+    else:
+        membership.can_create_transfer = can_create_transfer
+        membership.can_receive_transfer = can_receive_transfer
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+def _require_store_permission(
+    db: Session,
+    *,
+    user_id: int,
+    store_id: int,
+    permission: str,
+) -> models.StoreMembership:
+    membership = get_store_membership(db, user_id=user_id, store_id=store_id)
+    if membership is None:
+        raise PermissionError("store_membership_required")
+    if permission == "create" and not membership.can_create_transfer:
+        raise PermissionError("store_create_forbidden")
+    if permission == "receive" and not membership.can_receive_transfer:
+        raise PermissionError("store_receive_forbidden")
+    return membership
+
+
+def list_store_memberships(db: Session, store_id: int) -> list[models.StoreMembership]:
+    statement = (
+        select(models.StoreMembership)
+        .options(joinedload(models.StoreMembership.user))
+        .where(models.StoreMembership.store_id == store_id)
+        .order_by(models.StoreMembership.user_id.asc())
+    )
+    return list(db.scalars(statement))
+
+
+def create_transfer_order(
+    db: Session,
+    payload: schemas.TransferOrderCreate,
+    *,
+    requested_by_id: int,
+) -> models.TransferOrder:
+    if payload.origin_store_id == payload.destination_store_id:
+        raise ValueError("transfer_same_store")
+
+    origin_store = get_store(db, payload.origin_store_id)
+    destination_store = get_store(db, payload.destination_store_id)
+
+    _require_store_permission(
+        db,
+        user_id=requested_by_id,
+        store_id=origin_store.id,
+        permission="create",
+    )
+
+    if not payload.items:
+        raise ValueError("transfer_items_required")
+
+    order = models.TransferOrder(
+        origin_store=origin_store,
+        destination_store=destination_store,
+        status=models.TransferStatus.SOLICITADA,
+        requested_by_id=requested_by_id,
+        reason=payload.reason,
+    )
+    db.add(order)
+    db.flush()
+
+    for item in payload.items:
+        device = get_device(db, origin_store.id, item.device_id)
+        if item.quantity <= 0:
+            raise ValueError("transfer_invalid_quantity")
+        order_item = models.TransferOrderItem(
+            transfer_order=order,
+            device=device,
+            quantity=item.quantity,
+        )
+        db.add(order_item)
+
+    db.commit()
+    db.refresh(order)
+
+    _log_action(
+        db,
+        action="transfer_created",
+        entity_type="transfer_order",
+        entity_id=str(order.id),
+        performed_by_id=requested_by_id,
+        details=json.dumps({
+            "origin": origin_store.id,
+            "destination": destination_store.id,
+            "reason": payload.reason,
+        }),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def get_transfer_order(db: Session, transfer_id: int) -> models.TransferOrder:
+    statement = (
+        select(models.TransferOrder)
+        .options(
+            joinedload(models.TransferOrder.items).joinedload(models.TransferOrderItem.device),
+            joinedload(models.TransferOrder.origin_store),
+            joinedload(models.TransferOrder.destination_store),
+        )
+        .where(models.TransferOrder.id == transfer_id)
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("transfer_not_found") from exc
+
+
+def dispatch_transfer_order(
+    db: Session,
+    transfer_id: int,
+    *,
+    performed_by_id: int,
+    reason: str | None,
+) -> models.TransferOrder:
+    order = get_transfer_order(db, transfer_id)
+    if order.status not in {models.TransferStatus.SOLICITADA}:
+        raise ValueError("transfer_invalid_transition")
+
+    _require_store_permission(
+        db,
+        user_id=performed_by_id,
+        store_id=order.origin_store_id,
+        permission="create",
+    )
+
+    order.status = models.TransferStatus.EN_TRANSITO
+    order.dispatched_by_id = performed_by_id
+    order.dispatched_at = datetime.utcnow()
+    order.reason = reason or order.reason
+
+    db.commit()
+    db.refresh(order)
+
+    _log_action(
+        db,
+        action="transfer_dispatched",
+        entity_type="transfer_order",
+        entity_id=str(order.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"status": order.status.value, "reason": reason}),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def _apply_transfer_reception(
+    db: Session,
+    order: models.TransferOrder,
+    *,
+    performed_by_id: int,
+) -> None:
+    for item in order.items:
+        device = item.device
+        if device.store_id != order.origin_store_id:
+            raise ValueError("transfer_device_mismatch")
+        if item.quantity <= 0:
+            raise ValueError("transfer_invalid_quantity")
+        if device.quantity < item.quantity:
+            raise ValueError("transfer_insufficient_stock")
+
+        if (device.imei or device.serial) and device.quantity != item.quantity:
+            raise ValueError("transfer_requires_full_unit")
+
+        if device.imei or device.serial:
+            device.store_id = order.destination_store_id
+        else:
+            device.quantity -= item.quantity
+            destination_statement = select(models.Device).where(
+                models.Device.store_id == order.destination_store_id,
+                models.Device.sku == device.sku,
+            )
+            destination_device = db.scalars(destination_statement).first()
+            if destination_device is None:
+                clone = models.Device(
+                    store_id=order.destination_store_id,
+                    sku=device.sku,
+                    name=device.name,
+                    quantity=item.quantity,
+                    unit_price=device.unit_price,
+                    marca=device.marca,
+                    modelo=device.modelo,
+                    color=device.color,
+                    capacidad_gb=device.capacidad_gb,
+                    estado_comercial=device.estado_comercial,
+                    proveedor=device.proveedor,
+                    costo_unitario=device.costo_unitario,
+                    margen_porcentaje=device.margen_porcentaje,
+                    garantia_meses=device.garantia_meses,
+                    lote=device.lote,
+                    fecha_compra=device.fecha_compra,
+                )
+                db.add(clone)
+            else:
+                destination_device.quantity += item.quantity
+
+
+def receive_transfer_order(
+    db: Session,
+    transfer_id: int,
+    *,
+    performed_by_id: int,
+    reason: str | None,
+) -> models.TransferOrder:
+    order = get_transfer_order(db, transfer_id)
+    if order.status not in {models.TransferStatus.SOLICITADA, models.TransferStatus.EN_TRANSITO}:
+        raise ValueError("transfer_invalid_transition")
+
+    _require_store_permission(
+        db,
+        user_id=performed_by_id,
+        store_id=order.destination_store_id,
+        permission="receive",
+    )
+
+    _apply_transfer_reception(db, order, performed_by_id=performed_by_id)
+
+    order.status = models.TransferStatus.RECIBIDA
+    order.received_by_id = performed_by_id
+    order.received_at = datetime.utcnow()
+    order.reason = reason or order.reason
+
+    db.commit()
+    db.refresh(order)
+
+    _log_action(
+        db,
+        action="transfer_received",
+        entity_type="transfer_order",
+        entity_id=str(order.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"status": order.status.value, "reason": reason}),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def cancel_transfer_order(
+    db: Session,
+    transfer_id: int,
+    *,
+    performed_by_id: int,
+    reason: str | None,
+) -> models.TransferOrder:
+    order = get_transfer_order(db, transfer_id)
+    if order.status in {models.TransferStatus.RECIBIDA, models.TransferStatus.CANCELADA}:
+        raise ValueError("transfer_invalid_transition")
+
+    _require_store_permission(
+        db,
+        user_id=performed_by_id,
+        store_id=order.origin_store_id,
+        permission="create",
+    )
+
+    order.status = models.TransferStatus.CANCELADA
+    order.cancelled_by_id = performed_by_id
+    order.cancelled_at = datetime.utcnow()
+    order.reason = reason or order.reason
+
+    db.commit()
+    db.refresh(order)
+
+    _log_action(
+        db,
+        action="transfer_cancelled",
+        entity_type="transfer_order",
+        entity_id=str(order.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"status": order.status.value, "reason": reason}),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def list_transfer_orders(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    limit: int = 50,
+) -> list[models.TransferOrder]:
+    statement = (
+        select(models.TransferOrder)
+        .options(joinedload(models.TransferOrder.items))
+        .order_by(models.TransferOrder.created_at.desc())
+        .limit(limit)
+    )
+    if store_id is not None:
+        statement = statement.where(
+            (models.TransferOrder.origin_store_id == store_id)
+            | (models.TransferOrder.destination_store_id == store_id)
+        )
+    return list(db.scalars(statement).unique())
 
 
 def count_users(db: Session) -> int:

@@ -18,6 +18,30 @@ export type Device = {
   store_id: number;
   unit_price: number;
   inventory_value: number;
+  imei?: string | null;
+  serial?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  color?: string | null;
+  capacidad_gb?: number | null;
+  estado_comercial?: "nuevo" | "A" | "B" | "C";
+  proveedor?: string | null;
+  costo_unitario?: number;
+  margen_porcentaje?: number;
+  garantia_meses?: number;
+  lote?: string | null;
+  fecha_compra?: string | null;
+};
+
+export type CatalogDevice = Device & { store_name: string };
+
+export type DeviceSearchFilters = {
+  imei?: string;
+  serial?: string;
+  capacidad_gb?: number;
+  color?: string;
+  marca?: string;
+  modelo?: string;
 };
 
 export type MovementInput = {
@@ -33,6 +57,54 @@ export type Summary = {
   total_items: number;
   total_value: number;
   devices: Device[];
+};
+
+export type StoreMembership = {
+  id: number;
+  user_id: number;
+  store_id: number;
+  can_create_transfer: boolean;
+  can_receive_transfer: boolean;
+  created_at: string;
+};
+
+export type StoreMembershipInput = {
+  user_id: number;
+  store_id: number;
+  can_create_transfer: boolean;
+  can_receive_transfer: boolean;
+};
+
+export type TransferOrderItem = {
+  id: number;
+  transfer_order_id: number;
+  device_id: number;
+  quantity: number;
+};
+
+export type TransferOrder = {
+  id: number;
+  origin_store_id: number;
+  destination_store_id: number;
+  status: "SOLICITADA" | "EN_TRANSITO" | "RECIBIDA" | "CANCELADA";
+  reason?: string | null;
+  created_at: string;
+  updated_at: string;
+  dispatched_at?: string | null;
+  received_at?: string | null;
+  cancelled_at?: string | null;
+  items: TransferOrderItem[];
+};
+
+export type TransferOrderInput = {
+  origin_store_id: number;
+  destination_store_id: number;
+  reason?: string;
+  items: { device_id: number; quantity: number }[];
+};
+
+export type TransferTransitionInput = {
+  reason?: string;
 };
 
 export type StoreValueMetric = {
@@ -152,8 +224,86 @@ export function getDevices(token: string, storeId: number): Promise<Device[]> {
   return request<Device[]>(`/stores/${storeId}/devices`, { method: "GET" }, token);
 }
 
+export function searchCatalogDevices(
+  token: string,
+  filters: DeviceSearchFilters
+): Promise<CatalogDevice[]> {
+  const params = new URLSearchParams();
+  if (filters.imei) params.append("imei", filters.imei);
+  if (filters.serial) params.append("serial", filters.serial);
+  if (typeof filters.capacidad_gb === "number") params.append("capacidad_gb", String(filters.capacidad_gb));
+  if (filters.color) params.append("color", filters.color);
+  if (filters.marca) params.append("marca", filters.marca);
+  if (filters.modelo) params.append("modelo", filters.modelo);
+  const query = params.toString();
+  const path = query ? `/inventory/devices/search?${query}` : "/inventory/devices/search";
+  return request<CatalogDevice[]>(path, { method: "GET" }, token);
+}
+
 export function registerMovement(token: string, storeId: number, payload: MovementInput) {
   return request(`/inventory/stores/${storeId}/movements`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function listStoreMemberships(token: string, storeId: number): Promise<StoreMembership[]> {
+  return request(`/stores/${storeId}/memberships`, { method: "GET" }, token);
+}
+
+export function upsertStoreMembership(
+  token: string,
+  storeId: number,
+  userId: number,
+  payload: StoreMembershipInput
+): Promise<StoreMembership> {
+  return request(`/stores/${storeId}/memberships/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function listTransfers(token: string, storeId?: number): Promise<TransferOrder[]> {
+  const query = typeof storeId === "number" ? `?store_id=${storeId}` : "";
+  const path = query ? `/transfers/${query}` : "/transfers";
+  return request(path, { method: "GET" }, token);
+}
+
+export function createTransferOrder(
+  token: string,
+  payload: TransferOrderInput
+): Promise<TransferOrder> {
+  return request("/transfers", { method: "POST", body: JSON.stringify(payload) }, token);
+}
+
+export function dispatchTransferOrder(
+  token: string,
+  transferId: number,
+  payload: TransferTransitionInput
+): Promise<TransferOrder> {
+  return request(`/transfers/${transferId}/dispatch`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function receiveTransferOrder(
+  token: string,
+  transferId: number,
+  payload: TransferTransitionInput
+): Promise<TransferOrder> {
+  return request(`/transfers/${transferId}/receive`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export function cancelTransferOrder(
+  token: string,
+  transferId: number,
+  payload: TransferTransitionInput
+): Promise<TransferOrder> {
+  return request(`/transfers/${transferId}/cancel`, {
     method: "POST",
     body: JSON.stringify(payload),
   }, token);
