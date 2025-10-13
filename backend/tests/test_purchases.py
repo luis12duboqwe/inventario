@@ -68,11 +68,7 @@ def test_purchase_receipt_and_return_flow(client, db_session):
             {"device_id": device_id, "quantity_ordered": 10, "unit_cost": 850.0},
         ],
     }
-    order_response = client.post(
-        "/purchases",
-        json=order_payload,
-        headers={**auth_headers, "X-Reason": "Creacion compra"},
-    )
+    order_response = client.post("/purchases", json=order_payload, headers=auth_headers)
     assert order_response.status_code == status.HTTP_201_CREATED
     order_id = order_response.json()["id"]
 

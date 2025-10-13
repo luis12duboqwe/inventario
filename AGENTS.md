@@ -44,12 +44,12 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - ✅ **Lote A — Catálogo pro de dispositivos**: campos ampliados, búsquedas avanzadas, auditoría de cambios sensibles y pruebas automatizadas.
 - ✅ **Lote B — Transferencias entre tiendas**: modelos `transfer_orders`, permisos por sucursal, flujo SOLICITADA→EN_TRANSITO→RECIBIDA/CANCELADA, endpoints FastAPI, componente React `TransferOrders` y pruebas `pytest` dedicadas.
 - ✅ **Lote C — Compras y ventas simples**: órdenes de compra con recepción parcial y promedio ponderado de costo, ventas con descuento/método de pago y devoluciones cubiertas en backend, pruebas y panel React (`Purchases.tsx`, `Sales.tsx`, `Returns.tsx`).
-- ✅ **Lote D — Analítica avanzada**: servicios y endpoints `/reports/analytics/*`, PDF oscuro en `analytics.py` y componente `AnalyticsBoard.tsx` con descarga.
-- ✅ **Lote E — Seguridad y auditoría fina**: middleware global `X-Reason`, rutas `/security/*`, almacenamiento de secretos TOTP y sesiones activas (expuestas con IDs incrementales), componentes `TwoFactorSetup.tsx` y `AuditLog.tsx`.
-- ✅ **Lote F — Modo híbrido**: tabla `sync_outbox`, reintentos locales, endpoints `/sync/outbox` y panel de cola híbrida integrado al dashboard.
+- ⏳ **Lote D — Analítica avanzada**: pendientes endpoints `/reports/analytics/*` y generación de PDF oscuro.
+- ⏳ **Lote E — Seguridad y auditoría fina**: pendiente middleware `X-Reason`, 2FA TOTP, auditoría de sesiones y motivo obligatorio en ajustes.
+- ⏳ **Lote F — Modo híbrido**: pendiente cola `sync_outbox` con reintentos y resolución *last-write-wins*.
 
 **Próximos pasos**
 
-1. Monitorear métricas de sincronización híbrida y ajustar la priorización de eventos en `sync_outbox` según el desempeño real.
-2. Extender la analítica con comparativas históricas y automatizar el envío recurrente de PDFs oscuros a dirección.
-3. Revisar periódicamente la caducidad de sesiones 2FA, validando que las sesiones activas devuelvan IDs consistentes para auditoría y documentando el proceso de revocación masiva ante incidentes.
+1. Activar los controles de seguridad del **Lote E**: middleware global `X-Reason`, rutas 2FA TOTP, auditoría/revocación de sesiones y componentes `TwoFactorSetup.tsx`/`AuditLog.tsx` con pruebas.
+2. Desarrollar el **Lote D** con endpoints `/reports/analytics/*`, cálculos avanzados y generación de PDF oscuro, incluyendo cobertura de pruebas.
+3. Completar el **Lote F** implementando la cola `sync_outbox`, manejo de reintentos y estrategia *last-write-wins* con validaciones automatizadas.

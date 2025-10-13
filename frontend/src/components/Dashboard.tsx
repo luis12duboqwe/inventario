@@ -30,12 +30,6 @@ import MovementForm from "./MovementForm";
 import SyncPanel from "./SyncPanel";
 import AdvancedSearch from "./AdvancedSearch";
 import TransferOrders from "./TransferOrders";
-import Purchases from "./Purchases";
-import Sales from "./Sales";
-import Returns from "./Returns";
-import AnalyticsBoard from "./AnalyticsBoard";
-import TwoFactorSetup from "./TwoFactorSetup";
-import AuditLog from "./AuditLog";
 
 type Props = {
   token: string;
@@ -58,16 +52,6 @@ type StatusCard = {
 function Dashboard({ token }: Props) {
   const enableCatalogPro =
     (import.meta.env.VITE_SOFTMOBILE_ENABLE_CATALOG_PRO ?? "1") !== "0";
-  const enableTransfers =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_TRANSFERS ?? "1") !== "0";
-  const enablePurchasesSales =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_PURCHASES_SALES ?? "1") !== "0";
-  const enableAnalyticsAdv =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_ANALYTICS_ADV ?? "1") !== "0";
-  const enableTwoFactor =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_2FA ?? "0") !== "0";
-  const enableHybridPrep =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_HYBRID_PREP ?? "1") !== "0";
   const [stores, setStores] = useState<Store[]>([]);
   const [summary, setSummary] = useState<Summary[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -464,74 +448,6 @@ function Dashboard({ token }: Props) {
         )}
       </section>
       {enableCatalogPro ? <AdvancedSearch token={token} /> : null}
-      {enableAnalyticsAdv ? <AnalyticsBoard token={token} /> : null}
-      {enableHybridPrep ? (
-        <section className="card">
-          <h2>Cola de sincronización local</h2>
-          <p className="card-subtitle">Eventos pendientes de envío a la nube corporativa.</p>
-          <div className="outbox-actions">
-            <button className="btn" onClick={refreshOutbox}>
-              Actualizar estado
-            </button>
-            <button className="btn ghost" onClick={handleRetryOutbox} disabled={outbox.length === 0}>
-              Reintentar pendientes
-            </button>
-          </div>
-          {outboxError && <p className="error-text">{outboxError}</p>}
-          {outbox.length === 0 ? (
-            <p className="muted-text">Sin eventos en la cola local.</p>
-          ) : (
-            <table className="outbox-table">
-              <thead>
-                <tr>
-                  <th>Entidad</th>
-                  <th>Operación</th>
-                  <th>Intentos</th>
-                  <th>Estado</th>
-                  <th>Actualizado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {outbox.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>
-                      {entry.entity_type} #{entry.entity_id}
-                    </td>
-                    <td>{entry.operation}</td>
-                    <td>{entry.attempt_count}</td>
-                    <td>{entry.status}</td>
-                    <td>{new Date(entry.updated_at).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      ) : null}
-      {enableTwoFactor ? <TwoFactorSetup token={token} /> : null}
-      <AuditLog token={token} />
-      {enablePurchasesSales ? (
-        <>
-          <Purchases
-            token={token}
-            stores={stores}
-            defaultStoreId={selectedStoreId}
-            onInventoryRefresh={refreshInventoryAfterTransfer}
-          />
-          <Sales
-            token={token}
-            stores={stores}
-            defaultStoreId={selectedStoreId}
-            onInventoryRefresh={refreshInventoryAfterTransfer}
-          />
-          <Returns
-            token={token}
-            stores={stores}
-            defaultStoreId={selectedStoreId}
-            onInventoryRefresh={refreshInventoryAfterTransfer}
-          />
-        </>
-      ) : null}
       {enableTransfers ? (
         <TransferOrders
           token={token}

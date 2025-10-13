@@ -102,8 +102,7 @@ def test_full_transfer_flow(client, db_session):
             {"device_id": device_id, "quantity": 2},
         ],
     }
-    reason_headers = {**headers, "X-Reason": "Transferencia corporativa"}
-    create_transfer = client.post("/transfers", json=transfer_payload, headers=reason_headers)
+    create_transfer = client.post("/transfers", json=transfer_payload, headers=headers)
     assert create_transfer.status_code == status.HTTP_201_CREATED
     transfer_id = create_transfer.json()["id"]
     assert create_transfer.json()["status"] == "SOLICITADA"
@@ -111,7 +110,7 @@ def test_full_transfer_flow(client, db_session):
     dispatch_response = client.post(
         f"/transfers/{transfer_id}/dispatch",
         json={"reason": "Salida autorizada"},
-        headers=reason_headers,
+        headers=headers,
     )
     assert dispatch_response.status_code == status.HTTP_200_OK
     assert dispatch_response.json()["status"] == "EN_TRANSITO"
@@ -119,7 +118,7 @@ def test_full_transfer_flow(client, db_session):
     receive_response = client.post(
         f"/transfers/{transfer_id}/receive",
         json={"reason": "Ingreso completado"},
-        headers=reason_headers,
+        headers=headers,
     )
     assert receive_response.status_code == status.HTTP_200_OK
     data = receive_response.json()
@@ -176,11 +175,7 @@ def test_transfer_without_membership_forbidden(client, db_session):
         "destination_store_id": destino.json()["id"],
         "items": [{"device_id": device.json()["id"], "quantity": 1}],
     }
-    response = client.post(
-        "/transfers",
-        json=transfer_payload,
-        headers={**headers, "X-Reason": "Transfer sin permisos"},
-    )
+    response = client.post("/transfers", json=transfer_payload, headers=headers)
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
     settings.enable_transfers = False
