@@ -116,7 +116,7 @@ def set_user_roles(db: Session, user: models.User, role_names: Iterable[str]) ->
 
 
 def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: int | None = None) -> models.Store:
-    store = models.Store(**payload.dict())
+    store = models.Store(**payload.model_dump())
     db.add(store)
     try:
         db.commit()
@@ -158,7 +158,7 @@ def create_device(
     performed_by_id: int | None = None,
 ) -> models.Device:
     get_store(db, store_id)
-    device = models.Device(store_id=store_id, **payload.dict())
+    device = models.Device(store_id=store_id, **payload.model_dump())
     db.add(device)
     try:
         db.commit()
@@ -200,7 +200,7 @@ def update_device(
     performed_by_id: int | None = None,
 ) -> models.Device:
     device = get_device(db, store_id, device_id)
-    updated_fields = payload.dict(exclude_unset=True)
+    updated_fields = payload.model_dump(exclude_unset=True)
     for key, value in updated_fields.items():
         setattr(device, key, value)
     db.commit()

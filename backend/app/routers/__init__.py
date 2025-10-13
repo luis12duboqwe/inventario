@@ -1,5 +1,15 @@
 """Colección de routers disponibles."""
-from . import auth, backups, health, inventory, reports, stores, sync, users  # noqa: F401
+from . import (
+    auth,
+    backups,
+    health,
+    inventory,
+    reports,
+    stores,
+    sync,
+    updates,
+    users,
+)  # noqa: F401
 
 __all__ = [
     "auth",
@@ -9,8 +19,6 @@ __all__ = [
     "reports",
     "stores",
     "sync",
+    "updates",
     "users",
 ]
-from . import auth, health, inventory, reports, stores, sync, users  # noqa: F401
-
-__all__ = ["auth", "health", "inventory", "reports", "stores", "sync", "users"]

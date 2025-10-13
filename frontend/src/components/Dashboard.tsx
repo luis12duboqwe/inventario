@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import type { BackupJob, Device, MovementInput, Store, Summary, ReleaseInfo, UpdateStatus } from "../api";
 import {
-  BackupJob,
-  Device,
-  MovementInput,
-  Store,
-  Summary,
   downloadInventoryPdf,
   fetchBackupHistory,
   getDevices,
   getStores,
   getSummary,
+  getReleaseHistory,
+  getUpdateStatus,
   registerMovement,
   runBackup,
   triggerSync,
@@ -32,6 +30,8 @@ function Dashboard({ token }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [backupHistory, setBackupHistory] = useState<BackupJob[]>([]);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [releaseHistory, setReleaseHistory] = useState<ReleaseInfo[]>([]);
 
   const selectedStore = useMemo(
     () => stores.find((store) => store.id === selectedStoreId) ?? null,
@@ -42,14 +42,18 @@ function Dashboard({ token }: Props) {
     const fetchInitial = async () => {
       try {
         setLoading(true);
-        const [storesData, summaryData, backupData] = await Promise.all([
+        const [storesData, summaryData, backupData, statusData, releasesData] = await Promise.all([
           getStores(token),
           getSummary(token),
           fetchBackupHistory(token),
+          getUpdateStatus(token),
+          getReleaseHistory(token),
         ]);
         setStores(storesData);
         setSummary(summaryData);
         setBackupHistory(backupData);
+        setUpdateStatus(statusData);
+        setReleaseHistory(releasesData);
         if (storesData.length > 0) {
           setSelectedStoreId(storesData[0].id);
           const devicesData = await getDevices(token, storesData[0].id);
@@ -131,6 +135,7 @@ function Dashboard({ token }: Props) {
     [summary]
   );
   const lastBackup = backupHistory.at(0) ?? null;
+  const latestRelease = updateStatus?.latest_release ?? null;
 
   return (
     <div className="card" style={{ flex: 1 }}>
@@ -159,6 +164,15 @@ function Dashboard({ token }: Props) {
               ? new Date(lastBackup.executed_at).toLocaleString("es-MX")
               : "Aún no se generan respaldos"}
           </span>
+        </div>
+        <div className="status-card">
+          <h3>Versión instalada</h3>
+          <span>{updateStatus?.current_version ?? "Desconocida"}</span>
+          {updateStatus?.is_update_available ? (
+            <p className="badge warning">Actualizar a {updateStatus.latest_version}</p>
+          ) : (
+            <p className="badge success">Sistema actualizado</p>
+          )}
         </div>
       </div>
 
@@ -215,6 +229,30 @@ function Dashboard({ token }: Props) {
             </ul>
           )}
         </div>
+      </section>
+
+      <section className="card">
+        <h2>Historial de versiones</h2>
+        {latestRelease ? (
+          <p>
+            Última liberación corporativa:
+            <strong> {latestRelease.version}</strong> · {new Date(latestRelease.release_date).toLocaleDateString("es-MX")} ·
+            <a href={latestRelease.download_url} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>
+              Descargar instalador
+            </a>
+          </p>
+        ) : (
+          <p>No se han publicado versiones en el feed.</p>
+        )}
+        {releaseHistory.length > 0 ? (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {releaseHistory.map((release) => (
+              <li key={release.version} style={{ marginBottom: 8 }}>
+                <strong>{release.version}</strong> · {new Date(release.release_date).toLocaleDateString("es-MX")} · {release.notes}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
     </div>
   );

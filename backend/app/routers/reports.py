@@ -5,7 +5,6 @@ from io import BytesIO
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas

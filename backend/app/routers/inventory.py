@@ -73,7 +73,10 @@ def inventory_summary(
     stores = crud.list_inventory_summary(db)
     summaries: list[schemas.InventorySummary] = []
     for store in stores:
-        devices = [schemas.DeviceResponse.from_orm(device) for device in store.devices]
+        devices = [
+            schemas.DeviceResponse.model_validate(device, from_attributes=True)
+            for device in store.devices
+        ]
         total_items = sum(device.quantity for device in store.devices)
         summaries.append(
             schemas.InventorySummary(

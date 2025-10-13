@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import os
-from pydantic import BaseModel, Field, field_validator
-from pydantic import ValidationInfo
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
 class Settings(BaseModel):
@@ -14,7 +14,7 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("SOFTMOBILE_DATABASE_URL", "sqlite:///./softmobile.db")
     )
     title: str = Field(default="Softmobile Central")
-    version: str = Field(default="0.1.0")
+    version: str = Field(default="2.2.0")
     secret_key: str = Field(
         default_factory=lambda: os.getenv(
             "SOFTMOBILE_SECRET_KEY",
@@ -40,6 +40,12 @@ class Settings(BaseModel):
     backup_directory: str = Field(
         default_factory=lambda: os.getenv("SOFTMOBILE_BACKUP_DIR", "./backups")
     )
+    update_feed_path: str = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_UPDATE_FEED_PATH", "./docs/releases.json")
+    )
+    allowed_origins: list[str] = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_ALLOWED_ORIGINS", "http://127.0.0.1:5173")
+    )
 
     @field_validator("access_token_expire_minutes", "sync_interval_seconds", "backup_interval_seconds")
     @classmethod
@@ -47,6 +53,15 @@ class Settings(BaseModel):
         if value <= 0:
             raise ValueError(f"{info.field_name} debe ser mayor que cero")
         return value
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        if isinstance(value, (list, tuple)):
+            return [str(origin).strip() for origin in value if str(origin).strip()]
+        raise ValueError("allowed_origins debe ser una lista de orígenes válidos")
 
 
 settings = Settings()

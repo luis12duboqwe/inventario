@@ -4,18 +4,15 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import crud
 from .config import settings
 from .database import Base, SessionLocal, engine
-from .routers import auth, backups, health, inventory, reports, stores, sync, users
+from .routers import auth, backups, health, inventory, reports, stores, sync, updates, users
 from .services.scheduler import BackgroundScheduler
 
 _scheduler: BackgroundScheduler | None = None
-from .routers import auth, health, inventory, reports, stores, sync, users
-from .services.sync import SyncScheduler
-
-_scheduler: SyncScheduler | None = None
 
 
 def _bootstrap_defaults() -> None:
@@ -32,7 +29,6 @@ async def lifespan(_: FastAPI):
     global _scheduler
     if settings.enable_background_scheduler:
         _scheduler = BackgroundScheduler()
-        _scheduler = SyncScheduler(settings.sync_interval_seconds)
         await _scheduler.start()
     try:
         yield
@@ -43,12 +39,21 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title=settings.title, version=settings.version, lifespan=lifespan)
+    if settings.allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.allowed_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(stores.router)
     app.include_router(inventory.router)
     app.include_router(sync.router)
+    app.include_router(updates.router)
     app.include_router(backups.router)
     app.include_router(reports.router)
     return app

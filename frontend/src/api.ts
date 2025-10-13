@@ -42,6 +42,20 @@ export type BackupJob = {
   notes?: string | null;
 };
 
+export type ReleaseInfo = {
+  version: string;
+  release_date: string;
+  notes: string;
+  download_url: string;
+};
+
+export type UpdateStatus = {
+  current_version: string;
+  latest_version: string | null;
+  is_update_available: boolean;
+  latest_release: ReleaseInfo | null;
+};
+
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
@@ -151,4 +165,12 @@ export async function downloadInventoryPdf(token: string): Promise<void> {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+export function getUpdateStatus(token: string): Promise<UpdateStatus> {
+  return request<UpdateStatus>("/updates/status", { method: "GET" }, token);
+}
+
+export function getReleaseHistory(token: string, limit = 10): Promise<ReleaseInfo[]> {
+  return request<ReleaseInfo[]>(`/updates/history?limit=${limit}`, { method: "GET" }, token);
 }
