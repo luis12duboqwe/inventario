@@ -8,6 +8,7 @@ import type {
   Summary,
   ReleaseInfo,
   UpdateStatus,
+  SyncOutboxEntry,
 } from "../api";
 import {
   downloadInventoryPdf,
@@ -21,6 +22,8 @@ import {
   registerMovement,
   runBackup,
   triggerSync,
+  listSyncOutbox,
+  retrySyncOutbox,
 } from "../api";
 import InventoryTable from "./InventoryTable";
 import MovementForm from "./MovementForm";
@@ -61,6 +64,8 @@ function Dashboard({ token }: Props) {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [releaseHistory, setReleaseHistory] = useState<ReleaseInfo[]>([]);
   const [metrics, setMetrics] = useState<InventoryMetrics | null>(null);
+  const [outbox, setOutbox] = useState<SyncOutboxEntry[]>([]);
+  const [outboxError, setOutboxError] = useState<string | null>(null);
 
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
@@ -123,6 +128,24 @@ function Dashboard({ token }: Props) {
     loadDevices();
   }, [selectedStoreId, token]);
 
+  useEffect(() => {
+    const loadOutbox = async () => {
+      if (!enableHybridPrep) {
+        setOutbox([]);
+        return;
+      }
+      try {
+        const entries = await listSyncOutbox(token);
+        setOutbox(entries);
+        setOutboxError(null);
+      } catch (err) {
+        setOutboxError(err instanceof Error ? err.message : "No fue posible consultar la cola de sincronización");
+      }
+    };
+
+    loadOutbox();
+  }, [enableHybridPrep, token]);
+
   const refreshSummary = async () => {
     const [summaryData, metricsData] = await Promise.all([
       getSummary(token),
@@ -172,6 +195,37 @@ function Dashboard({ token }: Props) {
       setMessage("Respaldo generado y almacenado en el servidor central");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo generar el respaldo");
+    }
+  };
+
+  const refreshOutbox = async () => {
+    if (!enableHybridPrep) {
+      return;
+    }
+    try {
+      const entries = await listSyncOutbox(token);
+      setOutbox(entries);
+      setOutboxError(null);
+    } catch (err) {
+      setOutboxError(err instanceof Error ? err.message : "No se pudo actualizar la cola local");
+    }
+  };
+
+  const handleRetryOutbox = async () => {
+    if (!enableHybridPrep || outbox.length === 0) {
+      return;
+    }
+    try {
+      setOutboxError(null);
+      const updated = await retrySyncOutbox(
+        token,
+        outbox.map((entry) => entry.id),
+        "Reintento manual desde panel"
+      );
+      setOutbox(updated);
+      setMessage("Eventos listos para reintento local");
+    } catch (err) {
+      setOutboxError(err instanceof Error ? err.message : "No se pudo reagendar la cola local");
     }
   };
 

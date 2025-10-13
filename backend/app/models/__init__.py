@@ -44,6 +44,14 @@ class SyncMode(str, enum.Enum):
     MANUAL = "manual"
 
 
+class SyncOutboxStatus(str, enum.Enum):
+    """Estados posibles de un evento en la cola de sincronización."""
+
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
 class BackupMode(str, enum.Enum):
     """Origen del respaldo generado."""
 
@@ -355,4 +363,6 @@ __all__ = [
     "StoreMembership",
     "User",
     "UserRole",
+    "UserTOTPSecret",
+    "ActiveSession",
 ]

@@ -15,6 +15,7 @@ from . import (  # noqa: F401
 )
 
 __all__ = [
+    "audit",
     "auth",
     "backups",
     "health",

@@ -157,6 +157,106 @@ def set_user_roles(db: Session, user: models.User, role_names: Iterable[str]) ->
     return user
 
 
+def get_totp_secret(db: Session, user_id: int) -> models.UserTOTPSecret | None:
+    statement = select(models.UserTOTPSecret).where(models.UserTOTPSecret.user_id == user_id)
+    return db.scalars(statement).first()
+
+
+def provision_totp_secret(db: Session, user_id: int, secret: str) -> models.UserTOTPSecret:
+    record = get_totp_secret(db, user_id)
+    if record is None:
+        record = models.UserTOTPSecret(user_id=user_id, secret=secret, is_active=False)
+        db.add(record)
+    else:
+        record.secret = secret
+        record.is_active = False
+        record.activated_at = None
+        record.last_verified_at = None
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def activate_totp_secret(db: Session, user_id: int) -> models.UserTOTPSecret:
+    record = get_totp_secret(db, user_id)
+    if record is None:
+        raise LookupError("totp_not_provisioned")
+    record.is_active = True
+    now = datetime.utcnow()
+    record.activated_at = now
+    record.last_verified_at = now
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def deactivate_totp_secret(db: Session, user_id: int) -> None:
+    record = get_totp_secret(db, user_id)
+    if record is None:
+        return
+    record.is_active = False
+    db.commit()
+
+
+def update_totp_last_verified(db: Session, user_id: int) -> None:
+    record = get_totp_secret(db, user_id)
+    if record is None:
+        return
+    record.last_verified_at = datetime.utcnow()
+    db.commit()
+
+
+def create_active_session(db: Session, user_id: int, *, session_token: str) -> models.ActiveSession:
+    session = models.ActiveSession(user_id=user_id, session_token=session_token)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def get_active_session_by_token(db: Session, session_token: str) -> models.ActiveSession | None:
+    statement = select(models.ActiveSession).where(models.ActiveSession.session_token == session_token)
+    return db.scalars(statement).first()
+
+
+def mark_session_used(db: Session, session_token: str) -> models.ActiveSession | None:
+    session = get_active_session_by_token(db, session_token)
+    if session is None or session.revoked_at is not None:
+        return None
+    session.last_used_at = datetime.utcnow()
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def list_active_sessions(db: Session, *, user_id: int | None = None) -> list[models.ActiveSession]:
+    statement = select(models.ActiveSession).order_by(models.ActiveSession.created_at.desc())
+    if user_id is not None:
+        statement = statement.where(models.ActiveSession.user_id == user_id)
+    return list(db.scalars(statement))
+
+
+def revoke_session(
+    db: Session,
+    session_id: int,
+    *,
+    revoked_by_id: int | None,
+    reason: str,
+) -> models.ActiveSession:
+    statement = select(models.ActiveSession).where(models.ActiveSession.id == session_id)
+    session = db.scalars(statement).first()
+    if session is None:
+        raise LookupError("session_not_found")
+    if session.revoked_at is not None:
+        return session
+    session.revoked_at = datetime.utcnow()
+    session.revoked_by_id = revoked_by_id
+    session.revoke_reason = reason
+    db.commit()
+    db.refresh(session)
+    return session
+
+
 def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: int | None = None) -> models.Store:
     store = models.Store(**payload.model_dump())
     db.add(store)
@@ -457,6 +557,159 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     }
 
 
+def calculate_rotation_analytics(db: Session) -> list[dict[str, object]]:
+    sale_stats = (
+        select(
+            models.SaleItem.device_id,
+            func.sum(models.SaleItem.quantity).label("sold_units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .group_by(models.SaleItem.device_id)
+    )
+    purchase_stats = (
+        select(
+            models.PurchaseOrderItem.device_id,
+            func.sum(models.PurchaseOrderItem.quantity_received).label("received_units"),
+        )
+        .group_by(models.PurchaseOrderItem.device_id)
+    )
+
+    sold_map = {row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)}
+    received_map = {row.device_id: int(row.received_units or 0) for row in db.execute(purchase_stats)}
+
+    device_stmt = (
+        select(
+            models.Device.id,
+            models.Device.sku,
+            models.Device.name,
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+        )
+        .join(models.Store, models.Store.id == models.Device.store_id)
+        .order_by(models.Store.name.asc(), models.Device.name.asc())
+    )
+    results: list[dict[str, object]] = []
+    for row in db.execute(device_stmt):
+        sold_units = sold_map.get(row.id, 0)
+        received_units = received_map.get(row.id, 0)
+        denominator = received_units if received_units > 0 else max(sold_units, 1)
+        rotation_rate = sold_units / denominator if denominator else 0
+        results.append(
+            {
+                "store_id": row.store_id,
+                "store_name": row.store_name,
+                "device_id": row.id,
+                "sku": row.sku,
+                "name": row.name,
+                "sold_units": sold_units,
+                "received_units": received_units,
+                "rotation_rate": float(round(rotation_rate, 2)),
+            }
+        )
+    return results
+
+
+def calculate_aging_analytics(db: Session) -> list[dict[str, object]]:
+    now_date = datetime.utcnow().date()
+    device_stmt = (
+        select(
+            models.Device.id,
+            models.Device.sku,
+            models.Device.name,
+            models.Device.fecha_compra,
+            models.Device.quantity,
+            models.Store.name.label("store_name"),
+        )
+        .join(models.Store, models.Store.id == models.Device.store_id)
+    )
+    metrics: list[dict[str, object]] = []
+    for row in db.execute(device_stmt):
+        purchase_date = row.fecha_compra
+        days_in_stock = (now_date - purchase_date).days if purchase_date else 0
+        metrics.append(
+            {
+                "device_id": row.id,
+                "sku": row.sku,
+                "name": row.name,
+                "store_name": row.store_name,
+                "days_in_stock": max(days_in_stock, 0),
+                "quantity": int(row.quantity or 0),
+            }
+        )
+    metrics.sort(key=lambda item: item["days_in_stock"], reverse=True)
+    return metrics
+
+
+def calculate_stockout_forecast(db: Session) -> list[dict[str, object]]:
+    sale_stats = (
+        select(
+            models.SaleItem.device_id,
+            func.sum(models.SaleItem.quantity).label("sold_units"),
+            func.min(models.Sale.created_at).label("first_sale"),
+            func.max(models.Sale.created_at).label("last_sale"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .group_by(models.SaleItem.device_id)
+    )
+    sales_map: dict[int, dict[str, object]] = {}
+    for row in db.execute(sale_stats):
+        sales_map[row.device_id] = {
+            "sold_units": int(row.sold_units or 0),
+            "first_sale": row.first_sale,
+            "last_sale": row.last_sale,
+        }
+
+    device_stmt = (
+        select(
+            models.Device.id,
+            models.Device.sku,
+            models.Device.name,
+            models.Device.quantity,
+            models.Store.name.label("store_name"),
+        )
+        .join(models.Store, models.Store.id == models.Device.store_id)
+    )
+    metrics: list[dict[str, object]] = []
+    now = datetime.utcnow()
+    for row in db.execute(device_stmt):
+        stats = sales_map.get(row.id)
+        quantity = int(row.quantity or 0)
+        if not stats or stats["sold_units"] <= 0:
+            metrics.append(
+                {
+                    "device_id": row.id,
+                    "sku": row.sku,
+                    "name": row.name,
+                    "store_name": row.store_name,
+                    "average_daily_sales": 0.0,
+                    "projected_days": None,
+                    "quantity": quantity,
+                }
+            )
+            continue
+
+        first_sale: datetime | None = stats["first_sale"]
+        last_sale: datetime | None = stats["last_sale"] or now
+        delta = (last_sale or now) - (first_sale or last_sale or now)
+        days = max(delta.days, 1)
+        avg_daily_sales = stats["sold_units"] / days
+        projected_days = int(quantity / avg_daily_sales) if avg_daily_sales > 0 else None
+        metrics.append(
+            {
+                "device_id": row.id,
+                "sku": row.sku,
+                "name": row.name,
+                "store_name": row.store_name,
+                "average_daily_sales": round(float(avg_daily_sales), 2),
+                "projected_days": projected_days if projected_days is None else max(projected_days, 0),
+                "quantity": quantity,
+            }
+        )
+
+    metrics.sort(key=lambda item: (item["projected_days"] is None, item["projected_days"] or 0))
+    return metrics
+
+
 def record_sync_session(
     db: Session,
     *,
@@ -501,12 +754,56 @@ def list_sync_sessions(db: Session, limit: int = 50) -> list[models.SyncSession]
     return list(db.scalars(statement))
 
 
-def list_audit_logs(db: Session, limit: int = 100) -> list[models.AuditLog]:
+def enqueue_sync_outbox(
+    db: Session,
+    *,
+    entity_type: str,
+    entity_id: str,
+    operation: str,
+    payload: dict[str, object],
+) -> models.SyncOutbox:
+    serialized = json.dumps(payload, ensure_ascii=False, default=str)
+    statement = select(models.SyncOutbox).where(
+        models.SyncOutbox.entity_type == entity_type,
+        models.SyncOutbox.entity_id == entity_id,
+    )
+    entry = db.scalars(statement).first()
+    if entry is None:
+        entry = models.SyncOutbox(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            operation=operation,
+            payload=serialized,
+            status=models.SyncOutboxStatus.PENDING,
+        )
+        db.add(entry)
+    else:
+        entry.operation = operation
+        entry.payload = serialized
+        entry.status = models.SyncOutboxStatus.PENDING
+        entry.attempt_count = 0
+        entry.error_message = None
+        entry.last_attempt_at = None
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+def list_sync_outbox(
+    db: Session,
+    *,
+    statuses: Iterable[models.SyncOutboxStatus] | None = None,
+    limit: int = 100,
+) -> list[models.SyncOutbox]:
     statement = (
-        select(models.AuditLog)
-        .order_by(models.AuditLog.created_at.desc())
+        select(models.SyncOutbox)
+        .order_by(models.SyncOutbox.updated_at.desc())
         .limit(limit)
     )
+    if statuses is not None:
+        status_tuple = tuple(statuses)
+        if status_tuple:
+            statement = statement.where(models.SyncOutbox.status.in_(status_tuple))
     return list(db.scalars(statement))
 
 

@@ -310,12 +310,46 @@ class UserResponse(UserBase):
 
 class TokenResponse(BaseModel):
     access_token: str
+    session_id: int
     token_type: str = "bearer"
 
 
 class TokenPayload(BaseModel):
     sub: str
     exp: int
+    jti: str
+
+
+class TOTPSetupResponse(BaseModel):
+    secret: str
+    otpauth_url: str
+
+
+class TOTPActivateRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class TOTPStatusResponse(BaseModel):
+    is_active: bool
+    activated_at: datetime | None
+    last_verified_at: datetime | None
+
+
+class ActiveSessionResponse(BaseModel):
+    id: int
+    user_id: int
+    session_token: str
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+    revoked_by_id: int | None
+    revoke_reason: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SessionRevokeRequest(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=255)
 
 
 class MovementBase(BaseModel):
@@ -401,6 +435,48 @@ class InventoryMetricsResponse(BaseModel):
     low_stock_devices: list[LowStockDevice]
 
 
+class RotationMetric(BaseModel):
+    store_id: int
+    store_name: str
+    device_id: int
+    sku: str
+    name: str
+    sold_units: int
+    received_units: int
+    rotation_rate: float
+
+
+class AnalyticsRotationResponse(BaseModel):
+    items: list[RotationMetric]
+
+
+class AgingMetric(BaseModel):
+    device_id: int
+    sku: str
+    name: str
+    store_name: str
+    days_in_stock: int
+    quantity: int
+
+
+class AnalyticsAgingResponse(BaseModel):
+    items: list[AgingMetric]
+
+
+class StockoutForecastMetric(BaseModel):
+    device_id: int
+    sku: str
+    name: str
+    store_name: str
+    average_daily_sales: float
+    projected_days: int | None
+    quantity: int
+
+
+class AnalyticsForecastResponse(BaseModel):
+    items: list[StockoutForecastMetric]
+
+
 class SyncSessionResponse(BaseModel):
     id: int
     store_id: int | None
@@ -416,6 +492,40 @@ class SyncSessionResponse(BaseModel):
 
 class SyncRequest(BaseModel):
     store_id: int | None = Field(default=None, ge=1)
+
+
+class SyncOutboxEntryResponse(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: str
+    operation: str
+    payload: dict[str, Any]
+    attempt_count: int
+    last_attempt_at: datetime | None
+    status: SyncOutboxStatus
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _parse_payload(cls, value: Any) -> dict[str, Any]:
+        if isinstance(value, str):
+            try:
+                import json
+
+                return json.loads(value)
+            except Exception:  # pragma: no cover - fallback to empty payload
+                return {}
+        if isinstance(value, dict):
+            return value
+        return {}
+
+
+class SyncOutboxReplayRequest(BaseModel):
+    ids: list[int] = Field(..., min_length=1)
 
 
 class AuditLogResponse(BaseModel):
@@ -727,6 +837,8 @@ __all__ = [
     "StoreUpdate",
     "StoreValueMetric",
     "SyncRequest",
+    "SyncOutboxEntryResponse",
+    "SyncOutboxReplayRequest",
     "SyncSessionResponse",
     "TokenPayload",
     "TokenResponse",

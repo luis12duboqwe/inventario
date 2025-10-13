@@ -20,7 +20,7 @@ def _auth_headers(client) -> dict[str, str]:
     )
     assert token_response.status_code == status.HTTP_200_OK
     token = token_response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {token}", "X-Reason": "Operacion de prueba"}
 
 
 def test_inventory_flow(client) -> None:

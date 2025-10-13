@@ -10,6 +10,7 @@ from .. import crud, schemas
 from ..config import settings
 from ..core.roles import GESTION_ROLES, REPORTE_ROLES
 from ..database import get_db
+from ..routers.dependencies import require_reason
 from ..security import require_roles
 
 router = APIRouter(prefix="/inventory", tags=["inventario"])
@@ -24,6 +25,7 @@ def register_movement(
     payload: schemas.MovementCreate,
     store_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
@@ -54,6 +56,7 @@ def update_device(
     store_id: int = Path(..., ge=1),
     device_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
