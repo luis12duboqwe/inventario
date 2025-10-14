@@ -35,6 +35,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Gestión visual de usuarios corporativos** con checkboxes para roles `ADMIN`/`GERENTE`/`OPERADOR`, control de activación y validación de motivos antes de persistir cambios.
 - **Historial híbrido por tienda** con cola de reintentos automáticos (`/sync/history`) y middleware de acceso que bloquea rutas sensibles a usuarios sin privilegios.
 - **Experiencia UI responsiva** con toasts contextuales, animaciones suaves y selector de tema claro/oscuro que mantiene el modo oscuro como predeterminado.
+- **Interfaz animada Softmobile** con pantalla de bienvenida en movimiento, iconografía por módulo, toasts de sincronización modernizados y modo táctil optimizado para el POS, impulsados por `framer-motion`.
 
 ## Estructura del repositorio
 
@@ -186,6 +187,14 @@ El módulo POS complementa el flujo de compras/ventas con un carrito dinámico, 
 - `POSPayment.tsx`: controla método de pago, desglose multiforma, selección de cliente/sesión de caja, descuento global y motivo corporativo antes de enviar la venta o guardar borradores.
 - `POSReceipt.tsx`: descarga o envía el PDF inmediatamente después de la venta.
 - `POSSettings.tsx`: define impuestos, prefijo de factura, impresora y productos frecuentes.
+
+### Experiencia visual renovada
+
+- **Bienvenida animada** con el logo Softmobile, tipografías Poppins/Inter precargadas y transición fluida hacia el formulario de acceso.
+- **Transiciones con Framer Motion** (`frontend` incluye la dependencia `framer-motion`) en el cambio de secciones, toasts y paneles para dar feedback inmediato.
+- **Menú con iconos** en el dashboard principal para identificar inventario, operaciones, analítica, seguridad, sincronización y usuarios.
+- **Toasts modernos** con indicadores visuales para sincronización, éxito y error; se desvanecen suavemente y pueden descartarse manualmente.
+- **Modo táctil para POS** que incrementa el tamaño de botones y campos cuando el dispositivo usa puntero táctil, facilitando la operación en tablets.
 
 ### Consideraciones operativas
 

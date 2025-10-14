@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import Dashboard from "./components/Dashboard";
 import LoginForm from "./components/LoginForm";
 import { Credentials, login } from "./api";
+import WelcomeHero from "./components/WelcomeHero";
 
 type ThemeMode = "dark" | "light";
 
@@ -56,49 +58,62 @@ function App() {
     setToken(null);
   };
 
-  if (!token) {
-    return (
-      <div className="app-root login-mode">
-        <main className="login-wrapper fade-in">
-          <section className="card brand-card">
-            <h1>Softmobile Inventario</h1>
-            <p>
-              Cliente corporativo para sincronizar existencias, capturar movimientos y generar respaldos con un solo
-              panel.
-            </p>
-            <p className="badge">Versión tienda · Tema {themeLabel}</p>
-            <button className="secondary" type="button" onClick={toggleTheme}>
-              Cambiar a tema {theme === "dark" ? "claro" : "oscuro"}
-            </button>
-          </section>
-          <section className="card login-card">
-            <h2 className="accent-title">Ingreso seguro</h2>
-            <LoginForm loading={loading} error={error} onSubmit={handleLogin} />
-          </section>
-        </main>
-      </div>
-    );
-  }
-
   return (
-    <div className="app-root">
-      <header className="topbar fade-in">
-        <div>
-          <h1>Softmobile Inventario</h1>
-          <p className="topbar-subtitle">Sesión activa para captura, reportes y sincronización multi‑tienda.</p>
-        </div>
-        <div className="topbar-controls">
-          <button className="secondary" type="button" onClick={toggleTheme} aria-pressed={theme === "light"}>
-            Tema {theme === "dark" ? "oscuro" : "claro"}
-          </button>
-          <button type="button" onClick={handleLogout}>
-            Cerrar sesión
-          </button>
-        </div>
-      </header>
-      <main className="app-container fade-in">
-        <Dashboard token={token} />
-      </main>
+    <div className={`app-root${!token ? " login-mode" : ""}`}>
+      <AnimatePresence mode="wait">
+        {!token ? (
+          <motion.main
+            key="login"
+            className="login-wrapper"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+          >
+            <WelcomeHero themeLabel={themeLabel} onToggleTheme={toggleTheme} activeTheme={theme} />
+            <motion.section
+              className="card login-card"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
+            >
+              <h2 className="accent-title">Ingreso seguro</h2>
+              <LoginForm loading={loading} error={error} onSubmit={handleLogin} />
+            </motion.section>
+          </motion.main>
+        ) : (
+          <motion.div
+            key="dashboard"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+          >
+            <header className="topbar">
+              <div>
+                <h1>Softmobile Inventario</h1>
+                <p className="topbar-subtitle">Sesión activa para captura, reportes y sincronización multi‑tienda.</p>
+              </div>
+              <div className="topbar-controls">
+                <button className="secondary" type="button" onClick={toggleTheme} aria-pressed={theme === "light"}>
+                  Tema {theme === "dark" ? "oscuro" : "claro"}
+                </button>
+                <button type="button" onClick={handleLogout}>
+                  Cerrar sesión
+                </button>
+              </div>
+            </header>
+            <motion.main
+              className="app-container"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+            >
+              <Dashboard token={token} />
+            </motion.main>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

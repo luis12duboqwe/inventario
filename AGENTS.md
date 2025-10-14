@@ -68,6 +68,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - El panel `UserManagement.tsx` permite asignar roles, alternar estados y exige motivos corporativos, protegido por middleware de acceso.
 - La API expone `/sync/history`, extiende la cola híbrida a POS, reparaciones y clientes, y registra reintentos automáticos con `requeue_failed_outbox_entries`.
 - Se documentó y probó el flujo offline híbrido con `backend/tests/test_sync_offline_mode.py` (tres sucursales).
+- Se modernizó la UI de tienda con pantalla de bienvenida animada, toasts renovados con iconografía, transiciones `framer-motion` entre secciones y modo táctil optimizado para el POS.
 
 ### Pasos de control iterativo (deben registrarse tras cada entrega)
 
