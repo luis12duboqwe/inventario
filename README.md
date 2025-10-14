@@ -306,6 +306,16 @@ pytest
 
 Las pruebas levantan una base SQLite en memoria, deshabilitan las tareas periódicas y cubren autenticación, inventario, sincronización, reportes y módulo de actualizaciones.
 
+### Entorno Conda para automatización CI
+
+Los *pipelines* corporativos utilizan `environment.yml` en la raíz para preparar un entorno reproducible. Si ejecutas las mismas verificaciones de manera local, puedes replicarlo con:
+
+```bash
+conda env update --file environment.yml --name base
+```
+
+El archivo referencia `requirements.txt`, por lo que cualquier dependencia nueva debe declararse primero allí para mantener la paridad entre desarrolladores y CI.
+
 ## Proceso de revisión continua
 
 - Revisa `docs/evaluacion_requerimientos.md` en cada iteración.
