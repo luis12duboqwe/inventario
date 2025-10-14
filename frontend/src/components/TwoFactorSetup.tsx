@@ -19,9 +19,19 @@ function TwoFactorSetup({ token }: Props) {
   const [status, setStatus] = useState<TOTPStatus | null>(null);
   const [setup, setSetup] = useState<TOTPSetup | null>(null);
   const [code, setCode] = useState("");
+  const [reason, setReason] = useState("");
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const ensureReason = (): string | null => {
+    const trimmed = reason.trim();
+    if (trimmed.length < 5) {
+      setError("Proporciona un motivo corporativo de al menos 5 caracteres.");
+      return null;
+    }
+    return trimmed;
+  };
 
   const loadStatus = async () => {
     try {
@@ -47,10 +57,14 @@ function TwoFactorSetup({ token }: Props) {
   }, [token]);
 
   const handleSetup = async () => {
+    const validReason = ensureReason();
+    if (!validReason) {
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      const response = await setupTotp(token);
+      const response = await setupTotp(token, validReason);
       setSetup(response);
       await loadStatus();
     } catch (err) {
@@ -66,10 +80,14 @@ function TwoFactorSetup({ token }: Props) {
       setError("Ingresa el código temporal para activar 2FA");
       return;
     }
+    const validReason = ensureReason();
+    if (!validReason) {
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      const response = await activateTotp(token, code);
+      const response = await activateTotp(token, code, validReason);
       setStatus(response);
       setSetup(null);
       setCode("");
@@ -81,10 +99,14 @@ function TwoFactorSetup({ token }: Props) {
   };
 
   const handleDisable = async () => {
+    const validReason = ensureReason();
+    if (!validReason) {
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      await disableTotp(token);
+      await disableTotp(token, validReason);
       await loadStatus();
       setSetup(null);
     } catch (err) {
@@ -95,10 +117,14 @@ function TwoFactorSetup({ token }: Props) {
   };
 
   const handleRevoke = async (sessionId: number) => {
+    const validReason = ensureReason();
+    if (!validReason) {
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      await revokeSession(token, sessionId, "Revocación manual desde el panel");
+      await revokeSession(token, sessionId, `${validReason} — revocación de sesión`);
       await loadSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible revocar la sesión");
@@ -123,6 +149,25 @@ function TwoFactorSetup({ token }: Props) {
           </p>
           {status?.activated_at && <p>Activado el: {new Date(status.activated_at).toLocaleString()}</p>}
           {status?.last_verified_at && <p>Última verificación: {new Date(status.last_verified_at).toLocaleString()}</p>}
+        </div>
+        <div className="reason-field">
+          <label>
+            <span>Motivo corporativo</span>
+            <input
+              type="text"
+              value={reason}
+              onChange={(event) => {
+                setReason(event.target.value);
+                if (error && event.target.value.trim().length >= 5) {
+                  setError(null);
+                }
+              }}
+              placeholder="Describe por qué modificas la configuración de 2FA"
+              minLength={5}
+              required
+            />
+          </label>
+          <p className="muted-text">Se reutilizará para activar, desactivar o revocar sesiones. Mínimo 5 caracteres.</p>
         </div>
         <div className="security-actions">
           <button className="btn" onClick={handleSetup} disabled={loading}>

@@ -84,14 +84,23 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
       setError("El origen y destino deben ser diferentes.");
       return;
     }
+    const trimmedReason = form.reason.trim();
+    if (trimmedReason.length < 5) {
+      setError("Indica un motivo corporativo de al menos 5 caracteres.");
+      return;
+    }
     try {
       setError(null);
-      await createTransferOrder(token, {
-        origin_store_id: form.originStoreId,
-        destination_store_id: form.destinationStoreId,
-        reason: form.reason || undefined,
-        items: [{ device_id: form.deviceId, quantity: form.quantity }],
-      });
+      await createTransferOrder(
+        token,
+        {
+          origin_store_id: form.originStoreId,
+          destination_store_id: form.destinationStoreId,
+          reason: trimmedReason,
+          items: [{ device_id: form.deviceId, quantity: form.quantity }],
+        },
+        trimmedReason
+      );
       setMessage("Transferencia registrada correctamente");
       setForm({ ...initialForm, originStoreId: form.originStoreId });
       await refreshTransfers(form.originStoreId);
@@ -105,15 +114,19 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
     action: "dispatch" | "receive" | "cancel",
     transfer: TransferOrder
   ) => {
-    const reason = window.prompt("Motivo de la operación", "");
+    const reason = window.prompt("Motivo de la operación", "")?.trim();
+    if (!reason || reason.length < 5) {
+      setError("Proporciona un motivo corporativo válido (mínimo 5 caracteres).");
+      return;
+    }
     try {
       setError(null);
       if (action === "dispatch") {
-        await dispatchTransferOrder(token, transfer.id, { reason: reason || undefined });
+        await dispatchTransferOrder(token, transfer.id, { reason }, reason);
       } else if (action === "receive") {
-        await receiveTransferOrder(token, transfer.id, { reason: reason || undefined });
+        await receiveTransferOrder(token, transfer.id, { reason }, reason);
       } else {
-        await cancelTransferOrder(token, transfer.id, { reason: reason || undefined });
+        await cancelTransferOrder(token, transfer.id, { reason }, reason);
       }
       await refreshTransfers(form.originStoreId);
       onRefreshInventory?.();
@@ -190,6 +203,8 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
                 value={form.reason}
                 onChange={(event) => updateForm({ reason: event.target.value })}
                 placeholder="Motivo operativo"
+                minLength={5}
+                required
               />
             </label>
           </div>
