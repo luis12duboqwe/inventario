@@ -781,20 +781,28 @@ export function getTotpStatus(token: string): Promise<TOTPStatus> {
   return request<TOTPStatus>("/security/2fa/status", { method: "GET" }, token);
 }
 
-export function setupTotp(token: string): Promise<TOTPSetup> {
-  return request<TOTPSetup>("/security/2fa/setup", { method: "POST" }, token);
-}
-
-export function activateTotp(token: string, code: string): Promise<TOTPStatus> {
-  return request<TOTPStatus>(
-    "/security/2fa/activate",
-    { method: "POST", body: JSON.stringify({ code }) },
+export function setupTotp(token: string, reason: string): Promise<TOTPSetup> {
+  return request<TOTPSetup>(
+    "/security/2fa/setup",
+    { method: "POST", headers: { "X-Reason": reason } },
     token
   );
 }
 
-export function disableTotp(token: string): Promise<void> {
-  return request<void>("/security/2fa/disable", { method: "POST" }, token);
+export function activateTotp(token: string, code: string, reason: string): Promise<TOTPStatus> {
+  return request<TOTPStatus>(
+    "/security/2fa/activate",
+    { method: "POST", body: JSON.stringify({ code }), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function disableTotp(token: string, reason: string): Promise<void> {
+  return request<void>(
+    "/security/2fa/disable",
+    { method: "POST", headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function listActiveSessions(token: string, userId?: number): Promise<ActiveSession[]> {
