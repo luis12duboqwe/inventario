@@ -552,33 +552,6 @@ class SaleReturn(Base):
     processed_by: Mapped[User | None] = relationship("User")
 
 
-class RepairOrder(Base):
-    __tablename__ = "repair_orders"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    cliente: Mapped[str] = mapped_column(String(120), nullable=False)
-    dispositivo: Mapped[str] = mapped_column(String(160), nullable=False)
-    tipo_dano: Mapped[str] = mapped_column(String(255), nullable=False)
-    tecnico: Mapped[str] = mapped_column(String(120), nullable=False)
-    estado: Mapped[RepairStatus] = mapped_column(
-        Enum(RepairStatus, name="repair_status"), nullable=False, default=RepairStatus.PENDIENTE
-    )
-    costo: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
-    piezas_usadas: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    fecha_inicio: Mapped[date] = mapped_column(Date, nullable=False)
-    fecha_entrega: Mapped[date | None] = mapped_column(Date, nullable=True)
-    notas: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    store: Mapped[Store] = relationship("Store", backref="repair_orders")
-
-
 class POSConfig(Base):
     __tablename__ = "pos_configs"
 

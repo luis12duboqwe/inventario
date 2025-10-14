@@ -46,7 +46,6 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "sale": models.SyncOutboxPriority.HIGH,
     "transfer_order": models.SyncOutboxPriority.HIGH,
     "purchase_order": models.SyncOutboxPriority.NORMAL,
-    "repair_order": models.SyncOutboxPriority.NORMAL,
     "device": models.SyncOutboxPriority.NORMAL,
     "inventory": models.SyncOutboxPriority.NORMAL,
     "store": models.SyncOutboxPriority.LOW,

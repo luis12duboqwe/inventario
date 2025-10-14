@@ -51,11 +51,9 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 
 **Próximos pasos**
 
-1. Integrar en el frontend el nuevo flujo de reparaciones (tablas, formularios, PDF) y extender la cola híbrida para priorizar `repair_orders` sin romper compatibilidad.
-2. Diseñar los módulos de clientes/proveedores y permisos visuales para la siguiente iteración, manteniendo la documentación actualizada.
-3. Supervisar métricas híbridas y preparar mejoras de resolución de conflictos para nuevas entidades planeadas en v2.3.
-4. Ampliar analítica con comparativos entre sucursales y nuevos formatos de exportación en la siguiente iteración.
-5. Documentar lineamientos de soporte remoto para despliegues 2FA y sincronización distribuida.
+1. Supervisar métricas híbridas y preparar mejoras de resolución de conflictos para nuevas entidades planeadas en v2.3.
+2. Ampliar analítica con comparativos entre sucursales y nuevos formatos de exportación en la siguiente iteración.
+3. Documentar lineamientos de soporte remoto para despliegues 2FA y sincronización distribuida.
 
 ### Pasos de control iterativo (deben registrarse tras cada entrega)
 
