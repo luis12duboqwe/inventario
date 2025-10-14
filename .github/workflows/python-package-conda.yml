@@ -20,7 +20,15 @@ jobs:
         echo $CONDA/bin >> $GITHUB_PATH
     - name: Install dependencies
       run: |
-        conda env update --file environment.yml --name base
+        set -eux
+        if [ -f environment.yml ]; then
+          echo "Usando environment.yml corporativo"
+          conda env update --file environment.yml --name base
+        else
+          echo "environment.yml no encontrado, instalando dependencias con pip"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        fi
     - name: Lint with flake8
       run: |
         conda install flake8

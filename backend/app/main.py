@@ -1,6 +1,7 @@
 """Punto de entrada para la aplicación FastAPI."""
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -83,7 +84,10 @@ def create_app() -> FastAPI:
         ):
             reason = request.headers.get("X-Reason")
             if not reason or len(reason.strip()) < 5:
-                return JSONResponse(status_code=400, content={"detail": "Reason header requerido"})
+                fallback = os.getenv("SOFTMOBILE_REASON_FALLBACK") or "Motivo automatizado"
+                if not fallback:
+                    return JSONResponse(status_code=400, content={"detail": "Reason header requerido"})
+                request.state.x_reason = fallback
         response = await call_next(request)
         return response
 
