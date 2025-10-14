@@ -11,6 +11,8 @@
 9. **Finalización completa**: cada vez que leas este archivo o el `README.md`, asegúrate de volver a analizar los requisitos empresariales y realizar los ajustes pendientes hasta que el sistema esté totalmente funcional y listo para producción.
 10. **Actualizaciones**: mantén el feed `docs/releases.json` y el módulo `/updates` al día con las versiones publicadas; cualquier cambio de versión debe reflejarse en `Settings.version`, documentación y pruebas.
 11. **Valuación y métricas**: cuida que el campo `unit_price`, el cálculo de `inventory_value` y el endpoint `/reports/metrics` se mantengan coherentes en backend, frontend, reportes PDF y pruebas.
+12. **Clientes y proveedores**: cualquier ajuste a `Customers.tsx`/`Suppliers.tsx` debe conservar historial, exportación CSV, control de deuda y motivo corporativo (`X-Reason`).
+13. **Reparaciones y POS avanzado**: mantén alineados `RepairOrders.tsx` y el POS con sesiones de caja, ventas a crédito y desglose de pago; todo movimiento debe descontar inventario y registrar PDF.
 
 ## Mandato operativo vigente — Softmobile 2025 v2.2.0
 
@@ -54,6 +56,11 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 1. Supervisar métricas híbridas y preparar mejoras de resolución de conflictos para nuevas entidades planeadas en v2.3.
 2. Ampliar analítica con comparativos entre sucursales y nuevos formatos de exportación en la siguiente iteración.
 3. Documentar lineamientos de soporte remoto para despliegues 2FA y sincronización distribuida.
+
+### Bitácora de control — 15/02/2025
+
+- `pytest` ejecutado en la raíz con resultado exitoso tras la integración de POS avanzado, reparaciones y paneles corporativos de clientes/proveedores.
+- `npm --prefix frontend run build` completado en verde verificando la compilación del frontend con los nuevos módulos operativos.
 
 ### Pasos de control iterativo (deben registrarse tras cada entrega)
 

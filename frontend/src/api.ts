@@ -37,6 +37,123 @@ export type CatalogDevice = Device & { store_name: string };
 
 export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
 
+export type ContactHistoryEntry = {
+  timestamp: string;
+  note: string;
+};
+
+export type Customer = {
+  id: number;
+  name: string;
+  contact_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  outstanding_debt: number;
+  history: ContactHistoryEntry[];
+  last_interaction_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CustomerPayload = {
+  name: string;
+  contact_name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  outstanding_debt?: number;
+  history?: ContactHistoryEntry[];
+};
+
+export type Supplier = {
+  id: number;
+  name: string;
+  contact_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  outstanding_debt: number;
+  history: ContactHistoryEntry[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierPayload = {
+  name: string;
+  contact_name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  outstanding_debt?: number;
+  history?: ContactHistoryEntry[];
+};
+
+export type RepairOrderPart = {
+  id: number;
+  repair_order_id: number;
+  device_id: number;
+  quantity: number;
+  unit_cost: number;
+};
+
+export type RepairOrder = {
+  id: number;
+  store_id: number;
+  customer_id?: number | null;
+  customer_name?: string | null;
+  technician_name: string;
+  damage_type: string;
+  device_description?: string | null;
+  notes?: string | null;
+  status: "PENDIENTE" | "EN_PROCESO" | "LISTO" | "ENTREGADO";
+  labor_cost: number;
+  parts_cost: number;
+  total_cost: number;
+  inventory_adjusted: boolean;
+  opened_at: string;
+  updated_at: string;
+  delivered_at?: string | null;
+  parts: RepairOrderPart[];
+  status_color: string;
+};
+
+export type RepairOrderPayload = {
+  store_id: number;
+  customer_id?: number | null;
+  customer_name?: string | null;
+  technician_name: string;
+  damage_type: string;
+  device_description?: string;
+  notes?: string;
+  labor_cost?: number;
+  parts?: { device_id: number; quantity: number; unit_cost?: number }[];
+};
+
+export type RepairOrderUpdatePayload = Partial<RepairOrderPayload> & {
+  status?: RepairOrder["status"];
+};
+
+export type CashSession = {
+  id: number;
+  store_id: number;
+  status: "ABIERTO" | "CERRADO";
+  opening_amount: number;
+  closing_amount: number;
+  expected_amount: number;
+  difference_amount: number;
+  payment_breakdown: Record<string, number>;
+  notes?: string | null;
+  opened_by_id?: number | null;
+  closed_by_id?: number | null;
+  opened_at: string;
+  closed_at?: string | null;
+};
+
 export type SaleItem = {
   id: number;
   sale_id: number;
@@ -60,6 +177,7 @@ export type SaleReturn = {
 export type Sale = {
   id: number;
   store_id: number;
+  customer_id?: number | null;
   customer_name?: string | null;
   payment_method: PaymentMethod;
   discount_percent: number;
@@ -69,6 +187,9 @@ export type Sale = {
   notes?: string | null;
   created_at: string;
   performed_by_id?: number | null;
+  cash_session_id?: number | null;
+  customer?: Customer | null;
+  cash_session?: CashSession | null;
   items: SaleItem[];
   returns: SaleReturn[];
 };
@@ -78,6 +199,7 @@ export type SaleCreateInput = {
   payment_method: PaymentMethod;
   items: { device_id: number; quantity: number; discount_percent?: number }[];
   discount_percent?: number;
+  customer_id?: number;
   customer_name?: string;
   notes?: string;
 };
@@ -132,17 +254,22 @@ export type PosCartItemInput = {
   discount_percent?: number;
 };
 
+export type PaymentBreakdown = Partial<Record<PaymentMethod, number>>;
+
 export type PosSalePayload = {
   store_id: number;
   payment_method: PaymentMethod;
   items: PosCartItemInput[];
   discount_percent?: number;
+  customer_id?: number;
   customer_name?: string;
   notes?: string;
   confirm?: boolean;
   save_as_draft?: boolean;
   draft_id?: number | null;
   apply_taxes?: boolean;
+  cash_session_id?: number | null;
+  payment_breakdown?: PaymentBreakdown;
 };
 
 export type PosDraft = {
@@ -159,6 +286,8 @@ export type PosSaleResponse = {
   draft?: PosDraft | null;
   receipt_url?: string | null;
   warnings: string[];
+  cash_session_id?: number | null;
+  payment_breakdown?: PaymentBreakdown;
 };
 
 export type PosConfig = {
@@ -592,6 +721,171 @@ export function registerPurchaseReturn(
   );
 }
 
+export function listCustomers(
+  token: string,
+  query?: string,
+  limit = 100
+): Promise<Customer[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (query) {
+    params.append("q", query);
+  }
+  return request<Customer[]>(`/customers?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function exportCustomersCsv(token: string, query?: string): Promise<Blob> {
+  const params = new URLSearchParams({ export: "csv" });
+  if (query) {
+    params.append("q", query);
+  }
+  return request<Blob>(`/customers?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function createCustomer(
+  token: string,
+  payload: CustomerPayload,
+  reason: string
+): Promise<Customer> {
+  return request<Customer>(
+    "/customers",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function updateCustomer(
+  token: string,
+  customerId: number,
+  payload: Partial<CustomerPayload>,
+  reason: string
+): Promise<Customer> {
+  return request<Customer>(
+    `/customers/${customerId}`,
+    { method: "PUT", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function deleteCustomer(token: string, customerId: number, reason: string): Promise<void> {
+  return request<void>(
+    `/customers/${customerId}`,
+    { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listSuppliers(
+  token: string,
+  query?: string,
+  limit = 100
+): Promise<Supplier[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (query) {
+    params.append("q", query);
+  }
+  return request<Supplier[]>(`/suppliers?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function exportSuppliersCsv(token: string, query?: string): Promise<Blob> {
+  const params = new URLSearchParams({ export: "csv" });
+  if (query) {
+    params.append("q", query);
+  }
+  return request<Blob>(`/suppliers?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function createSupplier(
+  token: string,
+  payload: SupplierPayload,
+  reason: string
+): Promise<Supplier> {
+  return request<Supplier>(
+    "/suppliers",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function updateSupplier(
+  token: string,
+  supplierId: number,
+  payload: Partial<SupplierPayload>,
+  reason: string
+): Promise<Supplier> {
+  return request<Supplier>(
+    `/suppliers/${supplierId}`,
+    { method: "PUT", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function deleteSupplier(token: string, supplierId: number, reason: string): Promise<void> {
+  return request<void>(
+    `/suppliers/${supplierId}`,
+    { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listRepairOrders(
+  token: string,
+  params: { store_id?: number; status?: string; q?: string; limit?: number }
+): Promise<RepairOrder[]> {
+  const searchParams = new URLSearchParams();
+  if (params.store_id) {
+    searchParams.append("store_id", String(params.store_id));
+  }
+  if (params.status) {
+    searchParams.append("status", params.status);
+  }
+  if (params.q) {
+    searchParams.append("q", params.q);
+  }
+  if (params.limit) {
+    searchParams.append("limit", String(params.limit));
+  }
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<RepairOrder[]>(`/repairs${suffix}`, { method: "GET" }, token);
+}
+
+export function createRepairOrder(
+  token: string,
+  payload: RepairOrderPayload,
+  reason: string
+): Promise<RepairOrder> {
+  return request<RepairOrder>(
+    "/repairs",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function updateRepairOrder(
+  token: string,
+  repairId: number,
+  payload: RepairOrderUpdatePayload,
+  reason: string
+): Promise<RepairOrder> {
+  return request<RepairOrder>(
+    `/repairs/${repairId}`,
+    { method: "PUT", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function deleteRepairOrder(token: string, repairId: number, reason: string): Promise<void> {
+  return request<void>(
+    `/repairs/${repairId}`,
+    { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export async function downloadRepairOrderPdf(token: string, repairId: number): Promise<Blob> {
+  return request<Blob>(`/repairs/${repairId}/pdf`, { method: "GET" }, token);
+}
+
 export function searchCatalogDevices(
   token: string,
   filters: DeviceSearchFilters
@@ -994,6 +1288,39 @@ export function updatePosConfig(
     },
     token
   );
+}
+
+export function openCashSession(
+  token: string,
+  payload: { store_id: number; opening_amount: number; notes?: string },
+  reason: string
+): Promise<CashSession> {
+  return request<CashSession>(
+    "/pos/cash/open",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function closeCashSession(
+  token: string,
+  payload: { session_id: number; closing_amount: number; payment_breakdown?: Record<string, number>; notes?: string },
+  reason: string
+): Promise<CashSession> {
+  return request<CashSession>(
+    "/pos/cash/close",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listCashSessions(
+  token: string,
+  storeId: number,
+  limit = 30
+): Promise<CashSession[]> {
+  const params = new URLSearchParams({ store_id: String(storeId), limit: String(limit) });
+  return request<CashSession[]>(`/pos/cash/history?${params.toString()}`, { method: "GET" }, token);
 }
 
 export async function downloadPosReceipt(token: string, saleId: number): Promise<Blob> {

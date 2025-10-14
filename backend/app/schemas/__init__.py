@@ -9,10 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_seriali
 
 from ..models import (
     BackupMode,
+    CashSessionStatus,
     CommercialState,
     MovementType,
     PaymentMethod,
     PurchaseStatus,
+    RepairStatus,
     SyncMode,
     SyncOutboxPriority,
     SyncOutboxStatus,
@@ -205,6 +207,151 @@ class StoreMembershipResponse(StoreMembershipBase):
 
 class StoreMembershipUpdate(StoreMembershipBase):
     pass
+
+
+class ContactHistoryEntry(BaseModel):
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    note: str = Field(..., min_length=3, max_length=255)
+
+    @field_validator("note")
+    @classmethod
+    def _normalize_note(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 3:
+            raise ValueError("La nota debe tener al menos 3 caracteres.")
+        return normalized
+
+    @field_serializer("timestamp")
+    @classmethod
+    def _serialize_timestamp(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class CustomerBase(BaseModel):
+    contact_name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    address: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=500)
+    outstanding_debt: Decimal = Field(default=Decimal("0"))
+    history: list[ContactHistoryEntry] = Field(default_factory=list)
+
+    @field_validator("contact_name", "email", "phone", "address", "notes", mode="before")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_serializer("outstanding_debt")
+    @classmethod
+    def _serialize_debt(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class CustomerCreate(CustomerBase):
+    name: str = Field(..., max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def _normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El nombre es obligatorio.")
+        return normalized
+
+
+class CustomerUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    contact_name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    address: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=500)
+    outstanding_debt: Decimal | None = Field(default=None)
+    history: list[ContactHistoryEntry] | None = Field(default=None)
+
+    @field_validator("name", "contact_name", "email", "phone", "address", "notes", mode="before")
+    @classmethod
+    def _normalize_update_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class CustomerResponse(CustomerBase):
+    id: int
+    name: str
+    last_interaction_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SupplierBase(BaseModel):
+    contact_name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    address: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=500)
+    outstanding_debt: Decimal = Field(default=Decimal("0"))
+    history: list[ContactHistoryEntry] = Field(default_factory=list)
+
+    @field_validator("contact_name", "email", "phone", "address", "notes", mode="before")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_serializer("outstanding_debt")
+    @classmethod
+    def _serialize_debt(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SupplierCreate(SupplierBase):
+    name: str = Field(..., max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def _normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El nombre es obligatorio.")
+        return normalized
+
+
+class SupplierUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    contact_name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    address: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=500)
+    outstanding_debt: Decimal | None = Field(default=None)
+    history: list[ContactHistoryEntry] | None = Field(default=None)
+
+    @field_validator("name", "contact_name", "email", "phone", "address", "notes", mode="before")
+    @classmethod
+    def _normalize_update_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class SupplierResponse(SupplierBase):
+    id: int
+    name: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TransferOrderItemBase(BaseModel):
@@ -711,6 +858,120 @@ class PurchaseReceiveRequest(BaseModel):
         return value
 
 
+class RepairOrderPartPayload(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+    unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+
+    @field_validator("unit_cost")
+    @classmethod
+    def _normalize_unit_cost(cls, value: Decimal | None) -> Decimal:
+        if value is None:
+            return Decimal("0")
+        return value
+
+
+class RepairOrderCreate(BaseModel):
+    store_id: int = Field(..., ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+    customer_name: str | None = Field(default=None, max_length=120)
+    technician_name: str = Field(..., max_length=120)
+    damage_type: str = Field(..., max_length=120)
+    device_description: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=500)
+    labor_cost: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    parts: list[RepairOrderPartPayload] = Field(default_factory=list)
+
+    @field_validator(
+        "customer_name", "technician_name", "damage_type", "device_description", "notes"
+    )
+    @classmethod
+    def _normalize_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class RepairOrderUpdate(BaseModel):
+    customer_id: int | None = Field(default=None, ge=1)
+    customer_name: str | None = Field(default=None, max_length=120)
+    technician_name: str | None = Field(default=None, max_length=120)
+    damage_type: str | None = Field(default=None, max_length=120)
+    device_description: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=500)
+    status: RepairStatus | None = None
+    labor_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+    parts: list[RepairOrderPartPayload] | None = None
+
+    @field_validator(
+        "customer_name",
+        "technician_name",
+        "damage_type",
+        "device_description",
+        "notes",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class RepairOrderPartResponse(BaseModel):
+    id: int
+    repair_order_id: int
+    device_id: int
+    quantity: int
+    unit_cost: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class RepairOrderResponse(BaseModel):
+    id: int
+    store_id: int
+    customer_id: int | None
+    customer_name: str | None
+    technician_name: str
+    damage_type: str
+    device_description: str | None
+    notes: str | None
+    status: RepairStatus
+    labor_cost: Decimal
+    parts_cost: Decimal
+    total_cost: Decimal
+    inventory_adjusted: bool
+    opened_at: datetime
+    updated_at: datetime
+    delivered_at: datetime | None
+    parts: list[RepairOrderPartResponse]
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(return_type=str)  # type: ignore[misc]
+    def status_color(self) -> str:
+        mapping = {
+            RepairStatus.PENDIENTE: "🟡",
+            RepairStatus.EN_PROCESO: "🟠",
+            RepairStatus.LISTO: "🟢",
+            RepairStatus.ENTREGADO: "⚪",
+        }
+        return mapping.get(self.status, "⬜")
+
+    @field_serializer("labor_cost", "parts_cost", "total_cost")
+    @classmethod
+    def _serialize_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+
 class SaleItemCreate(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
@@ -728,6 +989,7 @@ class SaleItemCreate(BaseModel):
 
 class SaleCreate(BaseModel):
     store_id: int = Field(..., ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
     discount_percent: Decimal | None = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
@@ -775,9 +1037,32 @@ class SaleItemResponse(BaseModel):
         return float(value)
 
 
+class SaleCustomerSummary(BaseModel):
+    id: int
+    name: str
+    outstanding_debt: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("outstanding_debt")
+    @classmethod
+    def _serialize_debt(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class CashSessionSummary(BaseModel):
+    id: int
+    status: CashSessionStatus
+    opened_at: datetime
+    closed_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SaleResponse(BaseModel):
     id: int
     store_id: int
+    customer_id: int | None
     customer_name: str | None
     payment_method: PaymentMethod
     discount_percent: Decimal
@@ -787,6 +1072,9 @@ class SaleResponse(BaseModel):
     notes: str | None
     created_at: datetime
     performed_by_id: int | None
+    cash_session_id: int | None
+    customer: SaleCustomerSummary | None = None
+    cash_session: CashSessionSummary | None = None
     items: list[SaleItemResponse]
     returns: list["SaleReturnResponse"] = []
 
@@ -853,6 +1141,7 @@ class POSCartItem(BaseModel):
 
 class POSSaleRequest(BaseModel):
     store_id: int = Field(..., ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
     discount_percent: Decimal | None = Field(
@@ -864,6 +1153,8 @@ class POSSaleRequest(BaseModel):
     save_as_draft: bool = Field(default=False)
     confirm: bool = Field(default=False)
     apply_taxes: bool = Field(default=True)
+    cash_session_id: int | None = Field(default=None, ge=1)
+    payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
 
     @field_validator("customer_name")
     @classmethod
@@ -888,6 +1179,21 @@ class POSSaleRequest(BaseModel):
             raise ValueError("Debes agregar dispositivos al carrito.")
         return value
 
+    @field_validator("payment_breakdown", mode="before")
+    @classmethod
+    def _normalize_breakdown(cls, value: dict[str, Decimal] | None) -> dict[str, Decimal]:
+        if value is None:
+            return {}
+        normalized: dict[str, Decimal] = {}
+        for method_key, amount in value.items():
+            method = method_key.strip().upper()
+            try:
+                PaymentMethod(method)
+            except ValueError as exc:  # pragma: no cover - validation error path
+                raise ValueError("Método de pago inválido en el desglose.") from exc
+            normalized[method] = Decimal(str(amount))
+        return normalized
+
 
 class POSDraftResponse(BaseModel):
     id: int
@@ -905,6 +1211,90 @@ class POSSaleResponse(BaseModel):
     draft: POSDraftResponse | None = None
     receipt_url: str | None = None
     warnings: list[str] = Field(default_factory=list)
+    cash_session_id: int | None = None
+    payment_breakdown: dict[str, float] = Field(default_factory=dict)
+
+    @field_serializer("payment_breakdown")
+    @classmethod
+    def _serialize_breakdown(cls, value: dict[str, float]) -> dict[str, float]:
+        return {key: float(amount) for key, amount in value.items()}
+
+
+class CashSessionOpenRequest(BaseModel):
+    store_id: int = Field(..., ge=1)
+    opening_amount: Decimal = Field(..., ge=Decimal("0"))
+    notes: str | None = Field(default=None, max_length=255)
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class CashSessionCloseRequest(BaseModel):
+    session_id: int = Field(..., ge=1)
+    closing_amount: Decimal = Field(..., ge=Decimal("0"))
+    notes: str | None = Field(default=None, max_length=255)
+    payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("payment_breakdown", mode="before")
+    @classmethod
+    def _normalize_breakdown(cls, value: dict[str, Decimal] | None) -> dict[str, Decimal]:
+        if value is None:
+            return {}
+        normalized: dict[str, Decimal] = {}
+        for method_key, amount in value.items():
+            method = method_key.strip().upper()
+            try:
+                PaymentMethod(method)
+            except ValueError as exc:
+                raise ValueError("Método de pago inválido.") from exc
+            normalized[method] = Decimal(str(amount))
+        return normalized
+
+
+class CashSessionResponse(BaseModel):
+    id: int
+    store_id: int
+    status: CashSessionStatus
+    opening_amount: Decimal
+    closing_amount: Decimal
+    expected_amount: Decimal
+    difference_amount: Decimal
+    payment_breakdown: dict[str, float]
+    notes: str | None
+    opened_by_id: int | None
+    closed_by_id: int | None
+    opened_at: datetime
+    closed_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer(
+        "opening_amount",
+        "closing_amount",
+        "expected_amount",
+        "difference_amount",
+    )
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("payment_breakdown")
+    @classmethod
+    def _serialize_breakdown(cls, value: dict[str, float]) -> dict[str, float]:
+        return {key: float(amount) for key, amount in value.items()}
 
 
 class POSConfigResponse(BaseModel):

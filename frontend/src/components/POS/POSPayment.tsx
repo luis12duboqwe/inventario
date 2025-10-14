@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { PaymentMethod } from "../../api";
+import type { CashSession, Customer, PaymentMethod } from "../../api";
 
 type Totals = {
   subtotal: number;
@@ -10,8 +10,16 @@ type Totals = {
 type Props = {
   paymentMethod: PaymentMethod;
   onPaymentMethodChange: (method: PaymentMethod) => void;
+  customerId: number | null;
   customerName: string;
   onCustomerNameChange: (value: string) => void;
+  customerOptions: Customer[];
+  customerSearch: string;
+  onCustomerSearchChange: (value: string) => void;
+  onCustomerSelect: (customerId: number | null) => void;
+  onQuickCreateCustomer: () => void;
+  selectedCustomer: Customer | null;
+  customerLoading: boolean;
   notes: string;
   onNotesChange: (value: string) => void;
   globalDiscount: number;
@@ -22,6 +30,17 @@ type Props = {
   onReasonChange: (value: string) => void;
   confirmChecked: boolean;
   onConfirmChange: (value: boolean) => void;
+  cashSessionId: number | null;
+  cashSessions: CashSession[];
+  onCashSessionChange: (sessionId: number | null) => void;
+  onOpenCashSession: () => void;
+  onCloseCashSession: () => void;
+  cashLoading: boolean;
+  paymentBreakdown: Record<PaymentMethod, number>;
+  onPaymentBreakdownChange: (method: PaymentMethod, value: number) => void;
+  onAutoDistributeBreakdown: () => void;
+  onResetBreakdown: () => void;
+  activeCashSessionId: number | null;
   totals: Totals;
   disabled: boolean;
   loading: boolean;
@@ -37,11 +56,27 @@ const paymentLabels: Record<PaymentMethod, string> = {
   CREDITO: "Crédito",
 };
 
+const paymentMethodsOrder: PaymentMethod[] = [
+  "EFECTIVO",
+  "TARJETA",
+  "TRANSFERENCIA",
+  "CREDITO",
+  "OTRO",
+];
+
 function POSPayment({
   paymentMethod,
   onPaymentMethodChange,
+  customerId,
   customerName,
   onCustomerNameChange,
+  customerOptions,
+  customerSearch,
+  onCustomerSearchChange,
+  onCustomerSelect,
+  onQuickCreateCustomer,
+  selectedCustomer,
+  customerLoading,
   notes,
   onNotesChange,
   globalDiscount,
@@ -52,15 +87,44 @@ function POSPayment({
   onReasonChange,
   confirmChecked,
   onConfirmChange,
+  cashSessionId,
+  cashSessions,
+  onCashSessionChange,
+  onOpenCashSession,
+  onCloseCashSession,
+  cashLoading,
+  paymentBreakdown,
+  onPaymentBreakdownChange,
+  onAutoDistributeBreakdown,
+  onResetBreakdown,
+  activeCashSessionId,
   totals,
   disabled,
   loading,
   onSubmit,
   warnings,
 }: Props) {
+  const requiresCustomer = paymentMethod === "CREDITO";
   const canSubmit = useMemo(() => {
-    return !disabled && reason.trim().length >= 5 && confirmChecked;
-  }, [disabled, reason, confirmChecked]);
+    return (
+      !disabled &&
+      reason.trim().length >= 5 &&
+      confirmChecked &&
+      (!requiresCustomer || Boolean(customerId))
+    );
+  }, [disabled, reason, confirmChecked, requiresCustomer, customerId]);
+
+  const breakdownTotal = useMemo(
+    () =>
+      paymentMethodsOrder.reduce(
+        (acc, method) => acc + Number(paymentBreakdown[method] ?? 0),
+        0
+      ),
+    [paymentBreakdown]
+  );
+
+  const breakdownDifference = Number((totals.total - breakdownTotal).toFixed(2));
+  const breakdownMatches = Math.abs(breakdownDifference) <= 0.5;
 
   const formatCurrency = (value: number) => value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -75,21 +139,102 @@ function POSPayment({
           ))}
         </ul>
       ) : null}
+      {requiresCustomer && !customerId ? (
+        <div className="alert warning">
+          Selecciona un cliente registrado para habilitar ventas a crédito corporativo.
+        </div>
+      ) : null}
       <div className="form-grid">
         <label>
           Método de pago
           <select value={paymentMethod} onChange={(event) => onPaymentMethodChange(event.target.value as PaymentMethod)}>
-            {Object.entries(paymentLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
+            {paymentMethodsOrder.map((method) => (
+              <option key={method} value={method}>
+                {paymentLabels[method]}
               </option>
             ))}
           </select>
         </label>
         <label>
-          Cliente (opcional)
-          <input value={customerName} onChange={(event) => onCustomerNameChange(event.target.value)} placeholder="Nombre del cliente" />
+          Sesión de caja
+          <select
+            value={cashSessionId ?? ""}
+            onChange={(event) =>
+              onCashSessionChange(event.target.value ? Number(event.target.value) : null)
+            }
+            disabled={cashLoading || cashSessions.length === 0}
+          >
+            <option value="">Sin asignar</option>
+            {cashSessions.map((session) => (
+              <option key={session.id} value={session.id}>
+                #{session.id} · {session.status === "ABIERTO" ? "Abierta" : "Cerrada"}
+              </option>
+            ))}
+          </select>
+          <span className="muted-text">
+            {cashLoading
+              ? "Consultando historial de caja..."
+              : activeCashSessionId
+              ? `Sesión abierta #${activeCashSessionId}`
+              : "Puedes asignar la venta a una sesión cerrada o abrir una nueva."}
+          </span>
         </label>
+        <label>
+          Buscar cliente
+          <input
+            value={customerSearch}
+            onChange={(event) => onCustomerSearchChange(event.target.value)}
+            placeholder="Nombre, correo o nota"
+            disabled={customerLoading}
+          />
+          <span className="muted-text">Escribe al menos 2 caracteres para refinar la búsqueda.</span>
+        </label>
+        <label>
+          Cliente registrado
+          <select
+            value={customerId ?? ""}
+            onChange={(event) =>
+              onCustomerSelect(event.target.value ? Number(event.target.value) : null)
+            }
+            disabled={customerLoading}
+          >
+            <option value="">Mostrador sin registro</option>
+            {customerOptions.map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.name} · Deuda ${formatCurrency(customer.outstanding_debt)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Cliente manual (opcional)
+          <input
+            value={customerName}
+            onChange={(event) => onCustomerNameChange(event.target.value)}
+            placeholder="Nombre libre para el ticket"
+          />
+        </label>
+        <div className="wide actions-row">
+          <button type="button" className="button ghost" onClick={onQuickCreateCustomer}>
+            Alta rápida de cliente
+          </button>
+          <button
+            type="button"
+            className="button ghost"
+            onClick={onOpenCashSession}
+            disabled={cashLoading}
+          >
+            Abrir caja
+          </button>
+          <button
+            type="button"
+            className="button ghost"
+            onClick={onCloseCashSession}
+            disabled={cashLoading || !activeCashSessionId}
+          >
+            Cerrar caja
+          </button>
+        </div>
         <label>
           Descuento global (%)
           <input
@@ -117,6 +262,43 @@ function POSPayment({
           Confirmo que el total coincide con lo mostrado al cliente.
         </label>
       </div>
+      {selectedCustomer ? (
+        <div className="muted-text">
+          <strong>{selectedCustomer.name}</strong> · Deuda actual ${formatCurrency(selectedCustomer.outstanding_debt)}
+        </div>
+      ) : null}
+      <h4>Desglose de pago</h4>
+      <div className="form-grid">
+        {paymentMethodsOrder.map((method) => (
+          <label key={method}>
+            {paymentLabels[method]}
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={Number(paymentBreakdown[method] ?? 0)}
+              onChange={(event) => onPaymentBreakdownChange(method, Number(event.target.value))}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="actions-row">
+        <button type="button" className="button ghost" onClick={onAutoDistributeBreakdown}>
+          Aplicar total al método seleccionado
+        </button>
+        <button type="button" className="button ghost" onClick={onResetBreakdown}>
+          Limpiar desglose
+        </button>
+      </div>
+      {totals.total > 0 ? (
+        breakdownMatches ? (
+          <p className="muted-text">El desglose coincide con el total a cobrar.</p>
+        ) : (
+          <div className="alert warning">
+            Ajusta ${formatCurrency(Math.abs(breakdownDifference))} para conciliar el total a cobrar.
+          </div>
+        )
+      ) : null}
       <div className="totals-panel">
         <div>
           <span className="muted-text">Subtotal</span>

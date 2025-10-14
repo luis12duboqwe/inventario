@@ -26,6 +26,9 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Transferencias entre tiendas** protegidas por permisos por sucursal y feature flag, con flujo SOLICITADA → EN_TRANSITO → RECIBIDA/CANCELADA, auditoría en cada transición y componente React dedicado.
 - **Compras y ventas operativas** con órdenes de compra parcialmente recibidas, cálculo de costo promedio, ventas con descuento/método de pago y devoluciones auditadas desde la UI (`Purchases.tsx`, `Sales.tsx`, `Returns.tsx`).
 - **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
+- **Gestión de clientes y proveedores corporativos** con historial de contacto, exportación CSV, saldos pendientes y notas auditables desde la UI.
+- **Órdenes de reparación sincronizadas** con piezas descontadas automáticamente del inventario, estados corporativos (🟡/🟠/🟢/⚪) y descarga de orden en PDF.
+- **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
 - **Analítica comparativa multi-sucursal** con endpoints `/reports/analytics/comparative`, `/reports/analytics/profit_margin` y `/reports/analytics/sales_forecast`, exportación CSV consolidada y tablero React con filtros por sucursal.
 - **Sincronización híbrida priorizada** mediante `sync_outbox` con niveles HIGH/NORMAL/LOW, estadísticas por entidad y reintentos auditados desde el panel.
 - **Experiencia UI responsiva** con toasts contextuales, animaciones suaves y selector de tema claro/oscuro que mantiene el modo oscuro como predeterminado.
@@ -78,6 +81,9 @@ frontend/
       InventoryTable.tsx
       LoginForm.tsx
       MovementForm.tsx
+      Customers.tsx
+      Suppliers.tsx
+      RepairOrders.tsx
       SyncPanel.tsx
       POS/
         POSDashboard.tsx
@@ -164,20 +170,29 @@ El módulo POS complementa el flujo de compras/ventas con un carrito dinámico, 
 - `GET /pos/receipt/{sale_id}`: devuelve el recibo PDF (tema oscuro) listo para impresión o envío. Debe consumirse con JWT válido.
 - `GET /pos/config?store_id=<id>`: lee la configuración POS por sucursal (impuestos, prefijo de factura, impresora y accesos rápidos).
 - `PUT /pos/config`: actualiza la configuración. Exige cabecera `X-Reason` y un payload `POSConfigUpdate` con el identificador de la tienda y los nuevos parámetros.
+- `POST /pos/cash/open`: abre una sesión de caja indicando monto inicial y notas de apertura.
+- `POST /pos/cash/close`: cierra la sesión, captura desglose por método de pago y diferencia contable.
+- `GET /pos/cash/history`: lista los arqueos recientes por sucursal para auditoría.
 
 ### Interfaz React
 
-- `POSDashboard.tsx`: orquesta la experiencia POS, permite buscar por IMEI/modelo/nombre, mostrar accesos rápidos y coordinar carrito/pago/recibo.
+- `POSDashboard.tsx`: orquesta la experiencia POS, permite buscar por IMEI/modelo/nombre, coordinar arqueos de caja, selección de clientes y sincronizar carrito/pago/recibo.
 - `POSCart.tsx`: edita cantidades, descuentos por línea y alerta cuando el stock disponible es insuficiente.
-- `POSPayment.tsx`: controla método de pago, descuento global, confirmación visual y motivo corporativo antes de enviar la venta o guardar borradores.
+- `POSPayment.tsx`: controla método de pago, desglose multiforma, selección de cliente/sesión de caja, descuento global y motivo corporativo antes de enviar la venta o guardar borradores.
 - `POSReceipt.tsx`: descarga o envía el PDF inmediatamente después de la venta.
 - `POSSettings.tsx`: define impuestos, prefijo de factura, impresora y productos frecuentes.
 
 ### Consideraciones operativas
 
 - Todos los POST/PUT del POS deben incluir un motivo (`X-Reason`) con al menos 5 caracteres.
-- El flujo admite ventas rápidas (botones configurables), guardado de borradores y notificaciones visuales de éxito/errores.
-- Al registrar una venta se generan movimientos de inventario, auditoría y un evento en la cola `sync_outbox` para sincronización híbrida.
+- El flujo admite ventas rápidas (botones configurables), guardado de borradores, ventas a crédito ligadas a clientes y arqueos de caja con diferencias controladas.
+- Al registrar una venta se generan movimientos de inventario, auditoría, actualización de deuda de clientes y un evento en la cola `sync_outbox` para sincronización híbrida.
+
+## Gestión de clientes, proveedores y reparaciones
+
+- `Customers.tsx`: alta/edición de clientes con historial de contacto, notas corporativas, exportación CSV y ajuste de deuda pendiente vinculado al POS.
+- `Suppliers.tsx`: administración de proveedores estratégicos con seguimiento de notas, control de cuentas por pagar y exportación rápida para compras.
+- `RepairOrders.tsx`: captura de órdenes de reparación con piezas descontadas del inventario, estados (🟡 Pendiente → 🟠 En proceso → 🟢 Listo → ⚪ Entregado), generación de PDF y sincronización con métricas.
 
 ## Pruebas automatizadas
 
@@ -242,6 +257,7 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 | D — Analítica avanzada | Servicios `analytics.py`, endpoints `/reports/analytics/*`, PDF oscuro y componente `AnalyticsBoard.tsx` | Pruebas `pytest` y descarga manual desde el panel de Analítica |
 | E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` | Ejecución interactiva del módulo Seguridad y pruebas automatizadas de sesiones |
 | F — Modo híbrido | Modelo `SyncOutbox`, reintentos `reset_outbox_entries`, visualización/acciones en `SyncPanel.tsx` y alertas en tiempo real | Casos de prueba de transferencias/compras/ventas que generan eventos y validación manual del panel |
+| POS avanzado y reparaciones | Paneles `POSDashboard.tsx`, `POSPayment.tsx`, `POSReceipt.tsx`, `RepairOrders.tsx`, `Customers.tsx`, `Suppliers.tsx` con sesiones de caja, exportación CSV, control de deudas y consumo automático de inventario | Validación manual del módulo Operaciones y ejecución de `pytest` + `npm --prefix frontend run build` (15/02/2025) |
 
 ### Pasos de control iterativo (registrar tras cada entrega)
 
@@ -250,6 +266,11 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 3. **Validación funcional**: desde el frontend confirma funcionamiento de Inventario, Operaciones, Analítica, Seguridad (incluyendo 2FA con motivo) y Sincronización, dejando constancia de módulos revisados.
 4. **Verificación híbrida**: consulta `/sync/outbox` desde la UI y reintenta eventos con un motivo para asegurar que la cola quede sin pendientes críticos.
 5. **Registro final**: documenta en la sección "Registro operativo de lotes entregados" cualquier ajuste adicional realizado, incluyendo nuevos endpoints o componentes.
+
+### Bitácora de control — 15/02/2025
+
+- `pytest` finalizado en verde tras integrar POS avanzado, reparaciones y paneles de clientes/proveedores.
+- `npm --prefix frontend run build` concluido sin errores, confirmando la compilación del frontend con los paneles corporativos recientes.
 
 ## Checklist de verificación integral
 
