@@ -18,7 +18,6 @@ from .routers import (
     backups,
     health,
     inventory,
-    pos,
     purchases,
     reports,
     sales,

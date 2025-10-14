@@ -114,7 +114,6 @@ class PaymentMethod(str, enum.Enum):
     EFECTIVO = "EFECTIVO"
     TARJETA = "TARJETA"
     TRANSFERENCIA = "TRANSFERENCIA"
-    CREDITO = "CREDITO"
     OTRO = "OTRO"
 
 
@@ -466,12 +465,6 @@ class Sale(Base):
     discount_percent: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("0")
     )
-    subtotal_amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False, default=Decimal("0")
-    )
-    tax_amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False, default=Decimal("0")
-    )
     total_amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0")
     )
@@ -532,74 +525,6 @@ class SaleReturn(Base):
     sale: Mapped[Sale] = relationship("Sale", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
     processed_by: Mapped[User | None] = relationship("User")
-
-
-class POSConfig(Base):
-    __tablename__ = "pos_config"
-    __table_args__ = (UniqueConstraint("store_id", name="uq_pos_config_store"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
-    invoice_prefix: Mapped[str] = mapped_column(String(20), nullable=False, default="POS")
-    printer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    printer_profile: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    _quick_product_ids: Mapped[str | None] = mapped_column("quick_product_ids", Text, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    store: Mapped[Store] = relationship("Store")
-
-    @property
-    def quick_product_ids(self) -> list[int]:
-        if not self._quick_product_ids:
-            return []
-        try:
-            decoded = json.loads(self._quick_product_ids)
-        except json.JSONDecodeError:
-            return []
-        normalized: list[int] = []
-        for item in decoded:
-            try:
-                normalized.append(int(item))
-            except (TypeError, ValueError):
-                continue
-        return normalized
-
-    @quick_product_ids.setter
-    def quick_product_ids(self, value: list[int]) -> None:
-        normalized = [int(item) for item in value]
-        self._quick_product_ids = json.dumps(normalized, ensure_ascii=False)
-
-
-class POSDraftSale(Base):
-    __tablename__ = "pos_draft_sales"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    _payload: Mapped[str] = mapped_column("payload", Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
-    )
-
-    store: Mapped[Store] = relationship("Store")
-
-    @property
-    def payload(self) -> dict[str, object]:
-        try:
-            return json.loads(self._payload)
-        except json.JSONDecodeError:
-            return {}
-
-    @payload.setter
-    def payload(self, value: dict[str, object]) -> None:
-        self._payload = json.dumps(value, ensure_ascii=False, default=str)
 
 
 class UserTOTPSecret(Base):
@@ -697,6 +622,4 @@ __all__ = [
     "Sale",
     "SaleItem",
     "SaleReturn",
-    "POSConfig",
-    "POSDraftSale",
 ]
