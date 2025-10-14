@@ -1,7 +1,8 @@
+from fastapi import status
 from sqlalchemy import select
 
 from backend.app.config import settings
-from backend.app.core.roles import ADMIN
+from backend.app.core.roles import ADMIN, OPERADOR
 
 
 def _bootstrap_admin(client):
@@ -22,6 +23,32 @@ def _bootstrap_admin(client):
     assert token_response.status_code == 200
     token = token_response.json()["access_token"]
     return token
+
+
+def _bootstrap_operator(client, admin_token: str | None = None) -> str:
+    if admin_token is None:
+        admin_token = _bootstrap_admin(client)
+
+    payload = {
+        "username": "pos_operator",
+        "password": "PosOperador123*",
+        "full_name": "Operador POS",
+        "roles": [OPERADOR],
+    }
+    response = client.post(
+        "/users",
+        json=payload,
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+
+    token_response = client.post(
+        "/auth/token",
+        data={"username": payload["username"], "password": payload["password"]},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert token_response.status_code == status.HTTP_200_OK
+    return token_response.json()["access_token"]
 
 
 def test_pos_sale_with_receipt_and_config(client, db_session):
@@ -230,3 +257,80 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
     assert any(item["id"] == session_id for item in history_response.json())
 
     settings.enable_purchases_sales = False
+
+
+def test_pos_requires_auth_reason_and_roles(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        sale_payload = {
+            "store_id": 1,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": 1, "quantity": 1}],
+            "confirm": True,
+        }
+
+        unauth_response = client.post("/pos/sale", json=sale_payload)
+        assert unauth_response.status_code == status.HTTP_400_BAD_REQUEST
+
+        admin_token = _bootstrap_admin(client)
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "POS Validaciones", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=admin_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "POS-VALIDA-001",
+                "name": "Impresora POS",
+                "quantity": 5,
+                "unit_price": 50.0,
+                "costo_unitario": 25.0,
+            },
+            headers=admin_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        payload = {
+            "store_id": store_id,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": device_id, "quantity": 1}],
+            "confirm": True,
+        }
+
+        missing_reason_response = client.post(
+            "/pos/sale",
+            json=payload,
+            headers=admin_headers,
+        )
+        assert missing_reason_response.status_code == status.HTTP_400_BAD_REQUEST
+
+        operator_token = _bootstrap_operator(client, admin_token)
+        operator_headers = {
+            "Authorization": f"Bearer {operator_token}",
+            "X-Reason": "Intento POS",
+        }
+
+        forbidden_response = client.post(
+            "/pos/sale",
+            json=payload,
+            headers=operator_headers,
+        )
+        assert forbidden_response.status_code == status.HTTP_403_FORBIDDEN
+
+        valid_headers = {**admin_headers, "X-Reason": "Venta Validada"}
+        success_response = client.post(
+            "/pos/sale",
+            json=payload,
+            headers=valid_headers,
+        )
+        assert success_response.status_code == status.HTTP_201_CREATED
+    finally:
+        settings.enable_purchases_sales = original_flag
