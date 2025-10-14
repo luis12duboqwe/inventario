@@ -77,3 +77,9 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 3. Verifica desde el frontend las secciones Inventario, Operaciones, Analítica, Seguridad (incluyendo flujos 2FA con motivo) y Sincronización.
 4. Asegura que la cola híbrida (`/sync/outbox`) quede sin pendientes críticos reintentando con `X-Reason` justificado y documenta el resultado.
 5. Actualiza el apartado "Registro operativo de lotes entregados" del README con cualquier nuevo componente, endpoint o prueba agregada.
+
+### Registro operativo — 25/02/2025
+
+- Paso 4 documentado: se describieron tablas `repair_orders`, `customers`, `sales`, `pos_config`, `sync_outbox` y sus rutas asociadas en el README.
+- Mockup actualizado en `docs/img/paso4_resumen.mmd` usando Mermaid para representar los flujos POS, reparaciones y sincronización híbrida sin adjuntar binarios.
+- Nuevas pruebas automatizadas: `backend/tests/test_repairs.py`, `backend/tests/test_customers.py`, `backend/tests/test_pos.py` y `backend/tests/test_sync_full.py` cubren autenticación, roles y reintentos híbridos.

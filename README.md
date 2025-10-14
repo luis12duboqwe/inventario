@@ -37,6 +37,66 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Experiencia UI responsiva** con toasts contextuales, animaciones suaves y selector de tema claro/oscuro que mantiene el modo oscuro como predeterminado.
 - **Interfaz animada Softmobile** con pantalla de bienvenida en movimiento, iconografía por módulo, toasts de sincronización modernizados y modo táctil optimizado para el POS, impulsados por `framer-motion`.
 
+## Paso 4 — Documentación y pruebas automatizadas
+
+### Tablas y rutas destacadas
+
+- **`repair_orders` y `repair_order_parts`**: registran diagnósticos, técnicos, costos y piezas descontadas del inventario. Endpoints protegidos (`/repairs/*`) validan roles `GESTION_ROLES`, requieren cabecera `X-Reason` en operaciones sensibles y generan PDF corporativo.
+- **`customers`**: mantiene historial, exportaciones CSV y control de deuda. Las rutas `/customers` (GET/POST/PUT/DELETE) auditan cada cambio y alimentan la cola híbrida `sync_outbox`.
+- **`sales`, `pos_config`, `pos_draft_sales` y `cash_register_sessions`**: sostienen el POS directo (`/pos/*`) con borradores, recibos PDF, arqueos y configuraciones por sucursal.
+- **`sync_outbox` y `sync_sessions`**: almacenan eventos híbridos con prioridad HIGH/NORMAL/LOW y permiten reintentos manuales mediante `/sync/outbox` y `/sync/outbox/retry`.
+
+### Componentes y flujos frontend vinculados
+
+- `RepairOrders.tsx` coordina estados PENDIENTE→LISTO, descuenta refacciones y descarga órdenes en PDF.
+- `Customers.tsx` mantiene el historial corporativo, exporta CSV y exige motivo corporativo antes de guardar.
+- `POSDashboard.tsx`, `POSSettings.tsx` y `POSReceipt.tsx` cubren borradores, configuración dinámica, recibos PDF y arqueos de caja.
+- `SyncPanel.tsx` refleja el estado de `sync_outbox`, permite reintentos y muestra el historial consolidado por tienda.
+
+### Pruebas automatizadas nuevas
+
+- `backend/tests/test_repairs.py`: valida autenticación JWT, motivo obligatorio y deniega acciones a operadores sin permisos.
+- `backend/tests/test_customers.py`: asegura que las mutaciones requieren `X-Reason` y que los roles restringidos reciben `403`.
+- `backend/tests/test_pos.py`: comprueba ventas POS con y sin motivo, creación de dispositivos y bloqueo a usuarios sin privilegios.
+- `backend/tests/test_sync_full.py`: orquesta venta POS, reparación, actualización de cliente y reintentos híbridos verificando que `sync_outbox` almacene eventos PENDING y que `/sync/outbox/retry` exija motivo corporativo.
+
+### Mockup operativo
+
+El siguiente diagrama Mermaid resume el flujo integrado entre POS, reparaciones y
+sincronización híbrida. El archivo fuente se mantiene en
+`docs/img/paso4_resumen.mmd` para su reutilización en presentaciones o
+documentación corporativa.
+
+```mermaid
+flowchart TD
+    subgraph POS "Flujo POS"
+        POSCart[Carrito POS]
+        POSPayment[Pago y descuentos]
+        POSReceipt[Recibo PDF]
+        POSCart --> POSPayment --> POSReceipt
+    end
+
+    subgraph Repairs "Reparaciones"
+        Intake[Recepción y diagnóstico]
+        Parts[Descuento de refacciones]
+        Ready[Entrega y PDF]
+        Intake --> Parts --> Ready
+    end
+
+    subgraph Sync "Sincronización híbrida"
+        Outbox[Evento en sync_outbox]
+        Retry[Reintento /sync/outbox/retry]
+        Metrics[Métricas de outbox]
+        Outbox --> Retry --> Metrics
+    end
+
+    POSReceipt -->|Genera venta| Outbox
+    Ready -->|Actualiza estado| Outbox
+    Customers[Clientes corporativos] -->|Actualización| Outbox
+    Outbox -.->|Prioridad HIGH/NORMAL/LOW| Retry
+    Retry -.->|Último intento exitoso| Metrics
+```
+
 ## Estructura del repositorio
 
 ```
