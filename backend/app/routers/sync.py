@@ -71,7 +71,11 @@ def retry_outbox_entries(
     reason: str = Depends(require_reason),
 ):
     _ensure_hybrid_enabled()
-    entries = crud.reset_outbox_entries(db, payload.ids)
+    entries = crud.reset_outbox_entries(
+        db,
+        payload.ids,
+        performed_by_id=current_user.id if current_user else None,
+    )
     if not entries:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entradas no encontradas")
     return entries

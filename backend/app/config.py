@@ -7,6 +7,13 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
+def _is_truthy(value: str | None) -> bool:
+    if value is None:
+        return False
+    normalized = value.strip().lower()
+    return normalized not in {"", "0", "false", "no", "off"}
+
+
 class Settings(BaseModel):
     """Valores de configuración cargados desde variables de entorno."""
 
@@ -70,6 +77,10 @@ class Settings(BaseModel):
     )
     allowed_origins: list[str] = Field(
         default_factory=lambda: os.getenv("SOFTMOBILE_ALLOWED_ORIGINS", "http://127.0.0.1:5173")
+    )
+    testing_mode: bool = Field(
+        default_factory=lambda: _is_truthy(os.getenv("SOFTMOBILE_TEST_MODE"))
+        or bool(os.getenv("PYTEST_CURRENT_TEST"))
     )
 
     @field_validator("access_token_expire_minutes", "sync_interval_seconds", "backup_interval_seconds")

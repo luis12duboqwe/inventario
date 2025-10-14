@@ -74,6 +74,25 @@ def _device_value(device: models.Device) -> Decimal:
     return Decimal(device.quantity) * (device.unit_price or Decimal("0"))
 
 
+def list_audit_logs(
+    db: Session,
+    *,
+    limit: int = 100,
+    action: str | None = None,
+    entity_type: str | None = None,
+) -> list[models.AuditLog]:
+    statement = (
+        select(models.AuditLog)
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(limit)
+    )
+    if action:
+        statement = statement.where(models.AuditLog.action == action)
+    if entity_type:
+        statement = statement.where(models.AuditLog.entity_type == entity_type)
+    return list(db.scalars(statement))
+
+
 def ensure_role(db: Session, name: str) -> models.Role:
     statement = select(models.Role).where(models.Role.name == name)
     role = db.scalars(statement).first()
@@ -805,6 +824,44 @@ def list_sync_outbox(
         if status_tuple:
             statement = statement.where(models.SyncOutbox.status.in_(status_tuple))
     return list(db.scalars(statement))
+
+
+def reset_outbox_entries(
+    db: Session,
+    entry_ids: Iterable[int],
+    *,
+    performed_by_id: int | None = None,
+) -> list[models.SyncOutbox]:
+    ids_tuple = tuple({int(entry_id) for entry_id in entry_ids})
+    if not ids_tuple:
+        return []
+
+    statement = select(models.SyncOutbox).where(models.SyncOutbox.id.in_(ids_tuple))
+    entries = list(db.scalars(statement))
+    if not entries:
+        return []
+
+    now = datetime.utcnow()
+    for entry in entries:
+        entry.status = models.SyncOutboxStatus.PENDING
+        entry.attempt_count = 0
+        entry.last_attempt_at = None
+        entry.error_message = None
+        entry.updated_at = now
+    db.commit()
+    for entry in entries:
+        db.refresh(entry)
+        _log_action(
+            db,
+            action="sync_outbox_reset",
+            entity_type=entry.entity_type,
+            entity_id=str(entry.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"operation": entry.operation}, ensure_ascii=False),
+        )
+    db.commit()
+    refreshed = list(db.scalars(statement))
+    return refreshed
 
 
 def get_store_membership(db: Session, *, user_id: int, store_id: int) -> models.StoreMembership | None:

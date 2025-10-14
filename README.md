@@ -70,6 +70,7 @@ POS/POSSettings.tsx
 ### Integración de backend
 
 - Middleware `X-Reason` obligatorio para ventas, transferencias, auditoría y operaciones sensibles. El frontend debe solicitar y enviar el motivo antes de confirmar.
+  - Para automatizaciones (pytest, pipelines CI) el backend inyecta el valor `"Motivo automatizado"` cuando la cabecera no está presente, pero las interfaces humanas **deben** capturar el motivo explícito ≥ 5 caracteres.
 - Endpoints habilitados: `/pos/sale`, `/pos/receipt/{id}`, `/pos/config`, `/transfers/*`, `/purchases/*`, `/sales/*`, `/returns/*`, `/reports/analytics/rotation`, `/reports/analytics/aging`, `/reports/analytics/stockout_forecast`, `/audit/*`, `/security/*`, `/sync/outbox`.
 - Generación de PDFs corporativos con ReportLab y tema oscuro para recibos, analítica y respaldos.
 
