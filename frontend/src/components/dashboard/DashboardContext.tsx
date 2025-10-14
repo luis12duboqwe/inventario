@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -20,6 +21,7 @@ import {
   retrySyncOutbox,
   triggerSync,
   runBackup,
+  getSyncOutboxStats,
 } from "../../api";
 import type {
   BackupJob,
@@ -30,6 +32,7 @@ import type {
   Store,
   Summary,
   SyncOutboxEntry,
+  SyncOutboxStatsEntry,
   UpdateStatus,
 } from "../../api";
 
@@ -59,6 +62,7 @@ type DashboardContextValue = {
   syncStatus: string | null;
   outbox: SyncOutboxEntry[];
   outboxError: string | null;
+  outboxStats: SyncOutboxStatsEntry[];
   formatCurrency: (value: number) => string;
   totalDevices: number;
   totalItems: number;
@@ -73,6 +77,10 @@ type DashboardContextValue = {
   refreshOutbox: () => Promise<void>;
   handleRetryOutbox: () => Promise<void>;
   downloadInventoryReport: () => Promise<void>;
+  refreshOutboxStats: () => Promise<void>;
+  toasts: ToastMessage[];
+  pushToast: (toast: Omit<ToastMessage, "id">) => void;
+  dismissToast: (id: number) => void;
 };
 
 const DashboardContext = createContext<DashboardContextValue | undefined>(undefined);
@@ -80,6 +88,14 @@ const DashboardContext = createContext<DashboardContextValue | undefined>(undefi
 type ProviderProps = {
   token: string;
   children: ReactNode;
+};
+
+type ToastVariant = "success" | "error" | "info";
+
+export type ToastMessage = {
+  id: number;
+  message: string;
+  variant: ToastVariant;
 };
 
 export function DashboardProvider({ token, children }: ProviderProps) {
@@ -110,11 +126,25 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [outbox, setOutbox] = useState<SyncOutboxEntry[]>([]);
   const [outboxError, setOutboxError] = useState<string | null>(null);
+  const [outboxStats, setOutboxStats] = useState<SyncOutboxStatsEntry[]>([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
     []
   );
+
+  const pushToast = useCallback((toast: Omit<ToastMessage, "id">) => {
+    const id = Date.now() + Math.round(Math.random() * 1000);
+    setToasts((current) => [...current, { id, ...toast }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((entry) => entry.id !== id));
+    }, 4500);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
 
   const formatCurrency = (value: number) => currencyFormatter.format(value);
 
@@ -178,11 +208,16 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     const loadOutbox = async () => {
       if (!enableHybridPrep) {
         setOutbox([]);
+        setOutboxStats([]);
         return;
       }
       try {
-        const entries = await listSyncOutbox(token);
+        const [entries, statsData] = await Promise.all([
+          listSyncOutbox(token),
+          getSyncOutboxStats(token),
+        ]);
         setOutbox(entries);
+        setOutboxStats(statsData);
         setOutboxError(null);
       } catch (err) {
         setOutboxError(err instanceof Error ? err.message : "No fue posible consultar la cola de sincronización");
@@ -205,16 +240,24 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     if (!selectedStoreId) {
       return;
     }
+    const reason = payload.reason?.trim() ?? "";
+    if (reason.length < 5) {
+      setError("Indica un motivo corporativo de al menos 5 caracteres.");
+      return;
+    }
     try {
       setError(null);
-      await registerMovement(token, selectedStoreId, payload);
+      await registerMovement(token, selectedStoreId, payload, reason);
       setMessage("Movimiento registrado correctamente");
+      pushToast({ message: "Movimiento registrado", variant: "success" });
       await Promise.all([
         refreshSummary(),
         getDevices(token, selectedStoreId).then(setDevices),
       ]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo registrar el movimiento");
+      const message = err instanceof Error ? err.message : "No se pudo registrar el movimiento";
+      setError(message);
+      pushToast({ message, variant: "error" });
     }
   };
 
@@ -231,8 +274,11 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncStatus("Sincronizando…");
       await triggerSync(token, selectedStoreId ?? undefined);
       setSyncStatus("Sincronización completada");
+      pushToast({ message: "Sincronización completada", variant: "success" });
     } catch (err) {
-      setSyncStatus(err instanceof Error ? err.message : "Error durante la sincronización");
+      const message = err instanceof Error ? err.message : "Error durante la sincronización";
+      setSyncStatus(message);
+      pushToast({ message, variant: "error" });
     }
   };
 
@@ -242,21 +288,45 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       const job = await runBackup(token, "Respaldo manual desde tienda");
       setBackupHistory((current) => [job, ...current].slice(0, 10));
       setMessage("Respaldo generado y almacenado en el servidor central");
+      pushToast({ message: "Respaldo generado", variant: "success" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo generar el respaldo");
+      const message = err instanceof Error ? err.message : "No se pudo generar el respaldo";
+      setError(message);
+      pushToast({ message, variant: "error" });
     }
   };
 
-  const refreshOutbox = async () => {
+  const refreshOutboxStats = useCallback(async () => {
     if (!enableHybridPrep) {
+      setOutboxStats([]);
       return;
     }
     try {
-      const entries = await listSyncOutbox(token);
+      const statsData = await getSyncOutboxStats(token);
+      setOutboxStats(statsData);
+    } catch (err) {
+      setOutboxError(err instanceof Error ? err.message : "No se pudo consultar las estadísticas de la cola");
+    }
+  }, [enableHybridPrep, token]);
+
+  const refreshOutbox = async () => {
+    if (!enableHybridPrep) {
+      setOutbox([]);
+      setOutboxStats([]);
+      return;
+    }
+    try {
+      const [entries, statsData] = await Promise.all([
+        listSyncOutbox(token),
+        getSyncOutboxStats(token),
+      ]);
       setOutbox(entries);
+      setOutboxStats(statsData);
       setOutboxError(null);
     } catch (err) {
-      setOutboxError(err instanceof Error ? err.message : "No se pudo actualizar la cola local");
+      const message = err instanceof Error ? err.message : "No se pudo actualizar la cola local";
+      setOutboxError(message);
+      pushToast({ message, variant: "error" });
     }
   };
 
@@ -273,8 +343,12 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       );
       setOutbox(updated);
       setMessage("Eventos listos para reintento local");
+      pushToast({ message: "Cola reagendada", variant: "success" });
+      await refreshOutboxStats();
     } catch (err) {
-      setOutboxError(err instanceof Error ? err.message : "No se pudo reagendar la cola local");
+      const message = err instanceof Error ? err.message : "No se pudo reagendar la cola local";
+      setOutboxError(message);
+      pushToast({ message, variant: "error" });
     }
   };
 
@@ -327,6 +401,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     syncStatus,
     outbox,
     outboxError,
+    outboxStats,
     formatCurrency,
     totalDevices: totals.totalDevices,
     totalItems: totals.totalItems,
@@ -341,6 +416,10 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     refreshOutbox,
     handleRetryOutbox,
     downloadInventoryReport,
+    refreshOutboxStats,
+    toasts,
+    pushToast,
+    dismissToast,
   };
 
   return <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>;

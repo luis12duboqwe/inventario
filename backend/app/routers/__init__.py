@@ -1,5 +1,6 @@
 """Colección de routers disponibles."""
 from . import (  # noqa: F401
+    audit,
     auth,
     backups,
     health,
