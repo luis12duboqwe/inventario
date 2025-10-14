@@ -470,11 +470,12 @@ export function listPurchaseOrders(token: string, storeId: number, limit = 50): 
 
 export function createPurchaseOrder(
   token: string,
-  payload: PurchaseOrderCreateInput
+  payload: PurchaseOrderCreateInput,
+  reason: string
 ): Promise<PurchaseOrder> {
   return request<PurchaseOrder>(
     "/purchases",
-    { method: "POST", body: JSON.stringify(payload) },
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
     token
   );
 }
@@ -544,10 +545,16 @@ export function searchCatalogDevices(
   return request<CatalogDevice[]>(path, { method: "GET" }, token);
 }
 
-export function registerMovement(token: string, storeId: number, payload: MovementInput) {
+export function registerMovement(
+  token: string,
+  storeId: number,
+  payload: MovementInput,
+  reason: string
+) {
   return request(`/inventory/stores/${storeId}/movements`, {
     method: "POST",
     body: JSON.stringify(payload),
+    headers: { "X-Reason": reason },
   }, token);
 }
 
@@ -617,42 +624,65 @@ export function listTransfers(token: string, storeId?: number): Promise<Transfer
 
 export function createTransferOrder(
   token: string,
-  payload: TransferOrderInput
+  payload: TransferOrderInput,
+  reason: string
 ): Promise<TransferOrder> {
-  return request("/transfers", { method: "POST", body: JSON.stringify(payload) }, token);
+  return request(
+    "/transfers",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function dispatchTransferOrder(
   token: string,
   transferId: number,
-  payload: TransferTransitionInput
+  payload: TransferTransitionInput,
+  reason: string
 ): Promise<TransferOrder> {
-  return request(`/transfers/${transferId}/dispatch`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  }, token);
+  return request(
+    `/transfers/${transferId}/dispatch`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
 }
 
 export function receiveTransferOrder(
   token: string,
   transferId: number,
-  payload: TransferTransitionInput
+  payload: TransferTransitionInput,
+  reason: string
 ): Promise<TransferOrder> {
-  return request(`/transfers/${transferId}/receive`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  }, token);
+  return request(
+    `/transfers/${transferId}/receive`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
 }
 
 export function cancelTransferOrder(
   token: string,
   transferId: number,
-  payload: TransferTransitionInput
+  payload: TransferTransitionInput,
+  reason: string
 ): Promise<TransferOrder> {
-  return request(`/transfers/${transferId}/cancel`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  }, token);
+  return request(
+    `/transfers/${transferId}/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
 }
 
 export function triggerSync(token: string, storeId?: number) {
