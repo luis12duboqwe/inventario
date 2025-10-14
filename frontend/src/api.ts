@@ -35,6 +35,151 @@ export type Device = {
 
 export type CatalogDevice = Device & { store_name: string };
 
+export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
+
+export type SaleItem = {
+  id: number;
+  sale_id: number;
+  device_id: number;
+  quantity: number;
+  unit_price: number;
+  discount_amount: number;
+  total_line: number;
+};
+
+export type SaleReturn = {
+  id: number;
+  sale_id: number;
+  device_id: number;
+  quantity: number;
+  reason: string;
+  processed_by_id?: number | null;
+  created_at: string;
+};
+
+export type Sale = {
+  id: number;
+  store_id: number;
+  customer_name?: string | null;
+  payment_method: PaymentMethod;
+  discount_percent: number;
+  subtotal_amount: number;
+  tax_amount: number;
+  total_amount: number;
+  notes?: string | null;
+  created_at: string;
+  performed_by_id?: number | null;
+  items: SaleItem[];
+  returns: SaleReturn[];
+};
+
+export type SaleCreateInput = {
+  store_id: number;
+  payment_method: PaymentMethod;
+  items: { device_id: number; quantity: number; discount_percent?: number }[];
+  discount_percent?: number;
+  customer_name?: string;
+  notes?: string;
+};
+
+export type SaleReturnInput = {
+  sale_id: number;
+  items: { device_id: number; quantity: number; reason: string }[];
+};
+
+export type PurchaseOrderItem = {
+  id: number;
+  purchase_order_id: number;
+  device_id: number;
+  quantity_ordered: number;
+  quantity_received: number;
+  unit_cost: number;
+};
+
+export type PurchaseOrder = {
+  id: number;
+  store_id: number;
+  supplier: string;
+  status: "PENDIENTE" | "PARCIAL" | "COMPLETADA" | "CANCELADA";
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by_id?: number | null;
+  closed_at?: string | null;
+  items: PurchaseOrderItem[];
+};
+
+export type PurchaseOrderCreateInput = {
+  store_id: number;
+  supplier: string;
+  items: { device_id: number; quantity_ordered: number; unit_cost: number }[];
+  notes?: string;
+};
+
+export type PurchaseReceiveInput = {
+  items: { device_id: number; quantity: number }[];
+};
+
+export type PurchaseReturnInput = {
+  device_id: number;
+  quantity: number;
+  reason: string;
+};
+
+export type PosCartItemInput = {
+  device_id: number;
+  quantity: number;
+  discount_percent?: number;
+};
+
+export type PosSalePayload = {
+  store_id: number;
+  payment_method: PaymentMethod;
+  items: PosCartItemInput[];
+  discount_percent?: number;
+  customer_name?: string;
+  notes?: string;
+  confirm?: boolean;
+  save_as_draft?: boolean;
+  draft_id?: number | null;
+  apply_taxes?: boolean;
+};
+
+export type PosDraft = {
+  id: number;
+  store_id: number;
+  payload: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PosSaleResponse = {
+  status: "draft" | "registered";
+  sale?: Sale | null;
+  draft?: PosDraft | null;
+  receipt_url?: string | null;
+  warnings: string[];
+};
+
+export type PosConfig = {
+  store_id: number;
+  tax_rate: number;
+  invoice_prefix: string;
+  printer_name?: string | null;
+  printer_profile?: string | null;
+  quick_product_ids: number[];
+  updated_at: string;
+};
+
+export type PosConfigUpdateInput = {
+  store_id: number;
+  tax_rate: number;
+  invoice_prefix: string;
+  printer_name?: string | null;
+  printer_profile?: string | null;
+  quick_product_ids: number[];
+};
+
 export type DeviceSearchFilters = {
   imei?: string;
   serial?: string;
@@ -318,6 +463,71 @@ export function getDevices(token: string, storeId: number): Promise<Device[]> {
   return request<Device[]>(`/stores/${storeId}/devices`, { method: "GET" }, token);
 }
 
+export function listPurchaseOrders(token: string, storeId: number, limit = 50): Promise<PurchaseOrder[]> {
+  const params = new URLSearchParams({ limit: String(limit), store_id: String(storeId) });
+  return request<PurchaseOrder[]>(`/purchases/?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function createPurchaseOrder(
+  token: string,
+  payload: PurchaseOrderCreateInput
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    "/purchases",
+    { method: "POST", body: JSON.stringify(payload) },
+    token
+  );
+}
+
+export function receivePurchaseOrder(
+  token: string,
+  orderId: number,
+  payload: PurchaseReceiveInput,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    `/purchases/${orderId}/receive`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function cancelPurchaseOrder(
+  token: string,
+  orderId: number,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    `/purchases/${orderId}/cancel`,
+    {
+      method: "POST",
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function registerPurchaseReturn(
+  token: string,
+  orderId: number,
+  payload: PurchaseReturnInput,
+  reason: string
+): Promise<void> {
+  return request<void>(
+    `/purchases/${orderId}/returns`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
 export function searchCatalogDevices(
   token: string,
   filters: DeviceSearchFilters
@@ -339,6 +549,48 @@ export function registerMovement(token: string, storeId: number, payload: Moveme
     method: "POST",
     body: JSON.stringify(payload),
   }, token);
+}
+
+export function listSales(token: string, storeId?: number, limit = 50): Promise<Sale[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (typeof storeId === "number") {
+    params.append("store_id", String(storeId));
+  }
+  const query = params.toString();
+  const path = query ? `/sales?${query}` : "/sales";
+  return request<Sale[]>(path, { method: "GET" }, token);
+}
+
+export function createSale(
+  token: string,
+  payload: SaleCreateInput,
+  reason: string
+): Promise<Sale> {
+  return request<Sale>(
+    "/sales",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function registerSaleReturn(
+  token: string,
+  payload: SaleReturnInput,
+  reason: string
+): Promise<SaleReturn[]> {
+  return request<SaleReturn[]>(
+    "/sales/returns",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
 }
 
 export function listStoreMemberships(token: string, storeId: number): Promise<StoreMembership[]> {
@@ -555,4 +807,51 @@ export function getAuditLogs(token: string, limit = 100, action?: string): Promi
     params.append("action", action);
   }
   return request<AuditLogEntry[]>(`/audit/logs?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function submitPosSale(
+  token: string,
+  payload: PosSalePayload,
+  reason: string
+): Promise<PosSaleResponse> {
+  return request<PosSaleResponse>(
+    "/pos/sale",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function getPosConfig(token: string, storeId: number): Promise<PosConfig> {
+  return request<PosConfig>(`/pos/config?store_id=${storeId}`, { method: "GET" }, token);
+}
+
+export function updatePosConfig(
+  token: string,
+  payload: PosConfigUpdateInput,
+  reason: string
+): Promise<PosConfig> {
+  return request<PosConfig>(
+    "/pos/config",
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export async function downloadPosReceipt(token: string, saleId: number): Promise<Blob> {
+  const response = await fetch(`${API_URL}/pos/receipt/${saleId}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error("No fue posible obtener el recibo del punto de venta");
+  }
+  return await response.blob();
 }

@@ -1438,7 +1438,11 @@ def get_sale(db: Session, sale_id: int) -> models.Sale:
     statement = (
         select(models.Sale)
         .where(models.Sale.id == sale_id)
-        .options(joinedload(models.Sale.items), joinedload(models.Sale.returns))
+        .options(
+            joinedload(models.Sale.store),
+            joinedload(models.Sale.items).joinedload(models.SaleItem.device),
+            joinedload(models.Sale.returns),
+        )
     )
     try:
         return db.scalars(statement).unique().one()
@@ -1451,6 +1455,7 @@ def create_sale(
     payload: schemas.SaleCreate,
     *,
     performed_by_id: int,
+    tax_rate: Decimal | float | int | None = None,
     reason: str | None = None,
 ) -> models.Sale:
     if not payload.items:
@@ -1458,11 +1463,14 @@ def create_sale(
 
     get_store(db, payload.store_id)
 
+    sale_discount_percent = _to_decimal(payload.discount_percent or 0)
     sale = models.Sale(
         store_id=payload.store_id,
         customer_name=payload.customer_name,
         payment_method=models.PaymentMethod(payload.payment_method),
-        discount_percent=_to_decimal(payload.discount_percent or 0),
+        discount_percent=sale_discount_percent.quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        ),
         notes=payload.notes,
         performed_by_id=performed_by_id,
     )
@@ -1470,6 +1478,7 @@ def create_sale(
     db.flush()
 
     gross_total = Decimal("0")
+    total_discount = Decimal("0")
     for item in payload.items:
         if item.quantity <= 0:
             raise ValueError("sale_invalid_quantity")
@@ -1477,9 +1486,26 @@ def create_sale(
         if device.quantity < item.quantity:
             raise ValueError("sale_insufficient_stock")
 
-        line_unit_price = _to_decimal(device.unit_price)
-        line_total = line_unit_price * _to_decimal(item.quantity)
+        line_unit_price = _to_decimal(device.unit_price).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        quantity_decimal = _to_decimal(item.quantity)
+        line_total = (line_unit_price * quantity_decimal).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
         gross_total += line_total
+
+        line_discount_percent = _to_decimal(getattr(item, "discount_percent", None))
+        if line_discount_percent == Decimal("0"):
+            line_discount_percent = sale_discount_percent
+        discount_fraction = line_discount_percent / Decimal("100")
+        line_discount_amount = (line_total * discount_fraction).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        total_discount += line_discount_amount
+        net_line_total = (line_total - line_discount_amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
 
         device.quantity -= item.quantity
 
@@ -1487,8 +1513,9 @@ def create_sale(
             sale_id=sale.id,
             device_id=device.id,
             quantity=item.quantity,
-            unit_price=line_unit_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-            total_line=line_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            unit_price=line_unit_price,
+            discount_amount=line_discount_amount,
+            total_line=net_line_total,
         )
         db.add(sale_item)
 
@@ -1503,9 +1530,20 @@ def create_sale(
             )
         )
 
-    discount_percent = sale.discount_percent / Decimal("100")
-    discount_amount = (gross_total * discount_percent).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    sale.total_amount = (gross_total - discount_amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    subtotal = (gross_total - total_discount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    sale.subtotal_amount = subtotal
+
+    tax_value = _to_decimal(tax_rate)
+    if tax_value < Decimal("0"):
+        tax_value = Decimal("0")
+    tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
+    tax_amount = (subtotal * tax_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    sale.tax_amount = tax_amount
+    sale.total_amount = (subtotal + tax_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
     db.commit()
     db.refresh(sale)
@@ -1520,6 +1558,34 @@ def create_sale(
     )
     db.commit()
     db.refresh(sale)
+    sale_payload = {
+        "sale_id": sale.id,
+        "store_id": sale.store_id,
+        "customer_name": sale.customer_name,
+        "payment_method": sale.payment_method.value,
+        "discount_percent": float(sale.discount_percent),
+        "subtotal_amount": float(sale.subtotal_amount),
+        "tax_amount": float(sale.tax_amount),
+        "total_amount": float(sale.total_amount),
+        "created_at": sale.created_at.isoformat(),
+        "items": [
+            {
+                "device_id": item.device_id,
+                "quantity": item.quantity,
+                "unit_price": float(item.unit_price),
+                "discount_amount": float(item.discount_amount),
+                "total_line": float(item.total_line),
+            }
+            for item in sale.items
+        ],
+    }
+    enqueue_sync_outbox(
+        db,
+        entity_type="sale",
+        entity_id=str(sale.id),
+        operation="UPSERT",
+        payload=sale_payload,
+    )
     return sale
 
 
@@ -1589,6 +1655,179 @@ def register_sale_return(
     db.commit()
     return returns
 
+
+def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
+    store = get_store(db, store_id)
+    statement = select(models.POSConfig).where(models.POSConfig.store_id == store_id)
+    config = db.scalars(statement).first()
+    if config is None:
+        prefix = store.name[:3].upper() if store.name else "POS"
+        generated_prefix = f"{prefix}-{store_id:03d}"[:12]
+        config = models.POSConfig(store_id=store_id, invoice_prefix=generated_prefix)
+        db.add(config)
+        db.commit()
+        db.refresh(config)
+    return config
+
+
+def update_pos_config(
+    db: Session,
+    payload: schemas.POSConfigUpdate,
+    *,
+    updated_by_id: int | None,
+    reason: str | None = None,
+) -> models.POSConfig:
+    config = get_pos_config(db, payload.store_id)
+    config.tax_rate = _to_decimal(payload.tax_rate).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    config.invoice_prefix = payload.invoice_prefix.strip().upper()
+    config.printer_name = payload.printer_name.strip() if payload.printer_name else None
+    config.printer_profile = (
+        payload.printer_profile.strip() if payload.printer_profile else None
+    )
+    config.quick_product_ids = payload.quick_product_ids
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+
+    _log_action(
+        db,
+        action="pos_config_update",
+        entity_type="store",
+        entity_id=str(payload.store_id),
+        performed_by_id=updated_by_id,
+        details=json.dumps(
+            {
+                "tax_rate": float(config.tax_rate),
+                "invoice_prefix": config.invoice_prefix,
+                "reason": reason,
+            }
+        ),
+    )
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+def save_pos_draft(
+    db: Session,
+    payload: schemas.POSSaleRequest,
+    *,
+    saved_by_id: int | None,
+    reason: str | None = None,
+) -> models.POSDraftSale:
+    get_store(db, payload.store_id)
+    draft: models.POSDraftSale
+    if payload.draft_id:
+        statement = select(models.POSDraftSale).where(models.POSDraftSale.id == payload.draft_id)
+        draft = db.scalars(statement).first()
+        if draft is None:
+            raise LookupError("pos_draft_not_found")
+        draft.store_id = payload.store_id
+    else:
+        draft = models.POSDraftSale(store_id=payload.store_id)
+        db.add(draft)
+
+    serialized = payload.model_dump(
+        exclude_none=True,
+        exclude={"confirm", "save_as_draft"},
+    )
+    draft.payload = serialized
+    db.add(draft)
+    db.commit()
+    db.refresh(draft)
+
+    details = {"store_id": payload.store_id}
+    if reason:
+        details["reason"] = reason
+    _log_action(
+        db,
+        action="pos_draft_saved",
+        entity_type="pos_draft",
+        entity_id=str(draft.id),
+        performed_by_id=saved_by_id,
+        details=json.dumps(details),
+    )
+    db.commit()
+    db.refresh(draft)
+    return draft
+
+
+def delete_pos_draft(db: Session, draft_id: int, *, removed_by_id: int | None = None) -> None:
+    statement = select(models.POSDraftSale).where(models.POSDraftSale.id == draft_id)
+    draft = db.scalars(statement).first()
+    if draft is None:
+        raise LookupError("pos_draft_not_found")
+    store_id = draft.store_id
+    db.delete(draft)
+    db.commit()
+    _log_action(
+        db,
+        action="pos_draft_removed",
+        entity_type="pos_draft",
+        entity_id=str(draft_id),
+        performed_by_id=removed_by_id,
+        details=json.dumps({"store_id": store_id}),
+    )
+    db.commit()
+
+
+def register_pos_sale(
+    db: Session,
+    payload: schemas.POSSaleRequest,
+    *,
+    performed_by_id: int,
+    reason: str | None = None,
+) -> tuple[models.Sale, list[str]]:
+    if not payload.confirm:
+        raise ValueError("pos_confirmation_required")
+
+    config = get_pos_config(db, payload.store_id)
+    sale_payload = schemas.SaleCreate(
+        store_id=payload.store_id,
+        customer_name=payload.customer_name,
+        payment_method=payload.payment_method,
+        discount_percent=payload.discount_percent,
+        notes=payload.notes,
+        items=[
+            schemas.SaleItemCreate(
+                device_id=item.device_id,
+                quantity=item.quantity,
+                discount_percent=item.discount_percent,
+            )
+            for item in payload.items
+        ],
+    )
+    tax_value = config.tax_rate if payload.apply_taxes else Decimal("0")
+    sale = create_sale(
+        db,
+        sale_payload,
+        performed_by_id=performed_by_id,
+        tax_rate=tax_value,
+        reason=reason,
+    )
+
+    warnings: list[str] = []
+    for item in payload.items:
+        device = get_device(db, payload.store_id, item.device_id)
+        if device.quantity <= 0:
+            warnings.append(
+                f"{device.sku} sin existencias en la sucursal"
+            )
+        elif device.quantity <= 2:
+            warnings.append(
+                f"Stock bajo de {device.sku}: quedan {device.quantity} unidades"
+            )
+
+    if payload.draft_id:
+        try:
+            delete_pos_draft(db, payload.draft_id, removed_by_id=performed_by_id)
+        except LookupError:
+            pass
+
+    db.refresh(sale)
+    return sale, warnings
 
 def list_backup_jobs(db: Session, limit: int = 50) -> list[models.BackupJob]:
     statement = (
