@@ -225,23 +225,23 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 - ✅ **Lote A — Catálogo pro**: campos extendidos de `Device`, búsqueda avanzada por IMEI/serie, validaciones globales y auditoría de costos/estado/proveedor con pruebas `pytest`.
 - ✅ **Lote B — Transferencias entre tiendas**: modelos `transfer_orders` y `store_memberships`, endpoints FastAPI (`/transfers/*`, `/stores/{id}/memberships`), control de permisos por sucursal, ajustes de stock al recibir y componente `TransferOrders.tsx` integrado al panel con estilos oscuros.
 - ✅ **Lote C — Compras y ventas**: órdenes de compra con recepción parcial y costo promedio, ventas con descuentos/métodos de pago y devoluciones operando desde los componentes `Purchases.tsx`, `Sales.tsx` y `Returns.tsx`, con cobertura de pruebas `pytest`.
-- ✅ **Lote D — Analítica avanzada**: endpoints `/reports/analytics/rotation`, `/reports/analytics/aging`, `/reports/analytics/stockout_forecast`, `/reports/analytics/comparative`, `/reports/analytics/profit_margin`, `/reports/analytics/sales_forecast`, descarga PDF y exportación CSV oscuras implementadas con servicios ReportLab, pruebas `pytest` y tablero `AnalyticsBoard.tsx` con filtros por sucursal.
-- ✅ **Lote E — Seguridad y auditoría fina**: middleware global `X-Reason`, dependencias `require_reason`, flujos 2FA TOTP condicionados por flag `SOFTMOBILE_ENABLE_2FA`, auditoría de sesiones activas con `AuditLog.tsx` (polling y toasts) y componente `TwoFactorSetup.tsx` que exige motivo corporativo en cada acción.
-- ✅ **Lote F — Preparación modo híbrido**: cola `sync_outbox` con reintentos, prioridad HIGH/NORMAL/LOW y estrategia *last-write-wins* en `crud.enqueue_sync_outbox`/`reset_outbox_entries`, paneles `SyncPanel.tsx` y "Sincronización avanzada" con métricas y pruebas automáticas.
+- ✅ **Lote D — Analítica avanzada**: endpoints `/reports/analytics/rotation`, `/reports/analytics/aging`, `/reports/analytics/stockout_forecast` y descarga PDF oscuro implementados con servicios ReportLab, pruebas `pytest` y panel `AnalyticsBoard.tsx`.
+- ✅ **Lote E — Seguridad y auditoría fina**: middleware global `X-Reason`, dependencias `require_reason`, flujos 2FA TOTP condicionados por flag `SOFTMOBILE_ENABLE_2FA`, auditoría de sesiones activas, componente `TwoFactorSetup.tsx` y bitácora visual `AuditLog.tsx` con motivos obligatorios.
+- ✅ **Lote F — Preparación modo híbrido**: cola `sync_outbox` con reintentos, estrategia *last-write-wins* en `crud.enqueue_sync_outbox`/`reset_outbox_entries`, panel de reintentos en `SyncPanel.tsx` y pruebas automáticas.
 
 **Próximos hitos**
 
-1. Mantener monitoreo continuo del modo híbrido, afinando reglas de *merge* temporal y preparando compatibilidad con nuevas entidades planeadas para v2.3.
-2. Diseñar módulos adicionales de soporte remoto y control de clientes, incluyendo comparativos regionales en tableros georreferenciados.
-3. Profundizar en mejores prácticas de despliegue (Inno Setup) y capacitaciones 2FA para escalamientos masivos.
+1. Mantener monitoreo continuo del modo híbrido y ajustar estrategias de resolución de conflictos conforme se agreguen nuevas entidades.
+2. Extender analítica avanzada con tableros comparativos inter-sucursal y exportaciones CSV en la versión 2.3.
+3. Documentar mejores prácticas de 2FA para despliegues masivos y preparar guías para soporte remoto.
 
 ## Registro operativo de lotes entregados
 
 | Lote | Entregables clave | Evidencias |
 | --- | --- | --- |
-| D — Analítica avanzada | Servicios `analytics.py`, endpoints `/reports/analytics/*` (incluye comparativos, margen y forecast), PDF/CSV oscuros y componente `AnalyticsBoard.tsx` renovado | Pruebas `pytest` (rotación, envejecimiento, comparativos) y verificación de exportes desde el panel |
-| E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx`/`AuditLog.tsx` con toasts | Ejecución interactiva del módulo Seguridad y pruebas automatizadas de sesiones |
-| F — Modo híbrido | Modelo `SyncOutbox`, prioridades HIGH/NORMAL/LOW, reintentos `reset_outbox_entries`, paneles `SyncPanel.tsx` y "Sincronización avanzada" con métricas | Casos de prueba de compras/ventas que generan eventos y validación manual de métricas |
+| D — Analítica avanzada | Servicios `analytics.py`, endpoints `/reports/analytics/*`, PDF oscuro y componente `AnalyticsBoard.tsx` | Pruebas `pytest` y descarga manual desde el panel de Analítica |
+| E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` | Ejecución interactiva del módulo Seguridad y pruebas automatizadas de sesiones |
+| F — Modo híbrido | Modelo `SyncOutbox`, reintentos `reset_outbox_entries`, visualización/acciones en `SyncPanel.tsx` y alertas en tiempo real | Casos de prueba de transferencias/compras/ventas que generan eventos y validación manual del panel |
 
 ### Pasos de control iterativo (registrar tras cada entrega)
 
