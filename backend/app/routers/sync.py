@@ -75,6 +75,7 @@ def retry_outbox_entries(
         db,
         payload.ids,
         performed_by_id=current_user.id if current_user else None,
+        reason=reason,
     )
     if not entries:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entradas no encontradas")
@@ -89,3 +90,35 @@ def outbox_statistics(
     _ensure_hybrid_enabled()
     stats = crud.get_sync_outbox_statistics(db)
     return [schemas.SyncOutboxStatsEntry(**item) for item in stats]
+
+
+@router.get("/history", response_model=list[schemas.SyncStoreHistory])
+def list_sync_history(
+    limit_per_store: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    history = crud.list_sync_history_by_store(db, limit_per_store=limit_per_store)
+    results: list[schemas.SyncStoreHistory] = []
+    for item in history:
+        sessions = [
+            schemas.SyncSessionCompact(**session)
+            if not isinstance(session, models.SyncSession)
+            else schemas.SyncSessionCompact(
+                id=session.id,
+                mode=session.mode,
+                status=session.status,
+                started_at=session.started_at,
+                finished_at=session.finished_at,
+                error_message=session.error_message,
+            )
+            for session in item["sessions"]
+        ]
+        results.append(
+            schemas.SyncStoreHistory(
+                store_id=item["store_id"],
+                store_name=item["store_name"],
+                sessions=sessions,
+            )
+        )
+    return results

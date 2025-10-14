@@ -16,6 +16,9 @@ function SyncSection() {
     refreshOutbox,
     handleRetryOutbox,
     outboxStats,
+    syncHistory,
+    syncHistoryError,
+    refreshSyncHistory,
   } = useDashboard();
 
   const latestRelease = updateStatus?.latest_release ?? null;
@@ -125,6 +128,46 @@ function SyncSection() {
             La sincronización híbrida está desactivada. Ajusta el flag <code>SOFTMOBILE_ENABLE_HYBRID_PREP</code> para habilitar
             la cola local.
           </p>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Historial por tienda</h2>
+        <p className="card-subtitle">Resumen de las últimas ejecuciones y errores registrados.</p>
+        <div className="outbox-actions">
+          <button className="btn" type="button" onClick={refreshSyncHistory}>
+            Actualizar historial
+          </button>
+        </div>
+        {syncHistoryError ? <p className="error-text">{syncHistoryError}</p> : null}
+        {syncHistory.length === 0 ? (
+          <p className="muted-text">Aún no hay sesiones registradas.</p>
+        ) : (
+          <div className="sync-history-grid">
+            {syncHistory.map((storeHistory) => (
+              <article key={storeHistory.store_id ?? "global"} className="sync-history-item">
+                <header>
+                  <h3>{storeHistory.store_name}</h3>
+                </header>
+                <ul>
+                  {storeHistory.sessions.map((session) => (
+                    <li key={session.id}>
+                      <div className="sync-history-line">
+                        <span className={`badge ${session.status === "exitoso" ? "success" : "warning"}`}>
+                          {session.status === "exitoso" ? "Exitoso" : "Fallido"}
+                        </span>
+                        <span>{new Date(session.started_at).toLocaleString("es-MX")}</span>
+                        <span className="sync-history-mode">Modo: {session.mode}</span>
+                      </div>
+                      {session.error_message ? (
+                        <p className="sync-history-error">⚠️ {session.error_message}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
         )}
       </section>
 

@@ -10,6 +10,20 @@ export type Store = {
   timezone: string;
 };
 
+export type Role = {
+  id: number;
+  name: string;
+};
+
+export type UserAccount = {
+  id: number;
+  username: string;
+  full_name?: string | null;
+  is_active: boolean;
+  created_at: string;
+  roles: Role[];
+};
+
 export type Device = {
   id: number;
   sku: string;
@@ -400,6 +414,11 @@ export type LowStockDevice = {
   inventory_value: number;
 };
 
+export type DashboardPoint = {
+  label: string;
+  value: number;
+};
+
 export type InventoryMetrics = {
   totals: {
     stores: number;
@@ -409,6 +428,17 @@ export type InventoryMetrics = {
   };
   top_stores: StoreValueMetric[];
   low_stock_devices: LowStockDevice[];
+  global_performance: {
+    total_sales: number;
+    sales_count: number;
+    total_stock: number;
+    open_repairs: number;
+    gross_profit: number;
+  };
+  sales_trend: DashboardPoint[];
+  stock_breakdown: DashboardPoint[];
+  repair_mix: DashboardPoint[];
+  profit_breakdown: DashboardPoint[];
 };
 
 export type AuditLogEntry = {
@@ -560,6 +590,21 @@ export type SyncOutboxStatsEntry = {
   oldest_pending?: string | null;
 };
 
+export type SyncSessionCompact = {
+  id: number;
+  mode: string;
+  status: string;
+  started_at: string;
+  finished_at?: string | null;
+  error_message?: string | null;
+};
+
+export type SyncStoreHistory = {
+  store_id: number | null;
+  store_name: string;
+  sessions: SyncSessionCompact[];
+};
+
 export type BackupJob = {
   id: number;
   mode: "automatico" | "manual";
@@ -641,6 +686,34 @@ export async function login(credentials: Credentials): Promise<{ access_token: s
   }
 
   return (await response.json()) as { access_token: string };
+}
+
+export function getCurrentUser(token: string): Promise<UserAccount> {
+  return request<UserAccount>("/auth/me", { method: "GET" }, token);
+}
+
+export function listUsers(token: string): Promise<UserAccount[]> {
+  return request<UserAccount[]>("/users", { method: "GET" }, token);
+}
+
+export function listRoles(token: string): Promise<Role[]> {
+  return request<Role[]>("/users/roles", { method: "GET" }, token);
+}
+
+export function updateUserRoles(token: string, userId: number, roles: string[], reason: string): Promise<UserAccount> {
+  return request<UserAccount>(
+    `/users/${userId}/roles`,
+    { method: "PUT", body: JSON.stringify({ roles }), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function updateUserStatus(token: string, userId: number, isActive: boolean, reason: string): Promise<UserAccount> {
+  return request<UserAccount>(
+    `/users/${userId}`,
+    { method: "PATCH", body: JSON.stringify({ is_active: isActive }), headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function getStores(token: string): Promise<Store[]> {
@@ -1244,6 +1317,14 @@ export function retrySyncOutbox(token: string, ids: number[], reason: string): P
 
 export function getSyncOutboxStats(token: string): Promise<SyncOutboxStatsEntry[]> {
   return request<SyncOutboxStatsEntry[]>("/sync/outbox/stats", { method: "GET" }, token);
+}
+
+export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncStoreHistory[]> {
+  return request<SyncStoreHistory[]>(
+    `/sync/history?limit_per_store=${limitPerStore}`,
+    { method: "GET" },
+    token,
+  );
 }
 
 export function getAuditLogs(token: string, limit = 100, action?: string): Promise<AuditLogEntry[]> {

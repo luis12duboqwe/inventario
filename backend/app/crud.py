@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import defaultdict
 from collections.abc import Iterable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 
@@ -50,6 +51,7 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "purchase_order": models.SyncOutboxPriority.NORMAL,
     "repair_order": models.SyncOutboxPriority.NORMAL,
     "customer": models.SyncOutboxPriority.NORMAL,
+    "pos_config": models.SyncOutboxPriority.NORMAL,
     "supplier": models.SyncOutboxPriority.NORMAL,
     "cash_session": models.SyncOutboxPriority.NORMAL,
     "device": models.SyncOutboxPriority.NORMAL,
@@ -116,6 +118,55 @@ def _log_action(
 
 def _device_value(device: models.Device) -> Decimal:
     return Decimal(device.quantity) * (device.unit_price or Decimal("0"))
+
+
+def _customer_payload(customer: models.Customer) -> dict[str, object]:
+    return {
+        "id": customer.id,
+        "name": customer.name,
+        "contact_name": customer.contact_name,
+        "email": customer.email,
+        "phone": customer.phone,
+        "outstanding_debt": float(customer.outstanding_debt or Decimal("0")),
+        "last_interaction_at": customer.last_interaction_at.isoformat() if customer.last_interaction_at else None,
+        "updated_at": customer.updated_at.isoformat(),
+    }
+
+
+def _repair_payload(order: models.RepairOrder) -> dict[str, object]:
+    return {
+        "id": order.id,
+        "store_id": order.store_id,
+        "status": order.status.value,
+        "technician_name": order.technician_name,
+        "customer_id": order.customer_id,
+        "customer_name": order.customer_name,
+        "labor_cost": float(order.labor_cost),
+        "parts_cost": float(order.parts_cost),
+        "total_cost": float(order.total_cost),
+        "updated_at": order.updated_at.isoformat(),
+    }
+
+
+def _pos_config_payload(config: models.POSConfig) -> dict[str, object]:
+    return {
+        "store_id": config.store_id,
+        "tax_rate": float(config.tax_rate),
+        "invoice_prefix": config.invoice_prefix,
+        "printer_name": config.printer_name,
+        "printer_profile": config.printer_profile,
+        "quick_product_ids": config.quick_product_ids,
+        "updated_at": config.updated_at.isoformat(),
+    }
+
+
+def _pos_draft_payload(draft: models.POSDraftSale) -> dict[str, object]:
+    return {
+        "id": draft.id,
+        "store_id": draft.store_id,
+        "payload": draft.payload,
+        "updated_at": draft.updated_at.isoformat(),
+    }
 
 
 def _history_to_json(
@@ -203,6 +254,11 @@ def ensure_role(db: Session, name: str) -> models.Role:
     return role
 
 
+def list_roles(db: Session) -> list[models.Role]:
+    statement = select(models.Role).order_by(models.Role.name.asc())
+    return list(db.scalars(statement))
+
+
 def get_user_by_username(db: Session, username: str) -> models.User | None:
     statement = select(models.User).options(joinedload(models.User.roles).joinedload(models.UserRole.role)).where(
         models.User.username == username
@@ -271,6 +327,29 @@ def set_user_roles(db: Session, user: models.User, role_names: Iterable[str]) ->
         role = ensure_role(db, role_name)
         db.add(models.UserRole(user=user, role=role))
 
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def set_user_status(
+    db: Session,
+    user: models.User,
+    *,
+    is_active: bool,
+    performed_by_id: int | None = None,
+) -> models.User:
+    user.is_active = is_active
+    db.commit()
+    db.refresh(user)
+    _log_action(
+        db,
+        action="user_status_changed",
+        entity_type="user",
+        entity_id=str(user.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"is_active": is_active}),
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -520,6 +599,13 @@ def create_customer(
     )
     db.commit()
     db.refresh(customer)
+    enqueue_sync_outbox(
+        db,
+        entity_type="customer",
+        entity_id=str(customer.id),
+        operation="UPSERT",
+        payload=_customer_payload(customer),
+    )
     return customer
 
 
@@ -573,6 +659,13 @@ def update_customer(
         )
         db.commit()
         db.refresh(customer)
+    enqueue_sync_outbox(
+        db,
+        entity_type="customer",
+        entity_id=str(customer.id),
+        operation="UPSERT",
+        payload=_customer_payload(customer),
+    )
     return customer
 
 
@@ -593,6 +686,13 @@ def delete_customer(
         performed_by_id=performed_by_id,
     )
     db.commit()
+    enqueue_sync_outbox(
+        db,
+        entity_type="customer",
+        entity_id=str(customer_id),
+        operation="DELETE",
+        payload={"id": customer_id},
+    )
 
 
 def export_customers_csv(
@@ -1062,6 +1162,90 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     store_metrics.sort(key=lambda item: item["total_value"], reverse=True)
     low_stock.sort(key=lambda item: (item["quantity"], item["name"]))
 
+    sales_stmt = (
+        select(models.Sale)
+        .options(
+            joinedload(models.Sale.items).joinedload(models.SaleItem.device),
+            joinedload(models.Sale.store),
+        )
+        .order_by(models.Sale.created_at.desc())
+    )
+    sales = list(db.scalars(sales_stmt).unique())
+
+    repairs_stmt = select(models.RepairOrder)
+    repairs = list(db.scalars(repairs_stmt))
+
+    total_sales_amount = Decimal("0")
+    total_profit = Decimal("0")
+    sales_count = len(sales)
+    sales_trend_map: dict[date, Decimal] = defaultdict(lambda: Decimal("0"))
+    store_profit: dict[int, dict[str, object]] = {}
+
+    today = datetime.utcnow().date()
+    window_days = [today - timedelta(days=delta) for delta in range(6, -1, -1)]
+    window_set = set(window_days)
+
+    for sale in sales:
+        total_sales_amount += sale.total_amount
+        sale_cost = Decimal("0")
+        for item in sale.items:
+            device_cost = _to_decimal(getattr(item.device, "costo_unitario", None) or item.unit_price)
+            sale_cost += (device_cost * item.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        profit = (sale.total_amount - sale_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total_profit += profit
+
+        store_data = store_profit.setdefault(
+            sale.store_id,
+            {
+                "store_id": sale.store_id,
+                "store_name": sale.store.name if sale.store else "Sucursal",
+                "revenue": Decimal("0"),
+                "cost": Decimal("0"),
+                "profit": Decimal("0"),
+            },
+        )
+        store_data["revenue"] += sale.total_amount
+        store_data["cost"] += sale_cost
+        store_data["profit"] += profit
+
+        sale_day = sale.created_at.date()
+        if sale_day in window_set:
+            sales_trend_map[sale_day] += sale.total_amount
+
+    repair_status_counts: dict[str, int] = defaultdict(int)
+    open_repairs = 0
+    for order in repairs:
+        repair_status_counts[order.status.value] += 1
+        if order.status != models.RepairStatus.ENTREGADO:
+            open_repairs += 1
+
+    sales_trend = [
+        {
+            "label": day.strftime("%d/%m"),
+            "value": float(sales_trend_map.get(day, Decimal("0"))),
+        }
+        for day in window_days
+    ]
+
+    stock_breakdown = [
+        {"label": metric["store_name"], "value": metric["total_units"]}
+        for metric in store_metrics
+    ]
+
+    profit_breakdown = [
+        {
+            "label": data["store_name"],
+            "value": float(data["profit"]),
+        }
+        for data in store_profit.values()
+        if data["profit"]
+    ]
+
+    repair_mix = [
+        {"label": status, "value": count}
+        for status, count in sorted(repair_status_counts.items())
+    ]
+
     return {
         "totals": {
             "stores": len(stores),
@@ -1071,6 +1255,17 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         },
         "top_stores": store_metrics[:5],
         "low_stock_devices": low_stock[:10],
+        "global_performance": {
+            "total_sales": float(total_sales_amount),
+            "sales_count": sales_count,
+            "total_stock": total_units,
+            "open_repairs": open_repairs,
+            "gross_profit": float(total_profit),
+        },
+        "sales_trend": sales_trend,
+        "stock_breakdown": stock_breakdown,
+        "repair_mix": repair_mix,
+        "profit_breakdown": profit_breakdown,
     }
 
 
@@ -1480,6 +1675,52 @@ def list_sync_sessions(db: Session, limit: int = 50) -> list[models.SyncSession]
     return list(db.scalars(statement))
 
 
+def list_sync_history_by_store(
+    db: Session,
+    *,
+    limit_per_store: int = 5,
+) -> list[dict[str, object]]:
+    statement = (
+        select(models.SyncSession)
+        .options(joinedload(models.SyncSession.store))
+        .order_by(models.SyncSession.started_at.desc())
+    )
+    sessions = list(db.scalars(statement).unique())
+    grouped: dict[int | None, list[models.SyncSession]] = {}
+    for session in sessions:
+        key = session.store_id
+        bucket = grouped.setdefault(key, [])
+        if len(bucket) < limit_per_store:
+            bucket.append(session)
+
+    history: list[dict[str, object]] = []
+    for store_id, entries in grouped.items():
+        if not entries:
+            continue
+        reference = entries[0]
+        store_name = reference.store.name if reference.store else "Global"
+        history.append(
+            {
+                "store_id": store_id,
+                "store_name": store_name,
+                "sessions": [
+                    {
+                        "id": entry.id,
+                        "mode": entry.mode,
+                        "status": entry.status,
+                        "started_at": entry.started_at,
+                        "finished_at": entry.finished_at,
+                        "error_message": entry.error_message,
+                    }
+                    for entry in entries
+                ],
+            }
+        )
+
+    history.sort(key=lambda item: (item["store_name"].lower(), item["store_id"] or 0))
+    return history
+
+
 def enqueue_sync_outbox(
     db: Session,
     *,
@@ -1549,6 +1790,7 @@ def reset_outbox_entries(
     entry_ids: Iterable[int],
     *,
     performed_by_id: int | None = None,
+    reason: str | None = None,
 ) -> list[models.SyncOutbox]:
     ids_tuple = tuple({int(entry_id) for entry_id in entry_ids})
     if not ids_tuple:
@@ -1569,13 +1811,16 @@ def reset_outbox_entries(
     db.commit()
     for entry in entries:
         db.refresh(entry)
+        details_payload = {"operation": entry.operation}
+        if reason:
+            details_payload["reason"] = reason
         _log_action(
             db,
             action="sync_outbox_reset",
             entity_type=entry.entity_type,
             entity_id=str(entry.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"operation": entry.operation}, ensure_ascii=False),
+            details=json.dumps(details_payload, ensure_ascii=False),
         )
     db.commit()
     refreshed = list(db.scalars(statement))
@@ -2442,6 +2687,13 @@ def create_repair_order(
     )
     db.commit()
     db.refresh(order)
+    enqueue_sync_outbox(
+        db,
+        entity_type="repair_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_repair_payload(order),
+    )
     return order
 
 
@@ -2518,6 +2770,13 @@ def update_repair_order(
         )
         db.commit()
         db.refresh(order)
+    enqueue_sync_outbox(
+        db,
+        entity_type="repair_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_repair_payload(order),
+    )
     return order
 
 
@@ -2552,6 +2811,13 @@ def delete_repair_order(
         performed_by_id=performed_by_id,
     )
     db.commit()
+    enqueue_sync_outbox(
+        db,
+        entity_type="repair_order",
+        entity_id=str(order_id),
+        operation="DELETE",
+        payload={"id": order_id},
+    )
 
 
 def list_sales(db: Session, *, store_id: int | None = None, limit: int = 50) -> list[models.Sale]:
@@ -3019,6 +3285,13 @@ def update_pos_config(
     )
     db.commit()
     db.refresh(config)
+    enqueue_sync_outbox(
+        db,
+        entity_type="pos_config",
+        entity_id=str(payload.store_id),
+        operation="UPSERT",
+        payload=_pos_config_payload(config),
+    )
     return config
 
 
@@ -3064,6 +3337,13 @@ def save_pos_draft(
     )
     db.commit()
     db.refresh(draft)
+    enqueue_sync_outbox(
+        db,
+        entity_type="pos_draft",
+        entity_id=str(draft.id),
+        operation="UPSERT",
+        payload=_pos_draft_payload(draft),
+    )
     return draft
 
 
@@ -3084,6 +3364,13 @@ def delete_pos_draft(db: Session, draft_id: int, *, removed_by_id: int | None = 
         details=json.dumps({"store_id": store_id}),
     )
     db.commit()
+    enqueue_sync_outbox(
+        db,
+        entity_type="pos_draft",
+        entity_id=str(draft_id),
+        operation="DELETE",
+        payload={"id": draft_id, "store_id": store_id},
+    )
 
 
 def register_pos_sale(

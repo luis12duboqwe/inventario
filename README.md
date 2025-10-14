@@ -31,6 +31,9 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
 - **Analítica comparativa multi-sucursal** con endpoints `/reports/analytics/comparative`, `/reports/analytics/profit_margin` y `/reports/analytics/sales_forecast`, exportación CSV consolidada y tablero React con filtros por sucursal.
 - **Sincronización híbrida priorizada** mediante `sync_outbox` con niveles HIGH/NORMAL/LOW, estadísticas por entidad y reintentos auditados desde el panel.
+- **Métricas ejecutivas en vivo** con tablero global que consolida ventas, ganancias, inventario y reparaciones, acompañado de mini-gráficos (línea, barras y pastel) generados con Recharts.
+- **Gestión visual de usuarios corporativos** con checkboxes para roles `ADMIN`/`GERENTE`/`OPERADOR`, control de activación y validación de motivos antes de persistir cambios.
+- **Historial híbrido por tienda** con cola de reintentos automáticos (`/sync/history`) y middleware de acceso que bloquea rutas sensibles a usuarios sin privilegios.
 - **Experiencia UI responsiva** con toasts contextuales, animaciones suaves y selector de tema claro/oscuro que mantiene el modo oscuro como predeterminado.
 
 ## Estructura del repositorio
@@ -125,6 +128,8 @@ requirements.txt
    | `SOFTMOBILE_SECRET_KEY` | Clave para firmar JWT | `softmobile-super-secreto-cambia-esto` |
    | `SOFTMOBILE_TOKEN_MINUTES` | Minutos de vigencia de tokens | `60` |
    | `SOFTMOBILE_SYNC_INTERVAL_SECONDS` | Intervalo de sincronización automática | `1800` (30 minutos) |
+   | `SOFTMOBILE_SYNC_RETRY_INTERVAL_SECONDS` | Tiempo de espera antes de reagendar eventos fallidos en la cola híbrida | `600` (10 minutos) |
+   | `SOFTMOBILE_SYNC_MAX_ATTEMPTS` | Intentos máximos antes de dejar un evento en estado fallido | `5` |
    | `SOFTMOBILE_ENABLE_SCHEDULER` | Activa/desactiva tareas periódicas | `1` |
    | `SOFTMOBILE_ENABLE_BACKUP_SCHEDULER` | Controla los respaldos automáticos | `1` |
    | `SOFTMOBILE_BACKUP_INTERVAL_SECONDS` | Intervalo de respaldos automáticos | `43200` (12 horas) |
@@ -309,8 +314,10 @@ Una versión sólo se declara lista para entrega cuando el checklist se ha compl
 3. **Características clave**
    - Tema oscuro con acentos cian siguiendo la línea gráfica corporativa y selector opcional de modo claro.
    - Panel modular con secciones de Inventario, Operaciones, Analítica, Seguridad y Sincronización.
+   - Tablero principal con tarjetas dinámicas e indicadores globales alimentados por Recharts.
+   - Panel exclusivo de administración (`UserManagement.tsx`) con checkboxes de roles, activación/desactivación y validación de motivos corporativos.
    - Sección de inventario con tarjetas de salud, tabla por sucursal, búsqueda avanzada y alertas de stock bajo.
-   - Área de sincronización con acciones de respaldo, descarga de PDF, inspección de la cola híbrida y panel de prioridades.
+   - Área de sincronización con acciones de respaldo, descarga de PDF, historial por tienda y estadísticas avanzadas de la cola híbrida.
    - Notificaciones tipo toast, animaciones suaves y diseño responsive para seguridad y sincronización.
 
 ## Reportes y respaldos
@@ -331,9 +338,12 @@ Una versión sólo se declara lista para entrega cuando el checklist se ha compl
 ## Sincronización híbrida avanzada
 
 - **Prioridad por entidad**: los registros de `sync_outbox` se clasifican con prioridades `HIGH`, `NORMAL` o `LOW` mediante `_OUTBOX_PRIORITY_MAP`; ventas y transferencias siempre quedan al frente para minimizar latencia inter-sucursal.
+- **Cobertura integral de entidades**: ventas POS, clientes, reparaciones y catálogos registran eventos híbridos junto con inventario y transferencias, garantizando que los cambios críticos lleguen a la nube corporativa.
 - **Estrategias de resolución de conflicto**: se aplica *last-write-wins* reforzado con marca de tiempo (`updated_at`) y auditoría; cuando existen actualizaciones simultáneas se fusionan campos sensibles usando la fecha más reciente y se registran detalles en `AuditLog`.
 - **Métricas en tiempo real**: `GET /sync/outbox/stats` resume totales, pendientes y errores por tipo de entidad/prioridad; el panel "Sincronización avanzada" muestra estos datos con badges de color y permite monitorear la antigüedad del último pendiente.
+- **Historial por tienda**: `GET /sync/history` entrega las últimas ejecuciones por sucursal (modo, estado y errores), visibles en el panel con badges verdes/ámbar y filtros administrados por `DashboardContext`.
 - **Reintentos supervisados**: `POST /sync/outbox/retry` exige motivo corporativo (`X-Reason`) y reinicia contadores de intentos, dejando traza en `sync_outbox_reset` dentro de la bitácora.
+- **Reintentos automáticos**: el servicio `requeue_failed_outbox_entries` reprograma entradas fallidas después de `SOFTMOBILE_SYNC_RETRY_INTERVAL_SECONDS`, registrando la razón "Reintento automático programado" y respetando `SOFTMOBILE_SYNC_MAX_ATTEMPTS`.
 
 ## Módulo de actualizaciones
 
@@ -356,6 +366,8 @@ pytest
 ```
 
 Las pruebas levantan una base SQLite en memoria, deshabilitan las tareas periódicas y cubren autenticación, inventario, sincronización, reportes y módulo de actualizaciones.
+
+- El caso `backend/tests/test_sync_offline_mode.py` comprueba la cola híbrida en modo offline con tres sucursales, reintentos automáticos y el nuevo endpoint `/sync/history`.
 
 ### Entorno Conda para automatización CI
 

@@ -34,6 +34,12 @@ class Settings(BaseModel):
     sync_interval_seconds: int = Field(
         default_factory=lambda: int(os.getenv("SOFTMOBILE_SYNC_INTERVAL_SECONDS", "1800"))
     )
+    sync_retry_interval_seconds: int = Field(
+        default_factory=lambda: int(os.getenv("SOFTMOBILE_SYNC_RETRY_INTERVAL_SECONDS", "600"))
+    )
+    sync_max_attempts: int = Field(
+        default_factory=lambda: int(os.getenv("SOFTMOBILE_SYNC_MAX_ATTEMPTS", "5"))
+    )
     enable_background_scheduler: bool = Field(
         default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_SCHEDULER", "1")
         not in {"0", "false", "False"}
@@ -83,7 +89,13 @@ class Settings(BaseModel):
         or bool(os.getenv("PYTEST_CURRENT_TEST"))
     )
 
-    @field_validator("access_token_expire_minutes", "sync_interval_seconds", "backup_interval_seconds")
+    @field_validator(
+        "access_token_expire_minutes",
+        "sync_interval_seconds",
+        "sync_retry_interval_seconds",
+        "sync_max_attempts",
+        "backup_interval_seconds",
+    )
     @classmethod
     def _ensure_positive(cls, value: int, info: ValidationInfo) -> int:
         if value <= 0:

@@ -433,6 +433,10 @@ class UserRolesUpdate(BaseModel):
     roles: list[str] = Field(default_factory=list)
 
 
+class UserStatusUpdate(BaseModel):
+    is_active: bool
+
+
 class UserResponse(UserBase):
     id: int
     is_active: bool
@@ -577,10 +581,28 @@ class InventoryTotals(BaseModel):
         return float(value)
 
 
+class DashboardGlobalMetrics(BaseModel):
+    total_sales: float
+    sales_count: int
+    total_stock: int
+    open_repairs: int
+    gross_profit: float
+
+
+class DashboardChartPoint(BaseModel):
+    label: str
+    value: float
+
+
 class InventoryMetricsResponse(BaseModel):
     totals: InventoryTotals
     top_stores: list[StoreValueMetric]
     low_stock_devices: list[LowStockDevice]
+    global_performance: DashboardGlobalMetrics
+    sales_trend: list[DashboardChartPoint] = Field(default_factory=list)
+    stock_breakdown: list[DashboardChartPoint] = Field(default_factory=list)
+    repair_mix: list[DashboardChartPoint] = Field(default_factory=list)
+    profit_breakdown: list[DashboardChartPoint] = Field(default_factory=list)
 
 
 class RotationMetric(BaseModel):
@@ -682,6 +704,21 @@ class SyncOutboxStatsEntry(BaseModel):
     failed: int
     latest_update: datetime | None
     oldest_pending: datetime | None
+
+
+class SyncSessionCompact(BaseModel):
+    id: int
+    mode: SyncMode
+    status: SyncStatus
+    started_at: datetime
+    finished_at: datetime | None
+    error_message: str | None
+
+
+class SyncStoreHistory(BaseModel):
+    store_id: int | None
+    store_name: str
+    sessions: list[SyncSessionCompact]
 
 
 class StoreComparativeMetric(BaseModel):
@@ -1380,6 +1417,8 @@ __all__ = [
     "DeviceUpdate",
     "InventoryMetricsResponse",
     "InventorySummary",
+    "DashboardChartPoint",
+    "DashboardGlobalMetrics",
     "InventoryTotals",
     "LowStockDevice",
     "MovementBase",
@@ -1418,6 +1457,8 @@ __all__ = [
     "SyncOutboxEntryResponse",
     "SyncOutboxPriority",
     "SyncOutboxStatsEntry",
+    "SyncSessionCompact",
+    "SyncStoreHistory",
     "SyncOutboxReplayRequest",
     "SyncSessionResponse",
     "TokenPayload",
@@ -1427,6 +1468,7 @@ __all__ = [
     "UserCreate",
     "UserResponse",
     "UserRolesUpdate",
+    "UserStatusUpdate",
     "ProfitMarginMetric",
     "RotationMetric",
     "SalesProjectionMetric",

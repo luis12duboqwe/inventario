@@ -12,6 +12,14 @@ from ..security import hash_password, require_roles
 router = APIRouter(prefix="/users", tags=["usuarios"])
 
 
+@router.get("/roles", response_model=list[schemas.RoleResponse])
+def list_roles(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    return crud.list_roles(db)
+
+
 @router.post("", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     payload: schemas.UserCreate,
@@ -74,3 +82,17 @@ def update_user_roles(
         role_names = {GERENTE}
     updated = crud.set_user_roles(db, user, sorted(role_names))
     return updated
+
+
+@router.patch("/{user_id}", response_model=schemas.UserResponse)
+def update_user_status(
+    payload: schemas.UserStatusUpdate,
+    user_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    try:
+        user = crud.get_user(db, user_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado") from exc
+    return crud.set_user_status(db, user, is_active=payload.is_active, performed_by_id=current_user.id)
