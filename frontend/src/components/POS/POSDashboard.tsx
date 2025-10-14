@@ -665,7 +665,7 @@ function POSDashboard({ token, stores, defaultStoreId = null, onInventoryRefresh
   const totalsForCart = useMemo(() => totals, [totals]);
 
   return (
-    <div className="section-grid">
+    <div className="section-grid pos-touch-area">
       <section className="card wide">
         <h2>Venta directa POS</h2>
         <p className="card-subtitle">
