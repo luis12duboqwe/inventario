@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Sale } from "../../api";
-import { downloadPosReceipt } from "../../api";
+import { downloadPosReceipt, registerSaleReturn } from "../../api";
 
 type Props = {
   token: string;
@@ -39,6 +39,76 @@ function POSReceipt({ token, sale, receiptUrl }: Props) {
       setMessage("Recibo descargado correctamente.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible descargar el recibo.");
+    }
+  };
+
+  const handleReturn = async () => {
+    if (!sale) {
+      return;
+    }
+    if (sale.items.length === 0) {
+      setError("La venta no tiene artículos para devoluciones.");
+      return;
+    }
+    const defaultDeviceId = String(sale.items[0]?.device_id ?? "");
+    const deviceRaw = window.prompt("ID del dispositivo a devolver", defaultDeviceId);
+    if (!deviceRaw) {
+      return;
+    }
+    const deviceId = Number(deviceRaw);
+    if (!Number.isFinite(deviceId) || deviceId <= 0) {
+      setError("Indica un identificador de dispositivo válido.");
+      return;
+    }
+    const saleItem = sale.items.find((item) => item.device_id === deviceId);
+    if (!saleItem) {
+      setError("El dispositivo indicado no forma parte de la venta actual.");
+      return;
+    }
+    const quantityRaw = window.prompt(
+      "Cantidad a devolver",
+      String(Math.max(1, saleItem.quantity))
+    );
+    if (!quantityRaw) {
+      return;
+    }
+    const quantity = Number(quantityRaw);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError("Indica una cantidad válida a devolver.");
+      return;
+    }
+    const detailReason = window.prompt(
+      "Motivo visible para el cliente",
+      "Devolución en mostrador"
+    );
+    const reason = window.prompt(
+      "Motivo corporativo para la devolución",
+      "Devolución autorizada POS"
+    );
+    if (!reason || reason.trim().length < 5) {
+      setError("Debes capturar un motivo corporativo de al menos 5 caracteres.");
+      return;
+    }
+    try {
+      await registerSaleReturn(
+        token,
+        {
+          sale_id: sale.id,
+          items: [
+            {
+              device_id: deviceId,
+              quantity: Math.min(quantity, saleItem.quantity),
+              reason: detailReason?.trim() || "Devolución en mostrador",
+            },
+          ],
+        },
+        reason.trim()
+      );
+      setMessage("Devolución registrada correctamente. Verifica el módulo de devoluciones para detalles.");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "No fue posible registrar la devolución POS."
+      );
     }
   };
 
@@ -86,6 +156,9 @@ function POSReceipt({ token, sale, receiptUrl }: Props) {
       <div className="actions-row">
         <button type="button" className="button ghost" onClick={handlePrint}>
           Imprimir/Descargar PDF
+        </button>
+        <button type="button" className="button secondary" onClick={handleReturn}>
+          Registrar devolución
         </button>
         <button type="button" className="button secondary" onClick={handleEmail} disabled={sending}>
           {sending ? "Enviando..." : "Enviar por correo"}

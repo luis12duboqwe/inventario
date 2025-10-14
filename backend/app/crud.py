@@ -1,12 +1,14 @@
 """Operaciones de base de datos para las entidades principales."""
 from __future__ import annotations
 
+import csv
 import json
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from io import StringIO
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 
@@ -46,6 +48,10 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "sale": models.SyncOutboxPriority.HIGH,
     "transfer_order": models.SyncOutboxPriority.HIGH,
     "purchase_order": models.SyncOutboxPriority.NORMAL,
+    "repair_order": models.SyncOutboxPriority.NORMAL,
+    "customer": models.SyncOutboxPriority.NORMAL,
+    "supplier": models.SyncOutboxPriority.NORMAL,
+    "cash_session": models.SyncOutboxPriority.NORMAL,
     "device": models.SyncOutboxPriority.NORMAL,
     "inventory": models.SyncOutboxPriority.NORMAL,
     "store": models.SyncOutboxPriority.LOW,
@@ -110,6 +116,62 @@ def _log_action(
 
 def _device_value(device: models.Device) -> Decimal:
     return Decimal(device.quantity) * (device.unit_price or Decimal("0"))
+
+
+def _history_to_json(
+    entries: list[schemas.ContactHistoryEntry] | list[dict[str, object]] | None,
+) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
+    if not entries:
+        return normalized
+    for entry in entries:
+        if isinstance(entry, schemas.ContactHistoryEntry):
+            timestamp = entry.timestamp
+            note = entry.note
+        else:
+            timestamp = entry.get("timestamp")  # type: ignore[assignment]
+            note = entry.get("note") if isinstance(entry, dict) else None
+        if isinstance(timestamp, str):
+            parsed_timestamp = timestamp
+        elif isinstance(timestamp, datetime):
+            parsed_timestamp = timestamp.isoformat()
+        else:
+            parsed_timestamp = datetime.utcnow().isoformat()
+        normalized.append({"timestamp": parsed_timestamp, "note": (note or "").strip()})
+    return normalized
+
+
+def _last_history_timestamp(history: list[dict[str, object]]) -> datetime | None:
+    timestamps = []
+    for entry in history:
+        raw_timestamp = entry.get("timestamp")
+        if isinstance(raw_timestamp, datetime):
+            timestamps.append(raw_timestamp)
+        elif isinstance(raw_timestamp, str):
+            try:
+                timestamps.append(datetime.fromisoformat(raw_timestamp))
+            except ValueError:
+                continue
+    if not timestamps:
+        return None
+    return max(timestamps)
+
+
+def _append_customer_history(customer: models.Customer, note: str) -> None:
+    history = list(customer.history or [])
+    history.append({"timestamp": datetime.utcnow().isoformat(), "note": note})
+    customer.history = history
+    customer.last_interaction_at = datetime.utcnow()
+
+
+def _resolve_part_unit_cost(device: models.Device, provided: Decimal | float | int | None) -> Decimal:
+    candidate = _to_decimal(provided)
+    if candidate <= Decimal("0"):
+        if device.costo_unitario and device.costo_unitario > 0:
+            candidate = _to_decimal(device.costo_unitario)
+        else:
+            candidate = _to_decimal(device.unit_price)
+    return candidate.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def list_audit_logs(
@@ -393,6 +455,350 @@ def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: 
 def list_stores(db: Session) -> list[models.Store]:
     statement = select(models.Store).order_by(models.Store.name.asc())
     return list(db.scalars(statement))
+
+
+def list_customers(
+    db: Session,
+    *,
+    query: str | None = None,
+    limit: int = 100,
+) -> list[models.Customer]:
+    statement = select(models.Customer).order_by(models.Customer.name.asc()).limit(limit)
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.where(
+            or_(
+                func.lower(models.Customer.name).like(normalized),
+                func.lower(models.Customer.contact_name).like(normalized),
+                func.lower(models.Customer.email).like(normalized),
+            )
+        )
+    return list(db.scalars(statement))
+
+
+def get_customer(db: Session, customer_id: int) -> models.Customer:
+    statement = select(models.Customer).where(models.Customer.id == customer_id)
+    try:
+        return db.scalars(statement).one()
+    except NoResultFound as exc:
+        raise LookupError("customer_not_found") from exc
+
+
+def create_customer(
+    db: Session,
+    payload: schemas.CustomerCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Customer:
+    history = _history_to_json(payload.history)
+    customer = models.Customer(
+        name=payload.name,
+        contact_name=payload.contact_name,
+        email=payload.email,
+        phone=payload.phone,
+        address=payload.address,
+        notes=payload.notes,
+        history=history,
+        outstanding_debt=_to_decimal(payload.outstanding_debt),
+        last_interaction_at=_last_history_timestamp(history),
+    )
+    db.add(customer)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError("customer_already_exists") from exc
+    db.refresh(customer)
+
+    _log_action(
+        db,
+        action="customer_created",
+        entity_type="customer",
+        entity_id=str(customer.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"name": customer.name}),
+    )
+    db.commit()
+    db.refresh(customer)
+    return customer
+
+
+def update_customer(
+    db: Session,
+    customer_id: int,
+    payload: schemas.CustomerUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Customer:
+    customer = get_customer(db, customer_id)
+    updated_fields: dict[str, object] = {}
+    if payload.name is not None:
+        customer.name = payload.name
+        updated_fields["name"] = payload.name
+    if payload.contact_name is not None:
+        customer.contact_name = payload.contact_name
+        updated_fields["contact_name"] = payload.contact_name
+    if payload.email is not None:
+        customer.email = payload.email
+        updated_fields["email"] = payload.email
+    if payload.phone is not None:
+        customer.phone = payload.phone
+        updated_fields["phone"] = payload.phone
+    if payload.address is not None:
+        customer.address = payload.address
+        updated_fields["address"] = payload.address
+    if payload.notes is not None:
+        customer.notes = payload.notes
+        updated_fields["notes"] = payload.notes
+    if payload.outstanding_debt is not None:
+        customer.outstanding_debt = _to_decimal(payload.outstanding_debt)
+        updated_fields["outstanding_debt"] = float(customer.outstanding_debt)
+    if payload.history is not None:
+        history = _history_to_json(payload.history)
+        customer.history = history
+        customer.last_interaction_at = _last_history_timestamp(history)
+        updated_fields["history"] = history
+    db.add(customer)
+    db.commit()
+    db.refresh(customer)
+
+    if updated_fields:
+        _log_action(
+            db,
+            action="customer_updated",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(updated_fields),
+        )
+        db.commit()
+        db.refresh(customer)
+    return customer
+
+
+def delete_customer(
+    db: Session,
+    customer_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> None:
+    customer = get_customer(db, customer_id)
+    db.delete(customer)
+    db.commit()
+    _log_action(
+        db,
+        action="customer_deleted",
+        entity_type="customer",
+        entity_id=str(customer_id),
+        performed_by_id=performed_by_id,
+    )
+    db.commit()
+
+
+def export_customers_csv(
+    db: Session,
+    *,
+    query: str | None = None,
+) -> str:
+    customers = list_customers(db, query=query, limit=5000)
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "ID",
+            "Nombre",
+            "Contacto",
+            "Correo",
+            "Teléfono",
+            "Dirección",
+            "Deuda",
+            "Última interacción",
+        ]
+    )
+    for customer in customers:
+        writer.writerow(
+            [
+                customer.id,
+                customer.name,
+                customer.contact_name or "",
+                customer.email or "",
+                customer.phone or "",
+                customer.address or "",
+                float(customer.outstanding_debt),
+                customer.last_interaction_at.isoformat()
+                if customer.last_interaction_at
+                else "",
+            ]
+        )
+    return buffer.getvalue()
+
+
+def list_suppliers(
+    db: Session,
+    *,
+    query: str | None = None,
+    limit: int = 100,
+) -> list[models.Supplier]:
+    statement = select(models.Supplier).order_by(models.Supplier.name.asc()).limit(limit)
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.where(
+            or_(
+                func.lower(models.Supplier.name).like(normalized),
+                func.lower(models.Supplier.contact_name).like(normalized),
+                func.lower(models.Supplier.email).like(normalized),
+            )
+        )
+    return list(db.scalars(statement))
+
+
+def get_supplier(db: Session, supplier_id: int) -> models.Supplier:
+    statement = select(models.Supplier).where(models.Supplier.id == supplier_id)
+    try:
+        return db.scalars(statement).one()
+    except NoResultFound as exc:
+        raise LookupError("supplier_not_found") from exc
+
+
+def create_supplier(
+    db: Session,
+    payload: schemas.SupplierCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Supplier:
+    history = _history_to_json(payload.history)
+    supplier = models.Supplier(
+        name=payload.name,
+        contact_name=payload.contact_name,
+        email=payload.email,
+        phone=payload.phone,
+        address=payload.address,
+        notes=payload.notes,
+        history=history,
+        outstanding_debt=_to_decimal(payload.outstanding_debt),
+    )
+    db.add(supplier)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError("supplier_already_exists") from exc
+    db.refresh(supplier)
+
+    _log_action(
+        db,
+        action="supplier_created",
+        entity_type="supplier",
+        entity_id=str(supplier.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"name": supplier.name}),
+    )
+    db.commit()
+    db.refresh(supplier)
+    return supplier
+
+
+def update_supplier(
+    db: Session,
+    supplier_id: int,
+    payload: schemas.SupplierUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Supplier:
+    supplier = get_supplier(db, supplier_id)
+    updated_fields: dict[str, object] = {}
+    if payload.name is not None:
+        supplier.name = payload.name
+        updated_fields["name"] = payload.name
+    if payload.contact_name is not None:
+        supplier.contact_name = payload.contact_name
+        updated_fields["contact_name"] = payload.contact_name
+    if payload.email is not None:
+        supplier.email = payload.email
+        updated_fields["email"] = payload.email
+    if payload.phone is not None:
+        supplier.phone = payload.phone
+        updated_fields["phone"] = payload.phone
+    if payload.address is not None:
+        supplier.address = payload.address
+        updated_fields["address"] = payload.address
+    if payload.notes is not None:
+        supplier.notes = payload.notes
+        updated_fields["notes"] = payload.notes
+    if payload.outstanding_debt is not None:
+        supplier.outstanding_debt = _to_decimal(payload.outstanding_debt)
+        updated_fields["outstanding_debt"] = float(supplier.outstanding_debt)
+    if payload.history is not None:
+        history = _history_to_json(payload.history)
+        supplier.history = history
+        updated_fields["history"] = history
+    db.add(supplier)
+    db.commit()
+    db.refresh(supplier)
+
+    if updated_fields:
+        _log_action(
+            db,
+            action="supplier_updated",
+            entity_type="supplier",
+            entity_id=str(supplier.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(updated_fields),
+        )
+        db.commit()
+        db.refresh(supplier)
+    return supplier
+
+
+def delete_supplier(
+    db: Session,
+    supplier_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> None:
+    supplier = get_supplier(db, supplier_id)
+    db.delete(supplier)
+    db.commit()
+    _log_action(
+        db,
+        action="supplier_deleted",
+        entity_type="supplier",
+        entity_id=str(supplier_id),
+        performed_by_id=performed_by_id,
+    )
+    db.commit()
+
+
+def export_suppliers_csv(
+    db: Session,
+    *,
+    query: str | None = None,
+) -> str:
+    suppliers = list_suppliers(db, query=query, limit=5000)
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "ID",
+        "Nombre",
+        "Contacto",
+        "Correo",
+        "Teléfono",
+        "Dirección",
+        "Deuda",
+    ])
+    for supplier in suppliers:
+        writer.writerow(
+            [
+                supplier.id,
+                supplier.name,
+                supplier.contact_name or "",
+                supplier.email or "",
+                supplier.phone or "",
+                supplier.address or "",
+                float(supplier.outstanding_debt),
+            ]
+        )
+    return buffer.getvalue()
 
 
 def get_store(db: Session, store_id: int) -> models.Store:
@@ -1840,10 +2246,323 @@ def register_purchase_return(
     return purchase_return
 
 
+def list_repair_orders(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    status: models.RepairStatus | None = None,
+    query: str | None = None,
+    limit: int = 100,
+) -> list[models.RepairOrder]:
+    statement = (
+        select(models.RepairOrder)
+        .options(joinedload(models.RepairOrder.parts))
+        .order_by(models.RepairOrder.opened_at.desc())
+        .limit(limit)
+    )
+    if store_id is not None:
+        statement = statement.where(models.RepairOrder.store_id == store_id)
+    if status is not None:
+        statement = statement.where(models.RepairOrder.status == status)
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.where(
+            or_(
+                func.lower(models.RepairOrder.customer_name).like(normalized),
+                func.lower(models.RepairOrder.technician_name).like(normalized),
+                func.lower(models.RepairOrder.damage_type).like(normalized),
+            )
+        )
+    return list(db.scalars(statement).unique())
+
+
+def get_repair_order(db: Session, order_id: int) -> models.RepairOrder:
+    statement = (
+        select(models.RepairOrder)
+        .where(models.RepairOrder.id == order_id)
+        .options(
+            joinedload(models.RepairOrder.parts),
+            joinedload(models.RepairOrder.customer),
+        )
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("repair_order_not_found") from exc
+
+
+def _apply_repair_parts(
+    db: Session,
+    order: models.RepairOrder,
+    parts_payload: list[schemas.RepairOrderPartPayload],
+    *,
+    performed_by_id: int | None,
+    reason: str | None,
+) -> Decimal:
+    existing_parts = {part.device_id: part for part in order.parts}
+    processed_devices: set[int] = set()
+    total_cost = Decimal("0")
+    snapshot: list[dict[str, object]] = []
+    for payload in parts_payload:
+        if payload.quantity <= 0:
+            raise ValueError("repair_invalid_quantity")
+        device = get_device(db, order.store_id, payload.device_id)
+        unit_cost = _resolve_part_unit_cost(device, getattr(payload, "unit_cost", None))
+        previous_part = existing_parts.get(device.id)
+        previous_quantity = previous_part.quantity if previous_part else 0
+        delta = payload.quantity - previous_quantity
+        if delta > 0:
+            if device.quantity < delta:
+                raise ValueError("repair_insufficient_stock")
+            device.quantity -= delta
+            db.add(
+                models.InventoryMovement(
+                    store_id=order.store_id,
+                    device_id=device.id,
+                    movement_type=models.MovementType.OUT,
+                    quantity=delta,
+                    reason=reason or f"Reparación #{order.id}",
+                    performed_by_id=performed_by_id,
+                )
+            )
+        elif delta < 0:
+            device.quantity += abs(delta)
+            db.add(
+                models.InventoryMovement(
+                    store_id=order.store_id,
+                    device_id=device.id,
+                    movement_type=models.MovementType.IN,
+                    quantity=abs(delta),
+                    reason=reason or f"Ajuste reparación #{order.id}",
+                    performed_by_id=performed_by_id,
+                )
+            )
+
+        if previous_part is None:
+            part = models.RepairOrderPart(
+                repair_order_id=order.id,
+                device_id=device.id,
+                quantity=payload.quantity,
+                unit_cost=unit_cost,
+            )
+            db.add(part)
+            order.parts.append(part)
+        else:
+            previous_part.quantity = payload.quantity
+            previous_part.unit_cost = unit_cost
+        processed_devices.add(device.id)
+
+        line_total = (unit_cost * Decimal(payload.quantity)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        total_cost += line_total
+        snapshot.append(
+            {
+                "device_id": device.id,
+                "quantity": payload.quantity,
+                "unit_cost": float(unit_cost),
+            }
+        )
+
+    for part in list(order.parts):
+        if part.device_id not in processed_devices:
+            device = get_device(db, order.store_id, part.device_id)
+            device.quantity += part.quantity
+            db.add(
+                models.InventoryMovement(
+                    store_id=order.store_id,
+                    device_id=device.id,
+                    movement_type=models.MovementType.IN,
+                    quantity=part.quantity,
+                    reason=reason or f"Reverso reparación #{order.id}",
+                    performed_by_id=performed_by_id,
+                )
+            )
+            db.delete(part)
+
+    order.parts_cost = total_cost
+    order.parts_snapshot = snapshot
+    order.inventory_adjusted = bool(processed_devices)
+    return total_cost
+
+
+def create_repair_order(
+    db: Session,
+    payload: schemas.RepairOrderCreate,
+    *,
+    performed_by_id: int | None,
+    reason: str | None = None,
+) -> models.RepairOrder:
+    get_store(db, payload.store_id)
+    customer = None
+    if payload.customer_id:
+        customer = get_customer(db, payload.customer_id)
+    labor_cost = _to_decimal(payload.labor_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    customer_name = payload.customer_name or (customer.name if customer else None)
+    order = models.RepairOrder(
+        store_id=payload.store_id,
+        customer_id=payload.customer_id,
+        customer_name=customer_name,
+        technician_name=payload.technician_name,
+        damage_type=payload.damage_type,
+        device_description=payload.device_description,
+        notes=payload.notes,
+        labor_cost=labor_cost,
+    )
+    db.add(order)
+    db.flush()
+
+    parts_cost = Decimal("0")
+    if payload.parts:
+        parts_cost = _apply_repair_parts(
+            db,
+            order,
+            payload.parts,
+            performed_by_id=performed_by_id,
+            reason=reason,
+        )
+    order.total_cost = (labor_cost + parts_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    if customer:
+        _append_customer_history(customer, f"Orden de reparación #{order.id} creada")
+        db.add(customer)
+        db.commit()
+        db.refresh(customer)
+
+    _log_action(
+        db,
+        action="repair_order_created",
+        entity_type="repair_order",
+        entity_id=str(order.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"store_id": order.store_id, "status": order.status.value}),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def update_repair_order(
+    db: Session,
+    order_id: int,
+    payload: schemas.RepairOrderUpdate,
+    *,
+    performed_by_id: int | None,
+    reason: str | None = None,
+) -> models.RepairOrder:
+    order = get_repair_order(db, order_id)
+    updated_fields: dict[str, object] = {}
+    if payload.customer_id is not None:
+        if payload.customer_id:
+            customer = get_customer(db, payload.customer_id)
+            order.customer_id = customer.id
+            order.customer_name = customer.name
+            _append_customer_history(customer, f"Orden de reparación #{order.id} actualizada")
+            db.add(customer)
+            updated_fields["customer_id"] = customer.id
+        else:
+            order.customer_id = None
+            updated_fields["customer_id"] = None
+    if payload.customer_name is not None:
+        order.customer_name = payload.customer_name
+        updated_fields["customer_name"] = payload.customer_name
+    if payload.technician_name is not None:
+        order.technician_name = payload.technician_name
+        updated_fields["technician_name"] = payload.technician_name
+    if payload.damage_type is not None:
+        order.damage_type = payload.damage_type
+        updated_fields["damage_type"] = payload.damage_type
+    if payload.device_description is not None:
+        order.device_description = payload.device_description
+        updated_fields["device_description"] = payload.device_description
+    if payload.notes is not None:
+        order.notes = payload.notes
+        updated_fields["notes"] = payload.notes
+    if payload.status is not None and payload.status != order.status:
+        order.status = payload.status
+        updated_fields["status"] = payload.status.value
+        if payload.status == models.RepairStatus.ENTREGADO:
+            order.delivered_at = datetime.utcnow()
+        elif payload.status in {models.RepairStatus.PENDIENTE, models.RepairStatus.EN_PROCESO}:
+            order.delivered_at = None
+    if payload.labor_cost is not None:
+        order.labor_cost = _to_decimal(payload.labor_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        updated_fields["labor_cost"] = float(order.labor_cost)
+    if payload.parts is not None:
+        parts_cost = _apply_repair_parts(
+            db,
+            order,
+            payload.parts,
+            performed_by_id=performed_by_id,
+            reason=reason,
+        )
+        updated_fields["parts_cost"] = float(parts_cost)
+    order.total_cost = (order.labor_cost + order.parts_cost).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    if updated_fields:
+        _log_action(
+            db,
+            action="repair_order_updated",
+            entity_type="repair_order",
+            entity_id=str(order.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(updated_fields),
+        )
+        db.commit()
+        db.refresh(order)
+    return order
+
+
+def delete_repair_order(
+    db: Session,
+    order_id: int,
+    *,
+    performed_by_id: int | None,
+    reason: str | None = None,
+) -> None:
+    order = get_repair_order(db, order_id)
+    for part in list(order.parts):
+        device = get_device(db, order.store_id, part.device_id)
+        device.quantity += part.quantity
+        db.add(
+            models.InventoryMovement(
+                store_id=order.store_id,
+                device_id=device.id,
+                movement_type=models.MovementType.IN,
+                quantity=part.quantity,
+                reason=reason or f"Cancelación reparación #{order.id}",
+                performed_by_id=performed_by_id,
+            )
+        )
+    db.delete(order)
+    db.commit()
+    _log_action(
+        db,
+        action="repair_order_deleted",
+        entity_type="repair_order",
+        entity_id=str(order_id),
+        performed_by_id=performed_by_id,
+    )
+    db.commit()
+
+
 def list_sales(db: Session, *, store_id: int | None = None, limit: int = 50) -> list[models.Sale]:
     statement = (
         select(models.Sale)
-        .options(joinedload(models.Sale.items), joinedload(models.Sale.returns))
+        .options(
+            joinedload(models.Sale.items),
+            joinedload(models.Sale.returns),
+            joinedload(models.Sale.customer),
+            joinedload(models.Sale.cash_session),
+        )
         .order_by(models.Sale.created_at.desc())
         .limit(limit)
     )
@@ -1860,6 +2579,8 @@ def get_sale(db: Session, sale_id: int) -> models.Sale:
             joinedload(models.Sale.store),
             joinedload(models.Sale.items).joinedload(models.SaleItem.device),
             joinedload(models.Sale.returns),
+            joinedload(models.Sale.customer),
+            joinedload(models.Sale.cash_session),
         )
     )
     try:
@@ -1881,10 +2602,17 @@ def create_sale(
 
     get_store(db, payload.store_id)
 
+    customer = None
+    customer_name = payload.customer_name
+    if payload.customer_id:
+        customer = get_customer(db, payload.customer_id)
+        customer_name = customer_name or customer.name
+
     sale_discount_percent = _to_decimal(payload.discount_percent or 0)
     sale = models.Sale(
         store_id=payload.store_id,
-        customer_name=payload.customer_name,
+        customer_id=customer.id if customer else None,
+        customer_name=customer_name,
         payment_method=models.PaymentMethod(payload.payment_method),
         discount_percent=sale_discount_percent.quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -1963,6 +2691,17 @@ def create_sale(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
+    if customer:
+        if sale.payment_method == models.PaymentMethod.CREDITO:
+            customer.outstanding_debt = (
+                _to_decimal(customer.outstanding_debt) + sale.total_amount
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        _append_customer_history(
+            customer,
+            f"Venta #{sale.id} registrada ({sale.payment_method.value})",
+        )
+        db.add(customer)
+
     db.commit()
     db.refresh(sale)
 
@@ -1979,6 +2718,7 @@ def create_sale(
     sale_payload = {
         "sale_id": sale.id,
         "store_id": sale.store_id,
+        "customer_id": sale.customer_id,
         "customer_name": sale.customer_name,
         "payment_method": sale.payment_method.value,
         "discount_percent": float(sale.discount_percent),
@@ -2019,6 +2759,7 @@ def register_sale_return(
         raise ValueError("sale_return_items_required")
 
     returns: list[models.SaleReturn] = []
+    refund_total = Decimal("0")
     items_by_device = {item.device_id: item for item in sale.items}
 
     for item in payload.items:
@@ -2047,6 +2788,13 @@ def register_sale_return(
         db.add(sale_return)
         returns.append(sale_return)
 
+        unit_refund = (sale_item.total_line / Decimal(sale_item.quantity)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        refund_total += (unit_refund * Decimal(item.quantity)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
         db.add(
             models.InventoryMovement(
                 store_id=sale.store_id,
@@ -2071,7 +2819,153 @@ def register_sale_return(
         details=json.dumps({"items": [item.model_dump() for item in payload.items]}),
     )
     db.commit()
+
+    if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and refund_total > 0:
+        sale.customer.outstanding_debt = (
+            _to_decimal(sale.customer.outstanding_debt) - refund_total
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if sale.customer.outstanding_debt < Decimal("0"):
+            sale.customer.outstanding_debt = Decimal("0")
+        _append_customer_history(
+            sale.customer,
+            f"Devolución aplicada a venta #{sale.id} por ${float(refund_total):.2f}",
+        )
+        db.add(sale.customer)
+        db.commit()
     return returns
+
+
+def list_cash_sessions(
+    db: Session,
+    *,
+    store_id: int,
+    limit: int = 30,
+) -> list[models.CashRegisterSession]:
+    statement = (
+        select(models.CashRegisterSession)
+        .where(models.CashRegisterSession.store_id == store_id)
+        .order_by(models.CashRegisterSession.opened_at.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(statement).unique())
+
+
+def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession:
+    statement = select(models.CashRegisterSession).where(models.CashRegisterSession.id == session_id)
+    try:
+        return db.scalars(statement).one()
+    except NoResultFound as exc:
+        raise LookupError("cash_session_not_found") from exc
+
+
+def open_cash_session(
+    db: Session,
+    payload: schemas.CashSessionOpenRequest,
+    *,
+    opened_by_id: int | None,
+    reason: str | None = None,
+) -> models.CashRegisterSession:
+    get_store(db, payload.store_id)
+    statement = select(models.CashRegisterSession).where(
+        models.CashRegisterSession.store_id == payload.store_id,
+        models.CashRegisterSession.status == models.CashSessionStatus.ABIERTO,
+    )
+    if db.scalars(statement).first() is not None:
+        raise ValueError("cash_session_already_open")
+
+    opening_amount = _to_decimal(payload.opening_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    session = models.CashRegisterSession(
+        store_id=payload.store_id,
+        status=models.CashSessionStatus.ABIERTO,
+        opening_amount=opening_amount,
+        closing_amount=Decimal("0"),
+        expected_amount=opening_amount,
+        difference_amount=Decimal("0"),
+        payment_breakdown={},
+        notes=payload.notes,
+        opened_by_id=opened_by_id,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    _log_action(
+        db,
+        action="cash_session_opened",
+        entity_type="cash_session",
+        entity_id=str(session.id),
+        performed_by_id=opened_by_id,
+        details=json.dumps({"store_id": session.store_id, "reason": reason}),
+    )
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def close_cash_session(
+    db: Session,
+    payload: schemas.CashSessionCloseRequest,
+    *,
+    closed_by_id: int | None,
+    reason: str | None = None,
+) -> models.CashRegisterSession:
+    session = get_cash_session(db, payload.session_id)
+    if session.status != models.CashSessionStatus.ABIERTO:
+        raise ValueError("cash_session_not_open")
+
+    sales_totals: dict[str, Decimal] = {}
+    totals_stmt = (
+        select(models.Sale.payment_method, func.sum(models.Sale.total_amount))
+        .where(models.Sale.cash_session_id == session.id)
+        .group_by(models.Sale.payment_method)
+    )
+    for method, total in db.execute(totals_stmt):
+        totals_value = _to_decimal(total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        sales_totals[method.value] = totals_value
+
+    session.closing_amount = _to_decimal(payload.closing_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    session.closed_by_id = closed_by_id
+    session.closed_at = datetime.utcnow()
+    session.status = models.CashSessionStatus.CERRADO
+    session.payment_breakdown = {key: float(value) for key, value in sales_totals.items()}
+
+    for method_key, reported_amount in payload.payment_breakdown.items():
+        session.payment_breakdown[f"reportado_{method_key.upper()}"] = float(
+            Decimal(str(reported_amount))
+        )
+
+    expected_cash = session.opening_amount + sales_totals.get(models.PaymentMethod.EFECTIVO.value, Decimal("0"))
+    session.expected_amount = expected_cash.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    session.difference_amount = (
+        session.closing_amount - session.expected_amount
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if payload.notes:
+        session.notes = (session.notes or "") + f"\n{payload.notes}" if session.notes else payload.notes
+
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    _log_action(
+        db,
+        action="cash_session_closed",
+        entity_type="cash_session",
+        entity_id=str(session.id),
+        performed_by_id=closed_by_id,
+        details=json.dumps(
+            {
+                "difference": float(session.difference_amount),
+                "reason": reason,
+            }
+        ),
+    )
+    db.commit()
+    db.refresh(session)
+    return session
 
 
 def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
@@ -2205,6 +3099,7 @@ def register_pos_sale(
     config = get_pos_config(db, payload.store_id)
     sale_payload = schemas.SaleCreate(
         store_id=payload.store_id,
+        customer_id=payload.customer_id,
         customer_name=payload.customer_name,
         payment_method=payload.payment_method,
         discount_percent=payload.discount_percent,
@@ -2244,6 +3139,15 @@ def register_pos_sale(
             delete_pos_draft(db, payload.draft_id, removed_by_id=performed_by_id)
         except LookupError:
             pass
+
+    if payload.cash_session_id:
+        session = get_cash_session(db, payload.cash_session_id)
+        if session.status != models.CashSessionStatus.ABIERTO:
+            raise ValueError("cash_session_not_open")
+        sale.cash_session_id = session.id
+        db.add(sale)
+        db.commit()
+        db.refresh(sale)
 
     db.refresh(sale)
     return sale, warnings

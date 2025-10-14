@@ -3,6 +3,9 @@ import Returns from "../Returns";
 import Sales from "../Sales";
 import TransferOrders from "../TransferOrders";
 import POSDashboard from "../POS/POSDashboard";
+import Customers from "../Customers";
+import Suppliers from "../Suppliers";
+import RepairOrders from "../RepairOrders";
 import { useDashboard } from "./DashboardContext";
 
 function OperationsSection() {
@@ -19,6 +22,14 @@ function OperationsSection() {
     <div className="section-grid">
       {enablePurchasesSales ? (
         <>
+          <Customers token={token} />
+          <Suppliers token={token} />
+          <RepairOrders
+            token={token}
+            stores={stores}
+            defaultStoreId={selectedStoreId}
+            onInventoryRefresh={refreshInventoryAfterTransfer}
+          />
           <Purchases
             token={token}
             stores={stores}

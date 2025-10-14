@@ -1,6 +1,7 @@
 """Endpoints dedicados al punto de venta con control de stock y recibos."""
 from __future__ import annotations
 
+from decimal import Decimal
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -55,6 +56,14 @@ def register_pos_sale_endpoint(
             sale=sale,
             warnings=warnings,
             receipt_url=f"/pos/receipt/{sale.id}",
+            cash_session_id=sale.cash_session_id,
+            payment_breakdown=
+            {
+                key: float(Decimal(str(value)))
+                for key, value in payload.payment_breakdown.items()
+            }
+            if payload.payment_breakdown
+            else {},
         )
     except LookupError as exc:
         raise HTTPException(
@@ -77,6 +86,11 @@ def register_pos_sale_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Inventario insuficiente para completar la venta.",
+            ) from exc
+        if detail == "cash_session_not_open":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La caja indicada no está abierta.",
             ) from exc
         raise
 
@@ -203,3 +217,64 @@ def update_pos_config_endpoint(
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada") from exc
     return config
+
+
+@router.post("/cash/open", response_model=schemas.CashSessionResponse, status_code=status.HTTP_201_CREATED)
+def open_cash_session_endpoint(
+    payload: schemas.CashSessionOpenRequest,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        return crud.open_cash_session(
+            db,
+            payload,
+            opened_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except ValueError as exc:
+        if str(exc) == "cash_session_already_open":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe una caja abierta en la sucursal.",
+            ) from exc
+        raise
+
+
+@router.post("/cash/close", response_model=schemas.CashSessionResponse)
+def close_cash_session_endpoint(
+    payload: schemas.CashSessionCloseRequest,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        return crud.close_cash_session(
+            db,
+            payload,
+            closed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caja no encontrada") from exc
+    except ValueError as exc:
+        if str(exc) == "cash_session_not_open":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La caja ya fue cerrada.",
+            ) from exc
+        raise
+
+
+@router.get("/cash/history", response_model=list[schemas.CashSessionResponse])
+def list_cash_sessions_endpoint(
+    store_id: int = Query(..., ge=1),
+    limit: int = Query(default=30, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    return crud.list_cash_sessions(db, store_id=store_id, limit=limit)

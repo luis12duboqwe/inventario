@@ -118,11 +118,28 @@ class PurchaseStatus(str, enum.Enum):
     CANCELADA = "CANCELADA"
 
 
+class RepairStatus(str, enum.Enum):
+    """Estados de una orden de reparación."""
+
+    PENDIENTE = "PENDIENTE"
+    EN_PROCESO = "EN_PROCESO"
+    LISTO = "LISTO"
+    ENTREGADO = "ENTREGADO"
+
+
+class CashSessionStatus(str, enum.Enum):
+    """Ciclo de vida de un arqueo de caja POS."""
+
+    ABIERTO = "ABIERTO"
+    CERRADO = "CERRADO"
+
+
 class PaymentMethod(str, enum.Enum):
     """Formas de pago soportadas en las ventas."""
 
     EFECTIVO = "EFECTIVO"
     TARJETA = "TARJETA"
+    CREDITO = "CREDITO"
     TRANSFERENCIA = "TRANSFERENCIA"
     OTRO = "OTRO"
 
@@ -383,6 +400,58 @@ class StoreMembership(Base):
     store: Mapped[Store] = relationship("Store", backref="memberships")
 
 
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+    contact_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    outstanding_debt: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    last_interaction_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    repair_orders: Mapped[list["RepairOrder"]] = relationship(
+        "RepairOrder", back_populates="customer"
+    )
+    sales: Mapped[list["Sale"]] = relationship("Sale", back_populates="customer")
+
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+    contact_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    outstanding_debt: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
@@ -466,6 +535,9 @@ class Sale(Base):
     store_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    customer_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     payment_method: Mapped[PaymentMethod] = mapped_column(
         Enum(PaymentMethod, name="payment_method"),
@@ -489,9 +561,19 @@ class Sale(Base):
     performed_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    cash_session_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("cash_register_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     store: Mapped[Store] = relationship("Store")
     performed_by: Mapped[User | None] = relationship("User")
+    customer: Mapped[Customer | None] = relationship("Customer", back_populates="sales")
+    cash_session: Mapped[CashRegisterSession | None] = relationship(
+        "CashRegisterSession", back_populates="sales"
+    )
     items: Mapped[list["SaleItem"]] = relationship(
         "SaleItem", back_populates="sale", cascade="all, delete-orphan"
     )
@@ -541,6 +623,119 @@ class SaleReturn(Base):
     sale: Mapped[Sale] = relationship("Sale", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
     processed_by: Mapped[User | None] = relationship("User")
+
+
+class RepairOrder(Base):
+    __tablename__ = "repair_orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    customer_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    technician_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    damage_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    device_description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[RepairStatus] = mapped_column(
+        Enum(RepairStatus, name="repair_status"),
+        nullable=False,
+        default=RepairStatus.PENDIENTE,
+    )
+    labor_cost: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    parts_cost: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    total_cost: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    parts_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    inventory_adjusted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    store: Mapped[Store] = relationship("Store")
+    customer: Mapped[Customer | None] = relationship("Customer", back_populates="repair_orders")
+    parts: Mapped[list["RepairOrderPart"]] = relationship(
+        "RepairOrderPart", back_populates="repair_order", cascade="all, delete-orphan"
+    )
+
+
+class RepairOrderPart(Base):
+    __tablename__ = "repair_order_parts"
+    __table_args__ = (
+        UniqueConstraint("repair_order_id", "device_id", name="uq_repair_order_part"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    repair_order_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("repair_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+
+    repair_order: Mapped[RepairOrder] = relationship("RepairOrder", back_populates="parts")
+    device: Mapped[Device] = relationship("Device")
+
+
+class CashRegisterSession(Base):
+    __tablename__ = "cash_register_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[CashSessionStatus] = mapped_column(
+        Enum(CashSessionStatus, name="cash_session_status"),
+        nullable=False,
+        default=CashSessionStatus.ABIERTO,
+    )
+    opening_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    closing_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    expected_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    difference_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    payment_breakdown: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    opened_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    closed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    store: Mapped[Store] = relationship("Store")
+    opened_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[opened_by_id], backref="cash_sessions_opened"
+    )
+    closed_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[closed_by_id], backref="cash_sessions_closed"
+    )
+    sales: Mapped[list[Sale]] = relationship("Sale", back_populates="cash_session")
 
 
 class POSConfig(Base):
@@ -652,6 +847,9 @@ class SyncOutbox(Base):
 
 
 __all__ = [
+    "CashRegisterSession",
+    "CashSessionStatus",
+    "Customer",
     "AuditLog",
     "BackupJob",
     "BackupMode",
@@ -664,11 +862,15 @@ __all__ = [
     "PurchaseOrderItem",
     "PurchaseReturn",
     "PurchaseStatus",
+    "RepairOrder",
+    "RepairOrderPart",
+    "RepairStatus",
     "Role",
     "Store",
     "SyncMode",
     "SyncSession",
     "SyncStatus",
+    "Supplier",
     "SyncOutbox",
     "SyncOutboxPriority",
     "TransferOrder",

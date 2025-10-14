@@ -1,11 +1,10 @@
 from sqlalchemy import select
 
-from backend.app import models
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
 
 
-def _bootstrap_admin(client, db_session):
+def _bootstrap_admin(client):
     payload = {
         "username": "pos_admin",
         "password": "PosAdmin123*",
@@ -22,16 +21,12 @@ def _bootstrap_admin(client, db_session):
     )
     assert token_response.status_code == 200
     token = token_response.json()["access_token"]
-
-    user = db_session.execute(
-        select(models.User).where(models.User.username == payload["username"])
-    ).scalar_one()
-    return token, user.id
+    return token
 
 
 def test_pos_sale_with_receipt_and_config(client, db_session):
     settings.enable_purchases_sales = True
-    token, user_id = _bootstrap_admin(client, db_session)
+    token = _bootstrap_admin(client)
     auth_headers = {"Authorization": f"Bearer {token}"}
 
     store_response = client.post(
@@ -138,5 +133,100 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     assert devices_after.status_code == 200
     remaining = next(item for item in devices_after.json() if item["id"] == device_id)
     assert remaining["quantity"] == 1
+
+    settings.enable_purchases_sales = False
+
+
+def test_pos_cash_sessions_and_credit_sales(client, db_session):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Operacion POS"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "POS Sur", "location": "MTY", "timezone": "America/Mexico_City"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == 201
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "POS-CR-001",
+            "name": "Laptop Servicio",
+            "quantity": 3,
+            "unit_price": 200.0,
+            "costo_unitario": 120.0,
+        },
+        headers=reason_headers,
+    )
+    assert device_response.status_code == 201
+    device_id = device_response.json()["id"]
+
+    customer_response = client.post(
+        "/customers",
+        json={"name": "Cliente Crédito", "email": "credito@example.com"},
+        headers=reason_headers,
+    )
+    assert customer_response.status_code == 201
+    customer_id = customer_response.json()["id"]
+
+    open_response = client.post(
+        "/pos/cash/open",
+        json={"store_id": store_id, "opening_amount": 500.0, "notes": "Apertura"},
+        headers=reason_headers,
+    )
+    assert open_response.status_code == 201
+    session_id = open_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "customer_id": customer_id,
+        "payment_method": "CREDITO",
+        "items": [{"device_id": device_id, "quantity": 1}],
+        "confirm": True,
+        "cash_session_id": session_id,
+        "payment_breakdown": {"CREDITO": 200.0},
+    }
+    sale_response = client.post(
+        "/pos/sale",
+        json=sale_payload,
+        headers=reason_headers,
+    )
+    assert sale_response.status_code == 201
+    sale_data = sale_response.json()
+    assert sale_data["sale"]["customer_id"] == customer_id
+    assert sale_data["cash_session_id"] == session_id
+    assert sale_data["payment_breakdown"]["CREDITO"] == 200.0
+
+    customer_details = client.get(
+        f"/customers/{customer_id}", headers=auth_headers
+    )
+    assert customer_details.status_code == 200
+    assert customer_details.json()["outstanding_debt"] == 200.0
+
+    close_response = client.post(
+        "/pos/cash/close",
+        json={
+            "session_id": session_id,
+            "closing_amount": 500.0,
+            "payment_breakdown": {"CREDITO": 200.0},
+            "notes": "Cierre turno",
+        },
+        headers=reason_headers,
+    )
+    assert close_response.status_code == 200
+    session_data = close_response.json()
+    assert session_data["status"] == "CERRADO"
+    assert session_data["difference_amount"] == 0.0
+    assert session_data["payment_breakdown"]["CREDITO"] == 200.0
+
+    history_response = client.get(
+        f"/pos/cash/history?store_id={store_id}", headers=auth_headers
+    )
+    assert history_response.status_code == 200
+    assert any(item["id"] == session_id for item in history_response.json())
 
     settings.enable_purchases_sales = False

@@ -16,14 +16,17 @@ from .routers import (
     audit,
     auth,
     backups,
+    customers,
     health,
     inventory,
     pos,
     purchases,
+    repairs,
     reports,
     sales,
     security,
     stores,
+    suppliers,
     sync,
     transfers,
     updates,
@@ -39,6 +42,9 @@ SENSITIVE_PREFIXES = (
     "/purchases",
     "/sales",
     "/pos",
+    "/customers",
+    "/suppliers",
+    "/repairs",
     "/transfers",
     "/security",
     "/sync/outbox",
@@ -102,6 +108,9 @@ def create_app() -> FastAPI:
     app.include_router(inventory.router)
     app.include_router(pos.router)
     app.include_router(purchases.router)
+    app.include_router(customers.router)
+    app.include_router(suppliers.router)
+    app.include_router(repairs.router)
     app.include_router(sales.router)
     app.include_router(sync.router)
     app.include_router(transfers.router)
