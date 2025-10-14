@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AuditLogEntry, getAuditLogs } from "../api";
+import { useDashboard } from "./dashboard/DashboardContext";
 
 type Props = {
   token: string;
@@ -11,27 +12,56 @@ function AuditLog({ token }: Props) {
   const [actionFilter, setActionFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { pushToast } = useDashboard();
 
-  const loadLogs = async (currentLimit = limit, action?: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getAuditLogs(token, currentLimit, action);
-      setLogs(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible consultar la bitácora");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadLogs = useCallback(
+    async ({ limitOverride, action, notify }: { limitOverride?: number; action?: string; notify?: boolean } = {}) => {
+      try {
+        if (!notify) {
+          setLoading(true);
+          setError(null);
+        }
+        const effectiveLimit = limitOverride ?? limit;
+        const effectiveAction = action ?? (actionFilter ? actionFilter.trim() : undefined);
+        const data = await getAuditLogs(token, effectiveLimit, effectiveAction);
+        setLogs((previous) => {
+          if (notify && previous.length > 0 && data.length > 0 && data[0].id !== previous[0].id) {
+            pushToast({ message: `Nueva acción registrada: ${data[0].action}`, variant: "info" });
+          }
+          return data;
+        });
+        if (!notify) {
+          setError(null);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No fue posible consultar la bitácora";
+        if (!notify) {
+          setError(message);
+        }
+        pushToast({ message, variant: "error" });
+      } finally {
+        if (!notify) {
+          setLoading(false);
+        }
+      }
+    },
+    [actionFilter, limit, pushToast, token]
+  );
 
   useEffect(() => {
-    loadLogs();
-  }, [token]);
+    loadLogs({ notify: false });
+  }, [loadLogs]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      loadLogs({ notify: true });
+    }, 45000);
+    return () => window.clearInterval(interval);
+  }, [loadLogs]);
 
   const handleFilter = (event: FormEvent) => {
     event.preventDefault();
-    loadLogs(limit, actionFilter ? actionFilter.trim() : undefined);
+    loadLogs({ limitOverride: limit, action: actionFilter ? actionFilter.trim() : undefined, notify: false });
   };
 
   return (

@@ -35,7 +35,7 @@ def _bootstrap_admin(client, db_session):
 def test_purchase_receipt_and_return_flow(client, db_session):
     settings.enable_purchases_sales = True
     token, user_id = _bootstrap_admin(client, db_session)
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    auth_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operacion de compra"}
 
     store_response = client.post(
         "/stores",

@@ -12,6 +12,19 @@
   font-size: 16px;
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg-primary: #f4f6fb;
+  --bg-secondary: #ffffff;
+  --text-primary: #1f2933;
+  --text-secondary: #5b6b7a;
+  --accent: #0ea5e9;
+  --accent-hover: #0284c7;
+  --success: #0f766e;
+  --error: #b91c1c;
 }
 
 * {
@@ -23,6 +36,11 @@ body {
   min-height: 100vh;
   background: radial-gradient(circle at top, rgba(0, 191, 255, 0.08), transparent 55%), var(--bg-primary);
   color: var(--text-primary);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+:root[data-theme="light"] body {
+  background: radial-gradient(circle at top, rgba(14, 165, 233, 0.12), transparent 60%), var(--bg-primary);
 }
 
 h1,
@@ -159,6 +177,12 @@ button.link:hover:not(:disabled) {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
+:root[data-theme="light"] .topbar {
+  background-color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+}
+
 .topbar h1 {
   font-size: 1.5rem;
 }
@@ -166,6 +190,12 @@ button.link:hover:not(:disabled) {
 .topbar-subtitle {
   color: var(--text-secondary);
   margin-top: 0.35rem;
+}
+
+.topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .app-container {
@@ -241,6 +271,52 @@ button.link:hover:not(:disabled) {
   gap: 1.5rem;
 }
 
+.toast-container {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  z-index: 1400;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  padding: 0.85rem 1rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 240px;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.toast.success {
+  border-left-color: var(--success);
+}
+
+.toast.error {
+  border-left-color: var(--error);
+}
+
+.toast.info {
+  border-left-color: var(--accent);
+}
+
+.toast-dismiss {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
 .dashboard-header {
   display: flex;
   flex-direction: column;
@@ -286,6 +362,95 @@ button.link:hover:not(:disabled) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1.5rem;
+}
+
+.analytics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.analytics-panel,
+.metrics-card {
+  background: rgba(13, 17, 23, 0.75);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 191, 255, 0.12);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+:root[data-theme="light"] .analytics-panel,
+:root[data-theme="light"] .metrics-card {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(14, 165, 233, 0.16);
+}
+
+.analytics-panel table,
+.metrics-card table,
+.outbox-table,
+.outbox-stats-table,
+.audit-log-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.analytics-panel th,
+.analytics-panel td,
+.metrics-card th,
+.metrics-card td,
+.outbox-table th,
+.outbox-table td,
+.outbox-stats-table th,
+.outbox-stats-table td,
+.audit-log-table th,
+.audit-log-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(0, 191, 255, 0.12);
+  font-size: 0.85rem;
+}
+
+:root[data-theme="light"] .analytics-panel th,
+:root[data-theme="light"] .analytics-panel td,
+:root[data-theme="light"] .metrics-card th,
+:root[data-theme="light"] .metrics-card td,
+:root[data-theme="light"] .outbox-table th,
+:root[data-theme="light"] .outbox-table td,
+:root[data-theme="light"] .outbox-stats-table th,
+:root[data-theme="light"] .outbox-stats-table td,
+:root[data-theme="light"] .audit-log-table th,
+:root[data-theme="light"] .audit-log-table td {
+  border-bottom-color: rgba(14, 165, 233, 0.14);
+}
+
+.analytics-panel thead,
+.metrics-card thead,
+.outbox-table thead,
+.outbox-stats-table thead,
+.audit-log-table thead {
+  background: rgba(0, 191, 255, 0.14);
+  color: var(--accent);
+}
+
+.analytics-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.muted-text {
+  color: var(--text-secondary);
 }
 
 .card {
@@ -487,6 +652,14 @@ textarea {
   padding: 0.65rem 0.75rem;
   color: var(--text-primary);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(14, 165, 233, 0.25);
+  color: var(--text-primary);
 }
 
 input:focus,
@@ -773,6 +946,78 @@ button.ghost {
   gap: 0.6rem;
 }
 
+.audit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.audit-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.audit-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 160px;
+}
+
+.audit-log-table {
+  max-height: 360px;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 191, 255, 0.12);
+}
+
+.audit-log-table tbody tr:hover,
+.analytics-panel tbody tr:hover,
+.metrics-card tbody tr:hover,
+.outbox-table tbody tr:hover,
+.outbox-stats-table tbody tr:hover {
+  background: rgba(0, 191, 255, 0.08);
+}
+
+.outbox-table {
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.outbox-stats-table {
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.badge.priority-high {
+  background: rgba(218, 54, 51, 0.2);
+  color: #ff9b94;
+}
+
+.badge.priority-normal {
+  background: rgba(0, 191, 255, 0.18);
+  color: var(--accent);
+}
+
+.badge.priority-low {
+  background: rgba(139, 148, 158, 0.18);
+  color: var(--text-secondary);
+}
+
+.btn.ghost {
+  background: transparent;
+  border: 1px solid rgba(0, 191, 255, 0.28);
+  color: var(--accent);
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: rgba(0, 191, 255, 0.12);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -811,6 +1056,31 @@ button.ghost {
   }
 
   .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .analytics-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 540px) {
+  .toast-container {
+    right: 1rem;
+    left: 1rem;
+  }
+
+  .toast {
+    min-width: unset;
+  }
+
+  .analytics-grid,
+  .analytics-secondary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-filters {
     flex-direction: column;
     align-items: stretch;
   }

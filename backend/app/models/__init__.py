@@ -5,6 +5,7 @@ import enum
 import json
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -51,6 +53,14 @@ class SyncOutboxStatus(str, enum.Enum):
     PENDING = "PENDING"
     SENT = "SENT"
     FAILED = "FAILED"
+
+
+class SyncOutboxPriority(str, enum.Enum):
+    """Prioridad de procesamiento para eventos híbridos."""
+
+    HIGH = "HIGH"
+    NORMAL = "NORMAL"
+    LOW = "LOW"
 
 
 class BackupMode(str, enum.Enum):
@@ -465,6 +475,12 @@ class Sale(Base):
     discount_percent: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("0")
     )
+    subtotal_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    tax_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
     total_amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0")
     )
@@ -527,6 +543,43 @@ class SaleReturn(Base):
     processed_by: Mapped[User | None] = relationship("User")
 
 
+class POSConfig(Base):
+    __tablename__ = "pos_configs"
+
+    store_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("stores.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
+    invoice_prefix: Mapped[str] = mapped_column(String(12), nullable=False)
+    printer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    printer_profile: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    quick_product_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    store: Mapped[Store] = relationship("Store")
+
+
+class POSDraftSale(Base):
+    __tablename__ = "pos_draft_sales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    store: Mapped[Store] = relationship("Store")
+
+
 class UserTOTPSecret(Base):
     __tablename__ = "user_totp_secrets"
 
@@ -586,6 +639,11 @@ class SyncOutbox(Base):
         nullable=False,
         default=SyncOutboxStatus.PENDING,
     )
+    priority: Mapped[SyncOutboxPriority] = mapped_column(
+        Enum(SyncOutboxPriority, name="sync_outbox_priority"),
+        nullable=False,
+        default=SyncOutboxPriority.NORMAL,
+    )
     error_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -612,6 +670,7 @@ __all__ = [
     "SyncSession",
     "SyncStatus",
     "SyncOutbox",
+    "SyncOutboxPriority",
     "TransferOrder",
     "TransferOrderItem",
     "TransferStatus",
@@ -622,4 +681,6 @@ __all__ = [
     "Sale",
     "SaleItem",
     "SaleReturn",
+    "POSConfig",
+    "POSDraftSale",
 ]

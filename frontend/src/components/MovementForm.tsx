@@ -73,13 +73,15 @@ function MovementForm({ devices, onSubmit }: Props) {
         required
       />
 
-      <label htmlFor="reason">Motivo (opcional)</label>
+      <label htmlFor="reason">Motivo corporativo</label>
       <textarea
         id="reason"
         rows={2}
         value={reason}
         onChange={(event) => setReason(event.target.value)}
-        placeholder="Detalle del movimiento"
+        placeholder="Describe el motivo (mínimo 5 caracteres)"
+        minLength={5}
+        required
       />
 
       <button type="submit">Registrar movimiento</button>
