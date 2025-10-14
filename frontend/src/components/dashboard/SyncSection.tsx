@@ -15,6 +15,7 @@ function SyncSection() {
     outboxError,
     refreshOutbox,
     handleRetryOutbox,
+    outboxStats,
   } = useDashboard();
 
   const latestRelease = updateStatus?.latest_release ?? null;
@@ -123,6 +124,53 @@ function SyncSection() {
           <p className="muted-text">
             La sincronización híbrida está desactivada. Ajusta el flag <code>SOFTMOBILE_ENABLE_HYBRID_PREP</code> para habilitar
             la cola local.
+          </p>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Sincronización avanzada</h2>
+        <p className="card-subtitle">Prioridades por entidad y métricas de reintentos.</p>
+        {enableHybridPrep ? (
+          outboxStats.length === 0 ? (
+            <p className="muted-text">Sin métricas registradas.</p>
+          ) : (
+            <table className="outbox-stats-table">
+              <thead>
+                <tr>
+                  <th>Entidad</th>
+                  <th>Prioridad</th>
+                  <th>Total</th>
+                  <th>Pendientes</th>
+                  <th>Errores</th>
+                  <th>Última actualización</th>
+                </tr>
+              </thead>
+              <tbody>
+                {outboxStats.map((stat) => (
+                  <tr key={`${stat.entity_type}-${stat.priority}`}>
+                    <td>{stat.entity_type}</td>
+                    <td>
+                      <span className={`badge priority-${stat.priority.toLowerCase()}`}>
+                        {stat.priority}
+                      </span>
+                    </td>
+                    <td>{stat.total}</td>
+                    <td>{stat.pending}</td>
+                    <td>{stat.failed}</td>
+                    <td>
+                      {stat.latest_update
+                        ? new Date(stat.latest_update).toLocaleString("es-MX")
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        ) : (
+          <p className="muted-text">
+            Activa la preparación híbrida para obtener métricas de prioridades y reintentos.
           </p>
         )}
       </section>

@@ -60,6 +60,9 @@ def render_analytics_pdf(
     rotation: list[dict[str, Any]],
     aging: list[dict[str, Any]],
     forecast: list[dict[str, Any]],
+    comparatives: list[dict[str, Any]] | None = None,
+    profit: list[dict[str, Any]] | None = None,
+    projection: list[dict[str, Any]] | None = None,
 ) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, title="Softmobile - Analítica avanzada")
@@ -71,6 +74,10 @@ def render_analytics_pdf(
         backColor=colors.HexColor("#0f172a"),
         borderWidth=0,
     )
+
+    comparatives = comparatives or []
+    profit = profit or []
+    projection = projection or []
 
     elements = [
         Paragraph("Softmobile 2025 — Analítica avanzada", styles["Title"]),
@@ -105,6 +112,39 @@ def render_analytics_pdf(
         elements.append(_build_line_chart("Días proyectados", values, labels))
     else:
         elements.append(Paragraph("Sin datos de pronóstico", dark_style))
+
+    elements.append(Spacer(1, 12))
+    elements.append(Paragraph("Comparativo de sucursales", dark_style))
+    if comparatives:
+        comp_lines = "<br/>".join(
+            f"<b>{item['store_name']}</b>: inventario ${item['inventory_value']:.2f} · rotación {item['average_rotation']:.2f} · ventas 30d ${item['sales_last_30_days']:.2f}"
+            for item in comparatives[:5]
+        )
+        elements.append(Paragraph(comp_lines, dark_style))
+    else:
+        elements.append(Paragraph("Sin comparativos disponibles", dark_style))
+
+    elements.append(Spacer(1, 12))
+    elements.append(Paragraph("Margen de contribución", dark_style))
+    if profit:
+        profit_lines = "<br/>".join(
+            f"<b>{item['store_name']}</b>: margen {item['margin_percent']:.2f}% (${item['profit']:.2f})"
+            for item in profit[:5]
+        )
+        elements.append(Paragraph(profit_lines, dark_style))
+    else:
+        elements.append(Paragraph("Sin registros de ventas consolidados", dark_style))
+
+    elements.append(Spacer(1, 12))
+    elements.append(Paragraph("Proyección de ventas (30 días)", dark_style))
+    if projection:
+        projection_lines = "<br/>".join(
+            f"<b>{item['store_name']}</b>: unidades {item['projected_units']:.1f} · ticket promedio ${item['average_ticket']:.2f} · ingreso esperado ${item['projected_revenue']:.2f}"
+            for item in projection[:5]
+        )
+        elements.append(Paragraph(projection_lines, dark_style))
+    else:
+        elements.append(Paragraph("Sin suficientes datos para proyectar ventas", dark_style))
 
     doc.build(elements)
     buffer.seek(0)

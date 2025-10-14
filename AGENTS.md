@@ -45,12 +45,22 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - ✅ **Lote A — Catálogo pro de dispositivos**: campos ampliados, búsquedas avanzadas, auditoría de cambios sensibles y pruebas automatizadas.
 - ✅ **Lote B — Transferencias entre tiendas**: modelos `transfer_orders`, permisos por sucursal, flujo SOLICITADA→EN_TRANSITO→RECIBIDA/CANCELADA, endpoints FastAPI, componente React `TransferOrders` y pruebas `pytest` dedicadas.
 - ✅ **Lote C — Compras y ventas simples**: órdenes de compra con recepción parcial y promedio ponderado de costo, ventas con descuento/método de pago y devoluciones cubiertas en backend, pruebas y panel React (`Purchases.tsx`, `Sales.tsx`, `Returns.tsx`).
-- ⏳ **Lote D — Analítica avanzada**: pendientes endpoints `/reports/analytics/*` y generación de PDF oscuro.
-- ⏳ **Lote E — Seguridad y auditoría fina**: pendiente middleware `X-Reason`, 2FA TOTP, auditoría de sesiones y motivo obligatorio en ajustes.
-- ⏳ **Lote F — Modo híbrido**: pendiente cola `sync_outbox` con reintentos y resolución *last-write-wins*.
+- ✅ **Lote D — Analítica avanzada**: endpoints `/reports/analytics/*`, servicios `services/analytics.py`, PDF oscuro y componente `AnalyticsBoard.tsx` documentados y probados.
+- ✅ **Lote E — Seguridad y auditoría fina**: middleware `X-Reason`, dependencias `require_reason`, 2FA TOTP habilitable por flag, auditoría/revocación de sesiones y componentes `TwoFactorSetup.tsx`/`AuditLog.tsx` operativos.
+- ✅ **Lote F — Modo híbrido**: cola `sync_outbox` con reintentos, estrategia *last-write-wins*, panel de reintentos en `SyncPanel.tsx` y cobertura de pruebas.
 
 **Próximos pasos**
 
-1. Activar los controles de seguridad del **Lote E**: middleware global `X-Reason`, rutas 2FA TOTP, auditoría/revocación de sesiones y componentes `TwoFactorSetup.tsx`/`AuditLog.tsx` con pruebas.
-2. Desarrollar el **Lote D** con endpoints `/reports/analytics/*`, cálculos avanzados y generación de PDF oscuro, incluyendo cobertura de pruebas.
-3. Completar el **Lote F** implementando la cola `sync_outbox`, manejo de reintentos y estrategia *last-write-wins* con validaciones automatizadas.
+1. Integrar en el frontend el nuevo flujo de reparaciones (tablas, formularios, PDF) y extender la cola híbrida para priorizar `repair_orders` sin romper compatibilidad.
+2. Diseñar los módulos de clientes/proveedores y permisos visuales para la siguiente iteración, manteniendo la documentación actualizada.
+3. Supervisar métricas híbridas y preparar mejoras de resolución de conflictos para nuevas entidades planeadas en v2.3.
+4. Ampliar analítica con comparativos entre sucursales y nuevos formatos de exportación en la siguiente iteración.
+5. Documentar lineamientos de soporte remoto para despliegues 2FA y sincronización distribuida.
+
+### Pasos de control iterativo (deben registrarse tras cada entrega)
+
+1. Revisa `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` antes de modificar código; anota brechas resueltas o pendientes.
+2. Ejecuta `pytest` en la raíz y `npm --prefix frontend run build`; registra fecha y resultado en la bitácora interna del equipo.
+3. Verifica desde el frontend las secciones Inventario, Operaciones, Analítica, Seguridad (incluyendo flujos 2FA con motivo) y Sincronización.
+4. Asegura que la cola híbrida (`/sync/outbox`) quede sin pendientes críticos reintentando con `X-Reason` justificado y documenta el resultado.
+5. Actualiza el apartado "Registro operativo de lotes entregados" del README con cualquier nuevo componente, endpoint o prueba agregada.

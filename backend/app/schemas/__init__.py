@@ -13,7 +13,9 @@ from ..models import (
     MovementType,
     PaymentMethod,
     PurchaseStatus,
+    RepairStatus,
     SyncMode,
+    SyncOutboxPriority,
     SyncOutboxStatus,
     SyncStatus,
     TransferStatus,
@@ -454,6 +456,7 @@ class AgingMetric(BaseModel):
     device_id: int
     sku: str
     name: str
+    store_id: int
     store_name: str
     days_in_stock: int
     quantity: int
@@ -503,6 +506,7 @@ class SyncOutboxEntryResponse(BaseModel):
     attempt_count: int
     last_attempt_at: datetime | None
     status: SyncOutboxStatus
+    priority: SyncOutboxPriority
     error_message: str | None
     created_at: datetime
     updated_at: datetime
@@ -522,6 +526,59 @@ class SyncOutboxEntryResponse(BaseModel):
         if isinstance(value, dict):
             return value
         return {}
+
+
+class SyncOutboxStatsEntry(BaseModel):
+    entity_type: str
+    priority: SyncOutboxPriority
+    total: int
+    pending: int
+    failed: int
+    latest_update: datetime | None
+    oldest_pending: datetime | None
+
+
+class StoreComparativeMetric(BaseModel):
+    store_id: int
+    store_name: str
+    device_count: int
+    total_units: int
+    inventory_value: float
+    average_rotation: float
+    average_aging_days: float
+    sales_last_30_days: float
+    sales_count_last_30_days: int
+
+
+class AnalyticsComparativeResponse(BaseModel):
+    items: list[StoreComparativeMetric]
+
+
+class ProfitMarginMetric(BaseModel):
+    store_id: int
+    store_name: str
+    revenue: float
+    cost: float
+    profit: float
+    margin_percent: float
+
+
+class AnalyticsProfitMarginResponse(BaseModel):
+    items: list[ProfitMarginMetric]
+
+
+class SalesProjectionMetric(BaseModel):
+    store_id: int
+    store_name: str
+    average_daily_units: float
+    average_ticket: float
+    projected_units: float
+    projected_revenue: float
+    confidence: float
+
+
+class AnalyticsSalesProjectionResponse(BaseModel):
+    items: list[SalesProjectionMetric]
 
 
 class SyncOutboxReplayRequest(BaseModel):
@@ -780,6 +837,103 @@ class SaleReturnResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RepairOrderBase(BaseModel):
+    store_id: int = Field(..., ge=1)
+    cliente: str = Field(..., min_length=1, max_length=120)
+    dispositivo: str = Field(..., min_length=1, max_length=160)
+    tipo_dano: str = Field(..., min_length=3, max_length=255)
+    tecnico: str = Field(..., min_length=1, max_length=120)
+    estado: RepairStatus = Field(default=RepairStatus.PENDIENTE)
+    costo: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    piezas_usadas: list[str] = Field(default_factory=list)
+    fecha_inicio: date = Field(..., description="Fecha de ingreso del equipo")
+    fecha_entrega: date | None = Field(
+        default=None, description="Fecha estimada o real de entrega"
+    )
+    notas: str | None = Field(default=None, max_length=255)
+
+    @field_serializer("costo")
+    @classmethod
+    def _serialize_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_validator(
+        "cliente",
+        "dispositivo",
+        "tipo_dano",
+        "tecnico",
+        "notas",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_strings(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("piezas_usadas", mode="before")
+    @classmethod
+    def _normalize_parts(cls, value: list[str] | None) -> list[str]:
+        if value is None:
+            return []
+        return [part.strip() for part in value if part and part.strip()]
+
+
+class RepairOrderCreate(RepairOrderBase):
+    """Carga útil para registrar una orden de reparación."""
+
+
+class RepairOrderUpdate(BaseModel):
+    cliente: str | None = Field(default=None, min_length=1, max_length=120)
+    dispositivo: str | None = Field(default=None, min_length=1, max_length=160)
+    tipo_dano: str | None = Field(default=None, min_length=3, max_length=255)
+    tecnico: str | None = Field(default=None, min_length=1, max_length=120)
+    estado: RepairStatus | None = Field(default=None)
+    costo: Decimal | None = Field(default=None, ge=Decimal("0"))
+    piezas_usadas: list[str] | None = Field(default=None)
+    fecha_inicio: date | None = Field(default=None)
+    fecha_entrega: date | None = Field(default=None)
+    notas: str | None = Field(default=None, max_length=255)
+
+    @field_serializer("costo")
+    @classmethod
+    def _serialize_update_cost(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+    @field_validator(
+        "cliente",
+        "dispositivo",
+        "tipo_dano",
+        "tecnico",
+        "notas",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_update_strings(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("piezas_usadas", mode="before")
+    @classmethod
+    def _normalize_update_parts(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return [part.strip() for part in value if part and part.strip()]
+
+
+class RepairOrderResponse(RepairOrderBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class POSCartItem(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
@@ -918,6 +1072,13 @@ class UpdateStatus(BaseModel):
 
 
 __all__ = [
+    "AgingMetric",
+    "AnalyticsAgingResponse",
+    "AnalyticsComparativeResponse",
+    "AnalyticsForecastResponse",
+    "AnalyticsProfitMarginResponse",
+    "AnalyticsRotationResponse",
+    "AnalyticsSalesProjectionResponse",
     "AuditLogResponse",
     "BackupJobResponse",
     "BackupRunRequest",
@@ -960,8 +1121,11 @@ __all__ = [
     "StoreResponse",
     "StoreUpdate",
     "StoreValueMetric",
+    "StoreComparativeMetric",
     "SyncRequest",
     "SyncOutboxEntryResponse",
+    "SyncOutboxPriority",
+    "SyncOutboxStatsEntry",
     "SyncOutboxReplayRequest",
     "SyncSessionResponse",
     "TokenPayload",
@@ -971,4 +1135,8 @@ __all__ = [
     "UserCreate",
     "UserResponse",
     "UserRolesUpdate",
+    "ProfitMarginMetric",
+    "RotationMetric",
+    "SalesProjectionMetric",
+    "StockoutForecastMetric",
 ]

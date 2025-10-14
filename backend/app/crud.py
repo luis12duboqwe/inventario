@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 
@@ -42,11 +42,50 @@ def _to_decimal(value: Decimal | float | int | None) -> Decimal:
     return Decimal(str(value))
 
 
+_OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
+    "sale": models.SyncOutboxPriority.HIGH,
+    "transfer_order": models.SyncOutboxPriority.HIGH,
+    "purchase_order": models.SyncOutboxPriority.NORMAL,
+    "repair_order": models.SyncOutboxPriority.NORMAL,
+    "device": models.SyncOutboxPriority.NORMAL,
+    "inventory": models.SyncOutboxPriority.NORMAL,
+    "store": models.SyncOutboxPriority.LOW,
+    "global": models.SyncOutboxPriority.LOW,
+    "backup": models.SyncOutboxPriority.LOW,
+    "pos_draft": models.SyncOutboxPriority.LOW,
+}
+
+_OUTBOX_PRIORITY_ORDER: dict[models.SyncOutboxPriority, int] = {
+    models.SyncOutboxPriority.HIGH: 0,
+    models.SyncOutboxPriority.NORMAL: 1,
+    models.SyncOutboxPriority.LOW: 2,
+}
+
+
+def _resolve_outbox_priority(entity_type: str, priority: models.SyncOutboxPriority | None) -> models.SyncOutboxPriority:
+    if priority is not None:
+        return priority
+    return _OUTBOX_PRIORITY_MAP.get(entity_type, models.SyncOutboxPriority.NORMAL)
+
+
+def _priority_weight(priority: models.SyncOutboxPriority | None) -> int:
+    if priority is None:
+        return _OUTBOX_PRIORITY_ORDER[models.SyncOutboxPriority.NORMAL]
+    return _OUTBOX_PRIORITY_ORDER.get(priority, 1)
+
+
 def _recalculate_sale_price(device: models.Device) -> None:
     base_cost = _to_decimal(device.costo_unitario)
     margin = _to_decimal(device.margen_porcentaje)
     sale_factor = Decimal("1") + (margin / Decimal("100"))
     device.unit_price = (base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _normalize_store_ids(store_ids: Iterable[int] | None) -> set[int] | None:
+    if not store_ids:
+        return None
+    normalized = {int(store_id) for store_id in store_ids if int(store_id) > 0}
+    return normalized or None
 
 
 def _log_action(
@@ -181,7 +220,14 @@ def get_totp_secret(db: Session, user_id: int) -> models.UserTOTPSecret | None:
     return db.scalars(statement).first()
 
 
-def provision_totp_secret(db: Session, user_id: int, secret: str) -> models.UserTOTPSecret:
+def provision_totp_secret(
+    db: Session,
+    user_id: int,
+    secret: str,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.UserTOTPSecret:
     record = get_totp_secret(db, user_id)
     if record is None:
         record = models.UserTOTPSecret(user_id=user_id, secret=secret, is_active=False)
@@ -193,10 +239,28 @@ def provision_totp_secret(db: Session, user_id: int, secret: str) -> models.User
         record.last_verified_at = None
     db.commit()
     db.refresh(record)
+
+    details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
+    _log_action(
+        db,
+        action="totp_provisioned",
+        entity_type="user",
+        entity_id=str(user_id),
+        performed_by_id=performed_by_id,
+        details=details,
+    )
+    db.commit()
+    db.refresh(record)
     return record
 
 
-def activate_totp_secret(db: Session, user_id: int) -> models.UserTOTPSecret:
+def activate_totp_secret(
+    db: Session,
+    user_id: int,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.UserTOTPSecret:
     record = get_totp_secret(db, user_id)
     if record is None:
         raise LookupError("totp_not_provisioned")
@@ -206,14 +270,43 @@ def activate_totp_secret(db: Session, user_id: int) -> models.UserTOTPSecret:
     record.last_verified_at = now
     db.commit()
     db.refresh(record)
+
+    details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
+    _log_action(
+        db,
+        action="totp_activated",
+        entity_type="user",
+        entity_id=str(user_id),
+        performed_by_id=performed_by_id,
+        details=details,
+    )
+    db.commit()
+    db.refresh(record)
     return record
 
 
-def deactivate_totp_secret(db: Session, user_id: int) -> None:
+def deactivate_totp_secret(
+    db: Session,
+    user_id: int,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> None:
     record = get_totp_secret(db, user_id)
     if record is None:
         return
     record.is_active = False
+    db.commit()
+
+    details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
+    _log_action(
+        db,
+        action="totp_deactivated",
+        entity_type="user",
+        entity_id=str(user_id),
+        performed_by_id=performed_by_id,
+        details=details,
+    )
     db.commit()
 
 
@@ -576,22 +669,32 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     }
 
 
-def calculate_rotation_analytics(db: Session) -> list[dict[str, object]]:
+def calculate_rotation_analytics(
+    db: Session, store_ids: Iterable[int] | None = None
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
     sale_stats = (
         select(
             models.SaleItem.device_id,
             func.sum(models.SaleItem.quantity).label("sold_units"),
+            models.Sale.store_id,
         )
         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
         .group_by(models.SaleItem.device_id)
     )
+    if store_filter:
+        sale_stats = sale_stats.where(models.Sale.store_id.in_(store_filter))
     purchase_stats = (
         select(
             models.PurchaseOrderItem.device_id,
             func.sum(models.PurchaseOrderItem.quantity_received).label("received_units"),
+            models.PurchaseOrder.store_id,
         )
+        .join(models.PurchaseOrder, models.PurchaseOrder.id == models.PurchaseOrderItem.purchase_order_id)
         .group_by(models.PurchaseOrderItem.device_id)
     )
+    if store_filter:
+        purchase_stats = purchase_stats.where(models.PurchaseOrder.store_id.in_(store_filter))
 
     sold_map = {row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)}
     received_map = {row.device_id: int(row.received_units or 0) for row in db.execute(purchase_stats)}
@@ -607,6 +710,8 @@ def calculate_rotation_analytics(db: Session) -> list[dict[str, object]]:
         .join(models.Store, models.Store.id == models.Device.store_id)
         .order_by(models.Store.name.asc(), models.Device.name.asc())
     )
+    if store_filter:
+        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
     results: list[dict[str, object]] = []
     for row in db.execute(device_stmt):
         sold_units = sold_map.get(row.id, 0)
@@ -628,7 +733,10 @@ def calculate_rotation_analytics(db: Session) -> list[dict[str, object]]:
     return results
 
 
-def calculate_aging_analytics(db: Session) -> list[dict[str, object]]:
+def calculate_aging_analytics(
+    db: Session, store_ids: Iterable[int] | None = None
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
     now_date = datetime.utcnow().date()
     device_stmt = (
         select(
@@ -637,10 +745,13 @@ def calculate_aging_analytics(db: Session) -> list[dict[str, object]]:
             models.Device.name,
             models.Device.fecha_compra,
             models.Device.quantity,
+            models.Store.id.label("store_id"),
             models.Store.name.label("store_name"),
         )
         .join(models.Store, models.Store.id == models.Device.store_id)
     )
+    if store_filter:
+        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
     metrics: list[dict[str, object]] = []
     for row in db.execute(device_stmt):
         purchase_date = row.fecha_compra
@@ -650,6 +761,7 @@ def calculate_aging_analytics(db: Session) -> list[dict[str, object]]:
                 "device_id": row.id,
                 "sku": row.sku,
                 "name": row.name,
+                "store_id": row.store_id,
                 "store_name": row.store_name,
                 "days_in_stock": max(days_in_stock, 0),
                 "quantity": int(row.quantity or 0),
@@ -659,7 +771,10 @@ def calculate_aging_analytics(db: Session) -> list[dict[str, object]]:
     return metrics
 
 
-def calculate_stockout_forecast(db: Session) -> list[dict[str, object]]:
+def calculate_stockout_forecast(
+    db: Session, store_ids: Iterable[int] | None = None
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
     sale_stats = (
         select(
             models.SaleItem.device_id,
@@ -670,6 +785,8 @@ def calculate_stockout_forecast(db: Session) -> list[dict[str, object]]:
         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
         .group_by(models.SaleItem.device_id)
     )
+    if store_filter:
+        sale_stats = sale_stats.where(models.Sale.store_id.in_(store_filter))
     sales_map: dict[int, dict[str, object]] = {}
     for row in db.execute(sale_stats):
         sales_map[row.device_id] = {
@@ -688,6 +805,8 @@ def calculate_stockout_forecast(db: Session) -> list[dict[str, object]]:
         )
         .join(models.Store, models.Store.id == models.Device.store_id)
     )
+    if store_filter:
+        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
     metrics: list[dict[str, object]] = []
     now = datetime.utcnow()
     for row in db.execute(device_stmt):
@@ -727,6 +846,189 @@ def calculate_stockout_forecast(db: Session) -> list[dict[str, object]]:
 
     metrics.sort(key=lambda item: (item["projected_days"] is None, item["projected_days"] or 0))
     return metrics
+
+
+def calculate_store_comparatives(
+    db: Session, store_ids: Iterable[int] | None = None
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    rotation = calculate_rotation_analytics(db, store_ids=store_filter)
+    aging = calculate_aging_analytics(db, store_ids=store_filter)
+    rotation_totals: dict[int, tuple[float, int]] = {}
+    aging_totals: dict[int, tuple[float, int]] = {}
+
+    for item in rotation:
+        store_id = int(item["store_id"])
+        total, count = rotation_totals.get(store_id, (0.0, 0))
+        rotation_totals[store_id] = (total + float(item["rotation_rate"]), count + 1)
+
+    for item in aging:
+        store_id_value = item.get("store_id")
+        if store_id_value is None:
+            continue
+        store_id = int(store_id_value)
+        total, count = aging_totals.get(store_id, (0.0, 0))
+        aging_totals[store_id] = (total + float(item["days_in_stock"]), count + 1)
+
+    rotation_avg = {
+        store_id: (total / count if count else 0.0)
+        for store_id, (total, count) in rotation_totals.items()
+    }
+    aging_avg = {
+        store_id: (total / count if count else 0.0)
+        for store_id, (total, count) in aging_totals.items()
+    }
+
+    inventory_stmt = (
+        select(
+            models.Store.id,
+            models.Store.name,
+            func.coalesce(func.count(models.Device.id), 0).label("device_count"),
+            func.coalesce(func.sum(models.Device.quantity), 0).label("total_units"),
+            func.coalesce(
+                func.sum(models.Device.quantity * models.Device.unit_price),
+                0,
+            ).label("inventory_value"),
+        )
+        .outerjoin(models.Device, models.Device.store_id == models.Store.id)
+        .group_by(models.Store.id)
+        .order_by(models.Store.name.asc())
+    )
+    if store_filter:
+        inventory_stmt = inventory_stmt.where(models.Store.id.in_(store_filter))
+
+    window_start = datetime.utcnow() - timedelta(days=30)
+    sales_stmt = (
+        select(
+            models.Sale.store_id,
+            func.coalesce(func.count(models.Sale.id), 0).label("orders"),
+            func.coalesce(func.sum(models.Sale.total_amount), 0).label("revenue"),
+        )
+        .where(models.Sale.created_at >= window_start)
+        .group_by(models.Sale.store_id)
+    )
+    if store_filter:
+        sales_stmt = sales_stmt.where(models.Sale.store_id.in_(store_filter))
+    sales_map: dict[int, dict[str, Decimal]] = {}
+    for row in db.execute(sales_stmt):
+        sales_map[int(row.store_id)] = {
+            "orders": Decimal(row.orders or 0),
+            "revenue": Decimal(row.revenue or 0),
+        }
+
+    comparatives: list[dict[str, object]] = []
+    for row in db.execute(inventory_stmt):
+        store_id = int(row.id)
+        sales = sales_map.get(store_id, {"orders": Decimal(0), "revenue": Decimal(0)})
+        comparatives.append(
+            {
+                "store_id": store_id,
+                "store_name": row.name,
+                "device_count": int(row.device_count or 0),
+                "total_units": int(row.total_units or 0),
+                "inventory_value": float(row.inventory_value or 0),
+                "average_rotation": round(rotation_avg.get(store_id, 0.0), 2),
+                "average_aging_days": round(aging_avg.get(store_id, 0.0), 1),
+                "sales_last_30_days": float(sales["revenue"]),
+                "sales_count_last_30_days": int(sales["orders"]),
+            }
+        )
+
+    comparatives.sort(key=lambda item: item["inventory_value"], reverse=True)
+    return comparatives
+
+
+def calculate_profit_margin(
+    db: Session, store_ids: Iterable[int] | None = None
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    stmt = (
+        select(
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.coalesce(
+                func.sum(models.SaleItem.quantity * models.Device.costo_unitario),
+                0,
+            ).label("cost"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Store, models.Store.id == models.Sale.store_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(models.Store.id)
+        .order_by(models.Store.name.asc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Store.id.in_(store_filter))
+
+    metrics: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        revenue = Decimal(row.revenue or 0)
+        cost = Decimal(row.cost or 0)
+        profit = revenue - cost
+        margin_percent = float((profit / revenue * 100) if revenue else 0)
+        metrics.append(
+            {
+                "store_id": int(row.store_id),
+                "store_name": row.store_name,
+                "revenue": float(revenue),
+                "cost": float(cost),
+                "profit": float(profit),
+                "margin_percent": round(margin_percent, 2),
+            }
+        )
+
+    metrics.sort(key=lambda item: item["profit"], reverse=True)
+    return metrics
+
+
+def calculate_sales_projection(
+    db: Session, store_ids: Iterable[int] | None = None, horizon_days: int = 30
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    window_days = 30
+    since = datetime.utcnow() - timedelta(days=window_days)
+    stmt = (
+        select(
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("units"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.coalesce(func.count(func.distinct(models.Sale.id)), 0).label("orders"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Store, models.Store.id == models.Sale.store_id)
+        .where(models.Sale.created_at >= since)
+        .group_by(models.Store.id)
+        .order_by(models.Store.name.asc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Store.id.in_(store_filter))
+
+    projections: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        units = Decimal(row.units or 0)
+        revenue = Decimal(row.revenue or 0)
+        orders = int(row.orders or 0)
+        average_daily_units = float(units / Decimal(window_days)) if units else 0.0
+        average_unit_price = float(revenue / units) if units else 0.0
+        projected_units = average_daily_units * horizon_days
+        projected_revenue = projected_units * average_unit_price
+        confidence = min(1.0, orders / window_days) if window_days else 0.0
+        projections.append(
+            {
+                "store_id": int(row.store_id),
+                "store_name": row.store_name,
+                "average_daily_units": round(average_daily_units, 2),
+                "average_ticket": round(float(revenue / orders) if orders else average_unit_price, 2),
+                "projected_units": round(projected_units, 2),
+                "projected_revenue": round(projected_revenue, 2),
+                "confidence": round(confidence, 2),
+            }
+        )
+
+    projections.sort(key=lambda item: item["projected_revenue"], reverse=True)
+    return projections
 
 
 def record_sync_session(
@@ -780,8 +1082,10 @@ def enqueue_sync_outbox(
     entity_id: str,
     operation: str,
     payload: dict[str, object],
+    priority: models.SyncOutboxPriority | None = None,
 ) -> models.SyncOutbox:
     serialized = json.dumps(payload, ensure_ascii=False, default=str)
+    resolved_priority = _resolve_outbox_priority(entity_type, priority)
     statement = select(models.SyncOutbox).where(
         models.SyncOutbox.entity_type == entity_type,
         models.SyncOutbox.entity_id == entity_id,
@@ -794,6 +1098,7 @@ def enqueue_sync_outbox(
             operation=operation,
             payload=serialized,
             status=models.SyncOutboxStatus.PENDING,
+            priority=resolved_priority,
         )
         db.add(entry)
     else:
@@ -803,6 +1108,8 @@ def enqueue_sync_outbox(
         entry.attempt_count = 0
         entry.error_message = None
         entry.last_attempt_at = None
+        if _priority_weight(resolved_priority) < _priority_weight(entry.priority):
+            entry.priority = resolved_priority
     db.commit()
     db.refresh(entry)
     return entry
@@ -814,9 +1121,15 @@ def list_sync_outbox(
     statuses: Iterable[models.SyncOutboxStatus] | None = None,
     limit: int = 100,
 ) -> list[models.SyncOutbox]:
+    priority_order = case(
+        (models.SyncOutbox.priority == models.SyncOutboxPriority.HIGH, 0),
+        (models.SyncOutbox.priority == models.SyncOutboxPriority.NORMAL, 1),
+        (models.SyncOutbox.priority == models.SyncOutboxPriority.LOW, 2),
+        else_=2,
+    )
     statement = (
         select(models.SyncOutbox)
-        .order_by(models.SyncOutbox.updated_at.desc())
+        .order_by(priority_order, models.SyncOutbox.updated_at.desc())
         .limit(limit)
     )
     if statuses is not None:
@@ -862,6 +1175,55 @@ def reset_outbox_entries(
     db.commit()
     refreshed = list(db.scalars(statement))
     return refreshed
+
+
+def get_sync_outbox_statistics(db: Session) -> list[dict[str, object]]:
+    statement = (
+        select(
+            models.SyncOutbox.entity_type,
+            models.SyncOutbox.priority,
+            func.count(models.SyncOutbox.id).label("total"),
+            func.sum(
+                case(
+                    (models.SyncOutbox.status == models.SyncOutboxStatus.PENDING, 1),
+                    else_=0,
+                )
+            ).label("pending"),
+            func.sum(
+                case(
+                    (models.SyncOutbox.status == models.SyncOutboxStatus.FAILED, 1),
+                    else_=0,
+                )
+            ).label("failed"),
+            func.max(models.SyncOutbox.updated_at).label("latest_update"),
+            func.min(
+                case(
+                    (
+                        models.SyncOutbox.status == models.SyncOutboxStatus.PENDING,
+                        models.SyncOutbox.created_at,
+                    ),
+                    else_=None,
+                )
+            ).label("oldest_pending"),
+        )
+        .group_by(models.SyncOutbox.entity_type, models.SyncOutbox.priority)
+    )
+    results: list[dict[str, object]] = []
+    for row in db.execute(statement):
+        priority = row.priority or models.SyncOutboxPriority.NORMAL
+        results.append(
+            {
+                "entity_type": row.entity_type,
+                "priority": priority,
+                "total": int(row.total or 0),
+                "pending": int(row.pending or 0),
+                "failed": int(row.failed or 0),
+                "latest_update": row.latest_update,
+                "oldest_pending": row.oldest_pending,
+            }
+        )
+    results.sort(key=lambda item: (_priority_weight(item["priority"]), item["entity_type"]))
+    return results
 
 
 def get_store_membership(db: Session, *, user_id: int, store_id: int) -> models.StoreMembership | None:
@@ -1713,6 +2075,125 @@ def register_sale_return(
     return returns
 
 
+def create_repair_order(
+    db: Session,
+    payload: schemas.RepairOrderCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.RepairOrder:
+    get_store(db, payload.store_id)
+    order = models.RepairOrder(**payload.model_dump())
+    db.add(order)
+    db.flush()
+
+    _log_action(
+        db,
+        action="repair_created",
+        entity_type="repair_order",
+        entity_id=str(order.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps(
+            {
+                "store_id": order.store_id,
+                "estado": order.estado.value,
+                "tecnico": order.tecnico,
+            }
+        ),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def list_repair_orders(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    status: models.RepairStatus | None = None,
+) -> list[models.RepairOrder]:
+    statement = select(models.RepairOrder).order_by(models.RepairOrder.created_at.desc())
+    normalized_store_ids = _normalize_store_ids(store_ids)
+    if normalized_store_ids:
+        statement = statement.where(models.RepairOrder.store_id.in_(normalized_store_ids))
+    if status is not None:
+        statement = statement.where(models.RepairOrder.estado == status)
+    statement = statement.options(joinedload(models.RepairOrder.store))
+    return list(db.scalars(statement))
+
+
+def get_repair_order(db: Session, repair_id: int) -> models.RepairOrder:
+    statement = (
+        select(models.RepairOrder)
+        .options(joinedload(models.RepairOrder.store))
+        .where(models.RepairOrder.id == repair_id)
+    )
+    try:
+        return db.scalars(statement).one()
+    except NoResultFound as exc:
+        raise LookupError("repair_not_found") from exc
+
+
+def update_repair_order(
+    db: Session,
+    repair_id: int,
+    payload: schemas.RepairOrderUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.RepairOrder:
+    order = get_repair_order(db, repair_id)
+    data = payload.model_dump(exclude_unset=True)
+    piezas = data.pop("piezas_usadas", None)
+    for field, value in data.items():
+        setattr(order, field, value)
+    if piezas is not None:
+        order.piezas_usadas = piezas
+    order.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(order)
+
+    _log_action(
+        db,
+        action="repair_updated",
+        entity_type="repair_order",
+        entity_id=str(order.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps(
+            {
+                "estado": order.estado.value,
+                "costo": float(order.costo),
+                "fecha_entrega": order.fecha_entrega.isoformat()
+                if order.fecha_entrega
+                else None,
+            }
+        ),
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def delete_repair_order(
+    db: Session,
+    repair_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> None:
+    order = get_repair_order(db, repair_id)
+    db.delete(order)
+    db.flush()
+
+    _log_action(
+        db,
+        action="repair_deleted",
+        entity_type="repair_order",
+        entity_id=str(repair_id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"store_id": order.store_id}),
+    )
+    db.commit()
+
+
 def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
     store = get_store(db, store_id)
     statement = select(models.POSConfig).where(models.POSConfig.store_id == store_id)
@@ -1787,6 +2268,7 @@ def save_pos_draft(
         db.add(draft)
 
     serialized = payload.model_dump(
+        mode="json",
         exclude_none=True,
         exclude={"confirm", "save_as_draft"},
     )

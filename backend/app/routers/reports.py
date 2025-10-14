@@ -1,7 +1,8 @@
 """Reportes consolidados y bitácoras."""
 from __future__ import annotations
 
-from io import BytesIO
+import csv
+from io import BytesIO, StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -34,47 +35,179 @@ def audit_logs(
 
 @router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse)
 def analytics_rotation(
+    store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    data = crud.calculate_rotation_analytics(db)
+    data = crud.calculate_rotation_analytics(db, store_ids=store_ids)
     return schemas.AnalyticsRotationResponse(items=[schemas.RotationMetric(**item) for item in data])
 
 
 @router.get("/analytics/aging", response_model=schemas.AnalyticsAgingResponse)
 def analytics_aging(
+    store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    data = crud.calculate_aging_analytics(db)
+    data = crud.calculate_aging_analytics(db, store_ids=store_ids)
     return schemas.AnalyticsAgingResponse(items=[schemas.AgingMetric(**item) for item in data])
 
 
 @router.get("/analytics/stockout_forecast", response_model=schemas.AnalyticsForecastResponse)
 def analytics_forecast(
+    store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    data = crud.calculate_stockout_forecast(db)
+    data = crud.calculate_stockout_forecast(db, store_ids=store_ids)
     return schemas.AnalyticsForecastResponse(items=[schemas.StockoutForecastMetric(**item) for item in data])
+
+
+@router.get("/analytics/comparative", response_model=schemas.AnalyticsComparativeResponse)
+def analytics_comparative(
+    store_ids: list[int] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    data = crud.calculate_store_comparatives(db, store_ids=store_ids)
+    return schemas.AnalyticsComparativeResponse(
+        items=[schemas.StoreComparativeMetric(**item) for item in data]
+    )
+
+
+@router.get("/analytics/profit_margin", response_model=schemas.AnalyticsProfitMarginResponse)
+def analytics_profit_margin(
+    store_ids: list[int] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    data = crud.calculate_profit_margin(db, store_ids=store_ids)
+    return schemas.AnalyticsProfitMarginResponse(
+        items=[schemas.ProfitMarginMetric(**item) for item in data]
+    )
+
+
+@router.get("/analytics/sales_forecast", response_model=schemas.AnalyticsSalesProjectionResponse)
+def analytics_sales_projection(
+    store_ids: list[int] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    data = crud.calculate_sales_projection(db, store_ids=store_ids)
+    return schemas.AnalyticsSalesProjectionResponse(
+        items=[schemas.SalesProjectionMetric(**item) for item in data]
+    )
 
 
 @router.get("/analytics/pdf")
 def analytics_pdf(
+    store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    rotation = crud.calculate_rotation_analytics(db)
-    aging = crud.calculate_aging_analytics(db)
-    forecast = crud.calculate_stockout_forecast(db)
-    pdf_bytes = analytics_service.render_analytics_pdf(rotation=rotation, aging=aging, forecast=forecast)
+    rotation = crud.calculate_rotation_analytics(db, store_ids=store_ids)
+    aging = crud.calculate_aging_analytics(db, store_ids=store_ids)
+    forecast = crud.calculate_stockout_forecast(db, store_ids=store_ids)
+    comparatives = crud.calculate_store_comparatives(db, store_ids=store_ids)
+    profit = crud.calculate_profit_margin(db, store_ids=store_ids)
+    projection = crud.calculate_sales_projection(db, store_ids=store_ids)
+    pdf_bytes = analytics_service.render_analytics_pdf(
+        rotation=rotation,
+        aging=aging,
+        forecast=forecast,
+        comparatives=comparatives,
+        profit=profit,
+        projection=projection,
+    )
     buffer = BytesIO(pdf_bytes)
     headers = {"Content-Disposition": "attachment; filename=softmobile_analytics.pdf"}
     return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+
+
+@router.get("/analytics/export.csv")
+def analytics_export_csv(
+    store_ids: list[int] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    comparatives = crud.calculate_store_comparatives(db, store_ids=store_ids)
+    profit = crud.calculate_profit_margin(db, store_ids=store_ids)
+    projection = crud.calculate_sales_projection(db, store_ids=store_ids)
+
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Comparativo sucursales"])
+    writer.writerow([
+        "Sucursal",
+        "Dispositivos",
+        "Unidades",
+        "Valor inventario",
+        "Rotación promedio",
+        "Envejecimiento promedio",
+        "Ventas 30d",
+        "Órdenes 30d",
+    ])
+    for item in comparatives:
+        writer.writerow(
+            [
+                item["store_name"],
+                item["device_count"],
+                item["total_units"],
+                f"{item['inventory_value']:.2f}",
+                f"{item['average_rotation']:.2f}",
+                f"{item['average_aging_days']:.2f}",
+                f"{item['sales_last_30_days']:.2f}",
+                item["sales_count_last_30_days"],
+            ]
+        )
+
+    writer.writerow([])
+    writer.writerow(["Margen por sucursal"])
+    writer.writerow(["Sucursal", "Ingresos", "Costo", "Utilidad", "% Margen"])
+    for item in profit:
+        writer.writerow(
+            [
+                item["store_name"],
+                f"{item['revenue']:.2f}",
+                f"{item['cost']:.2f}",
+                f"{item['profit']:.2f}",
+                f"{item['margin_percent']:.2f}",
+            ]
+        )
+
+    writer.writerow([])
+    writer.writerow(["Proyección ventas 30 días"])
+    writer.writerow([
+        "Sucursal",
+        "Unidades diarias",
+        "Ticket promedio",
+        "Unidades proyectadas",
+        "Ingresos proyectados",
+        "Confianza",
+    ])
+    for item in projection:
+        writer.writerow(
+            [
+                item["store_name"],
+                f"{item['average_daily_units']:.2f}",
+                f"{item['average_ticket']:.2f}",
+                f"{item['projected_units']:.2f}",
+                f"{item['projected_revenue']:.2f}",
+                f"{item['confidence']:.2f}",
+            ]
+        )
+
+    buffer.seek(0)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_analytics.csv"}
+    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
 
 
 @router.get("/inventory/pdf")

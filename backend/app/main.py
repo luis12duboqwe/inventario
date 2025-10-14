@@ -18,7 +18,9 @@ from .routers import (
     backups,
     health,
     inventory,
+    pos,
     purchases,
+    repairs,
     reports,
     sales,
     security,
@@ -41,6 +43,7 @@ SENSITIVE_PREFIXES = (
     "/transfers",
     "/security",
     "/sync/outbox",
+    "/repairs",
 )
 
 
@@ -84,10 +87,13 @@ def create_app() -> FastAPI:
         ):
             reason = request.headers.get("X-Reason")
             if not reason or len(reason.strip()) < 5:
-                fallback = os.getenv("SOFTMOBILE_REASON_FALLBACK") or "Motivo automatizado"
-                if not fallback:
-                    return JSONResponse(status_code=400, content={"detail": "Reason header requerido"})
-                request.state.x_reason = fallback
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "detail": "Proporciona el encabezado X-Reason con al menos 5 caracteres.",
+                    },
+                )
+            request.state.x_reason = reason.strip()
         response = await call_next(request)
         return response
 
@@ -98,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(inventory.router)
     app.include_router(pos.router)
     app.include_router(purchases.router)
+    app.include_router(repairs.router)
     app.include_router(sales.router)
     app.include_router(sync.router)
     app.include_router(transfers.router)
