@@ -1787,6 +1787,7 @@ def save_pos_draft(
         db.add(draft)
 
     serialized = payload.model_dump(
+        mode="json",
         exclude_none=True,
         exclude={"confirm", "save_as_draft"},
     )

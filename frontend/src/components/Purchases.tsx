@@ -107,19 +107,27 @@ function Purchases({ token, stores, defaultStoreId = null, onInventoryRefresh }:
       setError("Indica un proveedor válido.");
       return;
     }
+    const reason = askReason("Motivo corporativo de la compra");
+    if (!reason) {
+      return;
+    }
     try {
       setError(null);
-      await createPurchaseOrder(token, {
-        store_id: form.storeId,
-        supplier: form.supplier.trim(),
-        items: [
-          {
-            device_id: form.deviceId,
-            quantity_ordered: Math.max(1, form.quantity),
-            unit_cost: Math.max(0, form.unitCost),
-          },
-        ],
-      });
+      await createPurchaseOrder(
+        token,
+        {
+          store_id: form.storeId,
+          supplier: form.supplier.trim(),
+          items: [
+            {
+              device_id: form.deviceId,
+              quantity_ordered: Math.max(1, form.quantity),
+              unit_cost: Math.max(0, form.unitCost),
+            },
+          ],
+        },
+        reason
+      );
       setMessage("Orden de compra registrada correctamente");
       setForm((current) => ({ ...initialForm, storeId: current.storeId }));
       await refreshOrders(form.storeId);
