@@ -11,10 +11,12 @@ import {
   downloadInventoryPdf,
   fetchBackupHistory,
   getDevices,
+  getCurrentUser,
   getInventoryMetrics,
   getReleaseHistory,
   getStores,
   getSummary,
+  getSyncHistory,
   getUpdateStatus,
   listSyncOutbox,
   registerMovement,
@@ -26,6 +28,7 @@ import {
 import type {
   BackupJob,
   Device,
+  UserAccount,
   InventoryMetrics,
   MovementInput,
   ReleaseInfo,
@@ -33,6 +36,7 @@ import type {
   Summary,
   SyncOutboxEntry,
   SyncOutboxStatsEntry,
+  SyncStoreHistory,
   UpdateStatus,
 } from "../../api";
 
@@ -63,6 +67,9 @@ type DashboardContextValue = {
   outbox: SyncOutboxEntry[];
   outboxError: string | null;
   outboxStats: SyncOutboxStatsEntry[];
+  currentUser: UserAccount | null;
+  syncHistory: SyncStoreHistory[];
+  syncHistoryError: string | null;
   formatCurrency: (value: number) => string;
   totalDevices: number;
   totalItems: number;
@@ -78,6 +85,7 @@ type DashboardContextValue = {
   handleRetryOutbox: () => Promise<void>;
   downloadInventoryReport: () => Promise<void>;
   refreshOutboxStats: () => Promise<void>;
+  refreshSyncHistory: () => Promise<void>;
   toasts: ToastMessage[];
   pushToast: (toast: Omit<ToastMessage, "id">) => void;
   dismissToast: (id: number) => void;
@@ -119,6 +127,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const [backupHistory, setBackupHistory] = useState<BackupJob[]>([]);
   const [releaseHistory, setReleaseHistory] = useState<ReleaseInfo[]>([]);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -127,6 +136,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const [outbox, setOutbox] = useState<SyncOutboxEntry[]>([]);
   const [outboxError, setOutboxError] = useState<string | null>(null);
   const [outboxStats, setOutboxStats] = useState<SyncOutboxStatsEntry[]>([]);
+  const [syncHistory, setSyncHistory] = useState<SyncStoreHistory[]>([]);
+  const [syncHistoryError, setSyncHistoryError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const currencyFormatter = useMemo(
@@ -171,6 +182,29 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         setBackupHistory(backupData);
         setUpdateStatus(statusData);
         setReleaseHistory(releasesData);
+        try {
+          const userData = await getCurrentUser(token);
+          setCurrentUser(userData);
+        } catch (userErr) {
+          const message =
+            userErr instanceof Error
+              ? userErr.message
+              : "No fue posible obtener el usuario actual";
+          setCurrentUser(null);
+          pushToast({ message, variant: "error" });
+        }
+        try {
+          const historyData = await getSyncHistory(token);
+          setSyncHistory(historyData);
+          setSyncHistoryError(null);
+        } catch (historyErr) {
+          setSyncHistory([]);
+          setSyncHistoryError(
+            historyErr instanceof Error
+              ? historyErr.message
+              : "No fue posible consultar el historial de sincronización",
+          );
+        }
         if (storesData.length > 0) {
           const firstStoreId = storesData[0].id;
           setSelectedStoreId(firstStoreId);
@@ -185,7 +219,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
 
     fetchInitial();
-  }, [token]);
+  }, [token, pushToast]);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -309,6 +343,18 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }
   }, [enableHybridPrep, token]);
 
+  const refreshSyncHistory = useCallback(async () => {
+    try {
+      const historyData = await getSyncHistory(token);
+      setSyncHistory(historyData);
+      setSyncHistoryError(null);
+    } catch (err) {
+      setSyncHistoryError(
+        err instanceof Error ? err.message : "No se pudo actualizar el historial de sincronización",
+      );
+    }
+  }, [token]);
+
   const refreshOutbox = async () => {
     if (!enableHybridPrep) {
       setOutbox([]);
@@ -402,6 +448,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     outbox,
     outboxError,
     outboxStats,
+    currentUser,
+    syncHistory,
+    syncHistoryError,
     formatCurrency,
     totalDevices: totals.totalDevices,
     totalItems: totals.totalItems,
@@ -417,6 +466,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     handleRetryOutbox,
     downloadInventoryReport,
     refreshOutboxStats,
+    refreshSyncHistory,
     toasts,
     pushToast,
     dismissToast,

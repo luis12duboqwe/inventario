@@ -8,6 +8,7 @@ from typing import Callable
 from .. import crud, models
 from ..config import settings
 from ..database import SessionLocal
+from . import sync as sync_service
 from .backups import generate_backup
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ def _sync_job() -> None:
             status=models.SyncStatus.SUCCESS,
             triggered_by_id=None,
         )
+        sync_service.requeue_failed_outbox_entries(session)
 
 
 def _backup_job() -> None:

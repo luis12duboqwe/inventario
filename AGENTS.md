@@ -62,6 +62,13 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - `pytest` ejecutado en la raíz con resultado exitoso tras la integración de POS avanzado, reparaciones y paneles corporativos de clientes/proveedores.
 - `npm --prefix frontend run build` completado en verde verificando la compilación del frontend con los nuevos módulos operativos.
 
+### Actualización operativa — 20/02/2025
+
+- Se añadió tablero global de métricas (`GlobalMetrics.tsx`) con Recharts y tarjetas dinámicas para ventas, inventario, reparaciones y ganancias.
+- El panel `UserManagement.tsx` permite asignar roles, alternar estados y exige motivos corporativos, protegido por middleware de acceso.
+- La API expone `/sync/history`, extiende la cola híbrida a POS, reparaciones y clientes, y registra reintentos automáticos con `requeue_failed_outbox_entries`.
+- Se documentó y probó el flujo offline híbrido con `backend/tests/test_sync_offline_mode.py` (tres sucursales).
+
 ### Pasos de control iterativo (deben registrarse tras cada entrega)
 
 1. Revisa `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` antes de modificar código; anota brechas resueltas o pendientes.

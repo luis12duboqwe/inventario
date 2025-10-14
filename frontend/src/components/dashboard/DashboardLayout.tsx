@@ -5,8 +5,10 @@ import OperationsSection from "./OperationsSection";
 import AnalyticsSection from "./AnalyticsSection";
 import SecuritySection from "./SecuritySection";
 import SyncSection from "./SyncSection";
+import GlobalMetrics from "./GlobalMetrics";
+import UserManagement from "../UserManagement";
 
-type SectionKey = "inventory" | "operations" | "analytics" | "security" | "sync";
+type SectionKey = "inventory" | "operations" | "analytics" | "security" | "sync" | "users";
 
 type SectionDefinition = {
   key: SectionKey;
@@ -22,6 +24,7 @@ function DashboardLayout() {
     enableAnalyticsAdv,
     enablePurchasesSales,
     enableTransfers,
+    currentUser,
     message,
     error,
     setMessage,
@@ -30,6 +33,8 @@ function DashboardLayout() {
     dismissToast,
   } = useDashboard();
   const [active, setActive] = useState<SectionKey>(DEFAULT_SECTION);
+
+  const isAdmin = currentUser?.roles.some((role) => role.name === "ADMIN") ?? false;
 
   const sections: SectionDefinition[] = useMemo(
     () => [
@@ -48,8 +53,9 @@ function DashboardLayout() {
       },
       { key: "security", label: "Seguridad", isEnabled: true, element: <SecuritySection /> },
       { key: "sync", label: "Sincronización", isEnabled: true, element: <SyncSection /> },
+      { key: "users", label: "Usuarios", isEnabled: isAdmin, element: <UserManagement /> },
     ],
-    [enableAnalyticsAdv, enablePurchasesSales, enableTransfers]
+    [enableAnalyticsAdv, enablePurchasesSales, enableTransfers, isAdmin]
   );
 
   const availableSections = sections.filter((section) => section.isEnabled);
@@ -86,6 +92,7 @@ function DashboardLayout() {
           Gestiona inventario, operaciones y seguridad desde áreas especializadas.
         </p>
       </header>
+      <GlobalMetrics />
       <nav className="dashboard-nav" aria-label="Secciones del panel">
         {availableSections.map((section) => (
           <button
