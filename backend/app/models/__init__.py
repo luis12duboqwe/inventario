@@ -55,6 +55,14 @@ class SyncOutboxStatus(str, enum.Enum):
     FAILED = "FAILED"
 
 
+class SyncOutboxPriority(str, enum.Enum):
+    """Prioridad de procesamiento para eventos híbridos."""
+
+    HIGH = "HIGH"
+    NORMAL = "NORMAL"
+    LOW = "LOW"
+
+
 class BackupMode(str, enum.Enum):
     """Origen del respaldo generado."""
 
@@ -631,6 +639,11 @@ class SyncOutbox(Base):
         nullable=False,
         default=SyncOutboxStatus.PENDING,
     )
+    priority: Mapped[SyncOutboxPriority] = mapped_column(
+        Enum(SyncOutboxPriority, name="sync_outbox_priority"),
+        nullable=False,
+        default=SyncOutboxPriority.NORMAL,
+    )
     error_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -657,6 +670,7 @@ __all__ = [
     "SyncSession",
     "SyncStatus",
     "SyncOutbox",
+    "SyncOutboxPriority",
     "TransferOrder",
     "TransferOrderItem",
     "TransferStatus",

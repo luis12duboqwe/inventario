@@ -311,6 +311,7 @@ export type AgingMetric = {
   device_id: number;
   sku: string;
   name: string;
+  store_id: number;
   store_name: string;
   days_in_stock: number;
   quantity: number;
@@ -332,6 +333,49 @@ export type StockoutForecastMetric = {
 
 export type AnalyticsForecast = {
   items: StockoutForecastMetric[];
+};
+
+export type StoreComparativeMetric = {
+  store_id: number;
+  store_name: string;
+  device_count: number;
+  total_units: number;
+  inventory_value: number;
+  average_rotation: number;
+  average_aging_days: number;
+  sales_last_30_days: number;
+  sales_count_last_30_days: number;
+};
+
+export type AnalyticsComparative = {
+  items: StoreComparativeMetric[];
+};
+
+export type ProfitMarginMetric = {
+  store_id: number;
+  store_name: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  margin_percent: number;
+};
+
+export type AnalyticsProfitMargin = {
+  items: ProfitMarginMetric[];
+};
+
+export type SalesProjectionMetric = {
+  store_id: number;
+  store_name: string;
+  average_daily_units: number;
+  average_ticket: number;
+  projected_units: number;
+  projected_revenue: number;
+  confidence: number;
+};
+
+export type AnalyticsSalesProjection = {
+  items: SalesProjectionMetric[];
 };
 
 export type TOTPStatus = {
@@ -371,9 +415,20 @@ export type SyncOutboxEntry = {
   attempt_count: number;
   last_attempt_at?: string | null;
   status: SyncOutboxStatus;
+  priority: "HIGH" | "NORMAL" | "LOW";
   error_message?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type SyncOutboxStatsEntry = {
+  entity_type: string;
+  priority: "HIGH" | "NORMAL" | "LOW";
+  total: number;
+  pending: number;
+  failed: number;
+  latest_update?: string | null;
+  oldest_pending?: string | null;
 };
 
 export type BackupJob = {
@@ -401,6 +456,14 @@ export type UpdateStatus = {
 };
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+
+function buildStoreQuery(storeIds?: number[]): string {
+  if (!storeIds || storeIds.length === 0) {
+    return "";
+  }
+  const params = storeIds.map((id) => `store_ids=${encodeURIComponent(id)}`).join("&");
+  return `?${params}`;
+}
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(options.headers);
@@ -742,20 +805,24 @@ export function getInventoryMetrics(token: string, lowStockThreshold = 5): Promi
   );
 }
 
-export function getRotationAnalytics(token: string): Promise<AnalyticsRotation> {
-  return request<AnalyticsRotation>("/reports/analytics/rotation", { method: "GET" }, token);
+export function getRotationAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsRotation> {
+  const query = buildStoreQuery(storeIds);
+  return request<AnalyticsRotation>(`/reports/analytics/rotation${query}`, { method: "GET" }, token);
 }
 
-export function getAgingAnalytics(token: string): Promise<AnalyticsAging> {
-  return request<AnalyticsAging>("/reports/analytics/aging", { method: "GET" }, token);
+export function getAgingAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsAging> {
+  const query = buildStoreQuery(storeIds);
+  return request<AnalyticsAging>(`/reports/analytics/aging${query}`, { method: "GET" }, token);
 }
 
-export function getForecastAnalytics(token: string): Promise<AnalyticsForecast> {
-  return request<AnalyticsForecast>("/reports/analytics/stockout_forecast", { method: "GET" }, token);
+export function getForecastAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsForecast> {
+  const query = buildStoreQuery(storeIds);
+  return request<AnalyticsForecast>(`/reports/analytics/stockout_forecast${query}`, { method: "GET" }, token);
 }
 
-export async function downloadAnalyticsPdf(token: string): Promise<void> {
-  const response = await fetch(`${API_URL}/reports/analytics/pdf`, {
+export async function downloadAnalyticsPdf(token: string, storeIds?: number[]): Promise<void> {
+  const query = buildStoreQuery(storeIds);
+  const response = await fetch(`${API_URL}/reports/analytics/pdf${query}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -775,6 +842,48 @@ export async function downloadAnalyticsPdf(token: string): Promise<void> {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+export async function downloadAnalyticsCsv(token: string, storeIds?: number[]): Promise<void> {
+  const query = buildStoreQuery(storeIds);
+  const response = await fetch(`${API_URL}/reports/analytics/export.csv${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el CSV analítico");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_analytics.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export function getComparativeAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsComparative> {
+  const query = buildStoreQuery(storeIds);
+  return request<AnalyticsComparative>(`/reports/analytics/comparative${query}`, { method: "GET" }, token);
+}
+
+export function getProfitMarginAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsProfitMargin> {
+  const query = buildStoreQuery(storeIds);
+  return request<AnalyticsProfitMargin>(`/reports/analytics/profit_margin${query}`, { method: "GET" }, token);
+}
+
+export function getSalesProjectionAnalytics(
+  token: string,
+  storeIds?: number[],
+): Promise<AnalyticsSalesProjection> {
+  const query = buildStoreQuery(storeIds);
+  return request<AnalyticsSalesProjection>(`/reports/analytics/sales_forecast${query}`, { method: "GET" }, token);
 }
 
 export function getTotpStatus(token: string): Promise<TOTPStatus> {
@@ -837,6 +946,10 @@ export function retrySyncOutbox(token: string, ids: number[], reason: string): P
     },
     token
   );
+}
+
+export function getSyncOutboxStats(token: string): Promise<SyncOutboxStatsEntry[]> {
+  return request<SyncOutboxStatsEntry[]>("/sync/outbox/stats", { method: "GET" }, token);
 }
 
 export function getAuditLogs(token: string, limit = 100, action?: string): Promise<AuditLogEntry[]> {

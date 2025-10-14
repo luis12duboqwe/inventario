@@ -14,6 +14,7 @@ from ..models import (
     PaymentMethod,
     PurchaseStatus,
     SyncMode,
+    SyncOutboxPriority,
     SyncOutboxStatus,
     SyncStatus,
     TransferStatus,
@@ -454,6 +455,7 @@ class AgingMetric(BaseModel):
     device_id: int
     sku: str
     name: str
+    store_id: int
     store_name: str
     days_in_stock: int
     quantity: int
@@ -503,6 +505,7 @@ class SyncOutboxEntryResponse(BaseModel):
     attempt_count: int
     last_attempt_at: datetime | None
     status: SyncOutboxStatus
+    priority: SyncOutboxPriority
     error_message: str | None
     created_at: datetime
     updated_at: datetime
@@ -522,6 +525,59 @@ class SyncOutboxEntryResponse(BaseModel):
         if isinstance(value, dict):
             return value
         return {}
+
+
+class SyncOutboxStatsEntry(BaseModel):
+    entity_type: str
+    priority: SyncOutboxPriority
+    total: int
+    pending: int
+    failed: int
+    latest_update: datetime | None
+    oldest_pending: datetime | None
+
+
+class StoreComparativeMetric(BaseModel):
+    store_id: int
+    store_name: str
+    device_count: int
+    total_units: int
+    inventory_value: float
+    average_rotation: float
+    average_aging_days: float
+    sales_last_30_days: float
+    sales_count_last_30_days: int
+
+
+class AnalyticsComparativeResponse(BaseModel):
+    items: list[StoreComparativeMetric]
+
+
+class ProfitMarginMetric(BaseModel):
+    store_id: int
+    store_name: str
+    revenue: float
+    cost: float
+    profit: float
+    margin_percent: float
+
+
+class AnalyticsProfitMarginResponse(BaseModel):
+    items: list[ProfitMarginMetric]
+
+
+class SalesProjectionMetric(BaseModel):
+    store_id: int
+    store_name: str
+    average_daily_units: float
+    average_ticket: float
+    projected_units: float
+    projected_revenue: float
+    confidence: float
+
+
+class AnalyticsSalesProjectionResponse(BaseModel):
+    items: list[SalesProjectionMetric]
 
 
 class SyncOutboxReplayRequest(BaseModel):
@@ -918,6 +974,13 @@ class UpdateStatus(BaseModel):
 
 
 __all__ = [
+    "AgingMetric",
+    "AnalyticsAgingResponse",
+    "AnalyticsComparativeResponse",
+    "AnalyticsForecastResponse",
+    "AnalyticsProfitMarginResponse",
+    "AnalyticsRotationResponse",
+    "AnalyticsSalesProjectionResponse",
     "AuditLogResponse",
     "BackupJobResponse",
     "BackupRunRequest",
@@ -960,8 +1023,11 @@ __all__ = [
     "StoreResponse",
     "StoreUpdate",
     "StoreValueMetric",
+    "StoreComparativeMetric",
     "SyncRequest",
     "SyncOutboxEntryResponse",
+    "SyncOutboxPriority",
+    "SyncOutboxStatsEntry",
     "SyncOutboxReplayRequest",
     "SyncSessionResponse",
     "TokenPayload",
@@ -971,4 +1037,8 @@ __all__ = [
     "UserCreate",
     "UserResponse",
     "UserRolesUpdate",
+    "ProfitMarginMetric",
+    "RotationMetric",
+    "SalesProjectionMetric",
+    "StockoutForecastMetric",
 ]

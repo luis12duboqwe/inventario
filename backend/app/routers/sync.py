@@ -79,3 +79,13 @@ def retry_outbox_entries(
     if not entries:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entradas no encontradas")
     return entries
+
+
+@router.get("/outbox/stats", response_model=list[schemas.SyncOutboxStatsEntry])
+def outbox_statistics(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    stats = crud.get_sync_outbox_statistics(db)
+    return [schemas.SyncOutboxStatsEntry(**item) for item in stats]

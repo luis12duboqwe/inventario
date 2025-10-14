@@ -26,6 +26,8 @@ function DashboardLayout() {
     error,
     setMessage,
     setError,
+    toasts,
+    dismissToast,
   } = useDashboard();
   const [active, setActive] = useState<SectionKey>(DEFAULT_SECTION);
 
@@ -63,6 +65,21 @@ function DashboardLayout() {
 
   return (
     <div className="dashboard">
+      <div className="toast-container" aria-live="assertive" aria-atomic="true">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`toast ${toast.variant}`} role="status">
+            <span>{toast.message}</span>
+            <button
+              className="toast-dismiss"
+              type="button"
+              onClick={() => dismissToast(toast.id)}
+              aria-label="Cerrar notificación"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
       <header className="dashboard-header">
         <h1>Softmobile 2025 · Centro de control</h1>
         <p className="muted-text">
