@@ -1,5 +1,5 @@
-import DashboardLayout from "./dashboard/DashboardLayout";
-import { DashboardProvider } from "./dashboard/DashboardContext";
+import { DashboardProvider } from "../modules/dashboard/context/DashboardContext";
+import DashboardRoutes from "../modules/dashboard/routes";
 
 type Props = {
   token: string;
@@ -8,7 +8,7 @@ type Props = {
 function Dashboard({ token }: Props) {
   return (
     <DashboardProvider token={token}>
-      <DashboardLayout />
+      <DashboardRoutes />
     </DashboardProvider>
   );
 }
