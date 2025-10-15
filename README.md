@@ -28,7 +28,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Operaciones automatizadas** con importación masiva desde CSV, plantillas recurrentes reutilizables y panel histórico filtrable por técnico, sucursal y rango de fechas (`/operations/history`).
 - **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
 - **Gestión de clientes y proveedores corporativos** con historial de contacto, exportación CSV, saldos pendientes y notas auditables desde la UI.
-- **Bitácora de auditoría filtrable** con búsqueda por acción, módulo, usuario y rango de fechas, exportación CSV/PDF (`/audit/logs/export.csv`, `/reports/audit/pdf`) y alertas visuales por severidad en el dashboard corporativo.
+- **Bitácora de auditoría filtrable** con búsqueda por acción, módulo, usuario y rango de fechas, además de exportación CSV directa desde `/audit/logs/export.csv` y `/reports/audit`.
 - **Órdenes de reparación sincronizadas** con piezas descontadas automáticamente del inventario, estados corporativos (🟡/🟠/🟢/⚪) y descarga de orden en PDF.
 - **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
 - **Analítica comparativa multi-sucursal** con endpoints `/reports/analytics/comparative`, `/reports/analytics/profit_margin` y `/reports/analytics/sales_forecast`, exportación CSV consolidada y tablero React con filtros por sucursal.
