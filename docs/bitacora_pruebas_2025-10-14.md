@@ -40,3 +40,26 @@
 2. Ejecutar `pytest` y `npm --prefix frontend run build` en la siguiente iteración de mantenimiento para actualizar la bitácora operativa.
 3. Cerrar la transferencia pendiente o generar un recibo POS que consuma la unidad según la política de IMEI.
 
+## Actualización 14/10/2025 — Regresión auditoría/métricas
+
+- Hash base: `335916d` (antes de integrar ajustes de UI de Seguridad).
+- `pytest` → ✅ 37 pruebas en verde (37 passed, 2 warnings) validando recordatorios, métricas y flujos POS.【a8dcda†L1-L20】
+- `npm --prefix frontend run build` → ✅ compilación exitosa sin errores (avisos de chunk esperados).【1889c4†L1-L12】
+- Observaciones: `AuditLog.tsx` muestra recordatorios activos con snooze y motivo corporativo obligatorio; `GlobalMetrics.tsx` refleja pendientes/atendidas y enlaza a Seguridad para atender acuses.
+
+## Actualización 15/02/2025 — Cobertura completa de Seguridad
+
+- Hash base: `worktree` (pendiente de registrar el hash definitivo al fusionar este commit).
+- `pytest` → ✅ 37 pruebas en verde (37 passed, 2 warnings) tras integrar los mocks de contexto de Dashboard en Vitest.【b3d853†L1-L24】
+- `npm --prefix frontend run build` → ✅ compilación finalizada sin errores (únicamente advertencias de chunk esperadas).【dbe5a6†L1-L12】
+- `npm --prefix frontend run test` → ✅ Vitest ejecuta `AuditLog.test.tsx` y `GlobalMetrics.test.tsx`, validando recordatorios, motivos corporativos, descargas y enlaces rápidos.【c13833†L1-L14】
+- Observaciones: la suite de Seguridad utiliza `vi.hoisted` para simular `useDashboard`, evitando depender de `DashboardProvider` y permitiendo aislar toasts/métricas en pruebas.
+
+## Actualización 16/02/2025 — Cache TTL para recordatorios críticos
+
+- Hash base: `worktree` (pendiente de registrar hash definitivo al fusionar este commit).
+- `pytest` → ✅ 37 pruebas en verde (37 passed, 2 warnings) comprobando que la invalidación del cache no rompe recordatorios ni acuses.【6bb3d2†L1-L18】
+- `npm --prefix frontend run build` → ✅ compilación exitosa con advertencias de tamaño esperadas en los bundles analíticos.【6d63fd†L1-L12】
+- `npm --prefix frontend run test` → ✅ Vitest ejecuta las suites de Seguridad y Tablero, con avisos controlados de React Router pero sin fallos funcionales.【6a8e83†L1-L134】
+- Notas: se instaló el cache TTL en `crud.get_persistent_audit_alerts`, limpiándolo automáticamente cuando se inserta un nuevo log o acuse para mantener la UI alineada con el backend.
+
