@@ -726,10 +726,16 @@ class StockoutForecastMetric(BaseModel):
     device_id: int
     sku: str
     name: str
+    store_id: int
     store_name: str
     average_daily_sales: float
     projected_days: int | None
     quantity: int
+    trend: str
+    trend_score: float
+    confidence: float
+    alert_level: str | None
+    sold_units: int
 
 
 class AnalyticsForecastResponse(BaseModel):
@@ -846,10 +852,50 @@ class SalesProjectionMetric(BaseModel):
     projected_units: float
     projected_revenue: float
     confidence: float
+    trend: str
+    trend_score: float
+    revenue_trend_score: float
+    r2_revenue: float
 
 
 class AnalyticsSalesProjectionResponse(BaseModel):
     items: list[SalesProjectionMetric]
+
+
+class AnalyticsAlert(BaseModel):
+    type: str
+    level: str
+    message: str
+    store_id: int | None
+    store_name: str
+    device_id: int | None
+    sku: str | None
+
+
+class AnalyticsAlertsResponse(BaseModel):
+    items: list[AnalyticsAlert]
+
+
+class StoreRealtimeWidget(BaseModel):
+    store_id: int
+    store_name: str
+    inventory_value: float
+    sales_today: float
+    last_sale_at: datetime | None
+    low_stock_devices: int
+    pending_repairs: int
+    last_sync_at: datetime | None
+    trend: str
+    trend_score: float
+    confidence: float
+
+
+class AnalyticsRealtimeResponse(BaseModel):
+    items: list[StoreRealtimeWidget]
+
+
+class AnalyticsCategoriesResponse(BaseModel):
+    categories: list[str]
 
 
 class SyncOutboxReplayRequest(BaseModel):

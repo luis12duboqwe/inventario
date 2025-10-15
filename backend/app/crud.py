@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta
@@ -1488,9 +1489,17 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
 
 
 def calculate_rotation_analytics(
-    db: Session, store_ids: Iterable[int] | None = None
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+
     sale_stats = (
         select(
             models.SaleItem.device_id,
@@ -1498,10 +1507,18 @@ def calculate_rotation_analytics(
             models.Sale.store_id,
         )
         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-        .group_by(models.SaleItem.device_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(models.SaleItem.device_id, models.Sale.store_id)
     )
     if store_filter:
         sale_stats = sale_stats.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        sale_stats = sale_stats.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        sale_stats = sale_stats.where(models.Sale.created_at <= end_dt)
+    if category:
+        sale_stats = sale_stats.where(category_expr == category)
+
     purchase_stats = (
         select(
             models.PurchaseOrderItem.device_id,
@@ -1509,10 +1526,17 @@ def calculate_rotation_analytics(
             models.PurchaseOrder.store_id,
         )
         .join(models.PurchaseOrder, models.PurchaseOrder.id == models.PurchaseOrderItem.purchase_order_id)
-        .group_by(models.PurchaseOrderItem.device_id)
+        .join(models.Device, models.Device.id == models.PurchaseOrderItem.device_id)
+        .group_by(models.PurchaseOrderItem.device_id, models.PurchaseOrder.store_id)
     )
     if store_filter:
         purchase_stats = purchase_stats.where(models.PurchaseOrder.store_id.in_(store_filter))
+    if start_dt:
+        purchase_stats = purchase_stats.where(models.PurchaseOrder.created_at >= start_dt)
+    if end_dt:
+        purchase_stats = purchase_stats.where(models.PurchaseOrder.created_at <= end_dt)
+    if category:
+        purchase_stats = purchase_stats.where(category_expr == category)
 
     sold_map = {row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)}
     received_map = {row.device_id: int(row.received_units or 0) for row in db.execute(purchase_stats)}
@@ -1530,6 +1554,9 @@ def calculate_rotation_analytics(
     )
     if store_filter:
         device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
+    if category:
+        device_stmt = device_stmt.where(category_expr == category)
+
     results: list[dict[str, object]] = []
     for row in db.execute(device_stmt):
         sold_units = sold_map.get(row.id, 0)
@@ -1552,10 +1579,16 @@ def calculate_rotation_analytics(
 
 
 def calculate_aging_analytics(
-    db: Session, store_ids: Iterable[int] | None = None
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     now_date = datetime.utcnow().date()
+    category_expr = _device_category_expr()
     device_stmt = (
         select(
             models.Device.id,
@@ -1570,6 +1603,13 @@ def calculate_aging_analytics(
     )
     if store_filter:
         device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
+    if date_from:
+        device_stmt = device_stmt.where(models.Device.fecha_compra >= date_from)
+    if date_to:
+        device_stmt = device_stmt.where(models.Device.fecha_compra <= date_to)
+    if category:
+        device_stmt = device_stmt.where(category_expr == category)
+
     metrics: list[dict[str, object]] = []
     for row in db.execute(device_stmt):
         purchase_date = row.fecha_compra
@@ -1590,28 +1630,73 @@ def calculate_aging_analytics(
 
 
 def calculate_stockout_forecast(
-    db: Session, store_ids: Iterable[int] | None = None
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
-    sale_stats = (
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+
+    sales_summary_stmt = (
         select(
             models.SaleItem.device_id,
+            models.Sale.store_id,
             func.sum(models.SaleItem.quantity).label("sold_units"),
             func.min(models.Sale.created_at).label("first_sale"),
             func.max(models.Sale.created_at).label("last_sale"),
         )
         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
-        .group_by(models.SaleItem.device_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(models.SaleItem.device_id, models.Sale.store_id)
     )
     if store_filter:
-        sale_stats = sale_stats.where(models.Sale.store_id.in_(store_filter))
+        sales_summary_stmt = sales_summary_stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        sales_summary_stmt = sales_summary_stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        sales_summary_stmt = sales_summary_stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        sales_summary_stmt = sales_summary_stmt.where(category_expr == category)
+
+    day_column = func.date(models.Sale.created_at)
+    daily_sales_stmt = (
+        select(
+            models.SaleItem.device_id,
+            day_column.label("day"),
+            func.sum(models.SaleItem.quantity).label("sold_units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(models.SaleItem.device_id, day_column)
+    )
+    if store_filter:
+        daily_sales_stmt = daily_sales_stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        daily_sales_stmt = daily_sales_stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        daily_sales_stmt = daily_sales_stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        daily_sales_stmt = daily_sales_stmt.where(category_expr == category)
+
     sales_map: dict[int, dict[str, object]] = {}
-    for row in db.execute(sale_stats):
+    for row in db.execute(sales_summary_stmt):
         sales_map[row.device_id] = {
             "sold_units": int(row.sold_units or 0),
             "first_sale": row.first_sale,
             "last_sale": row.last_sale,
+            "store_id": int(row.store_id),
         }
+
+    daily_sales_map: defaultdict[int, list[tuple[datetime, float]]] = defaultdict(list)
+    for row in db.execute(daily_sales_stmt):
+        day: datetime | None = row.day
+        if day is None:
+            continue
+        daily_sales_map[row.device_id].append((day, float(row.sold_units or 0)))
 
     device_stmt = (
         select(
@@ -1619,46 +1704,75 @@ def calculate_stockout_forecast(
             models.Device.sku,
             models.Device.name,
             models.Device.quantity,
+            models.Store.id.label("store_id"),
             models.Store.name.label("store_name"),
         )
         .join(models.Store, models.Store.id == models.Device.store_id)
     )
     if store_filter:
         device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
+    if category:
+        device_stmt = device_stmt.where(category_expr == category)
+
     metrics: list[dict[str, object]] = []
-    now = datetime.utcnow()
     for row in db.execute(device_stmt):
         stats = sales_map.get(row.id)
         quantity = int(row.quantity or 0)
-        if not stats or stats["sold_units"] <= 0:
-            metrics.append(
-                {
-                    "device_id": row.id,
-                    "sku": row.sku,
-                    "name": row.name,
-                    "store_name": row.store_name,
-                    "average_daily_sales": 0.0,
-                    "projected_days": None,
-                    "quantity": quantity,
-                }
-            )
-            continue
+        daily_points_raw = sorted(
+            daily_sales_map.get(row.id, []), key=lambda item: item[0]
+        )
+        points = [(float(index), value) for index, (_, value) in enumerate(daily_points_raw)]
+        slope, intercept, r_squared = _linear_regression(points)
+        historical_avg = (
+            sum(value for _, value in daily_points_raw) / len(daily_points_raw)
+            if daily_points_raw
+            else 0.0
+        )
+        predicted_next = max(0.0, slope * len(points) + intercept) if points else 0.0
+        expected_daily = max(historical_avg, predicted_next)
 
-        first_sale: datetime | None = stats["first_sale"]
-        last_sale: datetime | None = stats["last_sale"] or now
-        delta = (last_sale or now) - (first_sale or last_sale or now)
-        days = max(delta.days, 1)
-        avg_daily_sales = stats["sold_units"] / days
-        projected_days = int(quantity / avg_daily_sales) if avg_daily_sales > 0 else None
+        if stats is None:
+            sold_units = 0
+        else:
+            sold_units = int(stats.get("sold_units", 0))
+
+        if expected_daily <= 0:
+            projected_days: int | None = None
+        else:
+            projected_days = max(int(math.ceil(quantity / expected_daily)), 0)
+
+        if slope > 0.25:
+            trend_label = "acelerando"
+        elif slope < -0.25:
+            trend_label = "desacelerando"
+        else:
+            trend_label = "estable"
+
+        alert_level: str | None
+        if projected_days is None:
+            alert_level = None
+        elif projected_days <= 3:
+            alert_level = "critical"
+        elif projected_days <= 7:
+            alert_level = "warning"
+        else:
+            alert_level = "ok"
+
         metrics.append(
             {
                 "device_id": row.id,
                 "sku": row.sku,
                 "name": row.name,
+                "store_id": row.store_id,
                 "store_name": row.store_name,
-                "average_daily_sales": round(float(avg_daily_sales), 2),
-                "projected_days": projected_days if projected_days is None else max(projected_days, 0),
+                "average_daily_sales": round(float(expected_daily), 2),
+                "projected_days": projected_days,
                 "quantity": quantity,
+                "trend": trend_label,
+                "trend_score": round(float(slope), 4),
+                "confidence": round(float(r_squared), 3),
+                "alert_level": alert_level,
+                "sold_units": sold_units,
             }
         )
 
@@ -1667,11 +1781,30 @@ def calculate_stockout_forecast(
 
 
 def calculate_store_comparatives(
-    db: Session, store_ids: Iterable[int] | None = None
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
-    rotation = calculate_rotation_analytics(db, store_ids=store_filter)
-    aging = calculate_aging_analytics(db, store_ids=store_filter)
+    rotation = calculate_rotation_analytics(
+        db,
+        store_ids=store_filter,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    aging = calculate_aging_analytics(
+        db,
+        store_ids=store_filter,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
     rotation_totals: dict[int, tuple[float, int]] = {}
     aging_totals: dict[int, tuple[float, int]] = {}
 
@@ -1714,19 +1847,26 @@ def calculate_store_comparatives(
     )
     if store_filter:
         inventory_stmt = inventory_stmt.where(models.Store.id.in_(store_filter))
-
-    window_start = datetime.utcnow() - timedelta(days=30)
+    if category:
+        inventory_stmt = inventory_stmt.where(category_expr == category)
+    window_start = start_dt or (datetime.utcnow() - timedelta(days=30))
     sales_stmt = (
         select(
             models.Sale.store_id,
             func.coalesce(func.count(models.Sale.id), 0).label("orders"),
             func.coalesce(func.sum(models.Sale.total_amount), 0).label("revenue"),
         )
+        .join(models.SaleItem, models.SaleItem.sale_id == models.Sale.id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
         .where(models.Sale.created_at >= window_start)
         .group_by(models.Sale.store_id)
     )
     if store_filter:
         sales_stmt = sales_stmt.where(models.Sale.store_id.in_(store_filter))
+    if end_dt:
+        sales_stmt = sales_stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        sales_stmt = sales_stmt.where(category_expr == category)
     sales_map: dict[int, dict[str, Decimal]] = {}
     for row in db.execute(sales_stmt):
         sales_map[int(row.store_id)] = {
@@ -1757,9 +1897,16 @@ def calculate_store_comparatives(
 
 
 def calculate_profit_margin(
-    db: Session, store_ids: Iterable[int] | None = None
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
     stmt = (
         select(
             models.Store.id.label("store_id"),
@@ -1778,6 +1925,12 @@ def calculate_profit_margin(
     )
     if store_filter:
         stmt = stmt.where(models.Store.id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
 
     metrics: list[dict[str, object]] = []
     for row in db.execute(stmt):
@@ -1801,52 +1954,347 @@ def calculate_profit_margin(
 
 
 def calculate_sales_projection(
-    db: Session, store_ids: Iterable[int] | None = None, horizon_days: int = 30
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    horizon_days: int = 30,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
-    window_days = 30
-    since = datetime.utcnow() - timedelta(days=window_days)
-    stmt = (
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    lookback_days = max(horizon_days, 30)
+    since = start_dt or (datetime.utcnow() - timedelta(days=lookback_days))
+
+    day_bucket = func.date(models.Sale.created_at)
+    daily_stmt = (
         select(
             models.Store.id.label("store_id"),
             models.Store.name.label("store_name"),
+            day_bucket.label("sale_day"),
             func.coalesce(func.sum(models.SaleItem.quantity), 0).label("units"),
             func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
             func.coalesce(func.count(func.distinct(models.Sale.id)), 0).label("orders"),
         )
         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
         .join(models.Store, models.Store.id == models.Sale.store_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
         .where(models.Sale.created_at >= since)
-        .group_by(models.Store.id)
+        .group_by(
+            models.Store.id,
+            models.Store.name,
+            day_bucket,
+        )
         .order_by(models.Store.name.asc())
     )
     if store_filter:
-        stmt = stmt.where(models.Store.id.in_(store_filter))
+        daily_stmt = daily_stmt.where(models.Store.id.in_(store_filter))
+    if end_dt:
+        daily_stmt = daily_stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        daily_stmt = daily_stmt.where(category_expr == category)
+
+    stores_data: dict[int, dict[str, object]] = {}
+    for row in db.execute(daily_stmt):
+        store_entry = stores_data.setdefault(
+            int(row.store_id),
+            {
+                "store_name": row.store_name,
+                "daily": [],
+                "orders": 0,
+                "total_units": 0.0,
+                "total_revenue": 0.0,
+            },
+        )
+        day_value: datetime | None = row.sale_day
+        if day_value is None:
+            continue
+        units_value = float(row.units or 0)
+        revenue_value = float(row.revenue or 0)
+        orders_value = int(row.orders or 0)
+        store_entry["daily"].append(
+            {
+                "day": day_value,
+                "units": units_value,
+                "revenue": revenue_value,
+                "orders": orders_value,
+            }
+        )
+        store_entry["orders"] += orders_value
+        store_entry["total_units"] += units_value
+        store_entry["total_revenue"] += revenue_value
 
     projections: list[dict[str, object]] = []
-    for row in db.execute(stmt):
-        units = Decimal(row.units or 0)
-        revenue = Decimal(row.revenue or 0)
-        orders = int(row.orders or 0)
-        average_daily_units = float(units / Decimal(window_days)) if units else 0.0
-        average_unit_price = float(revenue / units) if units else 0.0
-        projected_units = average_daily_units * horizon_days
-        projected_revenue = projected_units * average_unit_price
-        confidence = min(1.0, orders / window_days) if window_days else 0.0
+    for store_id, payload in stores_data.items():
+        daily_points = sorted(payload["daily"], key=lambda item: item["day"])
+        if not daily_points:
+            continue
+
+        unit_points = [
+            (float(index), item["units"])
+            for index, item in enumerate(daily_points)
+        ]
+        revenue_points = [
+            (float(index), item["revenue"])
+            for index, item in enumerate(daily_points)
+        ]
+        slope_units, intercept_units, r2_units = _linear_regression(unit_points)
+        slope_revenue, intercept_revenue, r2_revenue = _linear_regression(
+            revenue_points
+        )
+        historical_avg_units = (
+            payload["total_units"] / len(unit_points) if unit_points else 0.0
+        )
+        predicted_next_units = (
+            max(0.0, slope_units * len(unit_points) + intercept_units)
+            if unit_points
+            else 0.0
+        )
+        average_daily_units = max(historical_avg_units, predicted_next_units)
+        projected_units = _project_linear_sum(
+            slope_units, intercept_units, len(unit_points), horizon_days
+        )
+        projected_revenue = _project_linear_sum(
+            slope_revenue, intercept_revenue, len(revenue_points), horizon_days
+        )
+        average_ticket = (
+            payload["total_revenue"] / payload["total_units"]
+            if payload["total_units"] > 0
+            else 0.0
+        )
+        orders = payload["orders"]
+        sample_days = len(unit_points)
+        confidence = 0.0
+        if sample_days > 0:
+            coverage = min(1.0, orders / sample_days)
+            confidence = max(0.0, min(1.0, (r2_units + coverage) / 2))
+
+        if slope_units > 0.5:
+            trend = "creciendo"
+        elif slope_units < -0.5:
+            trend = "cayendo"
+        else:
+            trend = "estable"
+
         projections.append(
             {
-                "store_id": int(row.store_id),
-                "store_name": row.store_name,
-                "average_daily_units": round(average_daily_units, 2),
-                "average_ticket": round(float(revenue / orders) if orders else average_unit_price, 2),
-                "projected_units": round(projected_units, 2),
-                "projected_revenue": round(projected_revenue, 2),
-                "confidence": round(confidence, 2),
+                "store_id": store_id,
+                "store_name": payload["store_name"],
+                "average_daily_units": round(float(average_daily_units), 2),
+                "average_ticket": round(float(average_ticket), 2),
+                "projected_units": round(float(projected_units), 2),
+                "projected_revenue": round(float(projected_revenue), 2),
+                "confidence": round(float(confidence), 2),
+                "trend": trend,
+                "trend_score": round(float(slope_units), 4),
+                "revenue_trend_score": round(float(slope_revenue), 4),
+                "r2_revenue": round(float(r2_revenue), 3),
             }
         )
 
     projections.sort(key=lambda item: item["projected_revenue"], reverse=True)
     return projections
+
+
+def list_analytics_categories(db: Session) -> list[str]:
+    category_expr = _device_category_expr()
+    stmt = (
+        select(func.distinct(category_expr).label("category"))
+        .where(category_expr.is_not(None))
+        .order_by(category_expr.asc())
+    )
+    return [row.category for row in db.execute(stmt) if row.category]
+
+
+def generate_analytics_alerts(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+) -> list[dict[str, object]]:
+    alerts: list[dict[str, object]] = []
+    forecast = calculate_stockout_forecast(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    for item in forecast:
+        level = item.get("alert_level")
+        if level in {"critical", "warning"}:
+            projected_days = item.get("projected_days")
+            if projected_days is None:
+                continue
+            message = (
+                f"{item['sku']} en {item['store_name']} se agotará en {projected_days} días"
+                if projected_days > 0
+                else f"{item['sku']} en {item['store_name']} está agotado"
+            )
+            alerts.append(
+                {
+                    "type": "stock",
+                    "level": level,
+                    "message": message,
+                    "store_id": item.get("store_id"),
+                    "store_name": item["store_name"],
+                    "device_id": item["device_id"],
+                    "sku": item["sku"],
+                }
+            )
+
+    projections = calculate_sales_projection(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        horizon_days=14,
+    )
+    for item in projections:
+        trend = item.get("trend")
+        trend_score = float(item.get("trend_score", 0))
+        if trend == "cayendo" and trend_score < -0.5:
+            level = "warning" if trend_score > -1.0 else "critical"
+            message = (
+                f"Ventas en {item['store_name']} muestran caída (tendencia {trend_score:.2f})"
+            )
+            alerts.append(
+                {
+                    "type": "sales",
+                    "level": level,
+                    "message": message,
+                    "store_id": item["store_id"],
+                    "store_name": item["store_name"],
+                    "device_id": None,
+                    "sku": None,
+                }
+            )
+
+    alerts.sort(key=lambda alert: (alert["level"] != "critical", alert["level"] != "warning"))
+    return alerts
+
+
+def calculate_realtime_store_widget(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    category: str | None = None,
+    low_stock_threshold: int = 5,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    category_expr = _device_category_expr()
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    stores_stmt = select(models.Store.id, models.Store.name, models.Store.inventory_value)
+    if store_filter:
+        stores_stmt = stores_stmt.where(models.Store.id.in_(store_filter))
+    stores_stmt = stores_stmt.order_by(models.Store.name.asc())
+
+    low_stock_stmt = (
+        select(models.Device.store_id, func.count(models.Device.id).label("low_stock"))
+        .where(models.Device.quantity <= low_stock_threshold)
+        .group_by(models.Device.store_id)
+    )
+    if store_filter:
+        low_stock_stmt = low_stock_stmt.where(models.Device.store_id.in_(store_filter))
+    if category:
+        low_stock_stmt = low_stock_stmt.where(category_expr == category)
+
+    sales_today_stmt = (
+        select(
+            models.Store.id.label("store_id"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.max(models.Sale.created_at).label("last_sale_at"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Store, models.Store.id == models.Sale.store_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .where(models.Sale.created_at >= today_start)
+        .group_by(models.Store.id)
+    )
+    if store_filter:
+        sales_today_stmt = sales_today_stmt.where(models.Store.id.in_(store_filter))
+    if category:
+        sales_today_stmt = sales_today_stmt.where(category_expr == category)
+
+    repairs_stmt = (
+        select(
+            models.RepairOrder.store_id,
+            func.count(models.RepairOrder.id).label("pending"),
+        )
+        .where(models.RepairOrder.status != models.RepairStatus.ENTREGADO)
+        .group_by(models.RepairOrder.store_id)
+    )
+    if store_filter:
+        repairs_stmt = repairs_stmt.where(models.RepairOrder.store_id.in_(store_filter))
+
+    sync_stmt = (
+        select(
+            models.SyncSession.store_id,
+            func.max(models.SyncSession.finished_at).label("last_sync"),
+        )
+        .group_by(models.SyncSession.store_id)
+    )
+    if store_filter:
+        sync_stmt = sync_stmt.where(models.SyncSession.store_id.in_(store_filter))
+
+    low_stock_map = {
+        int(row.store_id): int(row.low_stock or 0)
+        for row in db.execute(low_stock_stmt)
+    }
+    sales_today_map = {
+        int(row.store_id): {
+            "revenue": float(row.revenue or 0),
+            "last_sale_at": row.last_sale_at,
+        }
+        for row in db.execute(sales_today_stmt)
+    }
+    repairs_map = {
+        int(row.store_id): int(row.pending or 0)
+        for row in db.execute(repairs_stmt)
+    }
+    sync_map: dict[int | None, datetime | None] = {
+        row.store_id: row.last_sync for row in db.execute(sync_stmt)
+    }
+    global_sync = sync_map.get(None)
+
+    projection_map = {
+        item["store_id"]: item
+        for item in calculate_sales_projection(
+            db,
+            store_ids=store_ids,
+            category=category,
+            horizon_days=7,
+        )
+    }
+
+    widgets: list[dict[str, object]] = []
+    for row in db.execute(stores_stmt):
+        store_id = int(row.id)
+        sales_info = sales_today_map.get(store_id, {"revenue": 0.0, "last_sale_at": None})
+        projection = projection_map.get(store_id, {})
+        widgets.append(
+            {
+                "store_id": store_id,
+                "store_name": row.name,
+                "inventory_value": float(row.inventory_value or 0),
+                "sales_today": round(float(sales_info["revenue"]), 2),
+                "last_sale_at": sales_info.get("last_sale_at"),
+                "low_stock_devices": low_stock_map.get(store_id, 0),
+                "pending_repairs": repairs_map.get(store_id, 0),
+                "last_sync_at": sync_map.get(store_id) or global_sync,
+                "trend": projection.get("trend", "estable"),
+                "trend_score": projection.get("trend_score", 0.0),
+                "confidence": projection.get("confidence", 0.0),
+            }
+        )
+
+    return widgets
 
 
 def record_sync_session(

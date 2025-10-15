@@ -574,10 +574,16 @@ export type StockoutForecastMetric = {
   device_id: number;
   sku: string;
   name: string;
+  store_id: number;
   store_name: string;
   average_daily_sales: number;
   projected_days: number | null;
   quantity: number;
+  trend: string;
+  trend_score: number;
+  confidence: number;
+  alert_level: string | null;
+  sold_units: number;
 };
 
 export type AnalyticsForecast = {
@@ -621,10 +627,57 @@ export type SalesProjectionMetric = {
   projected_units: number;
   projected_revenue: number;
   confidence: number;
+  trend: string;
+  trend_score: number;
+  revenue_trend_score: number;
+  r2_revenue: number;
 };
 
 export type AnalyticsSalesProjection = {
   items: SalesProjectionMetric[];
+};
+
+export type AnalyticsAlert = {
+  type: string;
+  level: string;
+  message: string;
+  store_id: number | null;
+  store_name: string;
+  device_id: number | null;
+  sku: string | null;
+};
+
+export type AnalyticsAlerts = {
+  items: AnalyticsAlert[];
+};
+
+export type StoreRealtimeWidget = {
+  store_id: number;
+  store_name: string;
+  inventory_value: number;
+  sales_today: number;
+  last_sale_at: string | null;
+  low_stock_devices: number;
+  pending_repairs: number;
+  last_sync_at: string | null;
+  trend: string;
+  trend_score: number;
+  confidence: number;
+};
+
+export type AnalyticsRealtime = {
+  items: StoreRealtimeWidget[];
+};
+
+export type AnalyticsCategories = {
+  categories: string[];
+};
+
+export type AnalyticsFilters = {
+  storeIds?: number[];
+  dateFrom?: string;
+  dateTo?: string;
+  category?: string;
 };
 
 export type TOTPStatus = {
@@ -727,6 +780,29 @@ function buildStoreQuery(storeIds?: number[]): string {
   }
   const params = storeIds.map((id) => `store_ids=${encodeURIComponent(id)}`).join("&");
   return `?${params}`;
+}
+
+function buildAnalyticsQuery(filters?: AnalyticsFilters): string {
+  if (!filters) {
+    return "";
+  }
+  const params = new URLSearchParams();
+  if (filters.storeIds && filters.storeIds.length > 0) {
+    filters.storeIds.forEach((id) => {
+      params.append("store_ids", String(id));
+    });
+  }
+  if (filters.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  if (filters.category) {
+    params.set("category", filters.category);
+  }
+  const queryString = params.toString();
+  return queryString ? `?${queryString}` : "";
 }
 
 export const NETWORK_EVENT = "softmobile:network-error";
@@ -1451,23 +1527,32 @@ export function getInventoryMetrics(token: string, lowStockThreshold = 5): Promi
   );
 }
 
-export function getRotationAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsRotation> {
-  const query = buildStoreQuery(storeIds);
+export function getRotationAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsRotation> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsRotation>(`/reports/analytics/rotation${query}`, { method: "GET" }, token);
 }
 
-export function getAgingAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsAging> {
-  const query = buildStoreQuery(storeIds);
+export function getAgingAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsAging> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsAging>(`/reports/analytics/aging${query}`, { method: "GET" }, token);
 }
 
-export function getForecastAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsForecast> {
-  const query = buildStoreQuery(storeIds);
+export function getForecastAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsForecast> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsForecast>(`/reports/analytics/stockout_forecast${query}`, { method: "GET" }, token);
 }
 
-export async function downloadAnalyticsPdf(token: string, storeIds?: number[]): Promise<void> {
-  const query = buildStoreQuery(storeIds);
+export async function downloadAnalyticsPdf(token: string, filters?: AnalyticsFilters): Promise<void> {
+  const query = buildAnalyticsQuery(filters);
   const response = await fetch(`${API_URL}/reports/analytics/pdf${query}`, {
     method: "GET",
     headers: {
@@ -1490,8 +1575,8 @@ export async function downloadAnalyticsPdf(token: string, storeIds?: number[]): 
   URL.revokeObjectURL(url);
 }
 
-export async function downloadAnalyticsCsv(token: string, storeIds?: number[]): Promise<void> {
-  const query = buildStoreQuery(storeIds);
+export async function downloadAnalyticsCsv(token: string, filters?: AnalyticsFilters): Promise<void> {
+  const query = buildAnalyticsQuery(filters);
   const response = await fetch(`${API_URL}/reports/analytics/export.csv${query}`, {
     method: "GET",
     headers: {
@@ -1514,22 +1599,49 @@ export async function downloadAnalyticsCsv(token: string, storeIds?: number[]): 
   URL.revokeObjectURL(url);
 }
 
-export function getComparativeAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsComparative> {
-  const query = buildStoreQuery(storeIds);
+export function getComparativeAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsComparative> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsComparative>(`/reports/analytics/comparative${query}`, { method: "GET" }, token);
 }
 
-export function getProfitMarginAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsProfitMargin> {
-  const query = buildStoreQuery(storeIds);
+export function getProfitMarginAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsProfitMargin> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsProfitMargin>(`/reports/analytics/profit_margin${query}`, { method: "GET" }, token);
 }
 
 export function getSalesProjectionAnalytics(
   token: string,
-  storeIds?: number[],
+  filters?: AnalyticsFilters,
 ): Promise<AnalyticsSalesProjection> {
-  const query = buildStoreQuery(storeIds);
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsSalesProjection>(`/reports/analytics/sales_forecast${query}`, { method: "GET" }, token);
+}
+
+export function getAnalyticsCategories(token: string): Promise<AnalyticsCategories> {
+  return request<AnalyticsCategories>("/reports/analytics/categories", { method: "GET" }, token);
+}
+
+export function getAnalyticsAlerts(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsAlerts> {
+  const query = buildAnalyticsQuery(filters);
+  return request<AnalyticsAlerts>(`/reports/analytics/alerts${query}`, { method: "GET" }, token);
+}
+
+export function getAnalyticsRealtime(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsRealtime> {
+  const { storeIds, category } = filters ?? {};
+  const query = buildAnalyticsQuery({ storeIds, category });
+  return request<AnalyticsRealtime>(`/reports/analytics/realtime${query}`, { method: "GET" }, token);
 }
 
 export function getTotpStatus(token: string): Promise<TOTPStatus> {
