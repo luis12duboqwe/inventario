@@ -13,6 +13,7 @@
 11. **Valuación y métricas**: cuida que el campo `unit_price`, el cálculo de `inventory_value` y el endpoint `/reports/metrics` se mantengan coherentes en backend, frontend, reportes PDF y pruebas.
 12. **Clientes y proveedores**: cualquier ajuste a `Customers.tsx`/`Suppliers.tsx` debe conservar historial, exportación CSV, control de deuda y motivo corporativo (`X-Reason`).
 13. **Reparaciones y POS avanzado**: mantén alineados `RepairOrders.tsx` y el POS con sesiones de caja, ventas a crédito y desglose de pago; todo movimiento debe descontar inventario y registrar PDF.
+14. **Dashboard modularizado**: respeta la organización actual de UI — Inventario dividido en pestañas (`Tabs`), Operaciones en acordeones (`Accordion`), Analítica en grilla 3x2 (`AnalyticsGrid`) y Seguridad/Usuarios/Sincronización con `.section-scroll` de 600 px. No elimines ni mezcles estas estructuras salvo que el mandato lo actualice explícitamente.
 
 ## Mandato operativo vigente — Softmobile 2025 v2.2.0
 
