@@ -107,6 +107,32 @@ export type SupplierPayload = {
   history?: ContactHistoryEntry[];
 };
 
+export type SupplierBatch = {
+  id: number;
+  supplier_id: number;
+  store_id?: number | null;
+  device_id?: number | null;
+  model_name: string;
+  batch_code: string;
+  unit_cost: number;
+  quantity: number;
+  purchase_date: string;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierBatchPayload = {
+  store_id?: number | null;
+  device_id?: number | null;
+  model_name: string;
+  batch_code: string;
+  unit_cost: number;
+  quantity?: number;
+  purchase_date: string;
+  notes?: string | null;
+};
+
 export type RepairOrderPart = {
   id: number;
   repair_order_id: number;
@@ -260,6 +286,70 @@ export type PurchaseReturnInput = {
   device_id: number;
   quantity: number;
   reason: string;
+};
+
+export type PurchaseImportResponse = {
+  imported: number;
+  orders: PurchaseOrder[];
+  errors: string[];
+};
+
+export type RecurringOrderType = "purchase" | "transfer";
+
+export type RecurringOrder = {
+  id: number;
+  name: string;
+  description?: string | null;
+  order_type: RecurringOrderType;
+  store_id?: number | null;
+  store_name?: string | null;
+  payload: Record<string, unknown>;
+  created_by_id?: number | null;
+  created_by_name?: string | null;
+  last_used_by_id?: number | null;
+  last_used_by_name?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at?: string | null;
+};
+
+export type RecurringOrderPayload = {
+  name: string;
+  description?: string | null;
+  order_type: RecurringOrderType;
+  payload: Record<string, unknown>;
+};
+
+export type RecurringOrderExecutionResult = {
+  template_id: number;
+  order_type: RecurringOrderType;
+  reference_id: number;
+  store_id?: number | null;
+  created_at: string;
+  summary: string;
+};
+
+export type OperationsHistoryRecord = {
+  id: string;
+  operation_type: "purchase" | "transfer_dispatch" | "transfer_receive" | "sale";
+  occurred_at: string;
+  store_id?: number | null;
+  store_name?: string | null;
+  technician_id?: number | null;
+  technician_name?: string | null;
+  reference?: string | null;
+  description: string;
+  amount?: number | null;
+};
+
+export type OperationsTechnicianSummary = {
+  id: number;
+  name: string;
+};
+
+export type OperationsHistoryResponse = {
+  records: OperationsHistoryRecord[];
+  technicians: OperationsTechnicianSummary[];
 };
 
 export type PosCartItemInput = {
@@ -655,7 +745,13 @@ function emitNetworkEvent(type: typeof NETWORK_EVENT | typeof NETWORK_RECOVERY_E
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", headers.get("Content-Type") ?? "application/json");
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (!headers.has("Content-Type") && !isFormData) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (isFormData) {
+    headers.delete("Content-Type");
+  }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
@@ -846,6 +942,24 @@ export function registerPurchaseReturn(
   );
 }
 
+export function importPurchaseOrdersCsv(
+  token: string,
+  file: File,
+  reason: string
+): Promise<PurchaseImportResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<PurchaseImportResponse>(
+    "/purchases/import",
+    {
+      method: "POST",
+      body: formData,
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
 export function listCustomers(
   token: string,
   query?: string,
@@ -947,6 +1061,53 @@ export function updateSupplier(
 export function deleteSupplier(token: string, supplierId: number, reason: string): Promise<void> {
   return request<void>(
     `/suppliers/${supplierId}`,
+    { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listSupplierBatches(
+  token: string,
+  supplierId: number,
+  limit = 50
+): Promise<SupplierBatch[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request<SupplierBatch[]>(
+    `/suppliers/${supplierId}/batches?${params.toString()}`,
+    { method: "GET" },
+    token
+  );
+}
+
+export function createSupplierBatch(
+  token: string,
+  supplierId: number,
+  payload: SupplierBatchPayload,
+  reason: string
+): Promise<SupplierBatch> {
+  return request<SupplierBatch>(
+    `/suppliers/${supplierId}/batches`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function updateSupplierBatch(
+  token: string,
+  batchId: number,
+  payload: Partial<SupplierBatchPayload>,
+  reason: string
+): Promise<SupplierBatch> {
+  return request<SupplierBatch>(
+    `/suppliers/batches/${batchId}`,
+    { method: "PUT", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function deleteSupplierBatch(token: string, batchId: number, reason: string): Promise<void> {
+  return request<void>(
+    `/suppliers/batches/${batchId}`,
     { method: "DELETE", headers: { "X-Reason": reason } },
     token
   );
@@ -1165,6 +1326,72 @@ export function cancelTransferOrder(
     },
     token
   );
+}
+
+export function listRecurringOrders(
+  token: string,
+  orderType?: RecurringOrderType
+): Promise<RecurringOrder[]> {
+  const params = new URLSearchParams();
+  if (orderType) {
+    params.set("order_type", orderType);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<RecurringOrder[]>(`/operations/recurring-orders${suffix}`, { method: "GET" }, token);
+}
+
+export function createRecurringOrder(
+  token: string,
+  payload: RecurringOrderPayload,
+  reason: string
+): Promise<RecurringOrder> {
+  return request<RecurringOrder>(
+    "/operations/recurring-orders",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function executeRecurringOrder(
+  token: string,
+  templateId: number,
+  reason: string
+): Promise<RecurringOrderExecutionResult> {
+  return request<RecurringOrderExecutionResult>(
+    `/operations/recurring-orders/${templateId}/execute`,
+    { method: "POST", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export type OperationsHistoryFilters = {
+  storeId?: number | null;
+  technicianId?: number | null;
+  startDate?: string;
+  endDate?: string;
+};
+
+export function listOperationsHistory(
+  token: string,
+  filters: OperationsHistoryFilters = {}
+): Promise<OperationsHistoryResponse> {
+  const params = new URLSearchParams();
+  if (filters.storeId != null) {
+    params.set("store_id", String(filters.storeId));
+  }
+  if (filters.technicianId != null) {
+    params.set("technician_id", String(filters.technicianId));
+  }
+  if (filters.startDate) {
+    params.set("start_date", filters.startDate);
+  }
+  if (filters.endDate) {
+    params.set("end_date", filters.endDate);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<OperationsHistoryResponse>(`/operations/history${suffix}`, { method: "GET" }, token);
 }
 
 export function triggerSync(token: string, storeId?: number) {
