@@ -4,6 +4,8 @@ from __future__ import annotations
 import csv
 from io import BytesIO, StringIO
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -36,44 +38,80 @@ def audit_logs(
 @router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse)
 def analytics_rotation(
     store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    data = crud.calculate_rotation_analytics(db, store_ids=store_ids)
+    data = crud.calculate_rotation_analytics(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
     return schemas.AnalyticsRotationResponse(items=[schemas.RotationMetric(**item) for item in data])
 
 
 @router.get("/analytics/aging", response_model=schemas.AnalyticsAgingResponse)
 def analytics_aging(
     store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    data = crud.calculate_aging_analytics(db, store_ids=store_ids)
+    data = crud.calculate_aging_analytics(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
     return schemas.AnalyticsAgingResponse(items=[schemas.AgingMetric(**item) for item in data])
 
 
 @router.get("/analytics/stockout_forecast", response_model=schemas.AnalyticsForecastResponse)
 def analytics_forecast(
     store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    data = crud.calculate_stockout_forecast(db, store_ids=store_ids)
+    data = crud.calculate_stockout_forecast(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
     return schemas.AnalyticsForecastResponse(items=[schemas.StockoutForecastMetric(**item) for item in data])
 
 
 @router.get("/analytics/comparative", response_model=schemas.AnalyticsComparativeResponse)
 def analytics_comparative(
     store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    data = crud.calculate_store_comparatives(db, store_ids=store_ids)
+    data = crud.calculate_store_comparatives(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
     return schemas.AnalyticsComparativeResponse(
         items=[schemas.StoreComparativeMetric(**item) for item in data]
     )
@@ -82,11 +120,20 @@ def analytics_comparative(
 @router.get("/analytics/profit_margin", response_model=schemas.AnalyticsProfitMarginResponse)
 def analytics_profit_margin(
     store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    data = crud.calculate_profit_margin(db, store_ids=store_ids)
+    data = crud.calculate_profit_margin(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
     return schemas.AnalyticsProfitMarginResponse(
         items=[schemas.ProfitMarginMetric(**item) for item in data]
     )
@@ -95,29 +142,127 @@ def analytics_profit_margin(
 @router.get("/analytics/sales_forecast", response_model=schemas.AnalyticsSalesProjectionResponse)
 def analytics_sales_projection(
     store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    data = crud.calculate_sales_projection(db, store_ids=store_ids)
+    data = crud.calculate_sales_projection(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
     return schemas.AnalyticsSalesProjectionResponse(
         items=[schemas.SalesProjectionMetric(**item) for item in data]
+    )
+
+
+@router.get("/analytics/categories", response_model=schemas.AnalyticsCategoriesResponse)
+def analytics_categories(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    categories = crud.list_analytics_categories(db)
+    return schemas.AnalyticsCategoriesResponse(categories=categories)
+
+
+@router.get("/analytics/alerts", response_model=schemas.AnalyticsAlertsResponse)
+def analytics_alerts(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    data = crud.generate_analytics_alerts(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    return schemas.AnalyticsAlertsResponse(
+        items=[schemas.AnalyticsAlert(**item) for item in data]
+    )
+
+
+@router.get("/analytics/realtime", response_model=schemas.AnalyticsRealtimeResponse)
+def analytics_realtime(
+    store_ids: list[int] | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    data = crud.calculate_realtime_store_widget(
+        db,
+        store_ids=store_ids,
+        category=category,
+    )
+    return schemas.AnalyticsRealtimeResponse(
+        items=[schemas.StoreRealtimeWidget(**item) for item in data]
     )
 
 
 @router.get("/analytics/pdf")
 def analytics_pdf(
     store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    rotation = crud.calculate_rotation_analytics(db, store_ids=store_ids)
-    aging = crud.calculate_aging_analytics(db, store_ids=store_ids)
-    forecast = crud.calculate_stockout_forecast(db, store_ids=store_ids)
-    comparatives = crud.calculate_store_comparatives(db, store_ids=store_ids)
-    profit = crud.calculate_profit_margin(db, store_ids=store_ids)
-    projection = crud.calculate_sales_projection(db, store_ids=store_ids)
+    rotation = crud.calculate_rotation_analytics(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    aging = crud.calculate_aging_analytics(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    forecast = crud.calculate_stockout_forecast(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    comparatives = crud.calculate_store_comparatives(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    profit = crud.calculate_profit_margin(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    projection = crud.calculate_sales_projection(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
     pdf_bytes = analytics_service.render_analytics_pdf(
         rotation=rotation,
         aging=aging,
@@ -134,13 +279,34 @@ def analytics_pdf(
 @router.get("/analytics/export.csv")
 def analytics_export_csv(
     store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    comparatives = crud.calculate_store_comparatives(db, store_ids=store_ids)
-    profit = crud.calculate_profit_margin(db, store_ids=store_ids)
-    projection = crud.calculate_sales_projection(db, store_ids=store_ids)
+    comparatives = crud.calculate_store_comparatives(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    profit = crud.calculate_profit_margin(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
+    projection = crud.calculate_sales_projection(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+    )
 
     buffer = StringIO()
     writer = csv.writer(buffer)

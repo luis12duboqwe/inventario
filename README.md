@@ -15,7 +15,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 
 - **API empresarial FastAPI** con modelos SQLAlchemy para tiendas, dispositivos, movimientos, usuarios, roles, sesiones de sincronización, bitácoras y respaldos.
 - **Seguridad por roles** con autenticación JWT, alta inicial segura (`/auth/bootstrap`), administración de usuarios y auditoría completa. Los roles corporativos vigentes son `ADMIN`, `GERENTE` y `OPERADOR`.
-- **Gestión de inventario** con movimientos de entrada/salida/ajuste, actualización de dispositivos y reportes consolidados por tienda.
+- **Gestión de inventario** con movimientos de entrada/salida/ajuste, actualización de dispositivos, reportes consolidados por tienda e impresión de etiquetas individuales con QR (generadas en frontend mediante la librería `qrcode`) para cada dispositivo.
 - **Valuación y métricas financieras** con precios unitarios, ranking de sucursales y alertas de stock bajo expuestos vía `/reports/metrics` y el panel React.
 - **Sincronización programada y bajo demanda** mediante un orquestador asincrónico que ejecuta tareas periódicas configurables.
 - **Respaldos empresariales** con generación automática/manual de PDF y archivos comprimidos JSON usando ReportLab; historial consultable vía API.
@@ -25,11 +25,13 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Pruebas automatizadas** (`pytest`) que validan flujo completo de autenticación, inventario, sincronización y respaldos.
 - **Transferencias entre tiendas** protegidas por permisos por sucursal y feature flag, con flujo SOLICITADA → EN_TRANSITO → RECIBIDA/CANCELADA, auditoría en cada transición y componente React dedicado.
 - **Compras y ventas operativas** con órdenes de compra parcialmente recibidas, cálculo de costo promedio, ventas con descuento/método de pago y devoluciones auditadas desde la UI (`Purchases.tsx`, `Sales.tsx`, `Returns.tsx`).
+- **Operaciones automatizadas** con importación masiva desde CSV, plantillas recurrentes reutilizables y panel histórico filtrable por técnico, sucursal y rango de fechas (`/operations/history`).
 - **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
 - **Gestión de clientes y proveedores corporativos** con historial de contacto, exportación CSV, saldos pendientes y notas auditables desde la UI.
 - **Órdenes de reparación sincronizadas** con piezas descontadas automáticamente del inventario, estados corporativos (🟡/🟠/🟢/⚪) y descarga de orden en PDF.
 - **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
 - **Analítica comparativa multi-sucursal** con endpoints `/reports/analytics/comparative`, `/reports/analytics/profit_margin` y `/reports/analytics/sales_forecast`, exportación CSV consolidada y tablero React con filtros por sucursal.
+- **Analítica predictiva en tiempo real** con regresión lineal para agotamiento/ventas, alertas automáticas (`/reports/analytics/alerts`), categorías dinámicas y widget en vivo por sucursal (`/reports/analytics/realtime`) integrado en `AnalyticsBoard.tsx`.
 - **Sincronización híbrida priorizada** mediante `sync_outbox` con niveles HIGH/NORMAL/LOW, estadísticas por entidad y reintentos auditados desde el panel.
 - **Métricas ejecutivas en vivo** con tablero global que consolida ventas, ganancias, inventario y reparaciones, acompañado de mini-gráficos (línea, barras y pastel) generados con Recharts.
 - **Gestión visual de usuarios corporativos** con checkboxes para roles `ADMIN`/`GERENTE`/`OPERADOR`, control de activación y validación de motivos antes de persistir cambios.
@@ -349,11 +351,23 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 2. Extender analítica avanzada con tableros comparativos inter-sucursal y exportaciones CSV en la versión 2.3.
 3. Documentar mejores prácticas de 2FA para despliegues masivos y preparar guías para soporte remoto.
 
+### Seguimiento de iteración actual — 27/02/2025
+
+- ✅ **Parte 1 — Inventario (Optimización total)**: se habilitó la gestión de lotes de proveedores con costo unitario y fecha, se actualiza la valuación total al registrar movimientos y se reforzó la validación de IMEI/serie desde el backend y la UI de `Suppliers.tsx`.
+- 🔄 **26/02/2025** — Se sincronizaron las columnas `created_at`/`updated_at` del modelo `SupplierBatch` con la migración `202502150007_inventory_batches` para normalizar las pruebas automáticas.
+- ✅ **27/02/2025** — Se incorporó la importación CSV de compras, plantillas recurrentes y el historial corporativo de operaciones, dejando documentado el avance en esta bitácora.
+- ✅ **Parte 2 — Operaciones (Flujo completo)**: se habilitaron transferencias con doble confirmación, importación corporativa desde CSV, plantillas recurrentes reutilizables y el historial consolidado `/operations/history` con filtros por técnico, sucursal y fechas.
+- ✅ **27/02/2025** — Se habilitaron regresiones lineales, alertas automáticas, filtros avanzados y widget en tiempo real en Analítica, documentados y probados.
+- ✅ **Parte 3 — Analítica (IA de predicción y alertas)**: regresión lineal para agotamiento y ventas, alertas automáticas, filtros avanzados y widget en tiempo real ya desplegados en backend y frontend.
+- ✅ **28/02/2025** — Se corrigió el build de Vite instalando la dependencia `qrcode` y se dejó constancia en README/AGENTS; pruebas `pytest` y `npm run build` en verde.
+- ▶️ **Parte 5 — Sincronización (Nube y offline)**: siguiente foco para habilitar la sincronización bidireccional, priorización de entidades y respaldos cifrados locales.
+
 ## Registro operativo de lotes entregados
 
 | Lote | Entregables clave | Evidencias |
 | --- | --- | --- |
-| D — Analítica avanzada | Servicios `analytics.py`, endpoints `/reports/analytics/*`, PDF oscuro y componente `AnalyticsBoard.tsx` | Pruebas `pytest` y descarga manual desde el panel de Analítica |
+| Inventario optimizado | Endpoints `/suppliers/{id}/batches`, columna `stores.inventory_value`, cálculo de costo promedio en movimientos y formulario de lotes en `Suppliers.tsx` | Prueba `test_supplier_batches_and_inventory_value` y validación manual del submódulo de proveedores |
+| D — Analítica avanzada | Servicios `analytics.py`, regresión lineal para agotamiento/ventas, endpoints `/reports/analytics/*` (incluyendo `alerts`, `categories`, `realtime`), PDF oscuro y componente `AnalyticsBoard.tsx` con widget en vivo | Pruebas `pytest`, descarga manual desde el panel de Analítica y validación de alertas en UI |
 | E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` | Ejecución interactiva del módulo Seguridad y pruebas automatizadas de sesiones |
 | F — Modo híbrido | Modelo `SyncOutbox`, reintentos `reset_outbox_entries`, visualización/acciones en `SyncPanel.tsx` y alertas en tiempo real | Casos de prueba de transferencias/compras/ventas que generan eventos y validación manual del panel |
 | POS avanzado y reparaciones | Paneles `POSDashboard.tsx`, `POSPayment.tsx`, `POSReceipt.tsx`, `RepairOrders.tsx`, `Customers.tsx`, `Suppliers.tsx` con sesiones de caja, exportación CSV, control de deudas y consumo automático de inventario | Validación manual del módulo Operaciones y ejecución de `pytest` + `npm --prefix frontend run build` (15/02/2025) |

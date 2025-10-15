@@ -107,6 +107,32 @@ export type SupplierPayload = {
   history?: ContactHistoryEntry[];
 };
 
+export type SupplierBatch = {
+  id: number;
+  supplier_id: number;
+  store_id?: number | null;
+  device_id?: number | null;
+  model_name: string;
+  batch_code: string;
+  unit_cost: number;
+  quantity: number;
+  purchase_date: string;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierBatchPayload = {
+  store_id?: number | null;
+  device_id?: number | null;
+  model_name: string;
+  batch_code: string;
+  unit_cost: number;
+  quantity?: number;
+  purchase_date: string;
+  notes?: string | null;
+};
+
 export type RepairOrderPart = {
   id: number;
   repair_order_id: number;
@@ -260,6 +286,70 @@ export type PurchaseReturnInput = {
   device_id: number;
   quantity: number;
   reason: string;
+};
+
+export type PurchaseImportResponse = {
+  imported: number;
+  orders: PurchaseOrder[];
+  errors: string[];
+};
+
+export type RecurringOrderType = "purchase" | "transfer";
+
+export type RecurringOrder = {
+  id: number;
+  name: string;
+  description?: string | null;
+  order_type: RecurringOrderType;
+  store_id?: number | null;
+  store_name?: string | null;
+  payload: Record<string, unknown>;
+  created_by_id?: number | null;
+  created_by_name?: string | null;
+  last_used_by_id?: number | null;
+  last_used_by_name?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at?: string | null;
+};
+
+export type RecurringOrderPayload = {
+  name: string;
+  description?: string | null;
+  order_type: RecurringOrderType;
+  payload: Record<string, unknown>;
+};
+
+export type RecurringOrderExecutionResult = {
+  template_id: number;
+  order_type: RecurringOrderType;
+  reference_id: number;
+  store_id?: number | null;
+  created_at: string;
+  summary: string;
+};
+
+export type OperationsHistoryRecord = {
+  id: string;
+  operation_type: "purchase" | "transfer_dispatch" | "transfer_receive" | "sale";
+  occurred_at: string;
+  store_id?: number | null;
+  store_name?: string | null;
+  technician_id?: number | null;
+  technician_name?: string | null;
+  reference?: string | null;
+  description: string;
+  amount?: number | null;
+};
+
+export type OperationsTechnicianSummary = {
+  id: number;
+  name: string;
+};
+
+export type OperationsHistoryResponse = {
+  records: OperationsHistoryRecord[];
+  technicians: OperationsTechnicianSummary[];
 };
 
 export type PosCartItemInput = {
@@ -484,10 +574,16 @@ export type StockoutForecastMetric = {
   device_id: number;
   sku: string;
   name: string;
+  store_id: number;
   store_name: string;
   average_daily_sales: number;
   projected_days: number | null;
   quantity: number;
+  trend: string;
+  trend_score: number;
+  confidence: number;
+  alert_level: string | null;
+  sold_units: number;
 };
 
 export type AnalyticsForecast = {
@@ -531,10 +627,57 @@ export type SalesProjectionMetric = {
   projected_units: number;
   projected_revenue: number;
   confidence: number;
+  trend: string;
+  trend_score: number;
+  revenue_trend_score: number;
+  r2_revenue: number;
 };
 
 export type AnalyticsSalesProjection = {
   items: SalesProjectionMetric[];
+};
+
+export type AnalyticsAlert = {
+  type: string;
+  level: string;
+  message: string;
+  store_id: number | null;
+  store_name: string;
+  device_id: number | null;
+  sku: string | null;
+};
+
+export type AnalyticsAlerts = {
+  items: AnalyticsAlert[];
+};
+
+export type StoreRealtimeWidget = {
+  store_id: number;
+  store_name: string;
+  inventory_value: number;
+  sales_today: number;
+  last_sale_at: string | null;
+  low_stock_devices: number;
+  pending_repairs: number;
+  last_sync_at: string | null;
+  trend: string;
+  trend_score: number;
+  confidence: number;
+};
+
+export type AnalyticsRealtime = {
+  items: StoreRealtimeWidget[];
+};
+
+export type AnalyticsCategories = {
+  categories: string[];
+};
+
+export type AnalyticsFilters = {
+  storeIds?: number[];
+  dateFrom?: string;
+  dateTo?: string;
+  category?: string;
 };
 
 export type TOTPStatus = {
@@ -639,6 +782,29 @@ function buildStoreQuery(storeIds?: number[]): string {
   return `?${params}`;
 }
 
+function buildAnalyticsQuery(filters?: AnalyticsFilters): string {
+  if (!filters) {
+    return "";
+  }
+  const params = new URLSearchParams();
+  if (filters.storeIds && filters.storeIds.length > 0) {
+    filters.storeIds.forEach((id) => {
+      params.append("store_ids", String(id));
+    });
+  }
+  if (filters.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  if (filters.category) {
+    params.set("category", filters.category);
+  }
+  const queryString = params.toString();
+  return queryString ? `?${queryString}` : "";
+}
+
 export const NETWORK_EVENT = "softmobile:network-error";
 export const NETWORK_RECOVERY_EVENT = "softmobile:network-recovered";
 
@@ -655,7 +821,13 @@ function emitNetworkEvent(type: typeof NETWORK_EVENT | typeof NETWORK_RECOVERY_E
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", headers.get("Content-Type") ?? "application/json");
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (!headers.has("Content-Type") && !isFormData) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (isFormData) {
+    headers.delete("Content-Type");
+  }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
@@ -846,6 +1018,24 @@ export function registerPurchaseReturn(
   );
 }
 
+export function importPurchaseOrdersCsv(
+  token: string,
+  file: File,
+  reason: string
+): Promise<PurchaseImportResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<PurchaseImportResponse>(
+    "/purchases/import",
+    {
+      method: "POST",
+      body: formData,
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
 export function listCustomers(
   token: string,
   query?: string,
@@ -947,6 +1137,53 @@ export function updateSupplier(
 export function deleteSupplier(token: string, supplierId: number, reason: string): Promise<void> {
   return request<void>(
     `/suppliers/${supplierId}`,
+    { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listSupplierBatches(
+  token: string,
+  supplierId: number,
+  limit = 50
+): Promise<SupplierBatch[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request<SupplierBatch[]>(
+    `/suppliers/${supplierId}/batches?${params.toString()}`,
+    { method: "GET" },
+    token
+  );
+}
+
+export function createSupplierBatch(
+  token: string,
+  supplierId: number,
+  payload: SupplierBatchPayload,
+  reason: string
+): Promise<SupplierBatch> {
+  return request<SupplierBatch>(
+    `/suppliers/${supplierId}/batches`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function updateSupplierBatch(
+  token: string,
+  batchId: number,
+  payload: Partial<SupplierBatchPayload>,
+  reason: string
+): Promise<SupplierBatch> {
+  return request<SupplierBatch>(
+    `/suppliers/batches/${batchId}`,
+    { method: "PUT", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function deleteSupplierBatch(token: string, batchId: number, reason: string): Promise<void> {
+  return request<void>(
+    `/suppliers/batches/${batchId}`,
     { method: "DELETE", headers: { "X-Reason": reason } },
     token
   );
@@ -1167,6 +1404,72 @@ export function cancelTransferOrder(
   );
 }
 
+export function listRecurringOrders(
+  token: string,
+  orderType?: RecurringOrderType
+): Promise<RecurringOrder[]> {
+  const params = new URLSearchParams();
+  if (orderType) {
+    params.set("order_type", orderType);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<RecurringOrder[]>(`/operations/recurring-orders${suffix}`, { method: "GET" }, token);
+}
+
+export function createRecurringOrder(
+  token: string,
+  payload: RecurringOrderPayload,
+  reason: string
+): Promise<RecurringOrder> {
+  return request<RecurringOrder>(
+    "/operations/recurring-orders",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function executeRecurringOrder(
+  token: string,
+  templateId: number,
+  reason: string
+): Promise<RecurringOrderExecutionResult> {
+  return request<RecurringOrderExecutionResult>(
+    `/operations/recurring-orders/${templateId}/execute`,
+    { method: "POST", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export type OperationsHistoryFilters = {
+  storeId?: number | null;
+  technicianId?: number | null;
+  startDate?: string;
+  endDate?: string;
+};
+
+export function listOperationsHistory(
+  token: string,
+  filters: OperationsHistoryFilters = {}
+): Promise<OperationsHistoryResponse> {
+  const params = new URLSearchParams();
+  if (filters.storeId != null) {
+    params.set("store_id", String(filters.storeId));
+  }
+  if (filters.technicianId != null) {
+    params.set("technician_id", String(filters.technicianId));
+  }
+  if (filters.startDate) {
+    params.set("start_date", filters.startDate);
+  }
+  if (filters.endDate) {
+    params.set("end_date", filters.endDate);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<OperationsHistoryResponse>(`/operations/history${suffix}`, { method: "GET" }, token);
+}
+
 export function triggerSync(token: string, storeId?: number) {
   return request(`/sync/run`, {
     method: "POST",
@@ -1224,23 +1527,32 @@ export function getInventoryMetrics(token: string, lowStockThreshold = 5): Promi
   );
 }
 
-export function getRotationAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsRotation> {
-  const query = buildStoreQuery(storeIds);
+export function getRotationAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsRotation> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsRotation>(`/reports/analytics/rotation${query}`, { method: "GET" }, token);
 }
 
-export function getAgingAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsAging> {
-  const query = buildStoreQuery(storeIds);
+export function getAgingAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsAging> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsAging>(`/reports/analytics/aging${query}`, { method: "GET" }, token);
 }
 
-export function getForecastAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsForecast> {
-  const query = buildStoreQuery(storeIds);
+export function getForecastAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsForecast> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsForecast>(`/reports/analytics/stockout_forecast${query}`, { method: "GET" }, token);
 }
 
-export async function downloadAnalyticsPdf(token: string, storeIds?: number[]): Promise<void> {
-  const query = buildStoreQuery(storeIds);
+export async function downloadAnalyticsPdf(token: string, filters?: AnalyticsFilters): Promise<void> {
+  const query = buildAnalyticsQuery(filters);
   const response = await fetch(`${API_URL}/reports/analytics/pdf${query}`, {
     method: "GET",
     headers: {
@@ -1263,8 +1575,8 @@ export async function downloadAnalyticsPdf(token: string, storeIds?: number[]): 
   URL.revokeObjectURL(url);
 }
 
-export async function downloadAnalyticsCsv(token: string, storeIds?: number[]): Promise<void> {
-  const query = buildStoreQuery(storeIds);
+export async function downloadAnalyticsCsv(token: string, filters?: AnalyticsFilters): Promise<void> {
+  const query = buildAnalyticsQuery(filters);
   const response = await fetch(`${API_URL}/reports/analytics/export.csv${query}`, {
     method: "GET",
     headers: {
@@ -1287,22 +1599,49 @@ export async function downloadAnalyticsCsv(token: string, storeIds?: number[]): 
   URL.revokeObjectURL(url);
 }
 
-export function getComparativeAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsComparative> {
-  const query = buildStoreQuery(storeIds);
+export function getComparativeAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsComparative> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsComparative>(`/reports/analytics/comparative${query}`, { method: "GET" }, token);
 }
 
-export function getProfitMarginAnalytics(token: string, storeIds?: number[]): Promise<AnalyticsProfitMargin> {
-  const query = buildStoreQuery(storeIds);
+export function getProfitMarginAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsProfitMargin> {
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsProfitMargin>(`/reports/analytics/profit_margin${query}`, { method: "GET" }, token);
 }
 
 export function getSalesProjectionAnalytics(
   token: string,
-  storeIds?: number[],
+  filters?: AnalyticsFilters,
 ): Promise<AnalyticsSalesProjection> {
-  const query = buildStoreQuery(storeIds);
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsSalesProjection>(`/reports/analytics/sales_forecast${query}`, { method: "GET" }, token);
+}
+
+export function getAnalyticsCategories(token: string): Promise<AnalyticsCategories> {
+  return request<AnalyticsCategories>("/reports/analytics/categories", { method: "GET" }, token);
+}
+
+export function getAnalyticsAlerts(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsAlerts> {
+  const query = buildAnalyticsQuery(filters);
+  return request<AnalyticsAlerts>(`/reports/analytics/alerts${query}`, { method: "GET" }, token);
+}
+
+export function getAnalyticsRealtime(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<AnalyticsRealtime> {
+  const { storeIds, category } = filters ?? {};
+  const query = buildAnalyticsQuery({ storeIds, category });
+  return request<AnalyticsRealtime>(`/reports/analytics/realtime${query}`, { method: "GET" }, token);
 }
 
 export function getTotpStatus(token: string): Promise<TOTPStatus> {

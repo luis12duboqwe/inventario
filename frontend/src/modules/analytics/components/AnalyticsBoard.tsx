@@ -2,13 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AnalyticsAging,
   AnalyticsComparative,
+  AnalyticsFilters,
   AnalyticsForecast,
   AnalyticsProfitMargin,
   AnalyticsRotation,
   AnalyticsSalesProjection,
+  AnalyticsAlerts,
+  AnalyticsRealtime,
+  AnalyticsAlert,
+  StoreRealtimeWidget,
+  AnalyticsCategories,
   downloadAnalyticsCsv,
   downloadAnalyticsPdf,
   getAgingAnalytics,
+  getAnalyticsAlerts,
+  getAnalyticsCategories,
+  getAnalyticsRealtime,
   getComparativeAnalytics,
   getForecastAnalytics,
   getProfitMarginAnalytics,
@@ -34,11 +43,33 @@ function AnalyticsBoard({ token }: Props) {
   const [comparative, setComparative] = useState<AnalyticsComparative | null>(null);
   const [profit, setProfit] = useState<AnalyticsProfitMargin | null>(null);
   const [projection, setProjection] = useState<AnalyticsSalesProjection | null>(null);
+  const [alertsData, setAlertsData] = useState<AnalyticsAlerts | null>(null);
+  const [realtimeData, setRealtimeData] = useState<AnalyticsRealtime | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedStore, setSelectedStore] = useState<number | "all">("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
 
   const storeIds = useMemo(() => (selectedStore === "all" ? undefined : [selectedStore]), [selectedStore]);
+  const analyticsFilters = useMemo<AnalyticsFilters>(() => {
+    const filters: AnalyticsFilters = {};
+    if (storeIds && storeIds.length > 0) {
+      filters.storeIds = storeIds;
+    }
+    if (dateFrom) {
+      filters.dateFrom = dateFrom;
+    }
+    if (dateTo) {
+      filters.dateTo = dateTo;
+    }
+    if (selectedCategory !== "all") {
+      filters.category = selectedCategory;
+    }
+    return filters;
+  }, [dateFrom, dateTo, selectedCategory, storeIds]);
 
   const rotationItems = rotation?.items ?? [];
   const agingItems = aging?.items ?? [];
@@ -46,6 +77,8 @@ function AnalyticsBoard({ token }: Props) {
   const comparativeItems = comparative?.items ?? [];
   const profitItems = profit?.items ?? [];
   const projectionItems = projection?.items ?? [];
+  const alerts = alertsData?.items ?? [];
+  const realtime = realtimeData?.items ?? [];
 
   const loadData = useCallback(
     async (notify = false) => {
@@ -54,21 +87,33 @@ function AnalyticsBoard({ token }: Props) {
           setLoading(true);
           setError(null);
         }
-        const [rotationData, agingData, forecastData, comparativeData, profitData, projectionData] =
-          await Promise.all([
-            getRotationAnalytics(token, storeIds),
-            getAgingAnalytics(token, storeIds),
-            getForecastAnalytics(token, storeIds),
-            getComparativeAnalytics(token, storeIds),
-            getProfitMarginAnalytics(token, storeIds),
-            getSalesProjectionAnalytics(token, storeIds),
-          ]);
+        const [
+          rotationData,
+          agingData,
+          forecastData,
+          comparativeData,
+          profitData,
+          projectionData,
+          alertsResponse,
+          realtimeResponse,
+        ] = await Promise.all([
+          getRotationAnalytics(token, analyticsFilters),
+          getAgingAnalytics(token, analyticsFilters),
+          getForecastAnalytics(token, analyticsFilters),
+          getComparativeAnalytics(token, analyticsFilters),
+          getProfitMarginAnalytics(token, analyticsFilters),
+          getSalesProjectionAnalytics(token, analyticsFilters),
+          getAnalyticsAlerts(token, analyticsFilters),
+          getAnalyticsRealtime(token, analyticsFilters),
+        ]);
         setRotation(rotationData);
         setAging(agingData);
         setForecast(forecastData);
         setComparative(comparativeData);
         setProfit(profitData);
         setProjection(projectionData);
+        setAlertsData(alertsResponse);
+        setRealtimeData(realtimeResponse);
         if (notify) {
           pushToast({ message: "Analítica actualizada", variant: "info" });
         }
@@ -77,13 +122,15 @@ function AnalyticsBoard({ token }: Props) {
           err instanceof Error ? err.message : "No fue posible cargar la analítica avanzada";
         setError(message);
         pushToast({ message, variant: "error" });
+        setAlertsData(null);
+        setRealtimeData(null);
       } finally {
         if (!notify) {
           setLoading(false);
         }
       }
     },
-    [pushToast, storeIds, token]
+    [analyticsFilters, pushToast, token]
   );
 
   useEffect(() => {
@@ -94,6 +141,28 @@ function AnalyticsBoard({ token }: Props) {
     const interval = window.setInterval(() => loadData(true), 60000);
     return () => window.clearInterval(interval);
   }, [loadData]);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await getAnalyticsCategories(token);
+        setCategories(response.categories);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? `No fue posible cargar categorías: ${err.message}`
+            : "No fue posible cargar categorías";
+        pushToast({ message, variant: "warning" });
+      }
+    };
+    fetchCategories();
+  }, [pushToast, token]);
+
+  useEffect(() => {
+    if (selectedCategory !== "all" && categories.length > 0 && !categories.includes(selectedCategory)) {
+      setSelectedCategory("all");
+    }
+  }, [categories, selectedCategory]);
 
   const handleDownloadPdf = async () => {
     try {
@@ -123,6 +192,20 @@ function AnalyticsBoard({ token }: Props) {
     (value: number) => formatCurrency(value),
     [formatCurrency]
   );
+
+  const formatDateTime = useCallback((value: string | null) => {
+    if (!value) {
+      return "Sin registros";
+    }
+    const dateValue = new Date(value);
+    if (Number.isNaN(dateValue.getTime())) {
+      return "Sin registros";
+    }
+    return `${dateValue.toLocaleDateString()} ${dateValue.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+  }, []);
 
   const projectionUnitsMax = useMemo(() => {
     return projectionItems.reduce(
@@ -321,6 +404,85 @@ function AnalyticsBoard({ token }: Props) {
       />
     );
 
+  const alertContent =
+    alerts.length === 0 ? (
+      <p className="muted-text">Sin alertas activas.</p>
+    ) : (
+      <ul className="analytics-alerts">
+        {alerts.map((alert, index) => {
+          const level = (alert.level ?? "info").toLowerCase();
+          const levelLabel =
+            alert.level === "critical" ? "Crítico" : alert.level === "warning" ? "Alerta" : "Info";
+          return (
+            <li
+              key={`${alert.type}-${alert.store_id ?? "global"}-${alert.device_id ?? "general"}-${index}`}
+              className={`analytics-alert analytics-alert--${level}`}
+            >
+              <div className="analytics-alert__header">
+                <span className="analytics-alert__badge">{levelLabel}</span>
+                <span className="analytics-alert__store">{alert.store_name}</span>
+              </div>
+              <p className="analytics-alert__message">{alert.message}</p>
+              {alert.sku && <p className="analytics-alert__meta">SKU {alert.sku}</p>}
+            </li>
+          );
+        })}
+      </ul>
+    );
+
+  const realtimeContent =
+    realtime.length === 0 ? (
+      <p className="muted-text">Sin métricas en tiempo real.</p>
+    ) : (
+      <div className="analytics-realtime-grid">
+        {realtime.map((widget) => {
+          const confidencePercent = `${Math.round(widget.confidence * 100)}%`;
+          return (
+            <article key={widget.store_id} className="analytics-realtime-card">
+              <header className="analytics-realtime-card__header">
+                <h3>{widget.store_name}</h3>
+                <span className={`analytics-tag analytics-tag--${widget.trend}`}>{widget.trend}</span>
+              </header>
+              <div className="analytics-realtime-card__metrics">
+                <div className="analytics-realtime-card__metrics-item">
+                  <span className="analytics-realtime-card__label">Inventario</span>
+                  <span className="analytics-realtime-card__value">{formatNumber(widget.inventory_value)}</span>
+                </div>
+                <div className="analytics-realtime-card__metrics-item">
+                  <span className="analytics-realtime-card__label">Ventas hoy</span>
+                  <span className="analytics-realtime-card__value">{formatNumber(widget.sales_today)}</span>
+                </div>
+                <div className="analytics-realtime-card__metrics-item">
+                  <span className="analytics-realtime-card__label">Última venta</span>
+                  <span className="analytics-realtime-card__value analytics-realtime-card__value--muted">
+                    {formatDateTime(widget.last_sale_at)}
+                  </span>
+                </div>
+                <div className="analytics-realtime-card__metrics-item">
+                  <span className="analytics-realtime-card__label">Stock crítico</span>
+                  <span className="analytics-realtime-card__value">{widget.low_stock_devices}</span>
+                </div>
+                <div className="analytics-realtime-card__metrics-item">
+                  <span className="analytics-realtime-card__label">Reparaciones</span>
+                  <span className="analytics-realtime-card__value">{widget.pending_repairs}</span>
+                </div>
+                <div className="analytics-realtime-card__metrics-item">
+                  <span className="analytics-realtime-card__label">Última sync</span>
+                  <span className="analytics-realtime-card__value analytics-realtime-card__value--muted">
+                    {formatDateTime(widget.last_sync_at)}
+                  </span>
+                </div>
+                <div className="analytics-realtime-card__metrics-item analytics-realtime-card__metrics-item--full">
+                  <span className="analytics-realtime-card__label">Confianza</span>
+                  <span className="analytics-realtime-card__value">{confidencePercent}</span>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    );
+
   const analyticsItems: AnalyticsGridItem[] = [
     {
       id: "rotation",
@@ -370,33 +532,85 @@ function AnalyticsBoard({ token }: Props) {
           </p>
         </div>
         <div className="analytics-actions">
-          <label>
-            <span>Sucursal</span>
-            <select
-              value={selectedStore}
-              onChange={(event) => {
-                const value = event.target.value;
-                setSelectedStore(value === "all" ? "all" : Number(value));
-              }}
-            >
-              <option value="all">Todas</option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button className="btn btn--primary" onClick={handleDownloadPdf} aria-busy={loading}>
-            Descargar PDF
-          </button>
-          <button className="btn btn--ghost" onClick={handleDownloadCsv} aria-busy={loading}>
-            Exportar CSV
-          </button>
+          <div className="analytics-filters">
+            <label>
+              <span>Sucursal</span>
+              <select
+                value={selectedStore}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSelectedStore(value === "all" ? "all" : Number(value));
+                }}
+              >
+                <option value="all">Todas</option>
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Desde</span>
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(event) => setDateFrom(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Hasta</span>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(event) => setDateTo(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Categoría</span>
+              <select
+                value={selectedCategory}
+                onChange={(event) => setSelectedCategory(event.target.value)}
+              >
+                <option value="all">Todas</option>
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="analytics-actions__group">
+            <button className="btn btn--primary" onClick={handleDownloadPdf} aria-busy={loading}>
+              Descargar PDF
+            </button>
+            <button className="btn btn--ghost" onClick={handleDownloadCsv} aria-busy={loading}>
+              Exportar CSV
+            </button>
+          </div>
         </div>
       </header>
       {error && <p className="error-text">{error}</p>}
       <LoadingOverlay visible={loading} label="Consultando analítica..." />
+      <div className="analytics-secondary-grid">
+        <article className="card analytics-panel">
+          <div className="analytics-subheader">
+            <h3>Alertas automáticas</h3>
+            <p className="card-subtitle">Detección de stock crítico y caídas de ventas.</p>
+          </div>
+          {alertContent}
+        </article>
+        <article className="card analytics-panel">
+          <div className="analytics-subheader">
+            <h3>Widget en tiempo real</h3>
+            <p className="card-subtitle">Resumen por sucursal con ventas del día y tendencia.</p>
+          </div>
+          {realtimeContent}
+        </article>
+      </div>
       <AnalyticsGrid items={analyticsItems} />
     </section>
   );

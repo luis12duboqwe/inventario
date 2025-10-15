@@ -1,72 +1,93 @@
-import { useMemo, useState } from "react";
-import type { Store } from "../../../api";
+import { useEffect, useMemo, useState } from "react";
+import type {
+  OperationsHistoryRecord,
+  OperationsTechnicianSummary,
+  Store,
+} from "../../../api";
+import { listOperationsHistory } from "../../../api";
 
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
-type OperationType = "venta" | "compra" | "transferencia" | "ajuste";
+const OPERATION_TYPES: Array<{ id: OperationsHistoryRecord["operation_type"]; label: string }> = [
+  { id: "purchase", label: "Compra" },
+  { id: "sale", label: "Venta" },
+  { id: "transfer_dispatch", label: "Transferencia despachada" },
+  { id: "transfer_receive", label: "Transferencia recibida" },
+];
 
 type HistoryFilter = {
   storeId: number | "all";
-  type: OperationType | "all";
-};
-
-type HistoryRecord = {
-  id: string;
-  storeId: number | null;
-  type: OperationType;
-  reference: string;
-  notes: string;
-  createdAt: Date;
-  total: number;
+  type: OperationsHistoryRecord["operation_type"] | "all";
+  technicianId: number | "all";
+  startDate: string;
+  endDate: string;
 };
 
 type Props = {
+  token: string;
   stores: Store[];
 };
 
-const OPERATION_TYPES: Array<{ id: OperationType; label: string }> = [
-  { id: "venta", label: "Venta" },
-  { id: "compra", label: "Compra" },
-  { id: "transferencia", label: "Transferencia" },
-  { id: "ajuste", label: "Ajuste" },
-];
+const formatDateInput = (date: Date): string => date.toISOString().slice(0, 10);
 
-const createMockRecords = (stores: Store[]): HistoryRecord[] => {
-  const now = Date.now();
-  return stores.slice(0, 3).flatMap((store, index) => [
-    {
-      id: `${store.id}-venta`,
-      storeId: store.id,
-      type: "venta" as const,
-      reference: `VNT-${store.id}-${index + 1}`,
-      notes: "Ticket generado desde POS híbrido",
-      createdAt: new Date(now - index * 3600 * 1000),
-      total: 15450 + index * 2200,
-    },
-    {
-      id: `${store.id}-compra`,
-      storeId: store.id,
-      type: "compra" as const,
-      reference: `CMP-${store.id}-${index + 1}`,
-      notes: "Recepción parcial registrada",
-      createdAt: new Date(now - (index + 1) * 5400 * 1000),
-      total: 24500 + index * 1800,
-    },
-  ]);
-};
-
-function OperationsHistoryPanel({ stores }: Props) {
+function OperationsHistoryPanel({ stores, token }: Props) {
   const { formatCurrency } = useDashboard();
-  const [filters, setFilters] = useState<HistoryFilter>({ storeId: "all", type: "all" });
-  const [records] = useState<HistoryRecord[]>(() => createMockRecords(stores));
+  const today = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 14);
+
+  const [filters, setFilters] = useState<HistoryFilter>({
+    storeId: "all",
+    type: "all",
+    technicianId: "all",
+    startDate: formatDateInput(start),
+    endDate: formatDateInput(today),
+  });
+  const [records, setRecords] = useState<OperationsHistoryRecord[]>([]);
+  const [technicians, setTechnicians] = useState<OperationsTechnicianSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchHistory = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await listOperationsHistory(token, {
+          storeId: filters.storeId === "all" ? undefined : filters.storeId,
+          technicianId: filters.technicianId === "all" ? undefined : filters.technicianId,
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+        });
+        if (!cancelled) {
+          setRecords(response.records);
+          setTechnicians(response.technicians);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "No fue posible cargar el historial de operaciones",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void fetchHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, filters.storeId, filters.technicianId, filters.startDate, filters.endDate]);
 
   const filteredRecords = useMemo(() => {
-    return records.filter((record) => {
-      const matchesStore = filters.storeId === "all" || record.storeId === filters.storeId;
-      const matchesType = filters.type === "all" || record.type === filters.type;
-      return matchesStore && matchesType;
-    });
-  }, [filters, records]);
+    return records.filter((record) => filters.type === "all" || record.operation_type === filters.type);
+  }, [records, filters.type]);
 
   return (
     <section className="card">
@@ -102,7 +123,7 @@ function OperationsHistoryPanel({ stores }: Props) {
           <select
             value={filters.type}
             onChange={(event) => {
-              const value = event.target.value as OperationType | "all";
+              const value = event.target.value as HistoryFilter["type"];
               setFilters((current) => ({
                 ...current,
                 type: value,
@@ -117,12 +138,61 @@ function OperationsHistoryPanel({ stores }: Props) {
             ))}
           </select>
         </label>
+        <label>
+          <span>Técnico</span>
+          <select
+            value={filters.technicianId === "all" ? "all" : String(filters.technicianId)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setFilters((current) => ({
+                ...current,
+                technicianId: value === "all" ? "all" : Number(value),
+              }));
+            }}
+          >
+            <option value="all">Todos</option>
+            {technicians.map((technician) => (
+              <option key={technician.id} value={technician.id}>
+                {technician.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Desde</span>
+          <input
+            type="date"
+            value={filters.startDate}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                startDate: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label>
+          <span>Hasta</span>
+          <input
+            type="date"
+            value={filters.endDate}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                endDate: event.target.value,
+              }))
+            }
+          />
+        </label>
       </form>
+      {error ? <div className="alert error">{error}</div> : null}
       <div className="section-divider">
         <h3>Últimos movimientos</h3>
-        {filteredRecords.length === 0 ? (
+        {loading ? <p className="muted-text">Cargando historial…</p> : null}
+        {filteredRecords.length === 0 && !loading ? (
           <p className="muted-text">No hay operaciones que coincidan con los filtros seleccionados.</p>
-        ) : (
+        ) : null}
+        {filteredRecords.length > 0 ? (
           <div className="table-wrapper">
             <table>
               <thead>
@@ -130,32 +200,39 @@ function OperationsHistoryPanel({ stores }: Props) {
                   <th scope="col">Fecha</th>
                   <th scope="col">Sucursal</th>
                   <th scope="col">Tipo</th>
+                  <th scope="col">Técnico</th>
                   <th scope="col">Referencia</th>
-                  <th scope="col">Notas</th>
+                  <th scope="col">Descripción</th>
                   <th scope="col">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRecords.map((record) => {
-                  const storeName = record.storeId
-                    ? stores.find((store) => store.id === record.storeId)?.name ?? "Desconocida"
+                  const storeName = record.store_id
+                    ? stores.find((store) => store.id === record.store_id)?.name ?? "Desconocida"
                     : "Corporativo";
-                  const typeLabel = OPERATION_TYPES.find((option) => option.id === record.type)?.label ?? record.type;
+                  const typeLabel =
+                    OPERATION_TYPES.find((option) => option.id === record.operation_type)?.label ??
+                    record.operation_type;
+                  const technicianName = record.technician_name ?? "Sin asignar";
+                  const formattedAmount =
+                    record.amount != null ? formatCurrency(record.amount) : "—";
                   return (
                     <tr key={record.id}>
-                      <td data-label="Fecha">{record.createdAt.toLocaleString("es-MX")}</td>
+                      <td data-label="Fecha">{new Date(record.occurred_at).toLocaleString("es-MX")}</td>
                       <td data-label="Sucursal">{storeName}</td>
                       <td data-label="Tipo">{typeLabel}</td>
-                      <td data-label="Referencia">{record.reference}</td>
-                      <td data-label="Notas">{record.notes}</td>
-                      <td data-label="Total">{formatCurrency(record.total)}</td>
+                      <td data-label="Técnico">{technicianName}</td>
+                      <td data-label="Referencia">{record.reference ?? "—"}</td>
+                      <td data-label="Descripción">{record.description}</td>
+                      <td data-label="Total">{formattedAmount}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </div>
     </section>
   );

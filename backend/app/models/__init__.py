@@ -77,6 +77,9 @@ class Store(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
     location: Mapped[str | None] = mapped_column(String(120), nullable=True)
     timezone: Mapped[str] = mapped_column(String(50), nullable=False, default="UTC")
+    inventory_value: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, default=Decimal("0")
+    )
 
     devices: Mapped[list["Device"]] = relationship(
         "Device", back_populates="store", cascade="all, delete-orphan"
@@ -88,6 +91,9 @@ class Store(Base):
     )
     sync_sessions: Mapped[list["SyncSession"]] = relationship(
         "SyncSession", back_populates="store", cascade="all, delete-orphan"
+    )
+    supplier_batches: Mapped[list["SupplierBatch"]] = relationship(
+        "SupplierBatch", back_populates="store", cascade="all, delete-orphan"
     )
 
 
@@ -244,6 +250,7 @@ class InventoryMovement(Base):
     movement_type: Mapped[MovementType] = mapped_column(Enum(MovementType, name="movement_type"), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     performed_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -300,6 +307,10 @@ class BackupJob(Base):
     archive_path: Mapped[str] = mapped_column(String(255), nullable=False)
     total_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
     triggered_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -379,6 +390,59 @@ class TransferOrderItem(Base):
     device: Mapped[Device] = relationship("Device")
 
 
+class RecurringOrderType(str, enum.Enum):
+    """Tipos disponibles para plantillas recurrentes."""
+
+    PURCHASE = "purchase"
+    TRANSFER = "transfer"
+
+
+class RecurringOrder(Base):
+    __tablename__ = "recurring_orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    order_type: Mapped[RecurringOrderType] = mapped_column(
+        Enum(RecurringOrderType, name="recurring_order_type"),
+        nullable=False,
+    )
+    store_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("stores.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    last_used_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    store: Mapped[Store | None] = relationship("Store")
+    created_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[created_by_id], backref="recurring_orders_created"
+    )
+    last_used_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[last_used_by_id], backref="recurring_orders_used"
+    )
+
+
 class StoreMembership(Base):
     __tablename__ = "store_memberships"
     __table_args__ = (
@@ -450,6 +514,48 @@ class Supplier(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    batches: Mapped[list["SupplierBatch"]] = relationship(
+        "SupplierBatch", back_populates="supplier", cascade="all, delete-orphan"
+    )
+
+
+class SupplierBatch(Base):
+    __tablename__ = "supplier_batches"
+    __table_args__ = (
+        UniqueConstraint("supplier_id", "batch_code", name="uq_supplier_batch_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    supplier_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    store_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    device_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    model_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    batch_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    purchase_date: Mapped[date] = mapped_column(Date, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    supplier: Mapped["Supplier"] = relationship("Supplier", back_populates="batches")
+    store: Mapped[Store | None] = relationship("Store", back_populates="supplier_batches")
+    device: Mapped[Device | None] = relationship("Device")
 
 
 class PurchaseOrder(Base):
@@ -867,6 +973,9 @@ __all__ = [
     "RepairStatus",
     "Role",
     "Store",
+    "SupplierBatch",
+    "RecurringOrder",
+    "RecurringOrderType",
     "SyncMode",
     "SyncSession",
     "SyncStatus",

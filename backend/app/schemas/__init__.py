@@ -1,16 +1,26 @@
 """Esquemas Pydantic centralizados para la API de Softmobile Central."""
 from __future__ import annotations
 
+import enum
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from ..models import (
     BackupMode,
     CashSessionStatus,
     CommercialState,
+    RecurringOrderType,
     MovementType,
     PaymentMethod,
     PurchaseStatus,
@@ -41,8 +51,14 @@ class StoreUpdate(BaseModel):
 
 class StoreResponse(StoreBase):
     id: int
+    inventory_value: Decimal = Field(default=Decimal("0"))
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("inventory_value")
+    @classmethod
+    def _serialize_inventory_value(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class DeviceBase(BaseModel):
@@ -354,6 +370,64 @@ class SupplierResponse(SupplierBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SupplierBatchBase(BaseModel):
+    model_name: str = Field(..., max_length=120)
+    batch_code: str = Field(..., max_length=80)
+    unit_cost: Decimal = Field(..., ge=Decimal("0"))
+    quantity: int = Field(default=0, ge=0)
+    purchase_date: date
+    notes: str | None = Field(default=None, max_length=255)
+    store_id: int | None = Field(default=None, ge=1)
+    device_id: int | None = Field(default=None, ge=1)
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    @field_validator("model_name", "batch_code", "notes", mode="before")
+    @classmethod
+    def _normalize_batch_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SupplierBatchCreate(SupplierBatchBase):
+    pass
+
+
+class SupplierBatchUpdate(BaseModel):
+    model_name: str | None = Field(default=None, max_length=120)
+    batch_code: str | None = Field(default=None, max_length=80)
+    unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+    quantity: int | None = Field(default=None, ge=0)
+    purchase_date: date | None = None
+    notes: str | None = Field(default=None, max_length=255)
+    store_id: int | None = Field(default=None, ge=1)
+    device_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("model_name", "batch_code", "notes", mode="before")
+    @classmethod
+    def _normalize_optional_batch_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class SupplierBatchResponse(SupplierBatchBase):
+    id: int
+    supplier_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TransferOrderItemBase(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
@@ -509,6 +583,7 @@ class MovementBase(BaseModel):
     movement_type: MovementType
     quantity: int = Field(..., gt=0)
     reason: str | None = Field(default=None, max_length=255)
+    unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
 
 class MovementCreate(MovementBase):
@@ -520,8 +595,21 @@ class MovementResponse(MovementBase):
     store_id: int
     performed_by_id: int | None
     created_at: datetime
+    store_inventory_value: Decimal
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+    @field_serializer("store_inventory_value")
+    @classmethod
+    def _serialize_inventory_total(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class InventorySummary(BaseModel):
@@ -638,10 +726,16 @@ class StockoutForecastMetric(BaseModel):
     device_id: int
     sku: str
     name: str
+    store_id: int
     store_name: str
     average_daily_sales: float
     projected_days: int | None
     quantity: int
+    trend: str
+    trend_score: float
+    confidence: float
+    alert_level: str | None
+    sold_units: int
 
 
 class AnalyticsForecastResponse(BaseModel):
@@ -758,10 +852,50 @@ class SalesProjectionMetric(BaseModel):
     projected_units: float
     projected_revenue: float
     confidence: float
+    trend: str
+    trend_score: float
+    revenue_trend_score: float
+    r2_revenue: float
 
 
 class AnalyticsSalesProjectionResponse(BaseModel):
     items: list[SalesProjectionMetric]
+
+
+class AnalyticsAlert(BaseModel):
+    type: str
+    level: str
+    message: str
+    store_id: int | None
+    store_name: str
+    device_id: int | None
+    sku: str | None
+
+
+class AnalyticsAlertsResponse(BaseModel):
+    items: list[AnalyticsAlert]
+
+
+class StoreRealtimeWidget(BaseModel):
+    store_id: int
+    store_name: str
+    inventory_value: float
+    sales_today: float
+    last_sale_at: datetime | None
+    low_stock_devices: int
+    pending_repairs: int
+    last_sync_at: datetime | None
+    trend: str
+    trend_score: float
+    confidence: float
+
+
+class AnalyticsRealtimeResponse(BaseModel):
+    items: list[StoreRealtimeWidget]
+
+
+class AnalyticsCategoriesResponse(BaseModel):
+    categories: list[str]
 
 
 class SyncOutboxReplayRequest(BaseModel):
@@ -893,6 +1027,94 @@ class PurchaseReceiveRequest(BaseModel):
         if not value:
             raise ValueError("Debes indicar artículos a recibir.")
         return value
+
+
+class PurchaseImportResponse(BaseModel):
+    imported: int = Field(default=0, ge=0)
+    orders: list[PurchaseOrderResponse]
+    errors: list[str] = Field(default_factory=list)
+
+
+class RecurringOrderCreate(BaseModel):
+    name: str = Field(..., min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=255)
+    order_type: RecurringOrderType
+    payload: dict[str, Any]
+
+    @model_validator(mode="after")
+    def _validate_payload(self) -> "RecurringOrderCreate":
+        if self.order_type is RecurringOrderType.PURCHASE:
+            validated = PurchaseOrderCreate.model_validate(self.payload)
+            self.payload = validated.model_dump()
+        elif self.order_type is RecurringOrderType.TRANSFER:
+            validated = TransferOrderCreate.model_validate(self.payload)
+            self.payload = validated.model_dump()
+        else:  # pragma: no cover - enum exhaustivo
+            raise ValueError("Tipo de orden recurrente no soportado.")
+        return self
+
+
+class RecurringOrderResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    order_type: RecurringOrderType
+    store_id: int | None
+    store_name: str | None = None
+    payload: dict[str, Any]
+    created_by_id: int | None
+    created_by_name: str | None = None
+    last_used_by_id: int | None
+    last_used_by_name: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    last_used_at: datetime | None
+
+
+class RecurringOrderExecutionResult(BaseModel):
+    template_id: int
+    order_type: RecurringOrderType
+    reference_id: int
+    store_id: int | None
+    created_at: datetime
+    summary: str
+
+
+class OperationHistoryType(str, enum.Enum):
+    PURCHASE = "purchase"
+    TRANSFER_DISPATCH = "transfer_dispatch"
+    TRANSFER_RECEIVE = "transfer_receive"
+    SALE = "sale"
+
+
+class OperationHistoryEntry(BaseModel):
+    id: str
+    operation_type: OperationHistoryType
+    occurred_at: datetime
+    store_id: int | None
+    store_name: str | None
+    technician_id: int | None
+    technician_name: str | None
+    reference: str | None
+    description: str
+    amount: Decimal | None = None
+
+    @field_serializer("amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class OperationHistoryTechnician(BaseModel):
+    id: int
+    name: str
+
+
+class OperationsHistoryResponse(BaseModel):
+    records: list[OperationHistoryEntry]
+    technicians: list[OperationHistoryTechnician]
 
 
 class RepairOrderPartPayload(BaseModel):
@@ -1430,8 +1652,16 @@ __all__ = [
     "PurchaseOrderResponse",
     "PurchaseReceiveItem",
     "PurchaseReceiveRequest",
+    "PurchaseImportResponse",
     "PurchaseReturnCreate",
     "PurchaseReturnResponse",
+    "RecurringOrderCreate",
+    "RecurringOrderExecutionResult",
+    "RecurringOrderResponse",
+    "OperationHistoryEntry",
+    "OperationHistoryTechnician",
+    "OperationHistoryType",
+    "OperationsHistoryResponse",
     "SaleCreate",
     "SaleItemCreate",
     "SaleItemResponse",
@@ -1453,6 +1683,14 @@ __all__ = [
     "StoreUpdate",
     "StoreValueMetric",
     "StoreComparativeMetric",
+    "SupplierBase",
+    "SupplierBatchBase",
+    "SupplierBatchCreate",
+    "SupplierBatchResponse",
+    "SupplierBatchUpdate",
+    "SupplierCreate",
+    "SupplierResponse",
+    "SupplierUpdate",
     "SyncRequest",
     "SyncOutboxEntryResponse",
     "SyncOutboxPriority",

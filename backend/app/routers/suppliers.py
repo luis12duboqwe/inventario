@@ -100,3 +100,92 @@ def delete_supplier_endpoint(
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{supplier_id}/batches",
+    response_model=list[schemas.SupplierBatchResponse],
+)
+def list_supplier_batches_endpoint(
+    supplier_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.list_supplier_batches(db, supplier_id, limit=limit)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+
+
+@router.post(
+    "/{supplier_id}/batches",
+    response_model=schemas.SupplierBatchResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_supplier_batch_endpoint(
+    supplier_id: int,
+    payload: schemas.SupplierBatchCreate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.create_supplier_batch(
+            db,
+            supplier_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
+    except LookupError as exc:
+        detail = str(exc)
+        if detail == "device_not_found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispositivo no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+    except ValueError as exc:
+        if str(exc) == "supplier_batch_store_mismatch":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El dispositivo no pertenece a la sucursal indicada.",
+            ) from exc
+        raise
+
+
+@router.put(
+    "/batches/{batch_id}",
+    response_model=schemas.SupplierBatchResponse,
+)
+def update_supplier_batch_endpoint(
+    batch_id: int,
+    payload: schemas.SupplierBatchUpdate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.update_supplier_batch(
+            db,
+            batch_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lote no encontrado") from exc
+
+
+@router.delete("/batches/{batch_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_supplier_batch_endpoint(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        crud.delete_supplier_batch(
+            db,
+            batch_id,
+            performed_by_id=current_user.id if current_user else None,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lote no encontrado") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

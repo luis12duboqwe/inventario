@@ -55,7 +55,7 @@ function OperationsPage() {
             {enablePurchasesSales ? (
               <>
                 <Customers token={token} />
-                <Suppliers token={token} />
+                <Suppliers token={token} stores={stores} />
                 <POSDashboard
                   token={token}
                   stores={stores}
@@ -133,7 +133,7 @@ function OperationsPage() {
         description: "Consulta unificado de movimientos recientes por tienda.",
         content: (
           <div className="section-grid">
-            <OperationsHistoryPanel stores={stores} />
+            <OperationsHistoryPanel token={token} stores={stores} />
           </div>
         ),
       },

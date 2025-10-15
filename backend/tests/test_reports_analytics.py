@@ -1,9 +1,11 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from fastapi import status
+from sqlalchemy.orm import Session
 
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
+from backend.app import models
 
 
 def _bootstrap_admin(client):
@@ -24,7 +26,7 @@ def _bootstrap_admin(client):
     return token_response.json()["access_token"]
 
 
-def test_advanced_analytics_endpoints(client):
+def test_advanced_analytics_endpoints(client, db_session: Session):
     settings.enable_analytics_adv = True
     settings.enable_purchases_sales = True
     token = _bootstrap_admin(client)
@@ -84,6 +86,24 @@ def test_advanced_analytics_endpoints(client):
         headers={**headers, "X-Reason": "Venta analitica"},
     )
     assert sale_resp.status_code == status.HTTP_201_CREATED
+    sale_id = sale_resp.json()["id"]
+    first_sale = db_session.get(models.Sale, sale_id)
+    first_sale.created_at = datetime.utcnow() - timedelta(days=5)
+    db_session.commit()
+
+    sale_resp_followup = client.post(
+        "/sales",
+        json={
+            "store_id": store_id,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": device_id, "quantity": 3}],
+        },
+        headers={**headers, "X-Reason": "Venta analitica 2"},
+    )
+    assert sale_resp_followup.status_code == status.HTTP_201_CREATED
+    follow_sale = db_session.get(models.Sale, sale_resp_followup.json()["id"])
+    follow_sale.created_at = datetime.utcnow() - timedelta(days=1)
+    db_session.commit()
 
     sale_resp_north = client.post(
         "/sales",
@@ -95,6 +115,13 @@ def test_advanced_analytics_endpoints(client):
         headers={**headers, "X-Reason": "Venta norte"},
     )
     assert sale_resp_north.status_code == status.HTTP_201_CREATED
+    north_sale = db_session.get(models.Sale, sale_resp_north.json()["id"])
+    north_sale.created_at = datetime.utcnow() - timedelta(days=3)
+    db_session.commit()
+
+    device_record = db_session.get(models.Device, device_id)
+    device_record.quantity = 3
+    db_session.commit()
 
     rotation_response = client.get("/reports/analytics/rotation", headers=headers)
     assert rotation_response.status_code == status.HTTP_200_OK
@@ -115,6 +142,10 @@ def test_advanced_analytics_endpoints(client):
     forecast_response = client.get("/reports/analytics/stockout_forecast", headers=headers)
     assert forecast_response.status_code == status.HTTP_200_OK
     assert any(item["device_id"] == device_id for item in forecast_response.json()["items"])
+    for item in forecast_response.json()["items"]:
+        assert "trend" in item
+        assert "confidence" in item
+        assert "alert_level" in item
 
     comparative_response = client.get("/reports/analytics/comparative", headers=headers)
     assert comparative_response.status_code == status.HTTP_200_OK
@@ -130,6 +161,9 @@ def test_advanced_analytics_endpoints(client):
     assert projection_response.status_code == status.HTTP_200_OK
     projection_items = projection_response.json()["items"]
     assert any(item["store_id"] == store_id for item in projection_items)
+    for item in projection_items:
+        assert "trend" in item
+        assert "revenue_trend_score" in item
 
     pdf_response = client.get("/reports/analytics/pdf", headers=headers)
     assert pdf_response.status_code == status.HTTP_200_OK
@@ -139,6 +173,33 @@ def test_advanced_analytics_endpoints(client):
     assert csv_response.status_code == status.HTTP_200_OK
     assert csv_response.headers["content-type"].startswith("text/csv")
     assert "Comparativo" in csv_response.text
+
+    categories_response = client.get("/reports/analytics/categories", headers=headers)
+    assert categories_response.status_code == status.HTTP_200_OK
+    categories = categories_response.json()["categories"]
+    assert len(categories) > 0
+
+    date_from = (date.today() - timedelta(days=7)).isoformat()
+    date_to = date.today().isoformat()
+    alert_response = client.get(
+        f"/reports/analytics/alerts?date_from={date_from}&date_to={date_to}",
+        headers=headers,
+    )
+    assert alert_response.status_code == status.HTTP_200_OK
+    alert_items = alert_response.json()["items"]
+    assert any(alert["type"] == "stock" for alert in alert_items)
+
+    realtime_response = client.get("/reports/analytics/realtime", headers=headers)
+    assert realtime_response.status_code == status.HTTP_200_OK
+    realtime_items = realtime_response.json()["items"]
+    assert any("trend" in widget for widget in realtime_items)
+
+    rotation_filtered = client.get(
+        f"/reports/analytics/rotation?store_ids={store_id}&date_from={date_from}&date_to={date_to}&category=ANL-001",
+        headers=headers,
+    )
+    assert rotation_filtered.status_code == status.HTTP_200_OK
+    assert all(item["store_id"] == store_id for item in rotation_filtered.json()["items"])
 
     settings.enable_analytics_adv = False
     settings.enable_purchases_sales = False

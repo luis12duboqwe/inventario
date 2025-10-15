@@ -19,6 +19,7 @@ from .routers import (
     customers,
     health,
     inventory,
+    operations,
     pos,
     purchases,
     repairs,
@@ -48,6 +49,7 @@ SENSITIVE_PREFIXES = (
     "/transfers",
     "/security",
     "/sync/outbox",
+    "/operations",
 )
 
 ROLE_PROTECTED_PREFIXES: dict[str, set[str]] = {
@@ -179,6 +181,7 @@ def create_app() -> FastAPI:
     app.include_router(suppliers.router)
     app.include_router(repairs.router)
     app.include_router(sales.router)
+    app.include_router(operations.router)
     app.include_router(sync.router)
     app.include_router(transfers.router)
     app.include_router(updates.router)
