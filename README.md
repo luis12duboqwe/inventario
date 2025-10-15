@@ -42,6 +42,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 La actualización UI de febrero 2025 refuerza la experiencia operativa sin modificar rutas ni versiones:
 
 - **Encabezados consistentes (`ModuleHeader`)** para cada módulo del dashboard con iconografía, subtítulo y badge de estado (verde/amarillo/rojo) alineado al estado operativo reportado por cada contexto.
+- **Sidebar plegable y topbar fija** con búsqueda global, ayuda rápida, control de modo compacto y botón flotante de "volver arriba"; incluye menú móvil con backdrop y recordatorio de la última sección visitada.
 - **Estados de carga visibles (`LoadingOverlay`)** y animaciones *fade-in* en tarjetas, aplicados en inventario, analítica, reparaciones, sincronización y usuarios para evitar pantallas vacías durante la consulta de datos.
 - **Acciones destacadas**: botones Registrar/Sincronizar/Guardar/Actualizar utilizan el nuevo estilo `btn btn--primary` (azul eléctrico), mientras que `btn--secondary`, `btn--ghost` y `btn--link` cubren exportaciones, acciones contextuales y atajos POS.
 - **Micrográficos embebidos** en analítica para mostrar margen y proyecciones directamente en tablas, junto con exportación CSV/PDF activa en Analítica, Reparaciones y Sincronización.

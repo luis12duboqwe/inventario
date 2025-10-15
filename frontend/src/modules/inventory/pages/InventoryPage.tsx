@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { motion } from "framer-motion";
+import { useLocation } from "react-router-dom";
 import {
   AlertTriangle,
   Boxes,
@@ -20,6 +21,7 @@ import MovementForm from "../components/MovementForm";
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 import type { Device } from "../../../api";
+import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
 
 type StatusBadge = {
@@ -49,6 +51,8 @@ const resolveLowStockSeverity = (quantity: number): "critical" | "warning" | "no
 };
 
 function InventoryPage() {
+  const location = useLocation();
+  const { globalSearchTerm, setGlobalSearchTerm } = useDashboard();
   const {
     token,
     enableCatalogPro,
@@ -78,7 +82,16 @@ function InventoryPage() {
   useEffect(() => {
     setInventoryQuery("");
     setEstadoFilter("TODOS");
-  }, [selectedStoreId]);
+    if (location.pathname.startsWith("/dashboard/inventory")) {
+      setGlobalSearchTerm("");
+    }
+  }, [location.pathname, selectedStoreId, setGlobalSearchTerm]);
+
+  useEffect(() => {
+    if (location.pathname.startsWith("/dashboard/inventory")) {
+      setInventoryQuery(globalSearchTerm);
+    }
+  }, [globalSearchTerm, location.pathname]);
 
   const lastBackup = backupHistory.at(0) ?? null;
   const lastRefreshDisplay = lastInventoryRefresh
@@ -306,7 +319,13 @@ function InventoryPage() {
             <input
               type="search"
               value={inventoryQuery}
-              onChange={(event) => setInventoryQuery(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setInventoryQuery(value);
+                if (location.pathname.startsWith("/dashboard/inventory")) {
+                  setGlobalSearchTerm(value);
+                }
+              }}
               placeholder="Buscar por IMEI, modelo o estado"
             />
           </label>

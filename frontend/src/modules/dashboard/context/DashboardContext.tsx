@@ -50,6 +50,11 @@ type DashboardContextValue = {
   enableAnalyticsAdv: boolean;
   enableTwoFactor: boolean;
   enableHybridPrep: boolean;
+  compactMode: boolean;
+  setCompactMode: (value: boolean) => void;
+  toggleCompactMode: () => void;
+  globalSearchTerm: string;
+  setGlobalSearchTerm: (term: string) => void;
   stores: Store[];
   summary: Summary[];
   metrics: InventoryMetrics | null;
@@ -125,6 +130,13 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const enableHybridPrep =
     (import.meta.env.VITE_SOFTMOBILE_ENABLE_HYBRID_PREP ?? "1") !== "0";
 
+  const [compactModeState, setCompactModeState] = useState<boolean>(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return window.localStorage.getItem("softmobile_compact_mode") === "1";
+  });
+  const [globalSearchTerm, setGlobalSearchTerm] = useState<string>("");
   const [stores, setStores] = useState<Store[]>([]);
   const [summary, setSummary] = useState<Summary[]>([]);
   const [metrics, setMetrics] = useState<InventoryMetrics | null>(null);
@@ -151,6 +163,27 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
     []
   );
+
+  const setCompactMode = useCallback((value: boolean) => {
+    setCompactModeState(value);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("softmobile_compact_mode", value ? "1" : "0");
+    }
+  }, []);
+
+  const toggleCompactMode = useCallback(() => {
+    setCompactMode(!compactModeState);
+  }, [compactModeState, setCompactMode]);
+
+  const friendlyErrorMessage = useCallback((message: string) => {
+    if (!message) {
+      return "Ocurrió un error inesperado";
+    }
+    if (message.toLowerCase().includes("failed to fetch")) {
+      return "No fue posible conectar con el servicio Softmobile. Verifica tu red e inténtalo nuevamente.";
+    }
+    return message;
+  }, []);
 
   const pushToast = useCallback((toast: Omit<ToastMessage, "id">) => {
     const id = Date.now() + Math.round(Math.random() * 1000);
@@ -237,7 +270,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
           setLastInventoryRefresh(new Date());
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "No fue posible cargar los datos iniciales");
+        const message = err instanceof Error ? err.message : "No fue posible cargar los datos iniciales";
+        setError(friendlyErrorMessage(message));
       } finally {
         setLoading(false);
       }
@@ -257,7 +291,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         setDevices(devicesData);
         setLastInventoryRefresh(new Date());
       } catch (err) {
-        setError(err instanceof Error ? err.message : "No fue posible cargar los dispositivos");
+        const message = err instanceof Error ? err.message : "No fue posible cargar los dispositivos";
+        setError(friendlyErrorMessage(message));
       }
     };
 
@@ -280,7 +315,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         setOutboxStats(statsData);
         setOutboxError(null);
       } catch (err) {
-        setOutboxError(err instanceof Error ? err.message : "No fue posible consultar la cola de sincronización");
+        const message =
+          err instanceof Error ? err.message : "No fue posible consultar la cola de sincronización";
+        setOutboxError(friendlyErrorMessage(message));
       }
     };
 
@@ -307,11 +344,11 @@ export function DashboardProvider({ token, children }: ProviderProps) {
             setLastInventoryRefresh(new Date());
           }
         } catch (err) {
-          setError(
+          const message =
             err instanceof Error
               ? err.message
-              : "No fue posible actualizar el inventario en tiempo real",
-          );
+              : "No fue posible actualizar el inventario en tiempo real";
+          setError(friendlyErrorMessage(message));
         }
       })();
     }, 30000);
@@ -340,8 +377,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setLastInventoryRefresh(new Date());
     } catch (err) {
       const message = err instanceof Error ? err.message : "No se pudo registrar el movimiento";
-      setError(message);
-      pushToast({ message, variant: "error" });
+      const friendly = friendlyErrorMessage(message);
+      setError(friendly);
+      pushToast({ message: friendly, variant: "error" });
     }
   };
 
@@ -362,8 +400,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       pushToast({ message: "Sincronización completada", variant: "success" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error durante la sincronización";
-      setSyncStatus(message);
-      pushToast({ message, variant: "error" });
+      const friendly = friendlyErrorMessage(message);
+      setSyncStatus(friendly);
+      pushToast({ message: friendly, variant: "error" });
     }
   };
 
@@ -376,8 +415,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       pushToast({ message: "Respaldo generado", variant: "success" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "No se pudo generar el respaldo";
-      setError(message);
-      pushToast({ message, variant: "error" });
+      const friendly = friendlyErrorMessage(message);
+      setError(friendly);
+      pushToast({ message: friendly, variant: "error" });
     }
   };
 
@@ -390,7 +430,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       const statsData = await getSyncOutboxStats(token);
       setOutboxStats(statsData);
     } catch (err) {
-      setOutboxError(err instanceof Error ? err.message : "No se pudo consultar las estadísticas de la cola");
+      const message =
+        err instanceof Error ? err.message : "No se pudo consultar las estadísticas de la cola";
+      setOutboxError(friendlyErrorMessage(message));
     }
   }, [enableHybridPrep, token]);
 
@@ -400,9 +442,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHistory(historyData);
       setSyncHistoryError(null);
     } catch (err) {
-      setSyncHistoryError(
-        err instanceof Error ? err.message : "No se pudo actualizar el historial de sincronización",
-      );
+      const message =
+        err instanceof Error ? err.message : "No se pudo actualizar el historial de sincronización";
+      setSyncHistoryError(friendlyErrorMessage(message));
     }
   }, [token]);
 
@@ -422,8 +464,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setOutboxError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "No se pudo actualizar la cola local";
-      setOutboxError(message);
-      pushToast({ message, variant: "error" });
+      const friendly = friendlyErrorMessage(message);
+      setOutboxError(friendly);
+      pushToast({ message: friendly, variant: "error" });
     }
   };
 
@@ -444,8 +487,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       await refreshOutboxStats();
     } catch (err) {
       const message = err instanceof Error ? err.message : "No se pudo reagendar la cola local";
-      setOutboxError(message);
-      pushToast({ message, variant: "error" });
+      const friendly = friendlyErrorMessage(message);
+      setOutboxError(friendly);
+      pushToast({ message: friendly, variant: "error" });
     }
   };
 
@@ -480,6 +524,11 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     enableAnalyticsAdv,
     enableTwoFactor,
     enableHybridPrep,
+    compactMode: compactModeState,
+    setCompactMode,
+    toggleCompactMode,
+    globalSearchTerm,
+    setGlobalSearchTerm,
     stores,
     summary,
     metrics,

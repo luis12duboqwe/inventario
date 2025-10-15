@@ -1,24 +1,37 @@
-import { useMemo } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
   Boxes,
   Cog,
+  Menu,
+  HelpCircle,
+  LogOut,
   Repeat,
+  Search,
   ShieldCheck,
+  SunMoon,
   UserCog,
   Wrench,
 } from "lucide-react";
-import { useDashboard } from "../context/DashboardContext";
+
+import BackToTopButton from "../../../components/BackToTopButton";
+import CompactModeToggle from "../../../components/CompactModeToggle";
 import GlobalMetrics from "../components/GlobalMetrics";
+import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
+import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
 
-type NavItem = {
-  to: string;
-  label: string;
-  icon: JSX.Element;
+type NavItem = SidebarNavItem & {
+  description: string;
   isEnabled: boolean;
+};
+
+type Props = {
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
+  onLogout: () => void;
 };
 
 const toastIcons: Record<ToastMessage["variant"], JSX.Element> = {
@@ -48,7 +61,7 @@ const toastIcons: Record<ToastMessage["variant"], JSX.Element> = {
   ),
 };
 
-function DashboardLayout() {
+function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
   const {
     enableAnalyticsAdv,
     enablePurchasesSales,
@@ -58,12 +71,45 @@ function DashboardLayout() {
     error,
     setMessage,
     setError,
+    pushToast,
     toasts,
     dismissToast,
     networkAlert,
     dismissNetworkAlert,
+    globalSearchTerm,
+    setGlobalSearchTerm,
+    compactMode,
   } = useDashboard();
   const location = useLocation();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("softmobile_last_module", location.pathname);
+    }
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isSidebarOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsSidebarOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSidebarOpen]);
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen((current) => !current);
+  };
+
+  const closeSidebar = () => {
+    setIsSidebarOpen(false);
+  };
 
   const isAdmin = currentUser?.roles.some((role) => role.name === "ADMIN") ?? false;
 
@@ -72,181 +118,270 @@ function DashboardLayout() {
       {
         to: "/dashboard/inventory",
         label: "Inventario",
+        description: "Inventario corporativo, auditorías y respaldos en vivo.",
         icon: <Boxes className="icon" aria-hidden="true" />,
         isEnabled: true,
       },
       {
         to: "/dashboard/operations",
         label: "Operaciones",
+        description: "Compras, ventas, devoluciones y transferencias sincronizadas.",
         icon: <Cog className="icon" aria-hidden="true" />,
         isEnabled: enablePurchasesSales || enableTransfers,
       },
       {
         to: "/dashboard/analytics",
         label: "Analítica",
+        description: "Indicadores avanzados de rotación, aging y proyecciones.",
         icon: <BarChart3 className="icon" aria-hidden="true" />,
         isEnabled: enableAnalyticsAdv,
       },
       {
         to: "/dashboard/security",
         label: "Seguridad",
+        description: "Autenticación, auditoría y políticas de acceso corporativo.",
         icon: <ShieldCheck className="icon" aria-hidden="true" />,
         isEnabled: true,
       },
       {
         to: "/dashboard/sync",
         label: "Sincronización",
+        description: "Cola híbrida, historial y reintentos locales supervisados.",
         icon: <Repeat className="icon" aria-hidden="true" />,
         isEnabled: true,
       },
       {
         to: "/dashboard/users",
         label: "Usuarios",
+        description: "Gestión de roles, sesiones activas y ajustes sensibles.",
         icon: <UserCog className="icon" aria-hidden="true" />,
         isEnabled: isAdmin,
       },
       {
         to: "/dashboard/repairs",
         label: "Reparaciones",
+        description: "Órdenes, repuestos y control de costos vinculados al inventario.",
         icon: <Wrench className="icon" aria-hidden="true" />,
         isEnabled: enablePurchasesSales,
       },
     ],
-    [enableAnalyticsAdv, enablePurchasesSales, enableTransfers, isAdmin]
+    [enableAnalyticsAdv, enablePurchasesSales, enableTransfers, isAdmin],
   );
 
   const availableNavItems = navItems.filter((item) => item.isEnabled);
+  const sidebarItems: SidebarNavItem[] = availableNavItems.map(({ to, label, icon }) => ({
+    to,
+    label,
+    icon,
+  }));
+
+  const activeNav =
+    availableNavItems.find((item) => location.pathname.startsWith(item.to)) ?? availableNavItems[0];
+  const moduleTitle = activeNav?.label ?? "Centro de control";
+  const moduleDescription =
+    activeNav?.description ?? "Supervisa Softmobile 2025 v2.2.0 y mantén la operación sin interrupciones.";
+
+  const handleQuickHelp = () => {
+    setMessage("Consulta docs/logs/softmobile_v2.2_mejoras_ui_navegacion.md para la guía de navegación actualizada.");
+    pushToast({
+      message: "Guía rápida disponible en docs/logs/softmobile_v2.2_mejoras_ui_navegacion.md",
+      variant: "info",
+    });
+  };
 
   return (
-    <div className="dashboard">
-      <div className="toast-container" aria-live="assertive" aria-atomic="true">
+    <div className={`dashboard-shell${compactMode ? " compact-mode" : ""}`}>
+      <Sidebar
+        items={sidebarItems}
+        currentPath={location.pathname}
+        mobileOpen={isSidebarOpen}
+        onNavigate={closeSidebar}
+      />
+      <AnimatePresence>
+        {isSidebarOpen ? (
+          <motion.button
+            key="sidebar-backdrop"
+            type="button"
+            className="dashboard-sidebar-backdrop"
+            onClick={closeSidebar}
+            aria-label="Cerrar menú lateral"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          />
+        ) : null}
+      </AnimatePresence>
+      <div className="dashboard-main">
+        <div className="toast-container" aria-live="assertive" aria-atomic="true">
+          <AnimatePresence>
+            {toasts.map((toast) => (
+              <motion.div
+                key={toast.id}
+                className={`toast ${toast.variant}`}
+                role="status"
+                initial={{ opacity: 0, x: 32, scale: 0.95 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 32, scale: 0.95 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                layout
+              >
+                <span className="toast-icon" aria-hidden="true">
+                  {toastIcons[toast.variant]}
+                </span>
+                <span className="toast-message">{toast.message}</span>
+                <button
+                  className="toast-dismiss"
+                  type="button"
+                  onClick={() => dismissToast(toast.id)}
+                  aria-label="Cerrar notificación"
+                >
+                  ×
+                </button>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+
         <AnimatePresence>
-          {toasts.map((toast) => (
+          {networkAlert ? (
             <motion.div
-              key={toast.id}
-              className={`toast ${toast.variant}`}
-              role="status"
-              initial={{ opacity: 0, x: 32, scale: 0.95 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 32, scale: 0.95 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
-              layout
+              key="network-alert"
+              className="alert warning network-alert"
+              role="alert"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3 }}
             >
-              <span className="toast-icon" aria-hidden="true">
-                {toastIcons[toast.variant]}
-              </span>
-              <span className="toast-message">{toast.message}</span>
+              <span aria-hidden="true">⚠️</span>
+              <span>{networkAlert}</span>
               <button
-                className="toast-dismiss"
+                className="alert-dismiss"
                 type="button"
-                onClick={() => dismissToast(toast.id)}
-                aria-label="Cerrar notificación"
+                onClick={dismissNetworkAlert}
+                aria-label="Descartar alerta de red"
               >
                 ×
               </button>
             </motion.div>
-          ))}
+          ) : null}
         </AnimatePresence>
-      </div>
 
-      <AnimatePresence>
-        {networkAlert ? (
-          <motion.div
-            key="network-alert"
-            className="alert warning network-alert"
-            role="alert"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.3 }}
-          >
-            <span aria-hidden="true">⚠️</span>
-            <span>{networkAlert}</span>
+        <header className="dashboard-topbar" role="banner">
+          <div className="dashboard-topbar__titles">
+            <h1>{moduleTitle}</h1>
+            <p className="muted-text">{moduleDescription}</p>
+          </div>
+          <div className="dashboard-topbar__actions">
             <button
-              className="alert-dismiss"
               type="button"
-              onClick={dismissNetworkAlert}
-              aria-label="Descartar alerta de red"
+              className="btn btn--ghost dashboard-mobile-menu"
+              onClick={toggleSidebar}
+              aria-expanded={isSidebarOpen}
+              aria-controls="dashboard-navigation"
             >
-              ×
+              <Menu size={16} aria-hidden="true" />
+              <span>{isSidebarOpen ? "Cerrar menú" : "Menú"}</span>
             </button>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      <header className="dashboard-header">
-        <h1>Softmobile 2025 · Centro de control</h1>
-        <p className="muted-text">Gestiona inventario, operaciones y seguridad desde áreas especializadas.</p>
-      </header>
-
-      <GlobalMetrics />
-
-      <nav className="dashboard-nav" aria-label="Secciones del panel">
-        {availableNavItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) => `dashboard-nav-item${isActive ? " active" : ""}`}
-          >
-            <span className="dashboard-nav-icon" aria-hidden="true">
-              {item.icon}
-            </span>
-            <span className="dashboard-nav-label">{item.label}</span>
-          </NavLink>
-        ))}
-      </nav>
-
-      <AnimatePresence>
-        {message ? (
-          <motion.div
-            key="dashboard-message"
-            className="alert success"
-            role="status"
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.25 }}
-          >
-            <div>{message}</div>
-            <button className="alert-dismiss" type="button" onClick={() => setMessage(null)} aria-label="Cerrar aviso">
-              ×
+            <label className="dashboard-search" aria-label="Buscador global">
+              <Search size={16} aria-hidden="true" />
+              <input
+                type="search"
+                value={globalSearchTerm}
+                onChange={(event) => setGlobalSearchTerm(event.target.value)}
+                placeholder="Buscar en Softmobile"
+              />
+            </label>
+            <button type="button" className="btn btn--ghost" onClick={handleQuickHelp}>
+              <HelpCircle size={16} aria-hidden="true" />
+              <span>Ayuda rápida</span>
             </button>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {error ? (
-          <motion.div
-            key="dashboard-error"
-            className="alert error"
-            role="alert"
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.25 }}
-          >
-            <div>{error}</div>
-            <button className="alert-dismiss" type="button" onClick={() => setError(null)} aria-label="Cerrar error">
-              ×
+            <CompactModeToggle />
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={onToggleTheme}
+              aria-pressed={theme === "light"}
+            >
+              <SunMoon size={16} aria-hidden="true" />
+              <span>Tema {theme === "dark" ? "oscuro" : "claro"}</span>
             </button>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+            <button type="button" className="btn btn--danger" onClick={onLogout}>
+              <LogOut size={16} aria-hidden="true" />
+              <span>Cerrar sesión</span>
+            </button>
+          </div>
+        </header>
 
-      <AnimatePresence mode="wait">
-        <motion.section
-          key={location.pathname}
-          className="dashboard-section"
-          aria-live="polite"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -12 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-        >
-          <Outlet />
-        </motion.section>
-      </AnimatePresence>
+        <main className="dashboard-content">
+          <GlobalMetrics />
+
+          <AnimatePresence>
+            {message ? (
+              <motion.div
+                key="dashboard-message"
+                className="alert success"
+                role="status"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.25 }}
+              >
+                <div>{message}</div>
+                <button
+                  className="alert-dismiss"
+                  type="button"
+                  onClick={() => setMessage(null)}
+                  aria-label="Cerrar aviso"
+                >
+                  ×
+                </button>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {error ? (
+              <motion.div
+                key="dashboard-error"
+                className="alert error"
+                role="alert"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.25 }}
+              >
+                <div>{error}</div>
+                <button
+                  className="alert-dismiss"
+                  type="button"
+                  onClick={() => setError(null)}
+                  aria-label="Cerrar error"
+                >
+                  ×
+                </button>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence mode="wait">
+            <motion.section
+              key={location.pathname}
+              className="dashboard-section"
+              aria-live="polite"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+            >
+              <Outlet />
+            </motion.section>
+          </AnimatePresence>
+        </main>
+
+        <BackToTopButton />
+      </div>
     </div>
   );
 }

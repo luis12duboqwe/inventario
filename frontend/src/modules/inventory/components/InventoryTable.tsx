@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import ScrollableTable from "../../../components/ScrollableTable";
 import { Device } from "../../../api";
 
 type Props = {
@@ -35,52 +36,48 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage }: Props) 
     []
   );
 
-  if (devices.length === 0) {
-    return <p>{emptyMessage ?? "No hay dispositivos registrados para esta sucursal."}</p>;
-  }
-
   return (
-    <table className="inventory-table">
-      <thead>
-        <tr>
-          <th>SKU</th>
-          <th>Nombre</th>
-          <th>Modelo</th>
-          <th>Estado</th>
-          <th>Identificadores</th>
-          <th>Cantidad</th>
-          <th>Precio unitario</th>
-          <th>Valor total</th>
+    <ScrollableTable
+      items={devices}
+      itemKey={(device) => device.id}
+      renderHead={() => (
+        <>
+          <th scope="col">SKU</th>
+          <th scope="col">Nombre</th>
+          <th scope="col">Modelo</th>
+          <th scope="col">Estado</th>
+          <th scope="col">Identificadores</th>
+          <th scope="col">Cantidad</th>
+          <th scope="col">Precio unitario</th>
+          <th scope="col">Valor total</th>
+        </>
+      )}
+      renderRow={(device) => (
+        <tr className={highlightedDeviceIds?.has(device.id) ? "inventory-row low-stock" : "inventory-row"}>
+          <td data-label="SKU">{device.sku}</td>
+          <td data-label="Nombre">{device.name}</td>
+          <td data-label="Modelo">{device.modelo ?? "—"}</td>
+          <td data-label="Estado">
+            <span className={`status-chip ${estadoTone(device.estado_comercial)}`}>
+              {estadoLabels[device.estado_comercial]}
+            </span>
+          </td>
+          <td data-label="Identificadores">
+            <div className="identifier-stack">
+              {device.imei ? <span>IMEI: {device.imei}</span> : null}
+              {device.serial ? <span>Serie: {device.serial}</span> : null}
+              {!device.imei && !device.serial ? <span className="muted-text">—</span> : null}
+            </div>
+          </td>
+          <td data-label="Cantidad">{device.quantity}</td>
+          <td data-label="Precio unitario">{currencyFormatter.format(device.unit_price)}</td>
+          <td data-label="Valor total">{currencyFormatter.format(device.inventory_value)}</td>
         </tr>
-      </thead>
-      <tbody>
-        {devices.map((device) => (
-          <tr
-            key={device.id}
-            className={highlightedDeviceIds?.has(device.id) ? "inventory-row low-stock" : "inventory-row"}
-          >
-            <td>{device.sku}</td>
-            <td>{device.name}</td>
-            <td>{device.modelo ?? "—"}</td>
-            <td>
-              <span className={`status-chip ${estadoTone(device.estado_comercial)}`}>
-                {estadoLabels[device.estado_comercial]}
-              </span>
-            </td>
-            <td>
-              <div className="identifier-stack">
-                {device.imei ? <span>IMEI: {device.imei}</span> : null}
-                {device.serial ? <span>Serie: {device.serial}</span> : null}
-                {!device.imei && !device.serial ? <span className="muted-text">—</span> : null}
-              </div>
-            </td>
-            <td>{device.quantity}</td>
-            <td>{currencyFormatter.format(device.unit_price)}</td>
-            <td>{currencyFormatter.format(device.inventory_value)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+      )}
+      emptyMessage={emptyMessage ?? "No hay dispositivos registrados para esta sucursal."}
+      title="Inventario corporativo"
+      ariaLabel="Tabla de inventario corporativo"
+    />
   );
 }
 
