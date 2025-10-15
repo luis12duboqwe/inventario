@@ -121,59 +121,6 @@ def _device_value(device: models.Device) -> Decimal:
     return Decimal(device.quantity) * (device.unit_price or Decimal("0"))
 
 
-def _device_category_expr():
-    """Expresión base para agrupar/filtrar por categoría analítica."""
-
-    return func.coalesce(models.Device.modelo, models.Device.marca, models.Device.sku)
-
-
-def _normalize_date_range(
-    date_from: date | None, date_to: date | None
-) -> tuple[datetime | None, datetime | None]:
-    start_dt = datetime.combine(date_from, datetime.min.time()) if date_from else None
-    end_dt = datetime.combine(date_to, datetime.max.time()) if date_to else None
-    return start_dt, end_dt
-
-
-def _linear_regression(points: list[tuple[float, float]]) -> tuple[float, float, float]:
-    """Calcula la regresión lineal simple y devuelve (slope, intercept, r2)."""
-
-    if not points:
-        return 0.0, 0.0, 0.0
-    if len(points) == 1:
-        return 0.0, points[0][1], 0.0
-
-    sum_x = sum(x for x, _ in points)
-    sum_y = sum(y for _, y in points)
-    sum_xy = sum(x * y for x, y in points)
-    sum_x2 = sum(x * x for x, _ in points)
-    n = float(len(points))
-    denominator = n * sum_x2 - sum_x**2
-    if math.isclose(denominator, 0.0):
-        slope = 0.0
-    else:
-        slope = (n * sum_xy - sum_x * sum_y) / denominator
-    intercept = (sum_y - slope * sum_x) / n
-
-    mean_y = sum_y / n
-    ss_tot = sum((y - mean_y) ** 2 for _, y in points)
-    ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in points)
-    r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
-    return slope, intercept, max(0.0, min(r_squared, 1.0))
-
-
-def _project_linear_sum(
-    slope: float, intercept: float, start_index: int, horizon: int
-) -> float:
-    """Suma los valores proyectados de una serie lineal en un horizonte dado."""
-
-    total = 0.0
-    for offset in range(horizon):
-        estimate = slope * (start_index + offset) + intercept
-        total += max(0.0, estimate)
-    return total
-
-
 def _recalculate_store_inventory_value(
     db: Session, store: models.Store | int
 ) -> Decimal:
@@ -192,14 +139,6 @@ def _recalculate_store_inventory_value(
     db.add(store_obj)
     db.flush()
     return normalized_total
-
-
-def _user_display_name(user: models.User | None) -> str | None:
-    if user is None:
-        return None
-    if getattr(user, "full_name", None):
-        return user.full_name
-    return getattr(user, "username", None)
 
 
 def _customer_payload(customer: models.Customer) -> dict[str, object]:
