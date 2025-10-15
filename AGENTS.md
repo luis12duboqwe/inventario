@@ -90,3 +90,25 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - ✅ Parte 1 — Inventario (Optimización total): se agregaron lotes de proveedores con costo unitario, lote y fecha (`/suppliers/{id}/batches`), columna `stores.inventory_value` y recalculo automático del costo promedio en movimientos (`unit_cost`), con cobertura en `test_supplier_batches_and_inventory_value`.
 - 🔄 26/02/2025 — Se alinearon las columnas `created_at`/`updated_at` del modelo `SupplierBatch` con la migración `202502150007_inventory_batches` para reanudar `pytest` sin fallos.
 - ▶️ Próximo paso inmediato: abordar la Parte 2 — Operaciones, implementando importación CSV, órdenes recurrentes y vinculación completa con Inventario.
+
+### Registro operativo — 27/02/2025
+
+- ✅ Parte 2 — Operaciones: transferencias con doble aprobación, importación CSV, órdenes recurrentes y descuento automático de stock confirmados en backend (`routers/operations.py`, `transfers.py`, `purchases.py`, `sales.py`) y frontend (`OperationsPage.tsx`).
+- ✅ Parte 3 — Analítica: proyecciones con regresión lineal, alertas automáticas y filtros avanzados activos en `services/analytics.py`, `/reports/analytics/*` y `AnalyticsBoard.tsx`.
+- ✅ Parte 4 — Seguridad: 2FA controlada por flag, bloqueo temporal por intentos fallidos, filtros de auditoría y exportación CSV vigentes en `security.py` y `AuditLog.tsx`.
+- ✅ Parte 5 — Sincronización: modo híbrido con prioridad por entidad, respaldo cifrado `/backup/softmobile` y botón de errores recientes disponibles en `sync.py`, `services/sync_outbox.py` y `SyncPanel.tsx`.
+- ✅ Parte 6 — Usuarios: roles ADMIN/GERENTE/OPERADOR, panel de permisos, mensajería interna, avatares y historial de sesiones operativos en `users.py` y `UserManagement.tsx`.
+- ✅ Parte 7 — Reparaciones: descuento de piezas, cálculo de costos, estados personalizados y notificaciones a clientes registrados en `repairs.py`, `RepairOrders.tsx` y la bitácora de seguridad.
+- ✅ Parte 8 — Backend general e instalador: API FastAPI + PostgreSQL con JWT protegidos, actualizador automático (`updates.py`) y plantillas de instalador (`installers/`) con modo offline.
+
+### Registro operativo — 28/02/2025
+
+- ✅ Parte 4 — Seguridad: la bitácora de auditoría ahora permite filtrar por usuario, acción, módulo y rango de fechas, además de exportarse a CSV desde `/audit/logs/export.csv` y `/reports/audit`. Cobertura verificada en `backend/tests/test_audit_logs.py`.
+- ✅ 28/02/2025 — Se habilitó `/reports/audit/pdf` con filtros impresos, clasificación por severidad en `services/audit.py` y alertas visuales dentro de `AuditLog.tsx`, incluyendo descarga directa desde la UI. Pruebas extendidas en `backend/tests/test_audit_logs.py`.
+- ▶️ Próximo paso inmediato: consolidar las alertas de auditoría en el tablero global de métricas y documentar lineamientos de respuesta rápida.
+
+**Acciones obligatorias antes de nuevas iteraciones**
+
+1. Leer `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` para identificar pendientes.
+2. Ejecutar `pytest` y `npm --prefix frontend run build`, registrando fecha y resultado en la bitácora interna.
+3. Validar inventario, operaciones, analítica, seguridad, sincronización y usuarios en el frontend, asegurando que `/sync/outbox` quede sin pendientes críticos y documentando incidentes.

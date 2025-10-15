@@ -910,6 +910,8 @@ class AuditLogResponse(BaseModel):
     details: str | None
     performed_by_id: int | None
     created_at: datetime
+    severity: Literal["info", "warning", "critical"] = Field(default="info")
+    severity_label: str = Field(default="Informativa")
 
     model_config = ConfigDict(from_attributes=True)
 

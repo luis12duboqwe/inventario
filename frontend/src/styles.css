@@ -287,6 +287,10 @@ button.link:hover:not(:disabled) {
   background-color: rgba(218, 54, 51, 0.08);
 }
 
+.critical-row {
+  background-color: rgba(248, 113, 113, 0.18);
+}
+
 .alert.warning.inline {
   display: inline-block;
   margin-top: 0.35rem;
@@ -309,6 +313,13 @@ button.link:hover:not(:disabled) {
 .totals-panel .highlight {
   color: var(--accent);
   font-size: 1.2rem;
+}
+
+.audit-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0 1rem;
 }
 
 .actions-row {
@@ -1246,6 +1257,11 @@ button.link:hover:not(:disabled) {
   color: #fbbf24;
 }
 
+.pill.danger {
+  background: rgba(248, 113, 113, 0.22);
+  color: #f87171;
+}
+
 .pill.accent {
   margin-top: 0.75rem;
   background: rgba(0, 191, 255, 0.16);
@@ -1291,6 +1307,12 @@ button.link:hover:not(:disabled) {
   background: rgba(35, 134, 54, 0.2);
   border: 1px solid rgba(35, 134, 54, 0.35);
   color: #48d26d;
+}
+
+.alert.warning {
+  background: rgba(251, 191, 36, 0.18);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #facc15;
 }
 
 .alert.error {
