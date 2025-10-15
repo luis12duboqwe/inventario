@@ -74,7 +74,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 ### Pasos de control iterativo (deben registrarse tras cada entrega)
 
 1. Revisa `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` antes de modificar código; anota brechas resueltas o pendientes.
-2. Ejecuta `pytest` en la raíz y `npm --prefix frontend run build`; registra fecha y resultado en la bitácora interna del equipo.
+2. Ejecuta `pytest`, `npm --prefix frontend run build` y `npm --prefix frontend run test`; registra fecha y resultado en la bitácora interna del equipo.
 3. Verifica desde el frontend las secciones Inventario, Operaciones, Analítica, Seguridad (incluyendo flujos 2FA con motivo) y Sincronización.
 4. Asegura que la cola híbrida (`/sync/outbox`) quede sin pendientes críticos reintentando con `X-Reason` justificado y documenta el resultado.
 5. Actualiza el apartado "Registro operativo de lotes entregados" del README con cualquier nuevo componente, endpoint o prueba agregada.
