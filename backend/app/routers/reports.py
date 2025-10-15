@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import csv
-from io import BytesIO, StringIO
-
 from datetime import date, datetime
+from io import BytesIO, StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -14,6 +13,7 @@ from .. import crud, schemas
 from ..config import settings
 from ..core.roles import AUDITORIA_ROLES, REPORTE_ROLES
 from ..database import get_db
+from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import analytics as analytics_service
 from ..services import audit as audit_service
@@ -48,6 +48,45 @@ def audit_logs(
         date_from=date_from,
         date_to=date_to,
     )
+
+
+@router.get("/audit/pdf")
+def audit_logs_pdf(
+    limit: int = Query(default=200, ge=1, le=1000),
+    action: str | None = Query(default=None, max_length=120),
+    entity_type: str | None = Query(default=None, max_length=80),
+    performed_by_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*AUDITORIA_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    logs = crud.list_audit_logs(
+        db,
+        limit=limit,
+        action=action,
+        entity_type=entity_type,
+        performed_by_id=performed_by_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    summary = audit_utils.summarize_alerts(logs)
+    filters: dict[str, str] = {}
+    if action:
+        filters["Acción"] = action
+    if entity_type:
+        filters["Tipo de entidad"] = entity_type
+    if performed_by_id is not None:
+        filters["Usuario"] = str(performed_by_id)
+    if date_from:
+        filters["Desde"] = str(date_from)
+    if date_to:
+        filters["Hasta"] = str(date_to)
+    pdf_bytes = audit_service.render_audit_pdf(logs, filters=filters, alerts=summary)
+    buffer = BytesIO(pdf_bytes)
+    headers = {"Content-Disposition": "attachment; filename=auditoria_softmobile.pdf"}
+    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
 
 
 @router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse)

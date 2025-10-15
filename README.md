@@ -28,9 +28,8 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Operaciones automatizadas** con importación masiva desde CSV, plantillas recurrentes reutilizables y panel histórico filtrable por técnico, sucursal y rango de fechas (`/operations/history`).
 - **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
 - **Gestión de clientes y proveedores corporativos** con historial de contacto, exportación CSV, saldos pendientes y notas auditables desde la UI.
-- **Bitácora de auditoría filtrable** con búsqueda por acción, módulo, usuario y rango de fechas, exportación CSV/PDF (`/audit/logs/export.csv`, `/reports/audit/pdf`) que refleja el estado del acuse manual (pendiente/atendida) y notas asociadas, además de alertas visuales por severidad en el dashboard corporativo.
-- **Recordatorios automáticos de seguridad** que detectan alertas críticas persistentes y generan avisos y snooze de 10 minutos directamente en el módulo Seguridad.
-- **Acuses manuales de resolución** para alertas críticas: desde Seguridad se registra nota y motivo corporativo, `/reports/metrics` refleja pendientes vs. atendidas y las exportaciones CSV/PDF incorporan el acuse con usuario, fecha y nota en tiempo real.
+- ⚠️ **Bitácora de auditoría extendida**: el backend ya expone `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf` con cabecera `X-Reason`, además de métricas que distinguen pendientes vs. atendidas; falta conectar `AuditLog.tsx` a estos servicios para mostrar recordatorios, snooze de 10 minutos y descargas directas en la UI.【F:backend/app/routers/audit.py†L18-L120】【F:backend/app/crud.py†L1856-L1943】【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L220】
+- ⚠️ **Recordatorios y acuses visibles en frontend**: la API cliente (`frontend/src/api.ts`) ya incluye `getAuditReminders`, `acknowledgeAuditAlert` y `downloadAuditPdf`, pero el componente `AuditLog.tsx` no consume estas funciones ni actualiza badges/toasts; implementa los efectos, temporizadores de snooze y pruebas Vitest siguiendo la guía operativa.【F:frontend/src/api.ts†L1820-L1889】【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L220】【F:docs/guia_revision_total_v2.2.0.md†L1-L118】
 - **Órdenes de reparación sincronizadas** con piezas descontadas automáticamente del inventario, estados corporativos (🟡/🟠/🟢/⚪) y descarga de orden en PDF.
 - **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
 - **Analítica comparativa multi-sucursal** con endpoints `/reports/analytics/comparative`, `/reports/analytics/profit_margin` y `/reports/analytics/sales_forecast`, exportación CSV consolidada y tablero React con filtros por sucursal.
@@ -89,6 +88,7 @@ Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.a
 - `backend/tests/test_customers.py`: asegura que las mutaciones requieren `X-Reason` y que los roles restringidos reciben `403`.
 - `backend/tests/test_pos.py`: comprueba ventas POS con y sin motivo, creación de dispositivos y bloqueo a usuarios sin privilegios.
 - `backend/tests/test_sync_full.py`: orquesta venta POS, reparación, actualización de cliente y reintentos híbridos verificando que `sync_outbox` almacene eventos PENDING y que `/sync/outbox/retry` exija motivo corporativo.
+- `docs/prompts_operativos_v2.2.0.md`: recopila los prompts oficiales por lote, seguridad y pruebas junto con el checklist operativo reutilizable para futuras iteraciones.
 
 ### Mockup operativo
 
