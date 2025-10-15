@@ -35,25 +35,16 @@ function GlobalMetrics() {
   const auditAlerts = metrics.audit_alerts;
   const formatHighlightDate = (isoString: string) =>
     new Date(isoString).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
-  const formatAckDate = formatHighlightDate;
   const severityLabels: Record<"critical" | "warning" | "info", string> = {
     critical: "Crítica",
     warning: "Preventiva",
     info: "Informativa",
   };
-  const pendingCritical = auditAlerts.pending_critical ?? auditAlerts.critical;
-  const acknowledgedCritical = auditAlerts.acknowledged_critical ?? 0;
-  const alertsTone = pendingCritical > 0 ? "alert" : auditAlerts.warning > 0 ? "info" : "good";
+  const alertsTone = auditAlerts.critical > 0 ? "alert" : auditAlerts.warning > 0 ? "info" : "good";
   const alertsValue =
     auditAlerts.total === 0
       ? "0 eventos"
       : `${auditAlerts.critical} críticas · ${auditAlerts.warning} preventivas`;
-  const alertsCaption = auditAlerts.has_alerts
-    ? acknowledgedCritical > 0
-      ? `${acknowledgedCritical} críticas atendidas · ${pendingCritical} pendientes`
-      : "Atiende las incidencias desde Seguridad"
-    : "Sin incidencias recientes";
-  const acknowledgedList = auditAlerts.acknowledged ?? [];
 
   const cards = [
     {
@@ -88,7 +79,9 @@ function GlobalMetrics() {
       id: "audit-alerts",
       title: "Alertas de auditoría",
       value: alertsValue,
-      caption: alertsCaption,
+      caption: auditAlerts.has_alerts
+        ? "Atiende las incidencias desde Seguridad"
+        : "Sin incidencias recientes",
       tone: alertsTone,
     },
   ];
@@ -146,28 +139,12 @@ function GlobalMetrics() {
                   <div className="highlight-details">
                     <p className="highlight-action">{highlight.action}</p>
                     <span className="highlight-meta">
-                      {formatHighlightDate(highlight.created_at)} · {highlight.entity_type} #{highlight.entity_id}
+                      {formatHighlightDate(highlight.created_at)} · {highlight.entity_type}
                     </span>
                   </div>
                 </li>
               ))}
             </ul>
-          )}
-          {acknowledgedList.length > 0 && (
-            <div className="acknowledged-list" aria-live="polite">
-              <h4>Últimas atenciones</h4>
-              <ul>
-                {acknowledgedList.map((item) => (
-                  <li key={`${item.entity_type}-${item.entity_id}-${item.acknowledged_at}`}>
-                    <strong>{item.entity_type} #{item.entity_id}</strong>
-                    <span>
-                      {formatAckDate(item.acknowledged_at)} · {item.acknowledged_by_name ?? "Usuario"}
-                    </span>
-                    {item.note && <p className="ack-note">{item.note}</p>}
-                  </li>
-                ))}
-              </ul>
-            </div>
           )}
         </article>
 

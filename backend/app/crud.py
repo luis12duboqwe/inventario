@@ -1936,22 +1936,8 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
                 "created_at": highlight["created_at"],
                 "severity": highlight["severity"],
                 "entity_type": highlight["entity_type"],
-                "entity_id": highlight["entity_id"],
             }
-            for highlight in pending_highlights
-        ],
-        "pending_critical": pending_critical,
-        "acknowledged_critical": len(acknowledged_entities),
-        "acknowledged": [
-            {
-                "entity_type": item["entity_type"],
-                "entity_id": item["entity_id"],
-                "acknowledged_at": item["acknowledged_at"],
-                "acknowledged_by_id": item["acknowledged_by_id"],
-                "acknowledged_by_name": item["acknowledged_by_name"],
-                "note": item["note"],
-            }
-            for item in acknowledged_entities[:5]
+            for highlight in alert_summary.highlights
         ],
     }
 

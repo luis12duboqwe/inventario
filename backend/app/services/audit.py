@@ -10,7 +10,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from ..models import AuditAlertAcknowledgement, AuditLog
+from ..models import AuditLog
 from ..utils import audit as audit_utils
 
 
@@ -19,15 +19,12 @@ def render_audit_pdf(
     *,
     filters: Mapping[str, str],
     alerts: audit_utils.AuditAlertSummary,
-    acknowledgements: Mapping[tuple[str, str], AuditAlertAcknowledgement] | None = None,
 ) -> bytes:
     """Construye un PDF en tema oscuro con filtros y alertas visibles."""
 
     logs = list(logs)
-    acknowledgement_map = dict(acknowledgements or {})
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, title="Softmobile - Auditoría consolidada")
-    doc.compress = False
     styles = getSampleStyleSheet()
     dark_body = ParagraphStyle(
         name="AuditBody",
@@ -69,53 +66,10 @@ def render_audit_pdf(
         ]
     )
 
-    if acknowledgement_map:
-        ack_entries = sorted(
-            acknowledgement_map.values(),
-            key=lambda item: item.acknowledged_at,
-            reverse=True,
-        )
-        ack_lines: list[str] = []
-        for entry in ack_entries[:10]:
-            user_display = None
-            if entry.acknowledged_by is not None:
-                if entry.acknowledged_by.full_name:
-                    user_display = entry.acknowledged_by.full_name
-                else:
-                    user_display = entry.acknowledged_by.username
-            line = (
-                f"{entry.acknowledged_at.strftime('%d/%m/%Y %H:%M:%S')} · "
-                f"{entry.entity_type} #{entry.entity_id}"
-            )
-            if user_display:
-                line += f" · {user_display}"
-            if entry.note:
-                line += f" · Nota: {entry.note}"
-            ack_lines.append(line)
-
-        elements.extend(
-            [
-                Spacer(1, 8),
-                Paragraph(
-                    f"Total de alertas atendidas en el reporte: {len(ack_entries)}",
-                    dark_body,
-                ),
-            ]
-        )
-        if ack_lines:
-            ack_text = "<br/>".join(ack_lines)
-            elements.extend(
-                [
-                    Spacer(1, 6),
-                    Paragraph("Acuses registrados", styles["Heading3"]),
-                    Paragraph(ack_text, dark_body),
-                ]
-            )
-
     if alerts.highlights:
         highlights_lines = "<br/>".join(
             f"{entry['created_at'].strftime('%d/%m/%Y %H:%M:%S')} · "
-            f"{audit_utils.severity_label(entry['severity'])}: {entry['action']} ({entry['entity_type']} #{entry['entity_id']})"
+            f"{audit_utils.severity_label(entry['severity'])}: {entry['action']} ({entry['entity_type']})"
             for entry in alerts.highlights
         )
         elements.append(Spacer(1, 6))
@@ -125,27 +79,12 @@ def render_audit_pdf(
     elements.append(Spacer(1, 16))
 
     table_data = [
-        ["Fecha", "Acción", "Entidad", "Detalle", "Severidad", "Estado alerta"],
+        ["Fecha", "Acción", "Entidad", "Detalle", "Severidad"],
     ]
 
     max_rows = 60
     for log in logs[:max_rows]:
         severity = audit_utils.classify_severity(log.action or "", log.details)
-        key = (log.entity_type, log.entity_id)
-        acknowledgement = acknowledgement_map.get(key)
-        state = "Pendiente"
-        if acknowledgement and acknowledgement.acknowledged_at >= log.created_at:
-            user_display = None
-            if acknowledgement.acknowledged_by is not None:
-                if acknowledgement.acknowledged_by.full_name:
-                    user_display = acknowledgement.acknowledged_by.full_name
-                else:
-                    user_display = acknowledgement.acknowledged_by.username
-            state = (
-                f"Atendida {acknowledgement.acknowledged_at.strftime('%d/%m/%Y %H:%M')}"
-            )
-            if user_display:
-                state += f" · {user_display}"
         table_data.append(
             [
                 log.created_at.strftime("%d/%m/%Y %H:%M:%S"),
@@ -153,11 +92,10 @@ def render_audit_pdf(
                 f"{log.entity_type} #{log.entity_id}",
                 log.details or "-",
                 audit_utils.severity_label(severity),
-                state,
             ]
         )
 
-    table = Table(table_data, colWidths=[90, 110, 120, 150, 60, 140])
+    table = Table(table_data, colWidths=[90, 110, 120, 160, 60])
     table_style: list[tuple] = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -168,7 +106,6 @@ def render_audit_pdf(
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#111827"), colors.HexColor("#0f172a")]),
         ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#1f2937")),
         ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#1f2937")),
-        ("ALIGN", (5, 1), (5, -1), "LEFT"),
     ]
 
     for idx, log in enumerate(logs[:max_rows], start=1):
@@ -179,9 +116,6 @@ def render_audit_pdf(
         elif severity == "warning":
             table_style.append(("BACKGROUND", (0, idx), (-1, idx), colors.HexColor("#422006")))
             table_style.append(("TEXTCOLOR", (0, idx), (-1, idx), colors.HexColor("#fde68a")))
-        acknowledgement = acknowledgement_map.get((log.entity_type, log.entity_id))
-        if acknowledgement and acknowledgement.acknowledged_at >= log.created_at:
-            table_style.append(("TEXTCOLOR", (5, idx), (5, idx), colors.HexColor("#bbf7d0")))
 
     table.setStyle(TableStyle(table_style))
     elements.append(table)

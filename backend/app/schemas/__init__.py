@@ -675,7 +675,6 @@ class AuditHighlight(BaseModel):
     created_at: datetime
     severity: Literal["info", "warning", "critical"]
     entity_type: str
-    entity_id: str
 
     @field_serializer("created_at")
     @classmethod
@@ -689,9 +688,6 @@ class DashboardAuditAlerts(BaseModel):
     warning: int
     info: int
     highlights: list[AuditHighlight] = Field(default_factory=list)
-    pending_critical: int = Field(default=0)
-    acknowledged_critical: int = Field(default=0)
-    acknowledged: list["AuditAcknowledgementSummary"] = Field(default_factory=list)
 
     @computed_field(return_type=bool)  # type: ignore[misc]
     def has_alerts(self) -> bool:
@@ -954,16 +950,6 @@ class AuditReminderEntry(BaseModel):
     occurrences: int = Field(..., ge=1)
     latest_action: str
     latest_details: str | None = None
-    status: Literal["pending", "acknowledged"] = Field(default="pending")
-    acknowledged_at: datetime | None = None
-    acknowledged_by_id: int | None = None
-    acknowledged_by_name: str | None = None
-    acknowledged_note: str | None = None
-
-    @field_serializer("acknowledged_at")
-    @classmethod
-    def _serialize_ack_at(cls, value: datetime | None) -> str | None:
-        return value.isoformat() if value else None
 
 
 class AuditReminderSummary(BaseModel):
@@ -971,32 +957,6 @@ class AuditReminderSummary(BaseModel):
     min_occurrences: int = Field(..., ge=1)
     total: int = Field(..., ge=0)
     persistent: list[AuditReminderEntry]
-    pending: int = Field(..., ge=0)
-    acknowledged_total: int = Field(..., ge=0)
-
-
-class AuditAcknowledgementRequest(BaseModel):
-    entity_type: str = Field(..., min_length=1, max_length=80)
-    entity_id: str = Field(..., min_length=1, max_length=80)
-    note: str | None = Field(default=None, max_length=255)
-
-
-class AuditAcknowledgementSummary(BaseModel):
-    entity_type: str
-    entity_id: str
-    acknowledged_at: datetime
-    acknowledged_by_id: int | None = None
-    acknowledged_by_name: str | None = None
-    note: str | None = None
-
-    @field_serializer("acknowledged_at")
-    @classmethod
-    def _serialize_acknowledged_at(cls, value: datetime) -> str:
-        return value.isoformat()
-
-
-class AuditAcknowledgementResponse(AuditAcknowledgementSummary):
-    pass
 
 
 class PurchaseOrderItemCreate(BaseModel):
@@ -1715,13 +1675,8 @@ __all__ = [
     "AnalyticsProfitMarginResponse",
     "AnalyticsRotationResponse",
     "AnalyticsSalesProjectionResponse",
-    "AuditAcknowledgementRequest",
-    "AuditAcknowledgementResponse",
-    "AuditAcknowledgementSummary",
     "AuditHighlight",
     "AuditLogResponse",
-    "AuditReminderEntry",
-    "AuditReminderSummary",
     "DashboardAuditAlerts",
     "BackupJobResponse",
     "BackupRunRequest",

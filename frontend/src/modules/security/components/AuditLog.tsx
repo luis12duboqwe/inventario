@@ -1,15 +1,10 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AuditLogEntry,
   AuditLogFilters,
-  AuditReminderEntry,
-  AuditReminderSummary,
-  AuditAcknowledgementRequest,
   downloadAuditPdf,
   exportAuditLogsCsv,
   getAuditLogs,
-  getAuditReminders,
-  acknowledgeAuditAlert,
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
@@ -28,15 +23,7 @@ function AuditLog({ token }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [reminders, setReminders] = useState<AuditReminderSummary | null>(null);
-  const [remindersLoading, setRemindersLoading] = useState(false);
-  const [remindersError, setRemindersError] = useState<string | null>(null);
-  const [ackNotes, setAckNotes] = useState<Record<string, string>>({});
-  const [ackReasons, setAckReasons] = useState<Record<string, string>>({});
-  const [ackErrors, setAckErrors] = useState<Record<string, string>>({});
-  const [ackSubmitting, setAckSubmitting] = useState<string | null>(null);
-  const [snoozedUntil, setSnoozedUntil] = useState<number | null>(null);
-  const { pushToast, refreshSummary } = useDashboard();
+  const { pushToast } = useDashboard();
   const reminderIntervalRef = useRef<number | null>(null);
   const snoozeTimeoutRef = useRef<number | null>(null);
   const snoozedUntilRef = useRef<number | null>(null);
@@ -57,6 +44,48 @@ function AuditLog({ token }: Props) {
       snoozeTimeoutRef.current = null;
     }
   }, []);
+
+  const buildCurrentFilters = useCallback(
+    (overrides: Partial<AuditLogFilters> = {}): AuditLogFilters => {
+      const filters: AuditLogFilters = {};
+      const limitValue = overrides.limit ?? limit;
+      if (typeof limitValue === "number" && !Number.isNaN(limitValue)) {
+        filters.limit = limitValue;
+      }
+      const normalizedAction = overrides.action ?? (actionFilter.trim() ? actionFilter.trim() : undefined);
+      if (normalizedAction) {
+        filters.action = normalizedAction;
+      }
+      const normalizedEntity = overrides.entity_type ?? (entityFilter.trim() ? entityFilter.trim() : undefined);
+      if (normalizedEntity) {
+        filters.entity_type = normalizedEntity;
+      }
+      const overrideUser = overrides.performed_by_id;
+      let effectiveUser = overrideUser;
+      if (typeof effectiveUser !== "number") {
+        const trimmed = userFilter.trim();
+        if (trimmed) {
+          const parsed = Number(trimmed);
+          if (!Number.isNaN(parsed)) {
+            effectiveUser = parsed;
+          }
+        }
+      }
+      if (typeof effectiveUser === "number" && Number.isFinite(effectiveUser) && effectiveUser > 0) {
+        filters.performed_by_id = effectiveUser;
+      }
+      const fromValue = overrides.date_from ?? (dateFrom || undefined);
+      if (fromValue) {
+        filters.date_from = fromValue;
+      }
+      const toValue = overrides.date_to ?? (dateTo || undefined);
+      if (toValue) {
+        filters.date_to = toValue;
+      }
+      return filters;
+    },
+    [actionFilter, dateFrom, dateTo, entityFilter, limit, userFilter]
+  );
 
   const buildCurrentFilters = useCallback(
     (overrides: Partial<AuditLogFilters> = {}): AuditLogFilters => {
@@ -133,33 +162,6 @@ function AuditLog({ token }: Props) {
     [buildCurrentFilters, pushToast, token]
   );
 
-  const loadReminders = useCallback(
-    async ({ silent }: { silent?: boolean } = {}) => {
-      try {
-        if (!silent) {
-          setRemindersLoading(true);
-          setRemindersError(null);
-        }
-        const summary = await getAuditReminders(token);
-        setReminders(summary);
-        if (!silent) {
-          setRemindersError(null);
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "No fue posible obtener recordatorios";
-        if (!silent) {
-          setRemindersError(message);
-        }
-        pushToast({ message, variant: "error" });
-      } finally {
-        if (!silent) {
-          setRemindersLoading(false);
-        }
-      }
-    },
-    [pushToast, token]
-  );
-
   useEffect(() => {
     loadLogs({ notify: false });
     loadReminders();
@@ -219,197 +221,6 @@ function AuditLog({ token }: Props) {
       setDownloading(false);
     }
   };
-
-  const handleRefreshReminders = useCallback(() => {
-    loadReminders();
-  }, [loadReminders]);
-
-  const handleSnoozeReminders = useCallback(() => {
-    const target = Date.now() + SNOOZE_DURATION_MS;
-    setSnoozedUntil(target);
-    clearReminderInterval();
-    clearSnoozeTimeout();
-    snoozeTimeoutRef.current = window.setTimeout(() => {
-      setSnoozedUntil(null);
-    }, SNOOZE_DURATION_MS);
-    lastToastRef.current = Date.now();
-    pushToast({ message: "Recordatorios pospuestos por 10 minutos", variant: "info" });
-  }, [SNOOZE_DURATION_MS, clearReminderInterval, clearSnoozeTimeout, pushToast]);
-
-  const updateAckField = useCallback(
-    (alert: AuditReminderEntry, field: "note" | "reason", value: string) => {
-      const key = `${alert.entity_type}#${alert.entity_id}`;
-      setAckErrors((prev) => {
-        if (!prev[key]) {
-          return prev;
-        }
-        const { [key]: _removed, ...rest } = prev;
-        return rest;
-      });
-      if (field === "note") {
-        setAckNotes((prev) => ({ ...prev, [key]: value }));
-      } else {
-        setAckReasons((prev) => ({ ...prev, [key]: value }));
-      }
-    },
-    []
-  );
-
-  const handleAcknowledgeAlert = useCallback(
-    async (alert: AuditReminderEntry) => {
-      const key = `${alert.entity_type}#${alert.entity_id}`;
-      const reason = (ackReasons[key] ?? "Atencion critica manual").trim();
-      if (reason.length < 5) {
-        pushToast({ message: "El motivo corporativo debe tener al menos 5 caracteres.", variant: "error" });
-        return;
-      }
-      const note = ackNotes[key]?.trim();
-      setAckSubmitting(key);
-      try {
-        const payload: AuditAcknowledgementRequest = {
-          entity_type: alert.entity_type,
-          entity_id: alert.entity_id,
-          note: note || undefined,
-        };
-        await acknowledgeAuditAlert(token, payload, reason);
-        pushToast({
-          message: `Se registró la atención de ${alert.entity_type} #${alert.entity_id}.`,
-          variant: "success",
-        });
-        setAckErrors((prev) => {
-          if (!prev[key]) {
-            return prev;
-          }
-          const { [key]: _ignored, ...rest } = prev;
-          return rest;
-        });
-        await Promise.all([loadReminders(), refreshSummary()]);
-      } catch (err) {
-        let message =
-          err instanceof Error ? err.message : "No fue posible registrar la atención de la alerta";
-        let variant: "error" | "warning" | "info" = "error";
-        const normalized = message.toLowerCase();
-        if (normalized.includes("ya fue atendida")) {
-          message = "Esta alerta ya cuenta con un acuse posterior al último evento crítico.";
-          variant = "info";
-        } else if (normalized.includes("no existen alertas críticas")) {
-          message = "No hay alertas críticas registradas para esta entidad.";
-          variant = "warning";
-        }
-        setAckErrors((prev) => ({ ...prev, [key]: message }));
-        pushToast({ message, variant });
-      } finally {
-        setAckSubmitting(null);
-      }
-    },
-    [ackNotes, ackReasons, loadReminders, pushToast, refreshSummary, token]
-  );
-
-  const persistentAlerts = useMemo<AuditReminderEntry[]>(() => {
-    const items = [...(reminders?.persistent ?? [])];
-    items.sort((a, b) => {
-      if (a.status !== b.status) {
-        return a.status === "pending" ? -1 : 1;
-      }
-      return new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime();
-    });
-    return items;
-  }, [reminders]);
-
-  const pendingAlertsCount = reminders?.pending ?? persistentAlerts.filter((alert) => alert.status === "pending").length;
-  const acknowledgedAlertsCount = reminders?.acknowledged_total ?? persistentAlerts.filter((alert) => alert.status === "acknowledged").length;
-  const hasPersistentAlerts = persistentAlerts.length > 0;
-  const hasPendingAlerts = pendingAlertsCount > 0;
-  const reminderThresholdMinutes = reminders?.threshold_minutes ?? 15;
-  const reminderMinOccurrences = reminders?.min_occurrences ?? 1;
-
-  useEffect(() => {
-    if (!reminders) {
-      return;
-    }
-    const keys = reminders.persistent.map((alert) => `${alert.entity_type}#${alert.entity_id}`);
-    setAckNotes((prev) => {
-      const next: Record<string, string> = {};
-      for (const key of keys) {
-        if (prev[key]) {
-          next[key] = prev[key];
-        }
-      }
-      return next;
-    });
-    setAckReasons((prev) => {
-      const next: Record<string, string> = {};
-      for (const key of keys) {
-        next[key] = prev[key] ?? "Atencion critica manual";
-      }
-      return next;
-    });
-    setAckErrors((prev) => {
-      const next: Record<string, string> = {};
-      for (const key of keys) {
-        if (prev[key]) {
-          next[key] = prev[key];
-        }
-      }
-      return next;
-    });
-  }, [reminders]);
-
-  useEffect(() => {
-    if (!hasPendingAlerts) {
-      clearReminderInterval();
-      clearSnoozeTimeout();
-      lastToastRef.current = 0;
-      return;
-    }
-
-    const now = Date.now();
-    const snoozedUntilValue = snoozedUntilRef.current;
-    if (typeof snoozedUntilValue === "number" && now < snoozedUntilValue) {
-      clearReminderInterval();
-      clearSnoozeTimeout();
-      const delay = Math.max(snoozedUntilValue - now + 500, 0);
-      snoozeTimeoutRef.current = window.setTimeout(() => {
-        setSnoozedUntil(null);
-      }, delay);
-      return;
-    }
-
-    if (now - lastToastRef.current > REMINDER_INTERVAL_MS / 2) {
-      pushToast({
-        message: `🔐 ${pendingAlertsCount} alertas críticas requieren atención inmediata en Seguridad`,
-        variant: "warning",
-      });
-      lastToastRef.current = now;
-    }
-
-    clearReminderInterval();
-    reminderIntervalRef.current = window.setInterval(() => {
-      const tickNow = Date.now();
-      if (snoozedUntilRef.current && tickNow < snoozedUntilRef.current) {
-        return;
-      }
-      lastToastRef.current = tickNow;
-      if (pendingAlertsCount > 0) {
-        pushToast({
-          message: `🔐 Permanecen ${pendingAlertsCount} alertas críticas pendientes. Prioriza la revisión.`,
-          variant: "warning",
-        });
-      }
-    }, REMINDER_INTERVAL_MS);
-
-    return () => {
-      clearReminderInterval();
-    };
-  }, [
-    REMINDER_INTERVAL_MS,
-    clearReminderInterval,
-    clearSnoozeTimeout,
-    hasPendingAlerts,
-    pendingAlertsCount,
-    pushToast,
-    setSnoozedUntil,
-  ]);
 
   const severitySummary = useMemo(() => {
     return logs.reduce(
@@ -538,127 +349,9 @@ function AuditLog({ token }: Props) {
         >
           Descargar CSV
         </button>
-        <button
-          className="btn btn--ghost"
-          type="button"
-          disabled={downloading}
-          onClick={() => handleDownload("pdf")}
-        >
+        <button className="btn btn--ghost" type="button" disabled={downloading} onClick={() => handleDownload("pdf")}>
           Descargar PDF
         </button>
-      </div>
-      <div className="audit-reminders">
-        {remindersLoading && <p className="muted-text">Calculando recordatorios…</p>}
-        {remindersError && <p className="error-text">{remindersError}</p>}
-        {hasPersistentAlerts ? (
-          <aside className="reminder-card">
-            <header className="reminder-header">
-              <h3>Alertas críticas persistentes</h3>
-              <p className="reminder-meta">
-                {pendingAlertsCount} incidente{pendingAlertsCount === 1 ? "" : "s"} con más de {reminderThresholdMinutes} minutos sin mitigación (mínimo {reminderMinOccurrences} evento{reminderMinOccurrences === 1 ? "" : "s"}){acknowledgedAlertsCount > 0 ? ` · ${acknowledgedAlertsCount} atendi${acknowledgedAlertsCount === 1 ? "da" : "das"} recientemente` : ""}.
-              </p>
-            </header>
-            <ul className="reminder-list">
-              {persistentAlerts.map((alert) => {
-                const key = `${alert.entity_type}#${alert.entity_id}`;
-                const effectiveReason = ackReasons[key] ?? "Atencion critica manual";
-                const ackMoment = alert.acknowledged_at ?? alert.last_seen;
-                return (
-                  <li
-                    key={`${alert.entity_type}-${alert.entity_id}`}
-                    className={`reminder-entry ${alert.status === "acknowledged" ? "reminder-entry--ack" : ""}`}
-                  >
-                    <div className="reminder-entry__info">
-                      <span className="reminder-entry__badge">{alert.entity_type}</span>
-                      <p className="reminder-entry__action">{alert.latest_action}</p>
-                      <span className="reminder-entry__meta">
-                        Último evento {formatRelativeFromNow(alert.last_seen)} · #{alert.entity_id}
-                      </span>
-                      <span
-                        className={`reminder-entry__status reminder-entry__status--${alert.status}`}
-                      >
-                        {alert.status === "acknowledged"
-                          ? `Atendida ${formatRelativeFromNow(ackMoment)}${alert.acknowledged_by_name ? ` · ${alert.acknowledged_by_name}` : ""}`
-                          : `Pendiente desde ${formatRelativeFromNow(alert.first_seen)}`}
-                      </span>
-                      {alert.status === "acknowledged" && alert.acknowledged_note && (
-                        <p className="reminder-entry__note">“{alert.acknowledged_note}”</p>
-                      )}
-                    </div>
-                    <div className="reminder-entry__stats">
-                      <span className="reminder-entry__count">{alert.occurrences}</span>
-                      <span className="reminder-entry__label">eventos</span>
-                    </div>
-                    <div className="reminder-entry__actions">
-                      {alert.status === "pending" ? (
-                        <form
-                          className="reminder-entry__form"
-                          onSubmit={(event) => {
-                            event.preventDefault();
-                            void handleAcknowledgeAlert(alert);
-                          }}
-                        >
-                          <label>
-                            <span>Nota interna</span>
-                            <textarea
-                              rows={2}
-                              placeholder="Describe la mitigación aplicada"
-                              value={ackNotes[key] ?? ""}
-                              onChange={(event) => updateAckField(alert, "note", event.target.value)}
-                            />
-                          </label>
-                          <label>
-                            <span>Motivo corporativo</span>
-                            <input
-                              type="text"
-                              minLength={5}
-                              required
-                              value={effectiveReason}
-                              onChange={(event) => updateAckField(alert, "reason", event.target.value)}
-                            />
-                          </label>
-                      <button className="btn btn--secondary" type="submit" disabled={ackSubmitting === key}>
-                        {ackSubmitting === key ? "Registrando…" : "Registrar atención"}
-                      </button>
-                      {ackErrors[key] && (
-                        <p className="reminder-entry__error">{ackErrors[key]}</p>
-                      )}
-                    </form>
-                  ) : (
-                    <span className="reminder-entry__ack-label">
-                      Confirmada por {alert.acknowledged_by_name ?? "equipo"} · {formatRelativeFromNow(ackMoment)}
-                    </span>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            <footer className="reminder-actions">
-              <button
-                className="btn btn--secondary"
-                type="button"
-                onClick={handleRefreshReminders}
-                disabled={remindersLoading}
-              >
-                Actualizar recordatorios
-              </button>
-              <button className="btn btn--ghost" type="button" onClick={handleSnoozeReminders}>
-                Posponer 10 min
-              </button>
-              {snoozedUntil && (
-                <span className="reminder-snooze-label">
-                  Pausado hasta {" "}
-                  {new Date(snoozedUntil).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              )}
-            </footer>
-          </aside>
-        ) : (
-          !remindersLoading && (
-            <span className="pill neutral reminder-pill">Sin alertas críticas persistentes detectadas</span>
-          )
-        )}
       </div>
       {error && <p className="error-text">{error}</p>}
       {loading ? (

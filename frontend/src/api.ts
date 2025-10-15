@@ -515,7 +515,6 @@ export type AuditHighlight = {
   created_at: string;
   severity: "info" | "warning" | "critical";
   entity_type: string;
-  entity_id: string;
 };
 
 export type DashboardAuditAlerts = {
@@ -525,9 +524,6 @@ export type DashboardAuditAlerts = {
   info: number;
   has_alerts: boolean;
   highlights: AuditHighlight[];
-  pending_critical: number;
-  acknowledged_critical: number;
-  acknowledged: AuditAcknowledgementSummary[];
 };
 
 export type InventoryMetrics = {
@@ -563,39 +559,6 @@ export type AuditLogEntry = {
   created_at: string;
   severity: "info" | "warning" | "critical";
   severity_label: string;
-};
-
-export type AuditAcknowledgementSummary = {
-  entity_type: string;
-  entity_id: string;
-  acknowledged_at: string;
-  acknowledged_by_id?: number | null;
-  acknowledged_by_name?: string | null;
-  note?: string | null;
-};
-
-export type AuditReminderEntry = {
-  entity_type: string;
-  entity_id: string;
-  first_seen: string;
-  last_seen: string;
-  occurrences: number;
-  latest_action: string;
-  latest_details?: string | null;
-  status: "pending" | "acknowledged";
-  acknowledged_at?: string | null;
-  acknowledged_by_id?: number | null;
-  acknowledged_by_name?: string | null;
-  acknowledged_note?: string | null;
-};
-
-export type AuditReminderSummary = {
-  threshold_minutes: number;
-  min_occurrences: number;
-  total: number;
-  pending: number;
-  acknowledged_total: number;
-  persistent: AuditReminderEntry[];
 };
 
 export type AuditLogFilters = {
@@ -1823,50 +1786,6 @@ export function downloadAuditPdf(token: string, filters: AuditLogFilters = {}): 
   const query = buildAuditQuery(filters);
   const suffix = query ? `?${query}` : "";
   return request<Blob>(`/reports/audit/pdf${suffix}`, { method: "GET" }, token);
-}
-
-export function getAuditReminders(
-  token: string,
-  params: { threshold_minutes?: number; min_occurrences?: number; lookback_hours?: number; limit?: number } = {}
-): Promise<AuditReminderSummary> {
-  const search = new URLSearchParams();
-  if (typeof params.threshold_minutes === "number") {
-    search.set("threshold_minutes", String(params.threshold_minutes));
-  }
-  if (typeof params.min_occurrences === "number") {
-    search.set("min_occurrences", String(params.min_occurrences));
-  }
-  if (typeof params.lookback_hours === "number") {
-    search.set("lookback_hours", String(params.lookback_hours));
-  }
-  if (typeof params.limit === "number") {
-    search.set("limit", String(params.limit));
-  }
-  const query = search.toString();
-  const suffix = query ? `?${query}` : "";
-  return request<AuditReminderSummary>(`/audit/reminders${suffix}`, { method: "GET" }, token);
-}
-
-export type AuditAcknowledgementRequest = {
-  entity_type: string;
-  entity_id: string;
-  note?: string;
-};
-
-export function acknowledgeAuditAlert(
-  token: string,
-  payload: AuditAcknowledgementRequest,
-  reason: string,
-): Promise<AuditAcknowledgementSummary> {
-  return request<AuditAcknowledgementSummary>(
-    "/audit/acknowledgements",
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-      headers: { "X-Reason": reason },
-    },
-    token,
-  );
 }
 
 export function submitPosSale(
