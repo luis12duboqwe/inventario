@@ -669,6 +669,31 @@ class InventoryTotals(BaseModel):
         return float(value)
 
 
+class AuditHighlight(BaseModel):
+    id: int
+    action: str
+    created_at: datetime
+    severity: Literal["info", "warning", "critical"]
+    entity_type: str
+
+    @field_serializer("created_at")
+    @classmethod
+    def _serialize_created_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class DashboardAuditAlerts(BaseModel):
+    total: int
+    critical: int
+    warning: int
+    info: int
+    highlights: list[AuditHighlight] = Field(default_factory=list)
+
+    @computed_field(return_type=bool)  # type: ignore[misc]
+    def has_alerts(self) -> bool:
+        return self.critical > 0 or self.warning > 0
+
+
 class DashboardGlobalMetrics(BaseModel):
     total_sales: float
     sales_count: int
@@ -691,6 +716,7 @@ class InventoryMetricsResponse(BaseModel):
     stock_breakdown: list[DashboardChartPoint] = Field(default_factory=list)
     repair_mix: list[DashboardChartPoint] = Field(default_factory=list)
     profit_breakdown: list[DashboardChartPoint] = Field(default_factory=list)
+    audit_alerts: DashboardAuditAlerts
 
 
 class RotationMetric(BaseModel):
@@ -1632,7 +1658,9 @@ __all__ = [
     "AnalyticsProfitMarginResponse",
     "AnalyticsRotationResponse",
     "AnalyticsSalesProjectionResponse",
+    "AuditHighlight",
     "AuditLogResponse",
+    "DashboardAuditAlerts",
     "BackupJobResponse",
     "BackupRunRequest",
     "DeviceBase",

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement
 
 from . import models, schemas
+from .utils import audit as audit_utils
 
 
 def _ensure_unique_identifiers(
@@ -1609,6 +1610,31 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         for status, count in sorted(repair_status_counts.items())
     ]
 
+    audit_logs_stmt = (
+        select(models.AuditLog)
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(50)
+    )
+    audit_logs = list(db.scalars(audit_logs_stmt).unique())
+    alert_summary = audit_utils.summarize_alerts(audit_logs)
+    audit_alerts = {
+        "total": alert_summary.total,
+        "critical": alert_summary.critical,
+        "warning": alert_summary.warning,
+        "info": alert_summary.info,
+        "has_alerts": alert_summary.has_alerts,
+        "highlights": [
+            {
+                "id": highlight["id"],
+                "action": highlight["action"],
+                "created_at": highlight["created_at"],
+                "severity": highlight["severity"],
+                "entity_type": highlight["entity_type"],
+            }
+            for highlight in alert_summary.highlights
+        ],
+    }
+
     return {
         "totals": {
             "stores": len(stores),
@@ -1629,6 +1655,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         "stock_breakdown": stock_breakdown,
         "repair_mix": repair_mix,
         "profit_breakdown": profit_breakdown,
+        "audit_alerts": audit_alerts,
     }
 
 

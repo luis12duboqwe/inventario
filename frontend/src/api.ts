@@ -509,6 +509,23 @@ export type DashboardPoint = {
   value: number;
 };
 
+export type AuditHighlight = {
+  id: number;
+  action: string;
+  created_at: string;
+  severity: "info" | "warning" | "critical";
+  entity_type: string;
+};
+
+export type DashboardAuditAlerts = {
+  total: number;
+  critical: number;
+  warning: number;
+  info: number;
+  has_alerts: boolean;
+  highlights: AuditHighlight[];
+};
+
 export type InventoryMetrics = {
   totals: {
     stores: number;
@@ -529,6 +546,7 @@ export type InventoryMetrics = {
   stock_breakdown: DashboardPoint[];
   repair_mix: DashboardPoint[];
   profit_breakdown: DashboardPoint[];
+  audit_alerts: DashboardAuditAlerts;
 };
 
 export type AuditLogEntry = {

@@ -449,6 +449,7 @@ Una versión sólo se declara lista para entrega cuando el checklist se ha compl
 - **Comparativos multi-sucursal**: `GET /reports/analytics/comparative` y el tablero `AnalyticsBoard.tsx` permiten contrastar inventario, rotación y ventas recientes por sucursal, filtrando por tiendas específicas.
 - **Margen y proyección de ventas**: `GET /reports/analytics/profit_margin` y `/reports/analytics/sales_forecast` calculan utilidad, ticket promedio y confianza estadística para horizontes de 30 días.
 - **Exportaciones ejecutivas**: `GET /reports/analytics/export.csv` y `GET /reports/analytics/pdf` generan entregables consolidados en tema oscuro listos para comités corporativos.
+- **Alertas de auditoría consolidadas**: el tablero principal consume `GET /reports/metrics` para mostrar totales críticos/preventivos y resaltar los incidentes más recientes en `GlobalMetrics.tsx`, facilitando respuestas rápidas desde Seguridad.
 
 ## Sincronización híbrida avanzada
 
