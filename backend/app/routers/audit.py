@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .. import crud, schemas
 from ..core.roles import AUDITORIA_ROLES
 from ..database import get_db
+from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..utils import audit as audit_utils
 
@@ -48,6 +49,7 @@ def export_audit_logs(
     date_to: datetime | date | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*AUDITORIA_ROLES)),
+    _reason: str = Depends(require_reason),
 ):
     csv_data = crud.export_audit_logs_csv(
         db,

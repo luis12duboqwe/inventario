@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement
@@ -363,6 +363,52 @@ def list_audit_logs(
     return list(db.scalars(statement))
 
 
+class AuditAcknowledgementError(Exception):
+    """Errores relacionados con el registro de acuses manuales."""
+
+
+class AuditAcknowledgementConflict(AuditAcknowledgementError):
+    """Se intenta registrar un acuse cuando ya existe uno vigente."""
+
+
+class AuditAcknowledgementNotFound(AuditAcknowledgementError):
+    """No existen alertas críticas asociadas a la entidad solicitada."""
+
+
+def get_audit_acknowledgements_map(
+    db: Session,
+    *,
+    entities: Iterable[tuple[str, str]],
+) -> dict[tuple[str, str], models.AuditAlertAcknowledgement]:
+    """Obtiene los acuses existentes para las entidades provistas."""
+
+    normalized: set[tuple[str, str]] = set()
+    for entity_type, entity_id in entities:
+        normalized_type = (entity_type or "").strip()
+        normalized_id = (entity_id or "").strip()
+        if not normalized_type or not normalized_id:
+            continue
+        normalized.add((normalized_type, normalized_id))
+
+    if not normalized:
+        return {}
+
+    statement = (
+        select(models.AuditAlertAcknowledgement)
+        .options(joinedload(models.AuditAlertAcknowledgement.acknowledged_by))
+        .where(
+            tuple_(
+                models.AuditAlertAcknowledgement.entity_type,
+                models.AuditAlertAcknowledgement.entity_id,
+            ).in_(normalized)
+        )
+    )
+    return {
+        (ack.entity_type, ack.entity_id): ack
+        for ack in db.scalars(statement)
+    }
+
+
 def export_audit_logs_csv(
     db: Session,
     *,
@@ -383,6 +429,10 @@ def export_audit_logs_csv(
         date_to=date_to,
     )
     buffer = StringIO()
+    acknowledgements = get_audit_acknowledgements_map(
+        db,
+        entities={(log.entity_type, log.entity_id) for log in logs},
+    )
     writer = csv.writer(buffer)
     writer.writerow(
         [
@@ -393,9 +443,24 @@ def export_audit_logs_csv(
             "Detalle",
             "Usuario responsable",
             "Fecha de creación",
+            "Estado alerta",
+            "Acuse registrado",
+            "Nota de acuse",
         ]
     )
     for log in logs:
+        key = (log.entity_type, log.entity_id)
+        acknowledgement = acknowledgements.get(key)
+        status = "Pendiente"
+        acknowledgement_text = ""
+        acknowledgement_note = ""
+        if acknowledgement and acknowledgement.acknowledged_at >= log.created_at:
+            display_name = _user_display_name(acknowledgement.acknowledged_by)
+            status = "Atendida"
+            acknowledgement_text = acknowledgement.acknowledged_at.strftime("%Y-%m-%dT%H:%M:%S")
+            if display_name:
+                acknowledgement_text += f" · {display_name}"
+            acknowledgement_note = acknowledgement.note or ""
         writer.writerow(
             [
                 log.id,
@@ -405,9 +470,188 @@ def export_audit_logs_csv(
                 log.details or "",
                 log.performed_by_id or "",
                 log.created_at.isoformat(),
+                status,
+                acknowledgement_text,
+                acknowledgement_note,
             ]
         )
     return buffer.getvalue()
+
+
+def acknowledge_audit_alert(
+    db: Session,
+    *,
+    entity_type: str,
+    entity_id: str,
+    acknowledged_by_id: int | None,
+    note: str | None = None,
+) -> models.AuditAlertAcknowledgement:
+    """Registra o actualiza el acuse manual de una alerta crítica."""
+
+    normalized_type = entity_type.strip()
+    normalized_id = entity_id.strip()
+    if not normalized_type or not normalized_id:
+        raise ValueError("entity identifiers must be provided")
+
+    recent_logs_stmt = (
+        select(models.AuditLog)
+        .where(models.AuditLog.entity_type == normalized_type)
+        .where(models.AuditLog.entity_id == normalized_id)
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(200)
+    )
+    recent_logs = list(db.scalars(recent_logs_stmt))
+    last_critical: models.AuditLog | None = None
+    for item in recent_logs:
+        severity = audit_utils.classify_severity(item.action or "", item.details)
+        if severity == "critical":
+            last_critical = item
+            break
+
+    if last_critical is None:
+        raise AuditAcknowledgementNotFound(
+            "No existen alertas críticas registradas para la entidad indicada."
+        )
+
+    statement = (
+        select(models.AuditAlertAcknowledgement)
+        .where(models.AuditAlertAcknowledgement.entity_type == normalized_type)
+        .where(models.AuditAlertAcknowledgement.entity_id == normalized_id)
+    )
+    acknowledgement = db.scalars(statement).first()
+    now = datetime.utcnow()
+
+    if (
+        acknowledgement is not None
+        and acknowledgement.acknowledged_at >= last_critical.created_at
+    ):
+        raise AuditAcknowledgementConflict(
+            "La alerta ya fue atendida después del último evento crítico registrado."
+        )
+
+    if acknowledgement is None:
+        acknowledgement = models.AuditAlertAcknowledgement(
+            entity_type=normalized_type,
+            entity_id=normalized_id,
+            acknowledged_by_id=acknowledged_by_id,
+            acknowledged_at=now,
+            note=note,
+        )
+        db.add(acknowledgement)
+    else:
+        acknowledgement.acknowledged_at = now
+        acknowledgement.acknowledged_by_id = acknowledged_by_id
+        acknowledgement.note = note
+
+    db.add(
+        models.AuditLog(
+            action="audit_alert_acknowledged",
+            entity_type=normalized_type,
+            entity_id=normalized_id,
+            details=(
+                f"Resolución manual registrada: {note}" if note else "Resolución manual registrada"
+            ),
+            performed_by_id=acknowledged_by_id,
+        )
+    )
+
+    db.commit()
+    db.refresh(acknowledgement)
+    return acknowledgement
+
+
+def get_persistent_audit_alerts(
+    db: Session,
+    *,
+    threshold_minutes: int = 15,
+    min_occurrences: int = 1,
+    lookback_hours: int = 48,
+    limit: int = 10,
+) -> list[dict[str, object]]:
+    """Obtiene alertas críticas persistentes para recordatorios automáticos."""
+
+    if threshold_minutes < 0:
+        raise ValueError("threshold_minutes must be non-negative")
+    if min_occurrences < 1:
+        raise ValueError("min_occurrences must be >= 1")
+    if lookback_hours < 1:
+        raise ValueError("lookback_hours must be >= 1")
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+
+    now = datetime.utcnow()
+    lookback_start = now - timedelta(hours=lookback_hours)
+
+    statement = (
+        select(models.AuditLog)
+        .where(models.AuditLog.created_at >= lookback_start)
+        .order_by(models.AuditLog.created_at.asc())
+    )
+    logs = list(db.scalars(statement))
+
+    persistent_alerts = audit_utils.identify_persistent_critical_alerts(
+        logs,
+        threshold_minutes=threshold_minutes,
+        min_occurrences=min_occurrences,
+        limit=limit,
+        reference_time=now,
+    )
+
+    keys = {(alert["entity_type"], alert["entity_id"]) for alert in persistent_alerts}
+    acknowledgements: dict[tuple[str, str], models.AuditAlertAcknowledgement] = {}
+    if keys:
+        ack_stmt = (
+            select(models.AuditAlertAcknowledgement)
+            .options(joinedload(models.AuditAlertAcknowledgement.acknowledged_by))
+            .where(
+                tuple_(
+                    models.AuditAlertAcknowledgement.entity_type,
+                    models.AuditAlertAcknowledgement.entity_id,
+                ).in_(keys)
+            )
+        )
+        acknowledgements = {
+            (ack.entity_type, ack.entity_id): ack for ack in db.scalars(ack_stmt)
+        }
+
+    enriched: list[dict[str, object]] = []
+    for alert in persistent_alerts:
+        key = (alert["entity_type"], alert["entity_id"])
+        acknowledgement = acknowledgements.get(key)
+        status = "pending"
+        acknowledged_at = None
+        acknowledged_by_id = None
+        acknowledged_by_name = None
+        acknowledged_note = None
+        if acknowledgement and acknowledgement.acknowledged_at >= alert["last_seen"]:
+            status = "acknowledged"
+            acknowledged_at = acknowledgement.acknowledged_at
+            acknowledged_by_id = acknowledgement.acknowledged_by_id
+            if acknowledgement.acknowledged_by is not None:
+                acknowledged_by_name = (
+                    acknowledgement.acknowledged_by.full_name
+                    or acknowledgement.acknowledged_by.username
+                )
+            acknowledged_note = acknowledgement.note
+
+        enriched.append(
+            {
+                "entity_type": alert["entity_type"],
+                "entity_id": alert["entity_id"],
+                "first_seen": alert["first_seen"],
+                "last_seen": alert["last_seen"],
+                "occurrences": alert["occurrences"],
+                "latest_action": alert["latest_action"],
+                "latest_details": alert["latest_details"],
+                "status": status,
+                "acknowledged_at": acknowledged_at,
+                "acknowledged_by_id": acknowledged_by_id,
+                "acknowledged_by_name": acknowledged_by_name,
+                "acknowledged_note": acknowledged_note,
+            }
+        )
+
+    return enriched
 
 
 def ensure_role(db: Session, name: str) -> models.Role:
@@ -1617,6 +1861,68 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     )
     audit_logs = list(db.scalars(audit_logs_stmt).unique())
     alert_summary = audit_utils.summarize_alerts(audit_logs)
+    log_keys = {(log.entity_type, log.entity_id) for log in audit_logs}
+    ack_map: dict[tuple[str, str], models.AuditAlertAcknowledgement] = {}
+    if log_keys:
+        ack_stmt = (
+            select(models.AuditAlertAcknowledgement)
+            .options(joinedload(models.AuditAlertAcknowledgement.acknowledged_by))
+            .where(
+                tuple_(
+                    models.AuditAlertAcknowledgement.entity_type,
+                    models.AuditAlertAcknowledgement.entity_id,
+                ).in_(log_keys)
+            )
+        )
+        ack_map = {
+            (ack.entity_type, ack.entity_id): ack for ack in db.scalars(ack_stmt)
+        }
+
+    pending_highlights: list[audit_utils.HighlightEntry] = []
+    for entry in alert_summary.highlights:
+        acknowledgement = ack_map.get((entry["entity_type"], entry["entity_id"]))
+        if acknowledgement and acknowledgement.acknowledged_at >= entry["created_at"]:
+            continue
+        pending_highlights.append(entry)
+
+    critical_events: dict[tuple[str, str], datetime] = {}
+    for log in audit_logs:
+        severity = audit_utils.classify_severity(log.action or "", log.details)
+        if severity != "critical":
+            continue
+        key = (log.entity_type, log.entity_id)
+        if key not in critical_events or log.created_at > critical_events[key]:
+            critical_events[key] = log.created_at
+
+    acknowledged_entities: list[dict[str, object]] = []
+    pending_critical = 0
+    for key, last_seen in critical_events.items():
+        acknowledgement = ack_map.get(key)
+        if acknowledgement and acknowledgement.acknowledged_at >= last_seen:
+            acknowledged_entities.append(
+                {
+                    "entity_type": key[0],
+                    "entity_id": key[1],
+                    "acknowledged_at": acknowledgement.acknowledged_at,
+                    "acknowledged_by_id": acknowledgement.acknowledged_by_id,
+                    "acknowledged_by_name": (
+                        acknowledgement.acknowledged_by.full_name
+                        if acknowledgement.acknowledged_by
+                        and acknowledgement.acknowledged_by.full_name
+                        else (
+                            acknowledgement.acknowledged_by.username
+                            if acknowledgement.acknowledged_by
+                            else None
+                        )
+                    ),
+                    "note": acknowledgement.note,
+                }
+            )
+        else:
+            pending_critical += 1
+
+    acknowledged_entities.sort(key=lambda item: item["acknowledged_at"], reverse=True)
+
     audit_alerts = {
         "total": alert_summary.total,
         "critical": alert_summary.critical,

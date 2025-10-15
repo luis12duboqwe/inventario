@@ -28,7 +28,9 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Operaciones automatizadas** con importación masiva desde CSV, plantillas recurrentes reutilizables y panel histórico filtrable por técnico, sucursal y rango de fechas (`/operations/history`).
 - **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
 - **Gestión de clientes y proveedores corporativos** con historial de contacto, exportación CSV, saldos pendientes y notas auditables desde la UI.
-- **Bitácora de auditoría filtrable** con búsqueda por acción, módulo, usuario y rango de fechas, además de exportación CSV directa desde `/audit/logs/export.csv` y `/reports/audit`.
+- **Bitácora de auditoría filtrable** con búsqueda por acción, módulo, usuario y rango de fechas, exportación CSV/PDF (`/audit/logs/export.csv`, `/reports/audit/pdf`) que refleja el estado del acuse manual (pendiente/atendida) y notas asociadas, además de alertas visuales por severidad en el dashboard corporativo.
+- **Recordatorios automáticos de seguridad** que detectan alertas críticas persistentes y generan avisos y snooze de 10 minutos directamente en el módulo Seguridad.
+- **Acuses manuales de resolución** para alertas críticas: desde Seguridad se registra nota y motivo corporativo, `/reports/metrics` refleja pendientes vs. atendidas y las exportaciones CSV/PDF incorporan el acuse con usuario, fecha y nota en tiempo real.
 - **Órdenes de reparación sincronizadas** con piezas descontadas automáticamente del inventario, estados corporativos (🟡/🟠/🟢/⚪) y descarga de orden en PDF.
 - **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
 - **Analítica comparativa multi-sucursal** con endpoints `/reports/analytics/comparative`, `/reports/analytics/profit_margin` y `/reports/analytics/sales_forecast`, exportación CSV consolidada y tablero React con filtros por sucursal.
@@ -449,7 +451,7 @@ Una versión sólo se declara lista para entrega cuando el checklist se ha compl
 - **Comparativos multi-sucursal**: `GET /reports/analytics/comparative` y el tablero `AnalyticsBoard.tsx` permiten contrastar inventario, rotación y ventas recientes por sucursal, filtrando por tiendas específicas.
 - **Margen y proyección de ventas**: `GET /reports/analytics/profit_margin` y `/reports/analytics/sales_forecast` calculan utilidad, ticket promedio y confianza estadística para horizontes de 30 días.
 - **Exportaciones ejecutivas**: `GET /reports/analytics/export.csv` y `GET /reports/analytics/pdf` generan entregables consolidados en tema oscuro listos para comités corporativos.
-- **Alertas de auditoría consolidadas**: el tablero principal consume `GET /reports/metrics` para mostrar totales críticos/preventivos y resaltar los incidentes más recientes en `GlobalMetrics.tsx`, facilitando respuestas rápidas desde Seguridad.
+- **Alertas de auditoría consolidadas**: el tablero principal consume `GET /reports/metrics` para mostrar totales críticos/preventivos, distinguir pendientes vs. atendidas y resaltar los incidentes más recientes en `GlobalMetrics.tsx`.
 
 ## Sincronización híbrida avanzada
 
