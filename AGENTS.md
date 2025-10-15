@@ -14,7 +14,6 @@
 12. **Clientes y proveedores**: cualquier ajuste a `Customers.tsx`/`Suppliers.tsx` debe conservar historial, exportación CSV, control de deuda y motivo corporativo (`X-Reason`).
 13. **Reparaciones y POS avanzado**: mantén alineados `RepairOrders.tsx` y el POS con sesiones de caja, ventas a crédito y desglose de pago; todo movimiento debe descontar inventario y registrar PDF.
 14. **Dashboard modularizado**: respeta la organización actual de UI — Inventario dividido en pestañas (`Tabs`), Operaciones en acordeones (`Accordion`), Analítica en grilla 3x2 (`AnalyticsGrid`) y Seguridad/Usuarios/Sincronización con `.section-scroll` de 600 px. No elimines ni mezcles estas estructuras salvo que el mandato lo actualice explícitamente.
-15. **Capturas automatizadas**: conserva y actualiza el script `frontend/scripts/captureModules.mjs` cuando cambie la estructura visual del dashboard. Cualquier ajuste debe seguir generando bloques 16:9 (1600×900) sin overlays, sin buscador ni botón *Cerrar sesión* y con la barra superior en `rgba(25,25,30,1)`.
 
 ## Mandato operativo vigente — Softmobile 2025 v2.2.0
 

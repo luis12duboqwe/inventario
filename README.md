@@ -62,34 +62,6 @@ La actualización UI de febrero 2025 refuerza la experiencia operativa sin modif
 
 Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.app.main:app` (asegurando los feature flags del mandato operativo) y `npm --prefix frontend run dev`. Puedes precargar datos demo con los endpoints `/auth/bootstrap`, `/stores`, `/purchases`, `/sales` y `/transfers` usando cabeceras `Authorization` y `X-Reason` ≥ 5 caracteres.
 
-### Capturas automatizadas del dashboard en tema oscuro
-
-El comando `npm --prefix frontend run capture` genera las imágenes corporativas de cada módulo respetando el tema oscuro y las proporciones solicitadas (1600×900 px por bloque, máx. 1300 px de alto). El flujo aplica las directrices visuales del cliente: elimina overlays temporales, oculta el buscador global y el botón **Cerrar sesión**, fuerza la barra superior a color sólido `rgba(25,25,30,1)` y conserva los degradados azul-gris del tablero.
-
-1. Instala Playwright sin descargar los navegadores durante la instalación del proyecto:
-   ```bash
-   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm --prefix frontend install
-   npx playwright install chromium
-   ```
-2. Asegura que backend (`uvicorn backend.app.main:app`) y frontend (`npm --prefix frontend run dev -- --host 0.0.0.0 --port 5173`) estén activos y con datos de demostración.
-3. Ejecuta la captura automatizada (por defecto escribe en `docs/capturas`):
-   ```bash
-   npm --prefix frontend run capture -- \
-     --base-url http://localhost:5173 \
-     --token demo-token \
-     --output docs/capturas \
-     --width 1600 \
-     --height 900
-   ```
-
-Parámetros opcionales:
-
-- `--settle 1200` ajusta la espera en ms antes de cada captura para estabilizar animaciones.
-- `--headless false` abre Chromium en modo visible para ajustar manualmente la data antes de continuar.
-- Variables de entorno (`SOFTMOBILE_CAPTURE_*`) permiten cambiar base URL, token, directorio de salida y dimensiones sin modificar el comando.
-
-El script `frontend/scripts/captureModules.mjs` divide automáticamente las pantallas altas en bloques continuos ≤1300 px de alto manteniendo la proporción 16:9 (1600×900). Cada módulo genera archivos `inventario.png`, `operaciones-01.png`, etc. listos para documentación o material comercial, preservando la iluminación azul en botones, tarjetas y gráficos.
-
 ## Paso 4 — Documentación y pruebas automatizadas
 
 ### Tablas y rutas destacadas
