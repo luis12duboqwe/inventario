@@ -1,6 +1,7 @@
 """Operaciones de base de datos para las entidades principales."""
 from __future__ import annotations
 
+import copy
 import csv
 import json
 import math
@@ -17,6 +18,7 @@ from sqlalchemy.sql import ColumnElement
 
 from . import models, schemas
 from .utils import audit as audit_utils
+from .utils.cache import TTLCache
 
 
 def _ensure_unique_identifiers(
@@ -71,6 +73,25 @@ def _normalize_date_range(
         start_dt, end_dt = end_dt, start_dt
 
     return start_dt, end_dt
+
+
+_PERSISTENT_ALERTS_CACHE: TTLCache[list[dict[str, object]]] = TTLCache(ttl_seconds=60.0)
+
+
+def _persistent_alerts_cache_key(
+    *,
+    threshold_minutes: int,
+    min_occurrences: int,
+    lookback_hours: int,
+    limit: int,
+) -> tuple[int, int, int, int]:
+    return (threshold_minutes, min_occurrences, lookback_hours, limit)
+
+
+def invalidate_persistent_audit_alerts_cache() -> None:
+    """Limpia la cache en memoria de recordatorios críticos."""
+
+    _PERSISTENT_ALERTS_CACHE.clear()
 
 
 def _user_display_name(user: models.User | None) -> str | None:
@@ -194,6 +215,7 @@ def _log_action(
     )
     db.add(log)
     db.flush()
+    invalidate_persistent_audit_alerts_cache()
     return log
 
 
@@ -556,6 +578,7 @@ def acknowledge_audit_alert(
     )
 
     db.commit()
+    invalidate_persistent_audit_alerts_cache()
     db.refresh(acknowledgement)
     return acknowledgement
 
@@ -578,6 +601,16 @@ def get_persistent_audit_alerts(
         raise ValueError("lookback_hours must be >= 1")
     if limit < 1:
         raise ValueError("limit must be >= 1")
+
+    cache_key = _persistent_alerts_cache_key(
+        threshold_minutes=threshold_minutes,
+        min_occurrences=min_occurrences,
+        lookback_hours=lookback_hours,
+        limit=limit,
+    )
+    cached = _PERSISTENT_ALERTS_CACHE.get(cache_key)
+    if cached is not None:
+        return copy.deepcopy(cached)
 
     now = datetime.utcnow()
     lookback_start = now - timedelta(hours=lookback_hours)
@@ -651,6 +684,7 @@ def get_persistent_audit_alerts(
             }
         )
 
+    _PERSISTENT_ALERTS_CACHE.set(cache_key, copy.deepcopy(enriched))
     return enriched
 
 
