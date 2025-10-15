@@ -27,7 +27,7 @@ def list_audit_logs_endpoint(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*AUDITORIA_ROLES)),
 ):
-    logs = crud.list_audit_logs(
+    return crud.list_audit_logs(
         db,
         limit=limit,
         action=action,
@@ -36,10 +36,6 @@ def list_audit_logs_endpoint(
         date_from=date_from,
         date_to=date_to,
     )
-    return [
-        schemas.AuditLogResponse(**audit_utils.serialize_log(log))
-        for log in logs
-    ]
 
 
 @router.get("/logs/export.csv")
@@ -67,30 +63,6 @@ def export_audit_logs(
         csv_data,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
-
-
-@router.get("/reminders", response_model=schemas.AuditReminderSummary)
-def audit_reminders(
-    threshold_minutes: int = Query(default=15, ge=0, le=720),
-    min_occurrences: int = Query(default=1, ge=1, le=20),
-    lookback_hours: int = Query(default=48, ge=1, le=168),
-    limit: int = Query(default=10, ge=1, le=50),
-    db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*AUDITORIA_ROLES)),
-):
-    reminders = crud.get_persistent_audit_alerts(
-        db,
-        threshold_minutes=threshold_minutes,
-        min_occurrences=min_occurrences,
-        lookback_hours=lookback_hours,
-        limit=limit,
-    )
-    return schemas.AuditReminderSummary(
-        threshold_minutes=threshold_minutes,
-        min_occurrences=min_occurrences,
-        total=len(reminders),
-        persistent=[schemas.AuditReminderEntry(**item) for item in reminders],
     )
 
 

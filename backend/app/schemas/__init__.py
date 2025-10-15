@@ -1677,8 +1677,6 @@ __all__ = [
     "AnalyticsSalesProjectionResponse",
     "AuditHighlight",
     "AuditLogResponse",
-    "AuditReminderEntry",
-    "AuditReminderSummary",
     "DashboardAuditAlerts",
     "BackupJobResponse",
     "BackupRunRequest",

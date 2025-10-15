@@ -561,23 +561,6 @@ export type AuditLogEntry = {
   severity_label: string;
 };
 
-export type AuditReminderEntry = {
-  entity_type: string;
-  entity_id: string;
-  first_seen: string;
-  last_seen: string;
-  occurrences: number;
-  latest_action: string;
-  latest_details?: string | null;
-};
-
-export type AuditReminderSummary = {
-  threshold_minutes: number;
-  min_occurrences: number;
-  total: number;
-  persistent: AuditReminderEntry[];
-};
-
 export type AuditLogFilters = {
   limit?: number;
   action?: string;
@@ -1803,28 +1786,6 @@ export function downloadAuditPdf(token: string, filters: AuditLogFilters = {}): 
   const query = buildAuditQuery(filters);
   const suffix = query ? `?${query}` : "";
   return request<Blob>(`/reports/audit/pdf${suffix}`, { method: "GET" }, token);
-}
-
-export function getAuditReminders(
-  token: string,
-  params: { threshold_minutes?: number; min_occurrences?: number; lookback_hours?: number; limit?: number } = {}
-): Promise<AuditReminderSummary> {
-  const search = new URLSearchParams();
-  if (typeof params.threshold_minutes === "number") {
-    search.set("threshold_minutes", String(params.threshold_minutes));
-  }
-  if (typeof params.min_occurrences === "number") {
-    search.set("min_occurrences", String(params.min_occurrences));
-  }
-  if (typeof params.lookback_hours === "number") {
-    search.set("lookback_hours", String(params.lookback_hours));
-  }
-  if (typeof params.limit === "number") {
-    search.set("limit", String(params.limit));
-  }
-  const query = search.toString();
-  const suffix = query ? `?${query}` : "";
-  return request<AuditReminderSummary>(`/audit/reminders${suffix}`, { method: "GET" }, token);
 }
 
 export function submitPosSale(

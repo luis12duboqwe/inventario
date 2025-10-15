@@ -410,57 +410,6 @@ def export_audit_logs_csv(
     return buffer.getvalue()
 
 
-def get_persistent_audit_alerts(
-    db: Session,
-    *,
-    threshold_minutes: int = 15,
-    min_occurrences: int = 1,
-    lookback_hours: int = 48,
-    limit: int = 10,
-) -> list[dict[str, object]]:
-    """Obtiene alertas críticas persistentes para recordatorios automáticos."""
-
-    if threshold_minutes < 0:
-        raise ValueError("threshold_minutes must be non-negative")
-    if min_occurrences < 1:
-        raise ValueError("min_occurrences must be >= 1")
-    if lookback_hours < 1:
-        raise ValueError("lookback_hours must be >= 1")
-    if limit < 1:
-        raise ValueError("limit must be >= 1")
-
-    now = datetime.utcnow()
-    lookback_start = now - timedelta(hours=lookback_hours)
-
-    statement = (
-        select(models.AuditLog)
-        .where(models.AuditLog.created_at >= lookback_start)
-        .order_by(models.AuditLog.created_at.asc())
-    )
-    logs = list(db.scalars(statement))
-
-    persistent_alerts = audit_utils.identify_persistent_critical_alerts(
-        logs,
-        threshold_minutes=threshold_minutes,
-        min_occurrences=min_occurrences,
-        limit=limit,
-        reference_time=now,
-    )
-
-    return [
-        {
-            "entity_type": alert["entity_type"],
-            "entity_id": alert["entity_id"],
-            "first_seen": alert["first_seen"],
-            "last_seen": alert["last_seen"],
-            "occurrences": alert["occurrences"],
-            "latest_action": alert["latest_action"],
-            "latest_details": alert["latest_details"],
-        }
-        for alert in persistent_alerts
-    ]
-
-
 def ensure_role(db: Session, name: str) -> models.Role:
     statement = select(models.Role).where(models.Role.name == name)
     role = db.scalars(statement).first()

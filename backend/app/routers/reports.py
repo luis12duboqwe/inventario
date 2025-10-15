@@ -39,7 +39,7 @@ def audit_logs(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*AUDITORIA_ROLES)),
 ):
-    logs = crud.list_audit_logs(
+    return crud.list_audit_logs(
         db,
         limit=limit,
         action=action,
@@ -48,73 +48,6 @@ def audit_logs(
         date_from=date_from,
         date_to=date_to,
     )
-    return [
-        schemas.AuditLogResponse(**audit_utils.serialize_log(log))
-        for log in logs
-    ]
-
-
-def _build_filter_summary(
-    *,
-    limit: int | None,
-    action: str | None,
-    entity_type: str | None,
-    performed_by_id: int | None,
-    date_from: datetime | date | None,
-    date_to: datetime | date | None,
-) -> dict[str, str]:
-    filters: dict[str, str] = {}
-    if limit is not None:
-        filters["Límite"] = str(limit)
-    if action:
-        filters["Acción"] = action
-    if entity_type:
-        filters["Entidad"] = entity_type
-    if performed_by_id is not None:
-        filters["Usuario"] = str(performed_by_id)
-    if date_from is not None:
-        filters["Desde"] = (
-            date_from.isoformat() if isinstance(date_from, datetime) else date_from.strftime("%Y-%m-%d")
-        )
-    if date_to is not None:
-        filters["Hasta"] = (
-            date_to.isoformat() if isinstance(date_to, datetime) else date_to.strftime("%Y-%m-%d")
-        )
-    return filters
-
-
-@router.get("/audit/pdf")
-def audit_logs_pdf(
-    limit: int = Query(default=300, ge=1, le=1000),
-    action: str | None = Query(default=None, max_length=120),
-    entity_type: str | None = Query(default=None, max_length=80),
-    performed_by_id: int | None = Query(default=None, ge=1),
-    date_from: datetime | date | None = Query(default=None),
-    date_to: datetime | date | None = Query(default=None),
-    db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*AUDITORIA_ROLES)),
-):
-    logs = crud.list_audit_logs(
-        db,
-        limit=limit,
-        action=action,
-        entity_type=entity_type,
-        performed_by_id=performed_by_id,
-        date_from=date_from,
-        date_to=date_to,
-    )
-    filters = _build_filter_summary(
-        limit=limit,
-        action=action,
-        entity_type=entity_type,
-        performed_by_id=performed_by_id,
-        date_from=date_from,
-        date_to=date_to,
-    )
-    alerts = audit_utils.summarize_alerts(logs)
-    pdf_bytes = audit_service.render_audit_pdf(logs, filters=filters, alerts=alerts)
-    headers = {"Content-Disposition": "attachment; filename=bitacora_auditoria.pdf"}
-    return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
 
 
 @router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse)

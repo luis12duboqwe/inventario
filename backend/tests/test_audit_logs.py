@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 
 from fastapi import status
 
-from backend.app import models
 from backend.app.core.roles import ADMIN
 
 
@@ -51,7 +50,6 @@ def test_audit_filters_and_csv_export(client):
     assert logs
     assert all(log["performed_by_id"] == admin["id"] for log in logs)
     assert any(log["action"] == "store_created" for log in logs)
-    assert {log["severity"] for log in logs} <= {"info", "warning", "critical"}
 
     future_from = (datetime.utcnow() + timedelta(days=1)).isoformat()
     empty_logs = client.get(
@@ -82,59 +80,3 @@ def test_audit_filters_and_csv_export(client):
     for log in report_logs:
         assert log["performed_by_id"] == admin["id"]
         assert log["action"] == "store_created"
-        assert log["severity_label"] in {"Informativa", "Preventiva", "Crítica"}
-
-    pdf_response = client.get(
-        "/reports/audit/pdf",
-        params={"performed_by_id": admin["id"], "action": "store_created", "limit": 50},
-        headers=auth_headers,
-    )
-    assert pdf_response.status_code == status.HTTP_200_OK
-    assert pdf_response.headers["content-type"].startswith("application/pdf")
-    assert len(pdf_response.content) > 1000
-
-
-def test_audit_persistent_reminders(client, db_session):
-    admin, credentials = _bootstrap_admin(client)
-    token_data = _login(client, credentials["username"], credentials["password"])
-
-    auth_headers = {"Authorization": f"Bearer {token_data['access_token']}"}
-
-    base_time = datetime.utcnow() - timedelta(minutes=45)
-    repeated_action = "login_fail_attempt"
-
-    first_log = models.AuditLog(
-        action=repeated_action,
-        entity_type="auth",
-        entity_id="login",
-        details="fail: contraseña incorrecta",
-        performed_by_id=admin["id"],
-        created_at=base_time,
-    )
-    second_log = models.AuditLog(
-        action=repeated_action,
-        entity_type="auth",
-        entity_id="login",
-        details="fail: bloqueo automático",
-        performed_by_id=admin["id"],
-        created_at=base_time + timedelta(minutes=10),
-    )
-    db_session.add_all([first_log, second_log])
-    db_session.flush()
-
-    reminders_response = client.get(
-        "/audit/reminders",
-        params={"threshold_minutes": 15, "lookback_hours": 24, "min_occurrences": 1},
-        headers=auth_headers,
-    )
-    assert reminders_response.status_code == status.HTTP_200_OK
-    data = reminders_response.json()
-    assert data["threshold_minutes"] == 15
-    assert data["min_occurrences"] == 1
-    assert data["total"] >= 1
-    assert data["persistent"]
-    reminder = data["persistent"][0]
-    assert reminder["entity_type"] == "auth"
-    assert reminder["entity_id"] == "login"
-    assert reminder["occurrences"] >= 1
-    assert reminder["latest_action"] == repeated_action
