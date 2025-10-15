@@ -101,12 +101,6 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - ✅ Parte 7 — Reparaciones: descuento de piezas, cálculo de costos, estados personalizados y notificaciones a clientes registrados en `repairs.py`, `RepairOrders.tsx` y la bitácora de seguridad.
 - ✅ Parte 8 — Backend general e instalador: API FastAPI + PostgreSQL con JWT protegidos, actualizador automático (`updates.py`) y plantillas de instalador (`installers/`) con modo offline.
 
-### Registro operativo — 28/02/2025
-
-- ✅ Parte 4 — Seguridad: la bitácora de auditoría ahora permite filtrar por usuario, acción, módulo y rango de fechas, además de exportarse a CSV desde `/audit/logs/export.csv` y `/reports/audit`. Cobertura verificada en `backend/tests/test_audit_logs.py`.
-- ✅ 28/02/2025 — Se habilitó `/reports/audit/pdf` con filtros impresos, clasificación por severidad en `services/audit.py` y alertas visuales dentro de `AuditLog.tsx`, incluyendo descarga directa desde la UI. Pruebas extendidas en `backend/tests/test_audit_logs.py`.
-- ▶️ Próximo paso inmediato: consolidar las alertas de auditoría en el tablero global de métricas y documentar lineamientos de respuesta rápida.
-
 **Acciones obligatorias antes de nuevas iteraciones**
 
 1. Leer `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` para identificar pendientes.

@@ -27,7 +27,7 @@ def list_audit_logs_endpoint(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*AUDITORIA_ROLES)),
 ):
-    logs = crud.list_audit_logs(
+    return crud.list_audit_logs(
         db,
         limit=limit,
         action=action,
@@ -36,10 +36,6 @@ def list_audit_logs_endpoint(
         date_from=date_from,
         date_to=date_to,
     )
-    return [
-        schemas.AuditLogResponse(**audit_utils.serialize_log(log))
-        for log in logs
-    ]
 
 
 @router.get("/logs/export.csv")

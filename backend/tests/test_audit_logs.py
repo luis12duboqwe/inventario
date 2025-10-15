@@ -50,7 +50,6 @@ def test_audit_filters_and_csv_export(client):
     assert logs
     assert all(log["performed_by_id"] == admin["id"] for log in logs)
     assert any(log["action"] == "store_created" for log in logs)
-    assert {log["severity"] for log in logs} <= {"info", "warning", "critical"}
 
     future_from = (datetime.utcnow() + timedelta(days=1)).isoformat()
     empty_logs = client.get(
@@ -81,13 +80,3 @@ def test_audit_filters_and_csv_export(client):
     for log in report_logs:
         assert log["performed_by_id"] == admin["id"]
         assert log["action"] == "store_created"
-        assert log["severity_label"] in {"Informativa", "Preventiva", "Crítica"}
-
-    pdf_response = client.get(
-        "/reports/audit/pdf",
-        params={"performed_by_id": admin["id"], "action": "store_created", "limit": 50},
-        headers=auth_headers,
-    )
-    assert pdf_response.status_code == status.HTTP_200_OK
-    assert pdf_response.headers["content-type"].startswith("application/pdf")
-    assert len(pdf_response.content) > 1000
