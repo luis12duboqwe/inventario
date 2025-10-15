@@ -74,7 +74,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 ### Pasos de control iterativo (deben registrarse tras cada entrega)
 
 1. Revisa `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` antes de modificar código; anota brechas resueltas o pendientes.
-2. Ejecuta `pytest` en la raíz y `npm --prefix frontend run build`; registra fecha y resultado en la bitácora interna del equipo.
+2. Ejecuta `pytest`, `npm --prefix frontend run build` y `npm --prefix frontend run test`; registra fecha y resultado en la bitácora interna del equipo.
 3. Verifica desde el frontend las secciones Inventario, Operaciones, Analítica, Seguridad (incluyendo flujos 2FA con motivo) y Sincronización.
 4. Asegura que la cola híbrida (`/sync/outbox`) quede sin pendientes críticos reintentando con `X-Reason` justificado y documenta el resultado.
 5. Actualiza el apartado "Registro operativo de lotes entregados" del README con cualquier nuevo componente, endpoint o prueba agregada.
@@ -119,3 +119,10 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 1. Leer `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` para identificar pendientes.
 2. Ejecutar `pytest` y `npm --prefix frontend run build`, registrando fecha y resultado en la bitácora interna.
 3. Validar inventario, operaciones, analítica, seguridad, sincronización y usuarios en el frontend, asegurando que `/sync/outbox` quede sin pendientes críticos y documentando incidentes.
+
+### Plan operativo inmediato — Seguridad y auditoría
+
+1. ✅ **Recordatorios y acuses activos en Seguridad**: `AuditLog.tsx` debe mantener badges de pendientes/atendidas, snooze corporativo de 10 minutos y descargas CSV/PDF con motivo (`X-Reason` ≥ 5). No modifiques este comportamiento sin actualizar README y pruebas.
+2. ✅ **Tablero global enriquecido**: `GlobalMetrics.tsx` tiene que reflejar `pending_count`/`acknowledged_count`, destacar el último acuse y enlazar a `/dashboard/security` cuando existan pendientes.
+3. ✅ **Pruebas de frontend obligatorias**: `npm --prefix frontend run test` ejecuta Vitest + React Testing Library (`AuditLog.test.tsx`) validando recordatorios, registros de acuse y descargas con motivo corporativo.
+4. 🔄 **Bitácora corporativa**: registra cada corrida de `pytest`, `npm --prefix frontend run build` y `npm run test` en `docs/bitacora_pruebas_YYYY-MM-DD.md`, indicando hash del commit, responsable y resultado.

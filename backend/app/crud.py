@@ -1878,12 +1878,45 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
             (ack.entity_type, ack.entity_id): ack for ack in db.scalars(ack_stmt)
         }
 
+    highlight_entries: list[dict[str, object]] = []
     pending_highlights: list[audit_utils.HighlightEntry] = []
+    acknowledged_highlights = 0
     for entry in alert_summary.highlights:
         acknowledgement = ack_map.get((entry["entity_type"], entry["entity_id"]))
+        status = "pending"
+        acknowledged_at = None
+        acknowledged_by_id = None
+        acknowledged_by_name = None
+        acknowledged_note = None
         if acknowledgement and acknowledgement.acknowledged_at >= entry["created_at"]:
-            continue
-        pending_highlights.append(entry)
+            status = "acknowledged"
+            acknowledged_at = acknowledgement.acknowledged_at
+            acknowledged_by_id = acknowledgement.acknowledged_by_id
+            if acknowledgement.acknowledged_by is not None:
+                acknowledged_by_name = (
+                    acknowledgement.acknowledged_by.full_name
+                    or acknowledgement.acknowledged_by.username
+                )
+            acknowledged_note = acknowledgement.note
+            acknowledged_highlights += 1
+        else:
+            pending_highlights.append(entry)
+
+        highlight_entries.append(
+            {
+                "id": entry["id"],
+                "action": entry["action"],
+                "created_at": entry["created_at"],
+                "severity": entry["severity"],
+                "entity_type": entry["entity_type"],
+                "entity_id": entry["entity_id"],
+                "status": status,
+                "acknowledged_at": acknowledged_at,
+                "acknowledged_by_id": acknowledged_by_id,
+                "acknowledged_by_name": acknowledged_by_name,
+                "acknowledged_note": acknowledged_note,
+            }
+        )
 
     critical_events: dict[tuple[str, str], datetime] = {}
     for log in audit_logs:
@@ -1929,16 +1962,10 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         "warning": alert_summary.warning,
         "info": alert_summary.info,
         "has_alerts": alert_summary.has_alerts,
-        "highlights": [
-            {
-                "id": highlight["id"],
-                "action": highlight["action"],
-                "created_at": highlight["created_at"],
-                "severity": highlight["severity"],
-                "entity_type": highlight["entity_type"],
-            }
-            for highlight in alert_summary.highlights
-        ],
+        "pending_count": len([entry for entry in highlight_entries if entry["status"] != "acknowledged"]),
+        "acknowledged_count": len(acknowledged_entities) or acknowledged_highlights,
+        "highlights": highlight_entries,
+        "acknowledged_entities": acknowledged_entities,
     }
 
     return {
