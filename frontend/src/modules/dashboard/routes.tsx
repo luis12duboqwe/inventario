@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import DashboardLayout from "./layout/DashboardLayout";
 import InventoryPage from "../inventory/pages/InventoryPage";
@@ -8,11 +9,43 @@ import SyncPage from "../sync/pages/SyncPage";
 import UsersPage from "../users/pages/UsersPage";
 import RepairsPage from "../repairs/pages/RepairsPage";
 
-function DashboardRoutes() {
+type DashboardRoutesProps = {
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
+  onLogout: () => void;
+};
+
+const allowedModules = new Set([
+  "inventory",
+  "operations",
+  "analytics",
+  "security",
+  "sync",
+  "users",
+  "repairs",
+]);
+
+function resolveInitialModule(): string {
+  if (typeof window === "undefined") {
+    return "inventory";
+  }
+  const stored = window.localStorage.getItem("softmobile_last_module");
+  if (stored && stored.startsWith("/dashboard/")) {
+    const slug = stored.replace("/dashboard/", "");
+    if (allowedModules.has(slug)) {
+      return slug;
+    }
+  }
+  return "inventory";
+}
+
+function DashboardRoutes({ theme, onToggleTheme, onLogout }: DashboardRoutesProps) {
+  const [initialModule] = useState(resolveInitialModule);
+
   return (
     <Routes>
-      <Route element={<DashboardLayout />}>
-        <Route index element={<Navigate to="inventory" replace />} />
+      <Route element={<DashboardLayout theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />}>
+        <Route index element={<Navigate to={initialModule} replace />} />
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="operations" element={<OperationsPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />

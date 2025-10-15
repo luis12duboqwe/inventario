@@ -174,29 +174,15 @@ function DashboardScene({ token, theme, onToggleTheme, onLogout }: DashboardScen
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
     >
-      <header className="topbar">
-        <div>
-          <h1>Softmobile Inventario</h1>
-          <p className="topbar-subtitle">Sesión activa para captura, reportes y sincronización multi‑tienda.</p>
-        </div>
-        <div className="topbar-controls">
-          <button className="secondary" type="button" onClick={onToggleTheme} aria-pressed={theme === "light"}>
-            Tema {theme === "dark" ? "oscuro" : "claro"}
-          </button>
-          <button type="button" onClick={onLogout}>
-            Cerrar sesión
-          </button>
-        </div>
-      </header>
-      <motion.main
-        className="app-container"
+      <motion.div
+        className="dashboard-shell-wrapper"
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -12 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
       >
-        <Dashboard token={token} />
-      </motion.main>
+        <Dashboard token={token} theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />
+      </motion.div>
     </motion.div>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Customer, Device, RepairOrder, Store } from "../../../api";
 import {
   createRepairOrder,
@@ -10,7 +10,9 @@ import {
   updateRepairOrder,
 } from "../../../api";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import ScrollableTable from "../../../components/ScrollableTable";
 import type { ModuleStatus } from "../../../components/ModuleHeader";
+import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 type Props = {
   token: string;
@@ -98,6 +100,7 @@ const statusOptions: Array<RepairOrder["status"]> = [
 ];
 
 function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh, onStatusChange }: Props) {
+  const { globalSearchTerm, setGlobalSearchTerm } = useDashboard();
   const [orders, setOrders] = useState<RepairOrder[]>([]);
   const [form, setForm] = useState<RepairForm>({ ...initialForm, storeId: defaultStoreId ?? null });
   const [devices, setDevices] = useState<Device[]>([]);
@@ -109,6 +112,24 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const formatError = useCallback((err: unknown, fallback: string) => {
+    if (err instanceof Error) {
+      const message = err.message;
+      if (message.toLowerCase().includes("failed to fetch")) {
+        return "No fue posible conectar con el servicio Softmobile. Verifica tu red e inténtalo nuevamente.";
+      }
+      return message;
+    }
+    return fallback;
+  }, []);
+
+  const previousStoreIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setSearch(globalSearchTerm);
+  }, [globalSearchTerm]);
+
   const [visuals, setVisuals] = useState<Record<number, RepairVisual>>(() => {
     if (typeof window === "undefined") {
       return {};
@@ -123,12 +144,17 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
 
   const refreshOrders = useCallback(
     async (storeId?: number | null, query?: string, status?: RepairOrder["status"] | "TODOS") => {
+      if (!storeId) {
+        setOrders([]);
+        setLoading(false);
+        setError(null);
+        return;
+      }
       try {
         setLoading(true);
+        setError(null);
         const params: { store_id?: number; status?: string; q?: string; limit?: number } = { limit: 100 };
-        if (storeId) {
-          params.store_id = storeId;
-        }
+        params.store_id = storeId;
         if (status && status !== "TODOS") {
           params.status = status;
         }
@@ -139,12 +165,12 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
         const data = await listRepairOrders(token, params);
         setOrders(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "No fue posible cargar las órdenes de reparación.");
+        setError(formatError(err, "No fue posible cargar las órdenes de reparación."));
       } finally {
         setLoading(false);
       }
     },
-    [token]
+    [formatError, token]
   );
 
   const refreshDevices = useCallback(
@@ -157,10 +183,10 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
         const storeDevices = await getDevices(token, storeId);
         setDevices(storeDevices);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "No fue posible cargar los dispositivos de la sucursal.");
+        setError(formatError(err, "No fue posible cargar los dispositivos de la sucursal."));
       }
     },
-    [token]
+    [formatError, token]
   );
 
   const refreshCustomers = useCallback(
@@ -170,22 +196,27 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
         const results = await listCustomers(token, trimmed && trimmed.length > 0 ? trimmed : undefined, 100);
         setCustomers(results);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "No fue posible cargar los clientes para reparaciones.");
+        setError(formatError(err, "No fue posible cargar los clientes para reparaciones."));
       }
     },
-    [token]
+    [formatError, token]
   );
 
   useEffect(() => {
     setSelectedStoreId(defaultStoreId ?? null);
-    setForm((current) => ({ ...current, storeId: defaultStoreId ?? null }));
   }, [defaultStoreId]);
 
   useEffect(() => {
+    if (!selectedStoreId) {
+      previousStoreIdRef.current = null;
+      return;
+    }
     const trimmed = search.trim();
+    const storeChanged = previousStoreIdRef.current !== selectedStoreId;
     const handler = window.setTimeout(() => {
       void refreshOrders(selectedStoreId, trimmed, statusFilter);
-    }, 350);
+    }, storeChanged ? 0 : 350);
+    previousStoreIdRef.current = selectedStoreId;
     return () => window.clearTimeout(handler);
   }, [search, statusFilter, selectedStoreId, refreshOrders]);
 
@@ -206,12 +237,12 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
       setOrders([]);
       setDevices([]);
       setForm((current) => ({ ...current, storeId: null, parts: [] }));
+      setLoading(false);
       return;
     }
-    void refreshOrders(selectedStoreId, search.trim(), statusFilter);
-    void refreshDevices(selectedStoreId);
     setForm((current) => ({ ...current, storeId: selectedStoreId }));
-  }, [selectedStoreId, refreshDevices, refreshOrders, search, statusFilter]);
+    void refreshDevices(selectedStoreId);
+  }, [selectedStoreId, refreshDevices]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -328,7 +359,7 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
       await refreshOrders(form.storeId, search.trim(), statusFilter);
       onInventoryRefresh?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible registrar la orden de reparación.");
+      setError(formatError(err, "No fue posible registrar la orden de reparación."));
     }
   };
 
@@ -346,7 +377,7 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
       await refreshOrders(selectedStoreId, search.trim(), statusFilter);
       onInventoryRefresh?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible actualizar la reparación.");
+      setError(formatError(err, "No fue posible actualizar la reparación."));
     }
   };
 
@@ -364,7 +395,7 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
       await refreshOrders(selectedStoreId, search.trim(), statusFilter);
       onInventoryRefresh?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible eliminar la orden de reparación.");
+      setError(formatError(err, "No fue posible eliminar la orden de reparación."));
     }
   };
 
@@ -380,7 +411,7 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible descargar la orden en PDF.");
+      setError(formatError(err, "No fue posible descargar la orden en PDF."));
     }
   };
 
@@ -452,6 +483,90 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
     devices.forEach((device) => map.set(device.id, device));
     return map;
   }, [devices]);
+
+  const renderRepairRow = (order: RepairOrder) => {
+    const updatedAt = new Date(order.updated_at).toLocaleString("es-MX");
+    const total = Number(order.total_cost ?? 0).toLocaleString("es-MX", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const visual = getVisual(order);
+
+    return (
+      <tr>
+        <td data-label="Folio">#{order.id}</td>
+        <td data-label="Cliente">{order.customer_name ?? "Mostrador"}</td>
+        <td data-label="Técnico">{order.technician_name}</td>
+        <td data-label="Diagnóstico">
+          <div className="repair-visual">
+            {visual.imageUrl ? (
+              <img
+                src={visual.imageUrl}
+                alt={`Dispositivo asociado a la reparación #${order.id}`}
+                className="repair-visual__image"
+              />
+            ) : (
+              <span className="repair-visual__icon" aria-hidden="true">
+                {visual.icon}
+              </span>
+            )}
+            <div className="repair-visual__details">
+              <div>{order.damage_type}</div>
+              {order.device_description ? (
+                <div className="muted-text">{order.device_description}</div>
+              ) : null}
+              {order.parts.length > 0 ? (
+                <ul className="muted-text">
+                  {order.parts.map((part) => {
+                    const device = devicesById.get(part.device_id);
+                    return (
+                      <li key={`${order.id}-${part.id}`}>
+                        {part.quantity} × {device ? `${device.sku} · ${device.name}` : `Dispositivo #${part.device_id}`}{" "}
+                        (
+                        {part.unit_cost.toLocaleString("es-MX", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                        )
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </div>
+          </div>
+          <button type="button" className="btn btn--ghost" onClick={() => handleVisualEdit(order)}>
+            Definir visual
+          </button>
+        </td>
+        <td data-label="Estado">
+          <select
+            value={order.status}
+            onChange={(event) => handleStatusChange(order, event.target.value as RepairOrder["status"])}
+          >
+            {statusOptions.map((status) => (
+              <option key={status} value={status}>
+                {statusLabels[status]}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td data-label="Total">${total}</td>
+        <td data-label="Actualizado">{updatedAt}</td>
+        <td data-label="Inventario">{order.inventory_adjusted ? "Sí" : "Pendiente"}</td>
+        <td data-label="Acciones">
+          <div className="actions-row">
+            <button type="button" className="btn btn--ghost" onClick={() => handleDownload(order)}>
+              PDF
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={() => handleDelete(order)}>
+              Eliminar
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <section className="card wide">
@@ -659,7 +774,11 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
           Buscar
           <input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setSearch(value);
+              setGlobalSearchTerm(value);
+            }}
             placeholder="Cliente, técnico, daño o folio"
           />
         </label>
@@ -674,106 +793,29 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
         </div>
       </div>
       <LoadingOverlay visible={loading} label="Cargando órdenes de reparación..." />
-      {orders.length === 0 && !loading ? (
-        <p className="muted-text">No hay órdenes con los filtros actuales.</p>
+      {orders.length === 0 ? (
+        !loading ? <p className="muted-text">No hay órdenes con los filtros actuales.</p> : null
       ) : (
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Folio</th>
-                <th>Cliente</th>
-                <th>Técnico</th>
-                <th>Diagnóstico</th>
-                <th>Estado</th>
-                <th>Total</th>
-                <th>Actualizado</th>
-                <th>Inventario</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => {
-                const updatedAt = new Date(order.updated_at).toLocaleString("es-MX");
-                const total = Number(order.total_cost ?? 0).toLocaleString("es-MX", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                });
-                const visual = getVisual(order);
-                return (
-                  <tr key={order.id}>
-                    <td>#{order.id}</td>
-                    <td>{order.customer_name ?? "Mostrador"}</td>
-                    <td>{order.technician_name}</td>
-                    <td>
-                      <div className="repair-visual">
-                        {visual.imageUrl ? (
-                          <img
-                            src={visual.imageUrl}
-                            alt={`Dispositivo asociado a la reparación #${order.id}`}
-                            className="repair-visual__image"
-                          />
-                        ) : (
-                          <span className="repair-visual__icon" aria-hidden="true">
-                            {visual.icon}
-                          </span>
-                        )}
-                        <div className="repair-visual__details">
-                          <div>{order.damage_type}</div>
-                          {order.device_description ? (
-                            <div className="muted-text">{order.device_description}</div>
-                          ) : null}
-                          {order.parts.length > 0 ? (
-                            <ul className="muted-text">
-                              {order.parts.map((part) => {
-                                const device = devicesById.get(part.device_id);
-                                return (
-                                  <li key={`${order.id}-${part.id}`}>
-                                    {part.quantity} × {device ? `${device.sku} · ${device.name}` : `Dispositivo #${part.device_id}`} ({part.unit_cost.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          ) : null}
-                        </div>
-                      </div>
-                      <button type="button" className="btn btn--ghost" onClick={() => handleVisualEdit(order)}>
-                        Definir visual
-                      </button>
-                    </td>
-                    <td>
-                      <select
-                        value={order.status}
-                        onChange={(event) =>
-                          handleStatusChange(order, event.target.value as RepairOrder["status"])
-                        }
-                      >
-                        {statusOptions.map((status) => (
-                          <option key={status} value={status}>
-                            {statusLabels[status]}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>${total}</td>
-                    <td>{updatedAt}</td>
-                    <td>{order.inventory_adjusted ? "Sí" : "Pendiente"}</td>
-                    <td>
-                      <div className="actions-row">
-                        <button type="button" className="btn btn--ghost" onClick={() => handleDownload(order)}>
-                          PDF
-                        </button>
-                        <button type="button" className="btn btn--ghost" onClick={() => handleDelete(order)}>
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ScrollableTable
+          items={orders}
+          itemKey={(order) => order.id}
+          title="Órdenes de reparación"
+          ariaLabel="Tabla de órdenes de reparación"
+          renderHead={() => (
+            <>
+              <th scope="col">Folio</th>
+              <th scope="col">Cliente</th>
+              <th scope="col">Técnico</th>
+              <th scope="col">Diagnóstico</th>
+              <th scope="col">Estado</th>
+              <th scope="col">Total</th>
+              <th scope="col">Actualizado</th>
+              <th scope="col">Inventario</th>
+              <th scope="col">Acciones</th>
+            </>
+          )}
+          renderRow={(order) => renderRepairRow(order)}
+        />
       )}
     </section>
   );

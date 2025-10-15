@@ -17,6 +17,7 @@ import {
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import ScrollableTable from "../../../components/ScrollableTable";
 
 type Props = {
   token: string;
@@ -120,19 +121,16 @@ function AnalyticsBoard({ token }: Props) {
     [formatCurrency]
   );
 
-  const limitedComparatives = useMemo(() => comparativeItems.slice(0, 5), [comparativeItems]);
-  const limitedProfit = useMemo(() => profitItems.slice(0, 5), [profitItems]);
-  const limitedProjection = useMemo(() => projectionItems.slice(0, 5), [projectionItems]);
   const projectionUnitsMax = useMemo(() => {
-    return limitedProjection.reduce(
+    return projectionItems.reduce(
       (acc, item) => Math.max(acc, item.projected_units, item.average_daily_units),
       1,
     );
-  }, [limitedProjection]);
+  }, [projectionItems]);
 
   const marginMax = useMemo(() => {
-    return limitedProfit.reduce((acc, item) => Math.max(acc, item.margin_percent), 0);
-  }, [limitedProfit]);
+    return profitItems.reduce((acc, item) => Math.max(acc, item.margin_percent), 0);
+  }, [profitItems]);
 
   return (
     <section className="card analytics-card fade-in">
@@ -174,189 +172,196 @@ function AnalyticsBoard({ token }: Props) {
       <div className="analytics-grid">
             <div className="analytics-panel">
               <h3 className="accent-title">Rotación por dispositivo</h3>
-              <table>
-                <thead>
+              <ScrollableTable
+                items={rotationItems}
+                itemKey={(item) => `${item.device_id}-${item.store_id}`}
+                title="Rotación por dispositivo"
+                ariaLabel="Tabla de rotación por dispositivo"
+                renderHead={() => (
+                  <>
+                    <th scope="col">SKU</th>
+                    <th scope="col">Sucursal</th>
+                    <th scope="col">Vendidos</th>
+                    <th scope="col">Recibidos</th>
+                    <th scope="col">Rotación</th>
+                  </>
+                )}
+                renderRow={(item) => (
                   <tr>
-                    <th>SKU</th>
-                    <th>Sucursal</th>
-                    <th>Vendidos</th>
-                    <th>Recibidos</th>
-                    <th>Rotación</th>
+                    <td data-label="SKU">{item.sku}</td>
+                    <td data-label="Sucursal">{item.store_name}</td>
+                    <td data-label="Vendidos">{item.sold_units}</td>
+                    <td data-label="Recibidos">{item.received_units}</td>
+                    <td data-label="Rotación">{item.rotation_rate.toFixed(2)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rotationItems.slice(0, 10).map((item) => (
-                    <tr key={`${item.device_id}-${item.store_id}`}>
-                      <td>{item.sku}</td>
-                      <td>{item.store_name}</td>
-                      <td>{item.sold_units}</td>
-                      <td>{item.received_units}</td>
-                      <td>{item.rotation_rate.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                )}
+              />
             </div>
             <div className="analytics-panel">
               <h3 className="accent-title">Envejecimiento</h3>
-              <table>
-                <thead>
+              <ScrollableTable
+                items={agingItems}
+                itemKey={(item) => `${item.device_id}-${item.store_name}`}
+                title="Envejecimiento de inventario"
+                ariaLabel="Tabla de envejecimiento de inventario"
+                renderHead={() => (
+                  <>
+                    <th scope="col">SKU</th>
+                    <th scope="col">Sucursal</th>
+                    <th scope="col">Días</th>
+                    <th scope="col">Inventario</th>
+                  </>
+                )}
+                renderRow={(item) => (
                   <tr>
-                    <th>SKU</th>
-                    <th>Sucursal</th>
-                    <th>Días</th>
-                    <th>Inventario</th>
+                    <td data-label="SKU">{item.sku}</td>
+                    <td data-label="Sucursal">{item.store_name}</td>
+                    <td data-label="Días">{item.days_in_stock}</td>
+                    <td data-label="Inventario">{item.quantity}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {agingItems.slice(0, 10).map((item) => (
-                    <tr key={`${item.device_id}-${item.store_name}`}>
-                      <td>{item.sku}</td>
-                      <td>{item.store_name}</td>
-                      <td>{item.days_in_stock}</td>
-                      <td>{item.quantity}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                )}
+              />
             </div>
             <div className="analytics-panel">
               <h3 className="accent-title">Pronóstico de agotamiento</h3>
-              <table>
-                <thead>
+              <ScrollableTable
+                items={forecastItems}
+                itemKey={(item) => `${item.device_id}-${item.store_name}`}
+                title="Pronóstico de agotamiento"
+                ariaLabel="Tabla de pronóstico de agotamiento"
+                renderHead={() => (
+                  <>
+                    <th scope="col">SKU</th>
+                    <th scope="col">Sucursal</th>
+                    <th scope="col">Promedio diario</th>
+                    <th scope="col">Días proyectados</th>
+                  </>
+                )}
+                renderRow={(item) => (
                   <tr>
-                    <th>SKU</th>
-                    <th>Sucursal</th>
-                    <th>Promedio diario</th>
-                    <th>Días proyectados</th>
+                    <td data-label="SKU">{item.sku}</td>
+                    <td data-label="Sucursal">{item.store_name}</td>
+                    <td data-label="Promedio diario">{item.average_daily_sales.toFixed(2)}</td>
+                    <td data-label="Días proyectados">{item.projected_days ?? "N/A"}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {forecastItems.slice(0, 10).map((item) => (
-                    <tr key={`${item.device_id}-${item.store_name}`}>
-                      <td>{item.sku}</td>
-                      <td>{item.store_name}</td>
-                      <td>{item.average_daily_sales.toFixed(2)}</td>
-                      <td>{item.projected_days ?? "N/A"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                )}
+              />
             </div>
       </div>
 
       <div className="analytics-secondary-grid">
             <div className="metrics-card">
               <h3 className="accent-title">Comparativo por sucursal</h3>
-              {limitedComparatives.length === 0 ? (
+              {comparativeItems.length === 0 ? (
                 <p className="muted-text">Sin datos comparativos disponibles.</p>
               ) : (
-                <table>
-                  <thead>
+                <ScrollableTable
+                  items={comparativeItems}
+                  itemKey={(item) => item.store_id}
+                  title="Comparativo por sucursal"
+                  ariaLabel="Tabla comparativa por sucursal"
+                  renderHead={() => (
+                    <>
+                      <th scope="col">Sucursal</th>
+                      <th scope="col">Inventario</th>
+                      <th scope="col">Unidades</th>
+                      <th scope="col">Rotación</th>
+                      <th scope="col">Ventas 30d</th>
+                    </>
+                  )}
+                  renderRow={(item) => (
                     <tr>
-                      <th>Sucursal</th>
-                      <th>Inventario</th>
-                      <th>Unidades</th>
-                      <th>Rotación</th>
-                      <th>Ventas 30d</th>
+                      <td data-label="Sucursal">{item.store_name}</td>
+                      <td data-label="Inventario">{formatNumber(item.inventory_value)}</td>
+                      <td data-label="Unidades">{item.total_units}</td>
+                      <td data-label="Rotación">{item.average_rotation.toFixed(2)}</td>
+                      <td data-label="Ventas 30d">{formatNumber(item.sales_last_30_days)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {limitedComparatives.map((item) => (
-                      <tr key={item.store_id}>
-                        <td>{item.store_name}</td>
-                        <td>{formatNumber(item.inventory_value)}</td>
-                        <td>{item.total_units}</td>
-                        <td>{item.average_rotation.toFixed(2)}</td>
-                        <td>{formatNumber(item.sales_last_30_days)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  )}
+                />
               )}
             </div>
 
             <div className="metrics-card">
               <h3 className="accent-title">Margen de contribución</h3>
-              {limitedProfit.length === 0 ? (
+              {profitItems.length === 0 ? (
                 <p className="muted-text">Aún no se registran ventas para calcular márgenes.</p>
               ) : (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Sucursal</th>
-                      <th>Ingresos</th>
-                      <th>Utilidad</th>
-                      <th>Margen</th>
-                      <th>Visual</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {limitedProfit.map((item) => {
-                      const normalizedMargin = marginMax > 0 ? Math.max((item.margin_percent / marginMax) * 100, 0) : 0;
-                      const width = Math.min(normalizedMargin, 100);
-                      return (
-                        <tr key={item.store_id}>
-                          <td>{item.store_name}</td>
-                          <td>{formatNumber(item.revenue)}</td>
-                          <td>{formatNumber(item.profit)}</td>
-                          <td>{item.margin_percent.toFixed(2)}%</td>
-                          <td>
-                            <div className="micro-chart" aria-hidden="true">
-                              <div className="micro-chart__bar" style={{ width: `${width}%` }} />
-                            </div>
-                            <span className="sr-only">Margen {item.margin_percent.toFixed(2)} por ciento</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <ScrollableTable
+                  items={profitItems}
+                  itemKey={(item) => item.store_id}
+                  title="Margen de contribución"
+                  ariaLabel="Tabla de márgenes de contribución"
+                  renderHead={() => (
+                    <>
+                      <th scope="col">Sucursal</th>
+                      <th scope="col">Ingresos</th>
+                      <th scope="col">Utilidad</th>
+                      <th scope="col">Margen</th>
+                      <th scope="col">Visual</th>
+                    </>
+                  )}
+                  renderRow={(item) => {
+                    const normalizedMargin = marginMax > 0 ? Math.max((item.margin_percent / marginMax) * 100, 0) : 0;
+                    const width = Math.min(normalizedMargin, 100);
+                    return (
+                      <tr>
+                        <td data-label="Sucursal">{item.store_name}</td>
+                        <td data-label="Ingresos">{formatNumber(item.revenue)}</td>
+                        <td data-label="Utilidad">{formatNumber(item.profit)}</td>
+                        <td data-label="Margen">{item.margin_percent.toFixed(2)}%</td>
+                        <td data-label="Visual">
+                          <div className="micro-chart" aria-hidden="true">
+                            <div className="micro-chart__bar" style={{ width: `${width}%` }} />
+                          </div>
+                          <span className="sr-only">Margen {item.margin_percent.toFixed(2)} por ciento</span>
+                        </td>
+                      </tr>
+                    );
+                  }}
+                />
               )}
             </div>
 
             <div className="metrics-card">
               <h3 className="accent-title">Proyección de ventas (30 días)</h3>
-              {limitedProjection.length === 0 ? (
+              {projectionItems.length === 0 ? (
                 <p className="muted-text">Sin datos suficientes para proyectar ventas.</p>
               ) : (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Sucursal</th>
-                      <th>Unidades/día</th>
-                      <th>Ticket promedio</th>
-                      <th>Ingresos proyectados</th>
-                      <th>Visual</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {limitedProjection.map((item) => {
-                      const averageWidth = Math.min((item.average_daily_units / projectionUnitsMax) * 100, 100);
-                      const projectedWidth = Math.min((item.projected_units / projectionUnitsMax) * 100, 100);
-                      return (
-                        <tr key={item.store_id}>
-                          <td>{item.store_name}</td>
-                          <td>{item.average_daily_units.toFixed(2)}</td>
-                          <td>{formatNumber(item.average_ticket)}</td>
-                          <td>{formatNumber(item.projected_revenue)}</td>
-                          <td>
-                            <div className="micro-chart" aria-hidden="true">
-                              <div
-                                className="micro-chart__bar micro-chart__bar--secondary"
-                                style={{ width: `${averageWidth}%` }}
-                              />
-                              <div className="micro-chart__bar" style={{ width: `${projectedWidth}%` }} />
-                            </div>
-                            <span className="sr-only">
-                              Promedio {item.average_daily_units.toFixed(2)} unidades frente a {item.projected_units.toFixed(2)} proyectadas
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <ScrollableTable
+                  items={projectionItems}
+                  itemKey={(item) => item.store_id}
+                  title="Proyección de ventas (30 días)"
+                  ariaLabel="Tabla de proyección de ventas"
+                  renderHead={() => (
+                    <>
+                      <th scope="col">Sucursal</th>
+                      <th scope="col">Unidades/día</th>
+                      <th scope="col">Ticket promedio</th>
+                      <th scope="col">Ingresos proyectados</th>
+                      <th scope="col">Visual</th>
+                    </>
+                  )}
+                  renderRow={(item) => {
+                    const averageWidth = Math.min((item.average_daily_units / projectionUnitsMax) * 100, 100);
+                    const projectedWidth = Math.min((item.projected_units / projectionUnitsMax) * 100, 100);
+                    return (
+                      <tr>
+                        <td data-label="Sucursal">{item.store_name}</td>
+                        <td data-label="Unidades/día">{item.average_daily_units.toFixed(2)}</td>
+                        <td data-label="Ticket promedio">{formatNumber(item.average_ticket)}</td>
+                        <td data-label="Ingresos proyectados">{formatNumber(item.projected_revenue)}</td>
+                        <td data-label="Visual">
+                          <div className="micro-chart" aria-hidden="true">
+                            <div className="micro-chart__bar micro-chart__bar--primary" style={{ width: `${averageWidth}%` }} />
+                            <div className="micro-chart__bar micro-chart__bar--secondary" style={{ width: `${projectedWidth}%` }} />
+                          </div>
+                          <span className="sr-only">{item.projected_units.toFixed(2)} unidades proyectadas</span>
+                        </td>
+                      </tr>
+                    );
+                  }}
+                />
               )}
             </div>
       </div>
