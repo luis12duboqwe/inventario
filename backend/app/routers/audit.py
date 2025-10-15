@@ -11,6 +11,7 @@ from .. import crud, schemas
 from ..core.roles import AUDITORIA_ROLES
 from ..database import get_db
 from ..security import require_roles
+from ..utils import audit as audit_utils
 
 router = APIRouter(prefix="/audit", tags=["auditoría"])
 

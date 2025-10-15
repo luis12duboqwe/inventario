@@ -16,7 +16,9 @@ from ..core.roles import AUDITORIA_ROLES, REPORTE_ROLES
 from ..database import get_db
 from ..security import require_roles
 from ..services import analytics as analytics_service
+from ..services import audit as audit_service
 from ..services import backups as backup_services
+from ..utils import audit as audit_utils
 
 router = APIRouter(prefix="/reports", tags=["reportes"])
 

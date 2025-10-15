@@ -539,6 +539,17 @@ export type AuditLogEntry = {
   details?: string | null;
   performed_by_id?: number | null;
   created_at: string;
+  severity: "info" | "warning" | "critical";
+  severity_label: string;
+};
+
+export type AuditLogFilters = {
+  limit?: number;
+  action?: string;
+  entity_type?: string;
+  performed_by_id?: number;
+  date_from?: string;
+  date_to?: string;
 };
 
 export type RotationMetric = {
@@ -1718,12 +1729,45 @@ export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncSt
   );
 }
 
-export function getAuditLogs(token: string, limit = 100, action?: string): Promise<AuditLogEntry[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (action) {
-    params.append("action", action);
+function buildAuditQuery(filters: AuditLogFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.limit) {
+    params.set("limit", String(filters.limit));
   }
-  return request<AuditLogEntry[]>(`/audit/logs?${params.toString()}`, { method: "GET" }, token);
+  if (filters.action) {
+    params.set("action", filters.action);
+  }
+  if (filters.entity_type) {
+    params.set("entity_type", filters.entity_type);
+  }
+  if (typeof filters.performed_by_id === "number") {
+    params.set("performed_by_id", String(filters.performed_by_id));
+  }
+  if (filters.date_from) {
+    params.set("date_from", filters.date_from);
+  }
+  if (filters.date_to) {
+    params.set("date_to", filters.date_to);
+  }
+  return params.toString();
+}
+
+export function getAuditLogs(token: string, filters: AuditLogFilters = {}): Promise<AuditLogEntry[]> {
+  const query = buildAuditQuery(filters);
+  const suffix = query ? `?${query}` : "";
+  return request<AuditLogEntry[]>(`/audit/logs${suffix}`, { method: "GET" }, token);
+}
+
+export function exportAuditLogsCsv(token: string, filters: AuditLogFilters = {}): Promise<Blob> {
+  const query = buildAuditQuery(filters);
+  const suffix = query ? `?${query}` : "";
+  return request<Blob>(`/audit/logs/export.csv${suffix}`, { method: "GET" }, token);
+}
+
+export function downloadAuditPdf(token: string, filters: AuditLogFilters = {}): Promise<Blob> {
+  const query = buildAuditQuery(filters);
+  const suffix = query ? `?${query}` : "";
+  return request<Blob>(`/reports/audit/pdf${suffix}`, { method: "GET" }, token);
 }
 
 export function submitPosSale(
