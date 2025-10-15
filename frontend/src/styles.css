@@ -560,6 +560,12 @@ button.link:hover:not(:disabled) {
   gap: 1.5rem;
 }
 
+.section-scroll {
+  max-height: 600px;
+  overflow-y: auto;
+  border-radius: 8px;
+}
+
 .module-content {
   display: flex;
   flex-direction: column;
@@ -751,6 +757,13 @@ button.link:hover:not(:disabled) {
   align-items: flex-start;
   gap: 1rem;
   margin-bottom: 1.2rem;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
 }
 
 .card-subtitle {

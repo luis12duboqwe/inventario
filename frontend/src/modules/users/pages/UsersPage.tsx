@@ -16,8 +16,10 @@ function UsersPage() {
         status="ok"
         statusLabel="Administración disponible"
       />
-      <div className="section-grid">
-        <UserManagement token={token} />
+      <div className="section-scroll">
+        <div className="section-grid">
+          <UserManagement token={token} />
+        </div>
       </div>
     </div>
   );
