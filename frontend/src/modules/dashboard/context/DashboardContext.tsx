@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import {
+  NETWORK_EVENT,
+  NETWORK_RECOVERY_EVENT,
   downloadInventoryPdf,
   fetchBackupHistory,
   getDevices,
@@ -90,6 +92,8 @@ type DashboardContextValue = {
   toasts: ToastMessage[];
   pushToast: (toast: Omit<ToastMessage, "id">) => void;
   dismissToast: (id: number) => void;
+  networkAlert: string | null;
+  dismissNetworkAlert: () => void;
 };
 
 const DashboardContext = createContext<DashboardContextValue | undefined>(undefined);
@@ -141,6 +145,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const [syncHistory, setSyncHistory] = useState<SyncStoreHistory[]>([]);
   const [syncHistoryError, setSyncHistoryError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [networkAlert, setNetworkAlert] = useState<string | null>(null);
 
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
@@ -157,6 +162,23 @@ export function DashboardProvider({ token, children }: ProviderProps) {
 
   const dismissToast = useCallback((id: number) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
+  useEffect(() => {
+    const handleNetworkError = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      setNetworkAlert(customEvent.detail ?? "Problemas de conectividad con la API corporativa.");
+    };
+    const handleNetworkRecovery = () => {
+      setNetworkAlert(null);
+    };
+
+    window.addEventListener(NETWORK_EVENT, handleNetworkError);
+    window.addEventListener(NETWORK_RECOVERY_EVENT, handleNetworkRecovery);
+    return () => {
+      window.removeEventListener(NETWORK_EVENT, handleNetworkError);
+      window.removeEventListener(NETWORK_RECOVERY_EVENT, handleNetworkRecovery);
+    };
   }, []);
 
   const formatCurrency = (value: number) => currencyFormatter.format(value);
@@ -500,6 +522,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     toasts,
     pushToast,
     dismissToast,
+    networkAlert,
+    dismissNetworkAlert: () => setNetworkAlert(null),
   };
 
   return <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>;

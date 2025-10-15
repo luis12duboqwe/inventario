@@ -705,7 +705,7 @@ function POSDashboard({ token, stores, defaultStoreId = null, onInventoryRefresh
               <button
                 type="button"
                 key={device.id}
-                className="button ghost"
+                className="btn btn--ghost"
                 onClick={() => handleAddDevice(device)}
                 disabled={!selectedStoreId}
               >
@@ -719,7 +719,7 @@ function POSDashboard({ token, stores, defaultStoreId = null, onInventoryRefresh
             <button
               type="button"
               key={device.id}
-              className="button secondary"
+              className="btn btn--secondary"
               onClick={() => handleAddDevice(device)}
               disabled={!selectedStoreId}
             >
@@ -803,7 +803,7 @@ function POSDashboard({ token, stores, defaultStoreId = null, onInventoryRefresh
         <div className="actions-row">
           <button
             type="button"
-            className="button ghost"
+            className="btn btn--ghost"
             onClick={handleRefreshCashHistory}
             disabled={!selectedStoreId || cashLoading}
           >

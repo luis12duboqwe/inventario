@@ -17,6 +17,8 @@ import {
 import AdvancedSearch from "../components/AdvancedSearch";
 import InventoryTable from "../components/InventoryTable";
 import MovementForm from "../components/MovementForm";
+import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
+import LoadingOverlay from "../../../components/LoadingOverlay";
 import type { Device } from "../../../api";
 import { useInventoryModule } from "../hooks/useInventoryModule";
 
@@ -66,6 +68,8 @@ function InventoryPage() {
     backupHistory,
     updateStatus,
     lastInventoryRefresh,
+    downloadInventoryReport,
+    refreshSummary,
   } = useInventoryModule();
 
   const [inventoryQuery, setInventoryQuery] = useState("");
@@ -117,6 +121,34 @@ function InventoryPage() {
   const refreshBadge: StatusBadge = lastInventoryRefresh
     ? { tone: "success", text: "Auto" }
     : { tone: "warning", text: "Sin datos" };
+
+  const lowStockStats = useMemo(() => {
+    let critical = 0;
+    let warning = 0;
+    for (const entry of lowStockDevices) {
+      const severity = resolveLowStockSeverity(entry.quantity);
+      if (severity === "critical") {
+        critical += 1;
+      } else if (severity === "warning") {
+        warning += 1;
+      }
+    }
+    return { critical, warning };
+  }, [lowStockDevices]);
+
+  let moduleStatus: ModuleStatus = "ok";
+  let moduleStatusLabel = "Inventario estable";
+
+  if (loading) {
+    moduleStatus = "warning";
+    moduleStatusLabel = "Actualizando inventario";
+  } else if (lowStockStats.critical > 0) {
+    moduleStatus = "critical";
+    moduleStatusLabel = `${lowStockStats.critical} dispositivos en nivel crítico`;
+  } else if (lowStockStats.warning > 0) {
+    moduleStatus = "warning";
+    moduleStatusLabel = `${lowStockStats.warning} dispositivos con stock bajo`;
+  }
 
   const statusCards: StatusCard[] = [
     {
@@ -181,12 +213,31 @@ function InventoryPage() {
   ];
 
   return (
-    <div className="section-grid">
-      <section className="card">
-        <header className="card-header">
-          <div>
-            <h2>Salud de inventario</h2>
-            <p className="card-subtitle">Indicadores clave de todas las tiendas.</p>
+    <div className="module-content">
+      <ModuleHeader
+        icon={<Boxes aria-hidden="true" />}
+        title="Inventario corporativo"
+        subtitle="Gestión de existencias, auditoría de movimientos y respaldos en tiempo real"
+        status={moduleStatus}
+        statusLabel={moduleStatusLabel}
+        actions={
+          <>
+            <button className="btn btn--primary" type="button" onClick={() => void refreshSummary()}>
+              Actualizar métricas
+            </button>
+            <button className="btn btn--ghost" type="button" onClick={() => void downloadInventoryReport()}>
+              Descargar PDF
+            </button>
+          </>
+        }
+      />
+      <LoadingOverlay visible={loading} label="Sincronizando inventario..." />
+      <div className="section-grid">
+        <section className="card">
+          <header className="card-header">
+            <div>
+              <h2>Salud de inventario</h2>
+              <p className="card-subtitle">Indicadores clave de todas las tiendas.</p>
           </div>
           {loading ? <span className="pill neutral">Cargando datos…</span> : null}
         </header>
@@ -354,6 +405,7 @@ function InventoryPage() {
       </section>
 
       {enableCatalogPro ? <AdvancedSearch token={token} /> : null}
+      </div>
     </div>
   );
 }

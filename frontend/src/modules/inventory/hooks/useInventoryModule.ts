@@ -26,5 +26,6 @@ export function useInventoryModule() {
     updateStatus: dashboard.updateStatus,
     lastInventoryRefresh: dashboard.lastInventoryRefresh,
     downloadInventoryReport,
+    refreshSummary: dashboard.refreshSummary,
   };
 }

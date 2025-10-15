@@ -88,7 +88,7 @@ function POSCart({ items, onUpdate, onRemove, totals, hasTaxes, globalDiscount }
                     </td>
                     <td className="numeric">${formatCurrency(lineTotal)}</td>
                     <td className="numeric">
-                      <button type="button" className="button ghost" onClick={() => onRemove(line.device.id)}>
+                      <button type="button" className="btn btn--ghost" onClick={() => onRemove(line.device.id)}>
                         Quitar
                       </button>
                     </td>

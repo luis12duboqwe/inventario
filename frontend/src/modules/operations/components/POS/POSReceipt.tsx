@@ -154,17 +154,17 @@ function POSReceipt({ token, sale, receiptUrl }: Props) {
         ))}
       </ul>
       <div className="actions-row">
-        <button type="button" className="button ghost" onClick={handlePrint}>
+        <button type="button" className="btn btn--ghost" onClick={handlePrint}>
           Imprimir/Descargar PDF
         </button>
-        <button type="button" className="button secondary" onClick={handleReturn}>
+        <button type="button" className="btn btn--secondary" onClick={handleReturn}>
           Registrar devolución
         </button>
-        <button type="button" className="button secondary" onClick={handleEmail} disabled={sending}>
+        <button type="button" className="btn btn--secondary" onClick={handleEmail} disabled={sending}>
           {sending ? "Enviando..." : "Enviar por correo"}
         </button>
         {receiptUrl ? (
-          <a className="button link" href={receiptUrl} target="_blank" rel="noreferrer">
+          <a className="btn btn--link" href={receiptUrl} target="_blank" rel="noreferrer">
             Abrir en nueva pestaña
           </a>
         ) : null}

@@ -16,6 +16,7 @@ import {
   getSalesProjectionAnalytics,
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
+import LoadingOverlay from "../../../components/LoadingOverlay";
 
 type Props = {
   token: string;
@@ -122,6 +123,16 @@ function AnalyticsBoard({ token }: Props) {
   const limitedComparatives = useMemo(() => comparativeItems.slice(0, 5), [comparativeItems]);
   const limitedProfit = useMemo(() => profitItems.slice(0, 5), [profitItems]);
   const limitedProjection = useMemo(() => projectionItems.slice(0, 5), [projectionItems]);
+  const projectionUnitsMax = useMemo(() => {
+    return limitedProjection.reduce(
+      (acc, item) => Math.max(acc, item.projected_units, item.average_daily_units),
+      1,
+    );
+  }, [limitedProjection]);
+
+  const marginMax = useMemo(() => {
+    return limitedProfit.reduce((acc, item) => Math.max(acc, item.margin_percent), 0);
+  }, [limitedProfit]);
 
   return (
     <section className="card analytics-card fade-in">
@@ -150,20 +161,17 @@ function AnalyticsBoard({ token }: Props) {
               ))}
             </select>
           </label>
-          <button className="btn" onClick={handleDownloadPdf} disabled={loading}>
+          <button className="btn btn--primary" onClick={handleDownloadPdf} aria-busy={loading}>
             Descargar PDF
           </button>
-          <button className="btn ghost" onClick={handleDownloadCsv} disabled={loading}>
+          <button className="btn btn--ghost" onClick={handleDownloadCsv} aria-busy={loading}>
             Exportar CSV
           </button>
         </div>
       </header>
       {error && <p className="error-text">{error}</p>}
-      {loading ? (
-        <p>Cargando analítica...</p>
-      ) : (
-        <>
-          <div className="analytics-grid">
+      <LoadingOverlay visible={loading} label="Consultando analítica..." />
+      <div className="analytics-grid">
             <div className="analytics-panel">
               <h3 className="accent-title">Rotación por dispositivo</h3>
               <table>
@@ -235,9 +243,9 @@ function AnalyticsBoard({ token }: Props) {
                 </tbody>
               </table>
             </div>
-          </div>
+      </div>
 
-          <div className="analytics-secondary-grid">
+      <div className="analytics-secondary-grid">
             <div className="metrics-card">
               <h3 className="accent-title">Comparativo por sucursal</h3>
               {limitedComparatives.length === 0 ? (
@@ -280,17 +288,28 @@ function AnalyticsBoard({ token }: Props) {
                       <th>Ingresos</th>
                       <th>Utilidad</th>
                       <th>Margen</th>
+                      <th>Visual</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {limitedProfit.map((item) => (
-                      <tr key={item.store_id}>
-                        <td>{item.store_name}</td>
-                        <td>{formatNumber(item.revenue)}</td>
-                        <td>{formatNumber(item.profit)}</td>
-                        <td>{item.margin_percent.toFixed(2)}%</td>
-                      </tr>
-                    ))}
+                    {limitedProfit.map((item) => {
+                      const normalizedMargin = marginMax > 0 ? Math.max((item.margin_percent / marginMax) * 100, 0) : 0;
+                      const width = Math.min(normalizedMargin, 100);
+                      return (
+                        <tr key={item.store_id}>
+                          <td>{item.store_name}</td>
+                          <td>{formatNumber(item.revenue)}</td>
+                          <td>{formatNumber(item.profit)}</td>
+                          <td>{item.margin_percent.toFixed(2)}%</td>
+                          <td>
+                            <div className="micro-chart" aria-hidden="true">
+                              <div className="micro-chart__bar" style={{ width: `${width}%` }} />
+                            </div>
+                            <span className="sr-only">Margen {item.margin_percent.toFixed(2)} por ciento</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -308,24 +327,39 @@ function AnalyticsBoard({ token }: Props) {
                       <th>Unidades/día</th>
                       <th>Ticket promedio</th>
                       <th>Ingresos proyectados</th>
+                      <th>Visual</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {limitedProjection.map((item) => (
-                      <tr key={item.store_id}>
-                        <td>{item.store_name}</td>
-                        <td>{item.average_daily_units.toFixed(2)}</td>
-                        <td>{formatNumber(item.average_ticket)}</td>
-                        <td>{formatNumber(item.projected_revenue)}</td>
-                      </tr>
-                    ))}
+                    {limitedProjection.map((item) => {
+                      const averageWidth = Math.min((item.average_daily_units / projectionUnitsMax) * 100, 100);
+                      const projectedWidth = Math.min((item.projected_units / projectionUnitsMax) * 100, 100);
+                      return (
+                        <tr key={item.store_id}>
+                          <td>{item.store_name}</td>
+                          <td>{item.average_daily_units.toFixed(2)}</td>
+                          <td>{formatNumber(item.average_ticket)}</td>
+                          <td>{formatNumber(item.projected_revenue)}</td>
+                          <td>
+                            <div className="micro-chart" aria-hidden="true">
+                              <div
+                                className="micro-chart__bar micro-chart__bar--secondary"
+                                style={{ width: `${averageWidth}%` }}
+                              />
+                              <div className="micro-chart__bar" style={{ width: `${projectedWidth}%` }} />
+                            </div>
+                            <span className="sr-only">
+                              Promedio {item.average_daily_units.toFixed(2)} unidades frente a {item.projected_units.toFixed(2)} proyectadas
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
             </div>
-          </div>
-        </>
-      )}
+      </div>
     </section>
   );
 }

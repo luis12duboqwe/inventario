@@ -320,15 +320,15 @@ function Customers({ token }: Props) {
           />
         </label>
         <div className="actions-row wide">
-          <button type="submit" className="button primary">
+          <button type="submit" className="btn btn--primary">
             {editingId ? "Actualizar cliente" : "Agregar cliente"}
           </button>
           {editingId ? (
-            <button type="button" className="button ghost" onClick={resetForm}>
+            <button type="button" className="btn btn--ghost" onClick={resetForm}>
               Cancelar edición
             </button>
           ) : null}
-          <button type="button" className="button secondary" onClick={handleExport} disabled={exporting}>
+          <button type="button" className="btn btn--secondary" onClick={handleExport} disabled={exporting}>
             {exporting ? "Exportando..." : "Exportar CSV"}
           </button>
         </div>
@@ -394,16 +394,16 @@ function Customers({ token }: Props) {
                     <td>{lastHistory}</td>
                     <td>
                       <div className="actions-row">
-                        <button type="button" className="button link" onClick={() => handleEdit(customer)}>
+                        <button type="button" className="btn btn--link" onClick={() => handleEdit(customer)}>
                           Editar
                         </button>
-                        <button type="button" className="button link" onClick={() => handleAddNote(customer)}>
+                        <button type="button" className="btn btn--link" onClick={() => handleAddNote(customer)}>
                           Nota
                         </button>
-                        <button type="button" className="button link" onClick={() => handleAdjustDebt(customer)}>
+                        <button type="button" className="btn btn--link" onClick={() => handleAdjustDebt(customer)}>
                           Ajustar deuda
                         </button>
-                        <button type="button" className="button link" onClick={() => handleDelete(customer)}>
+                        <button type="button" className="btn btn--link" onClick={() => handleDelete(customer)}>
                           Eliminar
                         </button>
                       </div>

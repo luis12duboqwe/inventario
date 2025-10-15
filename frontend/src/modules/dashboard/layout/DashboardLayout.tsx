@@ -60,6 +60,8 @@ function DashboardLayout() {
     setError,
     toasts,
     dismissToast,
+    networkAlert,
+    dismissNetworkAlert,
   } = useDashboard();
   const location = useLocation();
 
@@ -146,6 +148,31 @@ function DashboardLayout() {
           ))}
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {networkAlert ? (
+          <motion.div
+            key="network-alert"
+            className="alert warning network-alert"
+            role="alert"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3 }}
+          >
+            <span aria-hidden="true">⚠️</span>
+            <span>{networkAlert}</span>
+            <button
+              className="alert-dismiss"
+              type="button"
+              onClick={dismissNetworkAlert}
+              aria-label="Descartar alerta de red"
+            >
+              ×
+            </button>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <header className="dashboard-header">
         <h1>Softmobile 2025 · Centro de control</h1>

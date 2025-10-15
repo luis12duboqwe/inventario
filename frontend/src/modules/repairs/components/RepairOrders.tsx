@@ -9,12 +9,48 @@ import {
   listRepairOrders,
   updateRepairOrder,
 } from "../../../api";
+import LoadingOverlay from "../../../components/LoadingOverlay";
+import type { ModuleStatus } from "../../../components/ModuleHeader";
 
 type Props = {
   token: string;
   stores: Store[];
   defaultStoreId?: number | null;
   onInventoryRefresh?: () => void;
+  onStatusChange?: (status: ModuleStatus, label: string) => void;
+};
+
+type RepairVisual = {
+  icon: string;
+  imageUrl?: string;
+};
+
+const VISUAL_STORAGE_KEY = "softmobile:repair-visuals";
+
+const resolveDamageIcon = (damageType: string): string => {
+  const normalized = damageType.toLowerCase();
+  if (normalized.includes("pantalla") || normalized.includes("display")) {
+    return "📱";
+  }
+  if (normalized.includes("bater")) {
+    return "🔋";
+  }
+  if (normalized.includes("puerto") || normalized.includes("carga")) {
+    return "🔌";
+  }
+  if (normalized.includes("cam")) {
+    return "📷";
+  }
+  if (normalized.includes("audio")) {
+    return "🎧";
+  }
+  if (normalized.includes("software") || normalized.includes("sistema")) {
+    return "💾";
+  }
+  if (normalized.includes("agua") || normalized.includes("líquido")) {
+    return "💧";
+  }
+  return "🛠️";
 };
 
 type RepairPartForm = {
@@ -61,7 +97,7 @@ const statusOptions: Array<RepairOrder["status"]> = [
   "ENTREGADO",
 ];
 
-function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh }: Props) {
+function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh, onStatusChange }: Props) {
   const [orders, setOrders] = useState<RepairOrder[]>([]);
   const [form, setForm] = useState<RepairForm>({ ...initialForm, storeId: defaultStoreId ?? null });
   const [devices, setDevices] = useState<Device[]>([]);
@@ -73,6 +109,17 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [visuals, setVisuals] = useState<Record<number, RepairVisual>>(() => {
+    if (typeof window === "undefined") {
+      return {};
+    }
+    try {
+      const stored = window.localStorage.getItem(VISUAL_STORAGE_KEY);
+      return stored ? (JSON.parse(stored) as Record<number, RepairVisual>) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const refreshOrders = useCallback(
     async (storeId?: number | null, query?: string, status?: RepairOrder["status"] | "TODOS") => {
@@ -165,6 +212,41 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
     void refreshDevices(selectedStoreId);
     setForm((current) => ({ ...current, storeId: selectedStoreId }));
   }, [selectedStoreId, refreshDevices, refreshOrders, search, statusFilter]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(VISUAL_STORAGE_KEY, JSON.stringify(visuals));
+  }, [visuals]);
+
+  useEffect(() => {
+    if (!onStatusChange) {
+      return;
+    }
+    if (loading) {
+      onStatusChange("warning", "Cargando reparaciones");
+      return;
+    }
+    const now = Date.now();
+    const delayed = orders.filter((order) => {
+      if (order.status !== "PENDIENTE") {
+        return false;
+      }
+      const opened = new Date(order.opened_at).getTime();
+      return Number.isFinite(opened) && now - opened > 48 * 60 * 60 * 1000;
+    }).length;
+    if (delayed > 0) {
+      onStatusChange("critical", `${delayed} reparaciones pendientes con más de 48h`);
+      return;
+    }
+    const inProgress = orders.filter((order) => order.status === "EN_PROCESO").length;
+    if (inProgress > 0) {
+      onStatusChange("warning", `${inProgress} reparaciones en proceso`);
+      return;
+    }
+    onStatusChange("ok", orders.length === 0 ? "Sin órdenes activas" : "Reparaciones al día");
+  }, [loading, onStatusChange, orders]);
 
   const updateForm = (updates: Partial<RepairForm>) => {
     setForm((current) => ({ ...current, ...updates }));
@@ -302,6 +384,69 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
     }
   };
 
+  const handleExportCsv = () => {
+    const headers = [
+      "id",
+      "cliente",
+      "tecnico",
+      "daño",
+      "estado",
+      "total",
+      "actualizado",
+    ];
+    const rows = orders.map((order) => [
+      order.id,
+      order.customer_name ?? "Mostrador",
+      order.technician_name,
+      order.damage_type,
+      order.status,
+      order.total_cost,
+      order.updated_at,
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ordenes_reparacion_${new Date().toISOString()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getVisual = (order: RepairOrder): RepairVisual => {
+    return visuals[order.id] ?? { icon: resolveDamageIcon(order.damage_type) };
+  };
+
+  const handleVisualEdit = (order: RepairOrder) => {
+    const current = getVisual(order);
+    const iconInput = window.prompt(
+      "Emoji representativo del dispositivo o daño (ej. 📱, 🔋)",
+      current.icon ?? resolveDamageIcon(order.damage_type),
+    );
+    if (iconInput === null) {
+      return;
+    }
+    const sanitizedIcon = iconInput.trim() || resolveDamageIcon(order.damage_type);
+    const imageInput = window.prompt(
+      "URL de imagen opcional del dispositivo (deja vacío para mostrar solo el ícono)",
+      current.imageUrl ?? "",
+    );
+    if (imageInput === null) {
+      setVisuals((previous) => ({
+        ...previous,
+        [order.id]: { icon: sanitizedIcon, imageUrl: current.imageUrl },
+      }));
+      return;
+    }
+    const trimmedImage = imageInput.trim();
+    setVisuals((previous) => ({
+      ...previous,
+      [order.id]: trimmedImage ? { icon: sanitizedIcon, imageUrl: trimmedImage } : { icon: sanitizedIcon },
+    }));
+  };
+
   const devicesById = useMemo(() => {
     const map = new Map<number, Device>();
     devices.forEach((device) => map.set(device.id, device));
@@ -420,7 +565,7 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
         <div className="wide">
           <div className="actions-row">
             <span className="muted-text">Repuestos utilizados</span>
-            <button type="button" className="button ghost" onClick={addPart}>
+            <button type="button" className="btn btn--ghost" onClick={addPart}>
               Agregar pieza
             </button>
           </div>
@@ -475,7 +620,7 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
                         />
                       </td>
                       <td>
-                        <button type="button" className="button link" onClick={() => removePart(index)}>
+                        <button type="button" className="btn btn--ghost" onClick={() => removePart(index)}>
                           Quitar
                         </button>
                       </td>
@@ -487,10 +632,10 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
           )}
         </div>
         <div className="actions-row wide">
-          <button type="submit" className="button primary">
+          <button type="submit" className="btn btn--primary">
             Registrar reparación
           </button>
-          <button type="button" className="button ghost" onClick={() => setForm((current) => ({ ...initialForm, storeId: current.storeId }))}>
+          <button type="button" className="btn btn--ghost" onClick={() => setForm((current) => ({ ...initialForm, storeId: current.storeId }))}>
             Limpiar formulario
           </button>
         </div>
@@ -518,14 +663,18 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
             placeholder="Cliente, técnico, daño o folio"
           />
         </label>
-        <div>
-          <span className="muted-text">Órdenes registradas</span>
-          <strong>{orders.length}</strong>
+        <div className="form-grid__meta">
+          <div>
+            <span className="muted-text">Órdenes registradas</span>
+            <strong>{orders.length}</strong>
+          </div>
+          <button type="button" className="btn btn--ghost" onClick={handleExportCsv}>
+            Exportar CSV
+          </button>
         </div>
       </div>
-      {loading ? (
-        <p className="muted-text">Cargando órdenes de reparación...</p>
-      ) : orders.length === 0 ? (
+      <LoadingOverlay visible={loading} label="Cargando órdenes de reparación..." />
+      {orders.length === 0 && !loading ? (
         <p className="muted-text">No hay órdenes con los filtros actuales.</p>
       ) : (
         <div className="table-wrapper">
@@ -535,7 +684,7 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
                 <th>Folio</th>
                 <th>Cliente</th>
                 <th>Técnico</th>
-                <th>Daño</th>
+                <th>Diagnóstico</th>
                 <th>Estado</th>
                 <th>Total</th>
                 <th>Actualizado</th>
@@ -550,28 +699,47 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 });
+                const visual = getVisual(order);
                 return (
                   <tr key={order.id}>
                     <td>#{order.id}</td>
                     <td>{order.customer_name ?? "Mostrador"}</td>
                     <td>{order.technician_name}</td>
                     <td>
-                      <div>{order.damage_type}</div>
-                      {order.device_description ? (
-                        <div className="muted-text">{order.device_description}</div>
-                      ) : null}
-                      {order.parts.length > 0 ? (
-                        <ul className="muted-text">
-                          {order.parts.map((part) => {
-                            const device = devicesById.get(part.device_id);
-                            return (
-                              <li key={`${order.id}-${part.id}`}>
-                                {part.quantity} × {device ? `${device.sku} · ${device.name}` : `Dispositivo #${part.device_id}`} (${part.unit_cost.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      ) : null}
+                      <div className="repair-visual">
+                        {visual.imageUrl ? (
+                          <img
+                            src={visual.imageUrl}
+                            alt={`Dispositivo asociado a la reparación #${order.id}`}
+                            className="repair-visual__image"
+                          />
+                        ) : (
+                          <span className="repair-visual__icon" aria-hidden="true">
+                            {visual.icon}
+                          </span>
+                        )}
+                        <div className="repair-visual__details">
+                          <div>{order.damage_type}</div>
+                          {order.device_description ? (
+                            <div className="muted-text">{order.device_description}</div>
+                          ) : null}
+                          {order.parts.length > 0 ? (
+                            <ul className="muted-text">
+                              {order.parts.map((part) => {
+                                const device = devicesById.get(part.device_id);
+                                return (
+                                  <li key={`${order.id}-${part.id}`}>
+                                    {part.quantity} × {device ? `${device.sku} · ${device.name}` : `Dispositivo #${part.device_id}`} ({part.unit_cost.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : null}
+                        </div>
+                      </div>
+                      <button type="button" className="btn btn--ghost" onClick={() => handleVisualEdit(order)}>
+                        Definir visual
+                      </button>
                     </td>
                     <td>
                       <select
@@ -592,10 +760,10 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
                     <td>{order.inventory_adjusted ? "Sí" : "Pendiente"}</td>
                     <td>
                       <div className="actions-row">
-                        <button type="button" className="button link" onClick={() => handleDownload(order)}>
+                        <button type="button" className="btn btn--ghost" onClick={() => handleDownload(order)}>
                           PDF
                         </button>
-                        <button type="button" className="button link" onClick={() => handleDelete(order)}>
+                        <button type="button" className="btn btn--ghost" onClick={() => handleDelete(order)}>
                           Eliminar
                         </button>
                       </div>

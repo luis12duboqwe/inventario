@@ -215,12 +215,12 @@ function POSPayment({
           />
         </label>
         <div className="wide actions-row">
-          <button type="button" className="button ghost" onClick={onQuickCreateCustomer}>
+          <button type="button" className="btn btn--ghost" onClick={onQuickCreateCustomer}>
             Alta rápida de cliente
           </button>
           <button
             type="button"
-            className="button ghost"
+            className="btn btn--ghost"
             onClick={onOpenCashSession}
             disabled={cashLoading}
           >
@@ -228,7 +228,7 @@ function POSPayment({
           </button>
           <button
             type="button"
-            className="button ghost"
+            className="btn btn--ghost"
             onClick={onCloseCashSession}
             disabled={cashLoading || !activeCashSessionId}
           >
@@ -283,10 +283,10 @@ function POSPayment({
         ))}
       </div>
       <div className="actions-row">
-        <button type="button" className="button ghost" onClick={onAutoDistributeBreakdown}>
+        <button type="button" className="btn btn--ghost" onClick={onAutoDistributeBreakdown}>
           Aplicar total al método seleccionado
         </button>
-        <button type="button" className="button ghost" onClick={onResetBreakdown}>
+        <button type="button" className="btn btn--ghost" onClick={onResetBreakdown}>
           Limpiar desglose
         </button>
       </div>
@@ -316,7 +316,7 @@ function POSPayment({
       <div className="actions-row">
         <button
           type="button"
-          className="button ghost"
+          className="btn btn--ghost"
           onClick={() => onSubmit("draft")}
           disabled={disabled || loading}
         >
@@ -324,7 +324,7 @@ function POSPayment({
         </button>
         <button
           type="button"
-          className="button primary"
+          className="btn btn--primary"
           onClick={() => onSubmit("sale")}
           disabled={!canSubmit || loading}
         >
