@@ -4,7 +4,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 
 ## 1. Resumen general del proyecto
 - **Cobertura actual**: Softmobile Central ofrece autenticación con roles, inventario integral, valuación financiera, sincronizaciones automáticas/manuales, respaldos empresariales, reportes PDF y verificación de actualizaciones. Softmobile Inventario provee un cliente React oscuro listo para tiendas, enlazado con el backend.
-- **Faltante**: Automatizar las pruebas de frontend para recordatorios/acuses, documentar la bitácora operativa y preparar validaciones multiusuario rumbo a despliegues en la nube.
+- **Faltante**: Publicar los endpoints y componentes pendientes de auditoría (recordatorios, acuses y PDF) descritos en README/AGENTS, además de los ajustes futuros para despliegues en la nube.
 - **Referencia actualizada**: `docs/verificacion_integral_v2.2.0.md` detalla el estado de cada requisito y los pasos para cerrar brechas, `docs/plan_cobertura_v2.2.0.md` prioriza entregables y `docs/guia_revision_total_v2.2.0.md` lista acciones concretas para auditoría, recordatorios y métricas pendientes.
 
 ## 2. Objetivos técnicos y funcionales
@@ -12,7 +12,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 | --- | --- | --- |
 | Gestión centralizada de inventarios | ✅ Cumplido | CRUD de sucursales/dispositivos, movimientos y reportes de inventario listos. |
 | Sincronizaciones automáticas/manuales | ✅ Cumplido | Planificador configurable y endpoint manual con historial de sesiones. |
-| Seguridad y control de acceso | ⚠️ Parcial | La UI de Seguridad ya consume recordatorios, acuses y descargas con motivo corporativo; resta automatizar pruebas de frontend (Vitest/RTL) y documentar la bitácora multiusuario antes de declararlo completo.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L820】【F:frontend/src/modules/dashboard/components/GlobalMetrics.tsx†L1-L360】 |
+| Seguridad y control de acceso | ⚠️ Parcial | Falta exponer `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf`; también se requiere corregir la UI de recordatorios y la política `X-Reason` en exportaciones.【F:backend/app/routers/audit.py†L20-L71】【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L212】【F:docs/plan_cobertura_v2.2.0.md†L6-L82】 |
 | Interfaz moderna con tema oscuro | ✅ Cumplido | Frontend React en `frontend/` con tema oscuro empresarial. |
 | Instalación local con opción futura en la nube | ✅ Cumplido | Plantillas PyInstaller e Inno Setup para Windows; documentación lista. |
 | Reportes y respaldos automáticos | ✅ Cumplido | Endpoint PDF, respaldos manuales/automáticos y scheduler configurables. |
@@ -34,7 +34,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 | --- | --- |
 | Inventario (gestión, búsqueda, reportes) | ✅ Implementado en la API central. |
 | Central (sincronización y control global) | ✅ Implementado con scheduler y sesiones de sincronización. |
-| Seguridad (usuarios, permisos, logs) | ⚠️ Parcial | El backend y la UI ya exponen recordatorios, snooze y acuses; resta cubrirlos con pruebas Vitest y documentar los escenarios multiusuario en la bitácora.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L820】【F:docs/plan_cobertura_v2.2.0.md†L5-L94】 |
+| Seguridad (usuarios, permisos, logs) | ⚠️ Parcial | Falta completar recordatorios, acuses y exportación PDF en auditoría.【F:backend/app/routers/audit.py†L20-L71】【F:docs/plan_cobertura_v2.2.0.md†L6-L82】 |
 | Instalación (creación de carpetas, bases de datos, accesos directos) | ✅ Plantillas disponibles en `installers/`. |
 | Actualización (verificación de nuevas versiones) | ✅ Cumplido | Endpoint `/updates/*`, feed `docs/releases.json` y avisos en el frontend. |
 
