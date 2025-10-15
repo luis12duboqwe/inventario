@@ -52,6 +52,44 @@ La actualización UI de febrero 2025 refuerza la experiencia operativa sin modif
 
 > Nota rápida: para reutilizar los componentes comunes importa `ModuleHeader` y `LoadingOverlay` desde `frontend/src/components/` y aplica las clases `.btn`, `.btn--primary`, `.btn--secondary`, `.btn--ghost` o `.btn--link` según la prioridad de la acción en la vista.
 
+### Paneles reorganizados con pestañas, acordeones y grilla 3x2
+
+- **Inventario compacto** (`frontend/src/modules/inventory/pages/InventoryPage.tsx`): utiliza el componente `Tabs` para dividir la vista en "Vista general", "Movimientos", "Alertas" y "Búsqueda avanzada". Cada tab agrupa tarjetas, tablas y formularios específicos sin requerir scroll excesivo.
+- **Operaciones escalables** (`frontend/src/modules/operations/pages/OperationsPage.tsx`): integra el nuevo `Accordion` corporativo para presentar los bloques "Ventas / Compras", "Movimientos internos", "Transferencias entre tiendas" y "Historial de operaciones". El primer panel incorpora POS, compras, ventas y devoluciones; los demás paneles se enfocan en flujos especializados con formularios y tablas reutilizables.
+- **Analítica avanzada en grilla 3x2** (`frontend/src/components/ui/AnalyticsGrid/AnalyticsGrid.tsx`): presenta tarjetas de rotación, envejecimiento, pronóstico de agotamiento, comparativo multi-sucursal, margen y proyección de unidades. La grilla responde a breakpoints y mantiene la proporción 3x2 en escritorio.
+- **Scroll interno para Seguridad, Usuarios y Sincronización**: las vistas aplican la clase `.section-scroll` (altura máxima 600 px y `overflow-y: auto`) para que la barra lateral permanezca visible mientras se consultan auditorías, políticas o colas híbridas.
+- **Componentes reutilizables documentados**: `Tabs`, `Accordion` y `AnalyticsGrid` viven en `frontend/src/components/ui/` con estilos CSS modulares y ejemplos en historias internas. Consérvalos al implementar nuevas secciones y evita modificar su API sin actualizar esta documentación.
+
+Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.app.main:app` (asegurando los feature flags del mandato operativo) y `npm --prefix frontend run dev`. Puedes precargar datos demo con los endpoints `/auth/bootstrap`, `/stores`, `/purchases`, `/sales` y `/transfers` usando cabeceras `Authorization` y `X-Reason` ≥ 5 caracteres.
+
+### Capturas automatizadas del dashboard en tema oscuro
+
+El comando `npm --prefix frontend run capture` genera las imágenes corporativas de cada módulo respetando el tema oscuro y las proporciones solicitadas (1600×900 px por bloque, máx. 1300 px de alto). El flujo aplica las directrices visuales del cliente: elimina overlays temporales, oculta el buscador global y el botón **Cerrar sesión**, fuerza la barra superior a color sólido `rgba(25,25,30,1)` y conserva los degradados azul-gris del tablero.
+
+1. Instala Playwright sin descargar los navegadores durante la instalación del proyecto:
+   ```bash
+   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm --prefix frontend install
+   npx playwright install chromium
+   ```
+2. Asegura que backend (`uvicorn backend.app.main:app`) y frontend (`npm --prefix frontend run dev -- --host 0.0.0.0 --port 5173`) estén activos y con datos de demostración.
+3. Ejecuta la captura automatizada (por defecto escribe en `docs/capturas`):
+   ```bash
+   npm --prefix frontend run capture -- \
+     --base-url http://localhost:5173 \
+     --token demo-token \
+     --output docs/capturas \
+     --width 1600 \
+     --height 900
+   ```
+
+Parámetros opcionales:
+
+- `--settle 1200` ajusta la espera en ms antes de cada captura para estabilizar animaciones.
+- `--headless false` abre Chromium en modo visible para ajustar manualmente la data antes de continuar.
+- Variables de entorno (`SOFTMOBILE_CAPTURE_*`) permiten cambiar base URL, token, directorio de salida y dimensiones sin modificar el comando.
+
+El script `frontend/scripts/captureModules.mjs` divide automáticamente las pantallas altas en bloques continuos ≤1300 px de alto manteniendo la proporción 16:9 (1600×900). Cada módulo genera archivos `inventario.png`, `operaciones-01.png`, etc. listos para documentación o material comercial, preservando la iluminación azul en botones, tarjetas y gráficos.
+
 ## Paso 4 — Documentación y pruebas automatizadas
 
 ### Tablas y rutas destacadas

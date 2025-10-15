@@ -75,7 +75,8 @@ function SyncPage() {
           </button>
         }
       />
-      <div className="section-grid">
+      <div className="section-scroll">
+        <div className="section-grid">
         <section className="card">
           <h2>Sincronización y reportes</h2>
           <SyncPanel
@@ -269,6 +270,7 @@ function SyncPage() {
           </p>
         )}
         </section>
+        </div>
       </div>
     </div>
   );

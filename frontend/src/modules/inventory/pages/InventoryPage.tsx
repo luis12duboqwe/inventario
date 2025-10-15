@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
@@ -20,6 +20,7 @@ import InventoryTable from "../components/InventoryTable";
 import MovementForm from "../components/MovementForm";
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import Tabs, { type TabOption } from "../../../components/ui/Tabs/Tabs";
 import type { Device } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
@@ -37,6 +38,10 @@ type StatusCard = {
   caption: string;
   badge?: StatusBadge;
 };
+
+type InventoryTabId = "overview" | "movements" | "alerts" | "advanced";
+
+type TabContent = TabOption<InventoryTabId> & { content: ReactNode };
 
 const estadoOptions: Device["estado_comercial"][] = ["nuevo", "A", "B", "C"];
 
@@ -78,6 +83,7 @@ function InventoryPage() {
 
   const [inventoryQuery, setInventoryQuery] = useState("");
   const [estadoFilter, setEstadoFilter] = useState<Device["estado_comercial"] | "TODOS">("TODOS");
+  const [activeTab, setActiveTab] = useState<InventoryTabId>("overview");
 
   useEffect(() => {
     setInventoryQuery("");
@@ -225,32 +231,13 @@ function InventoryPage() {
     },
   ];
 
-  return (
-    <div className="module-content">
-      <ModuleHeader
-        icon={<Boxes aria-hidden="true" />}
-        title="Inventario corporativo"
-        subtitle="Gestión de existencias, auditoría de movimientos y respaldos en tiempo real"
-        status={moduleStatus}
-        statusLabel={moduleStatusLabel}
-        actions={
-          <>
-            <button className="btn btn--primary" type="button" onClick={() => void refreshSummary()}>
-              Actualizar métricas
-            </button>
-            <button className="btn btn--ghost" type="button" onClick={() => void downloadInventoryReport()}>
-              Descargar PDF
-            </button>
-          </>
-        }
-      />
-      <LoadingOverlay visible={loading} label="Sincronizando inventario..." />
-      <div className="section-grid">
-        <section className="card">
-          <header className="card-header">
-            <div>
-              <h2>Salud de inventario</h2>
-              <p className="card-subtitle">Indicadores clave de todas las tiendas.</p>
+  const overviewContent: ReactNode = (
+    <div className="section-grid">
+      <section className="card wide">
+        <header className="card-header">
+          <div>
+            <h2>Salud de inventario</h2>
+            <p className="card-subtitle">Indicadores clave de todas las tiendas.</p>
           </div>
           {loading ? <span className="pill neutral">Cargando datos…</span> : null}
         </header>
@@ -304,8 +291,31 @@ function InventoryPage() {
       </section>
 
       <section className="card">
+        <h2>Top sucursales por valor</h2>
+        {topStores.length === 0 ? (
+          <p className="muted-text">No hay datos suficientes para calcular el ranking.</p>
+        ) : (
+          <ul className="metrics-list">
+            {topStores.map((storeMetric) => (
+              <li key={storeMetric.store_id}>
+                <strong>{storeMetric.store_name}</strong> · {storeMetric.device_count} dispositivos · {storeMetric.total_units}
+                unidades ·<span> {formatCurrency(storeMetric.total_value)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+
+  const movementsContent: ReactNode = (
+    <div className="section-grid">
+      <section className="card wide">
         <header className="card-header">
-          <h2>Inventario actual</h2>
+          <div>
+            <h2>Inventario actual</h2>
+            <p className="card-subtitle">Consulta existencias y registra movimientos en la misma vista.</p>
+          </div>
           <div className="inventory-meta">
             <span className="muted-text">
               Mostrando {filteredDevices.length} de {devices.length} dispositivos
@@ -358,76 +368,125 @@ function InventoryPage() {
       </section>
 
       <section className="card">
-        <h2>Top sucursales por valor</h2>
-        {topStores.length === 0 ? (
-          <p className="muted-text">No hay datos suficientes para calcular el ranking.</p>
-        ) : (
-          <ul className="metrics-list">
-            {topStores.map((storeMetric) => (
-              <li key={storeMetric.store_id}>
-                <strong>{storeMetric.store_name}</strong> · {storeMetric.device_count} dispositivos · {storeMetric.total_units}
-                unidades ·<span> {formatCurrency(storeMetric.total_value)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="card">
-        <h2>Registrar movimiento</h2>
-        <MovementForm devices={devices} onSubmit={handleMovement} />
-      </section>
-
-      <section className="card">
         <header className="card-header">
           <div>
-            <h2>Alertas de inventario bajo</h2>
-            <p className="card-subtitle">Seguimiento inmediato de piezas críticas.</p>
+            <h2>Registrar movimiento</h2>
+            <p className="card-subtitle">Ajustes, entradas y salidas sincronizadas con inventario.</p>
           </div>
-          <span className={`pill ${lowStockDevices.length === 0 ? "success" : "warning"}`}>
-            {lowStockDevices.length === 0
-              ? "Sin alertas"
-              : `${lowStockDevices.length} alerta${lowStockDevices.length === 1 ? "" : "s"}`}
-          </span>
+          <div className="card-actions">
+            <button className="btn btn--primary" type="button" onClick={() => void refreshSummary()}>
+              Actualizar métricas
+            </button>
+            <button className="btn btn--ghost" type="button" onClick={() => void downloadInventoryReport()}>
+              Descargar PDF
+            </button>
+          </div>
         </header>
-        {lowStockDevices.length === 0 ? (
-          <p className="muted-text">No hay alertas por ahora.</p>
-        ) : (
-          <ul className="low-stock-list">
-            {lowStockDevices.map((device) => {
-              const severity = resolveLowStockSeverity(device.quantity);
-              return (
-                <motion.li
-                  key={device.device_id}
-                  className={`low-stock-item ${severity}`}
-                  whileHover={{ x: 6 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 24 }}
-                >
-                  <span className="low-stock-icon">
-                    <AlertTriangle size={18} />
-                  </span>
-                  <div className="low-stock-body">
-                    <strong>{device.sku}</strong>
-                    <span>
-                      {device.name} · {device.store_name}
-                    </span>
-                  </div>
-                  <div className="low-stock-meta">
-                    <span className="low-stock-quantity">{device.quantity} uds</span>
-                    <span>{formatCurrency(device.inventory_value)}</span>
-                  </div>
-                </motion.li>
-              );
-            })}
-          </ul>
-        )}
+        <MovementForm devices={devices} onSubmit={handleMovement} />
       </section>
+    </div>
+  );
 
-      {enableCatalogPro ? <AdvancedSearch token={token} /> : null}
-      </div>
+  const alertsContent: ReactNode = (
+    <section className="card">
+      <header className="card-header">
+        <div>
+          <h2>Alertas de inventario bajo</h2>
+          <p className="card-subtitle">Seguimiento inmediato de piezas críticas.</p>
+        </div>
+        <span className={`pill ${lowStockDevices.length === 0 ? "success" : "warning"}`}>
+          {lowStockDevices.length === 0
+            ? "Sin alertas"
+            : `${lowStockDevices.length} alerta${lowStockDevices.length === 1 ? "" : "s"}`}
+        </span>
+      </header>
+      {lowStockDevices.length === 0 ? (
+        <p className="muted-text">No hay alertas por ahora.</p>
+      ) : (
+        <ul className="low-stock-list">
+          {lowStockDevices.map((device) => {
+            const severity = resolveLowStockSeverity(device.quantity);
+            return (
+              <motion.li
+                key={device.device_id}
+                className={`low-stock-item ${severity}`}
+                whileHover={{ x: 6 }}
+                transition={{ type: "spring", stiffness: 300, damping: 24 }}
+              >
+                <span className="low-stock-icon">
+                  <AlertTriangle size={18} />
+                </span>
+                <div className="low-stock-body">
+                  <strong>{device.sku}</strong>
+                  <span>
+                    {device.name} · {device.store_name}
+                  </span>
+                </div>
+                <div className="low-stock-meta">
+                  <span className="low-stock-quantity">{device.quantity} uds</span>
+                  <span>{formatCurrency(device.inventory_value)}</span>
+                </div>
+              </motion.li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+
+  const advancedContent: ReactNode = enableCatalogPro ? (
+    <AdvancedSearch token={token} />
+  ) : (
+    <section className="card">
+      <header className="card-header">
+        <h2>Búsqueda avanzada</h2>
+      </header>
+      <p className="muted-text">
+        Activa el flag corporativo <code>SOFTMOBILE_ENABLE_CATALOG_PRO</code> para habilitar el catálogo profesional.
+      </p>
+    </section>
+  );
+
+  const inventoryTabs: TabContent[] = [
+    {
+      id: "overview",
+      label: "Vista general",
+      icon: <Boxes size={16} aria-hidden />,
+      content: overviewContent,
+    },
+    {
+      id: "movements",
+      label: "Movimientos",
+      icon: <RefreshCcw size={16} aria-hidden />,
+      content: movementsContent,
+    },
+    {
+      id: "alerts",
+      label: "Alertas",
+      icon: <AlertTriangle size={16} aria-hidden />,
+      content: alertsContent,
+    },
+    {
+      id: "advanced",
+      label: "Búsqueda avanzada",
+      icon: <Search size={16} aria-hidden />,
+      content: advancedContent,
+    },
+  ];
+
+  return (
+    <div className="module-content">
+      <ModuleHeader
+        icon={<Boxes aria-hidden="true" />}
+        title="Inventario corporativo"
+        subtitle="Gestión de existencias, auditoría de movimientos y respaldos en tiempo real"
+        status={moduleStatus}
+        statusLabel={moduleStatusLabel}
+      />
+      <LoadingOverlay visible={loading} label="Sincronizando inventario..." />
+      <Tabs tabs={inventoryTabs} activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
 }
 
 export default InventoryPage;
-
