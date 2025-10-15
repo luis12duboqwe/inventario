@@ -639,6 +639,20 @@ function buildStoreQuery(storeIds?: number[]): string {
   return `?${params}`;
 }
 
+export const NETWORK_EVENT = "softmobile:network-error";
+export const NETWORK_RECOVERY_EVENT = "softmobile:network-recovered";
+
+function emitNetworkEvent(type: typeof NETWORK_EVENT | typeof NETWORK_RECOVERY_EVENT, message?: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent(type, {
+      detail: message,
+    }),
+  );
+}
+
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", headers.get("Content-Type") ?? "application/json");
@@ -646,15 +660,35 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    emitNetworkEvent(
+      NETWORK_EVENT,
+      "No fue posible contactar la API de Softmobile. Verifica tu conexión o intenta nuevamente en unos segundos.",
+    );
+    if (error instanceof Error && error.name === "AbortError") {
+      throw error;
+    }
+    throw new Error("Error de red: la API no respondió");
+  }
 
   if (!response.ok) {
+    if (response.status >= 500 || response.status === 0) {
+      emitNetworkEvent(
+        NETWORK_EVENT,
+        `La API respondió con un estado ${response.status}. Reintenta una vez restablecida la conexión corporativa.`,
+      );
+    }
     const detail = await response.text();
     throw new Error(detail || `Error ${response.status}`);
   }
+
+  emitNetworkEvent(NETWORK_RECOVERY_EVENT);
 
   if (response.status === 204) {
     return undefined as unknown as T;

@@ -170,10 +170,10 @@ function TwoFactorSetup({ token }: Props) {
           <p className="muted-text">Se reutilizará para activar, desactivar o revocar sesiones. Mínimo 5 caracteres.</p>
         </div>
         <div className="security-actions">
-          <button className="btn" onClick={handleSetup} disabled={loading}>
+          <button className="btn btn--primary" onClick={handleSetup} disabled={loading}>
             Generar secreto TOTP
           </button>
-          <button className="btn ghost" onClick={handleDisable} disabled={loading || !status?.is_active}>
+          <button className="btn btn--ghost" onClick={handleDisable} disabled={loading || !status?.is_active}>
             Desactivar 2FA
           </button>
         </div>
@@ -195,7 +195,7 @@ function TwoFactorSetup({ token }: Props) {
                   onChange={(event) => setCode(event.target.value)}
                 />
               </label>
-              <button className="btn" type="submit" disabled={loading}>
+              <button className="btn btn--primary" type="submit" disabled={loading}>
                 Activar 2FA
               </button>
             </form>
@@ -219,7 +219,7 @@ function TwoFactorSetup({ token }: Props) {
                   {session.revoked_at && <p>Revocada el: {new Date(session.revoked_at).toLocaleString()}</p>}
                 </div>
                 {!session.revoked_at && (
-                  <button className="btn ghost" onClick={() => handleRevoke(session.id)} disabled={loading}>
+                  <button className="btn btn--ghost" onClick={() => handleRevoke(session.id)} disabled={loading}>
                     Revocar
                   </button>
                 )}

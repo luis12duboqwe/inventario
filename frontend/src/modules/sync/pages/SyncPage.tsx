@@ -1,4 +1,7 @@
+import { Repeat } from "lucide-react";
+
 import SyncPanel from "../components/SyncPanel";
+import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
 import { useSyncModule } from "../hooks/useSyncModule";
 
 function SyncPage() {
@@ -23,16 +26,65 @@ function SyncPage() {
 
   const latestRelease = updateStatus?.latest_release ?? null;
 
+  const hasSyncFailure =
+    typeof syncStatus === "string" && syncStatus.toLowerCase().includes("fall") ? true : false;
+  let moduleStatus: ModuleStatus = "ok";
+  let moduleStatusLabel = "Sincronización estable";
+
+  if (outboxError || syncHistoryError || hasSyncFailure) {
+    moduleStatus = "critical";
+    moduleStatusLabel = "Atiende errores recientes de sincronización";
+  } else if (outbox.length > 0) {
+    moduleStatus = "warning";
+    moduleStatusLabel = `${outbox.length} eventos pendientes en la cola local`;
+  }
+
+  const handleExportCsv = () => {
+    const headers = ["id", "entidad", "operacion", "estado", "intentos", "actualizado"];
+    const rows = outbox.map((entry) => [
+      entry.id,
+      `${entry.entity_type} #${entry.entity_id}`,
+      entry.operation,
+      entry.status,
+      entry.attempt_count,
+      new Date(entry.updated_at).toLocaleString("es-MX"),
+    ]);
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `sincronizacion_softmobile_${new Date().toISOString()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="section-grid">
-      <section className="card">
-        <h2>Sincronización y reportes</h2>
-        <SyncPanel
-          onSync={handleSync}
-          syncStatus={syncStatus}
-          onDownloadPdf={downloadInventoryReport}
-          onBackup={handleBackup}
-        />
+    <div className="module-content">
+      <ModuleHeader
+        icon={<Repeat aria-hidden="true" />}
+        title="Sincronización"
+        subtitle="Control de sincronizaciones locales, respaldos y versiones distribuidas"
+        status={moduleStatus}
+        statusLabel={moduleStatusLabel}
+        actions={
+          <button className="btn btn--ghost" type="button" onClick={() => void refreshOutbox()}>
+            Refrescar cola
+          </button>
+        }
+      />
+      <div className="section-grid">
+        <section className="card">
+          <h2>Sincronización y reportes</h2>
+          <SyncPanel
+            onSync={handleSync}
+            syncStatus={syncStatus}
+            onDownloadPdf={downloadInventoryReport}
+            onBackup={handleBackup}
+            onExportCsv={handleExportCsv}
+          />
         <div className="section-divider">
           <h3>Historial de respaldos</h3>
           {backupHistory.length === 0 ? (
@@ -49,10 +101,10 @@ function SyncPage() {
             </ul>
           )}
         </div>
-      </section>
+        </section>
 
-      <section className="card">
-        <h2>Historial de versiones</h2>
+        <section className="card">
+          <h2>Historial de versiones</h2>
         {latestRelease ? (
           <p>
             Última liberación corporativa:
@@ -73,19 +125,19 @@ function SyncPage() {
             ))}
           </ul>
         ) : null}
-      </section>
+        </section>
 
-      <section className="card">
-        <h2>Cola de sincronización local</h2>
+        <section className="card">
+          <h2>Cola de sincronización local</h2>
         <p className="card-subtitle">Eventos pendientes de envío a la nube corporativa.</p>
         {enableHybridPrep ? (
           <>
             <div className="outbox-actions">
-              <button className="btn" onClick={refreshOutbox} type="button">
+              <button className="btn btn--ghost" onClick={refreshOutbox} type="button">
                 Actualizar estado
               </button>
               <button
-                className="btn ghost"
+                className="btn btn--primary"
                 onClick={handleRetryOutbox}
                 type="button"
                 disabled={outbox.length === 0}
@@ -129,13 +181,13 @@ function SyncPage() {
             la cola local.
           </p>
         )}
-      </section>
+        </section>
 
-      <section className="card">
-        <h2>Historial por tienda</h2>
+        <section className="card">
+          <h2>Historial por tienda</h2>
         <p className="card-subtitle">Resumen de las últimas ejecuciones y errores registrados.</p>
         <div className="outbox-actions">
-          <button className="btn" type="button" onClick={refreshSyncHistory}>
+          <button className="btn btn--ghost" type="button" onClick={refreshSyncHistory}>
             Actualizar historial
           </button>
         </div>
@@ -169,10 +221,10 @@ function SyncPage() {
             ))}
           </div>
         )}
-      </section>
+        </section>
 
-      <section className="card">
-        <h2>Sincronización avanzada</h2>
+        <section className="card">
+          <h2>Sincronización avanzada</h2>
         <p className="card-subtitle">Prioridades por entidad y métricas de reintentos.</p>
         {enableHybridPrep ? (
           outboxStats.length === 0 ? (
@@ -216,7 +268,8 @@ function SyncPage() {
             Activa la preparación híbrida para obtener métricas de prioridades y reintentos.
           </p>
         )}
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

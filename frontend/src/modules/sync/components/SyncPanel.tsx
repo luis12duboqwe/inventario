@@ -4,10 +4,11 @@ type Props = {
   onSync: () => Promise<void> | void;
   onBackup: () => Promise<void> | void;
   onDownloadPdf: () => Promise<void> | void;
+  onExportCsv: () => Promise<void> | void;
   syncStatus: string | null;
 };
 
-function SyncPanel({ onSync, onBackup, onDownloadPdf, syncStatus }: Props) {
+function SyncPanel({ onSync, onBackup, onDownloadPdf, onExportCsv, syncStatus }: Props) {
   const [processing, setProcessing] = useState(false);
 
   const handleAction = async (action: () => Promise<void> | void) => {
@@ -22,13 +23,36 @@ function SyncPanel({ onSync, onBackup, onDownloadPdf, syncStatus }: Props) {
   return (
     <div className="sync-panel">
       <div className="actions">
-        <button type="button" disabled={processing} onClick={() => handleAction(onSync)}>
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={processing}
+          onClick={() => handleAction(onSync)}
+        >
           Sincronizar ahora
         </button>
-        <button type="button" className="secondary" disabled={processing} onClick={() => handleAction(onDownloadPdf)}>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={processing}
+          onClick={() => handleAction(onExportCsv)}
+        >
+          Exportar CSV
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={processing}
+          onClick={() => handleAction(onDownloadPdf)}
+        >
           Descargar PDF
         </button>
-        <button type="button" disabled={processing} onClick={() => handleAction(onBackup)}>
+        <button
+          type="button"
+          className="btn btn--secondary"
+          disabled={processing}
+          onClick={() => handleAction(onBackup)}
+        >
           Generar respaldo
         </button>
       </div>

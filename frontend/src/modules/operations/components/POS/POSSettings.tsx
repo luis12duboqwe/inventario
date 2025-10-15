@@ -112,7 +112,7 @@ function POSSettings({ config, devices, onSave, loading }: Props) {
           <span className="muted-text">Los productos seleccionados aparecerán como botones de venta rápida.</span>
         </label>
         <div className="actions-row">
-          <button type="submit" className="button primary" disabled={loading}>
+          <button type="submit" className="btn btn--primary" disabled={loading}>
             {loading ? "Guardando..." : "Guardar cambios"}
           </button>
         </div>

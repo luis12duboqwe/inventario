@@ -37,6 +37,20 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Experiencia UI responsiva** con toasts contextuales, animaciones suaves y selector de tema claro/oscuro que mantiene el modo oscuro como predeterminado.
 - **Interfaz animada Softmobile** con pantalla de bienvenida en movimiento, iconografía por módulo, toasts de sincronización modernizados y modo táctil optimizado para el POS, impulsados por `framer-motion`.
 
+## Mejora visual v2.2.0 — Dashboard modularizado
+
+La actualización UI de febrero 2025 refuerza la experiencia operativa sin modificar rutas ni versiones:
+
+- **Encabezados consistentes (`ModuleHeader`)** para cada módulo del dashboard con iconografía, subtítulo y badge de estado (verde/amarillo/rojo) alineado al estado operativo reportado por cada contexto.
+- **Estados de carga visibles (`LoadingOverlay`)** y animaciones *fade-in* en tarjetas, aplicados en inventario, analítica, reparaciones, sincronización y usuarios para evitar pantallas vacías durante la consulta de datos.
+- **Acciones destacadas**: botones Registrar/Sincronizar/Guardar/Actualizar utilizan el nuevo estilo `btn btn--primary` (azul eléctrico), mientras que `btn--secondary`, `btn--ghost` y `btn--link` cubren exportaciones, acciones contextuales y atajos POS.
+- **Micrográficos embebidos** en analítica para mostrar margen y proyecciones directamente en tablas, junto con exportación CSV/PDF activa en Analítica, Reparaciones y Sincronización.
+- **Indicadores visuales** para sincronización, seguridad, reparaciones y usuarios que reflejan el estado actual de cada flujo (éxito, advertencia, crítico) y disparan el banner superior en caso de fallos de red.
+- **POS y operaciones actualizados** con el nuevo sistema de botones y tarjetas de contraste claro, manteniendo compatibilidad con flujos existentes de compras, ventas, devoluciones y arqueos.
+- **Optimización de build**: la configuración `frontend/vite.config.ts` usa `manualChunks` para separar librerías comunes (`vendor`, `analytics`) y mejorar el tiempo de carga inicial.
+
+> Nota rápida: para reutilizar los componentes comunes importa `ModuleHeader` y `LoadingOverlay` desde `frontend/src/components/` y aplica las clases `.btn`, `.btn--primary`, `.btn--secondary`, `.btn--ghost` o `.btn--link` según la prioridad de la acción en la vista.
+
 ## Paso 4 — Documentación y pruebas automatizadas
 
 ### Tablas y rutas destacadas

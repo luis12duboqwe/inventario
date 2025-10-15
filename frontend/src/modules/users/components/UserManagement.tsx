@@ -8,6 +8,7 @@ import {
   type UserAccount,
 } from "../../../api";
 import { useUsersModule } from "../hooks/useUsersModule";
+import LoadingOverlay from "../../../components/LoadingOverlay";
 
 type Props = {
   token: string;
@@ -28,8 +29,27 @@ function UserManagement({ token }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("TODOS");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   const roleNames = useMemo(() => roles.map((role) => role.name), [roles]);
+
+  const filteredUsers = useMemo(() => {
+    const normalizedQuery = search.trim().toLowerCase();
+    return users.filter((user) => {
+      const matchesQuery =
+        !normalizedQuery ||
+        [user.username, user.full_name].some((value) =>
+          value ? value.toLowerCase().includes(normalizedQuery) : false,
+        );
+      const matchesRole =
+        roleFilter === "TODOS" || user.roles.some((role) => role.name === roleFilter);
+      const matchesStatus =
+        statusFilter === "all" || (statusFilter === "active" ? user.is_active : !user.is_active);
+      return matchesQuery && matchesRole && matchesStatus;
+    });
+  }, [roleFilter, search, statusFilter, users]);
 
   useEffect(() => {
     const load = async () => {
@@ -40,7 +60,9 @@ function UserManagement({ token }: Props) {
         setUsers(usersData);
         setRoles(rolesData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "No fue posible cargar la lista de usuarios");
+        const message = err instanceof Error ? err.message : "No fue posible cargar la lista de usuarios";
+        setError(message);
+        pushToast({ message, variant: "error" });
       } finally {
         setLoading(false);
       }
@@ -112,8 +134,39 @@ function UserManagement({ token }: Props) {
         {loading ? <span className="pill neutral">Sincronizando…</span> : null}
       </header>
       {error ? <p className="error-text">{error}</p> : null}
-      {users.length === 0 ? (
-        <p className="muted-text">No hay usuarios registrados.</p>
+      <div className="user-filters">
+        <label>
+          <span>Búsqueda</span>
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Usuario o nombre completo"
+          />
+        </label>
+        <label>
+          <span>Rol</span>
+          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+            <option value="TODOS">Todos</option>
+            {roleNames.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Estado</span>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+            <option value="all">Todos</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+          </select>
+        </label>
+      </div>
+      <LoadingOverlay visible={loading} label="Cargando usuarios..." />
+      {filteredUsers.length === 0 && !loading ? (
+        <p className="muted-text">No hay usuarios que coincidan con los filtros seleccionados.</p>
       ) : (
         <div className="user-table-wrapper">
           <table className="user-table">
@@ -128,7 +181,7 @@ function UserManagement({ token }: Props) {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr key={user.id}>
                   <td>{user.username}</td>
                   <td>{user.full_name ?? "—"}</td>

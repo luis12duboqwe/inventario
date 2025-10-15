@@ -64,6 +64,20 @@ function AuditLog({ token }: Props) {
     loadLogs({ limitOverride: limit, action: actionFilter ? actionFilter.trim() : undefined, notify: false });
   };
 
+  const resolveActionIcon = (action: string): string => {
+    const normalized = action.toLowerCase();
+    if (normalized.includes("login") || normalized.includes("auth")) {
+      return "🔒";
+    }
+    if (normalized.includes("backup")) {
+      return "🧾";
+    }
+    if (normalized.includes("sync")) {
+      return "🔄";
+    }
+    return "⚙️";
+  };
+
   return (
     <section className="card audit-card fade-in">
       <header className="card-header">
@@ -90,7 +104,7 @@ function AuditLog({ token }: Props) {
             onChange={(event) => setLimit(Number(event.target.value))}
           />
         </label>
-        <button className="btn" type="submit" disabled={loading}>
+        <button className="btn btn--primary" type="submit" disabled={loading}>
           Aplicar filtros
         </button>
       </form>
@@ -112,7 +126,12 @@ function AuditLog({ token }: Props) {
               {logs.map((log) => (
                 <tr key={log.id}>
                   <td>{new Date(log.created_at).toLocaleString()}</td>
-                  <td>{log.action}</td>
+                  <td>
+                    <span aria-hidden="true" role="img" style={{ marginRight: "0.5rem" }}>
+                      {resolveActionIcon(log.action)}
+                    </span>
+                    <span>{log.action}</span>
+                  </td>
                   <td>
                     {log.entity_type} #{log.entity_id}
                   </td>

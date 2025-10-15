@@ -320,15 +320,15 @@ function Suppliers({ token }: Props) {
           />
         </label>
         <div className="actions-row wide">
-          <button type="submit" className="button primary">
+          <button type="submit" className="btn btn--primary">
             {editingId ? "Actualizar proveedor" : "Agregar proveedor"}
           </button>
           {editingId ? (
-            <button type="button" className="button ghost" onClick={resetForm}>
+            <button type="button" className="btn btn--ghost" onClick={resetForm}>
               Cancelar edición
             </button>
           ) : null}
-          <button type="button" className="button secondary" onClick={handleExport} disabled={exporting}>
+          <button type="button" className="btn btn--secondary" onClick={handleExport} disabled={exporting}>
             {exporting ? "Exportando..." : "Exportar CSV"}
           </button>
         </div>
@@ -389,16 +389,16 @@ function Suppliers({ token }: Props) {
                     <td>{lastHistory}</td>
                     <td>
                       <div className="actions-row">
-                        <button type="button" className="button link" onClick={() => handleEdit(supplier)}>
+                        <button type="button" className="btn btn--link" onClick={() => handleEdit(supplier)}>
                           Editar
                         </button>
-                        <button type="button" className="button link" onClick={() => handleAddNote(supplier)}>
+                        <button type="button" className="btn btn--link" onClick={() => handleAddNote(supplier)}>
                           Nota
                         </button>
-                        <button type="button" className="button link" onClick={() => handleAdjustDebt(supplier)}>
+                        <button type="button" className="btn btn--link" onClick={() => handleAdjustDebt(supplier)}>
                           Ajustar saldo
                         </button>
-                        <button type="button" className="button link" onClick={() => handleDelete(supplier)}>
+                        <button type="button" className="btn btn--link" onClick={() => handleDelete(supplier)}>
                           Eliminar
                         </button>
                       </div>
