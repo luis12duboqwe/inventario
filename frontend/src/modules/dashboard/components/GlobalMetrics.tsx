@@ -32,6 +32,20 @@ function GlobalMetrics() {
   }
 
   const performance = metrics.global_performance;
+  const auditAlerts = metrics.audit_alerts;
+  const formatHighlightDate = (isoString: string) =>
+    new Date(isoString).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+  const severityLabels: Record<"critical" | "warning" | "info", string> = {
+    critical: "Crítica",
+    warning: "Preventiva",
+    info: "Informativa",
+  };
+  const alertsTone = auditAlerts.critical > 0 ? "alert" : auditAlerts.warning > 0 ? "info" : "good";
+  const alertsValue =
+    auditAlerts.total === 0
+      ? "0 eventos"
+      : `${auditAlerts.critical} críticas · ${auditAlerts.warning} preventivas`;
+
   const cards = [
     {
       id: "sales",
@@ -61,6 +75,15 @@ function GlobalMetrics() {
       caption: performance.open_repairs === 0 ? "Sin pendientes" : "Coordina cierres con taller",
       tone: resolveStatusTone(performance.open_repairs, 0, true),
     },
+    {
+      id: "audit-alerts",
+      title: "Alertas de auditoría",
+      value: alertsValue,
+      caption: auditAlerts.has_alerts
+        ? "Atiende las incidencias desde Seguridad"
+        : "Sin incidencias recientes",
+      tone: alertsTone,
+    },
   ];
 
   const salesTrend = metrics.sales_trend.map((entry) => ({ ...entry, value: Number(entry.value.toFixed(2)) }));
@@ -81,6 +104,50 @@ function GlobalMetrics() {
       </div>
 
       <div className="metric-charts">
+        <article className="chart-card audit-alerts-card">
+          <header>
+            <h3>Alertas y respuestas rápidas</h3>
+            <span className="chart-caption">Consolidado corporativo</span>
+          </header>
+          <div className="alerts-summary" role="list">
+            <div className="summary-item critical" role="listitem">
+              <span className="summary-value">{auditAlerts.critical}</span>
+              <span className="summary-label">Críticas</span>
+            </div>
+            <div className="summary-item warning" role="listitem">
+              <span className="summary-value">{auditAlerts.warning}</span>
+              <span className="summary-label">Preventivas</span>
+            </div>
+            <div className="summary-item info" role="listitem">
+              <span className="summary-value">{auditAlerts.info}</span>
+              <span className="summary-label">Informativas</span>
+            </div>
+          </div>
+          {auditAlerts.highlights.length === 0 ? (
+            <p className="muted-text">
+              {auditAlerts.has_alerts
+                ? "Hay incidencias registradas, revisa el módulo de Seguridad para más contexto."
+                : "Sin incidentes críticos o preventivos en el periodo reciente."}
+            </p>
+          ) : (
+            <ul className="alerts-list">
+              {auditAlerts.highlights.map((highlight) => (
+                <li key={highlight.id}>
+                  <span className={`severity-pill severity-${highlight.severity}`}>
+                    {severityLabels[highlight.severity]}
+                  </span>
+                  <div className="highlight-details">
+                    <p className="highlight-action">{highlight.action}</p>
+                    <span className="highlight-meta">
+                      {formatHighlightDate(highlight.created_at)} · {highlight.entity_type}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+
         <article className="chart-card">
           <header>
             <h3>Tendencia de ventas</h3>

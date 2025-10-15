@@ -509,6 +509,23 @@ export type DashboardPoint = {
   value: number;
 };
 
+export type AuditHighlight = {
+  id: number;
+  action: string;
+  created_at: string;
+  severity: "info" | "warning" | "critical";
+  entity_type: string;
+};
+
+export type DashboardAuditAlerts = {
+  total: number;
+  critical: number;
+  warning: number;
+  info: number;
+  has_alerts: boolean;
+  highlights: AuditHighlight[];
+};
+
 export type InventoryMetrics = {
   totals: {
     stores: number;
@@ -529,6 +546,7 @@ export type InventoryMetrics = {
   stock_breakdown: DashboardPoint[];
   repair_mix: DashboardPoint[];
   profit_breakdown: DashboardPoint[];
+  audit_alerts: DashboardAuditAlerts;
 };
 
 export type AuditLogEntry = {
@@ -539,6 +557,34 @@ export type AuditLogEntry = {
   details?: string | null;
   performed_by_id?: number | null;
   created_at: string;
+  severity: "info" | "warning" | "critical";
+  severity_label: string;
+};
+
+export type AuditReminderEntry = {
+  entity_type: string;
+  entity_id: string;
+  first_seen: string;
+  last_seen: string;
+  occurrences: number;
+  latest_action: string;
+  latest_details?: string | null;
+};
+
+export type AuditReminderSummary = {
+  threshold_minutes: number;
+  min_occurrences: number;
+  total: number;
+  persistent: AuditReminderEntry[];
+};
+
+export type AuditLogFilters = {
+  limit?: number;
+  action?: string;
+  entity_type?: string;
+  performed_by_id?: number;
+  date_from?: string;
+  date_to?: string;
 };
 
 export type RotationMetric = {
@@ -1718,12 +1764,67 @@ export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncSt
   );
 }
 
-export function getAuditLogs(token: string, limit = 100, action?: string): Promise<AuditLogEntry[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (action) {
-    params.append("action", action);
+function buildAuditQuery(filters: AuditLogFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.limit) {
+    params.set("limit", String(filters.limit));
   }
-  return request<AuditLogEntry[]>(`/audit/logs?${params.toString()}`, { method: "GET" }, token);
+  if (filters.action) {
+    params.set("action", filters.action);
+  }
+  if (filters.entity_type) {
+    params.set("entity_type", filters.entity_type);
+  }
+  if (typeof filters.performed_by_id === "number") {
+    params.set("performed_by_id", String(filters.performed_by_id));
+  }
+  if (filters.date_from) {
+    params.set("date_from", filters.date_from);
+  }
+  if (filters.date_to) {
+    params.set("date_to", filters.date_to);
+  }
+  return params.toString();
+}
+
+export function getAuditLogs(token: string, filters: AuditLogFilters = {}): Promise<AuditLogEntry[]> {
+  const query = buildAuditQuery(filters);
+  const suffix = query ? `?${query}` : "";
+  return request<AuditLogEntry[]>(`/audit/logs${suffix}`, { method: "GET" }, token);
+}
+
+export function exportAuditLogsCsv(token: string, filters: AuditLogFilters = {}): Promise<Blob> {
+  const query = buildAuditQuery(filters);
+  const suffix = query ? `?${query}` : "";
+  return request<Blob>(`/audit/logs/export.csv${suffix}`, { method: "GET" }, token);
+}
+
+export function downloadAuditPdf(token: string, filters: AuditLogFilters = {}): Promise<Blob> {
+  const query = buildAuditQuery(filters);
+  const suffix = query ? `?${query}` : "";
+  return request<Blob>(`/reports/audit/pdf${suffix}`, { method: "GET" }, token);
+}
+
+export function getAuditReminders(
+  token: string,
+  params: { threshold_minutes?: number; min_occurrences?: number; lookback_hours?: number; limit?: number } = {}
+): Promise<AuditReminderSummary> {
+  const search = new URLSearchParams();
+  if (typeof params.threshold_minutes === "number") {
+    search.set("threshold_minutes", String(params.threshold_minutes));
+  }
+  if (typeof params.min_occurrences === "number") {
+    search.set("min_occurrences", String(params.min_occurrences));
+  }
+  if (typeof params.lookback_hours === "number") {
+    search.set("lookback_hours", String(params.lookback_hours));
+  }
+  if (typeof params.limit === "number") {
+    search.set("limit", String(params.limit));
+  }
+  const query = search.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<AuditReminderSummary>(`/audit/reminders${suffix}`, { method: "GET" }, token);
 }
 
 export function submitPosSale(

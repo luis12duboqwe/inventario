@@ -72,6 +72,12 @@ def test_inventory_flow(client) -> None:
     assert metrics["top_stores"][0]["store_id"] == store_id
     low_stock_devices = metrics["low_stock_devices"]
     assert any(device["device_id"] == low_stock_id for device in low_stock_devices)
+    audit_alerts = metrics["audit_alerts"]
+    assert audit_alerts["total"] == audit_alerts["critical"] + audit_alerts["warning"] + audit_alerts["info"]
+    assert audit_alerts["has_alerts"] == (
+        audit_alerts["critical"] > 0 or audit_alerts["warning"] > 0
+    )
+    assert isinstance(audit_alerts["highlights"], list)
 
 
 def test_device_filters_by_search_and_state(client) -> None:
