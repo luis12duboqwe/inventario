@@ -84,3 +84,9 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Paso 4 documentado: se describieron tablas `repair_orders`, `customers`, `sales`, `pos_config`, `sync_outbox` y sus rutas asociadas en el README.
 - Mockup actualizado en `docs/img/paso4_resumen.mmd` usando Mermaid para representar los flujos POS, reparaciones y sincronización híbrida sin adjuntar binarios.
 - Nuevas pruebas automatizadas: `backend/tests/test_repairs.py`, `backend/tests/test_customers.py`, `backend/tests/test_pos.py` y `backend/tests/test_sync_full.py` cubren autenticación, roles y reintentos híbridos.
+
+### Registro operativo — 26/02/2025
+
+- ✅ Parte 1 — Inventario (Optimización total): se agregaron lotes de proveedores con costo unitario, lote y fecha (`/suppliers/{id}/batches`), columna `stores.inventory_value` y recalculo automático del costo promedio en movimientos (`unit_cost`), con cobertura en `test_supplier_batches_and_inventory_value`.
+- 🔄 26/02/2025 — Se alinearon las columnas `created_at`/`updated_at` del modelo `SupplierBatch` con la migración `202502150007_inventory_batches` para reanudar `pytest` sin fallos.
+- ▶️ Próximo paso inmediato: abordar la Parte 2 — Operaciones, implementando importación CSV, órdenes recurrentes y vinculación completa con Inventario.

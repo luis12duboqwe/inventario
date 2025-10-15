@@ -15,7 +15,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 
 - **API empresarial FastAPI** con modelos SQLAlchemy para tiendas, dispositivos, movimientos, usuarios, roles, sesiones de sincronización, bitácoras y respaldos.
 - **Seguridad por roles** con autenticación JWT, alta inicial segura (`/auth/bootstrap`), administración de usuarios y auditoría completa. Los roles corporativos vigentes son `ADMIN`, `GERENTE` y `OPERADOR`.
-- **Gestión de inventario** con movimientos de entrada/salida/ajuste, actualización de dispositivos y reportes consolidados por tienda.
+- **Gestión de inventario** con movimientos de entrada/salida/ajuste, actualización de dispositivos, reportes consolidados por tienda e impresión de etiquetas individuales con QR (generadas en frontend mediante la librería `qrcode`) para cada dispositivo.
 - **Valuación y métricas financieras** con precios unitarios, ranking de sucursales y alertas de stock bajo expuestos vía `/reports/metrics` y el panel React.
 - **Sincronización programada y bajo demanda** mediante un orquestador asincrónico que ejecuta tareas periódicas configurables.
 - **Respaldos empresariales** con generación automática/manual de PDF y archivos comprimidos JSON usando ReportLab; historial consultable vía API.
@@ -349,10 +349,18 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 2. Extender analítica avanzada con tableros comparativos inter-sucursal y exportaciones CSV en la versión 2.3.
 3. Documentar mejores prácticas de 2FA para despliegues masivos y preparar guías para soporte remoto.
 
+### Seguimiento de iteración actual — 26/02/2025
+
+- ✅ **Parte 1 — Inventario (Optimización total)**: se habilitó la gestión de lotes de proveedores con costo unitario y fecha, se actualiza la valuación total al registrar movimientos y se reforzó la validación de IMEI/serie desde el backend y la UI de `Suppliers.tsx`.
+- 🔄 **26/02/2025** — Se sincronizaron las columnas `created_at`/`updated_at` del modelo `SupplierBatch` con la migración `202502150007_inventory_batches` para normalizar las pruebas automáticas.
+- ⏳ **Parte 2 — Operaciones (Flujo completo)**: pendiente de integrar transferencias aprobadas, importación CSV y órdenes recurrentes.
+- ⏳ **Partes 3 a 8**: se mantienen en planificación y se abordarán en iteraciones posteriores conforme al mandato Softmobile 2025 v2.2.0.
+
 ## Registro operativo de lotes entregados
 
 | Lote | Entregables clave | Evidencias |
 | --- | --- | --- |
+| Inventario optimizado | Endpoints `/suppliers/{id}/batches`, columna `stores.inventory_value`, cálculo de costo promedio en movimientos y formulario de lotes en `Suppliers.tsx` | Prueba `test_supplier_batches_and_inventory_value` y validación manual del submódulo de proveedores |
 | D — Analítica avanzada | Servicios `analytics.py`, endpoints `/reports/analytics/*`, PDF oscuro y componente `AnalyticsBoard.tsx` | Pruebas `pytest` y descarga manual desde el panel de Analítica |
 | E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` | Ejecución interactiva del módulo Seguridad y pruebas automatizadas de sesiones |
 | F — Modo híbrido | Modelo `SyncOutbox`, reintentos `reset_outbox_entries`, visualización/acciones en `SyncPanel.tsx` y alertas en tiempo real | Casos de prueba de transferencias/compras/ventas que generan eventos y validación manual del panel |
