@@ -5,16 +5,18 @@ import csv
 import json
 import math
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.sql import ColumnElement
 
 from . import models, schemas
+from .utils import audit as audit_utils
 
 
 def _ensure_unique_identifiers(
@@ -44,6 +46,84 @@ def _to_decimal(value: Decimal | float | int | None) -> Decimal:
     if isinstance(value, Decimal):
         return value
     return Decimal(str(value))
+
+
+def _normalize_date_range(
+    date_from: date | datetime | None, date_to: date | datetime | None
+) -> tuple[datetime, datetime]:
+    now = datetime.utcnow()
+
+    if isinstance(date_from, datetime):
+        start_dt = date_from
+    elif isinstance(date_from, date):
+        start_dt = datetime.combine(date_from, datetime.min.time())
+    else:
+        start_dt = now - timedelta(days=30)
+
+    if isinstance(date_to, datetime):
+        end_dt = date_to
+    elif isinstance(date_to, date):
+        end_dt = datetime.combine(date_to, datetime.max.time())
+    else:
+        end_dt = now
+
+    if start_dt > end_dt:
+        start_dt, end_dt = end_dt, start_dt
+
+    return start_dt, end_dt
+
+
+def _user_display_name(user: models.User | None) -> str | None:
+    if user is None:
+        return None
+    if user.full_name and user.full_name.strip():
+        return user.full_name.strip()
+    if user.username and user.username.strip():
+        return user.username.strip()
+    return None
+
+
+def _linear_regression(
+    points: Sequence[tuple[float, float]]
+) -> tuple[float, float, float]:
+    if not points:
+        return 0.0, 0.0, 0.0
+    if len(points) == 1:
+        return 0.0, points[0][1], 0.0
+
+    n = float(len(points))
+    sum_x = sum(point[0] for point in points)
+    sum_y = sum(point[1] for point in points)
+    sum_xy = sum(point[0] * point[1] for point in points)
+    sum_xx = sum(point[0] ** 2 for point in points)
+    sum_yy = sum(point[1] ** 2 for point in points)
+
+    denominator = (n * sum_xx) - (sum_x**2)
+    if math.isclose(denominator, 0.0):
+        slope = 0.0
+    else:
+        slope = ((n * sum_xy) - (sum_x * sum_y)) / denominator
+
+    intercept = (sum_y - (slope * sum_x)) / n
+
+    denominator_r = (n * sum_yy) - (sum_y**2)
+    if denominator <= 0 or denominator_r <= 0:
+        r_squared = 0.0
+    else:
+        r_squared = ((n * sum_xy) - (sum_x * sum_y)) ** 2 / (denominator * denominator_r)
+
+    return slope, intercept, r_squared
+
+
+def _project_linear_sum(
+    slope: float, intercept: float, start_index: int, horizon: int
+) -> float:
+    total = 0.0
+    for offset in range(horizon):
+        x_value = float(start_index + offset)
+        estimate = slope * x_value + intercept
+        total += max(0.0, estimate)
+    return total
 
 
 _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
@@ -139,6 +219,14 @@ def _recalculate_store_inventory_value(
     db.add(store_obj)
     db.flush()
     return normalized_total
+
+
+def _device_category_expr() -> ColumnElement[str]:
+    return func.coalesce(
+        func.nullif(models.Device.modelo, ""),
+        func.nullif(models.Device.sku, ""),
+        func.nullif(models.Device.name, ""),
+    )
 
 
 def _customer_payload(customer: models.Customer) -> dict[str, object]:
@@ -252,6 +340,9 @@ def list_audit_logs(
     limit: int = 100,
     action: str | None = None,
     entity_type: str | None = None,
+    performed_by_id: int | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
 ) -> list[models.AuditLog]:
     statement = (
         select(models.AuditLog)
@@ -262,7 +353,305 @@ def list_audit_logs(
         statement = statement.where(models.AuditLog.action == action)
     if entity_type:
         statement = statement.where(models.AuditLog.entity_type == entity_type)
+    if performed_by_id is not None:
+        statement = statement.where(models.AuditLog.performed_by_id == performed_by_id)
+    if date_from is not None or date_to is not None:
+        start_dt, end_dt = _normalize_date_range(date_from, date_to)
+        statement = statement.where(
+            models.AuditLog.created_at >= start_dt, models.AuditLog.created_at <= end_dt
+        )
     return list(db.scalars(statement))
+
+
+class AuditAcknowledgementError(Exception):
+    """Errores relacionados con el registro de acuses manuales."""
+
+
+class AuditAcknowledgementConflict(AuditAcknowledgementError):
+    """Se intenta registrar un acuse cuando ya existe uno vigente."""
+
+
+class AuditAcknowledgementNotFound(AuditAcknowledgementError):
+    """No existen alertas críticas asociadas a la entidad solicitada."""
+
+
+def get_audit_acknowledgements_map(
+    db: Session,
+    *,
+    entities: Iterable[tuple[str, str]],
+) -> dict[tuple[str, str], models.AuditAlertAcknowledgement]:
+    """Obtiene los acuses existentes para las entidades provistas."""
+
+    normalized: set[tuple[str, str]] = set()
+    for entity_type, entity_id in entities:
+        normalized_type = (entity_type or "").strip()
+        normalized_id = (entity_id or "").strip()
+        if not normalized_type or not normalized_id:
+            continue
+        normalized.add((normalized_type, normalized_id))
+
+    if not normalized:
+        return {}
+
+    statement = (
+        select(models.AuditAlertAcknowledgement)
+        .options(joinedload(models.AuditAlertAcknowledgement.acknowledged_by))
+        .where(
+            tuple_(
+                models.AuditAlertAcknowledgement.entity_type,
+                models.AuditAlertAcknowledgement.entity_id,
+            ).in_(normalized)
+        )
+    )
+    return {
+        (ack.entity_type, ack.entity_id): ack
+        for ack in db.scalars(statement)
+    }
+
+
+def export_audit_logs_csv(
+    db: Session,
+    *,
+    limit: int = 1000,
+    action: str | None = None,
+    entity_type: str | None = None,
+    performed_by_id: int | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+) -> str:
+    logs = list_audit_logs(
+        db,
+        limit=limit,
+        action=action,
+        entity_type=entity_type,
+        performed_by_id=performed_by_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    buffer = StringIO()
+    acknowledgements = get_audit_acknowledgements_map(
+        db,
+        entities={(log.entity_type, log.entity_id) for log in logs},
+    )
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "ID",
+            "Acción",
+            "Tipo de entidad",
+            "ID de entidad",
+            "Detalle",
+            "Usuario responsable",
+            "Fecha de creación",
+            "Estado alerta",
+            "Acuse registrado",
+            "Nota de acuse",
+        ]
+    )
+    for log in logs:
+        key = (log.entity_type, log.entity_id)
+        acknowledgement = acknowledgements.get(key)
+        status = "Pendiente"
+        acknowledgement_text = ""
+        acknowledgement_note = ""
+        if acknowledgement and acknowledgement.acknowledged_at >= log.created_at:
+            display_name = _user_display_name(acknowledgement.acknowledged_by)
+            status = "Atendida"
+            acknowledgement_text = acknowledgement.acknowledged_at.strftime("%Y-%m-%dT%H:%M:%S")
+            if display_name:
+                acknowledgement_text += f" · {display_name}"
+            acknowledgement_note = acknowledgement.note or ""
+        writer.writerow(
+            [
+                log.id,
+                log.action,
+                log.entity_type,
+                log.entity_id,
+                log.details or "",
+                log.performed_by_id or "",
+                log.created_at.isoformat(),
+                status,
+                acknowledgement_text,
+                acknowledgement_note,
+            ]
+        )
+    return buffer.getvalue()
+
+
+def acknowledge_audit_alert(
+    db: Session,
+    *,
+    entity_type: str,
+    entity_id: str,
+    acknowledged_by_id: int | None,
+    note: str | None = None,
+) -> models.AuditAlertAcknowledgement:
+    """Registra o actualiza el acuse manual de una alerta crítica."""
+
+    normalized_type = entity_type.strip()
+    normalized_id = entity_id.strip()
+    if not normalized_type or not normalized_id:
+        raise ValueError("entity identifiers must be provided")
+
+    recent_logs_stmt = (
+        select(models.AuditLog)
+        .where(models.AuditLog.entity_type == normalized_type)
+        .where(models.AuditLog.entity_id == normalized_id)
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(200)
+    )
+    recent_logs = list(db.scalars(recent_logs_stmt))
+    last_critical: models.AuditLog | None = None
+    for item in recent_logs:
+        severity = audit_utils.classify_severity(item.action or "", item.details)
+        if severity == "critical":
+            last_critical = item
+            break
+
+    if last_critical is None:
+        raise AuditAcknowledgementNotFound(
+            "No existen alertas críticas registradas para la entidad indicada."
+        )
+
+    statement = (
+        select(models.AuditAlertAcknowledgement)
+        .where(models.AuditAlertAcknowledgement.entity_type == normalized_type)
+        .where(models.AuditAlertAcknowledgement.entity_id == normalized_id)
+    )
+    acknowledgement = db.scalars(statement).first()
+    now = datetime.utcnow()
+
+    if (
+        acknowledgement is not None
+        and acknowledgement.acknowledged_at >= last_critical.created_at
+    ):
+        raise AuditAcknowledgementConflict(
+            "La alerta ya fue atendida después del último evento crítico registrado."
+        )
+
+    if acknowledgement is None:
+        acknowledgement = models.AuditAlertAcknowledgement(
+            entity_type=normalized_type,
+            entity_id=normalized_id,
+            acknowledged_by_id=acknowledged_by_id,
+            acknowledged_at=now,
+            note=note,
+        )
+        db.add(acknowledgement)
+    else:
+        acknowledgement.acknowledged_at = now
+        acknowledgement.acknowledged_by_id = acknowledged_by_id
+        acknowledgement.note = note
+
+    db.add(
+        models.AuditLog(
+            action="audit_alert_acknowledged",
+            entity_type=normalized_type,
+            entity_id=normalized_id,
+            details=(
+                f"Resolución manual registrada: {note}" if note else "Resolución manual registrada"
+            ),
+            performed_by_id=acknowledged_by_id,
+        )
+    )
+
+    db.commit()
+    db.refresh(acknowledgement)
+    return acknowledgement
+
+
+def get_persistent_audit_alerts(
+    db: Session,
+    *,
+    threshold_minutes: int = 15,
+    min_occurrences: int = 1,
+    lookback_hours: int = 48,
+    limit: int = 10,
+) -> list[dict[str, object]]:
+    """Obtiene alertas críticas persistentes para recordatorios automáticos."""
+
+    if threshold_minutes < 0:
+        raise ValueError("threshold_minutes must be non-negative")
+    if min_occurrences < 1:
+        raise ValueError("min_occurrences must be >= 1")
+    if lookback_hours < 1:
+        raise ValueError("lookback_hours must be >= 1")
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+
+    now = datetime.utcnow()
+    lookback_start = now - timedelta(hours=lookback_hours)
+
+    statement = (
+        select(models.AuditLog)
+        .where(models.AuditLog.created_at >= lookback_start)
+        .order_by(models.AuditLog.created_at.asc())
+    )
+    logs = list(db.scalars(statement))
+
+    persistent_alerts = audit_utils.identify_persistent_critical_alerts(
+        logs,
+        threshold_minutes=threshold_minutes,
+        min_occurrences=min_occurrences,
+        limit=limit,
+        reference_time=now,
+    )
+
+    keys = {(alert["entity_type"], alert["entity_id"]) for alert in persistent_alerts}
+    acknowledgements: dict[tuple[str, str], models.AuditAlertAcknowledgement] = {}
+    if keys:
+        ack_stmt = (
+            select(models.AuditAlertAcknowledgement)
+            .options(joinedload(models.AuditAlertAcknowledgement.acknowledged_by))
+            .where(
+                tuple_(
+                    models.AuditAlertAcknowledgement.entity_type,
+                    models.AuditAlertAcknowledgement.entity_id,
+                ).in_(keys)
+            )
+        )
+        acknowledgements = {
+            (ack.entity_type, ack.entity_id): ack for ack in db.scalars(ack_stmt)
+        }
+
+    enriched: list[dict[str, object]] = []
+    for alert in persistent_alerts:
+        key = (alert["entity_type"], alert["entity_id"])
+        acknowledgement = acknowledgements.get(key)
+        status = "pending"
+        acknowledged_at = None
+        acknowledged_by_id = None
+        acknowledged_by_name = None
+        acknowledged_note = None
+        if acknowledgement and acknowledgement.acknowledged_at >= alert["last_seen"]:
+            status = "acknowledged"
+            acknowledged_at = acknowledgement.acknowledged_at
+            acknowledged_by_id = acknowledgement.acknowledged_by_id
+            if acknowledgement.acknowledged_by is not None:
+                acknowledged_by_name = (
+                    acknowledgement.acknowledged_by.full_name
+                    or acknowledgement.acknowledged_by.username
+                )
+            acknowledged_note = acknowledgement.note
+
+        enriched.append(
+            {
+                "entity_type": alert["entity_type"],
+                "entity_id": alert["entity_id"],
+                "first_seen": alert["first_seen"],
+                "last_seen": alert["last_seen"],
+                "occurrences": alert["occurrences"],
+                "latest_action": alert["latest_action"],
+                "latest_details": alert["latest_details"],
+                "status": status,
+                "acknowledged_at": acknowledged_at,
+                "acknowledged_by_id": acknowledged_by_id,
+                "acknowledged_by_name": acknowledged_by_name,
+                "acknowledged_note": acknowledged_note,
+            }
+        )
+
+    return enriched
 
 
 def ensure_role(db: Session, name: str) -> models.Role:
@@ -1465,6 +1854,107 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         for status, count in sorted(repair_status_counts.items())
     ]
 
+    audit_logs_stmt = (
+        select(models.AuditLog)
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(50)
+    )
+    audit_logs = list(db.scalars(audit_logs_stmt).unique())
+    alert_summary = audit_utils.summarize_alerts(audit_logs)
+    log_keys = {(log.entity_type, log.entity_id) for log in audit_logs}
+    ack_map: dict[tuple[str, str], models.AuditAlertAcknowledgement] = {}
+    if log_keys:
+        ack_stmt = (
+            select(models.AuditAlertAcknowledgement)
+            .options(joinedload(models.AuditAlertAcknowledgement.acknowledged_by))
+            .where(
+                tuple_(
+                    models.AuditAlertAcknowledgement.entity_type,
+                    models.AuditAlertAcknowledgement.entity_id,
+                ).in_(log_keys)
+            )
+        )
+        ack_map = {
+            (ack.entity_type, ack.entity_id): ack for ack in db.scalars(ack_stmt)
+        }
+
+    pending_highlights: list[audit_utils.HighlightEntry] = []
+    for entry in alert_summary.highlights:
+        acknowledgement = ack_map.get((entry["entity_type"], entry["entity_id"]))
+        if acknowledgement and acknowledgement.acknowledged_at >= entry["created_at"]:
+            continue
+        pending_highlights.append(entry)
+
+    critical_events: dict[tuple[str, str], datetime] = {}
+    for log in audit_logs:
+        severity = audit_utils.classify_severity(log.action or "", log.details)
+        if severity != "critical":
+            continue
+        key = (log.entity_type, log.entity_id)
+        if key not in critical_events or log.created_at > critical_events[key]:
+            critical_events[key] = log.created_at
+
+    acknowledged_entities: list[dict[str, object]] = []
+    pending_critical = 0
+    for key, last_seen in critical_events.items():
+        acknowledgement = ack_map.get(key)
+        if acknowledgement and acknowledgement.acknowledged_at >= last_seen:
+            acknowledged_entities.append(
+                {
+                    "entity_type": key[0],
+                    "entity_id": key[1],
+                    "acknowledged_at": acknowledgement.acknowledged_at,
+                    "acknowledged_by_id": acknowledgement.acknowledged_by_id,
+                    "acknowledged_by_name": (
+                        acknowledgement.acknowledged_by.full_name
+                        if acknowledgement.acknowledged_by
+                        and acknowledgement.acknowledged_by.full_name
+                        else (
+                            acknowledgement.acknowledged_by.username
+                            if acknowledgement.acknowledged_by
+                            else None
+                        )
+                    ),
+                    "note": acknowledgement.note,
+                }
+            )
+        else:
+            pending_critical += 1
+
+    acknowledged_entities.sort(key=lambda item: item["acknowledged_at"], reverse=True)
+
+    audit_alerts = {
+        "total": alert_summary.total,
+        "critical": alert_summary.critical,
+        "warning": alert_summary.warning,
+        "info": alert_summary.info,
+        "has_alerts": alert_summary.has_alerts,
+        "highlights": [
+            {
+                "id": highlight["id"],
+                "action": highlight["action"],
+                "created_at": highlight["created_at"],
+                "severity": highlight["severity"],
+                "entity_type": highlight["entity_type"],
+                "entity_id": highlight["entity_id"],
+            }
+            for highlight in pending_highlights
+        ],
+        "pending_critical": pending_critical,
+        "acknowledged_critical": len(acknowledged_entities),
+        "acknowledged": [
+            {
+                "entity_type": item["entity_type"],
+                "entity_id": item["entity_id"],
+                "acknowledged_at": item["acknowledged_at"],
+                "acknowledged_by_id": item["acknowledged_by_id"],
+                "acknowledged_by_name": item["acknowledged_by_name"],
+                "note": item["note"],
+            }
+            for item in acknowledged_entities[:5]
+        ],
+    }
+
     return {
         "totals": {
             "stores": len(stores),
@@ -1485,6 +1975,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         "stock_breakdown": stock_breakdown,
         "repair_mix": repair_mix,
         "profit_breakdown": profit_breakdown,
+        "audit_alerts": audit_alerts,
     }
 
 

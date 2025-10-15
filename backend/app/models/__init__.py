@@ -227,6 +227,11 @@ class User(Base):
         cascade="all, delete-orphan",
         foreign_keys="ActiveSession.user_id",
     )
+    audit_acknowledgements: Mapped[list["AuditAlertAcknowledgement"]] = relationship(
+        "AuditAlertAcknowledgement",
+        back_populates="acknowledged_by",
+        cascade="all, delete-orphan",
+    )
 
 
 class UserRole(Base):
@@ -295,6 +300,31 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     performed_by: Mapped[User | None] = relationship("User", back_populates="logs")
+
+
+class AuditAlertAcknowledgement(Base):
+    __tablename__ = "audit_alert_acknowledgements"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", name="uq_audit_ack_entity"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    entity_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    acknowledged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    acknowledged_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    acknowledged_by: Mapped[User | None] = relationship(
+        "User", back_populates="audit_acknowledgements"
+    )
 
 
 class BackupJob(Base):

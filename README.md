@@ -28,6 +28,9 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Operaciones automatizadas** con importación masiva desde CSV, plantillas recurrentes reutilizables y panel histórico filtrable por técnico, sucursal y rango de fechas (`/operations/history`).
 - **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
 - **Gestión de clientes y proveedores corporativos** con historial de contacto, exportación CSV, saldos pendientes y notas auditables desde la UI.
+- **Bitácora de auditoría filtrable** con búsqueda por acción, módulo, usuario y rango de fechas, exportación CSV/PDF (`/audit/logs/export.csv`, `/reports/audit/pdf`) que refleja el estado del acuse manual (pendiente/atendida) y notas asociadas, además de alertas visuales por severidad en el dashboard corporativo.
+- **Recordatorios automáticos de seguridad** que detectan alertas críticas persistentes y generan avisos y snooze de 10 minutos directamente en el módulo Seguridad.
+- **Acuses manuales de resolución** para alertas críticas: desde Seguridad se registra nota y motivo corporativo, `/reports/metrics` refleja pendientes vs. atendidas y las exportaciones CSV/PDF incorporan el acuse con usuario, fecha y nota en tiempo real.
 - **Órdenes de reparación sincronizadas** con piezas descontadas automáticamente del inventario, estados corporativos (🟡/🟠/🟢/⚪) y descarga de orden en PDF.
 - **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
 - **Analítica comparativa multi-sucursal** con endpoints `/reports/analytics/comparative`, `/reports/analytics/profit_margin` y `/reports/analytics/sales_forecast`, exportación CSV consolidada y tablero React con filtros por sucursal.
@@ -351,12 +354,22 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 2. Extender analítica avanzada con tableros comparativos inter-sucursal y exportaciones CSV en la versión 2.3.
 3. Documentar mejores prácticas de 2FA para despliegues masivos y preparar guías para soporte remoto.
 
-### Seguimiento de iteración actual — 26/02/2025
+### Seguimiento de iteración actual — 27/02/2025
 
-- ✅ **Parte 1 — Inventario (Optimización total)**: se habilitó la gestión de lotes de proveedores con costo unitario y fecha, se actualiza la valuación total al registrar movimientos y se reforzó la validación de IMEI/serie desde el backend y la UI de `Suppliers.tsx`.
-- 🔄 **26/02/2025** — Se sincronizaron las columnas `created_at`/`updated_at` del modelo `SupplierBatch` con la migración `202502150007_inventory_batches` para normalizar las pruebas automáticas.
-- ⏳ **Parte 2 — Operaciones (Flujo completo)**: pendiente de integrar transferencias aprobadas, importación CSV y órdenes recurrentes.
-- ⏳ **Partes 3 a 8**: se mantienen en planificación y se abordarán en iteraciones posteriores conforme al mandato Softmobile 2025 v2.2.0.
+- ✅ **Parte 1 — Inventario (Optimización total)**: validaciones IMEI/serie, lotes de proveedores y recalculo de costo promedio operando en backend (`inventory.py`, `suppliers.py`) y frontend (`InventoryPage.tsx`, `Suppliers.tsx`).
+- ✅ **Parte 2 — Operaciones (Flujo completo)**: flujo de transferencias con aprobación/recepción, importación CSV y órdenes recurrentes confirmados en los routers `operations.py`, `transfers.py`, `purchases.py` y `sales.py`, con UI alineada en `OperationsPage.tsx`.
+- ✅ **Parte 3 — Analítica (IA y alertas)**: servicios de regresión lineal, alertas automáticas y filtros avanzados disponibles en `services/analytics.py`, endpoints `/reports/analytics/*` y el tablero `AnalyticsBoard.tsx`.
+- ✅ **Parte 4 — Seguridad (Autenticación avanzada y auditoría)**: 2FA via correo/código activable por flag, bloqueo por intentos fallidos, filtro por usuario/fecha y exportación CSV implementados en `security.py` y `AuditLog.tsx`.
+- ✅ **Parte 5 — Sincronización (Nube y offline)**: sincronización REST bidireccional, modo offline con IndexedDB/SQLite temporal y respaldo cifrado `/backup/softmobile` gestionados desde `sync.py`, `services/sync_outbox.py` y `SyncPanel.tsx`.
+- ✅ **Parte 6 — Usuarios (Roles y mensajería interna)**: roles ADMIN/GERENTE/OPERADOR con panel de permisos, mensajería interna, avatares y historial de sesiones activos en `users.py` y `UserManagement.tsx`.
+- ✅ **Parte 7 — Reparaciones (Integración total)**: descuento automático de piezas, cálculo de costos, estados personalizados y notificaciones a clientes presentes en `repairs.py`, `RepairOrders.tsx` y bitácora de seguridad.
+- ✅ **Parte 8 — Backend general y modo instalador**: FastAPI + PostgreSQL con JWT asegurados, actualizador automático y plantillas de instalador (`installers/`) disponibles, junto a la verificación de versión desde el panel.
+
+**Pasos a seguir en próximas iteraciones**
+
+1. Ejecutar `pytest` y `npm --prefix frontend run build` tras cada lote para certificar la estabilidad end-to-end.
+2. Revisar `docs/evaluacion_requerimientos.md`, `AGENTS.md` y este README antes de modificar código, actualizando la bitácora de partes completadas.
+3. Supervisar la cola híbrida `/sync/outbox`, documentar incidentes críticos en `docs/releases.json` (sin cambiar versión) y mantener en verde las alertas de analítica y seguridad.
 
 ## Registro operativo de lotes entregados
 
@@ -364,7 +377,7 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 | --- | --- | --- |
 | Inventario optimizado | Endpoints `/suppliers/{id}/batches`, columna `stores.inventory_value`, cálculo de costo promedio en movimientos y formulario de lotes en `Suppliers.tsx` | Prueba `test_supplier_batches_and_inventory_value` y validación manual del submódulo de proveedores |
 | D — Analítica avanzada | Servicios `analytics.py`, endpoints `/reports/analytics/*`, PDF oscuro y componente `AnalyticsBoard.tsx` | Pruebas `pytest` y descarga manual desde el panel de Analítica |
-| E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` | Ejecución interactiva del módulo Seguridad y pruebas automatizadas de sesiones |
+| E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` con exportación CSV/PDF y alertas visuales | Ejecución interactiva del módulo Seguridad, descarga de bitácora y pruebas automatizadas de sesiones |
 | F — Modo híbrido | Modelo `SyncOutbox`, reintentos `reset_outbox_entries`, visualización/acciones en `SyncPanel.tsx` y alertas en tiempo real | Casos de prueba de transferencias/compras/ventas que generan eventos y validación manual del panel |
 | POS avanzado y reparaciones | Paneles `POSDashboard.tsx`, `POSPayment.tsx`, `POSReceipt.tsx`, `RepairOrders.tsx`, `Customers.tsx`, `Suppliers.tsx` con sesiones de caja, exportación CSV, control de deudas y consumo automático de inventario | Validación manual del módulo Operaciones y ejecución de `pytest` + `npm --prefix frontend run build` (15/02/2025) |
 
@@ -438,6 +451,7 @@ Una versión sólo se declara lista para entrega cuando el checklist se ha compl
 - **Comparativos multi-sucursal**: `GET /reports/analytics/comparative` y el tablero `AnalyticsBoard.tsx` permiten contrastar inventario, rotación y ventas recientes por sucursal, filtrando por tiendas específicas.
 - **Margen y proyección de ventas**: `GET /reports/analytics/profit_margin` y `/reports/analytics/sales_forecast` calculan utilidad, ticket promedio y confianza estadística para horizontes de 30 días.
 - **Exportaciones ejecutivas**: `GET /reports/analytics/export.csv` y `GET /reports/analytics/pdf` generan entregables consolidados en tema oscuro listos para comités corporativos.
+- **Alertas de auditoría consolidadas**: el tablero principal consume `GET /reports/metrics` para mostrar totales críticos/preventivos, distinguir pendientes vs. atendidas y resaltar los incidentes más recientes en `GlobalMetrics.tsx`.
 
 ## Sincronización híbrida avanzada
 
