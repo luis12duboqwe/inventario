@@ -724,8 +724,26 @@ export function getSummary(token: string): Promise<Summary[]> {
   return request<Summary[]>("/inventory/summary", { method: "GET" }, token);
 }
 
-export function getDevices(token: string, storeId: number): Promise<Device[]> {
-  return request<Device[]>(`/stores/${storeId}/devices`, { method: "GET" }, token);
+type DeviceListFilters = {
+  search?: string;
+  estado?: Device["estado_comercial"];
+};
+
+export function getDevices(
+  token: string,
+  storeId: number,
+  filters: DeviceListFilters = {}
+): Promise<Device[]> {
+  const params = new URLSearchParams();
+  if (filters.search) {
+    params.append("search", filters.search);
+  }
+  if (filters.estado) {
+    params.append("estado", filters.estado);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<Device[]>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
 }
 
 export function listPurchaseOrders(token: string, storeId: number, limit = 50): Promise<PurchaseOrder[]> {

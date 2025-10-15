@@ -79,6 +79,7 @@ type DashboardContextValue = {
   handleMovement: (payload: MovementInput) => Promise<void>;
   refreshInventoryAfterTransfer: () => Promise<void>;
   refreshSummary: () => Promise<void>;
+  lastInventoryRefresh: Date | null;
   handleSync: () => Promise<void>;
   handleBackup: () => Promise<void>;
   refreshOutbox: () => Promise<void>;
@@ -124,6 +125,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const [summary, setSummary] = useState<Summary[]>([]);
   const [metrics, setMetrics] = useState<InventoryMetrics | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [lastInventoryRefresh, setLastInventoryRefresh] = useState<Date | null>(null);
   const [backupHistory, setBackupHistory] = useState<BackupJob[]>([]);
   const [releaseHistory, setReleaseHistory] = useState<ReleaseInfo[]>([]);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -210,6 +212,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
           setSelectedStoreId(firstStoreId);
           const devicesData = await getDevices(token, firstStoreId);
           setDevices(devicesData);
+          setLastInventoryRefresh(new Date());
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "No fue posible cargar los datos iniciales");
@@ -230,6 +233,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       try {
         const devicesData = await getDevices(token, selectedStoreId);
         setDevices(devicesData);
+        setLastInventoryRefresh(new Date());
       } catch (err) {
         setError(err instanceof Error ? err.message : "No fue posible cargar los dispositivos");
       }
@@ -261,14 +265,37 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     loadOutbox();
   }, [enableHybridPrep, token]);
 
-  const refreshSummary = async () => {
+  const refreshSummary = useCallback(async () => {
     const [summaryData, metricsData] = await Promise.all([
       getSummary(token),
       getInventoryMetrics(token),
     ]);
     setSummary(summaryData);
     setMetrics(metricsData);
-  };
+  }, [token]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void (async () => {
+        try {
+          await refreshSummary();
+          if (selectedStoreId) {
+            const refreshedDevices = await getDevices(token, selectedStoreId);
+            setDevices(refreshedDevices);
+            setLastInventoryRefresh(new Date());
+          }
+        } catch (err) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "No fue posible actualizar el inventario en tiempo real",
+          );
+        }
+      })();
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [refreshSummary, selectedStoreId, token]);
 
   const handleMovement = async (payload: MovementInput) => {
     if (!selectedStoreId) {
@@ -288,6 +315,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         refreshSummary(),
         getDevices(token, selectedStoreId).then(setDevices),
       ]);
+      setLastInventoryRefresh(new Date());
     } catch (err) {
       const message = err instanceof Error ? err.message : "No se pudo registrar el movimiento";
       setError(message);
@@ -300,6 +328,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     if (selectedStoreId) {
       const devicesData = await getDevices(token, selectedStoreId);
       setDevices(devicesData);
+      setLastInventoryRefresh(new Date());
     }
   };
 
@@ -436,6 +465,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     backupHistory,
     releaseHistory,
     updateStatus,
+    lastInventoryRefresh,
     selectedStoreId,
     setSelectedStoreId,
     selectedStore,

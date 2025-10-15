@@ -74,6 +74,84 @@ def test_inventory_flow(client) -> None:
     assert any(device["device_id"] == low_stock_id for device in low_stock_devices)
 
 
+def test_device_filters_by_search_and_state(client) -> None:
+    headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Norte", "location": "MTY", "timezone": "America/Monterrey"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    devices = [
+        {
+            "sku": "SKU-IPHONE",
+            "name": "iPhone 15 Pro",
+            "quantity": 4,
+            "unit_price": 32500.0,
+            "imei": "490154203237518",
+            "modelo": "iPhone 15 Pro",
+            "estado_comercial": "A",
+        },
+        {
+            "sku": "SKU-MOTO",
+            "name": "Moto Edge 50",
+            "quantity": 6,
+            "unit_price": 14500.0,
+            "serial": "MOTO-EDGE-50-XYZ",
+            "estado_comercial": "B",
+        },
+        {
+            "sku": "SKU-GALAXY",
+            "name": "Galaxy S24",
+            "quantity": 8,
+            "unit_price": 28999.0,
+            "modelo": "Galaxy S24",
+            "estado_comercial": "nuevo",
+        },
+    ]
+
+    for payload in devices:
+        create_response = client.post(f"/stores/{store_id}/devices", json=payload, headers=headers)
+        assert create_response.status_code == status.HTTP_201_CREATED
+
+    search_response = client.get(
+        f"/stores/{store_id}/devices",
+        headers=headers,
+        params={"search": "iphone"},
+    )
+    assert search_response.status_code == status.HTTP_200_OK
+    search_results = search_response.json()
+    assert len(search_results) == 1
+    assert search_results[0]["sku"] == "SKU-IPHONE"
+
+    estado_response = client.get(
+        f"/stores/{store_id}/devices",
+        headers=headers,
+        params={"estado": "B"},
+    )
+    assert estado_response.status_code == status.HTTP_200_OK
+    estado_results = estado_response.json()
+    assert len(estado_results) == 1
+    assert all(device["estado_comercial"] == "B" for device in estado_results)
+
+    mixed_response = client.get(
+        f"/stores/{store_id}/devices",
+        headers=headers,
+        params={"search": "galaxy", "estado": "nuevo"},
+    )
+    assert mixed_response.status_code == status.HTTP_200_OK
+    mixed_results = mixed_response.json()
+    assert len(mixed_results) == 1
+    assert mixed_results[0]["sku"] == "SKU-GALAXY"
+
+    invalid_response = client.get(
+        f"/stores/{store_id}/devices",
+        headers=headers,
+        params={"estado": "Z"},
+    )
+    assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
 def test_requires_authentication(client) -> None:
     store_payload = {"name": "Sucursal Sin Token"}
     response = client.post("/stores", json=store_payload)

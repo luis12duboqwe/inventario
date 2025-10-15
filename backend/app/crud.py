@@ -1034,13 +1034,32 @@ def update_device(
     return device
 
 
-def list_devices(db: Session, store_id: int) -> list[models.Device]:
+def list_devices(
+    db: Session,
+    store_id: int,
+    *,
+    search: str | None = None,
+    estado: models.CommercialState | None = None,
+) -> list[models.Device]:
     get_store(db, store_id)
-    statement = (
-        select(models.Device)
-        .where(models.Device.store_id == store_id)
-        .order_by(models.Device.sku.asc())
-    )
+    statement = select(models.Device).where(models.Device.store_id == store_id)
+    if estado is not None:
+        statement = statement.where(models.Device.estado_comercial == estado)
+    if search:
+        normalized = f"%{search.lower()}%"
+        statement = statement.where(
+            or_(
+                func.lower(models.Device.sku).like(normalized),
+                func.lower(models.Device.name).like(normalized),
+                func.lower(models.Device.modelo).like(normalized),
+                func.lower(models.Device.marca).like(normalized),
+                func.lower(models.Device.color).like(normalized),
+                func.lower(models.Device.serial).like(normalized),
+                func.lower(models.Device.imei).like(normalized),
+                func.lower(models.Device.estado_comercial).like(normalized),
+            )
+        )
+    statement = statement.order_by(models.Device.sku.asc())
     return list(db.scalars(statement))
 
 

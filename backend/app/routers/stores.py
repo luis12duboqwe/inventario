@@ -1,12 +1,13 @@
 """Rutas relacionadas con sucursales y dispositivos."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
 from ..core.roles import GESTION_ROLES, REPORTE_ROLES
 from ..database import get_db
+from ..models import CommercialState
 from ..security import require_roles
 
 router = APIRouter(prefix="/stores", tags=["stores"])
@@ -107,11 +108,32 @@ def create_device(
 @router.get("/{store_id}/devices", response_model=list[schemas.DeviceResponse])
 def list_devices(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    search: str | None = Query(default=None, min_length=1, max_length=120),
+    estado: str | None = Query(default=None, description="Filtra por estado comercial"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
+    estado_enum: CommercialState | None = None
+    if estado:
+        normalized = estado.strip()
+        try:
+            estado_enum = CommercialState(normalized)
+        except ValueError:
+            try:
+                estado_enum = CommercialState(normalized.lower())
+            except ValueError:
+                try:
+                    estado_enum = CommercialState(normalized.upper())
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "code": "invalid_estado_comercial",
+                            "message": "Estado comercial inválido. Usa nuevo, A, B o C.",
+                        },
+                    ) from exc
     try:
-        return crud.list_devices(db, store_id)
+        return crud.list_devices(db, store_id, search=search, estado=estado_enum)
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

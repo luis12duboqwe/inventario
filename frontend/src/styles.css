@@ -839,6 +839,16 @@ button.link:hover:not(:disabled) {
   color: var(--text-secondary);
 }
 
+.pill.success {
+  background: rgba(35, 134, 54, 0.22);
+  color: var(--success);
+}
+
+.pill.warning {
+  background: rgba(251, 191, 36, 0.22);
+  color: #fbbf24;
+}
+
 .pill.accent {
   margin-top: 0.75rem;
   background: rgba(0, 191, 255, 0.16);
@@ -943,8 +953,14 @@ button.link:hover:not(:disabled) {
 }
 
 .status-card-icon {
-  font-size: 1.7rem;
-  align-self: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 191, 255, 0.08);
+  color: var(--accent);
 }
 
 .status-card-body {
@@ -1072,6 +1088,185 @@ textarea:focus {
 
 .inventory-table tbody tr:hover {
   background-color: rgba(0, 154, 205, 0.08);
+}
+
+.inventory-row.low-stock {
+  background: rgba(234, 179, 8, 0.12);
+}
+
+.identifier-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-chip.success {
+  background: rgba(35, 134, 54, 0.18);
+  color: var(--success);
+}
+
+.status-chip.info {
+  background: rgba(0, 191, 255, 0.18);
+  color: var(--accent);
+}
+
+.status-chip.warning {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+}
+
+.status-chip.danger {
+  background: rgba(218, 54, 51, 0.18);
+  color: var(--error);
+}
+
+.inventory-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.input-with-icon {
+  position: relative;
+  flex: 1 1 260px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 191, 255, 0.25);
+  background: rgba(13, 17, 23, 0.85);
+}
+
+.input-with-icon svg {
+  color: var(--accent);
+}
+
+.input-with-icon input {
+  background: transparent;
+  border: none;
+  color: inherit;
+  width: 100%;
+  outline: none;
+  font-size: 0.9rem;
+}
+
+.select-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 180px;
+}
+
+.select-inline span {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.inventory-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.inventory-last-update {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+@media (min-width: 768px) {
+  .inventory-meta {
+    flex-direction: row;
+    gap: 1.2rem;
+  }
+}
+
+.low-stock-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.low-stock-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: rgba(13, 17, 23, 0.85);
+  border: 1px solid rgba(0, 191, 255, 0.08);
+  transition: transform 0.2s ease;
+}
+
+.low-stock-item.critical {
+  border-color: rgba(218, 54, 51, 0.32);
+}
+
+.low-stock-item.warning {
+  border-color: rgba(251, 191, 36, 0.32);
+}
+
+.low-stock-item.notice {
+  border-color: rgba(0, 191, 255, 0.24);
+}
+
+.low-stock-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+}
+
+.low-stock-item.critical .low-stock-icon {
+  background: rgba(218, 54, 51, 0.18);
+  color: var(--error);
+}
+
+.low-stock-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.9rem;
+}
+
+.low-stock-body span {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.low-stock-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+
+.low-stock-quantity {
+  font-weight: 600;
 }
 
 .metrics-list {
