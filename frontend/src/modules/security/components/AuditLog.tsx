@@ -24,6 +24,68 @@ function AuditLog({ token }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const { pushToast } = useDashboard();
+  const reminderIntervalRef = useRef<number | null>(null);
+  const snoozeTimeoutRef = useRef<number | null>(null);
+  const snoozedUntilRef = useRef<number | null>(null);
+  const lastToastRef = useRef<number>(0);
+  const REMINDER_INTERVAL_MS = 120000;
+  const SNOOZE_DURATION_MS = 10 * 60 * 1000;
+
+  const clearReminderInterval = useCallback(() => {
+    if (reminderIntervalRef.current !== null) {
+      window.clearInterval(reminderIntervalRef.current);
+      reminderIntervalRef.current = null;
+    }
+  }, []);
+
+  const clearSnoozeTimeout = useCallback(() => {
+    if (snoozeTimeoutRef.current !== null) {
+      window.clearTimeout(snoozeTimeoutRef.current);
+      snoozeTimeoutRef.current = null;
+    }
+  }, []);
+
+  const buildCurrentFilters = useCallback(
+    (overrides: Partial<AuditLogFilters> = {}): AuditLogFilters => {
+      const filters: AuditLogFilters = {};
+      const limitValue = overrides.limit ?? limit;
+      if (typeof limitValue === "number" && !Number.isNaN(limitValue)) {
+        filters.limit = limitValue;
+      }
+      const normalizedAction = overrides.action ?? (actionFilter.trim() ? actionFilter.trim() : undefined);
+      if (normalizedAction) {
+        filters.action = normalizedAction;
+      }
+      const normalizedEntity = overrides.entity_type ?? (entityFilter.trim() ? entityFilter.trim() : undefined);
+      if (normalizedEntity) {
+        filters.entity_type = normalizedEntity;
+      }
+      const overrideUser = overrides.performed_by_id;
+      let effectiveUser = overrideUser;
+      if (typeof effectiveUser !== "number") {
+        const trimmed = userFilter.trim();
+        if (trimmed) {
+          const parsed = Number(trimmed);
+          if (!Number.isNaN(parsed)) {
+            effectiveUser = parsed;
+          }
+        }
+      }
+      if (typeof effectiveUser === "number" && Number.isFinite(effectiveUser) && effectiveUser > 0) {
+        filters.performed_by_id = effectiveUser;
+      }
+      const fromValue = overrides.date_from ?? (dateFrom || undefined);
+      if (fromValue) {
+        filters.date_from = fromValue;
+      }
+      const toValue = overrides.date_to ?? (dateTo || undefined);
+      if (toValue) {
+        filters.date_to = toValue;
+      }
+      return filters;
+    },
+    [actionFilter, dateFrom, dateTo, entityFilter, limit, userFilter]
+  );
 
   const buildCurrentFilters = useCallback(
     (overrides: Partial<AuditLogFilters> = {}): AuditLogFilters => {
@@ -102,7 +164,8 @@ function AuditLog({ token }: Props) {
 
   useEffect(() => {
     loadLogs({ notify: false });
-  }, [loadLogs]);
+    loadReminders();
+  }, [loadLogs, loadReminders]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -110,6 +173,24 @@ function AuditLog({ token }: Props) {
     }, 45000);
     return () => window.clearInterval(interval);
   }, [loadLogs]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      loadReminders({ silent: true });
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, [loadReminders]);
+
+  useEffect(() => {
+    snoozedUntilRef.current = snoozedUntil;
+  }, [snoozedUntil]);
+
+  useEffect(() => {
+    return () => {
+      clearReminderInterval();
+      clearSnoozeTimeout();
+    };
+  }, [clearReminderInterval, clearSnoozeTimeout]);
 
   const handleFilter = (event: FormEvent) => {
     event.preventDefault();
@@ -182,6 +263,25 @@ function AuditLog({ token }: Props) {
       return "🔄";
     }
     return "⚙️";
+  };
+
+  const formatRelativeFromNow = (isoString: string): string => {
+    const timestamp = new Date(isoString).getTime();
+    if (Number.isNaN(timestamp)) {
+      return "fecha desconocida";
+    }
+    const diffMs = timestamp - Date.now();
+    const diffMinutes = Math.round(diffMs / 60000);
+    const formatter = new Intl.RelativeTimeFormat("es-MX", { numeric: "auto" });
+    if (Math.abs(diffMinutes) < 60) {
+      return formatter.format(diffMinutes, "minute");
+    }
+    const diffHours = Math.round(diffMinutes / 60);
+    if (Math.abs(diffHours) < 24) {
+      return formatter.format(diffHours, "hour");
+    }
+    const diffDays = Math.round(diffHours / 24);
+    return formatter.format(diffDays, "day");
   };
 
   return (

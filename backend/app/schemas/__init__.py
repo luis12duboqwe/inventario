@@ -942,6 +942,23 @@ class AuditLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AuditReminderEntry(BaseModel):
+    entity_type: str
+    entity_id: str
+    first_seen: datetime
+    last_seen: datetime
+    occurrences: int = Field(..., ge=1)
+    latest_action: str
+    latest_details: str | None = None
+
+
+class AuditReminderSummary(BaseModel):
+    threshold_minutes: int = Field(..., ge=0)
+    min_occurrences: int = Field(..., ge=1)
+    total: int = Field(..., ge=0)
+    persistent: list[AuditReminderEntry]
+
+
 class PurchaseOrderItemCreate(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity_ordered: int = Field(..., ge=1)

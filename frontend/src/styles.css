@@ -2064,6 +2064,124 @@ button.ghost {
   border: 1px solid rgba(0, 191, 255, 0.12);
 }
 
+.audit-reminders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.reminder-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-radius: 14px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.85));
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.32);
+}
+
+.reminder-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.reminder-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #f87171;
+}
+
+.reminder-meta {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.reminder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.reminder-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.reminder-entry__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.reminder-entry__badge {
+  align-self: flex-start;
+  padding: 0.15rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(248, 113, 113, 0.18);
+  color: #fca5a5;
+}
+
+.reminder-entry__action {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.reminder-entry__meta {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.reminder-entry__stats {
+  text-align: right;
+  min-width: 72px;
+}
+
+.reminder-entry__count {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: #f87171;
+  line-height: 1.1;
+}
+
+.reminder-entry__label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.reminder-snooze-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.reminder-pill {
+  align-self: flex-start;
+}
+
 .audit-log-table tbody tr:hover,
 .analytics-panel tbody tr:hover,
 .metrics-card tbody tr:hover,
