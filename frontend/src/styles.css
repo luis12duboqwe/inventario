@@ -1082,6 +1082,14 @@ button.link:hover:not(:disabled) {
   border-left: 4px solid var(--accent);
 }
 
+.summary-item.pending {
+  border-left: 4px solid #f97316;
+}
+
+.summary-item.acknowledged {
+  border-left: 4px solid #22c55e;
+}
+
 .summary-value {
   font-size: 1.4rem;
   font-weight: 600;
@@ -1100,6 +1108,42 @@ button.link:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.acknowledgement-meta {
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.acknowledged-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.acknowledged-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.acknowledged-entity {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.acknowledged-meta {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.audit-shortcut {
+  margin-top: 0.75rem;
+  font-weight: 600;
 }
 
 .alerts-list li {

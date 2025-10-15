@@ -42,6 +42,21 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Experiencia UI responsiva** con toasts contextuales, animaciones suaves y selector de tema claro/oscuro que mantiene el modo oscuro como predeterminado.
 - **Interfaz animada Softmobile** con pantalla de bienvenida en movimiento, iconografía por módulo, toasts de sincronización modernizados y modo táctil optimizado para el POS, impulsados por `framer-motion`.
 
+### Plan activo de finalización v2.2.0
+
+| Paso | Estado | Directrices |
+| --- | --- | --- |
+| Conectar recordatorios, snooze y acuses en Seguridad (`AuditLog.tsx`) | ✅ Listo | La UI consume los servicios corporativos con motivo obligatorio, badges en vivo y registro de notas. |
+| Actualizar el tablero global con métricas de pendientes/atendidas | ✅ Listo | `GlobalMetrics.tsx` muestra conteos, último acuse y acceso directo a Seguridad desde el dashboard. |
+| Automatizar pruebas de frontend (Vitest/RTL) para recordatorios, acuses y descargas | 🔄 En progreso | Configurar `npm run test` con mocks de `api.ts`, validar snooze, motivos y descargas con `Blob`. |
+| Registrar bitácora operativa de corridas (`pytest`, `npm --prefix frontend run build`) y validaciones multiusuario | 🔄 En progreso | Documentar cada corrida en `docs/bitacora_pruebas_*.md` y verificar escenarios simultáneos en Seguridad. |
+
+**Directrices rápidas:**
+
+- Captura siempre un motivo corporativo (`X-Reason` ≥ 5 caracteres) al descargar CSV/PDF o registrar un acuse.
+- Repite `pytest` y `npm --prefix frontend run build` antes de fusionar cambios y anota el resultado en la bitácora.
+- Mantén sincronizados README, `AGENTS.md` y `docs/evaluacion_requerimientos.md` tras completar cada paso del plan activo.
+
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
 La actualización UI de febrero 2025 refuerza la experiencia operativa sin modificar rutas ni versiones:

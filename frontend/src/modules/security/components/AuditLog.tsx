@@ -2,15 +2,27 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import {
   AuditLogEntry,
   AuditLogFilters,
+  AuditReminderEntry,
+  AuditReminderSummary,
+  acknowledgeAuditAlert,
   downloadAuditPdf,
   exportAuditLogsCsv,
   getAuditLogs,
+  getAuditReminders,
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 type Props = {
   token: string;
 };
+
+type LoadLogsOptions = {
+  filters?: Partial<AuditLogFilters>;
+  notify?: boolean;
+};
+
+const REMINDER_INTERVAL_MS = 120_000;
+const SNOOZE_DURATION_MS = 10 * 60 * 1000;
 
 function AuditLog({ token }: Props) {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
@@ -23,13 +35,26 @@ function AuditLog({ token }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+
+  const [reminders, setReminders] = useState<AuditReminderSummary | null>(null);
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const [reminderError, setReminderError] = useState<string | null>(null);
+
+  const [selectedReminder, setSelectedReminder] = useState<AuditReminderEntry | null>(null);
+  const [ackNote, setAckNote] = useState("");
+  const [ackReason, setAckReason] = useState("");
+  const [ackError, setAckError] = useState<string | null>(null);
+  const [acknowledging, setAcknowledging] = useState(false);
+
+  const [snoozedUntil, setSnoozedUntil] = useState<number | null>(null);
+
   const { pushToast } = useDashboard();
+
   const reminderIntervalRef = useRef<number | null>(null);
   const snoozeTimeoutRef = useRef<number | null>(null);
   const snoozedUntilRef = useRef<number | null>(null);
+  const reminderSummaryRef = useRef<AuditReminderSummary | null>(null);
   const lastToastRef = useRef<number>(0);
-  const REMINDER_INTERVAL_MS = 120000;
-  const SNOOZE_DURATION_MS = 10 * 60 * 1000;
 
   const clearReminderInterval = useCallback(() => {
     if (reminderIntervalRef.current !== null) {
@@ -87,50 +112,8 @@ function AuditLog({ token }: Props) {
     [actionFilter, dateFrom, dateTo, entityFilter, limit, userFilter]
   );
 
-  const buildCurrentFilters = useCallback(
-    (overrides: Partial<AuditLogFilters> = {}): AuditLogFilters => {
-      const filters: AuditLogFilters = {};
-      const limitValue = overrides.limit ?? limit;
-      if (typeof limitValue === "number" && !Number.isNaN(limitValue)) {
-        filters.limit = limitValue;
-      }
-      const normalizedAction = overrides.action ?? (actionFilter.trim() ? actionFilter.trim() : undefined);
-      if (normalizedAction) {
-        filters.action = normalizedAction;
-      }
-      const normalizedEntity = overrides.entity_type ?? (entityFilter.trim() ? entityFilter.trim() : undefined);
-      if (normalizedEntity) {
-        filters.entity_type = normalizedEntity;
-      }
-      const overrideUser = overrides.performed_by_id;
-      let effectiveUser = overrideUser;
-      if (typeof effectiveUser !== "number") {
-        const trimmed = userFilter.trim();
-        if (trimmed) {
-          const parsed = Number(trimmed);
-          if (!Number.isNaN(parsed)) {
-            effectiveUser = parsed;
-          }
-        }
-      }
-      if (typeof effectiveUser === "number" && Number.isFinite(effectiveUser) && effectiveUser > 0) {
-        filters.performed_by_id = effectiveUser;
-      }
-      const fromValue = overrides.date_from ?? (dateFrom || undefined);
-      if (fromValue) {
-        filters.date_from = fromValue;
-      }
-      const toValue = overrides.date_to ?? (dateTo || undefined);
-      if (toValue) {
-        filters.date_to = toValue;
-      }
-      return filters;
-    },
-    [actionFilter, dateFrom, dateTo, entityFilter, limit, userFilter]
-  );
-
   const loadLogs = useCallback(
-    async ({ filters: overrides, notify }: { filters?: Partial<AuditLogFilters>; notify?: boolean } = {}) => {
+    async ({ filters: overrides, notify }: LoadLogsOptions = {}) => {
       try {
         if (!notify) {
           setLoading(true);
@@ -162,65 +145,223 @@ function AuditLog({ token }: Props) {
     [buildCurrentFilters, pushToast, token]
   );
 
-  useEffect(() => {
-    loadLogs({ notify: false });
-    loadReminders();
-  }, [loadLogs, loadReminders]);
+  const loadReminders = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      try {
+        if (!silent) {
+          setReminderLoading(true);
+          setReminderError(null);
+        }
+        const data = await getAuditReminders(token);
+        const previous = reminderSummaryRef.current;
+        reminderSummaryRef.current = data;
+        setReminders(data);
 
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      loadLogs({ notify: true });
-    }, 45000);
-    return () => window.clearInterval(interval);
-  }, [loadLogs]);
+        const now = Date.now();
+        const isSnoozed = snoozedUntilRef.current !== null && now < snoozedUntilRef.current;
+        const hasPending = data.pending_count > 0;
+        if (!isSnoozed && hasPending) {
+          let hasNewPending = false;
+          if (!previous) {
+            hasNewPending = true;
+          } else {
+            const previousPending = new Map(
+              previous.persistent
+                .filter((entry) => entry.status === "pending")
+                .map((entry) => [`${entry.entity_type}:${entry.entity_id}`, entry.last_seen])
+            );
+            hasNewPending = data.persistent.some((entry) => {
+              if (entry.status !== "pending") {
+                return false;
+              }
+              const key = `${entry.entity_type}:${entry.entity_id}`;
+              const lastSeen = previousPending.get(key);
+              return !lastSeen || lastSeen !== entry.last_seen;
+            });
+          }
 
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      loadReminders({ silent: true });
-    }, 60000);
-    return () => window.clearInterval(interval);
+          if (hasNewPending && (!silent || now - lastToastRef.current > 45_000)) {
+            const mostRecent = [...data.persistent]
+              .filter((entry) => entry.status === "pending")
+              .sort((a, b) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime())[0];
+            const message = mostRecent
+              ? `Alerta pendiente: ${mostRecent.entity_type} #${mostRecent.entity_id} (${new Date(
+                  mostRecent.last_seen
+                ).toLocaleTimeString("es-MX")})`
+              : `Tienes ${data.pending_count} alertas críticas pendientes`;
+            pushToast({ message, variant: "warning" });
+            lastToastRef.current = now;
+          }
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No fue posible obtener recordatorios";
+        if (!silent) {
+          setReminderError(message);
+        }
+        pushToast({ message, variant: "error" });
+      } finally {
+        if (!silent) {
+          setReminderLoading(false);
+        }
+      }
+    },
+    [pushToast, token]
+  );
+
+  const startReminderInterval = useCallback(() => {
+    if (reminderIntervalRef.current !== null) {
+      return;
+    }
+    reminderIntervalRef.current = window.setInterval(() => {
+      void loadReminders({ silent: true });
+    }, REMINDER_INTERVAL_MS);
   }, [loadReminders]);
 
-  useEffect(() => {
-    snoozedUntilRef.current = snoozedUntil;
-  }, [snoozedUntil]);
+  const requestReason = useCallback(
+    (defaultReason: string): string | null => {
+      const value = window.prompt("Ingresa el motivo corporativo (X-Reason ≥ 5 caracteres)", defaultReason);
+      if (!value) {
+        pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
+        return null;
+      }
+      const trimmed = value.trim();
+      if (trimmed.length < 5) {
+        pushToast({ message: "El motivo corporativo debe tener al menos 5 caracteres.", variant: "error" });
+        return null;
+      }
+      return trimmed;
+    },
+    [pushToast]
+  );
 
-  useEffect(() => {
-    return () => {
-      clearReminderInterval();
-      clearSnoozeTimeout();
-    };
-  }, [clearReminderInterval, clearSnoozeTimeout]);
+  const handleSnooze = useCallback(() => {
+    clearReminderInterval();
+    const until = Date.now() + SNOOZE_DURATION_MS;
+    setSnoozedUntil(until);
+    snoozedUntilRef.current = until;
+    clearSnoozeTimeout();
+    snoozeTimeoutRef.current = window.setTimeout(() => {
+      setSnoozedUntil(null);
+      snoozedUntilRef.current = null;
+      pushToast({ message: "Snooze finalizado, recordatorios reactivados.", variant: "info" });
+      startReminderInterval();
+      void loadReminders({ silent: true });
+    }, SNOOZE_DURATION_MS);
+    pushToast({ message: "Recordatorios pausados por 10 minutos.", variant: "info" });
+  }, [clearReminderInterval, clearSnoozeTimeout, loadReminders, pushToast, startReminderInterval]);
 
-  const handleFilter = (event: FormEvent) => {
-    event.preventDefault();
-    loadLogs({ notify: false });
-  };
+  const handleResumeReminders = useCallback(() => {
+    const wasSnoozed = snoozedUntilRef.current !== null;
+    clearSnoozeTimeout();
+    setSnoozedUntil(null);
+    snoozedUntilRef.current = null;
+    startReminderInterval();
+    void loadReminders({ silent: false });
+    pushToast({
+      message: wasSnoozed ? "Recordatorios reanudados." : "Recordatorios activos.",
+      variant: "info",
+    });
+  }, [clearSnoozeTimeout, loadReminders, pushToast, startReminderInterval]);
 
-  const handleDownload = async (type: "csv" | "pdf") => {
-    try {
-      setDownloading(true);
-      const filters = buildCurrentFilters();
-      const blob =
-        type === "csv" ? await exportAuditLogsCsv(token, filters) : await downloadAuditPdf(token, filters);
-      const fileName =
-        type === "csv" ? "bitacora_auditoria.csv" : "bitacora_auditoria.pdf";
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      pushToast({ message: `Descarga generada: ${fileName}`, variant: "success" });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "No fue posible generar el archivo";
-      pushToast({ message, variant: "error" });
-    } finally {
-      setDownloading(false);
-    }
-  };
+  const handleFilter = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      void loadLogs({ notify: false });
+    },
+    [loadLogs]
+  );
+
+  const handleDownload = useCallback(
+    async (type: "csv" | "pdf") => {
+      try {
+        const reasonDefault = type === "csv" ? "Descarga auditoría" : "Reporte auditoría";
+        const reason = requestReason(reasonDefault);
+        if (!reason) {
+          return;
+        }
+        setDownloading(true);
+        const filters = buildCurrentFilters();
+        const blob =
+          type === "csv"
+            ? await exportAuditLogsCsv(token, filters, reason)
+            : await downloadAuditPdf(token, filters, reason);
+        const fileName = type === "csv" ? "bitacora_auditoria.csv" : "bitacora_auditoria.pdf";
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        pushToast({ message: `Descarga generada: ${fileName}`, variant: "success" });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No fue posible generar el archivo";
+        pushToast({ message, variant: "error" });
+      } finally {
+        setDownloading(false);
+      }
+    },
+    [buildCurrentFilters, pushToast, requestReason, token]
+  );
+
+  const handleSelectReminder = useCallback((entry: AuditReminderEntry) => {
+    setSelectedReminder(entry);
+    setAckNote(entry.acknowledged_note ?? "");
+    setAckReason("");
+    setAckError(null);
+  }, []);
+
+  const handleCancelAcknowledgement = useCallback(() => {
+    setSelectedReminder(null);
+    setAckNote("");
+    setAckReason("");
+    setAckError(null);
+  }, []);
+
+  const handleAcknowledge = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!selectedReminder) {
+        return;
+      }
+      const trimmedReason = ackReason.trim();
+      if (trimmedReason.length < 5) {
+        setAckError("El motivo corporativo debe tener al menos 5 caracteres.");
+        return;
+      }
+      const note = ackNote.trim();
+      setAckError(null);
+      try {
+        setAcknowledging(true);
+        await acknowledgeAuditAlert(
+          token,
+          {
+            entity_type: selectedReminder.entity_type,
+            entity_id: selectedReminder.entity_id,
+            note: note ? note : undefined,
+          },
+          trimmedReason
+        );
+        pushToast({
+          message: `Acuse registrado para ${selectedReminder.entity_type} #${selectedReminder.entity_id}.`,
+          variant: "success",
+        });
+        setSelectedReminder(null);
+        setAckNote("");
+        setAckReason("");
+        await loadReminders({ silent: false });
+        await loadLogs({ notify: false });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No fue posible registrar el acuse";
+        setAckError(message);
+        pushToast({ message, variant: "error" });
+      } finally {
+        setAcknowledging(false);
+      }
+    },
+    [ackNote, ackReason, loadLogs, loadReminders, pushToast, selectedReminder, token]
+  );
 
   const severitySummary = useMemo(() => {
     return logs.reduce(
@@ -240,6 +381,28 @@ function AuditLog({ token }: Props) {
     () => logs.filter((log) => log.severity !== "info").slice(0, 3),
     [logs]
   );
+
+  const pendingReminders = useMemo(() => {
+    if (!reminders) {
+      return [] as AuditReminderEntry[];
+    }
+    return reminders.persistent
+      .filter((entry) => entry.status === "pending")
+      .sort((a, b) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime());
+  }, [reminders]);
+
+  const acknowledgedReminders = useMemo(() => {
+    if (!reminders) {
+      return [] as AuditReminderEntry[];
+    }
+    return reminders.persistent
+      .filter((entry) => entry.status === "acknowledged")
+      .sort((a, b) => {
+        const dateB = b.acknowledged_at ? new Date(b.acknowledged_at).getTime() : 0;
+        const dateA = a.acknowledged_at ? new Date(a.acknowledged_at).getTime() : 0;
+        return dateB - dateA;
+      });
+  }, [reminders]);
 
   const resolveSeverityClass = (severity: AuditLogEntry["severity"]) => {
     if (severity === "critical") {
@@ -283,6 +446,30 @@ function AuditLog({ token }: Props) {
     const diffDays = Math.round(diffHours / 24);
     return formatter.format(diffDays, "day");
   };
+
+  useEffect(() => {
+    void loadLogs({ notify: false });
+    void loadReminders({ silent: false });
+  }, [loadLogs, loadReminders]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void loadLogs({ notify: true });
+    }, 45_000);
+    return () => window.clearInterval(interval);
+  }, [loadLogs]);
+
+  useEffect(() => {
+    startReminderInterval();
+    return () => {
+      clearReminderInterval();
+      clearSnoozeTimeout();
+    };
+  }, [clearReminderInterval, clearSnoozeTimeout, startReminderInterval]);
+
+  useEffect(() => {
+    snoozedUntilRef.current = snoozedUntil;
+  }, [snoozedUntil]);
 
   return (
     <section className="card audit-card fade-in">
@@ -345,11 +532,16 @@ function AuditLog({ token }: Props) {
           className="btn btn--secondary"
           type="button"
           disabled={downloading}
-          onClick={() => handleDownload("csv")}
+          onClick={() => void handleDownload("csv")}
         >
           Descargar CSV
         </button>
-        <button className="btn btn--ghost" type="button" disabled={downloading} onClick={() => handleDownload("pdf")}>
+        <button
+          className="btn btn--ghost"
+          type="button"
+          disabled={downloading}
+          onClick={() => void handleDownload("pdf")}
+        >
           Descargar PDF
         </button>
       </div>
@@ -363,16 +555,13 @@ function AuditLog({ token }: Props) {
               🔐 Se detectaron {severitySummary.critical} eventos críticos. {" "}
               {highlightedLogs.length > 0
                 ? highlightedLogs
-                    .map(
-                      (log) => `${log.action} (${new Date(log.created_at).toLocaleString()})`
-                    )
+                    .map((log) => `${log.action} (${new Date(log.created_at).toLocaleString()})`)
                     .join(" · ")
                 : "Revisa los registros recientes para más detalles."}
             </div>
           ) : severitySummary.warning > 0 ? (
             <div className="alert warning">
-              ⚠️ {severitySummary.warning} acciones preventivas registradas en este rango. Supervisa los
-              accesos sensibles.
+              ⚠️ {severitySummary.warning} acciones preventivas registradas en este rango. Supervisa los accesos sensibles.
             </div>
           ) : (
             <span className="pill success">Sin alertas de seguridad en la ventana seleccionada</span>
@@ -406,9 +595,7 @@ function AuditLog({ token }: Props) {
                     </span>
                     <span>{log.action}</span>
                   </td>
-                  <td>
-                    {log.entity_type} #{log.entity_id}
-                  </td>
+                  <td>{log.entity_type} #{log.entity_id}</td>
                   <td>{log.details ?? "-"}</td>
                   <td>
                     <span className={`pill ${resolveSeverityClass(log.severity)}`}>
@@ -421,6 +608,119 @@ function AuditLog({ token }: Props) {
           </table>
         </div>
       )}
+
+      <div className="audit-reminders">
+        <header className="reminder-header">
+          <h3>Recordatorios de alertas críticas</h3>
+          <p className="muted-text">
+            Umbral corporativo: {reminders?.threshold_minutes ?? 0} minutos · Mínimo de repeticiones: {reminders?.min_occurrences ?? 0}
+          </p>
+        </header>
+        <div className="reminder-actions">
+          <span className="pill danger">Pendientes: {reminders?.pending_count ?? 0}</span>
+          <span className="pill info">Atendidas: {reminders?.acknowledged_count ?? 0}</span>
+          {snoozedUntil ? (
+            <button className="btn btn--secondary" type="button" onClick={handleResumeReminders}>
+              Reanudar recordatorios
+            </button>
+          ) : (
+            <button className="btn btn--ghost" type="button" onClick={handleSnooze}>
+              Posponer 10 minutos
+            </button>
+          )}
+        </div>
+        {snoozedUntil ? (
+          <p className="muted-text">
+            Recordatorios pausados hasta {new Date(snoozedUntil).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}.
+          </p>
+        ) : null}
+        {reminderError && <p className="error-text">{reminderError}</p>}
+        {reminderLoading && <p>Cargando recordatorios...</p>}
+        {!reminderLoading && reminders && pendingReminders.length === 0 ? (
+          <p className="muted-text">Sin alertas críticas pendientes en este momento.</p>
+        ) : null}
+        {pendingReminders.length > 0 ? (
+          <table className="reminder-table">
+            <thead>
+              <tr>
+                <th>Entidad</th>
+                <th>Última acción</th>
+                <th>Repeticiones</th>
+                <th>Visto por última vez</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendingReminders.map((reminder) => (
+                <tr key={`${reminder.entity_type}-${reminder.entity_id}`}>
+                  <td>
+                    {reminder.entity_type} #{reminder.entity_id}
+                  </td>
+                  <td>{reminder.latest_action}</td>
+                  <td>{reminder.occurrences}</td>
+                  <td>{new Date(reminder.last_seen).toLocaleString()}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn btn--primary"
+                      onClick={() => handleSelectReminder(reminder)}
+                    >
+                      Registrar acuse
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
+        {acknowledgedReminders.length > 0 ? (
+          <details className="acknowledged-reminders" open>
+            <summary>Últimos acuses registrados</summary>
+            <ul>
+              {acknowledgedReminders.slice(0, 5).map((reminder) => (
+                <li key={`ack-${reminder.entity_type}-${reminder.entity_id}`}>
+                  {reminder.entity_type} #{reminder.entity_id} · {reminder.acknowledged_by_name ?? "Usuario corporativo"} · {reminder.acknowledged_at ? formatRelativeFromNow(reminder.acknowledged_at) : "sin fecha"}
+                  {reminder.acknowledged_note ? ` — ${reminder.acknowledged_note}` : ""}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </div>
+
+      {selectedReminder ? (
+        <form className="acknowledgement-form" onSubmit={handleAcknowledge}>
+          <h4>
+            Registrar acuse para {selectedReminder.entity_type} #{selectedReminder.entity_id}
+          </h4>
+          <label>
+            <span>Nota corporativa</span>
+            <textarea
+              value={ackNote}
+              onChange={(event) => setAckNote(event.target.value)}
+              placeholder="Describe la acción correctiva o el contexto adicional"
+            />
+          </label>
+          <label>
+            <span>Motivo corporativo (X-Reason)</span>
+            <input
+              type="text"
+              value={ackReason}
+              onChange={(event) => setAckReason(event.target.value)}
+              placeholder="Ej. Revisión manual en sitio"
+            />
+          </label>
+          {ackError && <p className="error-text">{ackError}</p>}
+          <div className="acknowledgement-actions">
+            <button className="btn btn--primary" type="submit" disabled={acknowledging}>
+              {acknowledging ? "Registrando..." : "Guardar acuse"}
+            </button>
+            <button className="btn btn--ghost" type="button" onClick={handleCancelAcknowledgement}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      ) : null}
     </section>
   );
 }
