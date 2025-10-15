@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Iterable, Literal, TypedDict
 
 from ..models import AuditLog
@@ -51,12 +51,20 @@ def severity_label(severity: AuditSeverity) -> str:
     return "Informativa"
 
 
-class HighlightEntry(TypedDict):
+class HighlightEntry(TypedDict, total=False):
+    """Evento destacado dentro del resumen de auditoría."""
+
     id: int
     action: str
     created_at: datetime
     severity: AuditSeverity
     entity_type: str
+    entity_id: str
+    status: Literal["pending", "acknowledged"]
+    acknowledged_at: datetime | None
+    acknowledged_by_id: int | None
+    acknowledged_by_name: str | None
+    acknowledged_note: str | None
 
 
 @dataclass(slots=True)
@@ -93,6 +101,7 @@ def summarize_alerts(logs: Iterable[AuditLog], *, max_highlights: int = 5) -> Au
                     created_at=log.created_at,
                     severity=severity,
                     entity_type=log.entity_type,
+                    entity_id=log.entity_id,
                 )
             )
     total = critical + warning + info
@@ -120,3 +129,64 @@ def serialize_log(log: AuditLog) -> dict[str, object]:
         "severity": severity,
         "severity_label": severity_label(severity),
     }
+
+
+def identify_persistent_critical_alerts(
+    logs: Iterable[AuditLog],
+    *,
+    threshold_minutes: int,
+    min_occurrences: int,
+    limit: int,
+    reference_time: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Detecta alertas críticas recurrentes para alimentar recordatorios."""
+
+    reference_time = reference_time or datetime.utcnow()
+    threshold_delta = timedelta(minutes=threshold_minutes)
+
+    aggregates: dict[tuple[str, str], dict[str, object]] = {}
+    for log in logs:
+        severity = classify_severity(log.action or "", log.details)
+        if severity != "critical":
+            continue
+        key = (log.entity_type, log.entity_id)
+        entry = aggregates.get(key)
+        if entry is None:
+            entry = {
+                "entity_type": log.entity_type,
+                "entity_id": log.entity_id,
+                "first_seen": log.created_at,
+                "last_seen": log.created_at,
+                "occurrences": 0,
+                "latest_action": log.action,
+                "latest_details": log.details,
+            }
+            aggregates[key] = entry
+        entry["occurrences"] += 1
+        if log.created_at > entry["last_seen"]:
+            entry["last_seen"] = log.created_at
+            entry["latest_action"] = log.action
+            entry["latest_details"] = log.details
+
+    candidates: list[dict[str, object]] = []
+    for entry in aggregates.values():
+        if entry["occurrences"] < min_occurrences:
+            continue
+        if threshold_minutes > 0 and reference_time - entry["last_seen"] > threshold_delta:
+            continue
+        candidates.append(entry)
+
+    candidates.sort(key=lambda item: item["last_seen"], reverse=True)
+    return candidates[:limit]
+
+
+__all__ = [
+    "AuditAlertSummary",
+    "AuditSeverity",
+    "HighlightEntry",
+    "identify_persistent_critical_alerts",
+    "summarize_alerts",
+    "classify_severity",
+    "severity_label",
+    "serialize_log",
+]

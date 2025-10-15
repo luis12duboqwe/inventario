@@ -675,10 +675,30 @@ class AuditHighlight(BaseModel):
     created_at: datetime
     severity: Literal["info", "warning", "critical"]
     entity_type: str
+    entity_id: str
+    status: Literal["pending", "acknowledged"] = Field(default="pending")
+    acknowledged_at: datetime | None = None
+    acknowledged_by_id: int | None = None
+    acknowledged_by_name: str | None = None
+    acknowledged_note: str | None = None
 
     @field_serializer("created_at")
     @classmethod
     def _serialize_created_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AuditAcknowledgedEntity(BaseModel):
+    entity_type: str
+    entity_id: str
+    acknowledged_at: datetime
+    acknowledged_by_id: int | None = None
+    acknowledged_by_name: str | None = None
+    note: str | None = None
+
+    @field_serializer("acknowledged_at")
+    @classmethod
+    def _serialize_ack_time(cls, value: datetime) -> str:
         return value.isoformat()
 
 
@@ -687,7 +707,10 @@ class DashboardAuditAlerts(BaseModel):
     critical: int
     warning: int
     info: int
+    pending_count: int = Field(default=0, ge=0)
+    acknowledged_count: int = Field(default=0, ge=0)
     highlights: list[AuditHighlight] = Field(default_factory=list)
+    acknowledged_entities: list[AuditAcknowledgedEntity] = Field(default_factory=list)
 
     @computed_field(return_type=bool)  # type: ignore[misc]
     def has_alerts(self) -> bool:
@@ -950,13 +973,68 @@ class AuditReminderEntry(BaseModel):
     occurrences: int = Field(..., ge=1)
     latest_action: str
     latest_details: str | None = None
+    status: Literal["pending", "acknowledged"] = Field(default="pending")
+    acknowledged_at: datetime | None = None
+    acknowledged_by_id: int | None = None
+    acknowledged_by_name: str | None = None
+    acknowledged_note: str | None = None
+
+    @field_serializer("first_seen", "last_seen", when_used="json")
+    @classmethod
+    def _serialize_timestamp(cls, value: datetime) -> str:
+        return value.isoformat()
+
+    @field_serializer("acknowledged_at")
+    @classmethod
+    def _serialize_ack(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
 
 
 class AuditReminderSummary(BaseModel):
     threshold_minutes: int = Field(..., ge=0)
     min_occurrences: int = Field(..., ge=1)
     total: int = Field(..., ge=0)
+    pending_count: int = Field(..., ge=0)
+    acknowledged_count: int = Field(..., ge=0)
     persistent: list[AuditReminderEntry]
+
+
+class AuditAcknowledgementCreate(BaseModel):
+    entity_type: str = Field(..., min_length=1, max_length=80)
+    entity_id: str = Field(..., min_length=1, max_length=80)
+    note: str | None = Field(default=None, max_length=255)
+
+    @field_validator("entity_type", "entity_id")
+    @classmethod
+    def _normalize_identifier(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Valor requerido")
+        return normalized
+
+    @field_validator("note")
+    @classmethod
+    def _normalize_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class AuditAcknowledgementResponse(BaseModel):
+    entity_type: str
+    entity_id: str
+    acknowledged_at: datetime
+    acknowledged_by_id: int | None = None
+    acknowledged_by_name: str | None = None
+    note: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("acknowledged_at")
+    @classmethod
+    def _serialize_acknowledged_at(cls, value: datetime) -> str:
+        return value.isoformat()
 
 
 class PurchaseOrderItemCreate(BaseModel):
@@ -1675,8 +1753,13 @@ __all__ = [
     "AnalyticsProfitMarginResponse",
     "AnalyticsRotationResponse",
     "AnalyticsSalesProjectionResponse",
+    "AuditAcknowledgedEntity",
+    "AuditAcknowledgementCreate",
+    "AuditAcknowledgementResponse",
     "AuditHighlight",
     "AuditLogResponse",
+    "AuditReminderEntry",
+    "AuditReminderSummary",
     "DashboardAuditAlerts",
     "BackupJobResponse",
     "BackupRunRequest",
