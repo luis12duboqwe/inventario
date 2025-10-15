@@ -55,7 +55,7 @@ function OperationsPage() {
             {enablePurchasesSales ? (
               <>
                 <Customers token={token} />
-                <Suppliers token={token} />
+                <Suppliers token={token} stores={stores} />
                 <POSDashboard
                   token={token}
                   stores={stores}

@@ -107,6 +107,32 @@ export type SupplierPayload = {
   history?: ContactHistoryEntry[];
 };
 
+export type SupplierBatch = {
+  id: number;
+  supplier_id: number;
+  store_id?: number | null;
+  device_id?: number | null;
+  model_name: string;
+  batch_code: string;
+  unit_cost: number;
+  quantity: number;
+  purchase_date: string;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierBatchPayload = {
+  store_id?: number | null;
+  device_id?: number | null;
+  model_name: string;
+  batch_code: string;
+  unit_cost: number;
+  quantity?: number;
+  purchase_date: string;
+  notes?: string | null;
+};
+
 export type RepairOrderPart = {
   id: number;
   repair_order_id: number;
@@ -947,6 +973,53 @@ export function updateSupplier(
 export function deleteSupplier(token: string, supplierId: number, reason: string): Promise<void> {
   return request<void>(
     `/suppliers/${supplierId}`,
+    { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listSupplierBatches(
+  token: string,
+  supplierId: number,
+  limit = 50
+): Promise<SupplierBatch[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request<SupplierBatch[]>(
+    `/suppliers/${supplierId}/batches?${params.toString()}`,
+    { method: "GET" },
+    token
+  );
+}
+
+export function createSupplierBatch(
+  token: string,
+  supplierId: number,
+  payload: SupplierBatchPayload,
+  reason: string
+): Promise<SupplierBatch> {
+  return request<SupplierBatch>(
+    `/suppliers/${supplierId}/batches`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function updateSupplierBatch(
+  token: string,
+  batchId: number,
+  payload: Partial<SupplierBatchPayload>,
+  reason: string
+): Promise<SupplierBatch> {
+  return request<SupplierBatch>(
+    `/suppliers/batches/${batchId}`,
+    { method: "PUT", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function deleteSupplierBatch(token: string, batchId: number, reason: string): Promise<void> {
+  return request<void>(
+    `/suppliers/batches/${batchId}`,
     { method: "DELETE", headers: { "X-Reason": reason } },
     token
   );

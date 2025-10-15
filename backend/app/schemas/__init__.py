@@ -41,8 +41,14 @@ class StoreUpdate(BaseModel):
 
 class StoreResponse(StoreBase):
     id: int
+    inventory_value: Decimal = Field(default=Decimal("0"))
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("inventory_value")
+    @classmethod
+    def _serialize_inventory_value(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class DeviceBase(BaseModel):
@@ -354,6 +360,64 @@ class SupplierResponse(SupplierBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SupplierBatchBase(BaseModel):
+    model_name: str = Field(..., max_length=120)
+    batch_code: str = Field(..., max_length=80)
+    unit_cost: Decimal = Field(..., ge=Decimal("0"))
+    quantity: int = Field(default=0, ge=0)
+    purchase_date: date
+    notes: str | None = Field(default=None, max_length=255)
+    store_id: int | None = Field(default=None, ge=1)
+    device_id: int | None = Field(default=None, ge=1)
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    @field_validator("model_name", "batch_code", "notes", mode="before")
+    @classmethod
+    def _normalize_batch_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SupplierBatchCreate(SupplierBatchBase):
+    pass
+
+
+class SupplierBatchUpdate(BaseModel):
+    model_name: str | None = Field(default=None, max_length=120)
+    batch_code: str | None = Field(default=None, max_length=80)
+    unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+    quantity: int | None = Field(default=None, ge=0)
+    purchase_date: date | None = None
+    notes: str | None = Field(default=None, max_length=255)
+    store_id: int | None = Field(default=None, ge=1)
+    device_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("model_name", "batch_code", "notes", mode="before")
+    @classmethod
+    def _normalize_optional_batch_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class SupplierBatchResponse(SupplierBatchBase):
+    id: int
+    supplier_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TransferOrderItemBase(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
@@ -509,6 +573,7 @@ class MovementBase(BaseModel):
     movement_type: MovementType
     quantity: int = Field(..., gt=0)
     reason: str | None = Field(default=None, max_length=255)
+    unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
 
 class MovementCreate(MovementBase):
@@ -520,8 +585,21 @@ class MovementResponse(MovementBase):
     store_id: int
     performed_by_id: int | None
     created_at: datetime
+    store_inventory_value: Decimal
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+    @field_serializer("store_inventory_value")
+    @classmethod
+    def _serialize_inventory_total(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class InventorySummary(BaseModel):
@@ -1453,6 +1531,14 @@ __all__ = [
     "StoreUpdate",
     "StoreValueMetric",
     "StoreComparativeMetric",
+    "SupplierBase",
+    "SupplierBatchBase",
+    "SupplierBatchCreate",
+    "SupplierBatchResponse",
+    "SupplierBatchUpdate",
+    "SupplierCreate",
+    "SupplierResponse",
+    "SupplierUpdate",
     "SyncRequest",
     "SyncOutboxEntryResponse",
     "SyncOutboxPriority",

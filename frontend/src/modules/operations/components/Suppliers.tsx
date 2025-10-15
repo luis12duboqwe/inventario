@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Supplier } from "../../../api";
+import type { Store, Supplier, SupplierBatch, SupplierBatchPayload } from "../../../api";
 import {
   createSupplier,
+  createSupplierBatch,
   deleteSupplier,
+  deleteSupplierBatch,
   exportSuppliersCsv,
+  listSupplierBatches,
   listSuppliers,
   updateSupplier,
+  updateSupplierBatch,
 } from "../../../api";
 
 type Props = {
   token: string;
+  stores: Store[];
 };
 
 type SupplierForm = {
@@ -34,7 +39,29 @@ const initialForm: SupplierForm = {
   historyNote: "",
 };
 
-function Suppliers({ token }: Props) {
+type SupplierBatchForm = {
+  storeId: number | "";
+  deviceId: number | "";
+  modelName: string;
+  batchCode: string;
+  unitCost: number;
+  quantity: number;
+  purchaseDate: string;
+  notes: string;
+};
+
+const createInitialBatchForm = (): SupplierBatchForm => ({
+  storeId: "",
+  deviceId: "",
+  modelName: "",
+  batchCode: "",
+  unitCost: 0,
+  quantity: 0,
+  purchaseDate: new Date().toISOString().slice(0, 10),
+  notes: "",
+});
+
+function Suppliers({ token, stores }: Props) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [form, setForm] = useState<SupplierForm>({ ...initialForm });
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -43,6 +70,16 @@ function Suppliers({ token }: Props) {
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null);
+  const [selectedSupplierName, setSelectedSupplierName] = useState<string | null>(null);
+  const [batches, setBatches] = useState<SupplierBatch[]>([]);
+  const [batchForm, setBatchForm] = useState<SupplierBatchForm>(createInitialBatchForm);
+  const [batchEditingId, setBatchEditingId] = useState<number | null>(null);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+  const currencyFormatter = useMemo(
+    () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
+    []
+  );
 
   const refreshSuppliers = useCallback(
     async (query?: string) => {
@@ -58,6 +95,25 @@ function Suppliers({ token }: Props) {
         setError(err instanceof Error ? err.message : "No fue posible cargar proveedores.");
       } finally {
         setLoading(false);
+      }
+    },
+    [token]
+  );
+
+  const refreshBatches = useCallback(
+    async (supplierId: number) => {
+      try {
+        setLoadingBatches(true);
+        const data = await listSupplierBatches(token, supplierId, 100);
+        setBatches(data);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "No fue posible cargar los lotes del proveedor."
+        );
+      } finally {
+        setLoadingBatches(false);
       }
     },
     [token]
@@ -80,13 +136,28 @@ function Suppliers({ token }: Props) {
     [suppliers]
   );
 
+  const storeLookup = useMemo(() => {
+    const map = new Map<number, string>();
+    stores.forEach((store) => map.set(store.id, store.name));
+    return map;
+  }, [stores]);
+
   const updateForm = (updates: Partial<SupplierForm>) => {
     setForm((current) => ({ ...current, ...updates }));
+  };
+
+  const updateBatchForm = (updates: Partial<SupplierBatchForm>) => {
+    setBatchForm((current) => ({ ...current, ...updates }));
   };
 
   const resetForm = () => {
     setForm({ ...initialForm });
     setEditingId(null);
+  };
+
+  const resetBatchForm = () => {
+    setBatchForm(createInitialBatchForm());
+    setBatchEditingId(null);
   };
 
   const askReason = (promptText: string): string | null => {
@@ -153,6 +224,10 @@ function Suppliers({ token }: Props) {
 
   const handleEdit = (supplier: Supplier) => {
     setEditingId(supplier.id);
+    setSelectedSupplierId(supplier.id);
+    setSelectedSupplierName(supplier.name);
+    resetBatchForm();
+    void refreshBatches(supplier.id);
     setForm({
       name: supplier.name,
       contactName: supplier.contact_name ?? "",
@@ -180,6 +255,12 @@ function Suppliers({ token }: Props) {
       await refreshSuppliers(trimmed.length >= 2 ? trimmed : undefined);
       if (editingId === supplier.id) {
         resetForm();
+      }
+      if (selectedSupplierId === supplier.id) {
+        setSelectedSupplierId(null);
+        setSelectedSupplierName(null);
+        setBatches([]);
+        resetBatchForm();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible eliminar al proveedor.");
@@ -233,6 +314,101 @@ function Suppliers({ token }: Props) {
       await refreshSuppliers(trimmed.length >= 2 ? trimmed : undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible ajustar la cuenta del proveedor.");
+    }
+  };
+
+  const handleSelectBatches = (supplier: Supplier) => {
+    setSelectedSupplierId(supplier.id);
+    setSelectedSupplierName(supplier.name);
+    resetBatchForm();
+    void refreshBatches(supplier.id);
+  };
+
+  const handleBatchEdit = (batch: SupplierBatch) => {
+    setBatchEditingId(batch.id);
+    setBatchForm({
+      storeId: batch.store_id ?? "",
+      deviceId: batch.device_id ?? "",
+      modelName: batch.model_name,
+      batchCode: batch.batch_code,
+      unitCost: batch.unit_cost,
+      quantity: batch.quantity,
+      purchaseDate: batch.purchase_date,
+      notes: batch.notes ?? "",
+    });
+  };
+
+  const handleBatchDelete = async (batch: SupplierBatch) => {
+    if (!window.confirm(`¿Eliminar el lote ${batch.batch_code}?`)) {
+      return;
+    }
+    const reason = askReason("Motivo corporativo para eliminar el lote del proveedor");
+    if (!reason) {
+      return;
+    }
+    try {
+      await deleteSupplierBatch(token, batch.id, reason);
+      setMessage("Lote eliminado.");
+      if (selectedSupplierId) {
+        await refreshBatches(selectedSupplierId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No fue posible eliminar el lote del proveedor.");
+    }
+  };
+
+  const handleBatchSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedSupplierId) {
+      setError("Selecciona un proveedor para gestionar sus lotes.");
+      return;
+    }
+    if (!batchForm.modelName.trim() || !batchForm.batchCode.trim()) {
+      setError("Indica el modelo y el código de lote.");
+      return;
+    }
+    if (!batchForm.purchaseDate) {
+      setError("Selecciona la fecha de compra del lote.");
+      return;
+    }
+    const unitCostValue = Number(batchForm.unitCost);
+    if (!Number.isFinite(unitCostValue) || unitCostValue < 0) {
+      setError("Indica un costo unitario válido.");
+      return;
+    }
+    const reason = askReason(
+      batchEditingId
+        ? "Motivo corporativo para actualizar el lote del proveedor"
+        : "Motivo corporativo para registrar el lote del proveedor"
+    );
+    if (!reason) {
+      return;
+    }
+    const quantityValue = Number(batchForm.quantity);
+    const payload: SupplierBatchPayload = {
+      model_name: batchForm.modelName.trim(),
+      batch_code: batchForm.batchCode.trim(),
+      unit_cost: unitCostValue,
+      quantity: Number.isFinite(quantityValue) && quantityValue >= 0 ? quantityValue : 0,
+      purchase_date: batchForm.purchaseDate,
+      notes: batchForm.notes.trim() ? batchForm.notes.trim() : undefined,
+      store_id: batchForm.storeId !== "" ? Number(batchForm.storeId) : undefined,
+      device_id: batchForm.deviceId !== "" ? Number(batchForm.deviceId) : undefined,
+    };
+
+    try {
+      setError(null);
+      if (batchEditingId) {
+        await updateSupplierBatch(token, batchEditingId, payload, reason);
+        setMessage("Lote actualizado correctamente.");
+      } else {
+        await createSupplierBatch(token, selectedSupplierId, payload, reason);
+        setMessage("Lote registrado correctamente.");
+      }
+      resetBatchForm();
+      await refreshBatches(selectedSupplierId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No fue posible guardar el lote del proveedor.");
     }
   };
 
@@ -398,6 +574,9 @@ function Suppliers({ token }: Props) {
                         <button type="button" className="btn btn--link" onClick={() => handleAdjustDebt(supplier)}>
                           Ajustar saldo
                         </button>
+                        <button type="button" className="btn btn--link" onClick={() => handleSelectBatches(supplier)}>
+                          Lotes
+                        </button>
                         <button type="button" className="btn btn--link" onClick={() => handleDelete(supplier)}>
                           Eliminar
                         </button>
@@ -410,6 +589,163 @@ function Suppliers({ token }: Props) {
           </table>
         </div>
       )}
+      <div className="section-divider">
+        <h3>Lotes y costos por proveedor</h3>
+        {selectedSupplierId ? (
+          <>
+            <p className="muted-text">
+              Gestiona los lotes registrados para <strong>{selectedSupplierName}</strong> y mantén actualizado el costo
+              promedio de inventario.
+            </p>
+            <form className="form-grid" onSubmit={handleBatchSubmit}>
+              <label>
+                <span>Sucursal</span>
+                <select
+                  value={batchForm.storeId === "" ? "" : String(batchForm.storeId)}
+                  onChange={(event) =>
+                    updateBatchForm({
+                      storeId: event.target.value === "" ? "" : Number(event.target.value),
+                    })
+                  }
+                >
+                  <option value="">Sin asignar</option>
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>ID de dispositivo (opcional)</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={batchForm.deviceId === "" ? "" : batchForm.deviceId}
+                  onChange={(event) =>
+                    updateBatchForm({
+                      deviceId: event.target.value === "" ? "" : Number(event.target.value),
+                    })
+                  }
+                  placeholder="Ej. 1024"
+                />
+              </label>
+              <label>
+                <span>Modelo</span>
+                <input
+                  value={batchForm.modelName}
+                  onChange={(event) => updateBatchForm({ modelName: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                <span>Código de lote</span>
+                <input
+                  value={batchForm.batchCode}
+                  onChange={(event) => updateBatchForm({ batchCode: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                <span>Costo unitario</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={batchForm.unitCost}
+                  onChange={(event) => updateBatchForm({ unitCost: Number(event.target.value) })}
+                  required
+                />
+              </label>
+              <label>
+                <span>Cantidad</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={batchForm.quantity}
+                  onChange={(event) => updateBatchForm({ quantity: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                <span>Fecha de compra</span>
+                <input
+                  type="date"
+                  value={batchForm.purchaseDate}
+                  onChange={(event) => updateBatchForm({ purchaseDate: event.target.value })}
+                  required
+                />
+              </label>
+              <label className="wide">
+                <span>Notas del lote</span>
+                <textarea
+                  value={batchForm.notes}
+                  onChange={(event) => updateBatchForm({ notes: event.target.value })}
+                  rows={2}
+                  placeholder="Observaciones, acuerdos o condiciones especiales"
+                />
+              </label>
+              <div className="actions-row wide">
+                <button type="submit" className="btn btn--primary">
+                  {batchEditingId ? "Actualizar lote" : "Registrar lote"}
+                </button>
+                {batchEditingId ? (
+                  <button type="button" className="btn btn--ghost" onClick={resetBatchForm}>
+                    Cancelar
+                  </button>
+                ) : null}
+              </div>
+            </form>
+            {loadingBatches ? (
+              <p className="muted-text">Cargando lotes registrados...</p>
+            ) : batches.length === 0 ? (
+              <p className="muted-text">Aún no se registran lotes para este proveedor.</p>
+            ) : (
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Lote</th>
+                      <th>Modelo</th>
+                      <th>Fecha</th>
+                      <th>Sucursal</th>
+                      <th>ID dispositivo</th>
+                      <th>Costo unitario</th>
+                      <th>Cantidad</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {batches.map((batch) => (
+                      <tr key={batch.id}>
+                        <td>{batch.batch_code}</td>
+                        <td>{batch.model_name}</td>
+                        <td>{batch.purchase_date}</td>
+                        <td>{batch.store_id ? storeLookup.get(batch.store_id) ?? `#${batch.store_id}` : "—"}</td>
+                        <td>{batch.device_id ?? "—"}</td>
+                        <td>{currencyFormatter.format(batch.unit_cost)}</td>
+                        <td>{batch.quantity}</td>
+                        <td>
+                          <div className="actions-row">
+                            <button type="button" className="btn btn--link" onClick={() => handleBatchEdit(batch)}>
+                              Editar
+                            </button>
+                            <button type="button" className="btn btn--link" onClick={() => handleBatchDelete(batch)}>
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="muted-text">Selecciona un proveedor para administrar sus lotes y costos asociados.</p>
+        )}
+      </div>
     </section>
   );
 }

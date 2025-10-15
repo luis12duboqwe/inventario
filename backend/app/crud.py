@@ -120,6 +120,26 @@ def _device_value(device: models.Device) -> Decimal:
     return Decimal(device.quantity) * (device.unit_price or Decimal("0"))
 
 
+def _recalculate_store_inventory_value(
+    db: Session, store: models.Store | int
+) -> Decimal:
+    if isinstance(store, models.Store):
+        store_obj = store
+    else:
+        store_obj = get_store(db, int(store))
+    total_value = db.scalar(
+        select(func.coalesce(func.sum(models.Device.quantity * models.Device.unit_price), 0))
+        .where(models.Device.store_id == store_obj.id)
+    )
+    normalized_total = _to_decimal(total_value).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    store_obj.inventory_value = normalized_total
+    db.add(store_obj)
+    db.flush()
+    return normalized_total
+
+
 def _customer_payload(customer: models.Customer) -> dict[str, object]:
     return {
         "id": customer.id,
@@ -869,6 +889,173 @@ def delete_supplier(
     db.commit()
 
 
+def list_supplier_batches(
+    db: Session, supplier_id: int, *, limit: int = 50
+) -> list[models.SupplierBatch]:
+    supplier = get_supplier(db, supplier_id)
+    statement = (
+        select(models.SupplierBatch)
+        .where(models.SupplierBatch.supplier_id == supplier.id)
+        .order_by(models.SupplierBatch.purchase_date.desc(), models.SupplierBatch.created_at.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(statement).unique())
+
+
+def create_supplier_batch(
+    db: Session,
+    supplier_id: int,
+    payload: schemas.SupplierBatchCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.SupplierBatch:
+    supplier = get_supplier(db, supplier_id)
+    store = get_store(db, payload.store_id) if payload.store_id else None
+    device: models.Device | None = None
+    if payload.device_id:
+        device = db.get(models.Device, payload.device_id)
+        if device is None:
+            raise LookupError("device_not_found")
+        if store is not None and device.store_id != store.id:
+            raise ValueError("supplier_batch_store_mismatch")
+        if store is None:
+            store = device.store
+
+    batch = models.SupplierBatch(
+        supplier_id=supplier.id,
+        store_id=store.id if store else None,
+        device_id=device.id if device else None,
+        model_name=payload.model_name or (device.name if device else ""),
+        batch_code=payload.batch_code,
+        unit_cost=_to_decimal(payload.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        quantity=payload.quantity,
+        purchase_date=payload.purchase_date,
+        notes=payload.notes,
+    )
+    now = datetime.utcnow()
+    batch.created_at = now
+    batch.updated_at = now
+    db.add(batch)
+
+    if device is not None:
+        device.proveedor = supplier.name
+        device.lote = payload.batch_code or device.lote
+        device.fecha_compra = payload.purchase_date
+        device.costo_unitario = batch.unit_cost
+        _recalculate_sale_price(device)
+        db.add(device)
+
+    db.commit()
+    db.refresh(batch)
+
+    if device is not None:
+        _recalculate_store_inventory_value(db, device.store_id)
+
+    _log_action(
+        db,
+        action="supplier_batch_created",
+        entity_type="supplier_batch",
+        entity_id=str(batch.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"supplier_id": supplier.id, "batch_code": batch.batch_code}),
+    )
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+def update_supplier_batch(
+    db: Session,
+    batch_id: int,
+    payload: schemas.SupplierBatchUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.SupplierBatch:
+    statement = select(models.SupplierBatch).where(models.SupplierBatch.id == batch_id)
+    batch = db.scalars(statement).first()
+    if batch is None:
+        raise LookupError("supplier_batch_not_found")
+
+    updated_fields: dict[str, object] = {}
+
+    if payload.model_name is not None:
+        batch.model_name = payload.model_name
+        updated_fields["model_name"] = payload.model_name
+    if payload.batch_code is not None:
+        batch.batch_code = payload.batch_code
+        updated_fields["batch_code"] = payload.batch_code
+    if payload.unit_cost is not None:
+        batch.unit_cost = _to_decimal(payload.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        updated_fields["unit_cost"] = float(batch.unit_cost)
+    if payload.quantity is not None:
+        batch.quantity = payload.quantity
+        updated_fields["quantity"] = payload.quantity
+    if payload.purchase_date is not None:
+        batch.purchase_date = payload.purchase_date
+        updated_fields["purchase_date"] = batch.purchase_date.isoformat()
+    if payload.notes is not None:
+        batch.notes = payload.notes
+        updated_fields["notes"] = payload.notes
+    if payload.store_id is not None:
+        store = get_store(db, payload.store_id)
+        batch.store_id = store.id
+        updated_fields["store_id"] = store.id
+    if payload.device_id is not None:
+        if payload.device_id:
+            device = db.get(models.Device, payload.device_id)
+            if device is None:
+                raise LookupError("device_not_found")
+            batch.device_id = device.id
+            updated_fields["device_id"] = device.id
+        else:
+            batch.device_id = None
+            updated_fields["device_id"] = None
+
+    batch.updated_at = datetime.utcnow()
+
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+
+    if updated_fields:
+        _log_action(
+            db,
+            action="supplier_batch_updated",
+            entity_type="supplier_batch",
+            entity_id=str(batch.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(updated_fields),
+        )
+        db.commit()
+        db.refresh(batch)
+    return batch
+
+
+def delete_supplier_batch(
+    db: Session,
+    batch_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> None:
+    statement = select(models.SupplierBatch).where(models.SupplierBatch.id == batch_id)
+    batch = db.scalars(statement).first()
+    if batch is None:
+        raise LookupError("supplier_batch_not_found")
+    store_id = batch.store_id
+    db.delete(batch)
+    db.commit()
+    if store_id:
+        _recalculate_store_inventory_value(db, store_id)
+    _log_action(
+        db,
+        action="supplier_batch_deleted",
+        entity_type="supplier_batch",
+        entity_id=str(batch_id),
+        performed_by_id=performed_by_id,
+    )
+    db.commit()
+
+
 def export_suppliers_csv(
     db: Session,
     *,
@@ -956,6 +1143,7 @@ def create_device(
     )
     db.commit()
     db.refresh(device)
+    _recalculate_store_inventory_value(db, store_id)
     return device
 
 
@@ -1031,6 +1219,7 @@ def update_device(
         )
         db.commit()
         db.refresh(device)
+    _recalculate_store_inventory_value(db, store_id)
     return device
 
 
@@ -1100,6 +1289,13 @@ def create_inventory_movement(
 
     if payload.movement_type == models.MovementType.IN:
         device.quantity += payload.quantity
+        if payload.unit_cost is not None:
+            current_total_cost = _to_decimal(device.costo_unitario) * _to_decimal(device.quantity - payload.quantity)
+            incoming_cost_total = _to_decimal(payload.unit_cost) * _to_decimal(payload.quantity)
+            divisor = _to_decimal(device.quantity or 1)
+            average_cost = (current_total_cost + incoming_cost_total) / divisor
+            device.costo_unitario = average_cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            _recalculate_sale_price(device)
     elif payload.movement_type == models.MovementType.OUT:
         device.quantity -= payload.quantity
     elif payload.movement_type == models.MovementType.ADJUST:
@@ -1111,6 +1307,7 @@ def create_inventory_movement(
         movement_type=payload.movement_type,
         quantity=payload.quantity,
         reason=payload.reason,
+        unit_cost=_to_decimal(payload.unit_cost) if payload.unit_cost is not None else None,
         performed_by_id=performed_by_id,
     )
     db.add(movement)
@@ -1128,6 +1325,8 @@ def create_inventory_movement(
     )
     db.commit()
     db.refresh(movement)
+    total_value = _recalculate_store_inventory_value(db, store_id)
+    setattr(movement, "store_inventory_value", total_value)
     return movement
 
 
@@ -2391,6 +2590,7 @@ def receive_purchase_order(
                 movement_type=models.MovementType.IN,
                 quantity=receive_item.quantity,
                 reason=reason,
+                unit_cost=order_item.unit_cost,
                 performed_by_id=received_by_id,
             )
         )
@@ -2404,6 +2604,7 @@ def receive_purchase_order(
 
     db.commit()
     db.refresh(order)
+    _recalculate_store_inventory_value(db, order.store_id)
 
     _log_action(
         db,
