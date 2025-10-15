@@ -515,6 +515,21 @@ export type AuditHighlight = {
   created_at: string;
   severity: "info" | "warning" | "critical";
   entity_type: string;
+  entity_id: string;
+  status: "pending" | "acknowledged";
+  acknowledged_at?: string | null;
+  acknowledged_by_id?: number | null;
+  acknowledged_by_name?: string | null;
+  acknowledged_note?: string | null;
+};
+
+export type AuditAcknowledgedEntity = {
+  entity_type: string;
+  entity_id: string;
+  acknowledged_at: string;
+  acknowledged_by_id?: number | null;
+  acknowledged_by_name?: string | null;
+  note?: string | null;
 };
 
 export type DashboardAuditAlerts = {
@@ -523,7 +538,49 @@ export type DashboardAuditAlerts = {
   warning: number;
   info: number;
   has_alerts: boolean;
+  pending_count: number;
+  acknowledged_count: number;
   highlights: AuditHighlight[];
+  acknowledged_entities: AuditAcknowledgedEntity[];
+};
+
+export type AuditReminderEntry = {
+  entity_type: string;
+  entity_id: string;
+  first_seen: string;
+  last_seen: string;
+  occurrences: number;
+  latest_action: string;
+  latest_details?: string | null;
+  status: "pending" | "acknowledged";
+  acknowledged_at?: string | null;
+  acknowledged_by_id?: number | null;
+  acknowledged_by_name?: string | null;
+  acknowledged_note?: string | null;
+};
+
+export type AuditReminderSummary = {
+  threshold_minutes: number;
+  min_occurrences: number;
+  total: number;
+  pending_count: number;
+  acknowledged_count: number;
+  persistent: AuditReminderEntry[];
+};
+
+export type AuditAcknowledgementInput = {
+  entity_type: string;
+  entity_id: string;
+  note?: string;
+};
+
+export type AuditAcknowledgementResponse = {
+  entity_type: string;
+  entity_id: string;
+  acknowledged_at: string;
+  acknowledged_by_id?: number | null;
+  acknowledged_by_name?: string | null;
+  note?: string | null;
 };
 
 export type InventoryMetrics = {
@@ -1776,16 +1833,48 @@ export function getAuditLogs(token: string, filters: AuditLogFilters = {}): Prom
   return request<AuditLogEntry[]>(`/audit/logs${suffix}`, { method: "GET" }, token);
 }
 
-export function exportAuditLogsCsv(token: string, filters: AuditLogFilters = {}): Promise<Blob> {
+export function exportAuditLogsCsv(
+  token: string,
+  filters: AuditLogFilters = {},
+  reason = "Descarga auditoría"
+): Promise<Blob> {
   const query = buildAuditQuery(filters);
   const suffix = query ? `?${query}` : "";
-  return request<Blob>(`/audit/logs/export.csv${suffix}`, { method: "GET" }, token);
+  return request<Blob>(
+    `/audit/logs/export.csv${suffix}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
 }
 
-export function downloadAuditPdf(token: string, filters: AuditLogFilters = {}): Promise<Blob> {
+export function downloadAuditPdf(
+  token: string,
+  filters: AuditLogFilters = {},
+  reason = "Reporte auditoría"
+): Promise<Blob> {
   const query = buildAuditQuery(filters);
   const suffix = query ? `?${query}` : "";
-  return request<Blob>(`/reports/audit/pdf${suffix}`, { method: "GET" }, token);
+  return request<Blob>(
+    `/reports/audit/pdf${suffix}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function getAuditReminders(token: string): Promise<AuditReminderSummary> {
+  return request<AuditReminderSummary>("/audit/reminders", { method: "GET" }, token);
+}
+
+export function acknowledgeAuditAlert(
+  token: string,
+  payload: AuditAcknowledgementInput,
+  reason: string
+): Promise<AuditAcknowledgementResponse> {
+  return request<AuditAcknowledgementResponse>(
+    "/audit/acknowledgements",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function submitPosSale(

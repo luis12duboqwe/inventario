@@ -40,3 +40,10 @@
 2. Ejecutar `pytest` y `npm --prefix frontend run build` en la siguiente iteración de mantenimiento para actualizar la bitácora operativa.
 3. Cerrar la transferencia pendiente o generar un recibo POS que consuma la unidad según la política de IMEI.
 
+## Actualización 14/10/2025 — Regresión auditoría/métricas
+
+- Hash base: `335916d` (antes de integrar ajustes de UI de Seguridad).
+- `pytest` → ✅ 37 pruebas en verde (37 passed, 2 warnings) validando recordatorios, métricas y flujos POS.【a8dcda†L1-L20】
+- `npm --prefix frontend run build` → ✅ compilación exitosa sin errores (avisos de chunk esperados).【1889c4†L1-L12】
+- Observaciones: `AuditLog.tsx` muestra recordatorios activos con snooze y motivo corporativo obligatorio; `GlobalMetrics.tsx` refleja pendientes/atendidas y enlaza a Seguridad para atender acuses.
+

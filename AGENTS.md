@@ -119,3 +119,10 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 1. Leer `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` para identificar pendientes.
 2. Ejecutar `pytest` y `npm --prefix frontend run build`, registrando fecha y resultado en la bitácora interna.
 3. Validar inventario, operaciones, analítica, seguridad, sincronización y usuarios en el frontend, asegurando que `/sync/outbox` quede sin pendientes críticos y documentando incidentes.
+
+### Plan operativo inmediato — Seguridad y auditoría
+
+1. ✅ **Recordatorios y acuses activos en Seguridad**: `AuditLog.tsx` debe mantener badges de pendientes/atendidas, snooze corporativo de 10 minutos y descargas CSV/PDF con motivo (`X-Reason` ≥ 5). No modifiques este comportamiento sin actualizar README y pruebas.
+2. ✅ **Tablero global enriquecido**: `GlobalMetrics.tsx` tiene que reflejar `pending_count`/`acknowledged_count`, destacar el último acuse y enlazar a `/dashboard/security` cuando existan pendientes.
+3. 🔄 **Pruebas de frontend obligatorias**: incorpora Vitest + React Testing Library para simular recordatorios, registros de acuse y descargas; agrega el script `npm run test` y ejecútalo junto con `npm run build` en cada iteración.
+4. 🔄 **Bitácora corporativa**: registra cada corrida de `pytest`, `npm --prefix frontend run build` y `npm run test` en `docs/bitacora_pruebas_YYYY-MM-DD.md`, indicando hash del commit, responsable y resultado.

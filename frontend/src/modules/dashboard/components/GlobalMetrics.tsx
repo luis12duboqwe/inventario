@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import {
   Bar,
   BarChart,
@@ -40,56 +42,84 @@ function GlobalMetrics() {
     warning: "Preventiva",
     info: "Informativa",
   };
-  const alertsTone = auditAlerts.critical > 0 ? "alert" : auditAlerts.warning > 0 ? "info" : "good";
-  const alertsValue =
-    auditAlerts.total === 0
-      ? "0 eventos"
-      : `${auditAlerts.critical} críticas · ${auditAlerts.warning} preventivas`;
+  const alertsTone = useMemo(() => {
+    if (auditAlerts.pending_count > 0 || auditAlerts.critical > 0) {
+      return "alert" as const;
+    }
+    if (auditAlerts.warning > 0) {
+      return "info" as const;
+    }
+    return "good" as const;
+  }, [auditAlerts.critical, auditAlerts.pending_count, auditAlerts.warning]);
 
-  const cards = [
-    {
-      id: "sales",
-      title: "Ventas netas",
-      value: formatCurrency(performance.total_sales),
-      caption: `${performance.sales_count} operaciones cerradas`,
-      tone: resolveStatusTone(performance.total_sales, 1),
-    },
-    {
-      id: "profit",
-      title: "Ganancia bruta",
-      value: formatCurrency(performance.gross_profit),
-      caption: performance.gross_profit >= 0 ? "Margen positivo" : "Atiende descuentos excesivos",
-      tone: resolveStatusTone(performance.gross_profit, 0),
-    },
-    {
-      id: "stock",
-      title: "Inventario total",
-      value: `${performance.total_stock.toLocaleString("es-MX")} uds`,
-      caption: "Unidades disponibles en tiendas",
-      tone: "info" as const,
-    },
-    {
-      id: "repairs",
-      title: "Reparaciones abiertas",
-      value: `${performance.open_repairs}`,
-      caption: performance.open_repairs === 0 ? "Sin pendientes" : "Coordina cierres con taller",
-      tone: resolveStatusTone(performance.open_repairs, 0, true),
-    },
-    {
-      id: "audit-alerts",
-      title: "Alertas de auditoría",
-      value: alertsValue,
-      caption: auditAlerts.has_alerts
-        ? "Atiende las incidencias desde Seguridad"
-        : "Sin incidencias recientes",
-      tone: alertsTone,
-    },
-  ];
+  const alertsValue = useMemo(() => {
+    if (auditAlerts.total === 0) {
+      return "Sin eventos";
+    }
+    return `${auditAlerts.pending_count} pendientes · ${auditAlerts.acknowledged_count} atendidas`;
+  }, [auditAlerts.acknowledged_count, auditAlerts.pending_count, auditAlerts.total]);
 
-  const salesTrend = metrics.sales_trend.map((entry) => ({ ...entry, value: Number(entry.value.toFixed(2)) }));
+  const cards = useMemo(
+    () => [
+      {
+        id: "sales",
+        title: "Ventas netas",
+        value: formatCurrency(performance.total_sales),
+        caption: `${performance.sales_count} operaciones cerradas`,
+        tone: resolveStatusTone(performance.total_sales, 1),
+      },
+      {
+        id: "profit",
+        title: "Ganancia bruta",
+        value: formatCurrency(performance.gross_profit),
+        caption: performance.gross_profit >= 0 ? "Margen positivo" : "Atiende descuentos excesivos",
+        tone: resolveStatusTone(performance.gross_profit, 0),
+      },
+      {
+        id: "stock",
+        title: "Inventario total",
+        value: `${performance.total_stock.toLocaleString("es-MX")} uds`,
+        caption: "Unidades disponibles en tiendas",
+        tone: "info" as const,
+      },
+      {
+        id: "repairs",
+        title: "Reparaciones abiertas",
+        value: `${performance.open_repairs}`,
+        caption: performance.open_repairs === 0 ? "Sin pendientes" : "Coordina cierres con taller",
+        tone: resolveStatusTone(performance.open_repairs, 0, true),
+      },
+      {
+        id: "audit-alerts",
+        title: "Alertas de auditoría",
+        value: alertsValue,
+        caption:
+          auditAlerts.pending_count > 0
+            ? "Ingresa a Seguridad para registrar acuses corporativos."
+            : auditAlerts.has_alerts
+            ? "Incidencias atendidas recientemente."
+            : "Sin incidencias recientes",
+        tone: alertsTone,
+      },
+    ],
+    [alertsTone, alertsValue, auditAlerts.has_alerts, auditAlerts.pending_count, formatCurrency, performance]
+  );
+
+  const salesTrend = useMemo(
+    () => metrics.sales_trend.map((entry) => ({ ...entry, value: Number(entry.value.toFixed(2)) })),
+    [metrics.sales_trend]
+  );
   const stockBreakdown = metrics.stock_breakdown;
-  const profitSlices = metrics.profit_breakdown.length > 0 ? metrics.profit_breakdown : metrics.stock_breakdown;
+  const profitSlices = useMemo(
+    () => (metrics.profit_breakdown.length > 0 ? metrics.profit_breakdown : metrics.stock_breakdown),
+    [metrics.profit_breakdown, metrics.stock_breakdown]
+  );
   const repairMix = metrics.repair_mix;
+  const acknowledgedEntities = useMemo(
+    () => auditAlerts.acknowledged_entities.slice(0, 3),
+    [auditAlerts.acknowledged_entities]
+  );
+  const latestAcknowledgement = acknowledgedEntities.length > 0 ? acknowledgedEntities[0] : null;
 
   return (
     <section className="global-metrics">
@@ -122,6 +152,29 @@ function GlobalMetrics() {
               <span className="summary-value">{auditAlerts.info}</span>
               <span className="summary-label">Informativas</span>
             </div>
+            <div className="summary-item pending" role="listitem">
+              <span className="summary-value">{auditAlerts.pending_count}</span>
+              <span className="summary-label">Pendientes</span>
+            </div>
+            <div className="summary-item acknowledged" role="listitem">
+              <span className="summary-value">{auditAlerts.acknowledged_count}</span>
+              <span className="summary-label">Atendidas</span>
+            </div>
+          </div>
+          <div className="acknowledgement-meta">
+            {latestAcknowledgement ? (
+              <p className="muted-text">
+                Último acuse: {latestAcknowledgement.entity_type} #{latestAcknowledgement.entity_id} ·
+                {" "}
+                {formatHighlightDate(latestAcknowledgement.acknowledged_at)}
+                {latestAcknowledgement.acknowledged_by_name
+                  ? ` por ${latestAcknowledgement.acknowledged_by_name}`
+                  : ""}
+                {latestAcknowledgement.note ? ` — ${latestAcknowledgement.note}` : ""}
+              </p>
+            ) : (
+              <p className="muted-text">Aún no se registran acuses corporativos.</p>
+            )}
           </div>
           {auditAlerts.highlights.length === 0 ? (
             <p className="muted-text">
@@ -146,6 +199,26 @@ function GlobalMetrics() {
               ))}
             </ul>
           )}
+          {acknowledgedEntities.length > 0 ? (
+            <ul className="acknowledged-list">
+              {acknowledgedEntities.map((entity) => (
+                <li key={`${entity.entity_type}-${entity.entity_id}`}>
+                  <span className="acknowledged-entity">
+                    {entity.entity_type} #{entity.entity_id}
+                  </span>
+                  <span className="acknowledged-meta">
+                    {entity.acknowledged_by_name ?? "Usuario corporativo"} · {formatHighlightDate(entity.acknowledged_at)}
+                    {entity.note ? ` — ${entity.note}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {auditAlerts.pending_count > 0 ? (
+            <Link to="/dashboard/security" className="btn btn--link audit-shortcut">
+              Abrir módulo de Seguridad
+            </Link>
+          ) : null}
         </article>
 
         <article className="chart-card">

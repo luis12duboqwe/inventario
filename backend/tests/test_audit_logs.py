@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import status
 
 from backend.app.core.roles import ADMIN
+from backend.app import models
 
 
 def _bootstrap_admin(client):
@@ -60,10 +61,11 @@ def test_audit_filters_and_csv_export(client):
     assert empty_logs.status_code == status.HTTP_200_OK
     assert empty_logs.json() == []
 
+    export_headers = {**auth_headers, "X-Reason": "Revision auditoria"}
     export_response = client.get(
         "/audit/logs/export.csv",
         params={"performed_by_id": admin["id"], "action": "store_created"},
-        headers=auth_headers,
+        headers=export_headers,
     )
     assert export_response.status_code == status.HTTP_200_OK
     assert export_response.headers["content-type"].startswith("text/csv")
@@ -80,3 +82,47 @@ def test_audit_filters_and_csv_export(client):
     for log in report_logs:
         assert log["performed_by_id"] == admin["id"]
         assert log["action"] == "store_created"
+
+
+def test_audit_acknowledgement_flow(client, db_session):
+    admin, credentials = _bootstrap_admin(client)
+    token_data = _login(client, credentials["username"], credentials["password"])
+
+    auth_headers = {"Authorization": f"Bearer {token_data['access_token']}", "X-Reason": "Control critico"}
+
+    critical_log = models.AuditLog(
+        action="sync_fail",
+        entity_type="sync_session",
+        entity_id="session-1",
+        details="Sincronización fallida",
+        performed_by_id=admin["id"],
+    )
+    db_session.add(critical_log)
+    db_session.commit()
+
+    reminders_response = client.get("/audit/reminders", headers={"Authorization": f"Bearer {token_data['access_token']}"})
+    assert reminders_response.status_code == status.HTTP_200_OK
+    reminders_payload = reminders_response.json()
+    assert reminders_payload["total"] >= 0
+
+    ack_payload = {"entity_type": "sync_session", "entity_id": "session-1", "note": "Incidente revisado"}
+    ack_response = client.post("/audit/acknowledgements", json=ack_payload, headers=auth_headers)
+    assert ack_response.status_code == status.HTTP_201_CREATED
+    ack_data = ack_response.json()
+    assert ack_data["entity_type"] == "sync_session"
+    assert ack_data["entity_id"] == "session-1"
+    assert ack_data["acknowledged_by_id"] == admin["id"]
+
+    updated_reminders = client.get("/audit/reminders", headers={"Authorization": f"Bearer {token_data['access_token']}"})
+    assert updated_reminders.status_code == status.HTTP_200_OK
+    summary = updated_reminders.json()
+    assert summary["acknowledged_count"] >= 1
+    assert any(entry["status"] == "acknowledged" for entry in summary["persistent"]) or summary["total"] == 0
+
+    pdf_response = client.get(
+        "/reports/audit/pdf",
+        params={"performed_by_id": admin["id"]},
+        headers=auth_headers,
+    )
+    assert pdf_response.status_code == status.HTTP_200_OK
+    assert pdf_response.headers["content-type"].startswith("application/pdf")
