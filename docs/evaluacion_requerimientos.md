@@ -52,4 +52,5 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 ## 9. Notas adicionales
 - Repite esta evaluación en cada commit importante.
 - Documenta las acciones correctivas aplicadas y mantén sincronizados README, AGENTS y este archivo.
+- Respuesta rápida ante alertas: el tablero global muestra recuentos críticos/preventivos y se documentó el protocolo de atención inmediata en README y en Seguridad.
 - Para la versión v2.2.0 no se detectan brechas pendientes; cualquier mejora adicional queda planificada para la hoja de ruta 2.3.
