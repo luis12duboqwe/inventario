@@ -1,16 +1,26 @@
 """Esquemas Pydantic centralizados para la API de Softmobile Central."""
 from __future__ import annotations
 
+import enum
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from ..models import (
     BackupMode,
     CashSessionStatus,
     CommercialState,
+    RecurringOrderType,
     MovementType,
     PaymentMethod,
     PurchaseStatus,
@@ -973,6 +983,94 @@ class PurchaseReceiveRequest(BaseModel):
         return value
 
 
+class PurchaseImportResponse(BaseModel):
+    imported: int = Field(default=0, ge=0)
+    orders: list[PurchaseOrderResponse]
+    errors: list[str] = Field(default_factory=list)
+
+
+class RecurringOrderCreate(BaseModel):
+    name: str = Field(..., min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=255)
+    order_type: RecurringOrderType
+    payload: dict[str, Any]
+
+    @model_validator(mode="after")
+    def _validate_payload(self) -> "RecurringOrderCreate":
+        if self.order_type is RecurringOrderType.PURCHASE:
+            validated = PurchaseOrderCreate.model_validate(self.payload)
+            self.payload = validated.model_dump()
+        elif self.order_type is RecurringOrderType.TRANSFER:
+            validated = TransferOrderCreate.model_validate(self.payload)
+            self.payload = validated.model_dump()
+        else:  # pragma: no cover - enum exhaustivo
+            raise ValueError("Tipo de orden recurrente no soportado.")
+        return self
+
+
+class RecurringOrderResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    order_type: RecurringOrderType
+    store_id: int | None
+    store_name: str | None = None
+    payload: dict[str, Any]
+    created_by_id: int | None
+    created_by_name: str | None = None
+    last_used_by_id: int | None
+    last_used_by_name: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    last_used_at: datetime | None
+
+
+class RecurringOrderExecutionResult(BaseModel):
+    template_id: int
+    order_type: RecurringOrderType
+    reference_id: int
+    store_id: int | None
+    created_at: datetime
+    summary: str
+
+
+class OperationHistoryType(str, enum.Enum):
+    PURCHASE = "purchase"
+    TRANSFER_DISPATCH = "transfer_dispatch"
+    TRANSFER_RECEIVE = "transfer_receive"
+    SALE = "sale"
+
+
+class OperationHistoryEntry(BaseModel):
+    id: str
+    operation_type: OperationHistoryType
+    occurred_at: datetime
+    store_id: int | None
+    store_name: str | None
+    technician_id: int | None
+    technician_name: str | None
+    reference: str | None
+    description: str
+    amount: Decimal | None = None
+
+    @field_serializer("amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class OperationHistoryTechnician(BaseModel):
+    id: int
+    name: str
+
+
+class OperationsHistoryResponse(BaseModel):
+    records: list[OperationHistoryEntry]
+    technicians: list[OperationHistoryTechnician]
+
+
 class RepairOrderPartPayload(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
@@ -1508,8 +1606,16 @@ __all__ = [
     "PurchaseOrderResponse",
     "PurchaseReceiveItem",
     "PurchaseReceiveRequest",
+    "PurchaseImportResponse",
     "PurchaseReturnCreate",
     "PurchaseReturnResponse",
+    "RecurringOrderCreate",
+    "RecurringOrderExecutionResult",
+    "RecurringOrderResponse",
+    "OperationHistoryEntry",
+    "OperationHistoryTechnician",
+    "OperationHistoryType",
+    "OperationsHistoryResponse",
     "SaleCreate",
     "SaleItemCreate",
     "SaleItemResponse",

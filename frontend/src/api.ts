@@ -288,6 +288,70 @@ export type PurchaseReturnInput = {
   reason: string;
 };
 
+export type PurchaseImportResponse = {
+  imported: number;
+  orders: PurchaseOrder[];
+  errors: string[];
+};
+
+export type RecurringOrderType = "purchase" | "transfer";
+
+export type RecurringOrder = {
+  id: number;
+  name: string;
+  description?: string | null;
+  order_type: RecurringOrderType;
+  store_id?: number | null;
+  store_name?: string | null;
+  payload: Record<string, unknown>;
+  created_by_id?: number | null;
+  created_by_name?: string | null;
+  last_used_by_id?: number | null;
+  last_used_by_name?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at?: string | null;
+};
+
+export type RecurringOrderPayload = {
+  name: string;
+  description?: string | null;
+  order_type: RecurringOrderType;
+  payload: Record<string, unknown>;
+};
+
+export type RecurringOrderExecutionResult = {
+  template_id: number;
+  order_type: RecurringOrderType;
+  reference_id: number;
+  store_id?: number | null;
+  created_at: string;
+  summary: string;
+};
+
+export type OperationsHistoryRecord = {
+  id: string;
+  operation_type: "purchase" | "transfer_dispatch" | "transfer_receive" | "sale";
+  occurred_at: string;
+  store_id?: number | null;
+  store_name?: string | null;
+  technician_id?: number | null;
+  technician_name?: string | null;
+  reference?: string | null;
+  description: string;
+  amount?: number | null;
+};
+
+export type OperationsTechnicianSummary = {
+  id: number;
+  name: string;
+};
+
+export type OperationsHistoryResponse = {
+  records: OperationsHistoryRecord[];
+  technicians: OperationsTechnicianSummary[];
+};
+
 export type PosCartItemInput = {
   device_id: number;
   quantity: number;
@@ -681,7 +745,13 @@ function emitNetworkEvent(type: typeof NETWORK_EVENT | typeof NETWORK_RECOVERY_E
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", headers.get("Content-Type") ?? "application/json");
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (!headers.has("Content-Type") && !isFormData) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (isFormData) {
+    headers.delete("Content-Type");
+  }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
@@ -866,6 +936,24 @@ export function registerPurchaseReturn(
     {
       method: "POST",
       body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function importPurchaseOrdersCsv(
+  token: string,
+  file: File,
+  reason: string
+): Promise<PurchaseImportResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<PurchaseImportResponse>(
+    "/purchases/import",
+    {
+      method: "POST",
+      body: formData,
       headers: { "X-Reason": reason },
     },
     token
@@ -1238,6 +1326,72 @@ export function cancelTransferOrder(
     },
     token
   );
+}
+
+export function listRecurringOrders(
+  token: string,
+  orderType?: RecurringOrderType
+): Promise<RecurringOrder[]> {
+  const params = new URLSearchParams();
+  if (orderType) {
+    params.set("order_type", orderType);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<RecurringOrder[]>(`/operations/recurring-orders${suffix}`, { method: "GET" }, token);
+}
+
+export function createRecurringOrder(
+  token: string,
+  payload: RecurringOrderPayload,
+  reason: string
+): Promise<RecurringOrder> {
+  return request<RecurringOrder>(
+    "/operations/recurring-orders",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function executeRecurringOrder(
+  token: string,
+  templateId: number,
+  reason: string
+): Promise<RecurringOrderExecutionResult> {
+  return request<RecurringOrderExecutionResult>(
+    `/operations/recurring-orders/${templateId}/execute`,
+    { method: "POST", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export type OperationsHistoryFilters = {
+  storeId?: number | null;
+  technicianId?: number | null;
+  startDate?: string;
+  endDate?: string;
+};
+
+export function listOperationsHistory(
+  token: string,
+  filters: OperationsHistoryFilters = {}
+): Promise<OperationsHistoryResponse> {
+  const params = new URLSearchParams();
+  if (filters.storeId != null) {
+    params.set("store_id", String(filters.storeId));
+  }
+  if (filters.technicianId != null) {
+    params.set("technician_id", String(filters.technicianId));
+  }
+  if (filters.startDate) {
+    params.set("start_date", filters.startDate);
+  }
+  if (filters.endDate) {
+    params.set("end_date", filters.endDate);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<OperationsHistoryResponse>(`/operations/history${suffix}`, { method: "GET" }, token);
 }
 
 export function triggerSync(token: string, storeId?: number) {

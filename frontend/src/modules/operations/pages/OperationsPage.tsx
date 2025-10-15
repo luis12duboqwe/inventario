@@ -133,7 +133,7 @@ function OperationsPage() {
         description: "Consulta unificado de movimientos recientes por tienda.",
         content: (
           <div className="section-grid">
-            <OperationsHistoryPanel stores={stores} />
+            <OperationsHistoryPanel token={token} stores={stores} />
           </div>
         ),
       },

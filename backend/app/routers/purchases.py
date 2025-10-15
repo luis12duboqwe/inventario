@@ -1,7 +1,7 @@
 """Endpoints para la gestión de órdenes de compra."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, File, HTTPException, Path, UploadFile, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -58,6 +58,51 @@ def create_purchase_order_endpoint(
                 detail="Cantidad inválida en la orden.",
             ) from exc
         raise
+
+
+@router.post(
+    "/import",
+    response_model=schemas.PurchaseImportResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_purchase_orders_endpoint(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        raw_content = await file.read()
+        csv_content = raw_content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fue posible interpretar el archivo CSV proporcionado.",
+        ) from exc
+
+    try:
+        orders, errors = crud.import_purchase_orders_from_csv(
+            db,
+            csv_content,
+            created_by_id=current_user.id,
+            reason=reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    response_orders = [
+        schemas.PurchaseOrderResponse.model_validate(order, from_attributes=True)
+        for order in orders
+    ]
+    return schemas.PurchaseImportResponse(
+        imported=len(response_orders),
+        orders=response_orders,
+        errors=errors,
+    )
 
 
 @router.post("/{order_id}/receive", response_model=schemas.PurchaseOrderResponse)

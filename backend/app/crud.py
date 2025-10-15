@@ -2711,6 +2711,298 @@ def register_purchase_return(
     return purchase_return
 
 
+def import_purchase_orders_from_csv(
+    db: Session,
+    csv_content: str,
+    *,
+    created_by_id: int | None = None,
+    reason: str | None = None,
+) -> tuple[list[models.PurchaseOrder], list[str]]:
+    reader = csv.DictReader(StringIO(csv_content))
+    fieldnames = [
+        (header or "").strip().lower() for header in (reader.fieldnames or []) if header
+    ]
+    required_headers = {"store_id", "supplier", "device_id", "quantity", "unit_cost"}
+    if not fieldnames or required_headers.difference(fieldnames):
+        raise ValueError("purchase_import_invalid_headers")
+
+    groups: dict[
+        tuple[int, str, str],
+        dict[str, object],
+    ] = {}
+    errors: list[str] = []
+
+    for row in reader:
+        line_number = reader.line_num
+        normalized = {
+            (key or "").strip().lower(): (value or "").strip()
+            for key, value in row.items()
+        }
+
+        try:
+            store_id = int(normalized.get("store_id", ""))
+        except ValueError:
+            errors.append(f"Fila {line_number}: store_id inválido")
+            continue
+
+        supplier = normalized.get("supplier", "").strip()
+        if not supplier:
+            errors.append(f"Fila {line_number}: proveedor requerido")
+            continue
+
+        try:
+            device_id = int(normalized.get("device_id", ""))
+        except ValueError:
+            errors.append(f"Fila {line_number}: device_id inválido")
+            continue
+
+        try:
+            quantity = int(normalized.get("quantity", ""))
+        except ValueError:
+            errors.append(f"Fila {line_number}: cantidad inválida")
+            continue
+
+        if quantity <= 0:
+            errors.append(f"Fila {line_number}: la cantidad debe ser mayor a cero")
+            continue
+
+        try:
+            unit_cost_value = _to_decimal(normalized.get("unit_cost"))
+        except Exception:  # pragma: no cover - validaciones de Decimal
+            errors.append(f"Fila {line_number}: costo unitario inválido")
+            continue
+
+        if unit_cost_value < Decimal("0"):
+            errors.append(f"Fila {line_number}: el costo unitario no puede ser negativo")
+            continue
+
+        reference = normalized.get("reference") or f"{store_id}-{supplier}"
+        notes = normalized.get("notes") or None
+
+        group = groups.setdefault(
+            (store_id, supplier, reference),
+            {
+                "items": defaultdict(lambda: {"quantity": 0, "unit_cost": Decimal("0.00")}),
+                "notes": None,
+            },
+        )
+
+        items_map: defaultdict[int, dict[str, Decimal | int]] = group["items"]  # type: ignore[assignment]
+        bucket = items_map[device_id]
+        bucket["quantity"] += quantity
+        bucket["unit_cost"] = unit_cost_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if notes and not group["notes"]:
+            group["notes"] = notes
+
+    orders: list[models.PurchaseOrder] = []
+
+    for (store_id, supplier, reference), data in groups.items():
+        items_map = data["items"]  # type: ignore[index]
+        items_payload = [
+            schemas.PurchaseOrderItemCreate(
+                device_id=device_id,
+                quantity_ordered=int(values["quantity"]),
+                unit_cost=Decimal(values["unit_cost"]),
+            )
+            for device_id, values in items_map.items()
+        ]
+        notes = data.get("notes")  # type: ignore[assignment]
+        normalized_notes = notes if isinstance(notes, str) else None
+        if reason:
+            reason_note = f"Importación CSV: {reason}"
+            normalized_notes = (
+                f"{normalized_notes} | {reason_note}"
+                if normalized_notes
+                else reason_note
+            )
+
+        try:
+            order_payload = schemas.PurchaseOrderCreate(
+                store_id=store_id,
+                supplier=supplier,
+                notes=normalized_notes,
+                items=items_payload,
+            )
+            order = create_purchase_order(
+                db,
+                order_payload,
+                created_by_id=created_by_id,
+            )
+        except (LookupError, ValueError) as exc:
+            db.rollback()
+            errors.append(f"Orden {reference}: {exc}")
+            continue
+        orders.append(order)
+
+    if orders:
+        _log_action(
+            db,
+            action="purchase_orders_imported",
+            entity_type="purchase_order",
+            entity_id="bulk",
+            performed_by_id=created_by_id,
+            details=json.dumps({"imported": len(orders), "errors": len(errors)}),
+        )
+        db.commit()
+
+    return orders, errors
+
+
+def list_recurring_orders(
+    db: Session,
+    *,
+    order_type: models.RecurringOrderType | None = None,
+) -> list[models.RecurringOrder]:
+    statement = (
+        select(models.RecurringOrder)
+        .options(
+            joinedload(models.RecurringOrder.store),
+            joinedload(models.RecurringOrder.created_by),
+            joinedload(models.RecurringOrder.last_used_by),
+        )
+        .order_by(models.RecurringOrder.updated_at.desc())
+    )
+    if order_type is not None:
+        statement = statement.where(models.RecurringOrder.order_type == order_type)
+    return list(db.scalars(statement).unique())
+
+
+def get_recurring_order(db: Session, template_id: int) -> models.RecurringOrder:
+    statement = (
+        select(models.RecurringOrder)
+        .options(
+            joinedload(models.RecurringOrder.store),
+            joinedload(models.RecurringOrder.created_by),
+            joinedload(models.RecurringOrder.last_used_by),
+        )
+        .where(models.RecurringOrder.id == template_id)
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("recurring_order_not_found") from exc
+
+
+def create_recurring_order(
+    db: Session,
+    payload: schemas.RecurringOrderCreate,
+    *,
+    created_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.RecurringOrder:
+    payload_data = payload.payload
+    store_scope: int | None = None
+
+    if payload.order_type is models.RecurringOrderType.PURCHASE:
+        store_scope = int(payload_data.get("store_id")) if payload_data.get("store_id") is not None else None
+        if store_scope is not None:
+            get_store(db, store_scope)
+    elif payload.order_type is models.RecurringOrderType.TRANSFER:
+        origin_store_id = int(payload_data["origin_store_id"])
+        destination_store_id = int(payload_data["destination_store_id"])
+        get_store(db, origin_store_id)
+        get_store(db, destination_store_id)
+        store_scope = origin_store_id
+
+    template = models.RecurringOrder(
+        name=payload.name,
+        description=payload.description,
+        order_type=payload.order_type,
+        store_id=store_scope,
+        payload=payload_data,
+        created_by_id=created_by_id,
+    )
+    db.add(template)
+    db.flush()
+    _log_action(
+        db,
+        action="recurring_order_created",
+        entity_type="recurring_order",
+        entity_id=str(template.id),
+        performed_by_id=created_by_id,
+        details=json.dumps(
+            {
+                "name": payload.name,
+                "order_type": payload.order_type.value,
+                "reason": reason,
+            }
+        ),
+    )
+    db.commit()
+    db.refresh(template)
+    return template
+
+
+def execute_recurring_order(
+    db: Session,
+    template_id: int,
+    *,
+    performed_by_id: int,
+    reason: str | None = None,
+) -> schemas.RecurringOrderExecutionResult:
+    template = get_recurring_order(db, template_id)
+    now = datetime.utcnow()
+
+    if template.order_type is models.RecurringOrderType.PURCHASE:
+        purchase_payload = schemas.PurchaseOrderCreate.model_validate(template.payload)
+        notes = purchase_payload.notes or None
+        if reason:
+            reason_note = f"Plantilla #{template.id}: {reason}"
+            notes = f"{notes} | {reason_note}" if notes else reason_note
+        purchase_payload.notes = notes
+        order = create_purchase_order(
+            db,
+            purchase_payload,
+            created_by_id=performed_by_id,
+        )
+        summary = f"Orden de compra #{order.id} para {order.supplier}"
+        reference_id = order.id
+        store_scope = order.store_id
+    elif template.order_type is models.RecurringOrderType.TRANSFER:
+        transfer_payload = schemas.TransferOrderCreate.model_validate(template.payload)
+        transfer_payload.reason = reason or transfer_payload.reason
+        order = create_transfer_order(
+            db,
+            transfer_payload,
+            requested_by_id=performed_by_id,
+        )
+        summary = (
+            f"Transferencia #{order.id} de {order.origin_store_id} a {order.destination_store_id}"
+        )
+        reference_id = order.id
+        store_scope = order.origin_store_id
+    else:  # pragma: no cover - enum exhaustivo
+        raise ValueError("Tipo de orden recurrente no soportado")
+
+    template.last_used_at = now
+    template.last_used_by_id = performed_by_id
+
+    _log_action(
+        db,
+        action="recurring_order_executed",
+        entity_type="recurring_order",
+        entity_id=str(template.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps(
+            {
+                "order_type": template.order_type.value,
+                "reference_id": reference_id,
+            }
+        ),
+    )
+    db.commit()
+    db.refresh(template)
+
+    return schemas.RecurringOrderExecutionResult(
+        template_id=template.id,
+        order_type=template.order_type,
+        reference_id=reference_id,
+        store_id=store_scope,
+        created_at=now,
+        summary=summary,
+    )
+
+
 def list_repair_orders(
     db: Session,
     *,
@@ -3319,6 +3611,170 @@ def register_sale_return(
         db.add(sale.customer)
         db.commit()
     return returns
+
+
+def list_operations_history(
+    db: Session,
+    *,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    store_id: int | None = None,
+    technician_id: int | None = None,
+) -> schemas.OperationsHistoryResponse:
+    start_dt = start or (datetime.utcnow() - timedelta(days=30))
+    end_dt = end or datetime.utcnow()
+    if start_dt > end_dt:
+        start_dt, end_dt = end_dt, start_dt
+
+    records: list[schemas.OperationHistoryEntry] = []
+    technicians: dict[int, str] = {}
+
+    def register_technician(user: models.User | None) -> None:
+        if user is None or user.id is None:
+            return
+        name = _user_display_name(user) or f"Usuario {user.id}"
+        technicians.setdefault(user.id, name)
+
+    purchase_stmt = (
+        select(models.PurchaseOrder)
+        .options(
+            joinedload(models.PurchaseOrder.store),
+            joinedload(models.PurchaseOrder.created_by),
+            joinedload(models.PurchaseOrder.items),
+        )
+        .where(
+            models.PurchaseOrder.created_at >= start_dt,
+            models.PurchaseOrder.created_at <= end_dt,
+        )
+    )
+    if store_id is not None:
+        purchase_stmt = purchase_stmt.where(models.PurchaseOrder.store_id == store_id)
+    for order in db.scalars(purchase_stmt).unique():
+        if technician_id is not None and order.created_by_id != technician_id:
+            continue
+        register_technician(order.created_by)
+        total_amount = sum(
+            _to_decimal(item.unit_cost) * _to_decimal(item.quantity_ordered)
+            for item in order.items
+        )
+        records.append(
+            schemas.OperationHistoryEntry(
+                id=f"purchase-{order.id}",
+                operation_type=schemas.OperationHistoryType.PURCHASE,
+                occurred_at=order.created_at,
+                store_id=order.store_id,
+                store_name=order.store.name if order.store else None,
+                technician_id=order.created_by_id,
+                technician_name=_user_display_name(order.created_by),
+                reference=f"PO-{order.id}",
+                description=f"Orden de compra para {order.supplier}",
+                amount=total_amount,
+            )
+        )
+
+    transfer_stmt = (
+        select(models.TransferOrder)
+        .options(
+            joinedload(models.TransferOrder.origin_store),
+            joinedload(models.TransferOrder.destination_store),
+            joinedload(models.TransferOrder.dispatched_by),
+            joinedload(models.TransferOrder.received_by),
+            joinedload(models.TransferOrder.items),
+        )
+        .where(
+            or_(
+                models.TransferOrder.dispatched_at.between(start_dt, end_dt),
+                models.TransferOrder.received_at.between(start_dt, end_dt),
+            )
+        )
+    )
+
+    for transfer in db.scalars(transfer_stmt).unique():
+        if (
+            transfer.dispatched_at
+            and start_dt <= transfer.dispatched_at <= end_dt
+            and (store_id is None or transfer.origin_store_id == store_id)
+            and (technician_id is None or transfer.dispatched_by_id == technician_id)
+        ):
+            register_technician(transfer.dispatched_by)
+            records.append(
+                schemas.OperationHistoryEntry(
+                    id=f"transfer-dispatch-{transfer.id}",
+                    operation_type=schemas.OperationHistoryType.TRANSFER_DISPATCH,
+                    occurred_at=transfer.dispatched_at,
+                    store_id=transfer.origin_store_id,
+                    store_name=transfer.origin_store.name if transfer.origin_store else None,
+                    technician_id=transfer.dispatched_by_id,
+                    technician_name=_user_display_name(transfer.dispatched_by),
+                    reference=f"TR-{transfer.id}",
+                    description=(
+                        f"Despacho hacia {transfer.destination_store.name if transfer.destination_store else transfer.destination_store_id}"
+                    ),
+                )
+            )
+
+        if (
+            transfer.received_at
+            and start_dt <= transfer.received_at <= end_dt
+            and (store_id is None or transfer.destination_store_id == store_id)
+            and (technician_id is None or transfer.received_by_id == technician_id)
+        ):
+            register_technician(transfer.received_by)
+            records.append(
+                schemas.OperationHistoryEntry(
+                    id=f"transfer-receive-{transfer.id}",
+                    operation_type=schemas.OperationHistoryType.TRANSFER_RECEIVE,
+                    occurred_at=transfer.received_at,
+                    store_id=transfer.destination_store_id,
+                    store_name=transfer.destination_store.name if transfer.destination_store else None,
+                    technician_id=transfer.received_by_id,
+                    technician_name=_user_display_name(transfer.received_by),
+                    reference=f"TR-{transfer.id}",
+                    description=(
+                        f"Recepción desde {transfer.origin_store.name if transfer.origin_store else transfer.origin_store_id}"
+                    ),
+                )
+            )
+
+    sale_stmt = (
+        select(models.Sale)
+        .options(
+            joinedload(models.Sale.store),
+            joinedload(models.Sale.performed_by),
+        )
+        .where(
+            models.Sale.created_at >= start_dt,
+            models.Sale.created_at <= end_dt,
+        )
+    )
+    if store_id is not None:
+        sale_stmt = sale_stmt.where(models.Sale.store_id == store_id)
+    for sale in db.scalars(sale_stmt).unique():
+        if technician_id is not None and sale.performed_by_id != technician_id:
+            continue
+        register_technician(sale.performed_by)
+        records.append(
+            schemas.OperationHistoryEntry(
+                id=f"sale-{sale.id}",
+                operation_type=schemas.OperationHistoryType.SALE,
+                occurred_at=sale.created_at,
+                store_id=sale.store_id,
+                store_name=sale.store.name if sale.store else None,
+                technician_id=sale.performed_by_id,
+                technician_name=_user_display_name(sale.performed_by),
+                reference=f"VNT-{sale.id}",
+                description="Venta registrada en POS",
+                amount=_to_decimal(sale.total_amount),
+            )
+        )
+
+    records.sort(key=lambda entry: entry.occurred_at, reverse=True)
+    technicians_list = [
+        schemas.OperationHistoryTechnician(id=tech_id, name=name)
+        for tech_id, name in sorted(technicians.items(), key=lambda item: item[1].lower())
+    ]
+
+    return schemas.OperationsHistoryResponse(records=records, technicians=technicians_list)
 
 
 def list_cash_sessions(
