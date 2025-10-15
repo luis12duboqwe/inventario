@@ -4,7 +4,7 @@ from __future__ import annotations
 import csv
 from io import BytesIO, StringIO
 
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -29,10 +29,23 @@ def _ensure_analytics_enabled() -> None:
 @router.get("/audit", response_model=list[schemas.AuditLogResponse])
 def audit_logs(
     limit: int = Query(default=100, ge=1, le=500),
+    action: str | None = Query(default=None, max_length=120),
+    entity_type: str | None = Query(default=None, max_length=80),
+    performed_by_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*AUDITORIA_ROLES)),
 ):
-    return crud.list_audit_logs(db, limit=limit)
+    return crud.list_audit_logs(
+        db,
+        limit=limit,
+        action=action,
+        entity_type=entity_type,
+        performed_by_id=performed_by_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 @router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse)

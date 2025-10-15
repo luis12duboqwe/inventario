@@ -339,6 +339,9 @@ def list_audit_logs(
     limit: int = 100,
     action: str | None = None,
     entity_type: str | None = None,
+    performed_by_id: int | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
 ) -> list[models.AuditLog]:
     statement = (
         select(models.AuditLog)
@@ -349,7 +352,61 @@ def list_audit_logs(
         statement = statement.where(models.AuditLog.action == action)
     if entity_type:
         statement = statement.where(models.AuditLog.entity_type == entity_type)
+    if performed_by_id is not None:
+        statement = statement.where(models.AuditLog.performed_by_id == performed_by_id)
+    if date_from is not None or date_to is not None:
+        start_dt, end_dt = _normalize_date_range(date_from, date_to)
+        statement = statement.where(
+            models.AuditLog.created_at >= start_dt, models.AuditLog.created_at <= end_dt
+        )
     return list(db.scalars(statement))
+
+
+def export_audit_logs_csv(
+    db: Session,
+    *,
+    limit: int = 1000,
+    action: str | None = None,
+    entity_type: str | None = None,
+    performed_by_id: int | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+) -> str:
+    logs = list_audit_logs(
+        db,
+        limit=limit,
+        action=action,
+        entity_type=entity_type,
+        performed_by_id=performed_by_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "ID",
+            "Acción",
+            "Tipo de entidad",
+            "ID de entidad",
+            "Detalle",
+            "Usuario responsable",
+            "Fecha de creación",
+        ]
+    )
+    for log in logs:
+        writer.writerow(
+            [
+                log.id,
+                log.action,
+                log.entity_type,
+                log.entity_id,
+                log.details or "",
+                log.performed_by_id or "",
+                log.created_at.isoformat(),
+            ]
+        )
+    return buffer.getvalue()
 
 
 def ensure_role(db: Session, name: str) -> models.Role:

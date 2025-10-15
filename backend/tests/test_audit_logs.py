@@ -1,0 +1,82 @@
+"""Pruebas para filtros y exportación de la bitácora de auditoría."""
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
+from fastapi import status
+
+from backend.app.core.roles import ADMIN
+
+
+def _bootstrap_admin(client):
+    payload = {
+        "username": "auditor_admin",
+        "password": "Auditoria123*",
+        "full_name": "Auditora Principal",
+        "roles": [ADMIN],
+    }
+    response = client.post("/auth/bootstrap", json=payload)
+    assert response.status_code == status.HTTP_201_CREATED
+    return response.json(), payload
+
+
+def _login(client, username: str, password: str):
+    response = client.post(
+        "/auth/token",
+        data={"username": username, "password": password},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    return response.json()
+
+
+def test_audit_filters_and_csv_export(client):
+    admin, credentials = _bootstrap_admin(client)
+    token_data = _login(client, credentials["username"], credentials["password"])
+
+    auth_headers = {"Authorization": f"Bearer {token_data['access_token']}"}
+
+    store_payload = {"name": "Sucursal Centro", "location": "CDMX", "timezone": "America/Mexico_City"}
+    create_store = client.post("/stores", json=store_payload, headers=auth_headers)
+    assert create_store.status_code == status.HTTP_201_CREATED
+
+    filtered_logs = client.get(
+        "/audit/logs",
+        params={"performed_by_id": admin["id"]},
+        headers=auth_headers,
+    )
+    assert filtered_logs.status_code == status.HTTP_200_OK
+    logs = filtered_logs.json()
+    assert logs
+    assert all(log["performed_by_id"] == admin["id"] for log in logs)
+    assert any(log["action"] == "store_created" for log in logs)
+
+    future_from = (datetime.utcnow() + timedelta(days=1)).isoformat()
+    empty_logs = client.get(
+        "/audit/logs",
+        params={"date_from": future_from},
+        headers=auth_headers,
+    )
+    assert empty_logs.status_code == status.HTTP_200_OK
+    assert empty_logs.json() == []
+
+    export_response = client.get(
+        "/audit/logs/export.csv",
+        params={"performed_by_id": admin["id"], "action": "store_created"},
+        headers=auth_headers,
+    )
+    assert export_response.status_code == status.HTTP_200_OK
+    assert export_response.headers["content-type"].startswith("text/csv")
+    assert "store_created" in export_response.text
+
+    reports_response = client.get(
+        "/reports/audit",
+        params={"performed_by_id": admin["id"], "action": "store_created"},
+        headers=auth_headers,
+    )
+    assert reports_response.status_code == status.HTTP_200_OK
+    report_logs = reports_response.json()
+    assert report_logs
+    for log in report_logs:
+        assert log["performed_by_id"] == admin["id"]
+        assert log["action"] == "store_created"
