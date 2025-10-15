@@ -5,7 +5,7 @@ import csv
 import json
 import math
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
@@ -13,6 +13,7 @@ from io import StringIO
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.sql import ColumnElement
 
 from . import models, schemas
 
@@ -44,6 +45,84 @@ def _to_decimal(value: Decimal | float | int | None) -> Decimal:
     if isinstance(value, Decimal):
         return value
     return Decimal(str(value))
+
+
+def _normalize_date_range(
+    date_from: date | datetime | None, date_to: date | datetime | None
+) -> tuple[datetime, datetime]:
+    now = datetime.utcnow()
+
+    if isinstance(date_from, datetime):
+        start_dt = date_from
+    elif isinstance(date_from, date):
+        start_dt = datetime.combine(date_from, datetime.min.time())
+    else:
+        start_dt = now - timedelta(days=30)
+
+    if isinstance(date_to, datetime):
+        end_dt = date_to
+    elif isinstance(date_to, date):
+        end_dt = datetime.combine(date_to, datetime.max.time())
+    else:
+        end_dt = now
+
+    if start_dt > end_dt:
+        start_dt, end_dt = end_dt, start_dt
+
+    return start_dt, end_dt
+
+
+def _user_display_name(user: models.User | None) -> str | None:
+    if user is None:
+        return None
+    if user.full_name and user.full_name.strip():
+        return user.full_name.strip()
+    if user.username and user.username.strip():
+        return user.username.strip()
+    return None
+
+
+def _linear_regression(
+    points: Sequence[tuple[float, float]]
+) -> tuple[float, float, float]:
+    if not points:
+        return 0.0, 0.0, 0.0
+    if len(points) == 1:
+        return 0.0, points[0][1], 0.0
+
+    n = float(len(points))
+    sum_x = sum(point[0] for point in points)
+    sum_y = sum(point[1] for point in points)
+    sum_xy = sum(point[0] * point[1] for point in points)
+    sum_xx = sum(point[0] ** 2 for point in points)
+    sum_yy = sum(point[1] ** 2 for point in points)
+
+    denominator = (n * sum_xx) - (sum_x**2)
+    if math.isclose(denominator, 0.0):
+        slope = 0.0
+    else:
+        slope = ((n * sum_xy) - (sum_x * sum_y)) / denominator
+
+    intercept = (sum_y - (slope * sum_x)) / n
+
+    denominator_r = (n * sum_yy) - (sum_y**2)
+    if denominator <= 0 or denominator_r <= 0:
+        r_squared = 0.0
+    else:
+        r_squared = ((n * sum_xy) - (sum_x * sum_y)) ** 2 / (denominator * denominator_r)
+
+    return slope, intercept, r_squared
+
+
+def _project_linear_sum(
+    slope: float, intercept: float, start_index: int, horizon: int
+) -> float:
+    total = 0.0
+    for offset in range(horizon):
+        x_value = float(start_index + offset)
+        estimate = slope * x_value + intercept
+        total += max(0.0, estimate)
+    return total
 
 
 _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
@@ -139,6 +218,14 @@ def _recalculate_store_inventory_value(
     db.add(store_obj)
     db.flush()
     return normalized_total
+
+
+def _device_category_expr() -> ColumnElement[str]:
+    return func.coalesce(
+        func.nullif(models.Device.modelo, ""),
+        func.nullif(models.Device.sku, ""),
+        func.nullif(models.Device.name, ""),
+    )
 
 
 def _customer_payload(customer: models.Customer) -> dict[str, object]:
