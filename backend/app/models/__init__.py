@@ -974,8 +974,6 @@ __all__ = [
     "Role",
     "Store",
     "SupplierBatch",
-    "RecurringOrder",
-    "RecurringOrderType",
     "SyncMode",
     "SyncSession",
     "SyncStatus",

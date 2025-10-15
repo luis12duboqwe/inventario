@@ -140,14 +140,6 @@ def _recalculate_store_inventory_value(
     return normalized_total
 
 
-def _user_display_name(user: models.User | None) -> str | None:
-    if user is None:
-        return None
-    if getattr(user, "full_name", None):
-        return user.full_name
-    return getattr(user, "username", None)
-
-
 def _customer_payload(customer: models.Customer) -> dict[str, object]:
     return {
         "id": customer.id,

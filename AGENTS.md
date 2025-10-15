@@ -90,8 +90,3 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - ✅ Parte 1 — Inventario (Optimización total): se agregaron lotes de proveedores con costo unitario, lote y fecha (`/suppliers/{id}/batches`), columna `stores.inventory_value` y recalculo automático del costo promedio en movimientos (`unit_cost`), con cobertura en `test_supplier_batches_and_inventory_value`.
 - 🔄 26/02/2025 — Se alinearon las columnas `created_at`/`updated_at` del modelo `SupplierBatch` con la migración `202502150007_inventory_batches` para reanudar `pytest` sin fallos.
 - ▶️ Próximo paso inmediato: abordar la Parte 2 — Operaciones, implementando importación CSV, órdenes recurrentes y vinculación completa con Inventario.
-
-### Registro operativo — 27/02/2025
-
-- ✅ Parte 2 — Operaciones (Flujo completo de transferencias y ventas): importación CSV corporativa, plantillas recurrentes y nuevo historial `/operations/history` implementados tanto en backend como en `OperationsHistoryPanel.tsx`.
-- ▶️ Próximo paso: Parte 3 — Analítica (IA de predicción y alertas) con énfasis en modelos de agotamiento, alertas críticas y filtros avanzados.

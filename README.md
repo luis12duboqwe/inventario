@@ -350,14 +350,12 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 2. Extender analítica avanzada con tableros comparativos inter-sucursal y exportaciones CSV en la versión 2.3.
 3. Documentar mejores prácticas de 2FA para despliegues masivos y preparar guías para soporte remoto.
 
-### Seguimiento de iteración actual — 27/02/2025
+### Seguimiento de iteración actual — 26/02/2025
 
 - ✅ **Parte 1 — Inventario (Optimización total)**: se habilitó la gestión de lotes de proveedores con costo unitario y fecha, se actualiza la valuación total al registrar movimientos y se reforzó la validación de IMEI/serie desde el backend y la UI de `Suppliers.tsx`.
 - 🔄 **26/02/2025** — Se sincronizaron las columnas `created_at`/`updated_at` del modelo `SupplierBatch` con la migración `202502150007_inventory_batches` para normalizar las pruebas automáticas.
-- ✅ **27/02/2025** — Se incorporó la importación CSV de compras, plantillas recurrentes y el historial corporativo de operaciones, dejando documentado el avance en esta bitácora.
-- ✅ **Parte 2 — Operaciones (Flujo completo)**: se habilitaron transferencias con doble confirmación, importación corporativa desde CSV, plantillas recurrentes reutilizables y el historial consolidado `/operations/history` con filtros por técnico, sucursal y fechas.
-- ▶️ **Parte 3 — Analítica (IA de predicción y alertas)**: siguiente iteración enfocada en proyecciones automáticas, alertas por stock crítico y filtros avanzados.
-- ⏳ **Partes 4 a 8**: continúan en planificación y se atenderán después de concluir la analítica predictiva.
+- ⏳ **Parte 2 — Operaciones (Flujo completo)**: pendiente de integrar transferencias aprobadas, importación CSV y órdenes recurrentes.
+- ⏳ **Partes 3 a 8**: se mantienen en planificación y se abordarán en iteraciones posteriores conforme al mandato Softmobile 2025 v2.2.0.
 
 ## Registro operativo de lotes entregados
 
