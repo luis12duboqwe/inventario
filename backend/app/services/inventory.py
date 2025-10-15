@@ -1,47 +1,39 @@
-"""Servicios de dominio para operaciones de inventario."""
+"""Servicios de dominio para operaciones de inventario heredadas."""
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from .. import schemas
-from ..models import Device, Store
+from .. import crud, schemas
 
 
 def list_stores(db: Session) -> list[schemas.StoreResponse]:
-    """Devuelve todas las sucursales ordenadas alfabéticamente."""
+    """Devuelve todas las sucursales disponibles ordenadas alfabéticamente."""
 
-    stores = db.query(Store).order_by(Store.name).all()
-    return [schemas.StoreResponse.model_validate(store) for store in stores]
+    stores = crud.list_stores(db)
+    return [schemas.StoreResponse.model_validate(store, from_attributes=True) for store in stores]
 
 
 def create_store(db: Session, store_in: schemas.StoreCreate) -> schemas.StoreResponse:
-    """Persiste una nueva sucursal y la retorna como esquema."""
+    """Persiste una nueva sucursal reutilizando las validaciones corporativas."""
 
-    store = Store(name=store_in.name, location=store_in.location, timezone=store_in.timezone)
-    db.add(store)
-    db.commit()
-    db.refresh(store)
-    return schemas.StoreResponse.model_validate(store)
+    store = crud.create_store(db, store_in, performed_by_id=None)
+    return schemas.StoreResponse.model_validate(store, from_attributes=True)
 
 
 def list_devices(db: Session, store_id: int) -> list[schemas.DeviceResponse]:
     """Devuelve los dispositivos pertenecientes a una sucursal."""
 
-    devices = db.query(Device).filter(Device.store_id == store_id).order_by(Device.sku).all()
-    return [schemas.DeviceResponse.model_validate(device) for device in devices]
+    devices = crud.list_devices(db, store_id)
+    return [schemas.DeviceResponse.model_validate(device, from_attributes=True) for device in devices]
 
 
-def create_device(db: Session, *, store_id: int, device_in: schemas.DeviceCreate) -> schemas.DeviceResponse:
-    """Persiste un nuevo dispositivo para una sucursal."""
+def create_device(
+    db: Session,
+    *,
+    store_id: int,
+    device_in: schemas.DeviceCreate,
+) -> schemas.DeviceResponse:
+    """Persiste un nuevo dispositivo para una sucursal con reglas de catálogo pro."""
 
-    device = Device(
-        store_id=store_id,
-        sku=device_in.sku,
-        name=device_in.name,
-        quantity=device_in.quantity,
-        unit_price=device_in.unit_price,
-    )
-    db.add(device)
-    db.commit()
-    db.refresh(device)
-    return schemas.DeviceResponse.model_validate(device)
+    device = crud.create_device(db, store_id, device_in, performed_by_id=None)
+    return schemas.DeviceResponse.model_validate(device, from_attributes=True)
