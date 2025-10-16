@@ -8,6 +8,7 @@ export type Store = {
   name: string;
   location?: string | null;
   timezone: string;
+  inventory_value: number;
 };
 
 export type Role = {
