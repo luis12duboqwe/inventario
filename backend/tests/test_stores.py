@@ -204,6 +204,39 @@ def test_inventory_movement_rejects_negative_stock(client) -> None:
     assert "Stock insuficiente" in movement_response.json()["detail"]
 
 
+def test_inventory_movement_requires_comment_length(client) -> None:
+    headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Comentarios", "location": "MTY", "timezone": "America/Mexico_City"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {"sku": "SKU-CMT", "name": "Router", "quantity": 4, "unit_price": 1200.0}
+    device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    movement_payload = {
+        "producto_id": device_id,
+        "tipo_movimiento": "entrada",
+        "cantidad": 1,
+        "comentario": "hey",
+    }
+
+    response = client.post(
+        f"/inventory/stores/{store_id}/movements",
+        json=movement_payload,
+        headers=headers,
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    detail = response.json()["detail"]
+    assert any(
+        "El comentario debe tener al menos 5 caracteres." in error.get("msg", "")
+        for error in detail
+    )
+
+
 def test_sale_updates_inventory_value(client) -> None:
     settings.enable_purchases_sales = True
     headers = _auth_headers(client)

@@ -3,6 +3,7 @@
 ## Actualización Inventario - Movimientos de Stock
 - Renombramos columnas de `inventory_movements` (`producto_id`, `tienda_origen_id`, `tienda_destino_id`, `comentario`, `usuario_id`, `fecha`) y añadimos la migración `202502150010_inventory_movements_enhancements` para preservar integridad y nuevos índices.
 - El endpoint de movimientos valida la sucursal destino, impide saldos negativos y devuelve las nuevas claves en `MovementResponse` junto con el valor de inventario actualizado.
+- El esquema `MovementCreate` rechaza motivos corporativos con menos de 5 caracteres, normaliza espacios en blanco y mantiene la coherencia con la cabecera `X-Reason` en los registros.
 - Operaciones de compras, ventas, devoluciones, reparaciones y recepciones de transferencias recalculan el valor de inventario por sucursal y anotan origen/destino con comentarios corporativos.
 - `MovementForm.tsx` y el contexto de dashboard envían `producto_id`, `tipo_movimiento`, `cantidad` y `comentario`, reutilizando el motivo como cabecera `X-Reason`.
 - `build_inventory_snapshot` refleja los campos `tienda_origen_id`, `tienda_destino_id`, `comentario`, `usuario_id` y `fecha` en cada movimiento y las pruebas de backend cubren saldos negativos y la actualización contable tras una venta.
