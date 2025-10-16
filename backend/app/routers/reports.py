@@ -460,6 +460,8 @@ def inventory_csv(
     writer.writerow(["Inventario corporativo"])
     writer.writerow(["Generado", datetime.utcnow().isoformat()])
 
+    consolidated_total = 0.0
+
     for store in snapshot.get("stores", []):
         writer.writerow([])
         writer.writerow([f"Sucursal: {store['name']}", store.get("location", "-"), store.get("timezone", "UTC")])
@@ -485,13 +487,22 @@ def inventory_csv(
                 "Margen (%)",
             ]
         )
+        store_total = 0.0
         for device in store.get("devices", []):
+            inventory_value = device.get("inventory_value", 0)
+            try:
+                inventory_value_float = float(inventory_value)
+            except (TypeError, ValueError):
+                inventory_value_float = 0.0
+            store_total += inventory_value_float
+            garantia = device.get("garantia_meses")
             writer.writerow(
                 [
                     device.get("sku"),
                     device.get("name"),
                     device.get("quantity"),
                     f"{device.get('unit_price', 0):.2f}",
+                    f"{inventory_value_float:.2f}",
                     f"{device.get('inventory_value', 0):.2f}",
                     device.get("imei") or "-",
                     device.get("serial") or "-",
@@ -503,11 +514,39 @@ def inventory_csv(
                     device.get("estado_comercial", "-"),
                     device.get("lote") or "-",
                     device.get("fecha_compra") or "-",
+                    garantia if garantia is not None else "-",
                     device.get("garantia_meses", "-"),
                     f"{float(device.get('costo_unitario', 0.0)):.2f}",
                     f"{float(device.get('margen_porcentaje', 0.0)):.2f}",
                 ]
             )
+
+        registered_value_raw = store.get("inventory_value")
+        try:
+            registered_value = float(registered_value_raw) if registered_value_raw is not None else store_total
+        except (TypeError, ValueError):
+            registered_value = store_total
+
+        totals_padding = [""] * 13
+        writer.writerow(["TOTAL SUCURSAL", "", "", "", f"{store_total:.2f}", *totals_padding])
+        writer.writerow(["VALOR CONTABLE", "", "", "", f"{registered_value:.2f}", *totals_padding])
+
+        consolidated_total += store_total
+
+    summary = snapshot.get("summary") or {}
+    if summary:
+        writer.writerow([])
+        writer.writerow(["Resumen corporativo"])
+        writer.writerow(["Sucursales auditadas", summary.get("store_count", 0)])
+        writer.writerow(["Dispositivos catalogados", summary.get("device_records", 0)])
+        writer.writerow(["Unidades totales", summary.get("total_units", 0)])
+        summary_value_raw = summary.get("inventory_value")
+        try:
+            summary_value = float(summary_value_raw) if summary_value_raw is not None else 0.0
+        except (TypeError, ValueError):
+            summary_value = 0.0
+        writer.writerow(["Inventario consolidado registrado (MXN)", f"{summary_value:.2f}"])
+        writer.writerow(["Inventario consolidado calculado (MXN)", f"{consolidated_total:.2f}"])
 
     buffer.seek(0)
     headers = {"Content-Disposition": "attachment; filename=softmobile_inventario.csv"}

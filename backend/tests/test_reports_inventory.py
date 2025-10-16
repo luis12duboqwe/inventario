@@ -86,6 +86,11 @@ def test_inventory_csv_snapshot(client, tmp_path) -> None:
     assert "Proveedor Uno" in content
     assert "8500.00" in content
     assert "30.00" in content
+    assert "TOTAL SUCURSAL" in content
+    assert "VALOR CONTABLE" in content
+    assert "Resumen corporativo" in content
+    assert "Inventario consolidado registrado (MXN)" in content
+    assert "Inventario consolidado calculado (MXN)" in content
 
 
 def test_inventory_supplier_batches_overview(client) -> None:

@@ -119,6 +119,11 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - ✅ 01/03/2025 — Los reportes de inventario PDF y CSV ahora incluyen columnas financieras completas y los campos del catálogo pro (IMEI, serie, marca, modelo, proveedor, color, capacidad, lote, costo y margen), respaldados por helpers reutilizables en `services/backups.py`.
 - ✅ 01/03/2025 — Se añadieron pruebas `test_render_snapshot_pdf_includes_financial_and_catalog_details` y `test_inventory_csv_snapshot` para validar totales, columnas avanzadas y compatibilidad con los motivos corporativos.
 
+### Registro operativo — 05/03/2025
+
+- ✅ 05/03/2025 — El snapshot de inventario incorpora `summary` con conteos corporativos, totales de unidades y el valor contable por sucursal, sincronizado con los reportes PDF/CSV.
+- ✅ 05/03/2025 — Los reportes PDF contrastan valor calculado vs. registrado y los CSV agregan filas "TOTAL SUCURSAL"/"VALOR CONTABLE" junto con un resumen corporativo; cobertura reforzada en `test_inventory_snapshot_summary_includes_store_values`.
+
 **Acciones obligatorias antes de nuevas iteraciones**
 
 1. Leer `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` para identificar pendientes.

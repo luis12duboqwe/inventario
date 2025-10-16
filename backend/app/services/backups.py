@@ -106,6 +106,8 @@ def render_snapshot_pdf(snapshot: dict[str, Any]) -> bytes:
     elements.append(Paragraph(f"Generado automáticamente el {generated_at}", styles["Normal"]))
     elements.append(Spacer(1, 18))
 
+    consolidated_total = 0.0
+
     for store in snapshot.get("stores", []):
         elements.append(Paragraph(f"Sucursal: {store['name']} ({store['timezone']})", styles["Heading2"]))
         if store.get("location"):
@@ -118,6 +120,25 @@ def render_snapshot_pdf(snapshot: dict[str, Any]) -> bytes:
 
         table_data, store_total = _build_financial_table(devices)
 
+        registered_value_raw = store.get("inventory_value")
+        try:
+            registered_value = float(registered_value_raw) if registered_value_raw is not None else None
+        except (TypeError, ValueError):
+            registered_value = None
+
+        elements.append(
+            Paragraph(
+                f"Valor calculado (sumatoria de dispositivos): ${store_total:,.2f}",
+                styles["Normal"],
+            )
+        )
+        if registered_value is not None:
+            elements.append(
+                Paragraph(
+                    f"Valor registrado en sucursal: ${registered_value:,.2f}",
+                    styles["Normal"],
+                )
+            )
         elements.append(Paragraph(f"Valor total de la sucursal: ${store_total:,.2f}", styles["Normal"]))
         elements.append(Spacer(1, 6))
         table = Table(table_data, hAlign="LEFT")
@@ -158,6 +179,44 @@ def render_snapshot_pdf(snapshot: dict[str, Any]) -> bytes:
             )
         )
         elements.append(detail_table)
+        elements.append(Spacer(1, 18))
+
+        consolidated_total += store_total
+
+    summary = snapshot.get("summary") or {}
+    if summary:
+        summary_value_raw = summary.get("inventory_value")
+        try:
+            summary_value = float(summary_value_raw) if summary_value_raw is not None else 0.0
+        except (TypeError, ValueError):
+            summary_value = 0.0
+
+        elements.append(Paragraph("Resumen corporativo", styles["Heading2"]))
+        elements.append(Paragraph(f"Sucursales auditadas: {summary.get('store_count', 0)}", styles["Normal"]))
+        elements.append(
+            Paragraph(
+                f"Dispositivos catalogados: {summary.get('device_records', 0)}",
+                styles["Normal"],
+            )
+        )
+        elements.append(
+            Paragraph(
+                f"Unidades totales en inventario: {summary.get('total_units', 0)}",
+                styles["Normal"],
+            )
+        )
+        elements.append(
+            Paragraph(
+                f"Inventario consolidado registrado: ${summary_value:,.2f}",
+                styles["Normal"],
+            )
+        )
+        elements.append(
+            Paragraph(
+                f"Inventario consolidado calculado: ${consolidated_total:,.2f}",
+                styles["Normal"],
+            )
+        )
         elements.append(Spacer(1, 18))
 
     doc.build(elements)

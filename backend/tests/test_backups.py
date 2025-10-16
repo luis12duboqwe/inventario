@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from fastapi import status
 
 from backend.app.config import settings
@@ -96,6 +97,9 @@ def test_render_snapshot_pdf_includes_financial_and_catalog_details() -> None:
             {
                 "name": "Sucursal Centro",
                 "timezone": "America/Mexico_City",
+                "inventory_value": 48000.0,
+                "device_count": 1,
+                "total_units": 4,
                 "devices": [
                     {
                         "sku": "SM-001",
@@ -119,6 +123,13 @@ def test_render_snapshot_pdf_includes_financial_and_catalog_details() -> None:
                     }
                 ],
             }
+        ],
+        "summary": {
+            "store_count": 1,
+            "device_records": 1,
+            "total_units": 4,
+            "inventory_value": 48000.0,
+        },
         ]
     }
 
@@ -164,3 +175,77 @@ def test_render_snapshot_pdf_includes_financial_and_catalog_details() -> None:
 
     pdf_bytes = backup_services.render_snapshot_pdf(snapshot)
     assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_inventory_snapshot_summary_includes_store_values(client, db_session) -> None:
+    headers = _auth_headers(client)
+
+    store_centro = client.post(
+        "/stores",
+        json={"name": "Sucursal Centro", "location": "CDMX", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert store_centro.status_code == status.HTTP_201_CREATED
+    store_centro_id = store_centro.json()["id"]
+
+    store_norte = client.post(
+        "/stores",
+        json={"name": "Sucursal Norte", "location": "MTY", "timezone": "America/Monterrey"},
+        headers=headers,
+    )
+    assert store_norte.status_code == status.HTTP_201_CREATED
+    store_norte_id = store_norte.json()["id"]
+
+    device_centro_a = {
+        "sku": "SM-C-001",
+        "name": "Smartphone Pro",
+        "quantity": 3,
+        "unit_price": 15000,
+    }
+    device_centro_b = {
+        "sku": "SM-C-002",
+        "name": "Tablet Ejecutiva",
+        "quantity": 2,
+        "unit_price": 8000,
+    }
+    device_norte = {
+        "sku": "SM-N-001",
+        "name": "Accesorio Norte",
+        "quantity": 4,
+        "unit_price": 1200,
+    }
+
+    response_a = client.post(
+        f"/stores/{store_centro_id}/devices",
+        json=device_centro_a,
+        headers=headers,
+    )
+    assert response_a.status_code == status.HTTP_201_CREATED
+    response_b = client.post(
+        f"/stores/{store_centro_id}/devices",
+        json=device_centro_b,
+        headers=headers,
+    )
+    assert response_b.status_code == status.HTTP_201_CREATED
+    response_norte = client.post(
+        f"/stores/{store_norte_id}/devices",
+        json=device_norte,
+        headers=headers,
+    )
+    assert response_norte.status_code == status.HTTP_201_CREATED
+
+    snapshot = backup_services.build_inventory_snapshot(db_session)
+    summary = snapshot["summary"]
+
+    assert summary["store_count"] == 2
+    assert summary["device_records"] == 3
+    assert summary["total_units"] == 9
+    assert summary["inventory_value"] == pytest.approx(65800.0)
+
+    stores = {store["name"]: store for store in snapshot["stores"]}
+    assert stores["Sucursal Centro"]["inventory_value"] == pytest.approx(61000.0)
+    assert stores["Sucursal Centro"]["device_count"] == 2
+    assert stores["Sucursal Centro"]["total_units"] == 5
+    assert stores["Sucursal Norte"]["inventory_value"] == pytest.approx(4800.0)
+    assert stores["Sucursal Norte"]["device_count"] == 1
+    assert stores["Sucursal Norte"]["total_units"] == 4

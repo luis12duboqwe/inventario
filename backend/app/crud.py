@@ -5225,13 +5225,55 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
     audit_stmt = select(models.AuditLog).order_by(models.AuditLog.created_at.desc())
     audits = list(db.scalars(audit_stmt))
 
-    snapshot = {
-        "stores": [
+    total_device_records = 0
+    total_units = 0
+    total_inventory_value = Decimal("0")
+
+    stores_payload: list[dict[str, object]] = []
+    for store in stores:
+        devices_payload = [
+            {
+                "id": device.id,
+                "sku": device.sku,
+                "name": device.name,
+                "quantity": device.quantity,
+                "store_id": device.store_id,
+                "unit_price": float(device.unit_price or Decimal("0")),
+                "inventory_value": float(_device_value(device)),
+                "imei": device.imei,
+                "serial": device.serial,
+                "marca": device.marca,
+                "modelo": device.modelo,
+                "color": device.color,
+                "capacidad_gb": device.capacidad_gb,
+                "estado_comercial": device.estado_comercial.value,
+                "proveedor": device.proveedor,
+                "costo_unitario": float(device.costo_unitario or Decimal("0")),
+                "margen_porcentaje": float(device.margen_porcentaje or Decimal("0")),
+                "garantia_meses": device.garantia_meses,
+                "lote": device.lote,
+                "fecha_compra": device.fecha_compra.isoformat()
+                if device.fecha_compra
+                else None,
+            }
+            for device in store.devices
+        ]
+        store_units = sum(device.quantity for device in store.devices)
+        store_value = _to_decimal(store.inventory_value or Decimal("0"))
+        total_device_records += len(devices_payload)
+        total_units += store_units
+        total_inventory_value += store_value
+
+        stores_payload.append(
             {
                 "id": store.id,
                 "name": store.name,
                 "location": store.location,
                 "timezone": store.timezone,
+                "inventory_value": float(store_value),
+                "device_count": len(devices_payload),
+                "total_units": store_units,
+                "devices": devices_payload,
                 "devices": [
                     {
                         "id": device.id,
@@ -5260,8 +5302,10 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                     for device in store.devices
                 ],
             }
-            for store in stores
-        ],
+        )
+
+    snapshot = {
+        "stores": stores_payload,
         "users": [
             {
                 "id": user.id,
@@ -5313,5 +5357,13 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
             }
             for audit in audits
         ],
+        "summary": {
+            "store_count": len(stores),
+            "device_records": total_device_records,
+            "total_units": total_units,
+            "inventory_value": float(
+                total_inventory_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            ),
+        },
     }
     return snapshot

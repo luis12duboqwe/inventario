@@ -393,6 +393,7 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 | Lote | Entregables clave | Evidencias |
 | --- | --- | --- |
 | Inventario optimizado | Endpoints `/suppliers/{id}/batches`, columna `stores.inventory_value`, cálculo de costo promedio en movimientos y formulario de lotes en `Suppliers.tsx` | Prueba `test_supplier_batches_and_inventory_value` y validación manual del submódulo de proveedores |
+| Reportes de inventario enriquecidos | Tablas PDF con precios, totales, resumen corporativo y campos de catálogo pro (IMEI, marca, modelo, proveedor) junto con CSV extendido que contrasta valor calculado vs. contable | Pruebas `test_render_snapshot_pdf_includes_financial_and_catalog_details`, `test_inventory_csv_snapshot` y `test_inventory_snapshot_summary_includes_store_values` validando columnas, totales y valores registrados |
 | Reportes de inventario enriquecidos | Tablas PDF con precios, totales y campos de catálogo pro (IMEI, marca, modelo, proveedor) junto con CSV extendido para análisis financiero | Pruebas `test_render_snapshot_pdf_includes_financial_and_catalog_details` y `test_inventory_csv_snapshot` validando columnas y totales |
 | D — Analítica avanzada | Servicios `analytics.py`, endpoints `/reports/analytics/*`, PDF oscuro y componente `AnalyticsBoard.tsx` | Pruebas `pytest` y descarga manual desde el panel de Analítica |
 | E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` con exportación CSV/PDF y alertas visuales | Ejecución interactiva del módulo Seguridad, descarga de bitácora y pruebas automatizadas de sesiones |
@@ -416,6 +417,12 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 
 - `pytest` ejecutado tras enriquecer los reportes de inventario con columnas financieras y de catálogo pro; todos los 42 casos pasaron correctamente.
 - `npm --prefix frontend run build` y `npm --prefix frontend run test` completados en verde para validar que las mejoras no rompen la experiencia React existente.
+
+### Bitácora de control — 05/03/2025
+
+- `pytest` → ✅ 43 pruebas en verde confirmando el nuevo resumen corporativo del snapshot y los contrastes calculado/contable en inventario.
+- `npm --prefix frontend run build` → ✅ compilación completada con las advertencias habituales por tamaño de *chunks* analíticos.
+- `npm --prefix frontend run test` → ✅ 9 pruebas en verde; se mantienen advertencias controladas de `act(...)` y banderas futuras de React Router documentadas previamente.
 
 ## Checklist de verificación integral
 
