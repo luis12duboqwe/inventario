@@ -24,6 +24,7 @@ import {
   getRotationAnalytics,
   getSalesProjectionAnalytics,
 } from "../../../api";
+import { promptCorporateReason } from "../../../utils/corporateReason";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 import ScrollableTable from "../../../components/ScrollableTable";
@@ -164,9 +165,31 @@ function AnalyticsBoard({ token }: Props) {
     }
   }, [categories, selectedCategory]);
 
+  const resolveDefaultReason = () => {
+    if (selectedStore === "all") {
+      return "Descarga analítica corporativa";
+    }
+    const store = stores.find((entry) => entry.id === selectedStore);
+    if (!store) {
+      return "Descarga analítica corporativa";
+    }
+    return `Descarga analítica ${store.name}`;
+  };
+
   const handleDownloadPdf = async () => {
+    const reason = promptCorporateReason(resolveDefaultReason());
+    if (reason === null) {
+      pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
+      return;
+    }
+    if (reason.length < 5) {
+      const message = "El motivo corporativo debe tener al menos 5 caracteres.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
     try {
-      await downloadAnalyticsPdf(token, storeIds);
+      await downloadAnalyticsPdf(token, reason, analyticsFilters);
       pushToast({ message: "PDF analítico generado", variant: "success" });
     } catch (err) {
       const message =
@@ -177,8 +200,19 @@ function AnalyticsBoard({ token }: Props) {
   };
 
   const handleDownloadCsv = async () => {
+    const reason = promptCorporateReason(resolveDefaultReason());
+    if (reason === null) {
+      pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
+      return;
+    }
+    if (reason.length < 5) {
+      const message = "El motivo corporativo debe tener al menos 5 caracteres.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
     try {
-      await downloadAnalyticsCsv(token, storeIds);
+      await downloadAnalyticsCsv(token, reason, analyticsFilters);
       pushToast({ message: "CSV analítico exportado", variant: "success" });
     } catch (err) {
       const message =

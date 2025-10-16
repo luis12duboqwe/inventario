@@ -3,6 +3,8 @@ import { Repeat } from "lucide-react";
 import SyncPanel from "../components/SyncPanel";
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
 import { useSyncModule } from "../hooks/useSyncModule";
+import { useDashboard } from "../../dashboard/context/DashboardContext";
+import { promptCorporateReason } from "../../../utils/corporateReason";
 
 function SyncPage() {
   const {
@@ -23,6 +25,7 @@ function SyncPage() {
     syncHistoryError,
     refreshSyncHistory,
   } = useSyncModule();
+  const { pushToast, setError, selectedStore } = useDashboard();
 
   const latestRelease = updateStatus?.latest_release ?? null;
 
@@ -38,6 +41,34 @@ function SyncPage() {
     moduleStatus = "warning";
     moduleStatusLabel = `${outbox.length} eventos pendientes en la cola local`;
   }
+
+  const handleDownloadInventoryPdf = async () => {
+    const defaultReason = selectedStore
+      ? `Descarga inventario ${selectedStore.name}`
+      : "Descarga inventario corporativo";
+    const reason = promptCorporateReason(defaultReason);
+    if (reason === null) {
+      pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
+      return;
+    }
+    if (reason.length < 5) {
+      const message = "El motivo corporativo debe tener al menos 5 caracteres.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
+    try {
+      await downloadInventoryReport(reason);
+      pushToast({ message: "PDF de inventario descargado", variant: "success" });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible descargar el PDF de inventario.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+    }
+  };
 
   const handleExportCsv = () => {
     const headers = ["id", "entidad", "operacion", "estado", "intentos", "actualizado"];
@@ -79,13 +110,13 @@ function SyncPage() {
         <div className="section-grid">
         <section className="card">
           <h2>Sincronización y reportes</h2>
-          <SyncPanel
-            onSync={handleSync}
-            syncStatus={syncStatus}
-            onDownloadPdf={downloadInventoryReport}
-            onBackup={handleBackup}
-            onExportCsv={handleExportCsv}
-          />
+            <SyncPanel
+              onSync={handleSync}
+              syncStatus={syncStatus}
+              onDownloadPdf={handleDownloadInventoryPdf}
+              onBackup={handleBackup}
+              onExportCsv={handleExportCsv}
+            />
         <div className="section-divider">
           <h3>Historial de respaldos</h3>
           {backupHistory.length === 0 ? (
@@ -277,4 +308,3 @@ function SyncPage() {
 }
 
 export default SyncPage;
-

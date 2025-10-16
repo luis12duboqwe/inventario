@@ -49,6 +49,25 @@ export type Device = {
 
 export type CatalogDevice = Device & { store_name: string };
 
+export type DeviceUpdateInput = {
+  name?: string | null;
+  quantity?: number;
+  unit_price?: number | null;
+  imei?: string | null;
+  serial?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  color?: string | null;
+  capacidad_gb?: number | null;
+  estado_comercial?: Device["estado_comercial"] | null;
+  proveedor?: string | null;
+  costo_unitario?: number | null;
+  margen_porcentaje?: number | null;
+  garantia_meses?: number | null;
+  lote?: string | null;
+  fecha_compra?: string | null;
+};
+
 export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
 
 export type ContactHistoryEntry = {
@@ -427,6 +446,7 @@ export type MovementInput = {
   movement_type: "entrada" | "salida" | "ajuste";
   quantity: number;
   reason?: string;
+  unit_cost?: number;
 };
 
 export type Summary = {
@@ -1038,6 +1058,20 @@ export function getDevices(
   return request<Device[]>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
 }
 
+export function updateDevice(
+  token: string,
+  storeId: number,
+  deviceId: number,
+  payload: DeviceUpdateInput,
+  reason: string
+): Promise<Device> {
+  return request<Device>(
+    `/inventory/stores/${storeId}/devices/${deviceId}`,
+    { method: "PATCH", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
 export function listPurchaseOrders(token: string, storeId: number, limit = 50): Promise<PurchaseOrder[]> {
   const params = new URLSearchParams({ limit: String(limit), store_id: String(storeId) });
   return request<PurchaseOrder[]>(`/purchases/?${params.toString()}`, { method: "GET" }, token);
@@ -1574,11 +1608,12 @@ export function fetchBackupHistory(token: string): Promise<BackupJob[]> {
   return request<BackupJob[]>("/backups/history", { method: "GET" }, token);
 }
 
-export async function downloadInventoryPdf(token: string): Promise<void> {
+export async function downloadInventoryPdf(token: string, reason: string): Promise<void> {
   const response = await fetch(`${API_URL}/reports/inventory/pdf`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
     },
   });
 
@@ -1637,12 +1672,17 @@ export function getForecastAnalytics(
   return request<AnalyticsForecast>(`/reports/analytics/stockout_forecast${query}`, { method: "GET" }, token);
 }
 
-export async function downloadAnalyticsPdf(token: string, filters?: AnalyticsFilters): Promise<void> {
+export async function downloadAnalyticsPdf(
+  token: string,
+  reason: string,
+  filters?: AnalyticsFilters,
+): Promise<void> {
   const query = buildAnalyticsQuery(filters);
   const response = await fetch(`${API_URL}/reports/analytics/pdf${query}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
     },
   });
 
@@ -1661,12 +1701,17 @@ export async function downloadAnalyticsPdf(token: string, filters?: AnalyticsFil
   URL.revokeObjectURL(url);
 }
 
-export async function downloadAnalyticsCsv(token: string, filters?: AnalyticsFilters): Promise<void> {
+export async function downloadAnalyticsCsv(
+  token: string,
+  reason: string,
+  filters?: AnalyticsFilters,
+): Promise<void> {
   const query = buildAnalyticsQuery(filters);
   const response = await fetch(`${API_URL}/reports/analytics/export.csv${query}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
     },
   });
 

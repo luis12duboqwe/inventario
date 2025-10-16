@@ -11,6 +11,13 @@ function MovementForm({ devices, onSubmit }: Props) {
   const [movementType, setMovementType] = useState<MovementInput["movement_type"]>("entrada");
   const [quantity, setQuantity] = useState(1);
   const [reason, setReason] = useState("");
+  const [unitCost, setUnitCost] = useState("");
+
+  useEffect(() => {
+    if (movementType !== "entrada") {
+      setUnitCost("");
+    }
+  }, [movementType]);
 
   useEffect(() => {
     if (devices.length > 0) {
@@ -27,14 +34,26 @@ function MovementForm({ devices, onSubmit }: Props) {
     if (!deviceId) {
       return;
     }
-    await onSubmit({
+    const normalizedReason = reason.trim();
+    const rawUnitCost = unitCost.trim();
+    const shouldSendUnitCost = movementType === "entrada" && rawUnitCost.length > 0;
+    const parsedUnitCost = shouldSendUnitCost ? Number(rawUnitCost) : undefined;
+
+    const payload: MovementInput = {
       device_id: Number(deviceId),
       movement_type: movementType,
       quantity,
-      reason: reason.trim() || undefined,
-    });
+      reason: normalizedReason || undefined,
+    };
+
+    if (typeof parsedUnitCost === "number" && Number.isFinite(parsedUnitCost) && parsedUnitCost >= 0) {
+      payload.unit_cost = parsedUnitCost;
+    }
+
+    await onSubmit(payload);
     setQuantity(1);
     setReason("");
+    setUnitCost("");
   };
 
   return (
@@ -67,11 +86,34 @@ function MovementForm({ devices, onSubmit }: Props) {
       <input
         id="quantity"
         type="number"
-        min={movementType === "ajuste" ? 0 : 1}
+        min={1}
+        step={1}
         value={quantity}
-        onChange={(event) => setQuantity(Number(event.target.value))}
+        onChange={(event) => {
+          const nextValue = Number(event.target.value);
+          if (!Number.isFinite(nextValue)) {
+            setQuantity(1);
+            return;
+          }
+          setQuantity(Math.max(1, Math.floor(nextValue)));
+        }}
         required
       />
+
+      {movementType === "entrada" ? (
+        <>
+          <label htmlFor="unitCost">Costo unitario (MXN)</label>
+          <input
+            id="unitCost"
+            type="number"
+            min={0}
+            step={0.01}
+            value={unitCost}
+            onChange={(event) => setUnitCost(event.target.value)}
+            placeholder="Ej. 8,599.99"
+          />
+        </>
+      ) : null}
 
       <label htmlFor="reason">Motivo corporativo</label>
       <textarea

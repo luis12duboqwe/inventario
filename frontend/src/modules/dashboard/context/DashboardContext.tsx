@@ -26,10 +26,12 @@ import {
   triggerSync,
   runBackup,
   getSyncOutboxStats,
+  updateDevice,
 } from "../../../api";
 import type {
   BackupJob,
   Device,
+  DeviceUpdateInput,
   UserAccount,
   InventoryMetrics,
   MovementInput,
@@ -84,6 +86,7 @@ type DashboardContextValue = {
   lowStockDevices: InventoryMetrics["low_stock_devices"];
   topStores: InventoryMetrics["top_stores"];
   handleMovement: (payload: MovementInput) => Promise<void>;
+  handleDeviceUpdate: (deviceId: number, updates: DeviceUpdateInput, reason: string) => Promise<void>;
   refreshInventoryAfterTransfer: () => Promise<void>;
   refreshSummary: () => Promise<void>;
   lastInventoryRefresh: Date | null;
@@ -91,7 +94,7 @@ type DashboardContextValue = {
   handleBackup: () => Promise<void>;
   refreshOutbox: () => Promise<void>;
   handleRetryOutbox: () => Promise<void>;
-  downloadInventoryReport: () => Promise<void>;
+  downloadInventoryReport: (reason: string) => Promise<void>;
   refreshOutboxStats: () => Promise<void>;
   refreshSyncHistory: () => Promise<void>;
   toasts: ToastMessage[];
@@ -383,6 +386,42 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }
   };
 
+  const handleDeviceUpdate = async (
+    deviceId: number,
+    updates: DeviceUpdateInput,
+    reason: string,
+  ) => {
+    if (!selectedStoreId) {
+      return;
+    }
+    const normalizedReason = reason.trim();
+    if (normalizedReason.length < 5) {
+      setError("Indica un motivo corporativo de al menos 5 caracteres.");
+      return;
+    }
+    if (Object.keys(updates).length === 0) {
+      setError("No hay cambios por aplicar en el dispositivo seleccionado.");
+      return;
+    }
+    try {
+      setError(null);
+      await updateDevice(token, selectedStoreId, deviceId, updates, normalizedReason);
+      setMessage("Dispositivo actualizado correctamente");
+      pushToast({ message: "Ficha de dispositivo actualizada", variant: "success" });
+      await Promise.all([
+        refreshSummary(),
+        getDevices(token, selectedStoreId).then(setDevices),
+      ]);
+      setLastInventoryRefresh(new Date());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "No se pudo actualizar el dispositivo";
+      const friendly = friendlyErrorMessage(message);
+      setError(friendly);
+      pushToast({ message: friendly, variant: "error" });
+      throw new Error(friendly);
+    }
+  };
+
   const refreshInventoryAfterTransfer = async () => {
     await refreshSummary();
     if (selectedStoreId) {
@@ -512,8 +551,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     return { totalDevices, totalItems, totalValue, lowStock, topStores };
   }, [metrics, summary]);
 
-  const downloadInventoryReport = async () => {
-    await downloadInventoryPdf(token);
+  const downloadInventoryReport = async (reason: string) => {
+    await downloadInventoryPdf(token, reason);
   };
 
   const value: DashboardContextValue = {
@@ -559,6 +598,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     lowStockDevices: totals.lowStock,
     topStores: totals.topStores,
     handleMovement,
+    handleDeviceUpdate,
     refreshInventoryAfterTransfer,
     refreshSummary,
     handleSync,

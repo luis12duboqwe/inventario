@@ -47,3 +47,35 @@
 - `npm --prefix frontend run build` → ✅ compilación exitosa sin errores (avisos de chunk esperados).【1889c4†L1-L12】
 - Observaciones: `AuditLog.tsx` muestra recordatorios activos con snooze y motivo corporativo obligatorio; `GlobalMetrics.tsx` refleja pendientes/atendidas y enlaza a Seguridad para atender acuses.
 
+## Actualización 17/10/2025 — Inventario pro y edición de dispositivos
+
+- Hash base: `335916d` (antes de registrar costo unitario opcional y modal de edición en inventario).
+- `pytest` → ✅ 37 pruebas en verde tras capturar costo unitario y validar edición pro de dispositivos.【262bbb†L1-L18】
+- `npm --prefix frontend run build` → ✅ compilación lista sin errores luego del refuerzo visual del inventario.【ab41e6†L1-L12】
+- `npm --prefix frontend run test` → ✅ pruebas de Vitest en verde conservando auditoría y métricas globales.【7c59fb†L1-L14】
+- Observaciones: el formulario de movimientos ahora respeta el motivo mínimo y permite registrar `unit_cost` en entradas; el modal `DeviceEditDialog` exige motivo corporativo y normaliza campos sensibles del catálogo pro.
+
+## Actualización 02/03/2025 — Paginación dinámica y ajuste directo de existencias
+
+- Hash base: `bb855a5` (antes de habilitar la paginación configurable y el ajuste directo de stock desde la edición pro).
+- `pytest` → ✅ 37 pruebas en verde tras instalar dependencias faltantes (`prometheus-client`) y validar inventario paginado.【ec2f81†L1-L15】
+- `npm --prefix frontend run build` → ✅ compilación lista con advertencias de tamaño esperadas en los *chunks* analíticos.【e62bb2†L1-L12】
+- `npm --prefix frontend run test` → ✅ pruebas de Vitest en verde; persisten advertencias de `act(...)` y navegación simulada propias del entorno jsdom.【0f7ebc†L1-L11】
+- Observaciones: la tabla de inventario permite ajustar el tamaño de página sin perder la vista completa con carga progresiva, y el modal de edición solicita motivo corporativo antes de aplicar el nuevo total de existencias.
+
+## Actualización 03/03/2025 — Motivo obligatorio en descargas de inventario
+
+- Hash base: `bb855a5` (antes de exigir motivo `X-Reason` en la descarga del PDF de inventario).
+- `pytest` → ✅ 37 pruebas en verde luego de instalar `prometheus-client` y validar los prompts de motivo corporativo en inventario y sincronización.【b5c05f†L1-L18】
+- `npm --prefix frontend run build` → ✅ compilación exitosa con advertencia por *chunks* grandes en analítica.【722e51†L1-L11】
+- `npm --prefix frontend run test` → ⚠️ no se ejecutó porque `vitest` no está instalado en el entorno de CI actual.【0dc846†L1-L6】
+- Observaciones: la descarga de inventario desde Inventario y Sincronización ahora solicita motivo corporativo, propaga el header `X-Reason` y muestra toasts de confirmación o error según el resultado.
+
+## Actualización 04/03/2025 — Motivo obligatorio en descargas analíticas
+
+- Hash base: `b663d7d` (antes de exigir motivo `X-Reason` en los reportes analíticos CSV/PDF).
+- `pytest` → ✅ 37 pruebas en verde tras instalar `prometheus-client` y validar que `/reports/analytics/pdf` y `/reports/analytics/export.csv` requieran motivo corporativo.【3251e1†L1-L20】
+- `npm --prefix frontend run build` → ✅ compilación lista con las advertencias habituales de tamaño en los *chunks* de analítica.【7c9b5c†L1-L10】
+- `npm --prefix frontend run test` → ⚠️ falla porque `vitest` no está disponible en el contenedor actual; se mantiene el pendiente de instalación para el entorno CI.【9978d2†L1-L6】
+- Observaciones: el tablero `AnalyticsBoard.tsx` ahora solicita motivo antes de exportar y el backend valida la cabecera `X-Reason`, manteniendo trazabilidad en descargas ejecutivas.
+
