@@ -393,6 +393,7 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 | Lote | Entregables clave | Evidencias |
 | --- | --- | --- |
 | Inventario optimizado | Endpoints `/suppliers/{id}/batches`, columna `stores.inventory_value`, cálculo de costo promedio en movimientos y formulario de lotes en `Suppliers.tsx` | Prueba `test_supplier_batches_and_inventory_value` y validación manual del submódulo de proveedores |
+| Reportes de inventario enriquecidos | Tablas PDF con precios, totales y campos de catálogo pro (IMEI, marca, modelo, proveedor) junto con CSV extendido para análisis financiero | Pruebas `test_render_snapshot_pdf_includes_financial_and_catalog_details` y `test_inventory_csv_snapshot` validando columnas y totales |
 | D — Analítica avanzada | Servicios `analytics.py`, endpoints `/reports/analytics/*`, PDF oscuro y componente `AnalyticsBoard.tsx` | Pruebas `pytest` y descarga manual desde el panel de Analítica |
 | E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` con exportación CSV/PDF y alertas visuales | Ejecución interactiva del módulo Seguridad, descarga de bitácora y pruebas automatizadas de sesiones |
 | F — Modo híbrido | Modelo `SyncOutbox`, reintentos `reset_outbox_entries`, visualización/acciones en `SyncPanel.tsx` y alertas en tiempo real | Casos de prueba de transferencias/compras/ventas que generan eventos y validación manual del panel |
@@ -410,6 +411,11 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 
 - `pytest` finalizado en verde tras integrar POS avanzado, reparaciones y paneles de clientes/proveedores.
 - `npm --prefix frontend run build` concluido sin errores, confirmando la compilación del frontend con los paneles corporativos recientes.
+
+### Bitácora de control — 01/03/2025
+
+- `pytest` ejecutado tras enriquecer los reportes de inventario con columnas financieras y de catálogo pro; todos los 42 casos pasaron correctamente.
+- `npm --prefix frontend run build` y `npm --prefix frontend run test` completados en verde para validar que las mejoras no rompen la experiencia React existente.
 
 ## Checklist de verificación integral
 

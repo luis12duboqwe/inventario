@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from reportlab.lib import colors
@@ -21,6 +21,77 @@ def build_inventory_snapshot(db: Session) -> dict[str, Any]:
     """Obtiene un snapshot completo de los datos de inventario."""
 
     return crud.build_inventory_snapshot(db)
+
+def _build_financial_table(devices: list[dict[str, Any]]) -> Tuple[list[list[str]], float]:
+    table_data = [
+        [
+            "SKU",
+            "Nombre",
+            "Cantidad",
+            "Precio",
+            "Valor total",
+            "IMEI",
+            "Serie",
+            "Marca",
+            "Modelo",
+            "Proveedor",
+        ]
+    ]
+    store_total = 0.0
+    for device in devices:
+        unit_price = float(device.get("unit_price", 0.0))
+        total_value = float(device.get("inventory_value", device["quantity"] * unit_price))
+        store_total += total_value
+        table_data.append(
+            [
+                device["sku"],
+                device["name"],
+                str(device["quantity"]),
+                f"${unit_price:,.2f}",
+                f"${total_value:,.2f}",
+                device.get("imei") or "-",
+                device.get("serial") or "-",
+                device.get("marca") or "-",
+                device.get("modelo") or "-",
+                device.get("proveedor") or "-",
+            ]
+        )
+
+    return table_data, store_total
+
+
+def _build_catalog_detail_table(devices: list[dict[str, Any]]) -> list[list[str]]:
+    detail_table_data = [
+        [
+            "SKU",
+            "Color",
+            "Capacidad (GB)",
+            "Estado",
+            "Lote",
+            "Fecha compra",
+            "Garantía (meses)",
+            "Costo unitario",
+            "Margen (%)",
+        ]
+    ]
+
+    for device in devices:
+        capacidad = device.get("capacidad_gb")
+        detail_table_data.append(
+            [
+                device["sku"],
+                device.get("color") or "-",
+                str(capacidad) if capacidad is not None else "-",
+                device.get("estado_comercial", "-"),
+                device.get("lote") or "-",
+                device.get("fecha_compra") or "-",
+                str(device.get("garantia_meses", "-")),
+                f"${float(device.get('costo_unitario', 0.0)):,.2f}",
+                f"{float(device.get('margen_porcentaje', 0.0)):.2f}%",
+            ]
+        )
+
+    return detail_table_data
 
 
 def render_snapshot_pdf(snapshot: dict[str, Any]) -> bytes:
@@ -45,28 +116,10 @@ def render_snapshot_pdf(snapshot: dict[str, Any]) -> bytes:
             elements.append(Spacer(1, 12))
             continue
 
-        table_data = [["SKU", "Nombre", "Cantidad", "Precio", "Valor total"]]
-        store_total = 0.0
-        for device in devices:
-            unit_price = float(device.get("unit_price", 0.0))
-            total_value = float(device.get("inventory_value", device["quantity"] * unit_price))
-            store_total += total_value
-            table_data.append(
-                [
-                    device["sku"],
-                    device["name"],
-                    str(device["quantity"]),
-                    f"${unit_price:,.2f}",
-                    f"${total_value:,.2f}",
-                ]
-            )
+        table_data, store_total = _build_financial_table(devices)
 
         elements.append(Paragraph(f"Valor total de la sucursal: ${store_total:,.2f}", styles["Normal"]))
         elements.append(Spacer(1, 6))
-        table_data = [["SKU", "Nombre", "Cantidad"]]
-        for device in devices:
-            table_data.append([device["sku"], device["name"], str(device["quantity"])])
-
         table = Table(table_data, hAlign="LEFT")
         table.setStyle(
             TableStyle(
@@ -77,12 +130,34 @@ def render_snapshot_pdf(snapshot: dict[str, Any]) -> bytes:
                     ("TEXTCOLOR", (0, 1), (-1, -1), colors.HexColor("#e2e8f0")),
                     ("LINEABOVE", (0, 0), (-1, 0), 1, colors.HexColor("#38bdf8")),
                     ("LINEBELOW", (0, -1), (-1, -1), 1, colors.HexColor("#38bdf8")),
-                    ("ALIGN", (2, 1), (2, -1), "RIGHT"),
+                    ("ALIGN", (2, 1), (4, -1), "RIGHT"),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ]
             )
         )
         elements.append(table)
+        elements.append(Spacer(1, 12))
+
+        detail_table_data = _build_catalog_detail_table(devices)
+
+        detail_table = Table(detail_table_data, hAlign="LEFT")
+        detail_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#111827")),
+                    ("TEXTCOLOR", (0, 1), (-1, -1), colors.HexColor("#cbd5f5")),
+                    ("LINEABOVE", (0, 0), (-1, 0), 1, colors.HexColor("#38bdf8")),
+                    ("LINEBELOW", (0, -1), (-1, -1), 1, colors.HexColor("#38bdf8")),
+                    ("ALIGN", (2, 1), (2, -1), "CENTER"),
+                    ("ALIGN", (4, 1), (5, -1), "CENTER"),
+                    ("ALIGN", (6, 1), (8, -1), "RIGHT"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ]
+            )
+        )
+        elements.append(detail_table)
         elements.append(Spacer(1, 18))
 
     doc.build(elements)

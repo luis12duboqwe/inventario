@@ -114,6 +114,11 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - ✅ 29/02/2025 — Las exportaciones CSV/PDF de auditoría incorporan el estado del acuse, usuario, fecha y nota registrada, con validaciones de duplicado y mensajes de error específicos en el frontend.
 - ▶️ Próximo paso inmediato: monitorear escenarios multiusuario en Seguridad y ajustar recordatorios si aparecen nuevos requisitos.
 
+### Registro operativo — 01/03/2025
+
+- ✅ 01/03/2025 — Los reportes de inventario PDF y CSV ahora incluyen columnas financieras completas y los campos del catálogo pro (IMEI, serie, marca, modelo, proveedor, color, capacidad, lote, costo y margen), respaldados por helpers reutilizables en `services/backups.py`.
+- ✅ 01/03/2025 — Se añadieron pruebas `test_render_snapshot_pdf_includes_financial_and_catalog_details` y `test_inventory_csv_snapshot` para validar totales, columnas avanzadas y compatibilidad con los motivos corporativos.
+
 **Acciones obligatorias antes de nuevas iteraciones**
 
 1. Leer `README.md`, este `AGENTS.md` y `docs/evaluacion_requerimientos.md` para identificar pendientes.
