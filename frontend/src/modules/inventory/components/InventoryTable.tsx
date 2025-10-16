@@ -8,6 +8,7 @@ type Props = {
   devices: Device[];
   highlightedDeviceIds?: Set<number>;
   emptyMessage?: string;
+  onEditDevice?: (device: Device) => void;
 };
 
 const estadoLabels: Record<Device["estado_comercial"] | undefined, string> = {
@@ -31,7 +32,7 @@ const estadoTone = (estado: Device["estado_comercial"] | undefined): "success" |
   }
 };
 
-function InventoryTable({ devices, highlightedDeviceIds, emptyMessage }: Props) {
+function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDevice }: Props) {
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
     []
@@ -152,15 +153,26 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage }: Props) 
           <td data-label="Precio unitario">{currencyFormatter.format(device.unit_price)}</td>
           <td data-label="Valor total">{currencyFormatter.format(device.inventory_value)}</td>
           <td data-label="Acciones">
-            <button
-              type="button"
-              className="btn btn--secondary"
-              onClick={() => {
-                void handlePrintLabel(device);
-              }}
-            >
-              Imprimir etiqueta
-            </button>
+            <div className="inventory-actions">
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => {
+                  void handlePrintLabel(device);
+                }}
+              >
+                Imprimir etiqueta
+              </button>
+              {onEditDevice ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => onEditDevice(device)}
+                >
+                  Editar ficha
+                </button>
+              ) : null}
+            </div>
           </td>
         </tr>
       )}
