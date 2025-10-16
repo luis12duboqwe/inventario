@@ -5274,33 +5274,6 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                 "device_count": len(devices_payload),
                 "total_units": store_units,
                 "devices": devices_payload,
-                "devices": [
-                    {
-                        "id": device.id,
-                        "sku": device.sku,
-                        "name": device.name,
-                        "quantity": device.quantity,
-                        "store_id": device.store_id,
-                        "unit_price": float(device.unit_price or Decimal("0")),
-                        "inventory_value": float(_device_value(device)),
-                        "imei": device.imei,
-                        "serial": device.serial,
-                        "marca": device.marca,
-                        "modelo": device.modelo,
-                        "color": device.color,
-                        "capacidad_gb": device.capacidad_gb,
-                        "estado_comercial": device.estado_comercial.value,
-                        "proveedor": device.proveedor,
-                        "costo_unitario": float(device.costo_unitario or Decimal("0")),
-                        "margen_porcentaje": float(device.margen_porcentaje or Decimal("0")),
-                        "garantia_meses": device.garantia_meses,
-                        "lote": device.lote,
-                        "fecha_compra": device.fecha_compra.isoformat()
-                        if device.fecha_compra
-                        else None,
-                    }
-                    for device in store.devices
-                ],
             }
         )
 

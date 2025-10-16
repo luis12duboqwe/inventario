@@ -489,11 +489,31 @@ def inventory_csv(
         )
         store_total = 0.0
         for device in store.get("devices", []):
-            inventory_value = device.get("inventory_value", 0)
+            inventory_value_raw = device.get("inventory_value", 0)
+            unit_price_raw = device.get("unit_price", 0)
+            costo_unitario_raw = device.get("costo_unitario", 0.0)
+            margen_raw = device.get("margen_porcentaje", 0.0)
+
             try:
-                inventory_value_float = float(inventory_value)
+                inventory_value_float = float(inventory_value_raw)
             except (TypeError, ValueError):
                 inventory_value_float = 0.0
+
+            try:
+                unit_price_float = float(unit_price_raw)
+            except (TypeError, ValueError):
+                unit_price_float = 0.0
+
+            try:
+                costo_unitario = float(costo_unitario_raw)
+            except (TypeError, ValueError):
+                costo_unitario = 0.0
+
+            try:
+                margen_porcentaje = float(margen_raw)
+            except (TypeError, ValueError):
+                margen_porcentaje = 0.0
+
             store_total += inventory_value_float
             garantia = device.get("garantia_meses")
             writer.writerow(
@@ -501,9 +521,8 @@ def inventory_csv(
                     device.get("sku"),
                     device.get("name"),
                     device.get("quantity"),
-                    f"{device.get('unit_price', 0):.2f}",
+                    f"{unit_price_float:.2f}",
                     f"{inventory_value_float:.2f}",
-                    f"{device.get('inventory_value', 0):.2f}",
                     device.get("imei") or "-",
                     device.get("serial") or "-",
                     device.get("marca") or "-",
@@ -515,9 +534,8 @@ def inventory_csv(
                     device.get("lote") or "-",
                     device.get("fecha_compra") or "-",
                     garantia if garantia is not None else "-",
-                    device.get("garantia_meses", "-"),
-                    f"{float(device.get('costo_unitario', 0.0)):.2f}",
-                    f"{float(device.get('margen_porcentaje', 0.0)):.2f}",
+                    f"{costo_unitario:.2f}",
+                    f"{margen_porcentaje:.2f}",
                 ]
             )
 
