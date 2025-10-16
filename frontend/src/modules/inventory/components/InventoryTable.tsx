@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { ChangeEvent, useCallback, useMemo, useState } from "react";
 import QRCode from "qrcode";
 
 import ScrollableTable from "../../../components/ScrollableTable";
@@ -8,6 +8,7 @@ type Props = {
   devices: Device[];
   highlightedDeviceIds?: Set<number>;
   emptyMessage?: string;
+  onEditDevice?: (device: Device) => void;
 };
 
 const estadoLabels: Record<Device["estado_comercial"] | undefined, string> = {
@@ -31,11 +32,14 @@ const estadoTone = (estado: Device["estado_comercial"] | undefined): "success" |
   }
 };
 
-function InventoryTable({ devices, highlightedDeviceIds, emptyMessage }: Props) {
+function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDevice }: Props) {
+  const [pageSize, setPageSize] = useState(50);
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
     []
   );
+
+  const pageSizeOptions = useMemo(() => [25, 50, 100, 250], []);
 
   const escapeHtml = useCallback((value: string) => {
     return value
@@ -44,6 +48,10 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage }: Props) 
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }, []);
+
+  const handlePageSizeChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    setPageSize(Number(event.target.value));
   }, []);
 
   const handlePrintLabel = useCallback(async (device: Device) => {
@@ -118,6 +126,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage }: Props) 
     <ScrollableTable
       items={devices}
       itemKey={(device) => device.id}
+      pageSize={pageSize}
       renderHead={() => (
         <>
           <th scope="col">SKU</th>
@@ -152,21 +161,49 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage }: Props) 
           <td data-label="Precio unitario">{currencyFormatter.format(device.unit_price)}</td>
           <td data-label="Valor total">{currencyFormatter.format(device.inventory_value)}</td>
           <td data-label="Acciones">
-            <button
-              type="button"
-              className="btn btn--secondary"
-              onClick={() => {
-                void handlePrintLabel(device);
-              }}
-            >
-              Imprimir etiqueta
-            </button>
+            <div className="inventory-actions">
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => {
+                  void handlePrintLabel(device);
+                }}
+              >
+                Imprimir etiqueta
+              </button>
+              {onEditDevice ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => onEditDevice(device)}
+                >
+                  Editar ficha
+                </button>
+              ) : null}
+            </div>
           </td>
         </tr>
       )}
       emptyMessage={emptyMessage ?? "No hay dispositivos registrados para esta sucursal."}
       title="Inventario corporativo"
       ariaLabel="Tabla de inventario corporativo"
+      footer={(
+        <div className="inventory-table__footer">
+          <label className="inventory-table__page-size">
+            <span>Registros por página</span>
+            <select value={pageSize} onChange={handlePageSizeChange}>
+              {pageSizeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="inventory-table__virtualization-hint muted-text">
+            Usa “Expandir vista completa” para cargar más filas mediante desplazamiento continuo.
+          </p>
+        </div>
+      )}
     />
   );
 }

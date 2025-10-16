@@ -74,7 +74,7 @@ La actualización UI de febrero 2025 refuerza la experiencia operativa sin modif
 
 ### Paneles reorganizados con pestañas, acordeones y grilla 3x2
 
-- **Inventario compacto** (`frontend/src/modules/inventory/pages/InventoryPage.tsx`): utiliza el componente `Tabs` para dividir la vista en "Vista general", "Movimientos", "Alertas" y "Búsqueda avanzada". Cada tab agrupa tarjetas, tablas y formularios específicos sin requerir scroll excesivo.
+- **Inventario compacto** (`frontend/src/modules/inventory/pages/InventoryPage.tsx`): utiliza el componente `Tabs` para dividir la vista en "Vista general", "Movimientos", "Alertas" y "Búsqueda avanzada". Cada tab agrupa tarjetas, tablas y formularios específicos sin requerir scroll excesivo. El formulario de movimientos ahora captura de manera opcional el **costo unitario** para entradas y fuerza motivos corporativos ≥5 caracteres, recalculando el promedio ponderado en backend. La tabla incorpora paginación configurable con vista completa de carga progresiva, permite imprimir etiquetas QR y abrir un **modal de edición** (`DeviceEditDialog.tsx`) que valida campos del catálogo pro, respeta unicidad de IMEI/serie, solicita motivo antes de guardar y habilita ajustes directos de existencias.
 - **Operaciones escalables** (`frontend/src/modules/operations/pages/OperationsPage.tsx`): integra el nuevo `Accordion` corporativo para presentar los bloques "Ventas / Compras", "Movimientos internos", "Transferencias entre tiendas" y "Historial de operaciones". El primer panel incorpora POS, compras, ventas y devoluciones; los demás paneles se enfocan en flujos especializados con formularios y tablas reutilizables.
 - **Analítica avanzada en grilla 3x2** (`frontend/src/components/ui/AnalyticsGrid/AnalyticsGrid.tsx`): presenta tarjetas de rotación, envejecimiento, pronóstico de agotamiento, comparativo multi-sucursal, margen y proyección de unidades. La grilla responde a breakpoints y mantiene la proporción 3x2 en escritorio.
 - **Scroll interno para Seguridad, Usuarios y Sincronización**: las vistas aplican la clase `.section-scroll` (altura máxima 600 px y `overflow-y: auto`) para que la barra lateral permanezca visible mientras se consultan auditorías, políticas o colas híbridas.
@@ -450,6 +450,7 @@ Una versión sólo se declara lista para entrega cuando el checklist se ha compl
    - Tablero principal con tarjetas dinámicas e indicadores globales alimentados por Recharts, iconografía `lucide-react` y animaciones `framer-motion`.
    - Panel exclusivo de administración (`UserManagement.tsx`) con checkboxes de roles, activación/desactivación y validación de motivos corporativos.
    - Sección de inventario con refresco automático en tiempo real (cada 30s), filtros por IMEI/modelo/estado comercial, chips de estado y alertas de stock bajo con severidad visual.
+   - Editor de fichas de dispositivos con validación de motivos corporativos, soporte para catálogo pro (marca, modelo, capacidad, costos, márgenes, garantías) y recalculo de costos promedio capturando `unit_cost` en entradas de inventario.
    - Área de sincronización con acciones de respaldo, descarga de PDF, historial por tienda y estadísticas avanzadas de la cola híbrida.
    - Notificaciones tipo toast, animaciones suaves y diseño responsive para seguridad y sincronización.
 

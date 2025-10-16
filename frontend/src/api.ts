@@ -49,6 +49,25 @@ export type Device = {
 
 export type CatalogDevice = Device & { store_name: string };
 
+export type DeviceUpdateInput = {
+  name?: string | null;
+  quantity?: number;
+  unit_price?: number | null;
+  imei?: string | null;
+  serial?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  color?: string | null;
+  capacidad_gb?: number | null;
+  estado_comercial?: Device["estado_comercial"] | null;
+  proveedor?: string | null;
+  costo_unitario?: number | null;
+  margen_porcentaje?: number | null;
+  garantia_meses?: number | null;
+  lote?: string | null;
+  fecha_compra?: string | null;
+};
+
 export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
 
 export type ContactHistoryEntry = {
@@ -427,6 +446,7 @@ export type MovementInput = {
   movement_type: "entrada" | "salida" | "ajuste";
   quantity: number;
   reason?: string;
+  unit_cost?: number;
 };
 
 export type Summary = {
@@ -1036,6 +1056,20 @@ export function getDevices(
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   return request<Device[]>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
+}
+
+export function updateDevice(
+  token: string,
+  storeId: number,
+  deviceId: number,
+  payload: DeviceUpdateInput,
+  reason: string
+): Promise<Device> {
+  return request<Device>(
+    `/inventory/stores/${storeId}/devices/${deviceId}`,
+    { method: "PATCH", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function listPurchaseOrders(token: string, storeId: number, limit = 50): Promise<PurchaseOrder[]> {
