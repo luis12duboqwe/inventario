@@ -88,6 +88,7 @@ class Store(Base):
         "InventoryMovement",
         back_populates="store",
         cascade="all, delete-orphan",
+        foreign_keys="InventoryMovement.store_id",
     )
     sync_sessions: Mapped[list["SyncSession"]] = relationship(
         "SyncSession", back_populates="store", cascade="all, delete-orphan"
@@ -278,18 +279,53 @@ class InventoryMovement(Base):
     __tablename__ = "inventory_movements"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    store_id: Mapped[int] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), index=True)
-    device_id: Mapped[int] = mapped_column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), index=True)
-    movement_type: Mapped[MovementType] = mapped_column(Enum(MovementType, name="movement_type"), nullable=False)
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    performed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    store_id: Mapped[int] = mapped_column(
+        "tienda_destino_id",
+        Integer,
+        ForeignKey("stores.id", ondelete="CASCADE"),
+        index=True,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    source_store_id: Mapped[int | None] = mapped_column(
+        "tienda_origen_id",
+        Integer,
+        ForeignKey("stores.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    device_id: Mapped[int] = mapped_column(
+        "producto_id",
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        index=True,
+    )
+    movement_type: Mapped[MovementType] = mapped_column(
+        "tipo_movimiento", Enum(MovementType, name="movement_type"), nullable=False
+    )
+    quantity: Mapped[int] = mapped_column("cantidad", Integer, nullable=False)
+    comment: Mapped[str | None] = mapped_column("comentario", String(255), nullable=True)
+    unit_cost: Mapped[Decimal | None] = mapped_column(
+        "costo_unitario", Numeric(12, 2), nullable=True
+    )
+    performed_by_id: Mapped[int | None] = mapped_column(
+        "usuario_id",
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        "fecha", DateTime(timezone=True), default=datetime.utcnow
+    )
 
-    store: Mapped[Store] = relationship("Store", back_populates="movements")
+    store: Mapped[Store] = relationship(
+        "Store",
+        back_populates="movements",
+        foreign_keys=[store_id],
+    )
+    source_store: Mapped[Store | None] = relationship(
+        "Store",
+        foreign_keys=[source_store_id],
+    )
     device: Mapped[Device] = relationship("Device", back_populates="movements")
     performed_by: Mapped[User | None] = relationship("User", back_populates="movements")
 
