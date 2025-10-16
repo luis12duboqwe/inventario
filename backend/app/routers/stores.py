@@ -4,6 +4,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
+from datetime import date
+
 from .. import crud, schemas
 from ..core.roles import GESTION_ROLES, REPORTE_ROLES
 from ..database import get_db
@@ -110,6 +112,13 @@ def list_devices(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
     search: str | None = Query(default=None, min_length=1, max_length=120),
     estado: str | None = Query(default=None, description="Filtra por estado comercial"),
+    categoria: str | None = Query(default=None, max_length=80),
+    condicion: str | None = Query(default=None, max_length=60),
+    estado_inventario: str | None = Query(default=None, max_length=40),
+    ubicacion: str | None = Query(default=None, max_length=120),
+    proveedor: str | None = Query(default=None, max_length=120),
+    fecha_ingreso_desde: date | None = Query(default=None),
+    fecha_ingreso_hasta: date | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -133,7 +142,19 @@ def list_devices(
                         },
                     ) from exc
     try:
-        return crud.list_devices(db, store_id, search=search, estado=estado_enum)
+        return crud.list_devices(
+            db,
+            store_id,
+            search=search,
+            estado=estado_enum,
+            categoria=categoria,
+            condicion=condicion,
+            estado_inventario=estado_inventario,
+            ubicacion=ubicacion,
+            proveedor=proveedor,
+            fecha_ingreso_desde=fecha_ingreso_desde,
+            fecha_ingreso_hasta=fecha_ingreso_hasta,
+        )
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

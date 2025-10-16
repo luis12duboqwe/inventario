@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
@@ -23,7 +23,12 @@ import MovementForm from "../components/MovementForm";
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 import Tabs, { type TabOption } from "../../../components/ui/Tabs/Tabs";
-import type { Device, DeviceUpdateInput } from "../../../api";
+import type {
+  Device,
+  DeviceImportSummary,
+  DeviceListFilters,
+  DeviceUpdateInput,
+} from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
 import { promptCorporateReason } from "../../../utils/corporateReason";
@@ -83,6 +88,8 @@ function InventoryPage() {
     lastInventoryRefresh,
     downloadInventoryReport,
     downloadInventoryCsv,
+    exportCatalogCsv,
+    importCatalogCsv,
     supplierBatchOverview,
     supplierBatchLoading,
     refreshSupplierBatchOverview,
@@ -99,6 +106,11 @@ function InventoryPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState(lowStockThreshold);
   const [isSavingThreshold, setIsSavingThreshold] = useState(false);
+  const [exportingCatalog, setExportingCatalog] = useState(false);
+  const [importingCatalog, setImportingCatalog] = useState(false);
+  const [catalogFile, setCatalogFile] = useState<File | null>(null);
+  const [lastImportSummary, setLastImportSummary] = useState<DeviceImportSummary | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setInventoryQuery("");
@@ -141,6 +153,13 @@ function InventoryPage() {
         device.marca,
         device.color,
         device.estado_comercial,
+        device.categoria,
+        device.condicion,
+        device.estado,
+        device.ubicacion,
+        device.descripcion,
+        device.proveedor,
+        device.capacidad,
       ];
       return haystack.some((value) => {
         if (!value) {
@@ -150,6 +169,18 @@ function InventoryPage() {
       });
     });
   }, [devices, estadoFilter, inventoryQuery]);
+
+  const deviceFilters = useMemo<DeviceListFilters>(() => {
+    const filters: DeviceListFilters = {};
+    const normalizedQuery = inventoryQuery.trim();
+    if (normalizedQuery) {
+      filters.search = normalizedQuery;
+    }
+    if (estadoFilter !== "TODOS") {
+      filters.estado = estadoFilter;
+    }
+    return filters;
+  }, [inventoryQuery, estadoFilter]);
 
   const highlightedDevices = useMemo(
     () => new Set(lowStockDevices.map((entry) => entry.device_id)),
@@ -202,6 +233,70 @@ function InventoryPage() {
 
   const handleDownloadCsvClick = async () => {
     await requestSnapshotDownload(downloadInventoryCsv, "CSV de inventario descargado");
+  };
+
+  const handleExportCatalogClick = async () => {
+    if (!selectedStoreId) {
+      const message = "Selecciona una sucursal para exportar el catálogo.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
+    setExportingCatalog(true);
+    try {
+      await requestSnapshotDownload(
+        (reason) => exportCatalogCsv(deviceFilters, reason),
+        "Catálogo CSV exportado",
+      );
+    } finally {
+      setExportingCatalog(false);
+    }
+  };
+
+  const handleImportCatalogSubmit = async () => {
+    if (!catalogFile) {
+      const message = "Selecciona un archivo CSV antes de importar.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
+    const defaultReason = selectedStore
+      ? `Importar catálogo ${selectedStore.name}`
+      : "Importar catálogo corporativo";
+    const reason = promptCorporateReason(defaultReason);
+    if (reason === null) {
+      pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
+      return;
+    }
+    const normalizedReason = reason.trim();
+    if (normalizedReason.length < 5) {
+      const message = "Ingresa un motivo corporativo de al menos 5 caracteres.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
+    setImportingCatalog(true);
+    try {
+      const summary = await importCatalogCsv(catalogFile, normalizedReason);
+      setLastImportSummary(summary);
+      pushToast({
+        message: `Catálogo actualizado: ${summary.created} nuevos, ${summary.updated} modificados`,
+        variant: "success",
+      });
+      setCatalogFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible importar el catálogo corporativo.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+    } finally {
+      setImportingCatalog(false);
+    }
   };
 
   const updateThresholdDraftValue = (value: number) => {
@@ -548,7 +643,7 @@ function InventoryPage() {
                   setGlobalSearchTerm(value);
                 }
               }}
-              placeholder="Buscar por IMEI, modelo o estado"
+              placeholder="Buscar por SKU, categoría o ubicación"
             />
           </label>
           <label className="select-inline">
@@ -704,7 +799,84 @@ function InventoryPage() {
   );
 
   const advancedContent: ReactNode = enableCatalogPro ? (
-    <AdvancedSearch token={token} />
+    <div className="section-grid">
+      <AdvancedSearch token={token} />
+      <section className="card">
+        <header className="card-header">
+          <div>
+            <h2>Herramientas de catálogo</h2>
+            <p className="card-subtitle">
+              Importa o exporta productos con campos extendidos y mantén el inventario alineado.
+            </p>
+          </div>
+        </header>
+        <div className="catalog-tools">
+          <div className="catalog-actions">
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={() => void handleExportCatalogClick()}
+              disabled={exportingCatalog}
+            >
+              {exportingCatalog ? "Exportando…" : "Exportar catálogo CSV"}
+            </button>
+          </div>
+          <div className="catalog-import">
+            <label className="file-input">
+              <span>Archivo CSV</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setCatalogFile(file);
+                }}
+              />
+              <small className="muted-text">
+                {catalogFile
+                  ? `Seleccionado: ${catalogFile.name}`
+                  : "Incluye encabezados sku, name, categoria, condicion, estado, costo_compra, precio_venta, ubicacion, fecha_ingreso, descripcion"}
+              </small>
+            </label>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => void handleImportCatalogSubmit()}
+              disabled={importingCatalog || !catalogFile}
+            >
+              {importingCatalog ? "Importando…" : "Importar catálogo"}
+            </button>
+          </div>
+          {lastImportSummary ? (
+            <div className="catalog-summary">
+              <p className="muted-text">
+                Creados: {lastImportSummary.created} · Actualizados: {lastImportSummary.updated} · Omitidos: {lastImportSummary.skipped}
+              </p>
+              {lastImportSummary.errors.length > 0 ? (
+                <ul className="error-list">
+                  {lastImportSummary.errors.slice(0, 5).map((error) => (
+                    <li key={`${error.row}-${error.message}`}>
+                      Fila {error.row}: {error.message}
+                    </li>
+                  ))}
+                  {lastImportSummary.errors.length > 5 ? (
+                    <li className="muted-text">Se omitieron {lastImportSummary.errors.length - 5} errores adicionales.</li>
+                  ) : null}
+                </ul>
+              ) : (
+                <p className="muted-text">No se registraron errores en la última importación.</p>
+              )}
+            </div>
+          ) : (
+            <p className="muted-text">
+              Descarga la plantilla actual para conservar todos los campos: SKU, categoría, condición, estado, costo_compra, precio_venta,
+              ubicación, fechas y descripción.
+            </p>
+          )}
+        </div>
+      </section>
+    </div>
   ) : (
     <section className="card">
       <header className="card-header">

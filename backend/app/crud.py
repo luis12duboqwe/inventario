@@ -187,7 +187,9 @@ def _recalculate_sale_price(device: models.Device) -> None:
     base_cost = _to_decimal(device.costo_unitario)
     margin = _to_decimal(device.margen_porcentaje)
     sale_factor = Decimal("1") + (margin / Decimal("100"))
-    device.unit_price = (base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    recalculated = (base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    device.unit_price = recalculated
+    device.precio_venta = recalculated
 
 
 def _normalize_store_ids(store_ids: Iterable[int] | None) -> set[int] | None:
@@ -1623,22 +1625,36 @@ def create_device(
     imei = payload_data.get("imei")
     serial = payload_data.get("serial")
     _ensure_unique_identifiers(db, imei=imei, serial=serial)
-    unit_price = payload_data.get("unit_price") if "unit_price" in provided_fields else None
+    unit_price = None
+    if "unit_price" in provided_fields:
+        unit_price = payload_data.get("unit_price")
+    elif "precio_venta" in provided_fields:
+        unit_price = payload_data.get("precio_venta")
     if unit_price is None:
         payload_data.setdefault("unit_price", Decimal("0"))
+        payload_data["precio_venta"] = payload_data["unit_price"]
+    else:
+        payload_data["unit_price"] = _to_decimal(unit_price)
+        payload_data["precio_venta"] = payload_data["unit_price"]
     if payload_data.get("costo_unitario") is None:
         payload_data["costo_unitario"] = Decimal("0")
+    payload_data["costo_compra"] = payload_data["costo_unitario"]
     if payload_data.get("margen_porcentaje") is None:
         payload_data["margen_porcentaje"] = Decimal("0")
     if payload_data.get("estado_comercial") is None:
         payload_data["estado_comercial"] = models.CommercialState.NUEVO
     if payload_data.get("garantia_meses") is None:
         payload_data["garantia_meses"] = 0
+    if payload_data.get("estado") is None:
+        payload_data["estado"] = "disponible"
+    if payload_data.get("fecha_ingreso") is None:
+        payload_data["fecha_ingreso"] = payload_data.get("fecha_compra") or date.today()
     device = models.Device(store_id=store_id, **payload_data)
     if unit_price is None:
         _recalculate_sale_price(device)
     else:
         device.unit_price = unit_price
+        device.precio_venta = unit_price
     db.add(device)
     try:
         db.commit()
@@ -1685,6 +1701,8 @@ def update_device(
     manual_price = None
     if "unit_price" in updated_fields:
         manual_price = updated_fields.pop("unit_price")
+    if "precio_venta" in updated_fields:
+        manual_price = updated_fields.pop("precio_venta")
     imei = updated_fields.get("imei")
     serial = updated_fields.get("serial")
     _ensure_unique_identifiers(
@@ -1704,6 +1722,7 @@ def update_device(
         setattr(device, key, value)
     if manual_price is not None:
         device.unit_price = manual_price
+        device.precio_venta = manual_price
     elif {"costo_unitario", "margen_porcentaje"}.intersection(updated_fields):
         _recalculate_sale_price(device)
     db.commit()
@@ -1711,7 +1730,7 @@ def update_device(
 
     fields_changed = list(updated_fields.keys())
     if manual_price is not None:
-        fields_changed.append("unit_price")
+        fields_changed.extend(["unit_price", "precio_venta"])
     if fields_changed:
         sensitive_after = {
             "costo_unitario": device.costo_unitario,
@@ -1743,11 +1762,33 @@ def list_devices(
     *,
     search: str | None = None,
     estado: models.CommercialState | None = None,
+    categoria: str | None = None,
+    condicion: str | None = None,
+    estado_inventario: str | None = None,
+    ubicacion: str | None = None,
+    proveedor: str | None = None,
+    fecha_ingreso_desde: date | None = None,
+    fecha_ingreso_hasta: date | None = None,
 ) -> list[models.Device]:
     get_store(db, store_id)
     statement = select(models.Device).where(models.Device.store_id == store_id)
     if estado is not None:
         statement = statement.where(models.Device.estado_comercial == estado)
+    if categoria:
+        statement = statement.where(models.Device.categoria.ilike(f"%{categoria}%"))
+    if condicion:
+        statement = statement.where(models.Device.condicion.ilike(f"%{condicion}%"))
+    if estado_inventario:
+        statement = statement.where(models.Device.estado.ilike(f"%{estado_inventario}%"))
+    if ubicacion:
+        statement = statement.where(models.Device.ubicacion.ilike(f"%{ubicacion}%"))
+    if proveedor:
+        statement = statement.where(models.Device.proveedor.ilike(f"%{proveedor}%"))
+    if fecha_ingreso_desde or fecha_ingreso_hasta:
+        start, end = _normalize_date_range(fecha_ingreso_desde, fecha_ingreso_hasta)
+        statement = statement.where(
+            models.Device.fecha_ingreso >= start.date(), models.Device.fecha_ingreso <= end.date()
+        )
     if search:
         normalized = f"%{search.lower()}%"
         statement = statement.where(
@@ -1757,9 +1798,15 @@ def list_devices(
                 func.lower(models.Device.modelo).like(normalized),
                 func.lower(models.Device.marca).like(normalized),
                 func.lower(models.Device.color).like(normalized),
+                func.lower(models.Device.categoria).like(normalized),
+                func.lower(models.Device.condicion).like(normalized),
+                func.lower(models.Device.capacidad).like(normalized),
                 func.lower(models.Device.serial).like(normalized),
                 func.lower(models.Device.imei).like(normalized),
                 func.lower(models.Device.estado_comercial).like(normalized),
+                func.lower(models.Device.estado).like(normalized),
+                func.lower(models.Device.descripcion).like(normalized),
+                func.lower(models.Device.ubicacion).like(normalized),
             )
         )
     statement = statement.order_by(models.Device.sku.asc())
@@ -1784,6 +1831,21 @@ def search_devices(db: Session, filters: schemas.DeviceSearchFilters) -> list[mo
         statement = statement.where(models.Device.marca.ilike(f"%{filters.marca}%"))
     if filters.modelo:
         statement = statement.where(models.Device.modelo.ilike(f"%{filters.modelo}%"))
+    if filters.categoria:
+        statement = statement.where(models.Device.categoria.ilike(f"%{filters.categoria}%"))
+    if filters.condicion:
+        statement = statement.where(models.Device.condicion.ilike(f"%{filters.condicion}%"))
+    if filters.estado:
+        statement = statement.where(models.Device.estado.ilike(f"%{filters.estado}%"))
+    if filters.ubicacion:
+        statement = statement.where(models.Device.ubicacion.ilike(f"%{filters.ubicacion}%"))
+    if filters.proveedor:
+        statement = statement.where(models.Device.proveedor.ilike(f"%{filters.proveedor}%"))
+    if filters.fecha_ingreso_desde or filters.fecha_ingreso_hasta:
+        start, end = _normalize_date_range(filters.fecha_ingreso_desde, filters.fecha_ingreso_hasta)
+        statement = statement.where(
+            models.Device.fecha_ingreso >= start.date(), models.Device.fecha_ingreso <= end.date()
+        )
     statement = statement.order_by(models.Device.store_id.asc(), models.Device.sku.asc())
     return list(db.scalars(statement).unique())
 
@@ -5244,9 +5306,13 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                 "serial": device.serial,
                 "marca": device.marca,
                 "modelo": device.modelo,
+                "categoria": device.categoria,
+                "condicion": device.condicion,
                 "color": device.color,
                 "capacidad_gb": device.capacidad_gb,
+                "capacidad": device.capacidad,
                 "estado_comercial": device.estado_comercial.value,
+                "estado": device.estado,
                 "proveedor": device.proveedor,
                 "costo_unitario": float(device.costo_unitario or Decimal("0")),
                 "margen_porcentaje": float(device.margen_porcentaje or Decimal("0")),
@@ -5255,6 +5321,12 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                 "fecha_compra": device.fecha_compra.isoformat()
                 if device.fecha_compra
                 else None,
+                "fecha_ingreso": device.fecha_ingreso.isoformat()
+                if device.fecha_ingreso
+                else None,
+                "ubicacion": device.ubicacion,
+                "descripcion": device.descripcion,
+                "imagen_url": device.imagen_url,
             }
             for device in store.devices
         ]

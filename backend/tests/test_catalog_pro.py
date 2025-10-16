@@ -52,14 +52,25 @@ def test_advanced_catalog_search_and_audit(client) -> None:
         "serial": "SN-CAT-0001",
         "marca": "Apple",
         "modelo": "15 Pro",
+        "categoria": "Smartphones",
+        "condicion": "Exhibición",
         "color": "Grafito",
         "capacidad_gb": 256,
+        "capacidad": "256 GB",
+        "estado": "apartado",
         "estado_comercial": "nuevo",
         "proveedor": "Apple MX",
         "costo_unitario": 18500.0,
+        "costo_compra": 18500.0,
+        "precio_venta": 23999.0,
         "margen_porcentaje": 25.0,
         "garantia_meses": 24,
         "lote": "L-001",
+        "fecha_compra": "2025-01-15",
+        "fecha_ingreso": "2025-01-16",
+        "ubicacion": "Pasillo A - Estante 3",
+        "descripcion": "Equipo de vitrina con accesorios completos",
+        "imagen_url": "https://cdn.softmobile.test/catalogo/iphone15pro.png",
     }
     create_device = client.post(
         f"/stores/{store_a_id}/devices",
@@ -70,6 +81,14 @@ def test_advanced_catalog_search_and_audit(client) -> None:
     device_id = create_device.json()["id"]
     sale_price = create_device.json()["unit_price"]
     assert sale_price > device_payload["costo_unitario"]
+    created_body = create_device.json()
+    assert created_body["categoria"] == device_payload["categoria"]
+    assert created_body["estado"] == device_payload["estado"]
+    assert created_body["ubicacion"] == device_payload["ubicacion"]
+    assert created_body["descripcion"].startswith("Equipo de vitrina")
+    assert created_body["imagen_url"] == device_payload["imagen_url"]
+    assert created_body["costo_compra"] == device_payload["costo_compra"]
+    assert created_body["precio_venta"] == device_payload["precio_venta"]
 
     duplicated = client.post(
         f"/stores/{store_b_id}/devices",
@@ -81,15 +100,22 @@ def test_advanced_catalog_search_and_audit(client) -> None:
 
     update_response = client.patch(
         f"/inventory/stores/{store_a_id}/devices/{device_id}",
-        json={"costo_unitario": 19000.0, "proveedor": "Apple Direct"},
+        json={
+            "costo_compra": 19000.0,
+            "costo_unitario": 19000.0,
+            "precio_venta": 24999.0,
+            "proveedor": "Apple Direct",
+        },
         headers=headers,
     )
     assert update_response.status_code == status.HTTP_200_OK
     assert update_response.json()["unit_price"] > sale_price
+    assert update_response.json()["proveedor"] == "Apple Direct"
+    assert update_response.json()["precio_venta"] == 24999.0
 
     search_response = client.get(
         "/inventory/devices/search",
-        params={"imei": device_payload["imei"]},
+        params={"categoria": device_payload["categoria"], "estado": device_payload["estado"]},
         headers=headers,
     )
     assert search_response.status_code == status.HTTP_200_OK
@@ -106,4 +132,56 @@ def test_advanced_catalog_search_and_audit(client) -> None:
         for log in audit_response.json()
     )
 
+    settings.enable_catalog_pro = False
+
+
+def test_inventory_import_export_roundtrip(client) -> None:
+    settings.enable_catalog_pro = True
+    headers = _auth_headers(client)
+
+    store = client.post(
+        "/stores",
+        json={"name": "Tienda Centro", "location": "MX", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert store.status_code == status.HTTP_201_CREATED
+    store_id = store.json()["id"]
+
+    csv_content = (
+        "sku,name,categoria,condicion,color,capacidad,estado,estado_comercial,quantity,costo_compra,precio_venta,"
+        "proveedor,ubicacion,fecha_compra,fecha_ingreso,descripcion,imagen_url\n"
+        "SKU-IMPORT-1,Galaxy S24,Smartphones,Nuevo,Negro,256 GB,disponible,nuevo,5,15000,18900,Samsung MX,Estante 1,"
+        "2025-01-10,2025-01-12,Ingreso inicial,https://cdn.softmobile.test/galaxy-s24.png\n"
+        "SKU-IMPORT-1,Galaxy S24,,Reacondicionado,,,apartado,A,7,15000,19900,Samsung MX,Estante 2,,,,\n"
+    )
+
+    response_import = client.post(
+        f"/inventory/stores/{store_id}/devices/import",
+        files={"file": ("catalogo.csv", csv_content, "text/csv")},
+        headers=headers,
+    )
+    assert response_import.status_code == status.HTTP_201_CREATED
+    summary = response_import.json()
+    assert summary["created"] == 1
+    assert summary["updated"] == 1
+    assert summary["skipped"] == 0
+
+    export_response = client.get(
+        f"/inventory/stores/{store_id}/devices/export",
+        headers=headers,
+    )
+    assert export_response.status_code == status.HTTP_200_OK
+    assert "SKU-IMPORT-1" in export_response.text
+    assert "apartado" in export_response.text
+
+    list_response = client.get(
+        f"/stores/{store_id}/devices",
+        params={"estado_inventario": "apartado"},
+        headers=headers,
+    )
+    assert list_response.status_code == status.HTTP_200_OK
+    devices = list_response.json()
+    assert len(devices) == 1
+    assert devices[0]["estado"] == "apartado"
+    assert devices[0]["categoria"] == "Smartphones"
     settings.enable_catalog_pro = False

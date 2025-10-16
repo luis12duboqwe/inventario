@@ -170,17 +170,25 @@ class Device(Base):
     serial: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True, index=True)
     marca: Mapped[str | None] = mapped_column(String(80), nullable=True)
     modelo: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    categoria: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    condicion: Mapped[str | None] = mapped_column(String(60), nullable=True)
     color: Mapped[str | None] = mapped_column(String(60), nullable=True)
     capacidad_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    capacidad: Mapped[str | None] = mapped_column(String(80), nullable=True)
     estado_comercial: Mapped[CommercialState] = mapped_column(
         Enum(CommercialState, name="estado_comercial"), nullable=False, default=CommercialState.NUEVO
     )
+    estado: Mapped[str] = mapped_column(String(40), nullable=False, default="disponible")
     proveedor: Mapped[str | None] = mapped_column(String(120), nullable=True)
     costo_unitario: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     margen_porcentaje: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
     garantia_meses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lote: Mapped[str | None] = mapped_column(String(80), nullable=True)
     fecha_compra: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_ingreso: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ubicacion: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    imagen_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     store: Mapped[Store] = relationship("Store", back_populates="devices")
     movements: Mapped[list["InventoryMovement"]] = relationship(
@@ -188,6 +196,26 @@ class Device(Base):
         back_populates="device",
         cascade="all, delete-orphan",
     )
+
+    @property
+    def costo_compra(self) -> Decimal:
+        """Alias semántico de ``costo_unitario`` para reportes corporativos."""
+
+        return self.costo_unitario
+
+    @costo_compra.setter
+    def costo_compra(self, value: Decimal) -> None:
+        self.costo_unitario = value
+
+    @property
+    def precio_venta(self) -> Decimal:
+        """Alias semántico de ``unit_price`` para el catálogo de productos."""
+
+        return self.unit_price
+
+    @precio_venta.setter
+    def precio_venta(self, value: Decimal) -> None:
+        self.unit_price = value
 
 
 class Role(Base):
