@@ -8,6 +8,7 @@ import {
   Building2,
   Cog,
   DollarSign,
+  FileSpreadsheet,
   RefreshCcw,
   Search,
   ShieldCheck,
@@ -81,6 +82,12 @@ function InventoryPage() {
     updateStatus,
     lastInventoryRefresh,
     downloadInventoryReport,
+    downloadInventoryCsv,
+    supplierBatchOverview,
+    supplierBatchLoading,
+    refreshSupplierBatchOverview,
+    lowStockThreshold,
+    updateLowStockThreshold,
     refreshSummary,
   } = useInventoryModule();
 
@@ -89,6 +96,8 @@ function InventoryPage() {
   const [activeTab, setActiveTab] = useState<InventoryTabId>("overview");
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [thresholdDraft, setThresholdDraft] = useState(lowStockThreshold);
+  const [isSavingThreshold, setIsSavingThreshold] = useState(false);
 
   useEffect(() => {
     setInventoryQuery("");
@@ -103,6 +112,10 @@ function InventoryPage() {
       setInventoryQuery(globalSearchTerm);
     }
   }, [globalSearchTerm, location.pathname]);
+
+  useEffect(() => {
+    setThresholdDraft(lowStockThreshold);
+  }, [lowStockThreshold]);
 
   const lastBackup = backupHistory.at(0) ?? null;
   const lastRefreshDisplay = lastInventoryRefresh
@@ -151,7 +164,10 @@ function InventoryPage() {
     setEditingDevice(null);
   };
 
-  const handleDownloadReportClick = async () => {
+  const requestSnapshotDownload = async (
+    downloader: (reason: string) => Promise<void>,
+    successMessage: string,
+  ) => {
     const defaultReason = selectedStore
       ? `Descarga inventario ${selectedStore.name}`
       : "Descarga inventario corporativo";
@@ -167,15 +183,55 @@ function InventoryPage() {
       return;
     }
     try {
-      await downloadInventoryReport(reason);
-      pushToast({ message: "PDF de inventario descargado", variant: "success" });
+      await downloader(reason);
+      pushToast({ message: successMessage, variant: "success" });
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "No fue posible descargar el PDF de inventario.";
+          : "No fue posible descargar el reporte de inventario.";
       setError(message);
       pushToast({ message, variant: "error" });
+    }
+  };
+
+  const handleDownloadReportClick = async () => {
+    await requestSnapshotDownload(downloadInventoryReport, "PDF de inventario descargado");
+  };
+
+  const handleDownloadCsvClick = async () => {
+    await requestSnapshotDownload(downloadInventoryCsv, "CSV de inventario descargado");
+  };
+
+  const updateThresholdDraftValue = (value: number) => {
+    if (Number.isNaN(value)) {
+      return;
+    }
+    const clamped = Math.max(0, Math.min(100, value));
+    setThresholdDraft(clamped);
+  };
+
+  const handleSaveThreshold = async () => {
+    if (!selectedStoreId) {
+      const message = "Selecciona una sucursal para ajustar el umbral de alertas.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
+    setIsSavingThreshold(true);
+    try {
+      await updateLowStockThreshold(selectedStoreId, thresholdDraft);
+      pushToast({ message: "Umbral de stock bajo actualizado", variant: "success" });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible guardar el nuevo umbral.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      setThresholdDraft(lowStockThreshold);
+    } finally {
+      setIsSavingThreshold(false);
     }
   };
 
@@ -355,6 +411,60 @@ function InventoryPage() {
           </ul>
         )}
       </section>
+
+      <section className="card wide">
+        <header className="card-header">
+          <div>
+            <h2>Lotes recientes por proveedor</h2>
+            <p className="card-subtitle">
+              Seguimiento de compras asociadas a {selectedStore ? selectedStore.name : "cada sucursal"}.
+            </p>
+          </div>
+          <div className="card-actions">
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={() => {
+                void refreshSupplierBatchOverview();
+              }}
+              disabled={supplierBatchLoading}
+            >
+              {supplierBatchLoading ? "Actualizando…" : "Actualizar"}
+            </button>
+          </div>
+        </header>
+        {supplierBatchLoading ? (
+          <p className="muted-text">Cargando lotes recientes…</p>
+        ) : supplierBatchOverview.length === 0 ? (
+          <p className="muted-text">
+            {selectedStore
+              ? "Aún no se registran lotes para esta sucursal."
+              : "Selecciona una sucursal para consultar sus lotes recientes."}
+          </p>
+        ) : (
+          <ul className="metrics-list">
+            {supplierBatchOverview.map((item) => (
+              <li key={item.supplier_id}>
+                <strong>{item.supplier_name}</strong> · {item.batch_count} lote
+                {item.batch_count === 1 ? "" : "s"}
+                <div>
+                  {item.total_quantity} unidades · {formatCurrency(item.total_value)}
+                </div>
+                <div className="muted-text">
+                  Último lote {item.latest_batch_code ?? "N/D"} —
+                  {" "}
+                  {new Date(item.latest_purchase_date).toLocaleDateString("es-MX")}
+                  {item.latest_unit_cost != null ? (
+                    <span>
+                      {" "}· Costo unitario reciente: {formatCurrency(item.latest_unit_cost)}
+                    </span>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 
@@ -440,6 +550,15 @@ function InventoryPage() {
             >
               Descargar PDF
             </button>
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={() => {
+                void handleDownloadCsvClick();
+              }}
+            >
+              Descargar CSV
+            </button>
           </div>
         </header>
         <MovementForm devices={devices} onSubmit={handleMovement} />
@@ -460,6 +579,42 @@ function InventoryPage() {
             : `${lowStockDevices.length} alerta${lowStockDevices.length === 1 ? "" : "s"}`}
         </span>
       </header>
+      <div className="threshold-settings">
+        <label htmlFor="low-stock-threshold">
+          Umbral por sucursal ({thresholdDraft} unidad{thresholdDraft === 1 ? "" : "es"})
+        </label>
+        <div className="threshold-inputs">
+          <input
+            id="low-stock-threshold"
+            type="range"
+            min={0}
+            max={100}
+            value={thresholdDraft}
+            onChange={(event) => updateThresholdDraftValue(Number(event.target.value))}
+            disabled={!selectedStoreId || isSavingThreshold}
+          />
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={thresholdDraft}
+            onChange={(event) => updateThresholdDraftValue(Number(event.target.value))}
+            disabled={!selectedStoreId || isSavingThreshold}
+          />
+          <button
+            className="btn btn--secondary"
+            type="button"
+            onClick={() => {
+              void handleSaveThreshold();
+            }}
+            disabled={
+              !selectedStoreId || isSavingThreshold || thresholdDraft === lowStockThreshold
+            }
+          >
+            {isSavingThreshold ? "Guardando…" : "Guardar umbral"}
+          </button>
+        </div>
+      </div>
       {lowStockDevices.length === 0 ? (
         <p className="muted-text">No hay alertas por ahora.</p>
       ) : (
