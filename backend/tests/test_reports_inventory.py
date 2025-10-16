@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import csv
+from io import StringIO
+
 import pytest
 from fastapi import status
 
@@ -91,6 +94,30 @@ def test_inventory_csv_snapshot(client, tmp_path) -> None:
     assert "Resumen corporativo" in content
     assert "Inventario consolidado registrado (MXN)" in content
     assert "Inventario consolidado calculado (MXN)" in content
+
+    reader = csv.reader(StringIO(content))
+    rows = list(reader)
+    header_row = next(row for row in rows if row and row[0] == "SKU")
+    device_row = next(row for row in rows if row and row[0] == "SM-001")
+    total_row = next(row for row in rows if row and row[0] == "TOTAL SUCURSAL")
+
+    assert len(header_row) == 18
+    assert header_row.count("IMEI") == 1
+    assert header_row.count("Serie") == 1
+    assert header_row.count("Garantía (meses)") == 1
+    assert len(device_row) == len(header_row)
+    assert len(total_row) == len(header_row)
+
+    imei_index = header_row.index("IMEI")
+    serie_index = header_row.index("Serie")
+    garantia_index = header_row.index("Garantía (meses)")
+    valor_total_index = header_row.index("Valor total")
+
+    assert device_row[imei_index] == "123456789012345"
+    assert device_row[serie_index] == "SN-0001"
+    assert device_row[garantia_index] == "24"
+    assert device_row[valor_total_index] == "48000.00"
+    assert total_row[valor_total_index] == "48000.00"
 
 
 def test_inventory_supplier_batches_overview(client) -> None:
