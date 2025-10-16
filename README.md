@@ -105,6 +105,8 @@ Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.a
 - **Flujos operativos actualizados**: compras, ventas, devoluciones, reparaciones y recepciones de transferencias recalculan automáticamente el valor de inventario por sucursal después de cada ajuste, registran el origen/destino y bloquean cualquier salida que deje existencias negativas.
 - **Frontend adaptado**: `MovementForm.tsx` captura `comentario`, `tipo_movimiento` y `cantidad`, reutilizando el motivo para la cabecera `X-Reason`; `DashboardContext` valida el texto antes de solicitar el movimiento.
 - **Pruebas reforzadas**: `test_inventory_movement_rejects_negative_stock` y `test_sale_updates_inventory_value` verifican que los movimientos rechazan saldos negativos y que las ventas actualizan las existencias y el valor contable de la tienda.
+- **Flujos operativos actualizados**: compras, ventas, devoluciones y reparaciones registran movimientos con origen/destino automático y comentario corporativo, recalculando el valor de inventario por sucursal sin permitir saldos negativos.
+- **Frontend adaptado**: `MovementForm.tsx` captura `comentario`, `tipo_movimiento` y `cantidad`, reutilizando el motivo para la cabecera `X-Reason`; `DashboardContext` valida el texto antes de solicitar el movimiento.
 
 ## Paso 4 — Documentación y pruebas automatizadas
 
