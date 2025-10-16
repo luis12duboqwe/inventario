@@ -436,6 +436,7 @@ def analytics_export_csv(
 def inventory_pdf(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
 ):
     snapshot = backup_services.build_inventory_snapshot(db)
     pdf_bytes = backup_services.render_snapshot_pdf(snapshot)
@@ -444,6 +445,52 @@ def inventory_pdf(
         "Content-Disposition": "attachment; filename=softmobile_inventario.pdf",
     }
     return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+
+
+@router.get("/inventory/csv")
+def inventory_csv(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    snapshot = backup_services.build_inventory_snapshot(db)
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+
+    writer.writerow(["Inventario corporativo"])
+    writer.writerow(["Generado", datetime.utcnow().isoformat()])
+
+    for store in snapshot.get("stores", []):
+        writer.writerow([])
+        writer.writerow([f"Sucursal: {store['name']}", store.get("location", "-"), store.get("timezone", "UTC")])
+        writer.writerow(["SKU", "Nombre", "Cantidad", "Precio unitario", "Valor total"])
+        for device in store.get("devices", []):
+            writer.writerow(
+                [
+                    device.get("sku"),
+                    device.get("name"),
+                    device.get("quantity"),
+                    f"{device.get('unit_price', 0):.2f}",
+                    f"{device.get('inventory_value', 0):.2f}",
+                ]
+            )
+
+    buffer.seek(0)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_inventario.csv"}
+    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+
+
+@router.get(
+    "/inventory/supplier-batches",
+    response_model=list[schemas.SupplierBatchOverviewItem],
+)
+def inventory_supplier_batches(
+    store_id: int = Query(..., ge=1),
+    limit: int = Query(default=5, ge=1, le=25),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    return crud.get_supplier_batch_overview(db, store_id=store_id, limit=limit)
 
 
 @router.get("/metrics", response_model=schemas.InventoryMetricsResponse)

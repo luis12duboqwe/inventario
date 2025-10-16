@@ -152,6 +152,17 @@ export type SupplierBatchPayload = {
   notes?: string | null;
 };
 
+export type SupplierBatchOverviewItem = {
+  supplier_id: number;
+  supplier_name: string;
+  batch_count: number;
+  total_quantity: number;
+  total_value: number;
+  latest_purchase_date: string;
+  latest_batch_code?: string | null;
+  latest_unit_cost?: number | null;
+};
+
 export type RepairOrderPart = {
   id: number;
   repair_order_id: number;
@@ -1262,6 +1273,18 @@ export function deleteSupplier(token: string, supplierId: number, reason: string
   );
 }
 
+export function getSupplierBatchOverview(
+  token: string,
+  storeId: number,
+  limit = 5,
+): Promise<SupplierBatchOverviewItem[]> {
+  return request<SupplierBatchOverviewItem[]>(
+    `/reports/inventory/supplier-batches?store_id=${storeId}&limit=${limit}`,
+    { method: "GET" },
+    token,
+  );
+}
+
 export function listSupplierBatches(
   token: string,
   supplierId: number,
@@ -1626,6 +1649,30 @@ export async function downloadInventoryPdf(token: string, reason: string): Promi
   const link = document.createElement("a");
   link.href = url;
   link.download = "softmobile_inventario.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryCsv(token: string, reason: string): Promise<void> {
+  const response = await fetch(`${API_URL}/reports/inventory/csv`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el CSV");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_inventario.csv";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

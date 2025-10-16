@@ -1335,6 +1335,87 @@ def list_supplier_batches(
     return list(db.scalars(statement).unique())
 
 
+def get_supplier_batch_overview(
+    db: Session,
+    *,
+    store_id: int,
+    limit: int = 5,
+) -> list[dict[str, object]]:
+    statement = (
+        select(models.SupplierBatch, models.Supplier.name)
+        .join(models.Supplier, models.Supplier.id == models.SupplierBatch.supplier_id)
+        .where(
+            or_(
+                models.SupplierBatch.store_id == store_id,
+                models.SupplierBatch.store_id.is_(None),
+            )
+        )
+        .order_by(
+            models.SupplierBatch.purchase_date.desc(),
+            models.SupplierBatch.created_at.desc(),
+        )
+    )
+    rows = db.execute(statement).all()
+
+    overview: dict[int, dict[str, object]] = {}
+    for batch, supplier_name in rows:
+        entry = overview.setdefault(
+            batch.supplier_id,
+            {
+                "supplier_id": batch.supplier_id,
+                "supplier_name": supplier_name,
+                "batch_count": 0,
+                "total_quantity": 0,
+                "total_value": Decimal("0"),
+                "latest_purchase_date": batch.purchase_date,
+                "latest_batch_code": batch.batch_code,
+                "latest_unit_cost": batch.unit_cost,
+            },
+        )
+        entry["batch_count"] = int(entry["batch_count"]) + 1
+        entry["total_quantity"] = int(entry["total_quantity"]) + batch.quantity
+        entry["total_value"] = Decimal(entry["total_value"]) + (
+            Decimal(batch.quantity) * batch.unit_cost
+        )
+
+        if batch.purchase_date > entry["latest_purchase_date"]:
+            entry["latest_purchase_date"] = batch.purchase_date
+            entry["latest_batch_code"] = batch.batch_code
+            entry["latest_unit_cost"] = batch.unit_cost
+
+    sorted_entries = sorted(
+        overview.values(),
+        key=lambda item: (
+            item["latest_purchase_date"],
+            Decimal(item["total_value"]),
+        ),
+        reverse=True,
+    )
+
+    result: list[dict[str, object]] = []
+    for item in sorted_entries[:limit]:
+        total_value = Decimal(item["total_value"]).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        latest_unit_cost = item.get("latest_unit_cost")
+        result.append(
+            {
+                "supplier_id": item["supplier_id"],
+                "supplier_name": item["supplier_name"],
+                "batch_count": item["batch_count"],
+                "total_quantity": item["total_quantity"],
+                "total_value": float(total_value),
+                "latest_purchase_date": item["latest_purchase_date"],
+                "latest_batch_code": item.get("latest_batch_code"),
+                "latest_unit_cost": float(latest_unit_cost)
+                if latest_unit_cost is not None
+                else None,
+            }
+        )
+
+    return result
+
+
 def create_supplier_batch(
     db: Session,
     supplier_id: int,
@@ -1807,6 +1888,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
                         "name": device.name,
                         "quantity": device.quantity,
                         "unit_price": device.unit_price or Decimal("0"),
+                        "inventory_value": _device_value(device),
                     }
                 )
 

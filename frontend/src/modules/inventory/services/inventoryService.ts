@@ -1,5 +1,11 @@
-import { downloadInventoryPdf, getDevices, registerMovement } from "../../../api";
-import type { MovementInput } from "../../../api";
+import {
+  downloadInventoryCsv,
+  downloadInventoryPdf,
+  getDevices,
+  getSupplierBatchOverview,
+  registerMovement,
+} from "../../../api";
+import type { MovementInput, SupplierBatchOverviewItem } from "../../../api";
 
 export const inventoryService = {
   fetchDevices: getDevices,
@@ -9,6 +15,14 @@ export const inventoryService = {
     payload: MovementInput,
     reason: string,
   ) => registerMovement(token, storeId, payload, reason),
-  downloadInventoryReport: (token: string, reason: string) => downloadInventoryPdf(token, reason),
-  downloadInventoryReport: (token: string) => downloadInventoryPdf(token),
+  downloadInventoryReport: (token: string, reason: string) =>
+    downloadInventoryPdf(token, reason),
+  downloadInventoryCsv: (token: string, reason: string) =>
+    downloadInventoryCsv(token, reason),
+  fetchSupplierBatchOverview: (
+    token: string,
+    storeId: number,
+    limit = 5,
+  ): Promise<SupplierBatchOverviewItem[]> =>
+    getSupplierBatchOverview(token, storeId, limit),
 };

@@ -428,6 +428,17 @@ class SupplierBatchResponse(SupplierBatchBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SupplierBatchOverviewItem(BaseModel):
+    supplier_id: int
+    supplier_name: str
+    batch_count: int = Field(ge=0)
+    total_quantity: int = Field(ge=0)
+    total_value: float = Field(ge=0)
+    latest_purchase_date: date
+    latest_batch_code: str | None = None
+    latest_unit_cost: float | None = Field(default=None, ge=0)
+
+
 class TransferOrderItemBase(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
@@ -1816,6 +1827,7 @@ __all__ = [
     "SupplierBase",
     "SupplierBatchBase",
     "SupplierBatchCreate",
+    "SupplierBatchOverviewItem",
     "SupplierBatchResponse",
     "SupplierBatchUpdate",
     "SupplierCreate",

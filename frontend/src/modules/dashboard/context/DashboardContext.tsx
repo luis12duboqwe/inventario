@@ -85,6 +85,8 @@ type DashboardContextValue = {
   totalValue: number;
   lowStockDevices: InventoryMetrics["low_stock_devices"];
   topStores: InventoryMetrics["top_stores"];
+  currentLowStockThreshold: number;
+  updateLowStockThreshold: (storeId: number, threshold: number) => Promise<void>;
   handleMovement: (payload: MovementInput) => Promise<void>;
   handleDeviceUpdate: (deviceId: number, updates: DeviceUpdateInput, reason: string) => Promise<void>;
   refreshInventoryAfterTransfer: () => Promise<void>;
@@ -118,6 +120,8 @@ export type ToastMessage = {
   message: string;
   variant: ToastVariant;
 };
+
+const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
 export function DashboardProvider({ token, children }: ProviderProps) {
   const enableCatalogPro =
@@ -161,6 +165,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const [syncHistoryError, setSyncHistoryError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [networkAlert, setNetworkAlert] = useState<string | null>(null);
+  const [lowStockThresholds, setLowStockThresholds] = useState<Record<number, number>>({});
 
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
@@ -219,9 +224,24 @@ export function DashboardProvider({ token, children }: ProviderProps) {
 
   const formatCurrency = (value: number) => currencyFormatter.format(value);
 
+  const getThresholdForStore = useCallback(
+    (storeId: number | null | undefined) => {
+      if (!storeId) {
+        return DEFAULT_LOW_STOCK_THRESHOLD;
+      }
+      return lowStockThresholds[storeId] ?? DEFAULT_LOW_STOCK_THRESHOLD;
+    },
+    [lowStockThresholds],
+  );
+
   const selectedStore = useMemo(
     () => stores.find((store) => store.id === selectedStoreId) ?? null,
     [stores, selectedStoreId]
+  );
+
+  const currentLowStockThreshold = useMemo(
+    () => getThresholdForStore(selectedStoreId),
+    [getThresholdForStore, selectedStoreId],
   );
 
   useEffect(() => {
@@ -237,6 +257,15 @@ export function DashboardProvider({ token, children }: ProviderProps) {
           getReleaseHistory(token),
         ]);
         setStores(storesData);
+        setLowStockThresholds((current) => {
+          const next = { ...current };
+          for (const store of storesData) {
+            if (next[store.id] === undefined) {
+              next[store.id] = DEFAULT_LOW_STOCK_THRESHOLD;
+            }
+          }
+          return next;
+        });
         setSummary(summaryData);
         setMetrics(metricsData);
         setBackupHistory(backupData);
@@ -284,6 +313,26 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   }, [token, pushToast]);
 
   useEffect(() => {
+    if (stores.length === 0) {
+      return;
+    }
+    const synchronizeMetrics = async () => {
+      try {
+        const metricsData = await getInventoryMetrics(token, currentLowStockThreshold);
+        setMetrics(metricsData);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "No fue posible obtener las métricas de inventario";
+        setError(friendlyErrorMessage(message));
+      }
+    };
+
+    void synchronizeMetrics();
+  }, [currentLowStockThreshold, friendlyErrorMessage, stores.length, token]);
+
+  useEffect(() => {
     const loadDevices = async () => {
       if (!selectedStoreId) {
         setDevices([]);
@@ -328,13 +377,14 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   }, [enableHybridPrep, token]);
 
   const refreshSummary = useCallback(async () => {
+    const threshold = getThresholdForStore(selectedStoreId);
     const [summaryData, metricsData] = await Promise.all([
       getSummary(token),
-      getInventoryMetrics(token),
+      getInventoryMetrics(token, threshold),
     ]);
     setSummary(summaryData);
     setMetrics(metricsData);
-  }, [token]);
+  }, [getThresholdForStore, selectedStoreId, token]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -532,6 +582,31 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }
   };
 
+  const updateLowStockThreshold = useCallback(
+    async (storeId: number, threshold: number) => {
+      const previous = getThresholdForStore(storeId);
+      setLowStockThresholds((current) => ({ ...current, [storeId]: threshold }));
+      if (selectedStoreId !== storeId) {
+        return;
+      }
+      try {
+        const metricsData = await getInventoryMetrics(token, threshold);
+        setMetrics(metricsData);
+      } catch (err) {
+        setLowStockThresholds((current) => ({ ...current, [storeId]: previous }));
+        const message =
+          err instanceof Error
+            ? err.message
+            : "No fue posible actualizar el umbral de stock bajo";
+        const friendly = friendlyErrorMessage(message);
+        setError(friendly);
+        pushToast({ message: friendly, variant: "error" });
+        throw new Error(friendly);
+      }
+    },
+    [friendlyErrorMessage, getThresholdForStore, pushToast, selectedStoreId, token],
+  );
+
   const totals = useMemo(() => {
     const totalDevices =
       metrics?.totals.devices ?? summary.reduce((acc, store) => acc + store.devices.length, 0);
@@ -545,11 +620,16 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         0
       );
 
-    const lowStock = metrics?.low_stock_devices ?? [];
+    const lowStock = (metrics?.low_stock_devices ?? []).filter((entry) => {
+      if (!selectedStoreId) {
+        return true;
+      }
+      return entry.store_id === selectedStoreId;
+    });
     const topStores = metrics?.top_stores ?? [];
 
     return { totalDevices, totalItems, totalValue, lowStock, topStores };
-  }, [metrics, summary]);
+  }, [metrics, selectedStoreId, summary]);
 
   const downloadInventoryReport = async (reason: string) => {
     await downloadInventoryPdf(token, reason);
@@ -597,6 +677,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     totalValue: totals.totalValue,
     lowStockDevices: totals.lowStock,
     topStores: totals.topStores,
+    currentLowStockThreshold,
+    updateLowStockThreshold,
     handleMovement,
     handleDeviceUpdate,
     refreshInventoryAfterTransfer,

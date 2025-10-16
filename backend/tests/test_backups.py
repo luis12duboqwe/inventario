@@ -56,7 +56,18 @@ def test_backup_generation_and_pdf(client, tmp_path) -> None:
     assert history
     assert history[0]["notes"] == "Respaldo QA"
 
-    pdf_response = client.get("/reports/inventory/pdf", headers=headers)
+    pdf_response = client.get(
+        "/reports/inventory/pdf",
+        headers={**headers, "X-Reason": "Descarga inventario QA"},
+    )
     assert pdf_response.status_code == status.HTTP_200_OK
     assert pdf_response.headers["content-type"] == "application/pdf"
     assert pdf_response.content.startswith(b"%PDF")
+
+
+def test_inventory_pdf_requires_reason(client) -> None:
+    headers = _auth_headers(client)
+
+    response = client.get("/reports/inventory/pdf", headers=headers)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == "Reason header requerido"
