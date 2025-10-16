@@ -741,6 +741,18 @@ class MovementBase(BaseModel):
     tienda_destino_id: int | None = Field(default=None, ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
+    @field_validator("comentario", mode="before")
+    @classmethod
+    def _normalize_comment(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if len(normalized) < 5:
+            raise ValueError("El comentario debe tener al menos 5 caracteres.")
+        return normalized
+
 
 class MovementCreate(MovementBase):
     """Carga de datos para registrar movimientos de inventario."""
