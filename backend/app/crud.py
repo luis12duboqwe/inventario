@@ -92,7 +92,6 @@ def invalidate_persistent_audit_alerts_cache() -> None:
     """Limpia la cache en memoria de recordatorios críticos."""
 
     _PERSISTENT_ALERTS_CACHE.clear()
-    telemetry.record_reminder_cache_invalidation()
 
 
 def _user_display_name(user: models.User | None) -> str | None:
@@ -620,7 +619,6 @@ def get_persistent_audit_alerts(
     )
     cached = _PERSISTENT_ALERTS_CACHE.get(cache_key)
     if cached is not None:
-        telemetry.record_reminder_cache_hit(cached)
         return copy.deepcopy(cached)
 
     now = datetime.utcnow()
@@ -695,7 +693,6 @@ def get_persistent_audit_alerts(
             }
         )
 
-    telemetry.record_reminder_cache_miss(enriched)
     _PERSISTENT_ALERTS_CACHE.set(cache_key, copy.deepcopy(enriched))
     return enriched
 

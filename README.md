@@ -28,9 +28,9 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Operaciones automatizadas** con importación masiva desde CSV, plantillas recurrentes reutilizables y panel histórico filtrable por técnico, sucursal y rango de fechas (`/operations/history`).
 - **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
 - **Gestión de clientes y proveedores corporativos** con historial de contacto, exportación CSV, saldos pendientes y notas auditables desde la UI.
-- ✅ **Bitácora de auditoría extendida**: Seguridad consume `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf` con `X-Reason`, mostrando recordatorios críticos, snooze corporativo y descargas CSV/PDF directamente desde `AuditLog.tsx`.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L820】【F:frontend/src/api.ts†L1807-L1892】
-- ✅ **Recordatorios y acuses visibles en frontend**: la UI muestra badges de pendientes/atendidas, permite registrar notas y motivos corporativos y mantiene historial de acuses recientes sincronizado con el backend.【F:frontend/src/modules/security/components/AuditLog.tsx†L329-L820】【F:frontend/src/styles.css†L1064-L1114】
-- ✅ **Monitoreo de auditoría vía Prometheus**: el backend expone `/monitoring/metrics` (rol ADMIN) con contadores de acuses, fallos e indicadores de cache TTL instrumentados con `prometheus-client`, centralizados en `telemetry.py` y cubiertos por `test_prometheus_metrics_endpoint`.【F:backend/app/routers/monitoring.py†L1-L32】【F:backend/app/telemetry.py†L1-L96】【F:backend/tests/test_audit_logs.py†L1-L200】
+- ⚠️ **Bitácora de auditoría filtrable**: actualmente sólo están disponibles `/audit/logs` y la exportación CSV con motivo obligatorio; falta publicar `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf` para reflejar acuses y notas tal como indica el plan.【F:backend/app/routers/audit.py†L20-L68】【F:docs/guia_revision_total_v2.2.0.md†L1-L87】
+- ⚠️ **Recordatorios automáticos de seguridad**: la UI referencia recordatorios y snooze, pero el componente `AuditLog.tsx` carece de lógica efectiva y endpoints públicos; se debe completar siguiendo la guía de acciones pendientes.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L220】【F:docs/guia_revision_total_v2.2.0.md†L1-L107】
+- ⚠️ **Acuses manuales de resolución**: existen modelos y funciones en `crud.py`, pero aún no hay rutas ni métricas que distingan pendientes vs. atendidas; consulta la guía para habilitarlos sin cambiar la versión.【F:backend/app/crud.py†L1858-L1935】【F:docs/guia_revision_total_v2.2.0.md†L88-L140】
 - **Órdenes de reparación sincronizadas** con piezas descontadas automáticamente del inventario, estados corporativos (🟡/🟠/🟢/⚪) y descarga de orden en PDF.
 - **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
 - **Analítica comparativa multi-sucursal** con endpoints `/reports/analytics/comparative`, `/reports/analytics/profit_margin` y `/reports/analytics/sales_forecast`, exportación CSV consolidada y tablero React con filtros por sucursal.
@@ -48,16 +48,14 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 | --- | --- | --- |
 | Conectar recordatorios, snooze y acuses en Seguridad (`AuditLog.tsx`) | ✅ Listo | La UI consume los servicios corporativos con motivo obligatorio, badges en vivo y registro de notas. |
 | Actualizar el tablero global con métricas de pendientes/atendidas | ✅ Listo | `GlobalMetrics.tsx` muestra conteos, último acuse y acceso directo a Seguridad desde el dashboard. |
-| Automatizar pruebas de frontend (Vitest/RTL) para recordatorios, acuses y descargas | ✅ Listo | `npm --prefix frontend run test` ejecuta Vitest con mocks de `api.ts` cubriendo recordatorios, motivos y descargas en `AuditLog.test.tsx`. |
-| Registrar bitácora operativa de corridas (`pytest`, `npm --prefix frontend run build`) y validaciones multiusuario | ✅ Listo | `docs/bitacora_pruebas_2025-10-14.md` documenta las ejecuciones de `pytest`, `npm --prefix frontend run build` y `npm --prefix frontend run test` con resultados recientes. |
+| Automatizar pruebas de frontend (Vitest/RTL) para recordatorios, acuses y descargas | 🔄 En progreso | Configurar `npm run test` con mocks de `api.ts`, validar snooze, motivos y descargas con `Blob`. |
+| Registrar bitácora operativa de corridas (`pytest`, `npm --prefix frontend run build`) y validaciones multiusuario | 🔄 En progreso | Documentar cada corrida en `docs/bitacora_pruebas_*.md` y verificar escenarios simultáneos en Seguridad. |
 
 **Directrices rápidas:**
 
 - Captura siempre un motivo corporativo (`X-Reason` ≥ 5 caracteres) al descargar CSV/PDF o registrar un acuse.
-- Repite `pytest`, `npm --prefix frontend run build` y `npm --prefix frontend run test` antes de fusionar cambios y anota el resultado en la bitácora.
+- Repite `pytest` y `npm --prefix frontend run build` antes de fusionar cambios y anota el resultado en la bitácora.
 - Mantén sincronizados README, `AGENTS.md` y `docs/evaluacion_requerimientos.md` tras completar cada paso del plan activo.
-- El backend conserva un cache TTL de 60 segundos para recordatorios críticos; cualquier nuevo acuse o log invalida automáticamente la vista de Seguridad.
-- Valida periódicamente `/monitoring/metrics` (rol ADMIN) para confirmar que los contadores de acuses, fallos y cache reflejan la actividad registrada en Seguridad.
 
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
