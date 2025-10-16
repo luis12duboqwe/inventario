@@ -1,6 +1,7 @@
 """Operaciones de base de datos para las entidades principales."""
 from __future__ import annotations
 
+import copy
 import csv
 import json
 import math
@@ -15,8 +16,9 @@ from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement
 
-from . import models, schemas
+from . import models, schemas, telemetry
 from .utils import audit as audit_utils
+from .utils.cache import TTLCache
 
 
 def _ensure_unique_identifiers(
@@ -71,6 +73,26 @@ def _normalize_date_range(
         start_dt, end_dt = end_dt, start_dt
 
     return start_dt, end_dt
+
+
+_PERSISTENT_ALERTS_CACHE: TTLCache[list[dict[str, object]]] = TTLCache(ttl_seconds=60.0)
+
+
+def _persistent_alerts_cache_key(
+    *,
+    threshold_minutes: int,
+    min_occurrences: int,
+    lookback_hours: int,
+    limit: int,
+) -> tuple[int, int, int, int]:
+    return (threshold_minutes, min_occurrences, lookback_hours, limit)
+
+
+def invalidate_persistent_audit_alerts_cache() -> None:
+    """Limpia la cache en memoria de recordatorios críticos."""
+
+    _PERSISTENT_ALERTS_CACHE.clear()
+    telemetry.record_reminder_cache_invalidation()
 
 
 def _user_display_name(user: models.User | None) -> str | None:
@@ -194,6 +216,7 @@ def _log_action(
     )
     db.add(log)
     db.flush()
+    invalidate_persistent_audit_alerts_cache()
     return log
 
 
@@ -509,6 +532,9 @@ def acknowledge_audit_alert(
             break
 
     if last_critical is None:
+        telemetry.record_audit_acknowledgement_failure(
+            normalized_type, "not_found"
+        )
         raise AuditAcknowledgementNotFound(
             "No existen alertas críticas registradas para la entidad indicada."
         )
@@ -525,10 +551,14 @@ def acknowledge_audit_alert(
         acknowledgement is not None
         and acknowledgement.acknowledged_at >= last_critical.created_at
     ):
+        telemetry.record_audit_acknowledgement_failure(
+            normalized_type, "already_acknowledged"
+        )
         raise AuditAcknowledgementConflict(
             "La alerta ya fue atendida después del último evento crítico registrado."
         )
 
+    event = "created"
     if acknowledgement is None:
         acknowledgement = models.AuditAlertAcknowledgement(
             entity_type=normalized_type,
@@ -539,6 +569,7 @@ def acknowledge_audit_alert(
         )
         db.add(acknowledgement)
     else:
+        event = "updated"
         acknowledgement.acknowledged_at = now
         acknowledgement.acknowledged_by_id = acknowledged_by_id
         acknowledgement.note = note
@@ -556,7 +587,9 @@ def acknowledge_audit_alert(
     )
 
     db.commit()
+    invalidate_persistent_audit_alerts_cache()
     db.refresh(acknowledgement)
+    telemetry.record_audit_acknowledgement(normalized_type, event)
     return acknowledgement
 
 
@@ -578,6 +611,17 @@ def get_persistent_audit_alerts(
         raise ValueError("lookback_hours must be >= 1")
     if limit < 1:
         raise ValueError("limit must be >= 1")
+
+    cache_key = _persistent_alerts_cache_key(
+        threshold_minutes=threshold_minutes,
+        min_occurrences=min_occurrences,
+        lookback_hours=lookback_hours,
+        limit=limit,
+    )
+    cached = _PERSISTENT_ALERTS_CACHE.get(cache_key)
+    if cached is not None:
+        telemetry.record_reminder_cache_hit(cached)
+        return copy.deepcopy(cached)
 
     now = datetime.utcnow()
     lookback_start = now - timedelta(hours=lookback_hours)
@@ -651,6 +695,8 @@ def get_persistent_audit_alerts(
             }
         )
 
+    telemetry.record_reminder_cache_miss(enriched)
+    _PERSISTENT_ALERTS_CACHE.set(cache_key, copy.deepcopy(enriched))
     return enriched
 
 
@@ -1878,12 +1924,45 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
             (ack.entity_type, ack.entity_id): ack for ack in db.scalars(ack_stmt)
         }
 
+    highlight_entries: list[dict[str, object]] = []
     pending_highlights: list[audit_utils.HighlightEntry] = []
+    acknowledged_highlights = 0
     for entry in alert_summary.highlights:
         acknowledgement = ack_map.get((entry["entity_type"], entry["entity_id"]))
+        status = "pending"
+        acknowledged_at = None
+        acknowledged_by_id = None
+        acknowledged_by_name = None
+        acknowledged_note = None
         if acknowledgement and acknowledgement.acknowledged_at >= entry["created_at"]:
-            continue
-        pending_highlights.append(entry)
+            status = "acknowledged"
+            acknowledged_at = acknowledgement.acknowledged_at
+            acknowledged_by_id = acknowledgement.acknowledged_by_id
+            if acknowledgement.acknowledged_by is not None:
+                acknowledged_by_name = (
+                    acknowledgement.acknowledged_by.full_name
+                    or acknowledgement.acknowledged_by.username
+                )
+            acknowledged_note = acknowledgement.note
+            acknowledged_highlights += 1
+        else:
+            pending_highlights.append(entry)
+
+        highlight_entries.append(
+            {
+                "id": entry["id"],
+                "action": entry["action"],
+                "created_at": entry["created_at"],
+                "severity": entry["severity"],
+                "entity_type": entry["entity_type"],
+                "entity_id": entry["entity_id"],
+                "status": status,
+                "acknowledged_at": acknowledged_at,
+                "acknowledged_by_id": acknowledged_by_id,
+                "acknowledged_by_name": acknowledged_by_name,
+                "acknowledged_note": acknowledged_note,
+            }
+        )
 
     critical_events: dict[tuple[str, str], datetime] = {}
     for log in audit_logs:
@@ -1929,16 +2008,10 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         "warning": alert_summary.warning,
         "info": alert_summary.info,
         "has_alerts": alert_summary.has_alerts,
-        "highlights": [
-            {
-                "id": highlight["id"],
-                "action": highlight["action"],
-                "created_at": highlight["created_at"],
-                "severity": highlight["severity"],
-                "entity_type": highlight["entity_type"],
-            }
-            for highlight in alert_summary.highlights
-        ],
+        "pending_count": len([entry for entry in highlight_entries if entry["status"] != "acknowledged"]),
+        "acknowledged_count": len(acknowledged_entities) or acknowledged_highlights,
+        "highlights": highlight_entries,
+        "acknowledged_entities": acknowledged_entities,
     }
 
     return {
