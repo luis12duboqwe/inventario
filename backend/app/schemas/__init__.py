@@ -782,15 +782,30 @@ class MovementResponse(BaseModel):
         validation_alias=AliasChoices("tienda_origen_id", "source_store_id"),
         serialization_alias="tienda_origen_id",
     )
+    tienda_origen: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tienda_origen"),
+        serialization_alias="tienda_origen",
+    )
     tienda_destino_id: int | None = Field(
         default=None,
         validation_alias=AliasChoices("tienda_destino_id", "store_id"),
         serialization_alias="tienda_destino_id",
     )
+    tienda_destino: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tienda_destino"),
+        serialization_alias="tienda_destino",
+    )
     usuario_id: int | None = Field(
         default=None,
         validation_alias=AliasChoices("usuario_id", "performed_by_id"),
         serialization_alias="usuario_id",
+    )
+    usuario: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("usuario"),
+        serialization_alias="usuario",
     )
     fecha: datetime = Field(
         validation_alias=AliasChoices("fecha", "created_at"),

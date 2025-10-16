@@ -1913,6 +1913,13 @@ def create_inventory_movement(
     db.commit()
     db.refresh(device)
     db.refresh(movement)
+    # Aseguramos que las relaciones necesarias estén disponibles para la respuesta serializada.
+    if movement.store is not None:
+        _ = movement.store.name
+    if movement.source_store is not None:
+        _ = movement.source_store.name
+    if movement.performed_by is not None:
+        _ = movement.performed_by.username
 
     _log_action(
         db,

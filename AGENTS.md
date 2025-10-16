@@ -138,6 +138,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - El snapshot operativo (`build_inventory_snapshot`) expone `tienda_origen_id`, `tienda_destino_id`, `comentario`, `usuario_id` y `fecha` para cada movimiento al consultar `/updates/snapshot`.
 - Compras, ventas, devoluciones y reparaciones registran movimientos con origen/destino apropiado y comentario corporativo para recalcular automáticamente el valor del inventario por tienda.
 - El formulario `MovementForm.tsx` utiliza los nuevos campos (`producto_id`, `tipo_movimiento`, `cantidad`, `comentario`) y exige motivos ≥5 caracteres reutilizados en la cabecera `X-Reason`.
+- Las respuestas del endpoint incluyen `usuario`, `tienda_origen` y `tienda_destino` además de los identificadores para cumplir auditorías sin romper integraciones existentes.
 
 ### Registro operativo — 01/03/2025
 
