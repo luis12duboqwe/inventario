@@ -503,6 +503,7 @@ def inventory_csv(
                     device.get("quantity"),
                     f"{device.get('unit_price', 0):.2f}",
                     f"{inventory_value_float:.2f}",
+                    f"{device.get('inventory_value', 0):.2f}",
                     device.get("imei") or "-",
                     device.get("serial") or "-",
                     device.get("marca") or "-",
@@ -514,6 +515,7 @@ def inventory_csv(
                     device.get("lote") or "-",
                     device.get("fecha_compra") or "-",
                     garantia if garantia is not None else "-",
+                    device.get("garantia_meses", "-"),
                     f"{float(device.get('costo_unitario', 0.0)):.2f}",
                     f"{float(device.get('margen_porcentaje', 0.0)):.2f}",
                 ]

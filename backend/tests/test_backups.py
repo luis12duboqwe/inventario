@@ -130,6 +130,7 @@ def test_render_snapshot_pdf_includes_financial_and_catalog_details() -> None:
             "total_units": 4,
             "inventory_value": 48000.0,
         },
+        ]
     }
 
     table_data, store_total = backup_services._build_financial_table(snapshot["stores"][0]["devices"])  # noqa: SLF001
