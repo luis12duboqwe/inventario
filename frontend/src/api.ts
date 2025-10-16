@@ -37,15 +37,25 @@ export type Device = {
   serial?: string | null;
   marca?: string | null;
   modelo?: string | null;
+  categoria?: string | null;
+  condicion?: string | null;
   color?: string | null;
   capacidad_gb?: number | null;
+  capacidad?: string | null;
   estado_comercial?: "nuevo" | "A" | "B" | "C";
+  estado?: string;
   proveedor?: string | null;
   costo_unitario?: number;
+  costo_compra?: number;
   margen_porcentaje?: number;
   garantia_meses?: number;
   lote?: string | null;
   fecha_compra?: string | null;
+  fecha_ingreso?: string | null;
+  ubicacion?: string | null;
+  descripcion?: string | null;
+  imagen_url?: string | null;
+  precio_venta?: number;
 };
 
 export type CatalogDevice = Device & { store_name: string };
@@ -58,15 +68,25 @@ export type DeviceUpdateInput = {
   serial?: string | null;
   marca?: string | null;
   modelo?: string | null;
+  categoria?: string | null;
+  condicion?: string | null;
   color?: string | null;
   capacidad_gb?: number | null;
+  capacidad?: string | null;
   estado_comercial?: Device["estado_comercial"] | null;
+  estado?: string | null;
   proveedor?: string | null;
   costo_unitario?: number | null;
+  costo_compra?: number | null;
   margen_porcentaje?: number | null;
   garantia_meses?: number | null;
   lote?: string | null;
   fecha_compra?: string | null;
+  fecha_ingreso?: string | null;
+  ubicacion?: string | null;
+  descripcion?: string | null;
+  imagen_url?: string | null;
+  precio_venta?: number | null;
 };
 
 export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
@@ -451,6 +471,20 @@ export type DeviceSearchFilters = {
   color?: string;
   marca?: string;
   modelo?: string;
+  categoria?: string;
+  condicion?: string;
+  estado?: string;
+  ubicacion?: string;
+  proveedor?: string;
+  fecha_ingreso_desde?: string;
+  fecha_ingreso_hasta?: string;
+};
+
+export type DeviceImportSummary = {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ row: number; message: string }>;
 };
 
 export type MovementInput = {
@@ -1048,16 +1082,19 @@ export function getSummary(token: string): Promise<Summary[]> {
   return request<Summary[]>("/inventory/summary", { method: "GET" }, token);
 }
 
-type DeviceListFilters = {
+export type DeviceListFilters = {
   search?: string;
   estado?: Device["estado_comercial"];
+  categoria?: string;
+  condicion?: string;
+  estado_inventario?: string;
+  ubicacion?: string;
+  proveedor?: string;
+  fecha_ingreso_desde?: string;
+  fecha_ingreso_hasta?: string;
 };
 
-export function getDevices(
-  token: string,
-  storeId: number,
-  filters: DeviceListFilters = {}
-): Promise<Device[]> {
+function buildDeviceFilterParams(filters: DeviceListFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.search) {
     params.append("search", filters.search);
@@ -1065,9 +1102,86 @@ export function getDevices(
   if (filters.estado) {
     params.append("estado", filters.estado);
   }
+  if (filters.categoria) {
+    params.append("categoria", filters.categoria);
+  }
+  if (filters.condicion) {
+    params.append("condicion", filters.condicion);
+  }
+  if (filters.estado_inventario) {
+    params.append("estado_inventario", filters.estado_inventario);
+  }
+  if (filters.ubicacion) {
+    params.append("ubicacion", filters.ubicacion);
+  }
+  if (filters.proveedor) {
+    params.append("proveedor", filters.proveedor);
+  }
+  if (filters.fecha_ingreso_desde) {
+    params.append("fecha_ingreso_desde", filters.fecha_ingreso_desde);
+  }
+  if (filters.fecha_ingreso_hasta) {
+    params.append("fecha_ingreso_hasta", filters.fecha_ingreso_hasta);
+  }
+  return params;
+}
+
+export function getDevices(
+  token: string,
+  storeId: number,
+  filters: DeviceListFilters = {}
+): Promise<Device[]> {
+  const params = buildDeviceFilterParams(filters);
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   return request<Device[]>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
+}
+
+export async function exportStoreDevicesCsv(
+  token: string,
+  storeId: number,
+  filters: DeviceListFilters = {},
+  reason: string,
+): Promise<void> {
+  const params = buildDeviceFilterParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/inventory/stores/${storeId}/devices/export${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar el catálogo de productos");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `softmobile_catalogo_${storeId}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export function importStoreDevicesCsv(
+  token: string,
+  storeId: number,
+  file: File,
+  reason: string,
+): Promise<DeviceImportSummary> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<DeviceImportSummary>(
+    `/inventory/stores/${storeId}/devices/import`,
+    { method: "POST", body: formData, headers: { "X-Reason": reason } },
+    token,
+  );
 }
 
 export function updateDevice(
@@ -1403,6 +1517,13 @@ export function searchCatalogDevices(
   if (filters.color) params.append("color", filters.color);
   if (filters.marca) params.append("marca", filters.marca);
   if (filters.modelo) params.append("modelo", filters.modelo);
+  if (filters.categoria) params.append("categoria", filters.categoria);
+  if (filters.condicion) params.append("condicion", filters.condicion);
+  if (filters.estado) params.append("estado", filters.estado);
+  if (filters.ubicacion) params.append("ubicacion", filters.ubicacion);
+  if (filters.proveedor) params.append("proveedor", filters.proveedor);
+  if (filters.fecha_ingreso_desde) params.append("fecha_ingreso_desde", filters.fecha_ingreso_desde);
+  if (filters.fecha_ingreso_hasta) params.append("fecha_ingreso_hasta", filters.fecha_ingreso_hasta);
   const query = params.toString();
   const path = query ? `/inventory/devices/search?${query}` : "/inventory/devices/search";
   return request<CatalogDevice[]>(path, { method: "GET" }, token);

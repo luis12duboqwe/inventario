@@ -83,6 +83,21 @@ La actualización UI de febrero 2025 refuerza la experiencia operativa sin modif
 
 Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.app.main:app` (asegurando los feature flags del mandato operativo) y `npm --prefix frontend run dev`. Puedes precargar datos demo con los endpoints `/auth/bootstrap`, `/stores`, `/purchases`, `/sales` y `/transfers` usando cabeceras `Authorization` y `X-Reason` ≥ 5 caracteres.
 
+## Actualización Inventario - Catálogo de Productos (27/03/2025 18:00 UTC)
+
+- **Catálogo ampliado**: el modelo `Device` incorpora `categoria`, `condicion`, `capacidad`, `estado`, `fecha_ingreso`, `ubicacion`, `descripcion` e `imagen_url`, disponibles en API (`DeviceResponse`), reportes (`build_inventory_snapshot`) y la tabla de inventario corporativo. La migración `202502150009_inventory_catalog_extensions` añade los campos con valores por defecto.
+- **Búsqueda avanzada enriquecida**: `DeviceSearchFilters` permite filtrar por categoría, condición, estado logístico, ubicación, proveedor y rango de fechas de ingreso; el frontend refleja los filtros y despliega las nuevas columnas.
+- **Herramientas masivas**: se habilitaron `/inventory/stores/{id}/devices/export` y `/inventory/stores/{id}/devices/import` para exportar e importar CSV con los campos extendidos, incluyendo validaciones de encabezados y resumen de filas creadas/actualizadas.
+- **UI actualizada**: `InventoryTable` y `DeviceEditDialog` exponen los nuevos campos, mientras que la pestaña "Búsqueda avanzada" agrega un panel de importación/exportación con resumen de resultados y controles de motivo corporativo.
+- **Pruebas automatizadas**: se añadió `backend/tests/test_inventory_import_export_roundtrip.py` (integrado en `test_catalog_pro.py`) para validar el flujo masivo y se actualizaron las pruebas de Vitest (`AdvancedSearch.test.tsx`) para reflejar los nuevos filtros y columnas.
+
+### 27/03/2025 23:45 UTC
+
+- **Alias financieros oficiales**: se habilitaron los campos `costo_compra` y `precio_venta` como alias corporativos de `costo_unitario` y `unit_price`, expuestos en todos los esquemas (`DeviceResponse`, `DeviceSearchFilters`) y sincronizados automáticamente en el modelo SQLAlchemy.
+- **Importación/exportación alineada**: `inventory_import.py` ahora interpreta y produce `costo_compra`/`precio_venta`, evita validaciones fallidas de `garantia_meses` vacía y devuelve resúmenes coherentes (`created=1`, `updated=1`).
+- **Interfaz refinada**: `InventoryTable` incorpora columnas de costo y precio de venta, mientras que `DeviceEditDialog` permite editar ambos valores manteniendo compatibilidad retroactiva con `unit_price`/`costo_unitario`.
+- **Cobertura de pruebas**: `test_catalog_pro.py` valida los nuevos alias y corrige la aserción del flujo CSV; las pruebas de Vitest (`InventoryPage.test.tsx`, `AdvancedSearch.test.tsx`) reflejan los campos financieros extendidos.
+
 ## Paso 4 — Documentación y pruebas automatizadas
 
 ### Tablas y rutas destacadas

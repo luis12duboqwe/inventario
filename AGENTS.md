@@ -114,6 +114,20 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - ✅ 29/02/2025 — Las exportaciones CSV/PDF de auditoría incorporan el estado del acuse, usuario, fecha y nota registrada, con validaciones de duplicado y mensajes de error específicos en el frontend.
 - ▶️ Próximo paso inmediato: monitorear escenarios multiusuario en Seguridad y ajustar recordatorios si aparecen nuevos requisitos.
 
+### Actualización Inventario - Catálogo de Productos (27/03/2025 18:00 UTC)
+
+- Extiende el modelo `Device` y sus respuestas API con los campos `categoria`, `condicion`, `capacidad`, `estado`, `fecha_ingreso`, `ubicacion`, `descripcion` e `imagen_url`; incluye migración Alembic `202502150009_inventory_catalog_extensions`.
+- Activa endpoints `/inventory/stores/{id}/devices/export` y `/inventory/stores/{id}/devices/import` con validaciones de encabezados, resumen de filas y bitácora automática mediante `inventory_import.py`.
+- Actualiza `InventoryPage`, `InventoryTable`, `DeviceEditDialog` y `AdvancedSearch` para capturar, filtrar y mostrar los campos nuevos, además de exponer un panel de importación/exportación con motivo corporativo.
+- Pruebas reforzadas: `backend/tests/test_catalog_pro.py` cubre el flujo masivo y `AdvancedSearch.test.tsx` valida los filtros extendidos en Vitest.
+
+### Actualización Inventario - Catálogo de Productos (27/03/2025 23:45 UTC)
+
+- Se documentan los alias `costo_compra` y `precio_venta` como nombres oficiales de compra/venta; el modelo `Device`, esquemas FastAPI y CRUD los sincronizan automáticamente con `costo_unitario`/`unit_price`.
+- La exportación/importación de CSV produce y consume los alias financieros, ignora `garantia_meses` vacía y devuelve resúmenes coherentes (`created=1`, `updated=1`, `skipped=0`).
+- `InventoryTable` muestra columnas de costo y precio de venta, y `DeviceEditDialog` actualiza ambos valores enviando también los nombres previos para mantener auditoría y compatibilidad.
+- `backend/tests/test_catalog_pro.py` y las pruebas de Vitest del módulo de inventario verifican los campos nuevos y el flujo corregido de importación/exportación.
+
 ### Registro operativo — 01/03/2025
 
 - ✅ 01/03/2025 — Los reportes de inventario PDF y CSV ahora incluyen columnas financieras completas y los campos del catálogo pro (IMEI, serie, marca, modelo, proveedor, color, capacidad, lote, costo y margen), respaldados por helpers reutilizables en `services/backups.py`.

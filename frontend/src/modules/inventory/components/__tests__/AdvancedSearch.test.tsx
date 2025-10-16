@@ -59,12 +59,21 @@ describe("AdvancedSearch", () => {
         color: "Negro",
         capacidad_gb: 256,
         estado_comercial: "nuevo",
+        categoria: "Smartphones",
+        condicion: "Nuevo",
+        estado: "disponible",
+        ubicacion: "Vitrina",
+        fecha_ingreso: "2025-02-12",
         proveedor: "Apple",
         costo_unitario: 20000,
+        costo_compra: 20000,
+        precio_venta: 23999,
         margen_porcentaje: 18,
         garantia_meses: 12,
         lote: "L-15P-2025",
         fecha_compra: "2025-02-10",
+        descripcion: "Equipo sellado",
+        imagen_url: "https://example.com/iphone15pro.png",
       },
     ];
 
@@ -86,12 +95,20 @@ describe("AdvancedSearch", () => {
         color: "",
         marca: "",
         modelo: "iPhone 15 Pro",
+        categoria: undefined,
+        condicion: undefined,
+        estado: undefined,
+        ubicacion: undefined,
+        proveedor: undefined,
+        fecha_ingreso_desde: undefined,
+        fecha_ingreso_hasta: undefined,
       });
     });
 
     expect(await screen.findByText("Sucursal Norte")).toBeInTheDocument();
     expect(screen.getByText("iPhone 15 Pro")).toBeInTheDocument();
     expect(screen.getByText("Negro")).toBeInTheDocument();
+    expect(screen.getByText("Smartphones")).toBeInTheDocument();
     expect(
       screen.queryByText("Ingresa al menos un criterio de búsqueda"),
     ).not.toBeInTheDocument();

@@ -13,6 +13,13 @@ const initialFilters: DeviceSearchFilters = {
   color: "",
   marca: "",
   modelo: "",
+  categoria: "",
+  condicion: "",
+  estado: "",
+  ubicacion: "",
+  proveedor: "",
+  fecha_ingreso_desde: "",
+  fecha_ingreso_hasta: "",
 };
 
 function AdvancedSearch({ token }: Props) {
@@ -24,7 +31,21 @@ function AdvancedSearch({ token }: Props) {
 
   const hasFilters = useMemo(
     () =>
-      Boolean(filters.imei || filters.serial || filters.color || filters.marca || filters.modelo || typeof filters.capacidad_gb === "number"),
+      Boolean(
+        filters.imei ||
+          filters.serial ||
+          filters.color ||
+          filters.marca ||
+          filters.modelo ||
+          filters.categoria ||
+          filters.condicion ||
+          filters.estado ||
+          filters.ubicacion ||
+          filters.proveedor ||
+          typeof filters.capacidad_gb === "number" ||
+          (filters.fecha_ingreso_desde ?? "") ||
+          (filters.fecha_ingreso_hasta ?? "")
+      ),
     [filters]
   );
 
@@ -40,6 +61,13 @@ function AdvancedSearch({ token }: Props) {
       const response = await searchCatalogDevices(token, {
         ...filters,
         capacidad_gb: typeof filters.capacidad_gb === "number" ? filters.capacidad_gb : undefined,
+        categoria: filters.categoria?.trim() ? filters.categoria.trim() : undefined,
+        condicion: filters.condicion?.trim() ? filters.condicion.trim() : undefined,
+        estado: filters.estado?.trim() ? filters.estado.trim() : undefined,
+        ubicacion: filters.ubicacion?.trim() ? filters.ubicacion.trim() : undefined,
+        proveedor: filters.proveedor?.trim() ? filters.proveedor.trim() : undefined,
+        fecha_ingreso_desde: filters.fecha_ingreso_desde || undefined,
+        fecha_ingreso_hasta: filters.fecha_ingreso_hasta || undefined,
       });
       setResults(response);
       setSearched(true);
@@ -126,6 +154,67 @@ function AdvancedSearch({ token }: Props) {
               onChange={(event) => setFilters((state) => ({ ...state, color: event.target.value }))}
             />
           </label>
+          <label>
+            <span>Categoría</span>
+            <input
+              type="text"
+              value={filters.categoria ?? ""}
+              maxLength={80}
+              onChange={(event) => setFilters((state) => ({ ...state, categoria: event.target.value }))}
+            />
+          </label>
+          <label>
+            <span>Condición</span>
+            <input
+              type="text"
+              value={filters.condicion ?? ""}
+              maxLength={60}
+              onChange={(event) => setFilters((state) => ({ ...state, condicion: event.target.value }))}
+            />
+          </label>
+          <label>
+            <span>Estado inventario</span>
+            <input
+              type="text"
+              value={filters.estado ?? ""}
+              maxLength={40}
+              onChange={(event) => setFilters((state) => ({ ...state, estado: event.target.value }))}
+            />
+          </label>
+          <label>
+            <span>Ubicación</span>
+            <input
+              type="text"
+              value={filters.ubicacion ?? ""}
+              maxLength={120}
+              onChange={(event) => setFilters((state) => ({ ...state, ubicacion: event.target.value }))}
+            />
+          </label>
+          <label>
+            <span>Proveedor</span>
+            <input
+              type="text"
+              value={filters.proveedor ?? ""}
+              maxLength={120}
+              onChange={(event) => setFilters((state) => ({ ...state, proveedor: event.target.value }))}
+            />
+          </label>
+          <label>
+            <span>Fecha ingreso desde</span>
+            <input
+              type="date"
+              value={filters.fecha_ingreso_desde ?? ""}
+              onChange={(event) => setFilters((state) => ({ ...state, fecha_ingreso_desde: event.target.value }))}
+            />
+          </label>
+          <label>
+            <span>Fecha ingreso hasta</span>
+            <input
+              type="date"
+              value={filters.fecha_ingreso_hasta ?? ""}
+              onChange={(event) => setFilters((state) => ({ ...state, fecha_ingreso_hasta: event.target.value }))}
+            />
+          </label>
         </div>
         <div className="form-actions">
           <button type="submit" disabled={loading}>
@@ -146,11 +235,16 @@ function AdvancedSearch({ token }: Props) {
                 <th>SKU</th>
                 <th>Marca</th>
                 <th>Modelo</th>
+                <th>Categoría</th>
+                <th>Condición</th>
                 <th>Color</th>
                 <th>Capacidad</th>
                 <th>IMEI</th>
                 <th>Serie</th>
                 <th>Estado</th>
+                <th>Estado inventario</th>
+                <th>Ubicación</th>
+                <th>Ingreso</th>
               </tr>
             </thead>
             <tbody>
@@ -158,6 +252,8 @@ function AdvancedSearch({ token }: Props) {
                 <tr key={`${device.id}-${device.store_id}`}>
                   <td>{device.store_name}</td>
                   <td>{device.sku}</td>
+                  <td>{device.categoria ?? "—"}</td>
+                  <td>{device.condicion ?? "—"}</td>
                   <td>{device.marca ?? "—"}</td>
                   <td>{device.modelo ?? "—"}</td>
                   <td>{device.color ?? "—"}</td>
@@ -165,6 +261,9 @@ function AdvancedSearch({ token }: Props) {
                   <td>{device.imei ?? "—"}</td>
                   <td>{device.serial ?? "—"}</td>
                   <td>{device.estado_comercial ?? "—"}</td>
+                  <td>{device.estado ?? "—"}</td>
+                  <td>{device.ubicacion ?? "—"}</td>
+                  <td>{device.fecha_ingreso ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

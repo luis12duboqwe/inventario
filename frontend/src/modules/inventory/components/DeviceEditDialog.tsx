@@ -16,6 +16,7 @@ type FormState = {
   marca: string;
   color: string;
   estado: Device["estado_comercial"] | "";
+  estadoInventario: string;
   quantity: string;
   unitPrice: string;
   costoUnitario: string;
@@ -23,10 +24,17 @@ type FormState = {
   garantia: string;
   lote: string;
   fechaCompra: string;
-  capacidad: string;
+  fechaIngreso: string;
+  capacidadGb: string;
+  capacidadTexto: string;
+  categoria: string;
+  condicion: string;
   proveedor: string;
+  ubicacion: string;
   imei: string;
   serial: string;
+  descripcion: string;
+  imagenUrl: string;
 };
 
 const estadoOptions: Array<{ value: Device["estado_comercial"] | ""; label: string }> = [
@@ -44,6 +52,7 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     marca: "",
     color: "",
     estado: "",
+    estadoInventario: "",
     quantity: "",
     unitPrice: "",
     costoUnitario: "",
@@ -51,10 +60,17 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     garantia: "",
     lote: "",
     fechaCompra: "",
-    capacidad: "",
+    fechaIngreso: "",
+    capacidadGb: "",
+    capacidadTexto: "",
+    categoria: "",
+    condicion: "",
     proveedor: "",
+    ubicacion: "",
     imei: "",
     serial: "",
+    descripcion: "",
+    imagenUrl: "",
   }));
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -70,17 +86,35 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
       marca: device.marca ?? "",
       color: device.color ?? "",
       estado: device.estado_comercial ?? "",
+      estadoInventario: device.estado ?? "",
       quantity: "",
-      unitPrice: device.unit_price ? String(device.unit_price) : "",
-      costoUnitario: device.costo_unitario ? String(device.costo_unitario) : "",
+      unitPrice:
+        device.precio_venta != null
+          ? String(device.precio_venta)
+          : device.unit_price != null
+          ? String(device.unit_price)
+          : "",
+      costoUnitario:
+        device.costo_compra != null
+          ? String(device.costo_compra)
+          : device.costo_unitario != null
+          ? String(device.costo_unitario)
+          : "",
       margen: device.margen_porcentaje ? String(device.margen_porcentaje) : "",
       garantia: device.garantia_meses ? String(device.garantia_meses) : "",
       lote: device.lote ?? "",
       fechaCompra: device.fecha_compra ?? "",
-      capacidad: device.capacidad_gb ? String(device.capacidad_gb) : "",
+      fechaIngreso: device.fecha_ingreso ?? "",
+      capacidadGb: device.capacidad_gb ? String(device.capacidad_gb) : "",
+      capacidadTexto: device.capacidad ?? "",
+      categoria: device.categoria ?? "",
+      condicion: device.condicion ?? "",
       proveedor: device.proveedor ?? "",
+      ubicacion: device.ubicacion ?? "",
       imei: device.imei ?? "",
       serial: device.serial ?? "",
+      descripcion: device.descripcion ?? "",
+      imagenUrl: device.imagen_url ?? "",
     });
     setReason("");
     setError(null);
@@ -159,6 +193,16 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
       updates.modelo = normalizedModelo;
     }
 
+    const normalizedCategoria = toNullableString(form.categoria);
+    if (normalizedCategoria !== (device.categoria ?? null)) {
+      updates.categoria = normalizedCategoria;
+    }
+
+    const normalizedCondicion = toNullableString(form.condicion);
+    if (normalizedCondicion !== (device.condicion ?? null)) {
+      updates.condicion = normalizedCondicion;
+    }
+
     const normalizedMarca = toNullableString(form.marca);
     if (normalizedMarca !== (device.marca ?? null)) {
       updates.marca = normalizedMarca;
@@ -167,6 +211,11 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     const normalizedColor = toNullableString(form.color);
     if (normalizedColor !== (device.color ?? null)) {
       updates.color = normalizedColor;
+    }
+
+    const normalizedEstadoInventario = toNullableString(form.estadoInventario);
+    if (normalizedEstadoInventario !== (device.estado ?? null)) {
+      updates.estado = normalizedEstadoInventario;
     }
 
     const normalizedProveedor = toNullableString(form.proveedor);
@@ -194,9 +243,14 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
       updates.estado_comercial = normalizedEstado;
     }
 
-    const normalizedCapacidad = toNullableNumber(form.capacidad);
-    if (normalizedCapacidad !== (device.capacidad_gb ?? null)) {
-      updates.capacidad_gb = normalizedCapacidad;
+    const normalizedCapacidadGb = toNullableNumber(form.capacidadGb);
+    if (normalizedCapacidadGb !== (device.capacidad_gb ?? null)) {
+      updates.capacidad_gb = normalizedCapacidadGb;
+    }
+
+    const normalizedCapacidadTexto = toNullableString(form.capacidadTexto);
+    if (normalizedCapacidadTexto !== (device.capacidad ?? null)) {
+      updates.capacidad = normalizedCapacidadTexto;
     }
 
     const normalizedGarantia = toNullableNumber(form.garantia);
@@ -205,12 +259,14 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     }
 
     const normalizedUnitPrice = toNullableNumber(form.unitPrice);
-    if (normalizedUnitPrice !== (device.unit_price ?? null)) {
+    if (normalizedUnitPrice !== (device.precio_venta ?? device.unit_price ?? null)) {
+      updates.precio_venta = normalizedUnitPrice;
       updates.unit_price = normalizedUnitPrice;
     }
 
     const normalizedCostoUnitario = toNullableNumber(form.costoUnitario);
-    if (normalizedCostoUnitario !== (device.costo_unitario ?? null)) {
+    if (normalizedCostoUnitario !== (device.costo_compra ?? device.costo_unitario ?? null)) {
+      updates.costo_compra = normalizedCostoUnitario;
       updates.costo_unitario = normalizedCostoUnitario;
     }
 
@@ -222,6 +278,26 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     const normalizedFecha = toNullableString(form.fechaCompra);
     if (normalizedFecha !== (device.fecha_compra ?? null)) {
       updates.fecha_compra = normalizedFecha;
+    }
+
+    const normalizedFechaIngreso = toNullableString(form.fechaIngreso);
+    if (normalizedFechaIngreso !== (device.fecha_ingreso ?? null)) {
+      updates.fecha_ingreso = normalizedFechaIngreso;
+    }
+
+    const normalizedUbicacion = toNullableString(form.ubicacion);
+    if (normalizedUbicacion !== (device.ubicacion ?? null)) {
+      updates.ubicacion = normalizedUbicacion;
+    }
+
+    const normalizedDescripcion = toNullableString(form.descripcion);
+    if (normalizedDescripcion !== (device.descripcion ?? null)) {
+      updates.descripcion = normalizedDescripcion;
+    }
+
+    const normalizedImagen = toNullableString(form.imagenUrl);
+    if (normalizedImagen !== (device.imagen_url ?? null)) {
+      updates.imagen_url = normalizedImagen;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -293,6 +369,14 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
                   />
                 </label>
                 <label>
+                  <span>Categoría</span>
+                  <input
+                    value={form.categoria}
+                    onChange={(event) => handleChange("categoria", event.target.value)}
+                    maxLength={80}
+                  />
+                </label>
+                <label>
                   <span>Marca</span>
                   <input
                     value={form.marca}
@@ -305,6 +389,14 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
                   <input
                     value={form.color}
                     onChange={(event) => handleChange("color", event.target.value)}
+                    maxLength={60}
+                  />
+                </label>
+                <label>
+                  <span>Condición</span>
+                  <input
+                    value={form.condicion}
+                    onChange={(event) => handleChange("condicion", event.target.value)}
                     maxLength={60}
                   />
                 </label>
@@ -330,6 +422,14 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
                   </select>
                 </label>
                 <label>
+                  <span>Estado inventario</span>
+                  <input
+                    value={form.estadoInventario}
+                    onChange={(event) => handleChange("estadoInventario", event.target.value)}
+                    maxLength={40}
+                  />
+                </label>
+                <label>
                   <span>Existencias disponibles</span>
                   <input
                     type="number"
@@ -348,12 +448,20 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
                   <input
                     type="number"
                     min={0}
-                    value={form.capacidad}
-                    onChange={(event) => handleChange("capacidad", event.target.value)}
+                    value={form.capacidadGb}
+                    onChange={(event) => handleChange("capacidadGb", event.target.value)}
                   />
                 </label>
                 <label>
-                  <span>Precio unitario (MXN)</span>
+                  <span>Capacidad (texto)</span>
+                  <input
+                    value={form.capacidadTexto}
+                    onChange={(event) => handleChange("capacidadTexto", event.target.value)}
+                    maxLength={80}
+                  />
+                </label>
+                <label>
+                  <span>Precio de venta (MXN)</span>
                   <input
                     type="number"
                     min={0}
@@ -416,11 +524,45 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
                   />
                 </label>
                 <label>
+                  <span>Ubicación</span>
+                  <input
+                    value={form.ubicacion}
+                    onChange={(event) => handleChange("ubicacion", event.target.value)}
+                    maxLength={120}
+                  />
+                </label>
+                <label>
                   <span>Fecha de compra</span>
                   <input
                     type="date"
                     value={form.fechaCompra}
                     onChange={(event) => handleChange("fechaCompra", event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Fecha de ingreso</span>
+                  <input
+                    type="date"
+                    value={form.fechaIngreso}
+                    onChange={(event) => handleChange("fechaIngreso", event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Descripción</span>
+                  <textarea
+                    value={form.descripcion}
+                    onChange={(event) => handleChange("descripcion", event.target.value)}
+                    maxLength={1024}
+                    rows={2}
+                  />
+                </label>
+                <label>
+                  <span>URL de imagen</span>
+                  <input
+                    type="url"
+                    value={form.imagenUrl}
+                    onChange={(event) => handleChange("imagenUrl", event.target.value)}
+                    maxLength={255}
                   />
                 </label>
               </div>

@@ -5,6 +5,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   Device,
+  DeviceImportSummary,
+  DeviceListFilters,
   DeviceUpdateInput,
   LowStockDevice,
   Store,
@@ -37,6 +39,8 @@ const handleDeviceUpdateMock = vi.fn<
 >();
 const downloadInventoryReportMock = vi.fn<(reason: string) => Promise<void>>();
 const downloadInventoryCsvMock = vi.fn<(reason: string) => Promise<void>>();
+const exportCatalogCsvMock = vi.fn<(filters: DeviceListFilters, reason: string) => Promise<void>>();
+const importCatalogCsvMock = vi.fn<(file: unknown, reason: string) => Promise<DeviceImportSummary>>();
 const refreshSummaryMock = vi.fn<() => Promise<void> | void>();
 const promptCorporateReasonMock = vi.fn<(defaultReason: string) => string | null>();
 
@@ -198,20 +202,30 @@ const buildDevice = (): Device => ({
   quantity: 5,
   store_id: 1,
   unit_price: 15000,
+  precio_venta: 15000,
   inventory_value: 75000,
   imei: "490154203237518",
   serial: "SERIAL-001",
   marca: "Samsung",
   modelo: "Galaxy S24",
+  categoria: "Smartphones",
+  condicion: "Nuevo",
   color: "Negro",
   capacidad_gb: 256,
+  capacidad: "256 GB",
   estado_comercial: "nuevo",
+  estado: "disponible",
   proveedor: "Samsung",
   costo_unitario: 12000,
+  costo_compra: 12000,
   margen_porcentaje: 20,
   garantia_meses: 12,
   lote: "L-001",
   fecha_compra: "2025-01-15",
+  fecha_ingreso: "2025-01-16",
+  ubicacion: "Vitrina",
+  descripcion: "Equipo de exhibición",
+  imagen_url: "https://example.com/galaxy-s24.png",
 });
 
 const buildLowStockDevice = (): LowStockDevice => ({
@@ -258,6 +272,8 @@ const createModuleState = (): InventoryModuleState => ({
   lastInventoryRefresh: new Date("2025-02-28T10:00:00.000Z"),
   downloadInventoryReport: downloadInventoryReportMock,
   downloadInventoryCsv: downloadInventoryCsvMock,
+  exportCatalogCsv: exportCatalogCsvMock,
+  importCatalogCsv: importCatalogCsvMock,
   supplierBatchOverview: [],
   supplierBatchLoading: false,
   refreshSupplierBatchOverview: vi.fn(),
@@ -304,6 +320,8 @@ beforeEach(() => {
   handleDeviceUpdateMock.mockReset();
   downloadInventoryReportMock.mockReset();
   downloadInventoryCsvMock.mockReset();
+  exportCatalogCsvMock.mockReset();
+  importCatalogCsvMock.mockReset();
   refreshSummaryMock.mockReset();
   promptCorporateReasonMock.mockReset();
 
@@ -311,6 +329,8 @@ beforeEach(() => {
   updateLowStockThresholdMock.mockResolvedValue();
   downloadInventoryReportMock.mockResolvedValue();
   downloadInventoryCsvMock.mockResolvedValue();
+  exportCatalogCsvMock.mockResolvedValue();
+  importCatalogCsvMock.mockResolvedValue({ created: 0, updated: 0, skipped: 0, errors: [] });
 
   moduleState = createModuleState();
 });

@@ -51,6 +51,32 @@ export function useInventoryModule() {
   const downloadInventoryCsv = (reason: string) =>
     inventoryService.downloadInventoryCsv(dashboard.token, reason);
 
+  const exportCatalogCsv = (filters: Parameters<typeof inventoryService.fetchDevices>[2], reason: string) => {
+    if (!dashboard.selectedStoreId) {
+      throw new Error("Selecciona una sucursal para exportar el catálogo");
+    }
+    return inventoryService.exportCatalogCsv(
+      dashboard.token,
+      dashboard.selectedStoreId,
+      filters,
+      reason,
+    );
+  };
+
+  const importCatalogCsv = async (file: File, reason: string) => {
+    if (!dashboard.selectedStoreId) {
+      throw new Error("Selecciona una sucursal para importar productos");
+    }
+    const summary = await inventoryService.importCatalogCsv(
+      dashboard.token,
+      dashboard.selectedStoreId,
+      file,
+      reason,
+    );
+    await dashboard.refreshInventoryAfterTransfer();
+    return summary;
+  };
+
   const storeValuationSnapshot = useMemo(() => {
     if (!dashboard.selectedStoreId || !dashboard.selectedStore) {
       return null;
@@ -102,6 +128,8 @@ export function useInventoryModule() {
     lastInventoryRefresh: dashboard.lastInventoryRefresh,
     downloadInventoryReport,
     downloadInventoryCsv,
+    exportCatalogCsv,
+    importCatalogCsv,
     supplierBatchOverview,
     supplierBatchLoading,
     refreshSupplierBatchOverview,
