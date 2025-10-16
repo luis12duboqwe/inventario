@@ -1858,32 +1858,54 @@ def create_inventory_movement(
     performed_by_id: int | None = None,
 ) -> models.InventoryMovement:
     store = get_store(db, store_id)
-    device = get_device(db, store_id, payload.device_id)
+    if payload.tienda_destino_id is not None and payload.tienda_destino_id != store_id:
+        raise ValueError("invalid_destination_store")
 
-    if payload.movement_type == models.MovementType.OUT and device.quantity < payload.quantity:
+    source_store_id = payload.tienda_origen_id
+    if source_store_id is not None:
+        get_store(db, source_store_id)
+
+    device = get_device(db, store_id, payload.producto_id)
+
+    if (
+        payload.tipo_movimiento == models.MovementType.OUT
+        and device.quantity < payload.cantidad
+    ):
         raise ValueError("insufficient_stock")
 
-    if payload.movement_type == models.MovementType.IN:
-        device.quantity += payload.quantity
+    if payload.tipo_movimiento == models.MovementType.IN:
+        device.quantity += payload.cantidad
         if payload.unit_cost is not None:
-            current_total_cost = _to_decimal(device.costo_unitario) * _to_decimal(device.quantity - payload.quantity)
-            incoming_cost_total = _to_decimal(payload.unit_cost) * _to_decimal(payload.quantity)
+            current_total_cost = _to_decimal(device.costo_unitario) * _to_decimal(
+                device.quantity - payload.cantidad
+            )
+            incoming_cost_total = _to_decimal(payload.unit_cost) * _to_decimal(
+                payload.cantidad
+            )
             divisor = _to_decimal(device.quantity or 1)
             average_cost = (current_total_cost + incoming_cost_total) / divisor
-            device.costo_unitario = average_cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            device.costo_unitario = average_cost.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
             _recalculate_sale_price(device)
-    elif payload.movement_type == models.MovementType.OUT:
-        device.quantity -= payload.quantity
-    elif payload.movement_type == models.MovementType.ADJUST:
-        device.quantity = payload.quantity
+    elif payload.tipo_movimiento == models.MovementType.OUT:
+        device.quantity -= payload.cantidad
+        if source_store_id is None:
+            source_store_id = store_id
+    elif payload.tipo_movimiento == models.MovementType.ADJUST:
+        device.quantity = payload.cantidad
+        if source_store_id is None:
+            source_store_id = store_id
 
     movement = models.InventoryMovement(
         store=store,
+        source_store_id=source_store_id,
         device=device,
-        movement_type=payload.movement_type,
-        quantity=payload.quantity,
-        reason=payload.reason,
-        unit_cost=_to_decimal(payload.unit_cost) if payload.unit_cost is not None else None,
+        movement_type=payload.tipo_movimiento,
+        quantity=payload.cantidad,
+        comment=payload.comentario,
+        unit_cost=
+            _to_decimal(payload.unit_cost) if payload.unit_cost is not None else None,
         performed_by_id=performed_by_id,
     )
     db.add(movement)
@@ -1897,7 +1919,7 @@ def create_inventory_movement(
         entity_type="device",
         entity_id=str(device.id),
         performed_by_id=performed_by_id,
-        details=f"tipo={payload.movement_type.value}, cantidad={payload.quantity}",
+        details=f"tipo={payload.tipo_movimiento.value}, cantidad={payload.cantidad}",
     )
     db.commit()
     db.refresh(movement)
@@ -3725,10 +3747,11 @@ def receive_purchase_order(
         db.add(
             models.InventoryMovement(
                 store_id=order.store_id,
+                source_store_id=None,
                 device_id=device.id,
                 movement_type=models.MovementType.IN,
                 quantity=receive_item.quantity,
-                reason=reason,
+                comment=reason,
                 unit_cost=order_item.unit_cost,
                 performed_by_id=received_by_id,
             )
@@ -3818,10 +3841,11 @@ def register_purchase_return(
     db.add(
         models.InventoryMovement(
             store_id=order.store_id,
+            source_store_id=order.store_id,
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=payload.quantity,
-            reason=payload.reason or reason,
+            comment=payload.reason or reason,
             performed_by_id=processed_by_id,
         )
     )
@@ -4214,10 +4238,11 @@ def _apply_repair_parts(
             db.add(
                 models.InventoryMovement(
                     store_id=order.store_id,
+                    source_store_id=order.store_id,
                     device_id=device.id,
                     movement_type=models.MovementType.OUT,
                     quantity=delta,
-                    reason=reason or f"Reparación #{order.id}",
+                    comment=reason or f"Reparación #{order.id}",
                     performed_by_id=performed_by_id,
                 )
             )
@@ -4226,10 +4251,11 @@ def _apply_repair_parts(
             db.add(
                 models.InventoryMovement(
                     store_id=order.store_id,
+                    source_store_id=None,
                     device_id=device.id,
                     movement_type=models.MovementType.IN,
                     quantity=abs(delta),
-                    reason=reason or f"Ajuste reparación #{order.id}",
+                    comment=reason or f"Ajuste reparación #{order.id}",
                     performed_by_id=performed_by_id,
                 )
             )
@@ -4267,10 +4293,11 @@ def _apply_repair_parts(
             db.add(
                 models.InventoryMovement(
                     store_id=order.store_id,
+                    source_store_id=None,
                     device_id=device.id,
                     movement_type=models.MovementType.IN,
                     quantity=part.quantity,
-                    reason=reason or f"Reverso reparación #{order.id}",
+                    comment=reason or f"Reverso reparación #{order.id}",
                     performed_by_id=performed_by_id,
                 )
             )
@@ -4445,10 +4472,11 @@ def delete_repair_order(
         db.add(
             models.InventoryMovement(
                 store_id=order.store_id,
+                source_store_id=None,
                 device_id=device.id,
                 movement_type=models.MovementType.IN,
                 quantity=part.quantity,
-                reason=reason or f"Cancelación reparación #{order.id}",
+                comment=reason or f"Cancelación reparación #{order.id}",
                 performed_by_id=performed_by_id,
             )
         )
@@ -4585,10 +4613,11 @@ def create_sale(
         db.add(
             models.InventoryMovement(
                 store_id=payload.store_id,
+                source_store_id=payload.store_id,
                 device_id=device.id,
                 movement_type=models.MovementType.OUT,
                 quantity=item.quantity,
-                reason=reason,
+                comment=reason,
                 performed_by_id=performed_by_id,
             )
         )
@@ -4715,10 +4744,11 @@ def register_sale_return(
         db.add(
             models.InventoryMovement(
                 store_id=sale.store_id,
+                source_store_id=None,
                 device_id=item.device_id,
                 movement_type=models.MovementType.IN,
                 quantity=item.quantity,
-                reason=item.reason or reason,
+                comment=item.reason or reason,
                 performed_by_id=processed_by_id,
             )
         )

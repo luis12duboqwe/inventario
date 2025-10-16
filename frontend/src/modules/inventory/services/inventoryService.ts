@@ -15,8 +15,8 @@ export const inventoryService = {
     token: string,
     storeId: number,
     payload: MovementInput,
-    reason: string,
-  ) => registerMovement(token, storeId, payload, reason),
+    comment: string,
+  ) => registerMovement(token, storeId, payload, comment),
   downloadInventoryReport: (token: string, reason: string) =>
     downloadInventoryPdf(token, reason),
   downloadInventoryCsv: (token: string, reason: string) =>

@@ -488,10 +488,12 @@ export type DeviceImportSummary = {
 };
 
 export type MovementInput = {
-  device_id: number;
-  movement_type: "entrada" | "salida" | "ajuste";
-  quantity: number;
-  reason?: string;
+  producto_id: number;
+  tipo_movimiento: "entrada" | "salida" | "ajuste";
+  cantidad: number;
+  comentario?: string;
+  tienda_origen_id?: number | null;
+  tienda_destino_id?: number | null;
   unit_cost?: number;
 };
 
@@ -1533,12 +1535,12 @@ export function registerMovement(
   token: string,
   storeId: number,
   payload: MovementInput,
-  reason: string
+  comment: string
 ) {
   return request(`/inventory/stores/${storeId}/movements`, {
     method: "POST",
     body: JSON.stringify(payload),
-    headers: { "X-Reason": reason },
+    headers: { "X-Reason": comment },
   }, token);
 }
 

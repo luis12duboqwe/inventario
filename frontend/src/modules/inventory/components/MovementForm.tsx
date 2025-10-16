@@ -8,9 +8,9 @@ type Props = {
 
 function MovementForm({ devices, onSubmit }: Props) {
   const [deviceId, setDeviceId] = useState<number | "">(devices[0]?.id ?? "");
-  const [movementType, setMovementType] = useState<MovementInput["movement_type"]>("entrada");
+  const [movementType, setMovementType] = useState<MovementInput["tipo_movimiento"]>("entrada");
   const [quantity, setQuantity] = useState(1);
-  const [reason, setReason] = useState("");
+  const [comment, setComment] = useState("");
   const [unitCost, setUnitCost] = useState("");
 
   useEffect(() => {
@@ -34,16 +34,16 @@ function MovementForm({ devices, onSubmit }: Props) {
     if (!deviceId) {
       return;
     }
-    const normalizedReason = reason.trim();
+    const normalizedComment = comment.trim();
     const rawUnitCost = unitCost.trim();
     const shouldSendUnitCost = movementType === "entrada" && rawUnitCost.length > 0;
     const parsedUnitCost = shouldSendUnitCost ? Number(rawUnitCost) : undefined;
 
     const payload: MovementInput = {
-      device_id: Number(deviceId),
-      movement_type: movementType,
-      quantity,
-      reason: normalizedReason || undefined,
+      producto_id: Number(deviceId),
+      tipo_movimiento: movementType,
+      cantidad: quantity,
+      comentario: normalizedComment || undefined,
     };
 
     if (typeof parsedUnitCost === "number" && Number.isFinite(parsedUnitCost) && parsedUnitCost >= 0) {
@@ -52,7 +52,7 @@ function MovementForm({ devices, onSubmit }: Props) {
 
     await onSubmit(payload);
     setQuantity(1);
-    setReason("");
+    setComment("");
     setUnitCost("");
   };
 
@@ -76,7 +76,11 @@ function MovementForm({ devices, onSubmit }: Props) {
       </select>
 
       <label htmlFor="movementType">Tipo de movimiento</label>
-      <select id="movementType" value={movementType} onChange={(event) => setMovementType(event.target.value as MovementInput["movement_type"])}>
+      <select
+        id="movementType"
+        value={movementType}
+        onChange={(event) => setMovementType(event.target.value as MovementInput["tipo_movimiento"])}
+      >
         <option value="entrada">Entrada</option>
         <option value="salida">Salida</option>
         <option value="ajuste">Ajuste</option>
@@ -115,12 +119,12 @@ function MovementForm({ devices, onSubmit }: Props) {
         </>
       ) : null}
 
-      <label htmlFor="reason">Motivo corporativo</label>
+      <label htmlFor="comment">Motivo corporativo</label>
       <textarea
-        id="reason"
+        id="comment"
         rows={2}
-        value={reason}
-        onChange={(event) => setReason(event.target.value)}
+        value={comment}
+        onChange={(event) => setComment(event.target.value)}
         placeholder="Describe el motivo (mínimo 5 caracteres)"
         minLength={5}
         required

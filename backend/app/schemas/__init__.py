@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -732,10 +733,12 @@ class SessionRevokeRequest(BaseModel):
 
 
 class MovementBase(BaseModel):
-    device_id: int = Field(..., ge=1)
-    movement_type: MovementType
-    quantity: int = Field(..., gt=0)
-    reason: str | None = Field(default=None, max_length=255)
+    producto_id: int = Field(..., ge=1)
+    tipo_movimiento: MovementType
+    cantidad: int = Field(..., gt=0)
+    comentario: str | None = Field(default=None, max_length=255)
+    tienda_origen_id: int | None = Field(default=None, ge=1)
+    tienda_destino_id: int | None = Field(default=None, ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
 
@@ -743,14 +746,48 @@ class MovementCreate(MovementBase):
     """Carga de datos para registrar movimientos de inventario."""
 
 
-class MovementResponse(MovementBase):
+class MovementResponse(BaseModel):
     id: int
-    store_id: int
-    performed_by_id: int | None
-    created_at: datetime
+    producto_id: int = Field(
+        validation_alias=AliasChoices("producto_id", "device_id"),
+        serialization_alias="producto_id",
+    )
+    tipo_movimiento: MovementType = Field(
+        validation_alias=AliasChoices("tipo_movimiento", "movement_type"),
+        serialization_alias="tipo_movimiento",
+    )
+    cantidad: int = Field(
+        validation_alias=AliasChoices("cantidad", "quantity"),
+        serialization_alias="cantidad",
+    )
+    comentario: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("comentario", "comment"),
+        serialization_alias="comentario",
+    )
+    tienda_origen_id: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tienda_origen_id", "source_store_id"),
+        serialization_alias="tienda_origen_id",
+    )
+    tienda_destino_id: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("tienda_destino_id", "store_id"),
+        serialization_alias="tienda_destino_id",
+    )
+    usuario_id: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("usuario_id", "performed_by_id"),
+        serialization_alias="usuario_id",
+    )
+    fecha: datetime = Field(
+        validation_alias=AliasChoices("fecha", "created_at"),
+        serialization_alias="fecha",
+    )
+    unit_cost: Decimal | None = Field(default=None)
     store_inventory_value: Decimal
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     @field_serializer("unit_cost")
     @classmethod

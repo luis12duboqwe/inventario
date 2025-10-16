@@ -147,10 +147,10 @@ def test_supplier_batches_and_inventory_value(client):
     assert update_batch.json()["unit_cost"] == pytest.approx(820.0)
 
     movement_payload = {
-        "device_id": device_id,
-        "movement_type": "entrada",
-        "quantity": 5,
-        "reason": "Reposición", 
+        "producto_id": device_id,
+        "tipo_movimiento": "entrada",
+        "cantidad": 5,
+        "comentario": "Reposición",
         "unit_cost": 900,
     }
     movement_response = client.post(
@@ -162,6 +162,7 @@ def test_supplier_batches_and_inventory_value(client):
     movement_data = movement_response.json()
     assert movement_data["store_inventory_value"] == pytest.approx(15000.0)
     assert movement_data["unit_cost"] == pytest.approx(900.0)
+    assert movement_data["producto_id"] == device_id
 
     store_after_movement = client.get(f"/stores/{store_id}", headers=auth_headers)
     assert store_after_movement.status_code == status.HTTP_200_OK

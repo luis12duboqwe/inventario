@@ -43,11 +43,19 @@ def test_inventory_flow(client) -> None:
     assert low_stock_response.status_code == status.HTTP_201_CREATED
     low_stock_id = low_stock_response.json()["id"]
 
-    movement_payload = {"device_id": device_id, "movement_type": "entrada", "quantity": 10}
+    movement_payload = {
+        "producto_id": device_id,
+        "tipo_movimiento": "entrada",
+        "cantidad": 10,
+        "comentario": "Inventario inicial",
+    }
     movement_response = client.post(
         f"/inventory/stores/{store_id}/movements", json=movement_payload, headers=headers
     )
     assert movement_response.status_code == status.HTTP_201_CREATED
+    movement_data = movement_response.json()
+    assert movement_data["producto_id"] == device_id
+    assert movement_data["tienda_destino_id"] == store_id
 
     summary_response = client.get("/inventory/summary", headers=headers)
     assert summary_response.status_code == status.HTTP_200_OK
