@@ -232,6 +232,7 @@ def _recalculate_store_inventory_value(
         store_obj = store
     else:
         store_obj = get_store(db, int(store))
+    db.flush()
     total_value = db.scalar(
         select(func.coalesce(func.sum(models.Device.quantity * models.Device.unit_price), 0))
         .where(models.Device.store_id == store_obj.id)
@@ -3483,6 +3484,9 @@ def _apply_transfer_reception(
             else:
                 destination_device.quantity += item.quantity
 
+    _recalculate_store_inventory_value(db, order.origin_store_id)
+    _recalculate_store_inventory_value(db, order.destination_store_id)
+
 
 def receive_transfer_order(
     db: Session,
@@ -3849,6 +3853,8 @@ def register_purchase_return(
             performed_by_id=processed_by_id,
         )
     )
+
+    _recalculate_store_inventory_value(db, order.store_id)
 
     purchase_return = models.PurchaseReturn(
         purchase_order_id=order.id,
@@ -4306,6 +4312,7 @@ def _apply_repair_parts(
     order.parts_cost = total_cost
     order.parts_snapshot = snapshot
     order.inventory_adjusted = bool(processed_devices)
+    _recalculate_store_inventory_value(db, order.store_id)
     return total_cost
 
 
@@ -4480,6 +4487,7 @@ def delete_repair_order(
                 performed_by_id=performed_by_id,
             )
         )
+    _recalculate_store_inventory_value(db, order.store_id)
     db.delete(order)
     db.commit()
     _log_action(
@@ -4637,6 +4645,8 @@ def create_sale(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
+    _recalculate_store_inventory_value(db, sale.store_id)
+
     if customer:
         if sale.payment_method == models.PaymentMethod.CREDITO:
             customer.outstanding_debt = (
@@ -4752,6 +4762,8 @@ def register_sale_return(
                 performed_by_id=processed_by_id,
             )
         )
+
+    _recalculate_store_inventory_value(db, sale.store_id)
 
     db.commit()
     for sale_return in returns:
@@ -5395,13 +5407,14 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
         "movements": [
             {
                 "id": movement.id,
-                "store_id": movement.store_id,
+                "tienda_destino_id": movement.store_id,
+                "tienda_origen_id": movement.source_store_id,
                 "device_id": movement.device_id,
                 "movement_type": movement.movement_type.value,
                 "quantity": movement.quantity,
-                "reason": movement.reason,
-                "performed_by_id": movement.performed_by_id,
-                "created_at": movement.created_at.isoformat(),
+                "comentario": movement.comment,
+                "usuario_id": movement.performed_by_id,
+                "fecha": movement.created_at.isoformat(),
             }
             for movement in movements
         ],

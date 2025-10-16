@@ -1,4 +1,7 @@
+import pytest
 from fastapi import status
+
+from backend.app.config import settings
 
 from backend.app.core.roles import ADMIN
 
@@ -170,3 +173,67 @@ def test_requires_authentication(client) -> None:
     store_payload = {"name": "Sucursal Sin Token"}
     response = client.post("/stores", json=store_payload)
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_inventory_movement_rejects_negative_stock(client) -> None:
+    headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Inventario", "location": "GDL", "timezone": "America/Mexico_City"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {"sku": "SKU-NEG", "name": "Tablet Pro", "quantity": 3, "unit_price": 4500.0}
+    device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    movement_payload = {
+        "producto_id": device_id,
+        "tipo_movimiento": "salida",
+        "cantidad": 5,
+        "comentario": "Solicitud no permitida",
+    }
+
+    movement_response = client.post(
+        f"/inventory/stores/{store_id}/movements",
+        json=movement_payload,
+        headers=headers,
+    )
+    assert movement_response.status_code == status.HTTP_409_CONFLICT
+    assert "Stock insuficiente" in movement_response.json()["detail"]
+
+
+def test_sale_updates_inventory_value(client) -> None:
+    settings.enable_purchases_sales = True
+    headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Ventas", "location": "QRO", "timezone": "America/Mexico_City"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {"sku": "SKU-VENTA", "name": "Smartwatch", "quantity": 10, "unit_price": 1000.0}
+    device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "items": [
+            {"device_id": device_id, "quantity": 2},
+        ],
+        "payment_method": "EFECTIVO",
+    }
+
+    sale_response = client.post("/sales", json=sale_payload, headers=headers)
+    assert sale_response.status_code == status.HTTP_201_CREATED
+
+    device_list = client.get(f"/stores/{store_id}/devices", headers=headers)
+    assert device_list.status_code == status.HTTP_200_OK
+    devices = device_list.json()
+    assert any(device["id"] == device_id and device["quantity"] == 8 for device in devices)
+
+    store_detail = client.get(f"/stores/{store_id}", headers=headers)
+    assert store_detail.status_code == status.HTTP_200_OK
+    assert store_detail.json()["inventory_value"] == pytest.approx(8000.0)

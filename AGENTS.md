@@ -132,6 +132,9 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 
 - Refuerza la tabla `inventory_movements` con `producto_id`, `tienda_origen_id`, `tienda_destino_id`, `comentario`, `usuario_id` y `fecha`, manteniendo integridad referencial mediante la migración `202502150010_inventory_movements_enhancements`.
 - El endpoint `/inventory/stores/{store_id}/movements` valida destino contra la sucursal solicitada, expone los campos en español y bloquea salidas que dejen inventario negativo.
+- Compras, ventas, devoluciones, reparaciones y recepciones de transferencias registran movimientos con origen/destino corporativo y recalculan automáticamente el valor del inventario por tienda sin permitir existencias negativas.
+- El formulario `MovementForm.tsx` utiliza los nuevos campos (`producto_id`, `tipo_movimiento`, `cantidad`, `comentario`) y exige motivos ≥5 caracteres reutilizados en la cabecera `X-Reason`.
+- El snapshot operativo (`build_inventory_snapshot`) expone `tienda_origen_id`, `tienda_destino_id`, `comentario`, `usuario_id` y `fecha` para cada movimiento al consultar `/updates/snapshot`.
 - Compras, ventas, devoluciones y reparaciones registran movimientos con origen/destino apropiado y comentario corporativo para recalcular automáticamente el valor del inventario por tienda.
 - El formulario `MovementForm.tsx` utiliza los nuevos campos (`producto_id`, `tipo_movimiento`, `cantidad`, `comentario`) y exige motivos ≥5 caracteres reutilizados en la cabecera `X-Reason`.
 
