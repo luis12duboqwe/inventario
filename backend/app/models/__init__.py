@@ -329,6 +329,32 @@ class InventoryMovement(Base):
     device: Mapped[Device] = relationship("Device", back_populates="movements")
     performed_by: Mapped[User | None] = relationship("User", back_populates="movements")
 
+    @property
+    def usuario(self) -> str | None:
+        """Nombre descriptivo del usuario que registró el movimiento."""
+
+        if self.performed_by is None:
+            return None
+        if self.performed_by.full_name:
+            return self.performed_by.full_name
+        return self.performed_by.username
+
+    @property
+    def tienda_origen(self) -> str | None:
+        """Nombre de la sucursal de origen, si aplica."""
+
+        if self.source_store is None:
+            return None
+        return self.source_store.name
+
+    @property
+    def tienda_destino(self) -> str | None:
+        """Nombre de la sucursal destino."""
+
+        if self.store is None:
+            return None
+        return self.store.name
+
 
 class SyncSession(Base):
     __tablename__ = "sync_sessions"
