@@ -55,6 +55,14 @@ def register_movement(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Stock insuficiente para registrar la salida.",
             ) from exc
+        if str(exc) == "invalid_destination_store":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "invalid_destination_store",
+                    "message": "La sucursal destino del movimiento debe coincidir con la seleccionada.",
+                },
+            ) from exc
         raise
     return movement
 

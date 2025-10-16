@@ -413,14 +413,14 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     if (!selectedStoreId) {
       return;
     }
-    const reason = payload.reason?.trim() ?? "";
-    if (reason.length < 5) {
+    const comment = payload.comentario?.trim() ?? "";
+    if (comment.length < 5) {
       setError("Indica un motivo corporativo de al menos 5 caracteres.");
       return;
     }
     try {
       setError(null);
-      await registerMovement(token, selectedStoreId, payload, reason);
+      await registerMovement(token, selectedStoreId, payload, comment);
       setMessage("Movimiento registrado correctamente");
       pushToast({ message: "Movimiento registrado", variant: "success" });
       await Promise.all([

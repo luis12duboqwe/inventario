@@ -232,6 +232,7 @@ def _recalculate_store_inventory_value(
         store_obj = store
     else:
         store_obj = get_store(db, int(store))
+    db.flush()
     total_value = db.scalar(
         select(func.coalesce(func.sum(models.Device.quantity * models.Device.unit_price), 0))
         .where(models.Device.store_id == store_obj.id)
@@ -1858,32 +1859,54 @@ def create_inventory_movement(
     performed_by_id: int | None = None,
 ) -> models.InventoryMovement:
     store = get_store(db, store_id)
-    device = get_device(db, store_id, payload.device_id)
+    if payload.tienda_destino_id is not None and payload.tienda_destino_id != store_id:
+        raise ValueError("invalid_destination_store")
 
-    if payload.movement_type == models.MovementType.OUT and device.quantity < payload.quantity:
+    source_store_id = payload.tienda_origen_id
+    if source_store_id is not None:
+        get_store(db, source_store_id)
+
+    device = get_device(db, store_id, payload.producto_id)
+
+    if (
+        payload.tipo_movimiento == models.MovementType.OUT
+        and device.quantity < payload.cantidad
+    ):
         raise ValueError("insufficient_stock")
 
-    if payload.movement_type == models.MovementType.IN:
-        device.quantity += payload.quantity
+    if payload.tipo_movimiento == models.MovementType.IN:
+        device.quantity += payload.cantidad
         if payload.unit_cost is not None:
-            current_total_cost = _to_decimal(device.costo_unitario) * _to_decimal(device.quantity - payload.quantity)
-            incoming_cost_total = _to_decimal(payload.unit_cost) * _to_decimal(payload.quantity)
+            current_total_cost = _to_decimal(device.costo_unitario) * _to_decimal(
+                device.quantity - payload.cantidad
+            )
+            incoming_cost_total = _to_decimal(payload.unit_cost) * _to_decimal(
+                payload.cantidad
+            )
             divisor = _to_decimal(device.quantity or 1)
             average_cost = (current_total_cost + incoming_cost_total) / divisor
-            device.costo_unitario = average_cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            device.costo_unitario = average_cost.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
             _recalculate_sale_price(device)
-    elif payload.movement_type == models.MovementType.OUT:
-        device.quantity -= payload.quantity
-    elif payload.movement_type == models.MovementType.ADJUST:
-        device.quantity = payload.quantity
+    elif payload.tipo_movimiento == models.MovementType.OUT:
+        device.quantity -= payload.cantidad
+        if source_store_id is None:
+            source_store_id = store_id
+    elif payload.tipo_movimiento == models.MovementType.ADJUST:
+        device.quantity = payload.cantidad
+        if source_store_id is None:
+            source_store_id = store_id
 
     movement = models.InventoryMovement(
         store=store,
+        source_store_id=source_store_id,
         device=device,
-        movement_type=payload.movement_type,
-        quantity=payload.quantity,
-        reason=payload.reason,
-        unit_cost=_to_decimal(payload.unit_cost) if payload.unit_cost is not None else None,
+        movement_type=payload.tipo_movimiento,
+        quantity=payload.cantidad,
+        comment=payload.comentario,
+        unit_cost=
+            _to_decimal(payload.unit_cost) if payload.unit_cost is not None else None,
         performed_by_id=performed_by_id,
     )
     db.add(movement)
@@ -1897,7 +1920,7 @@ def create_inventory_movement(
         entity_type="device",
         entity_id=str(device.id),
         performed_by_id=performed_by_id,
-        details=f"tipo={payload.movement_type.value}, cantidad={payload.quantity}",
+        details=f"tipo={payload.tipo_movimiento.value}, cantidad={payload.cantidad}",
     )
     db.commit()
     db.refresh(movement)
@@ -3461,6 +3484,9 @@ def _apply_transfer_reception(
             else:
                 destination_device.quantity += item.quantity
 
+    _recalculate_store_inventory_value(db, order.origin_store_id)
+    _recalculate_store_inventory_value(db, order.destination_store_id)
+
 
 def receive_transfer_order(
     db: Session,
@@ -3725,10 +3751,11 @@ def receive_purchase_order(
         db.add(
             models.InventoryMovement(
                 store_id=order.store_id,
+                source_store_id=None,
                 device_id=device.id,
                 movement_type=models.MovementType.IN,
                 quantity=receive_item.quantity,
-                reason=reason,
+                comment=reason,
                 unit_cost=order_item.unit_cost,
                 performed_by_id=received_by_id,
             )
@@ -3818,13 +3845,16 @@ def register_purchase_return(
     db.add(
         models.InventoryMovement(
             store_id=order.store_id,
+            source_store_id=order.store_id,
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=payload.quantity,
-            reason=payload.reason or reason,
+            comment=payload.reason or reason,
             performed_by_id=processed_by_id,
         )
     )
+
+    _recalculate_store_inventory_value(db, order.store_id)
 
     purchase_return = models.PurchaseReturn(
         purchase_order_id=order.id,
@@ -4214,10 +4244,11 @@ def _apply_repair_parts(
             db.add(
                 models.InventoryMovement(
                     store_id=order.store_id,
+                    source_store_id=order.store_id,
                     device_id=device.id,
                     movement_type=models.MovementType.OUT,
                     quantity=delta,
-                    reason=reason or f"Reparación #{order.id}",
+                    comment=reason or f"Reparación #{order.id}",
                     performed_by_id=performed_by_id,
                 )
             )
@@ -4226,10 +4257,11 @@ def _apply_repair_parts(
             db.add(
                 models.InventoryMovement(
                     store_id=order.store_id,
+                    source_store_id=None,
                     device_id=device.id,
                     movement_type=models.MovementType.IN,
                     quantity=abs(delta),
-                    reason=reason or f"Ajuste reparación #{order.id}",
+                    comment=reason or f"Ajuste reparación #{order.id}",
                     performed_by_id=performed_by_id,
                 )
             )
@@ -4267,10 +4299,11 @@ def _apply_repair_parts(
             db.add(
                 models.InventoryMovement(
                     store_id=order.store_id,
+                    source_store_id=None,
                     device_id=device.id,
                     movement_type=models.MovementType.IN,
                     quantity=part.quantity,
-                    reason=reason or f"Reverso reparación #{order.id}",
+                    comment=reason or f"Reverso reparación #{order.id}",
                     performed_by_id=performed_by_id,
                 )
             )
@@ -4279,6 +4312,7 @@ def _apply_repair_parts(
     order.parts_cost = total_cost
     order.parts_snapshot = snapshot
     order.inventory_adjusted = bool(processed_devices)
+    _recalculate_store_inventory_value(db, order.store_id)
     return total_cost
 
 
@@ -4445,13 +4479,15 @@ def delete_repair_order(
         db.add(
             models.InventoryMovement(
                 store_id=order.store_id,
+                source_store_id=None,
                 device_id=device.id,
                 movement_type=models.MovementType.IN,
                 quantity=part.quantity,
-                reason=reason or f"Cancelación reparación #{order.id}",
+                comment=reason or f"Cancelación reparación #{order.id}",
                 performed_by_id=performed_by_id,
             )
         )
+    _recalculate_store_inventory_value(db, order.store_id)
     db.delete(order)
     db.commit()
     _log_action(
@@ -4585,10 +4621,11 @@ def create_sale(
         db.add(
             models.InventoryMovement(
                 store_id=payload.store_id,
+                source_store_id=payload.store_id,
                 device_id=device.id,
                 movement_type=models.MovementType.OUT,
                 quantity=item.quantity,
-                reason=reason,
+                comment=reason,
                 performed_by_id=performed_by_id,
             )
         )
@@ -4607,6 +4644,8 @@ def create_sale(
     sale.total_amount = (subtotal + tax_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
+
+    _recalculate_store_inventory_value(db, sale.store_id)
 
     if customer:
         if sale.payment_method == models.PaymentMethod.CREDITO:
@@ -4715,13 +4754,16 @@ def register_sale_return(
         db.add(
             models.InventoryMovement(
                 store_id=sale.store_id,
+                source_store_id=None,
                 device_id=item.device_id,
                 movement_type=models.MovementType.IN,
                 quantity=item.quantity,
-                reason=item.reason or reason,
+                comment=item.reason or reason,
                 performed_by_id=processed_by_id,
             )
         )
+
+    _recalculate_store_inventory_value(db, sale.store_id)
 
     db.commit()
     for sale_return in returns:
@@ -5365,13 +5407,14 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
         "movements": [
             {
                 "id": movement.id,
-                "store_id": movement.store_id,
+                "tienda_destino_id": movement.store_id,
+                "tienda_origen_id": movement.source_store_id,
                 "device_id": movement.device_id,
                 "movement_type": movement.movement_type.value,
                 "quantity": movement.quantity,
-                "reason": movement.reason,
-                "performed_by_id": movement.performed_by_id,
-                "created_at": movement.created_at.isoformat(),
+                "comentario": movement.comment,
+                "usuario_id": movement.performed_by_id,
+                "fecha": movement.created_at.isoformat(),
             }
             for movement in movements
         ],
