@@ -3,6 +3,11 @@ import type { MovementInput } from "../../../api";
 
 export const inventoryService = {
   fetchDevices: getDevices,
-  registerMovement: (token: string, payload: MovementInput) => registerMovement(token, payload),
+  registerMovement: (
+    token: string,
+    storeId: number,
+    payload: MovementInput,
+    reason: string,
+  ) => registerMovement(token, storeId, payload, reason),
   downloadInventoryReport: (token: string) => downloadInventoryPdf(token),
 };
