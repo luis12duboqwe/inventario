@@ -16,12 +16,13 @@ import {
 } from "lucide-react";
 
 import AdvancedSearch from "../components/AdvancedSearch";
+import DeviceEditDialog from "../components/DeviceEditDialog";
 import InventoryTable from "../components/InventoryTable";
 import MovementForm from "../components/MovementForm";
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 import Tabs, { type TabOption } from "../../../components/ui/Tabs/Tabs";
-import type { Device } from "../../../api";
+import type { Device, DeviceUpdateInput } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
 
@@ -74,6 +75,7 @@ function InventoryPage() {
     topStores,
     lowStockDevices,
     handleMovement,
+    handleDeviceUpdate,
     backupHistory,
     updateStatus,
     lastInventoryRefresh,
@@ -84,6 +86,8 @@ function InventoryPage() {
   const [inventoryQuery, setInventoryQuery] = useState("");
   const [estadoFilter, setEstadoFilter] = useState<Device["estado_comercial"] | "TODOS">("TODOS");
   const [activeTab, setActiveTab] = useState<InventoryTabId>("overview");
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   useEffect(() => {
     setInventoryQuery("");
@@ -140,6 +144,23 @@ function InventoryPage() {
   const refreshBadge: StatusBadge = lastInventoryRefresh
     ? { tone: "success", text: "Auto" }
     : { tone: "warning", text: "Sin datos" };
+
+  const closeEditDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingDevice(null);
+  };
+
+  const handleSubmitDeviceUpdates = async (updates: DeviceUpdateInput, reason: string) => {
+    if (!editingDevice) {
+      return;
+    }
+    try {
+      await handleDeviceUpdate(editingDevice.id, updates, reason);
+      closeEditDialog();
+    } catch (error) {
+      // La notificación de error ya se gestiona desde el contexto.
+    }
+  };
 
   const lowStockStats = useMemo(() => {
     let critical = 0;
@@ -364,6 +385,10 @@ function InventoryPage() {
               ? "No se encontraron dispositivos con los filtros actuales."
               : undefined
           }
+          onEditDevice={(device) => {
+            setEditingDevice(device);
+            setIsEditDialogOpen(true);
+          }}
         />
       </section>
 
@@ -485,6 +510,12 @@ function InventoryPage() {
       />
       <LoadingOverlay visible={loading} label="Sincronizando inventario..." />
       <Tabs tabs={inventoryTabs} activeTab={activeTab} onTabChange={setActiveTab} />
+      <DeviceEditDialog
+        device={editingDevice}
+        open={isEditDialogOpen}
+        onClose={closeEditDialog}
+        onSubmit={handleSubmitDeviceUpdates}
+      />
     </div>
   );
 }

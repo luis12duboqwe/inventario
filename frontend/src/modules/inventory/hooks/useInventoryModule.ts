@@ -22,6 +22,7 @@ export function useInventoryModule() {
     topStores: dashboard.topStores,
     lowStockDevices: dashboard.lowStockDevices,
     handleMovement: dashboard.handleMovement,
+    handleDeviceUpdate: dashboard.handleDeviceUpdate,
     backupHistory: dashboard.backupHistory,
     updateStatus: dashboard.updateStatus,
     lastInventoryRefresh: dashboard.lastInventoryRefresh,
