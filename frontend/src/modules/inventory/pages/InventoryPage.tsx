@@ -25,6 +25,7 @@ import Tabs, { type TabOption } from "../../../components/ui/Tabs/Tabs";
 import type { Device, DeviceUpdateInput } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
+import { promptCorporateReason } from "../../../utils/corporateReason";
 
 type StatusBadge = {
   tone: "warning" | "success";
@@ -58,7 +59,7 @@ const resolveLowStockSeverity = (quantity: number): "critical" | "warning" | "no
 
 function InventoryPage() {
   const location = useLocation();
-  const { globalSearchTerm, setGlobalSearchTerm } = useDashboard();
+  const { globalSearchTerm, setGlobalSearchTerm, pushToast, setError } = useDashboard();
   const {
     token,
     enableCatalogPro,
@@ -148,6 +149,34 @@ function InventoryPage() {
   const closeEditDialog = () => {
     setIsEditDialogOpen(false);
     setEditingDevice(null);
+  };
+
+  const handleDownloadReportClick = async () => {
+    const defaultReason = selectedStore
+      ? `Descarga inventario ${selectedStore.name}`
+      : "Descarga inventario corporativo";
+    const reason = promptCorporateReason(defaultReason);
+    if (reason === null) {
+      pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
+      return;
+    }
+    if (reason.length < 5) {
+      const message = "El motivo corporativo debe tener al menos 5 caracteres.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
+    try {
+      await downloadInventoryReport(reason);
+      pushToast({ message: "PDF de inventario descargado", variant: "success" });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible descargar el PDF de inventario.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+    }
   };
 
   const handleSubmitDeviceUpdates = async (updates: DeviceUpdateInput, reason: string) => {
@@ -402,7 +431,13 @@ function InventoryPage() {
             <button className="btn btn--primary" type="button" onClick={() => void refreshSummary()}>
               Actualizar métricas
             </button>
-            <button className="btn btn--ghost" type="button" onClick={() => void downloadInventoryReport()}>
+            <button
+              className="btn btn--ghost"
+              type="button"
+              onClick={() => {
+                void handleDownloadReportClick();
+              }}
+            >
               Descargar PDF
             </button>
           </div>

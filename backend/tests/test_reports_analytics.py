@@ -165,11 +165,12 @@ def test_advanced_analytics_endpoints(client, db_session: Session):
         assert "trend" in item
         assert "revenue_trend_score" in item
 
-    pdf_response = client.get("/reports/analytics/pdf", headers=headers)
+    download_headers = {**headers, "X-Reason": "Descarga analitica"}
+    pdf_response = client.get("/reports/analytics/pdf", headers=download_headers)
     assert pdf_response.status_code == status.HTTP_200_OK
     assert pdf_response.headers["content-type"] == "application/pdf"
 
-    csv_response = client.get("/reports/analytics/export.csv", headers=headers)
+    csv_response = client.get("/reports/analytics/export.csv", headers=download_headers)
     assert csv_response.status_code == status.HTTP_200_OK
     assert csv_response.headers["content-type"].startswith("text/csv")
     assert "Comparativo" in csv_response.text

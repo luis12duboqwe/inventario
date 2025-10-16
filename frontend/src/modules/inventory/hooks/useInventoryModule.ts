@@ -4,7 +4,8 @@ import { inventoryService } from "../services/inventoryService";
 export function useInventoryModule() {
   const dashboard = useDashboard();
 
-  const downloadInventoryReport = () => inventoryService.downloadInventoryReport(dashboard.token);
+  const downloadInventoryReport = (reason: string) =>
+    inventoryService.downloadInventoryReport(dashboard.token, reason);
 
   return {
     token: dashboard.token,

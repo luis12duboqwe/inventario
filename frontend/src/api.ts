@@ -1608,11 +1608,12 @@ export function fetchBackupHistory(token: string): Promise<BackupJob[]> {
   return request<BackupJob[]>("/backups/history", { method: "GET" }, token);
 }
 
-export async function downloadInventoryPdf(token: string): Promise<void> {
+export async function downloadInventoryPdf(token: string, reason: string): Promise<void> {
   const response = await fetch(`${API_URL}/reports/inventory/pdf`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
     },
   });
 
@@ -1671,12 +1672,17 @@ export function getForecastAnalytics(
   return request<AnalyticsForecast>(`/reports/analytics/stockout_forecast${query}`, { method: "GET" }, token);
 }
 
-export async function downloadAnalyticsPdf(token: string, filters?: AnalyticsFilters): Promise<void> {
+export async function downloadAnalyticsPdf(
+  token: string,
+  reason: string,
+  filters?: AnalyticsFilters,
+): Promise<void> {
   const query = buildAnalyticsQuery(filters);
   const response = await fetch(`${API_URL}/reports/analytics/pdf${query}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
     },
   });
 
@@ -1695,12 +1701,17 @@ export async function downloadAnalyticsPdf(token: string, filters?: AnalyticsFil
   URL.revokeObjectURL(url);
 }
 
-export async function downloadAnalyticsCsv(token: string, filters?: AnalyticsFilters): Promise<void> {
+export async function downloadAnalyticsCsv(
+  token: string,
+  reason: string,
+  filters?: AnalyticsFilters,
+): Promise<void> {
   const query = buildAnalyticsQuery(filters);
   const response = await fetch(`${API_URL}/reports/analytics/export.csv${query}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
     },
   });
 

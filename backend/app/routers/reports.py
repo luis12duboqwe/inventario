@@ -273,6 +273,7 @@ def analytics_pdf(
     category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
 ):
     _ensure_analytics_enabled()
     rotation = crud.calculate_rotation_analytics(
@@ -338,6 +339,7 @@ def analytics_export_csv(
     category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
 ):
     _ensure_analytics_enabled()
     comparatives = crud.calculate_store_comparatives(

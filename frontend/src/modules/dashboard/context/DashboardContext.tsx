@@ -94,7 +94,7 @@ type DashboardContextValue = {
   handleBackup: () => Promise<void>;
   refreshOutbox: () => Promise<void>;
   handleRetryOutbox: () => Promise<void>;
-  downloadInventoryReport: () => Promise<void>;
+  downloadInventoryReport: (reason: string) => Promise<void>;
   refreshOutboxStats: () => Promise<void>;
   refreshSyncHistory: () => Promise<void>;
   toasts: ToastMessage[];
@@ -551,8 +551,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     return { totalDevices, totalItems, totalValue, lowStock, topStores };
   }, [metrics, summary]);
 
-  const downloadInventoryReport = async () => {
-    await downloadInventoryPdf(token);
+  const downloadInventoryReport = async (reason: string) => {
+    await downloadInventoryPdf(token, reason);
   };
 
   const value: DashboardContextValue = {
