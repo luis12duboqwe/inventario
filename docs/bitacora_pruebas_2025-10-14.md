@@ -55,3 +55,11 @@
 - `npm --prefix frontend run test` → ✅ pruebas de Vitest en verde conservando auditoría y métricas globales.【7c59fb†L1-L14】
 - Observaciones: el formulario de movimientos ahora respeta el motivo mínimo y permite registrar `unit_cost` en entradas; el modal `DeviceEditDialog` exige motivo corporativo y normaliza campos sensibles del catálogo pro.
 
+## Actualización 02/03/2025 — Paginación dinámica y ajuste directo de existencias
+
+- Hash base: `bb855a5` (antes de habilitar la paginación configurable y el ajuste directo de stock desde la edición pro).
+- `pytest` → ✅ 37 pruebas en verde tras instalar dependencias faltantes (`prometheus-client`) y validar inventario paginado.【ec2f81†L1-L15】
+- `npm --prefix frontend run build` → ✅ compilación lista con advertencias de tamaño esperadas en los *chunks* analíticos.【e62bb2†L1-L12】
+- `npm --prefix frontend run test` → ✅ pruebas de Vitest en verde; persisten advertencias de `act(...)` y navegación simulada propias del entorno jsdom.【0f7ebc†L1-L11】
+- Observaciones: la tabla de inventario permite ajustar el tamaño de página sin perder la vista completa con carga progresiva, y el modal de edición solicita motivo corporativo antes de aplicar el nuevo total de existencias.
+

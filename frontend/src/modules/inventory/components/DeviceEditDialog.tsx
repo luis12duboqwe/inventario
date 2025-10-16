@@ -16,6 +16,7 @@ type FormState = {
   marca: string;
   color: string;
   estado: Device["estado_comercial"] | "";
+  quantity: string;
   unitPrice: string;
   costoUnitario: string;
   margen: string;
@@ -43,6 +44,7 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     marca: "",
     color: "",
     estado: "",
+    quantity: "",
     unitPrice: "",
     costoUnitario: "",
     margen: "",
@@ -68,6 +70,7 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
       marca: device.marca ?? "",
       color: device.color ?? "",
       estado: device.estado_comercial ?? "",
+      quantity: "",
       unitPrice: device.unit_price ? String(device.unit_price) : "",
       costoUnitario: device.costo_unitario ? String(device.costo_unitario) : "",
       margen: device.margen_porcentaje ? String(device.margen_porcentaje) : "",
@@ -134,6 +137,18 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     };
 
     const updates: DeviceUpdateInput = {};
+
+    const normalizedQuantity = form.quantity.trim();
+    if (normalizedQuantity.length > 0) {
+      const parsedQuantity = Number(normalizedQuantity);
+      if (!Number.isInteger(parsedQuantity) || parsedQuantity < 0) {
+        setError("Ingresa un número entero mayor o igual a cero para las existencias.");
+        return;
+      }
+      if (parsedQuantity !== device.quantity) {
+        updates.quantity = parsedQuantity;
+      }
+    }
 
     if (form.name.trim() !== device.name) {
       updates.name = form.name.trim();
@@ -313,6 +328,20 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
                       </option>
                     ))}
                   </select>
+                </label>
+                <label>
+                  <span>Existencias disponibles</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={form.quantity}
+                    onChange={(event) => handleChange("quantity", event.target.value)}
+                    placeholder={`Actual: ${device.quantity}`}
+                  />
+                  <small className="device-edit-dialog__hint muted-text">
+                    Deja el campo vacío para conservar el total actual o ingresa el valor corregido.
+                  </small>
                 </label>
                 <label>
                   <span>Capacidad (GB)</span>
