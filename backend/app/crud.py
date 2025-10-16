@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement
 
-from . import models, schemas
+from . import models, schemas, telemetry
 from .utils import audit as audit_utils
 from .utils.cache import TTLCache
 
@@ -531,6 +531,9 @@ def acknowledge_audit_alert(
             break
 
     if last_critical is None:
+        telemetry.record_audit_acknowledgement_failure(
+            normalized_type, "not_found"
+        )
         raise AuditAcknowledgementNotFound(
             "No existen alertas críticas registradas para la entidad indicada."
         )
@@ -547,10 +550,14 @@ def acknowledge_audit_alert(
         acknowledgement is not None
         and acknowledgement.acknowledged_at >= last_critical.created_at
     ):
+        telemetry.record_audit_acknowledgement_failure(
+            normalized_type, "already_acknowledged"
+        )
         raise AuditAcknowledgementConflict(
             "La alerta ya fue atendida después del último evento crítico registrado."
         )
 
+    event = "created"
     if acknowledgement is None:
         acknowledgement = models.AuditAlertAcknowledgement(
             entity_type=normalized_type,
@@ -561,6 +568,7 @@ def acknowledge_audit_alert(
         )
         db.add(acknowledgement)
     else:
+        event = "updated"
         acknowledgement.acknowledged_at = now
         acknowledgement.acknowledged_by_id = acknowledged_by_id
         acknowledgement.note = note
@@ -580,6 +588,7 @@ def acknowledge_audit_alert(
     db.commit()
     invalidate_persistent_audit_alerts_cache()
     db.refresh(acknowledgement)
+    telemetry.record_audit_acknowledgement(normalized_type, event)
     return acknowledgement
 
 

@@ -6,6 +6,15 @@ Este documento consolida los hallazgos detectados al comparar el estado real del
 
 - **Referencia funcional**: el README anuncia exportaciones CSV/PDF con acuses, recordatorios automáticos y registro manual de notas en Seguridad.【F:README.md†L31-L33】 El mandato exige cabecera `X-Reason` en operaciones sensibles como el POS y auditoría.【F:AGENTS.md†L8-L14】
 - **Estado actual**:
+  - El backend ofrece `/audit/reminders`, `/audit/acknowledgements`, `/reports/audit/pdf` y métricas enriquecidas con estado de acuse; `pytest` valida recordatorios, acuses y descargas exitosas.【F:backend/app/routers/audit.py†L18-L120】【F:backend/app/routers/reports.py†L25-L120】【F:backend/tests/test_audit_logs.py†L1-L120】
+  - `AuditLog.tsx` consume los servicios, muestra badges en vivo, snooze corporativo y descargas con motivo obligatorio; `frontend/src/modules/security/components/__tests__/AuditLog.test.tsx` cubre recordatorios, exportaciones y acuses con validaciones de `X-Reason`.
+
+### Pasos de validación continua
+
+1. Ejecutar `npm --prefix frontend run test` tras cada cambio relacionado con Seguridad para asegurar que los flujos de recordatorios, descargas y acuses permanecen estables.
+2. Revisar manualmente el módulo de Seguridad en ambientes multiusuario verificando badges, snooze y toasts en vivo; documentar hallazgos en la bitácora corporativa.
+3. Mantener README, `AGENTS.md` y esta guía alineados con los motivos corporativos y escenarios representativos detectados en QA.
+4. Consultar `/monitoring/metrics` con credenciales ADMIN tras cada iteración para validar que los contadores de acuses, fallos e hit/miss del cache coinciden con los eventos registrados en Seguridad.
   - El router `audit.py` sólo publica `/audit/logs` y `/audit/logs/export.csv`; faltan rutas para recordatorios y acuses, y la exportación CSV exige `X-Reason`, provocando un 400 en las pruebas corporativas.【F:backend/app/routers/audit.py†L20-L68】【F:backend/tests/test_audit_logs.py†L33-L70】
   - Las utilidades de auditoría no incluyen `entity_id` en los destacados, lo que impide vincular acuses y rompe las métricas globales.【F:backend/app/utils/audit.py†L54-L105】【F:backend/app/crud.py†L1858-L1935】
   - El componente `AuditLog.tsx` duplica `buildCurrentFilters`, usa `useRef` sin importarlo e invoca `loadReminders`/`snoozedUntil` sin definirlos, dejando incompleto el UI prometido.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L220】
@@ -38,6 +47,14 @@ Este documento consolida los hallazgos detectados al comparar el estado real del
 
 - **Referencia funcional**: el README indica que `/reports/metrics` diferencia alertas pendientes vs. atendidas y que el tablero muestra destacados listos para responder.【F:README.md†L31-L39】
 - **Estado actual**:
+  - El backend entrega `pending_count`, `acknowledged_count`, metadatos de acuse y resúmenes consistentes; las pruebas de auditoría garantizan la integridad de los datos.【F:backend/app/crud.py†L1856-L1943】【F:backend/tests/test_audit_logs.py†L69-L118】
+  - `GlobalMetrics.tsx` refleja pendientes/atendidas, último acuse y acceso directo a Seguridad cuando existen pendientes; `frontend/src/modules/dashboard/components/__tests__/GlobalMetrics.test.tsx` asegura el comportamiento.
+
+### Pasos de validación continua
+
+1. Ejecutar `npm --prefix frontend run test` y revisar el tablero con datos de ejemplo para confirmar que badges, resumen de acuses y enlace a Seguridad responden correctamente.
+2. Monitorear el desempeño de gráficos y, si la carga supera los 2 MB, evaluar caches o segmentación de datos.
+3. Documentar cualquier ajuste visual en README y capturar evidencia cuando se actualicen estilos o datasets.
   - `compute_inventory_metrics` intenta combinar acuses, pero falla por la ausencia de `entity_id` en los destacados y por no incluir datos de reconocimiento en la respuesta, generando un `KeyError` en las pruebas de inventario.【F:backend/app/crud.py†L1858-L1935】
   - `GlobalMetrics.tsx` asume que `audit_alerts.highlights` contiene metadatos para mostrar la severidad y fecha, pero no puede diferenciar pendientes/atendidas ni mostrar quién realizó el acuse.【F:frontend/src/modules/dashboard/components/GlobalMetrics.tsx†L34-L148】
 
@@ -56,6 +73,13 @@ Este documento consolida los hallazgos detectados al comparar el estado real del
 ## 3. Bitácora operativa y pruebas recurrentes
 
 - **Referencia funcional**: el mandato requiere ejecutar `pytest`, revisar README/AGENTS en cada iteración y mantener bitácoras actualizadas.【F:AGENTS.md†L4-L11】【F:docs/evaluacion_requerimientos.md†L1-L39】
+- **Estado actual**: `docs/bitacora_pruebas_2025-10-14.md` registra las corridas de `pytest`, `npm --prefix frontend run build` y `npm --prefix frontend run test`, incluyendo resultados y hash corporativo.
+
+### Pasos de validación continua
+
+1. Actualizar la bitácora tras cada ejecución relevante, indicando fecha, responsable y estado de las pruebas backend/frontend.
+2. Mantener en README el resumen operativo de las últimas corridas y hallazgos multiusuario.
+3. Automatizar (pre-push/CI) la ejecución de `pytest`, `npm --prefix frontend run build` y `npm --prefix frontend run test` para evitar regresiones.
 - **Estado actual**: la suite falla en auditoría y métricas, y no existe un registro de corridas reciente que documente los intentos en rojo.
 
 ### Pasos obligatorios
