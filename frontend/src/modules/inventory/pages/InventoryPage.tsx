@@ -89,6 +89,7 @@ function InventoryPage() {
     lowStockThreshold,
     updateLowStockThreshold,
     refreshSummary,
+    storeValuationSnapshot,
   } = useInventoryModule();
 
   const [inventoryQuery, setInventoryQuery] = useState("");
@@ -396,6 +397,57 @@ function InventoryPage() {
         ) : null}
       </section>
 
+      {storeValuationSnapshot ? (
+        <section className="card">
+          <header className="card-header">
+            <div>
+              <h2>Conciliación contable</h2>
+              <p className="card-subtitle">
+                Valor registrado vs. calculado en {storeValuationSnapshot.storeName}.
+              </p>
+            </div>
+            <span
+              className={`pill ${
+                storeValuationSnapshot.hasRelevantDifference ? "warning" : "success"
+              }`}
+            >
+              {storeValuationSnapshot.hasRelevantDifference
+                ? "Revisión requerida"
+                : "Sin diferencias"}
+            </span>
+          </header>
+          <ul className="metrics-list">
+            <li>
+              <strong>Valor contable registrado</strong>
+              <span>{formatCurrency(storeValuationSnapshot.registeredValue)}</span>
+            </li>
+            <li>
+              <strong>Valor operativo calculado</strong>
+              <span>{formatCurrency(storeValuationSnapshot.calculatedValue)}</span>
+            </li>
+            <li>
+              <strong>Diferencia neta</strong>
+              <span>{formatCurrency(storeValuationSnapshot.difference)}</span>
+            </li>
+            {storeValuationSnapshot.differencePercent !== null ? (
+              <li>
+                <strong>Variación porcentual</strong>
+                <span>{`${Math.abs(storeValuationSnapshot.differencePercent).toFixed(2)} %`}</span>
+              </li>
+            ) : null}
+          </ul>
+          <p className="muted-text">
+            {storeValuationSnapshot.hasRelevantDifference
+              ? `El valor calculado es ${
+                  storeValuationSnapshot.difference > 0 ? "mayor" : "menor"
+                } que el contable por ${formatCurrency(
+                  Math.abs(storeValuationSnapshot.difference),
+                )}. Revisa la bitácora corporativa antes de cerrar el periodo.`
+              : "Los valores coinciden con el registro contable corporativo."}
+          </p>
+        </section>
+      ) : null}
+
       <section className="card">
         <h2>Top sucursales por valor</h2>
         {topStores.length === 0 ? (
@@ -548,7 +600,8 @@ function InventoryPage() {
                 void handleDownloadReportClick();
               }}
             >
-              Descargar PDF
+              <FileSpreadsheet aria-hidden size={18} />
+              <span>Descargar PDF</span>
             </button>
             <button
               className="btn btn--ghost"
@@ -557,7 +610,8 @@ function InventoryPage() {
                 void handleDownloadCsvClick();
               }}
             >
-              Descargar CSV
+              <FileSpreadsheet aria-hidden size={18} />
+              <span>Descargar CSV</span>
             </button>
           </div>
         </header>

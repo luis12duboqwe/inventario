@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { SupplierBatchOverviewItem } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
@@ -51,6 +51,35 @@ export function useInventoryModule() {
   const downloadInventoryCsv = (reason: string) =>
     inventoryService.downloadInventoryCsv(dashboard.token, reason);
 
+  const storeValuationSnapshot = useMemo(() => {
+    if (!dashboard.selectedStoreId || !dashboard.selectedStore) {
+      return null;
+    }
+    const summaryEntry = dashboard.summary.find(
+      (entry) => entry.store_id === dashboard.selectedStoreId,
+    );
+    if (!summaryEntry) {
+      return null;
+    }
+    const registeredValue = dashboard.selectedStore.inventory_value ?? 0;
+    const calculatedValue = summaryEntry.total_value;
+    const difference = calculatedValue - registeredValue;
+    const differenceAbs = Math.abs(difference);
+    const differencePercent =
+      registeredValue === 0 ? null : (difference / registeredValue) * 100;
+
+    return {
+      storeId: dashboard.selectedStoreId,
+      storeName: dashboard.selectedStore.name,
+      registeredValue,
+      calculatedValue,
+      difference,
+      differenceAbs,
+      differencePercent,
+      hasRelevantDifference: differenceAbs >= 1,
+    };
+  }, [dashboard.selectedStore, dashboard.selectedStoreId, dashboard.summary]);
+
   return {
     token: dashboard.token,
     enableCatalogPro: dashboard.enableCatalogPro,
@@ -79,5 +108,6 @@ export function useInventoryModule() {
     lowStockThreshold: dashboard.currentLowStockThreshold,
     updateLowStockThreshold: dashboard.updateLowStockThreshold,
     refreshSummary: dashboard.refreshSummary,
+    storeValuationSnapshot,
   };
 }

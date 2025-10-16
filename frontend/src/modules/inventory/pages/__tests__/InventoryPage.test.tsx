@@ -187,6 +187,7 @@ const buildStore = (): Store => ({
   name: "Sucursal Centro",
   location: "CDMX",
   timezone: "America/Mexico_City",
+  inventory_value: 72000,
   low_stock_threshold: 7,
 });
 
@@ -263,6 +264,16 @@ const createModuleState = (): InventoryModuleState => ({
   lowStockThreshold: 7,
   updateLowStockThreshold: updateLowStockThresholdMock,
   refreshSummary: refreshSummaryMock,
+  storeValuationSnapshot: {
+    storeId: 1,
+    storeName: "Sucursal Centro",
+    registeredValue: 72000,
+    calculatedValue: 75000,
+    difference: 3000,
+    differenceAbs: 3000,
+    differencePercent: (3000 / 72000) * 100,
+    hasRelevantDifference: true,
+  },
 });
 
 const openTab = async (user: ReturnType<typeof userEvent.setup>, tabName: RegExp) => {
