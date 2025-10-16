@@ -44,7 +44,24 @@ def test_inventory_csv_snapshot(client, tmp_path) -> None:
     assert store_response.status_code == status.HTTP_201_CREATED
     store_id = store_response.json()["id"]
 
-    device_payload = {"sku": "SM-001", "name": "Smartphone Elite", "quantity": 4, "unit_price": 12000}
+    device_payload = {
+        "sku": "SM-001",
+        "name": "Smartphone Elite",
+        "quantity": 4,
+        "unit_price": 12000,
+        "imei": "123456789012345",
+        "serial": "SN-0001",
+        "marca": "Softmobile",
+        "modelo": "Elite X",
+        "color": "Negro",
+        "capacidad_gb": 256,
+        "proveedor": "Proveedor Uno",
+        "costo_unitario": 8500,
+        "margen_porcentaje": 30,
+        "garantia_meses": 24,
+        "lote": "L-001",
+        "fecha_compra": "2024-01-20",
+    }
     device_response = client.post(
         f"/stores/{store_id}/devices",
         json=device_payload,
@@ -63,6 +80,17 @@ def test_inventory_csv_snapshot(client, tmp_path) -> None:
     assert "Inventario corporativo" in content
     assert "SM-001" in content
     assert "Smartphone Elite" in content
+    assert "IMEI" in content
+    assert "123456789012345" in content
+    assert "Elite X" in content
+    assert "Proveedor Uno" in content
+    assert "8500.00" in content
+    assert "30.00" in content
+    assert "TOTAL SUCURSAL" in content
+    assert "VALOR CONTABLE" in content
+    assert "Resumen corporativo" in content
+    assert "Inventario consolidado registrado (MXN)" in content
+    assert "Inventario consolidado calculado (MXN)" in content
 
 
 def test_inventory_supplier_batches_overview(client) -> None:

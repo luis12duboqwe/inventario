@@ -79,3 +79,11 @@
 - `npm --prefix frontend run test` → ⚠️ falla porque `vitest` no está disponible en el contenedor actual; se mantiene el pendiente de instalación para el entorno CI.【9978d2†L1-L6】
 - Observaciones: el tablero `AnalyticsBoard.tsx` ahora solicita motivo antes de exportar y el backend valida la cabecera `X-Reason`, manteniendo trazabilidad en descargas ejecutivas.
 
+## Actualización 05/03/2025 — Resumen corporativo de inventario
+
+- Hash base: `bb855a5` (previo a incorporar el resumen consolidado en respaldos e inventario CSV/PDF).
+- `pytest` → ✅ 43 pruebas en verde validando el resumen `summary` del snapshot y los contrastes calculado/contable en reportes.【1ab1ab†L1-L17】
+- `npm --prefix frontend run build` → ✅ compilación exitosa con advertencias esperadas por el tamaño de los *chunks* analíticos.【8fc382†L1-L11】
+- `npm --prefix frontend run test` → ✅ 9 pruebas en verde; persisten advertencias controladas de `act(...)`, navegación jsdom y banderas futuras de React Router documentadas en iteraciones previas.【2e26d6†L1-L10】【efdf15†L1-L46】
+- Observaciones: los reportes de inventario ahora contrastan el valor calculado vs. contable por sucursal y añaden un resumen corporativo en PDF/CSV, con cobertura adicional en `test_inventory_snapshot_summary_includes_store_values`.
+
