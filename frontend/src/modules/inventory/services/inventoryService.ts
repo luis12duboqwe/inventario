@@ -10,4 +10,5 @@ export const inventoryService = {
     reason: string,
   ) => registerMovement(token, storeId, payload, reason),
   downloadInventoryReport: (token: string, reason: string) => downloadInventoryPdf(token, reason),
+  downloadInventoryReport: (token: string) => downloadInventoryPdf(token),
 };
