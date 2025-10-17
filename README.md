@@ -147,6 +147,15 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **20/10/2025 11:30 UTC** — Se reforzó la validación de claves foráneas `SET NULL` entre `ventas`/`repair_orders` y `clientes`, y se añadió la prueba `test_factura_se_vincula_con_cliente` para verificar que las facturas persistidas conservan el vínculo con el cliente corporativo.
 - **21/10/2025 09:00 UTC** — Se añadió `Decimal` y aserciones de índices en `backend/tests/test_clientes_schema.py`, además de indexar las columnas `tipo` y `estado` en el modelo `Customer` para mantener controles de crédito y filtros por segmento durante la verificación de facturas ligadas a clientes.
 
+## Actualización Clientes - Parte 2 (Lógica Funcional y Control)
+
+- La migración `202503010006_customer_ledger_entries.py` crea la tabla `customer_ledger_entries` y el enumerado `customer_ledger_entry_type`, registrando ventas, pagos, ajustes y notas con saldo posterior, referencia y metadatos sincronizados en `sync_outbox`.
+- Los endpoints `/customers/{id}/notes`, `/customers/{id}/payments` y `/customers/{id}/summary` exigen motivo corporativo, actualizan historial e integran un resumen financiero con ventas, facturas, pagos recientes y bitácora consolidada.
+- Las ventas a crédito invocan `_validate_customer_credit` para bloquear montos que excedan el límite autorizado, registran asientos en la bitácora y actualizan los saldos ante ediciones, cancelaciones y devoluciones; el POS alerta cuando la venta agotará o excederá el crédito disponible.
+- El módulo `Customers.tsx` añade captura de pagos, resumen financiero interactivo, estados adicionales (`moroso`, `vip`), control de notas dedicado y reflejo inmediato del crédito disponible por cliente.
+- Se reemplaza el campo `metadata` por `details` en las respuestas del ledger y en el frontend para evitar errores de serialización en las nuevas rutas `/customers/{id}/payments` y `/customers/{id}/summary`, manteniendo compatibilidad con el historial existente.
+- Se incorporan las pruebas `test_customer_credit_limit_blocks_sale` y `test_customer_payment_updates_summary` que validan el bloqueo de ventas con sobreendeudamiento, la reducción de saldo tras registrar pagos y la presencia de entradas en el resumen corporativo.
+
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
 La actualización UI de febrero 2025 refuerza la experiencia operativa sin modificar rutas ni versiones:

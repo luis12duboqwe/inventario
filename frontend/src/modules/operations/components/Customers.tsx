@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Customer } from "../../../api";
+import type { Customer, CustomerLedgerEntry, CustomerSummary } from "../../../api";
 import {
+  appendCustomerNote,
   createCustomer,
   deleteCustomer,
   exportCustomersCsv,
+  getCustomerSummary,
   listCustomers,
+  registerCustomerPayment,
   updateCustomer,
 } from "../../../api";
 
@@ -49,8 +52,17 @@ const CUSTOMER_TYPES = [
 const CUSTOMER_STATUSES = [
   { value: "activo", label: "Activo" },
   { value: "inactivo", label: "Inactivo" },
+  { value: "moroso", label: "Moroso" },
+  { value: "vip", label: "VIP" },
   { value: "bloqueado", label: "Bloqueado" },
 ];
+
+const LEDGER_LABELS: Record<CustomerLedgerEntry["entry_type"], string> = {
+  sale: "Cargo por venta",
+  payment: "Pago recibido",
+  adjustment: "Ajuste",
+  note: "Nota registrada",
+};
 
 function Customers({ token }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -61,6 +73,29 @@ function Customers({ token }: Props) {
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<CustomerSummary | null>(null);
+  const [summaryCustomerId, setSummaryCustomerId] = useState<number | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  const refreshCustomerSummary = useCallback(
+    async (customerId: number) => {
+      try {
+        setSummaryLoading(true);
+        setSummaryError(null);
+        const overview = await getCustomerSummary(token, customerId);
+        setSummary(overview);
+        setSummaryCustomerId(customerId);
+      } catch (err) {
+        setSummaryError(
+          err instanceof Error ? err.message : "No fue posible cargar el resumen del cliente."
+        );
+      } finally {
+        setSummaryLoading(false);
+      }
+    },
+    [token]
+  );
 
   const refreshCustomers = useCallback(
     async (query?: string) => {
@@ -72,13 +107,22 @@ function Customers({ token }: Props) {
           200
         );
         setCustomers(data);
+        if (summaryCustomerId) {
+          const exists = data.some((customer) => customer.id === summaryCustomerId);
+          if (exists) {
+            void refreshCustomerSummary(summaryCustomerId);
+          } else {
+            setSummary(null);
+            setSummaryCustomerId(null);
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "No fue posible cargar clientes.");
       } finally {
         setLoading(false);
       }
     },
-    [token]
+    [token, summaryCustomerId, refreshCustomerSummary]
   );
 
   useEffect(() => {
@@ -97,6 +141,30 @@ function Customers({ token }: Props) {
     () => customers.reduce((acc, customer) => acc + (customer.outstanding_debt ?? 0), 0),
     [customers]
   );
+
+  const formatCurrency = (value: number) =>
+    value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const resolveDetailsValue = useCallback(
+    (entry: CustomerLedgerEntry, key: string): string | undefined => {
+      const value = entry.details?.[key];
+      if (typeof value === "string") {
+        return value;
+      }
+      if (typeof value === "number") {
+        return value.toString();
+      }
+      return undefined;
+    },
+    []
+  );
+
+  const invoiceNumbers = useMemo(() => {
+    if (!summary) {
+      return new Map<number, string>();
+    }
+    return new Map(summary.invoices.map((invoice) => [invoice.sale_id, invoice.invoice_number]));
+  }, [summary]);
 
   const updateForm = (updates: Partial<CustomerForm>) => {
     setForm((current) => ({ ...current, ...updates }));
@@ -222,14 +290,13 @@ function Customers({ token }: Props) {
       return;
     }
     try {
-      const history = [
-        ...customer.history,
-        { timestamp: new Date().toISOString(), note: note.trim() },
-      ];
-      await updateCustomer(token, customer.id, { history }, reason);
+      await appendCustomerNote(token, customer.id, note.trim(), reason);
       setMessage("Nota añadida correctamente.");
       const trimmed = search.trim();
       await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
+      if (summaryCustomerId === customer.id) {
+        void refreshCustomerSummary(customer.id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible agregar la nota.");
     }
@@ -260,6 +327,62 @@ function Customers({ token }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible ajustar la deuda.");
     }
+  };
+
+  const handleRegisterPayment = async (customer: Customer) => {
+    const amountRaw = window.prompt("Monto del pago", "0.00");
+    if (amountRaw === null) {
+      return;
+    }
+    const amount = Number(amountRaw);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError("Indica un monto válido y mayor a cero para el pago.");
+      return;
+    }
+    const methodInput = window.prompt("Método de pago", "transferencia") ?? "";
+    const referenceInput = window.prompt("Referencia del pago (opcional)", "");
+    const noteInput = window.prompt("Nota interna del pago (opcional)", "");
+    const saleReference = window.prompt("ID de venta asociada (opcional)", "");
+    const reason = askReason("Motivo corporativo para registrar el pago");
+    if (!reason) {
+      return;
+    }
+    const payload = {
+      amount: Number(amount.toFixed(2)),
+      method: methodInput.trim() || "manual",
+      reference: referenceInput && referenceInput.trim() ? referenceInput.trim() : undefined,
+      note: noteInput && noteInput.trim() ? noteInput.trim() : undefined,
+      sale_id:
+        saleReference && saleReference.trim().length > 0
+          ? Number(saleReference.trim())
+          : undefined,
+    } as const;
+    if (payload.sale_id !== undefined && !Number.isFinite(payload.sale_id)) {
+      setError("Indica un ID de venta válido o deja el campo vacío.");
+      return;
+    }
+    try {
+      await registerCustomerPayment(token, customer.id, payload, reason);
+      setMessage("Pago registrado correctamente.");
+      const trimmed = search.trim();
+      await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
+      if (summaryCustomerId === customer.id) {
+        void refreshCustomerSummary(customer.id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No fue posible registrar el pago.");
+    }
+  };
+
+  const handleViewSummary = (customer: Customer) => {
+    setSummaryError(null);
+    void refreshCustomerSummary(customer.id);
+  };
+
+  const handleCloseSummary = () => {
+    setSummary(null);
+    setSummaryCustomerId(null);
+    setSummaryError(null);
   };
 
   const handleExport = async () => {
@@ -471,8 +594,14 @@ function Customers({ token }: Props) {
                         <button type="button" className="btn btn--link" onClick={() => handleAddNote(customer)}>
                           Nota
                         </button>
+                        <button type="button" className="btn btn--link" onClick={() => handleRegisterPayment(customer)}>
+                          Pago
+                        </button>
                         <button type="button" className="btn btn--link" onClick={() => handleAdjustDebt(customer)}>
                           Ajustar deuda
+                        </button>
+                        <button type="button" className="btn btn--link" onClick={() => handleViewSummary(customer)}>
+                          Resumen
                         </button>
                         <button type="button" className="btn btn--link" onClick={() => handleDelete(customer)}>
                           Eliminar
@@ -486,6 +615,146 @@ function Customers({ token }: Props) {
           </table>
         </div>
       )}
+      {summaryCustomerId ? (
+        <section className="card">
+          <div className="actions-row">
+            <h3>Resumen financiero y de control</h3>
+            <button type="button" className="btn btn--ghost" onClick={handleCloseSummary}>
+              Cerrar resumen
+            </button>
+          </div>
+          {summaryError ? <div className="alert error">{summaryError}</div> : null}
+          {summaryLoading ? (
+            <p className="muted-text">Consultando resumen del cliente seleccionado...</p>
+          ) : summary ? (
+            <>
+              <div className="form-grid">
+                <div>
+                  <span className="muted-text">Cliente</span>
+                  <strong>{summary.customer.name}</strong>
+                  <span className="muted-text">
+                    Estado: {summary.customer.status} · Tipo: {summary.customer.customer_type}
+                  </span>
+                </div>
+                <div>
+                  <span className="muted-text">Crédito autorizado</span>
+                  <strong>${formatCurrency(summary.totals.credit_limit)}</strong>
+                </div>
+                <div>
+                  <span className="muted-text">Saldo actual</span>
+                  <strong>${formatCurrency(summary.totals.outstanding_debt)}</strong>
+                </div>
+                <div>
+                  <span className="muted-text">Crédito disponible</span>
+                  <strong>${formatCurrency(summary.totals.available_credit)}</strong>
+                </div>
+                <div>
+                  <span className="muted-text">Cargos a crédito</span>
+                  <strong>${formatCurrency(summary.totals.total_sales_credit)}</strong>
+                </div>
+                <div>
+                  <span className="muted-text">Pagos aplicados</span>
+                  <strong>${formatCurrency(summary.totals.total_payments)}</strong>
+                </div>
+              </div>
+              <h4>Ventas recientes</h4>
+              {summary.sales.length === 0 ? (
+                <p className="muted-text">Sin ventas registradas para este cliente.</p>
+              ) : (
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Venta</th>
+                        <th>Factura</th>
+                        <th>Total</th>
+                        <th>Estado</th>
+                        <th>Fecha</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.sales.slice(0, 5).map((sale) => (
+                        <tr key={sale.sale_id}>
+                          <td>#{sale.sale_id}</td>
+                          <td>{invoiceNumbers.get(sale.sale_id) ?? "—"}</td>
+                          <td>${formatCurrency(sale.total_amount)}</td>
+                          <td>{sale.status}</td>
+                          <td>{new Date(sale.created_at).toLocaleString("es-MX")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <h4>Pagos registrados</h4>
+              {summary.payments.length === 0 ? (
+                <p className="muted-text">Sin pagos asociados en la bitácora reciente.</p>
+              ) : (
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Monto</th>
+                        <th>Método</th>
+                        <th>Referencia</th>
+                        <th>Nota</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.payments.slice(0, 5).map((entry) => {
+                        const methodValue = resolveDetailsValue(entry, "method") ?? "manual";
+                        const referenceValue = resolveDetailsValue(entry, "reference");
+                        return (
+                          <tr key={entry.id}>
+                            <td>{new Date(entry.created_at).toLocaleString("es-MX")}</td>
+                            <td>${formatCurrency(Math.abs(entry.amount))}</td>
+                            <td>{methodValue.toUpperCase()}</td>
+                            <td>{referenceValue ?? "—"}</td>
+                            <td>{entry.note ?? "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <h4>Bitácora reciente</h4>
+              {summary.ledger.length === 0 ? (
+                <p className="muted-text">No hay movimientos registrados para este cliente.</p>
+              ) : (
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Monto</th>
+                        <th>Saldo después</th>
+                        <th>Detalle</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.ledger.slice(0, 6).map((entry) => {
+                        const detailText = entry.note ?? resolveDetailsValue(entry, "event") ?? "—";
+                        return (
+                          <tr key={entry.id}>
+                            <td>{new Date(entry.created_at).toLocaleString("es-MX")}</td>
+                            <td>{LEDGER_LABELS[entry.entry_type]}</td>
+                            <td>${formatCurrency(entry.amount)}</td>
+                            <td>${formatCurrency(entry.balance_after)}</td>
+                            <td>{detailText}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          ) : null}
+        </section>
+      ) : null}
     </section>
   );
 }

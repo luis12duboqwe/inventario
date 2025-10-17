@@ -271,3 +271,12 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - **20/10/2025 11:30 UTC** — Se valida que las claves foráneas `ventas.cliente_id` y `repair_orders.customer_id` utilicen `SET NULL` y se añade la prueba `test_factura_se_vincula_con_cliente` para preservar el vínculo activo entre facturas y clientes.
 - **21/10/2025 09:00 UTC** — Se ajusta `backend/tests/test_clientes_schema.py` importando `Decimal` y reforzando aserciones de índices, mientras que el modelo `Customer` indexa `tipo` y `estado` para conservar los filtros operativos durante las pruebas de facturación ligadas a clientes.
 
+### Actualización Clientes - Parte 2 (Lógica Funcional y Control) (20/10/2025 15:20 UTC)
+
+- La migración `202503010006_customer_ledger_entries.py` habilita la bitácora `customer_ledger_entries` con tipos `sale`, `payment`, `adjustment` y `note`, sincronizados vía `sync_outbox` para auditar cada modificación de saldo.
+- Nuevos endpoints corporativos: `/customers/{id}/notes` agrega notas con historial y ledger, `/customers/{id}/payments` registra abonos que descuentan deuda y `/customers/{id}/summary` entrega un resumen financiero con ventas, facturas, pagos y movimientos recientes.
+- El backend valida límites de crédito mediante `_validate_customer_credit` en altas, ediciones, cancelaciones y devoluciones de ventas; se generan entradas automáticas en la bitácora y se controla el saldo disponible antes de confirmar una operación.
+- El POS alerta cuando la venta a crédito agotará o excederá el límite configurado y el módulo `Customers.tsx` incorpora registro directo de pagos, resumen financiero interactivo, estados `moroso/vip` y notas dedicadas, manteniendo motivo corporativo obligatorio.
+- Se normaliza el payload del ledger cambiando `metadata` por `details` en backend y frontend para eliminar referencias obsoletas que causaban fallos en `pytest` al consultar `/customers/{id}/summary`.
+- Cobertura reforzada: `test_customer_credit_limit_blocks_sale` y `test_customer_payment_updates_summary` verifican bloqueo de crédito en ventas y el reflejo de pagos/ledger en el nuevo resumen corporativo.
+
