@@ -101,12 +101,20 @@ function InventoryPage() {
     storeValuationSnapshot,
     fetchInventoryCurrentReport,
     downloadInventoryCurrentCsv,
+    downloadInventoryCurrentPdf,
+    downloadInventoryCurrentXlsx,
     fetchInventoryValueReport,
     fetchInventoryMovementsReport,
     fetchTopProductsReport,
     downloadInventoryValueCsv,
+    downloadInventoryValuePdf,
+    downloadInventoryValueXlsx,
     downloadInventoryMovementsCsv,
+    downloadInventoryMovementsPdf,
+    downloadInventoryMovementsXlsx,
     downloadTopProductsCsv,
+    downloadTopProductsPdf,
+    downloadTopProductsXlsx,
   } = useInventoryModule();
 
   const [inventoryQuery, setInventoryQuery] = useState("");
@@ -815,13 +823,21 @@ function InventoryPage() {
       formatCurrency={formatCurrency}
       fetchInventoryCurrentReport={fetchInventoryCurrentReport}
       downloadInventoryCurrentCsv={downloadInventoryCurrentCsv}
+      downloadInventoryCurrentPdf={downloadInventoryCurrentPdf}
+      downloadInventoryCurrentXlsx={downloadInventoryCurrentXlsx}
       fetchInventoryValueReport={fetchInventoryValueReport}
       fetchInventoryMovementsReport={fetchInventoryMovementsReport}
       fetchTopProductsReport={fetchTopProductsReport}
       requestDownloadWithReason={requestSnapshotDownload}
       downloadInventoryValueCsv={downloadInventoryValueCsv}
+      downloadInventoryValuePdf={downloadInventoryValuePdf}
+      downloadInventoryValueXlsx={downloadInventoryValueXlsx}
       downloadInventoryMovementsCsv={downloadInventoryMovementsCsv}
+      downloadInventoryMovementsPdf={downloadInventoryMovementsPdf}
+      downloadInventoryMovementsXlsx={downloadInventoryMovementsXlsx}
       downloadTopProductsCsv={downloadTopProductsCsv}
+      downloadTopProductsPdf={downloadTopProductsPdf}
+      downloadTopProductsXlsx={downloadTopProductsXlsx}
     />
   );
 

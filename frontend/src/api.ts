@@ -2098,6 +2098,68 @@ export async function downloadInventoryCurrentCsv(
   URL.revokeObjectURL(url);
 }
 
+export async function downloadInventoryCurrentPdf(
+  token: string,
+  reason: string,
+  filters: InventoryCurrentFilters = {},
+): Promise<void> {
+  const params = buildInventoryValueParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/current/pdf${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar el PDF de existencias actuales");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_existencias.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryCurrentXlsx(
+  token: string,
+  reason: string,
+  filters: InventoryCurrentFilters = {},
+): Promise<void> {
+  const params = buildInventoryValueParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/current/xlsx${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar el Excel de existencias actuales");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_existencias.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export async function downloadInventoryValueCsv(
   token: string,
   reason: string,
@@ -2123,6 +2185,68 @@ export async function downloadInventoryValueCsv(
   const link = document.createElement("a");
   link.href = url;
   link.download = "softmobile_valor_inventario.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryValuePdf(
+  token: string,
+  reason: string,
+  filters: InventoryValueFilters = {},
+): Promise<void> {
+  const params = buildInventoryValueParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/value/pdf${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de valoración de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_valor_inventario.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryValueXlsx(
+  token: string,
+  reason: string,
+  filters: InventoryValueFilters = {},
+): Promise<void> {
+  const params = buildInventoryValueParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/value/xlsx${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el Excel de valoración de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_valor_inventario.xlsx";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -2160,6 +2284,68 @@ export async function downloadInventoryMovementsCsv(
   URL.revokeObjectURL(url);
 }
 
+export async function downloadInventoryMovementsPdf(
+  token: string,
+  reason: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<void> {
+  const params = buildInventoryMovementsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/movements/pdf${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de movimientos");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_movimientos.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryMovementsXlsx(
+  token: string,
+  reason: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<void> {
+  const params = buildInventoryMovementsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/movements/xlsx${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el Excel de movimientos");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_movimientos.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export async function downloadTopProductsCsv(
   token: string,
   reason: string,
@@ -2185,6 +2371,68 @@ export async function downloadTopProductsCsv(
   const link = document.createElement("a");
   link.href = url;
   link.download = "softmobile_productos_populares.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadTopProductsPdf(
+  token: string,
+  reason: string,
+  filters: InventoryTopProductsFilters = {},
+): Promise<void> {
+  const params = buildTopProductsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/top-products/pdf${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de productos más vendidos");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_top_productos.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadTopProductsXlsx(
+  token: string,
+  reason: string,
+  filters: InventoryTopProductsFilters = {},
+): Promise<void> {
+  const params = buildTopProductsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/top-products/xlsx${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el Excel de productos más vendidos");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_top_productos.xlsx";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

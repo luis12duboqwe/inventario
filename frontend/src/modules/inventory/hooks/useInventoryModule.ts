@@ -124,6 +124,18 @@ export function useInventoryModule() {
     [dashboard.token],
   );
 
+  const downloadInventoryCurrentPdf = useCallback(
+    (reason: string, filters: InventoryCurrentFilters = {}) =>
+      inventoryService.downloadInventoryCurrentPdf(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
+  const downloadInventoryCurrentXlsx = useCallback(
+    (reason: string, filters: InventoryCurrentFilters = {}) =>
+      inventoryService.downloadInventoryCurrentXlsx(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
   const fetchInventoryValueReport = useCallback(
     (filters: InventoryValueFilters = {}) =>
       inventoryService.fetchInventoryValueReport(dashboard.token, filters),
@@ -148,15 +160,51 @@ export function useInventoryModule() {
     [dashboard.token],
   );
 
+  const downloadInventoryValuePdf = useCallback(
+    (reason: string, filters: InventoryValueFilters = {}) =>
+      inventoryService.downloadInventoryValuePdf(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
+  const downloadInventoryValueXlsx = useCallback(
+    (reason: string, filters: InventoryValueFilters = {}) =>
+      inventoryService.downloadInventoryValueXlsx(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
   const downloadInventoryMovementsCsv = useCallback(
     (reason: string, filters: InventoryMovementsFilters = {}) =>
       inventoryService.downloadInventoryMovementsCsv(dashboard.token, reason, filters),
     [dashboard.token],
   );
 
+  const downloadInventoryMovementsPdf = useCallback(
+    (reason: string, filters: InventoryMovementsFilters = {}) =>
+      inventoryService.downloadInventoryMovementsPdf(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
+  const downloadInventoryMovementsXlsx = useCallback(
+    (reason: string, filters: InventoryMovementsFilters = {}) =>
+      inventoryService.downloadInventoryMovementsXlsx(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
   const downloadTopProductsCsv = useCallback(
     (reason: string, filters: InventoryTopProductsFilters = {}) =>
       inventoryService.downloadTopProductsCsv(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
+  const downloadTopProductsPdf = useCallback(
+    (reason: string, filters: InventoryTopProductsFilters = {}) =>
+      inventoryService.downloadTopProductsPdf(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
+  const downloadTopProductsXlsx = useCallback(
+    (reason: string, filters: InventoryTopProductsFilters = {}) =>
+      inventoryService.downloadTopProductsXlsx(dashboard.token, reason, filters),
     [dashboard.token],
   );
 
@@ -193,11 +241,19 @@ export function useInventoryModule() {
     storeValuationSnapshot,
     fetchInventoryCurrentReport,
     downloadInventoryCurrentCsv,
+    downloadInventoryCurrentPdf,
+    downloadInventoryCurrentXlsx,
     fetchInventoryValueReport,
     fetchInventoryMovementsReport,
     fetchTopProductsReport,
     downloadInventoryValueCsv,
+    downloadInventoryValuePdf,
+    downloadInventoryValueXlsx,
     downloadInventoryMovementsCsv,
+    downloadInventoryMovementsPdf,
+    downloadInventoryMovementsXlsx,
     downloadTopProductsCsv,
+    downloadTopProductsPdf,
+    downloadTopProductsXlsx,
   };
 }

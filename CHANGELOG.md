@@ -13,13 +13,15 @@
 - `backend/tests/test_inventory_valuation.py` valida el cálculo de promedios ponderados, márgenes y filtros, mientras que `backend/tests/conftest.py` prepara la vista en entornos de prueba.
 
 ## Actualización Inventario - Reportes y Estadísticas (30/03/2025)
-- Se amplía `reports.py` con rutas `GET /reports/inventory/current`, `/value`, `/movements` y `/top-products`, además de sus exportaciones CSV. Cada descarga exige cabecera `X-Reason` y roles de reporte.
-- Se añade `GET /reports/inventory/current/csv` para exportar existencias actuales por sucursal con totales de dispositivos, unidades y valor consolidado, reutilizado por el frontend mediante un nuevo botón de descarga.
+- Se amplía `reports.py` con rutas `GET /reports/inventory/current`, `/value`, `/movements` y `/top-products`, además de sus exportaciones CSV, PDF y Excel. Cada descarga exige cabecera `X-Reason` y roles de reporte.
+- Se añade `GET /reports/inventory/current/{csv|pdf|xlsx}` para exportar existencias actuales por sucursal con totales de dispositivos, unidades y valor consolidado, reutilizado por el frontend mediante nuevas acciones "CSV", "PDF" y "Excel".
 - `crud.py` incorpora agregadores dedicados para existencias actuales, valoración consolidada, movimientos por periodo y ranking de productos más vendidos, reutilizados por los nuevos endpoints.
 - `_normalize_date_range` reconoce fechas sin hora y extiende el cierre del periodo hasta las 23:59:59 para que los filtros diarios incluyan todos los movimientos registrados.
-- `backend/tests/test_reports_inventory.py` cubre los nuevos reportes validando filtros, totales y contenido de los CSV generados.
-- `frontend/src/api.ts` expone helpers (`getInventoryCurrentReport`, `getInventoryMovementsReport`, `downloadInventoryMovementsCsv`, etc.) consumidos por `inventoryService.ts`.
-- `InventoryPage.tsx` añade el tab **Reportes** mediante `InventoryReportsPanel.tsx`, mostrando métricas y botones de exportación. `InventoryPage.test.tsx` verifica la interacción y las solicitudes de motivo corporativo.
+- `backend/tests/test_reports_inventory.py` cubre los nuevos reportes validando filtros, totales y contenido de los CSV/PDF/Excel generados.
+- Se refuerzan las validaciones automatizadas para impedir descargas CSV/PDF/Excel sin cabecera `X-Reason`, manteniendo los controles corporativos.
+- `frontend/src/api.ts` expone helpers (`getInventoryCurrentReport`, `getInventoryMovementsReport`, `downloadInventoryMovements{Csv|Pdf|Xlsx}`, etc.) consumidos por `inventoryService.ts`.
+- `InventoryPage.tsx` añade el tab **Reportes** mediante `InventoryReportsPanel.tsx`, mostrando métricas y botones de exportación multiformato. `InventoryPage.test.tsx` verifica la interacción y las solicitudes de motivo corporativo.
+- Se agrega la dependencia `openpyxl` para construir archivos Excel con estilos corporativos en los reportes de inventario.
 - Se documenta que las cabeceras `X-Reason` deben enviarse en ASCII para evitar errores de codificación durante las exportaciones CSV.
 
 ## Actualización Inventario - Gestión de IMEI y Series

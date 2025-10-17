@@ -18,6 +18,7 @@ from ..security import require_roles
 from ..services import analytics as analytics_service
 from ..services import audit as audit_service
 from ..services import backups as backup_services
+from ..services import inventory_reports as inventory_reports_service
 from ..utils import audit as audit_utils
 
 router = APIRouter(prefix="/reports", tags=["reportes"])
@@ -474,6 +475,39 @@ def inventory_current_csv(
     return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
 
 
+@router.get("/inventory/current/pdf")
+def inventory_current_pdf(
+    store_ids: list[int] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    report = crud.get_inventory_current_report(db, store_ids=store_ids)
+    pdf_bytes = inventory_reports_service.render_inventory_current_pdf(report)
+    buffer = BytesIO(pdf_bytes)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_existencias.pdf"}
+    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+
+
+@router.get("/inventory/current/xlsx")
+def inventory_current_excel(
+    store_ids: list[int] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    report = crud.get_inventory_current_report(db, store_ids=store_ids)
+    workbook_buffer = inventory_reports_service.build_inventory_current_excel(report)
+    headers = {
+        "Content-Disposition": "attachment; filename=softmobile_existencias.xlsx"
+    }
+    return StreamingResponse(
+        iter([workbook_buffer.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
 @router.get("/inventory/value", response_model=schemas.InventoryValueReport)
 def inventory_value(
     store_ids: list[int] | None = Query(default=None),
@@ -723,6 +757,51 @@ def inventory_value_csv(
     return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
 
 
+@router.get("/inventory/value/pdf")
+def inventory_value_pdf(
+    store_ids: list[int] | None = Query(default=None),
+    categories: list[str] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    normalized_categories = [category for category in categories or [] if category]
+    report = crud.get_inventory_value_report(
+        db,
+        store_ids=store_ids,
+        categories=normalized_categories if normalized_categories else None,
+    )
+    pdf_bytes = inventory_reports_service.render_inventory_value_pdf(report)
+    buffer = BytesIO(pdf_bytes)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_valor_inventario.pdf"}
+    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+
+
+@router.get("/inventory/value/xlsx")
+def inventory_value_excel(
+    store_ids: list[int] | None = Query(default=None),
+    categories: list[str] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    normalized_categories = [category for category in categories or [] if category]
+    report = crud.get_inventory_value_report(
+        db,
+        store_ids=store_ids,
+        categories=normalized_categories if normalized_categories else None,
+    )
+    workbook_buffer = inventory_reports_service.build_inventory_value_excel(report)
+    headers = {
+        "Content-Disposition": "attachment; filename=softmobile_valor_inventario.xlsx"
+    }
+    return StreamingResponse(
+        iter([workbook_buffer.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
 @router.get("/inventory/movements/csv")
 def inventory_movements_csv(
     store_ids: list[int] | None = Query(default=None),
@@ -815,6 +894,128 @@ def inventory_movements_csv(
     buffer.seek(0)
     headers = {"Content-Disposition": "attachment; filename=softmobile_movimientos.csv"}
     return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+
+
+@router.get("/inventory/movements/pdf")
+def inventory_movements_pdf(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    movement_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    movement_enum: models.MovementType | None = None
+    if movement_type:
+        try:
+            movement_enum = models.MovementType(movement_type)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tipo de movimiento inválido",
+            ) from exc
+
+    report = crud.get_inventory_movements_report(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        movement_type=movement_enum,
+    )
+    pdf_bytes = inventory_reports_service.render_inventory_movements_pdf(report)
+    buffer = BytesIO(pdf_bytes)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_movimientos.pdf"}
+    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+
+
+@router.get("/inventory/movements/xlsx")
+def inventory_movements_excel(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    movement_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    movement_enum: models.MovementType | None = None
+    if movement_type:
+        try:
+            movement_enum = models.MovementType(movement_type)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tipo de movimiento inválido",
+            ) from exc
+
+    report = crud.get_inventory_movements_report(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        movement_type=movement_enum,
+    )
+    workbook_buffer = inventory_reports_service.build_inventory_movements_excel(report)
+    headers = {
+        "Content-Disposition": "attachment; filename=softmobile_movimientos.xlsx"
+    }
+    return StreamingResponse(
+        iter([workbook_buffer.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+@router.get("/inventory/top-products/pdf")
+def inventory_top_products_pdf(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    report = crud.get_top_selling_products(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+    pdf_bytes = inventory_reports_service.render_top_products_pdf(report)
+    buffer = BytesIO(pdf_bytes)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_top_productos.pdf"}
+    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+
+
+@router.get("/inventory/top-products/xlsx")
+def inventory_top_products_excel(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    report = crud.get_top_selling_products(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+    workbook_buffer = inventory_reports_service.build_top_products_excel(report)
+    headers = {
+        "Content-Disposition": "attachment; filename=softmobile_top_productos.xlsx"
+    }
+    return StreamingResponse(
+        iter([workbook_buffer.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
 
 
 @router.get("/inventory/top-products/csv")
