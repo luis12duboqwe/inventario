@@ -69,6 +69,11 @@ class DeviceResponse(DeviceBase):
         return float(self.quantity * self.unit_price)
 
 
+# Alias de compatibilidad con versiones previas
+Store = StoreResponse
+Device = DeviceResponse
+
+
 class RoleResponse(BaseModel):
     id: int
     name: str
