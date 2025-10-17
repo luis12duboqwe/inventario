@@ -47,6 +47,9 @@ const handleDeviceUpdateMock = vi.fn<
 >();
 const downloadInventoryReportMock = vi.fn<(reason: string) => Promise<void>>();
 const downloadInventoryCsvMock = vi.fn<(reason: string) => Promise<void>>();
+const downloadInventoryCurrentCsvMock = vi.fn<
+  (reason: string, filters: InventoryCurrentFilters) => Promise<void>
+>();
 const exportCatalogCsvMock = vi.fn<(filters: DeviceListFilters, reason: string) => Promise<void>>();
 const importCatalogCsvMock = vi.fn<(file: unknown, reason: string) => Promise<DeviceImportSummary>>();
 const downloadInventoryValueCsvMock = vi.fn<
@@ -418,6 +421,7 @@ const createModuleState = (): InventoryModuleState => ({
   fetchInventoryValueReport: vi.fn().mockResolvedValue(buildInventoryValueReport()),
   fetchInventoryMovementsReport: vi.fn().mockResolvedValue(buildInventoryMovementsReport()),
   fetchTopProductsReport: vi.fn().mockResolvedValue(buildTopProductsReport()),
+  downloadInventoryCurrentCsv: downloadInventoryCurrentCsvMock,
   downloadInventoryValueCsv: downloadInventoryValueCsvMock,
   downloadInventoryMovementsCsv: downloadInventoryMovementsCsvMock,
   downloadTopProductsCsv: downloadTopProductsCsvMock,
@@ -451,6 +455,7 @@ beforeEach(() => {
   handleDeviceUpdateMock.mockReset();
   downloadInventoryReportMock.mockReset();
   downloadInventoryCsvMock.mockReset();
+  downloadInventoryCurrentCsvMock.mockReset();
   exportCatalogCsvMock.mockReset();
   importCatalogCsvMock.mockReset();
   downloadInventoryValueCsvMock.mockReset();
@@ -463,6 +468,7 @@ beforeEach(() => {
   updateLowStockThresholdMock.mockResolvedValue();
   downloadInventoryReportMock.mockResolvedValue();
   downloadInventoryCsvMock.mockResolvedValue();
+  downloadInventoryCurrentCsvMock.mockResolvedValue();
   exportCatalogCsvMock.mockResolvedValue();
   importCatalogCsvMock.mockResolvedValue({ created: 0, updated: 0, skipped: 0, errors: [] });
   downloadInventoryValueCsvMock.mockResolvedValue();
@@ -588,13 +594,53 @@ describe("InventoryPage", () => {
     expect(await screen.findByText(/Reportes y estadísticas/i)).toBeInTheDocument();
     expect(screen.getByText(/Existencias actuales/i)).toBeInTheDocument();
 
-    const exportButtons = screen.getAllByRole("button", { name: /Exportar CSV/i });
-    expect(exportButtons).toHaveLength(3);
+    const existencesSection = screen.getByRole("heading", { name: /Existencias actuales/i }).closest("section");
+    const valueSection = screen.getByRole("heading", { name: /Valor total del inventario/i }).closest("section");
+    const movementsSection = screen.getByRole("heading", { name: /Movimientos por periodo/i }).closest("section");
+    const topProductsSection = screen.getByRole("heading", { name: /Productos más vendidos/i }).closest("section");
 
-    await user.click(exportButtons[0]);
+    expect(existencesSection).not.toBeNull();
+    expect(valueSection).not.toBeNull();
+    expect(movementsSection).not.toBeNull();
+    expect(topProductsSection).not.toBeNull();
 
+    const existencesButton = within(existencesSection as HTMLElement).getByRole("button", {
+      name: /Exportar CSV/i,
+    });
+    await user.click(existencesButton);
+    await waitFor(() => {
+      expect(downloadInventoryCurrentCsvMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
+    });
+
+    const valuationButton = within(valueSection as HTMLElement).getByRole("button", { name: /Exportar CSV/i });
+    await user.click(valuationButton);
     await waitFor(() => {
       expect(downloadInventoryValueCsvMock).toHaveBeenCalledWith("Reporte inventario", expect.any(Object));
+    });
+
+    const movementsButton = within(movementsSection as HTMLElement).getByRole("button", {
+      name: /Exportar CSV/i,
+    });
+    await user.click(movementsButton);
+    await waitFor(() => {
+      expect(downloadInventoryMovementsCsvMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
+    });
+
+    const topProductsButton = within(topProductsSection as HTMLElement).getByRole("button", {
+      name: /Exportar CSV/i,
+    });
+    await user.click(topProductsButton);
+    await waitFor(() => {
+      expect(downloadTopProductsCsvMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
     });
   });
 });

@@ -2067,6 +2067,37 @@ export async function downloadInventoryCsv(token: string, reason: string): Promi
   URL.revokeObjectURL(url);
 }
 
+export async function downloadInventoryCurrentCsv(
+  token: string,
+  reason: string,
+  filters: InventoryCurrentFilters = {},
+): Promise<void> {
+  const params = buildInventoryValueParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/current/csv${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar las existencias actuales");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_existencias.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export async function downloadInventoryValueCsv(
   token: string,
   reason: string,

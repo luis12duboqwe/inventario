@@ -1,5 +1,6 @@
 import {
   downloadInventoryCsv,
+  downloadInventoryCurrentCsv,
   downloadInventoryMovementsCsv,
   downloadInventoryPdf,
   downloadInventoryValueCsv,
@@ -74,6 +75,11 @@ export const inventoryService = {
     token: string,
     filters: InventoryTopProductsFilters = {},
   ): Promise<TopProductsReport> => getTopProductsReport(token, filters),
+  downloadInventoryCurrentCsv: (
+    token: string,
+    reason: string,
+    filters: InventoryCurrentFilters = {},
+  ) => downloadInventoryCurrentCsv(token, reason, filters),
   downloadInventoryValueCsv: (
     token: string,
     reason: string,

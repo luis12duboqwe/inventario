@@ -32,6 +32,10 @@ type InventoryReportsPanelProps = {
   selectedStoreId: number | null;
   formatCurrency: (value: number) => string;
   fetchInventoryCurrentReport: (filters: InventoryCurrentFilters) => Promise<InventoryCurrentReport>;
+  downloadInventoryCurrentCsv: (
+    reason: string,
+    filters: InventoryCurrentFilters,
+  ) => Promise<void>;
   fetchInventoryValueReport: (filters: InventoryValueFilters) => Promise<InventoryValueReport>;
   fetchInventoryMovementsReport: (filters: InventoryMovementsFilters) => Promise<InventoryMovementsReport>;
   fetchTopProductsReport: (filters: InventoryTopProductsFilters) => Promise<TopProductsReport>;
@@ -49,6 +53,7 @@ function InventoryReportsPanel({
   selectedStoreId,
   formatCurrency,
   fetchInventoryCurrentReport,
+  downloadInventoryCurrentCsv,
   fetchInventoryValueReport,
   fetchInventoryMovementsReport,
   fetchTopProductsReport,
@@ -153,6 +158,13 @@ function InventoryReportsPanel({
     );
   };
 
+  const handleCurrentDownload = async () => {
+    await requestDownloadWithReason(
+      (reason) => downloadInventoryCurrentCsv(reason, filters),
+      "CSV de existencias descargado",
+    );
+  };
+
   const handleMovementsDownload = async () => {
     await requestDownloadWithReason(
       (reason) => downloadInventoryMovementsCsv(reason, movementsFilters),
@@ -226,9 +238,15 @@ function InventoryReportsPanel({
                 <h3>Existencias actuales</h3>
                 <p className="card-subtitle">Resumen por sucursal y total consolidado.</p>
               </div>
-              <span className="report-icon" aria-hidden>
-                <BarChart3 size={18} />
-              </span>
+              <div className="report-actions">
+                <button type="button" className="btn btn--ghost" onClick={() => void handleCurrentDownload()}>
+                  <Download size={16} aria-hidden />
+                  Exportar CSV
+                </button>
+                <span className="report-icon" aria-hidden>
+                  <BarChart3 size={18} />
+                </span>
+              </div>
             </header>
             {currentReport ? (
               <div className="card-content">

@@ -100,6 +100,7 @@ function InventoryPage() {
     refreshSummary,
     storeValuationSnapshot,
     fetchInventoryCurrentReport,
+    downloadInventoryCurrentCsv,
     fetchInventoryValueReport,
     fetchInventoryMovementsReport,
     fetchTopProductsReport,
@@ -813,6 +814,7 @@ function InventoryPage() {
       selectedStoreId={selectedStoreId}
       formatCurrency={formatCurrency}
       fetchInventoryCurrentReport={fetchInventoryCurrentReport}
+      downloadInventoryCurrentCsv={downloadInventoryCurrentCsv}
       fetchInventoryValueReport={fetchInventoryValueReport}
       fetchInventoryMovementsReport={fetchInventoryMovementsReport}
       fetchTopProductsReport={fetchTopProductsReport}

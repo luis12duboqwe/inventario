@@ -160,6 +160,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 ### Actualización Inventario - Reportes y Estadísticas (30/03/2025)
 
 - Agrega endpoints `GET /reports/inventory/current|value|movements|top-products` con filtros por sucursal, fechas y tipo de movimiento. Cada ruta cuenta con versión CSV (`/csv`) que exige `X-Reason` y roles de reporte.
+- `GET /reports/inventory/current/csv` debe ofrecer el resumen por sucursal de dispositivos, unidades y valor consolidado. Propaga los filtros por sucursal y valida motivo corporativo en encabezados antes de entregar el archivo.
 - `crud.py` incorpora los agregadores `get_inventory_current_report`, `get_inventory_movements_report`, `get_top_selling_products` y `get_inventory_value_report`, reutilizados por `reports.py` y cubiertos en `backend/tests/test_reports_inventory.py`.
 - `_normalize_date_range` debe ampliar automáticamente los rangos recibidos como fecha (`YYYY-MM-DD`) hasta las 23:59:59 para no perder movimientos registrados durante la jornada.
 - El tab **Reportes** de `InventoryPage.tsx` usa `InventoryReportsPanel.tsx` para mostrar métricas claves, filtros y botones de exportación. Mantén la estética corporativa (oscuro + acentos cian).
