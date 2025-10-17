@@ -1,6 +1,7 @@
 export type Credentials = {
   username: string;
   password: string;
+  otp?: string;
 };
 
 export type Store = {
@@ -290,6 +291,9 @@ export async function login(credentials: Credentials): Promise<{ access_token: s
   const params = new URLSearchParams();
   params.append("username", credentials.username);
   params.append("password", credentials.password);
+  if (credentials.otp) {
+    params.append("otp", credentials.otp);
+  }
 
   const response = await fetch(`${API_URL}/auth/token`, {
     method: "POST",
