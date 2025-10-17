@@ -236,6 +236,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se habilita un panel de proveedores con alta/edición, exportación CSV, activación/inactivación y un historial detallado conectado a los endpoints `/purchases/vendors/*`.
 - El dashboard del módulo muestra tarjetas de estadísticas mensuales, proveedores frecuentes y rankings de usuarios reutilizando `getPurchaseStatistics` para mantener coherencia entre backend y UI.
 - Documentación y bitácora (README, CHANGELOG y este AGENTS) registran la actualización bajo «Actualización Compras - Parte 3 (Interfaz y Reportes)» para preservar trazabilidad corporativa.
+- Mantén esta cobertura alineada: cualquier ajuste en `frontend/src/modules/operations/components/Purchases.tsx` debe seguir hablando con `backend/app/routers/purchases.py` y respetar las pruebas `backend/tests/test_purchases.py::test_purchase_records_and_vendor_statistics`, que garantizan exportaciones PDF/Excel, filtros por fecha/proveedor/usuario y métricas mensuales.
 
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 

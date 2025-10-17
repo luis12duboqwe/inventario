@@ -25,6 +25,7 @@
 - Se publica un panel administrativo de proveedores que permite alta/edición, activación o desactivación y exportación CSV, además de un historial filtrable que consume `/purchases/vendors/{id}/history` para auditar desempeño y totales.
 - El dashboard presenta métricas de compras totales, impuestos, ranking de proveedores/usuarios y acumulados mensuales mediante `GET /purchases/statistics`, alineando la UI con los servicios del backend.
 - README, AGENTS y este CHANGELOG documentan la iteración bajo «Actualización Compras - Parte 3 (Interfaz y Reportes)» para preservar la trazabilidad corporativa.
+- Referencia cruzada: la UI está centralizada en `frontend/src/modules/operations/components/Purchases.tsx` y depende de `backend/app/routers/purchases.py`; la prueba `backend/tests/test_purchases.py::test_purchase_records_and_vendor_statistics` confirma exportaciones PDF/Excel, filtros y métricas activas.
 
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
