@@ -4,6 +4,7 @@
 - Se crea la tabla `device_identifiers` (migración `202503010001_device_identifiers.py`) con los campos `producto_id`, `imei_1`, `imei_2`, `numero_serie`, `estado_tecnico` y `observaciones`, vinculada uno a uno con `devices` y con restricciones de unicidad.
 - Nuevos endpoints `GET/PUT /inventory/stores/{store_id}/devices/{device_id}/identifier` permiten consultar y actualizar los identificadores extendidos exigiendo cabecera `X-Reason` y roles de gestión.
 - `_ensure_unique_identifiers` y el helper `_ensure_unique_identifier_payload` bloquean cualquier IMEI/serie duplicado entre `devices` y `device_identifiers`, devolviendo el error `device_identifier_conflict` cuando existe una colisión.
+- `test_device_creation_rejects_conflicts_from_identifier_table` asegura que la API impide registrar dispositivos con IMEI o número de serie presentes en `device_identifiers`, retornando `409` con el código `device_identifier_conflict`.
 - Se registran auditorías `device_identifier_created` y `device_identifier_updated` incluyendo el motivo corporativo recibido para cada operación.
 - El SDK web (`frontend/src/api.ts`) agrega los métodos `getDeviceIdentifier`/`upsertDeviceIdentifier` y `InventoryTable.tsx` muestra IMEI dual, número de serie extendido, estado técnico y observaciones.
 - Nueva suite `backend/tests/test_device_identifiers.py` cubre el flujo de alta, consultas posteriores, conflictos de IMEI/serie y la respuesta 404 cuando un dispositivo aún no cuenta con identificadores extendidos.
