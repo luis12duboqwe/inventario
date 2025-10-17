@@ -141,6 +141,9 @@ def _create_customers(client: TestClient, headers: dict[str, str]) -> list[int]:
             "email": f"cliente{index:02d}@softmobile.mx",
             "phone": f"555-010-{index:04d}",
             "address": f"Sucursal {index:02d} CDMX",
+            "customer_type": "corporativo" if index % 3 == 0 else "minorista",
+            "status": "activo",
+            "credit_limit": float(index * 1000.0),
             "notes": "Cliente recurrente del escenario de rendimiento.",
             "outstanding_debt": float(index * 150.0),
             "history": [

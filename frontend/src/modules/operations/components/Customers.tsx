@@ -18,6 +18,9 @@ type CustomerForm = {
   email: string;
   phone: string;
   address: string;
+  customerType: string;
+  status: string;
+  creditLimit: number;
   notes: string;
   outstandingDebt: number;
   historyNote: string;
@@ -29,10 +32,25 @@ const initialForm: CustomerForm = {
   email: "",
   phone: "",
   address: "",
+  customerType: "minorista",
+  status: "activo",
+  creditLimit: 0,
   notes: "",
   outstandingDebt: 0,
   historyNote: "",
 };
+
+const CUSTOMER_TYPES = [
+  { value: "minorista", label: "Minorista" },
+  { value: "mayorista", label: "Mayorista" },
+  { value: "corporativo", label: "Corporativo" },
+];
+
+const CUSTOMER_STATUSES = [
+  { value: "activo", label: "Activo" },
+  { value: "inactivo", label: "Inactivo" },
+  { value: "bloqueado", label: "Bloqueado" },
+];
 
 function Customers({ token }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -114,8 +132,13 @@ function Customers({ token }: Props) {
       name: form.name.trim(),
       contact_name: form.contactName.trim() || undefined,
       email: form.email.trim() || undefined,
-      phone: form.phone.trim() || undefined,
+      phone: form.phone.trim(),
       address: form.address.trim() || undefined,
+      customer_type: form.customerType,
+      status: form.status,
+      credit_limit: Number.isFinite(form.creditLimit)
+        ? Math.max(0, Number(form.creditLimit))
+        : 0,
       notes: form.notes.trim() || undefined,
       outstanding_debt: Number.isFinite(form.outstandingDebt)
         ? Math.max(0, Number(form.outstandingDebt))
@@ -157,8 +180,11 @@ function Customers({ token }: Props) {
       name: customer.name,
       contactName: customer.contact_name ?? "",
       email: customer.email ?? "",
-      phone: customer.phone ?? "",
+      phone: customer.phone,
       address: customer.address ?? "",
+      customerType: customer.customer_type ?? "minorista",
+      status: customer.status ?? "activo",
+      creditLimit: Number(customer.credit_limit ?? 0),
       notes: customer.notes ?? "",
       outstandingDebt: Number(customer.outstanding_debt ?? 0),
       historyNote: "",
@@ -285,11 +311,45 @@ function Customers({ token }: Props) {
         </label>
         <label>
           Teléfono
-          <input value={form.phone} onChange={(event) => updateForm({ phone: event.target.value })} />
+          <input
+            value={form.phone}
+            onChange={(event) => updateForm({ phone: event.target.value })}
+            required
+          />
+        </label>
+        <label>
+          Tipo de cliente
+          <select value={form.customerType} onChange={(event) => updateForm({ customerType: event.target.value })}>
+            {CUSTOMER_TYPES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Estado
+          <select value={form.status} onChange={(event) => updateForm({ status: event.target.value })}>
+            {CUSTOMER_STATUSES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="wide">
           Dirección
           <input value={form.address} onChange={(event) => updateForm({ address: event.target.value })} />
+        </label>
+        <label>
+          Límite de crédito
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={form.creditLimit}
+            onChange={(event) => updateForm({ creditLimit: Number(event.target.value) })}
+          />
         </label>
         <label>
           Saldo pendiente
@@ -363,10 +423,13 @@ function Customers({ token }: Props) {
               <tr>
                 <th>ID</th>
                 <th>Nombre</th>
+                <th>Tipo</th>
+                <th>Estado</th>
                 <th>Contacto</th>
                 <th>Correo</th>
                 <th>Teléfono</th>
-                <th>Deuda</th>
+                <th>Límite crédito</th>
+                <th>Saldo</th>
                 <th>Última interacción</th>
                 <th>Última nota</th>
                 <th>Acciones</th>
@@ -382,14 +445,22 @@ function Customers({ token }: Props) {
                   ? new Date(customer.last_interaction_at).toLocaleString("es-MX")
                   : "—";
                 const outstanding = Number(customer.outstanding_debt ?? 0);
+                const creditLimit = Number(customer.credit_limit ?? 0);
                 return (
                   <tr key={customer.id}>
                     <td>#{customer.id}</td>
                     <td>{customer.name}</td>
+                    <td className="muted-text">{customer.customer_type ?? "—"}</td>
+                    <td>{customer.status ?? "—"}</td>
                     <td>{customer.contact_name ?? "—"}</td>
                     <td>{customer.email ?? "—"}</td>
-                    <td>{customer.phone ?? "—"}</td>
-                    <td>${outstanding.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>{customer.phone}</td>
+                    <td>
+                      ${creditLimit.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td>
+                      ${outstanding.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
                     <td>{lastInteraction}</td>
                     <td>{lastHistory}</td>
                     <td>

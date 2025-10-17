@@ -137,6 +137,13 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **17/10/2025 08:30 UTC** — Se consolidó el formulario de registro para que los botones "Guardar venta" e "Imprimir factura" se asocien correctamente al envío, se reforzó la maquetación responsive del bloque y se añadieron estilos oscuros (`table-responsive`, `totals-card`, `actions-card`) coherentes con Softmobile.
 - **17/10/2025 09:15 UTC** — Se añadieron métricas de ticket promedio y promedios diarios calculados desde el backend, nuevas tarjetas temáticas en el dashboard y estilos oscuros reforzados (`metric-secondary`, `metric-primary`) para destacar totales, impuestos y estadísticas de ventas.
 
+## Actualización Clientes - Parte 1 (Estructura y Relaciones)
+
+- La migración `202503010005_clientes_estructura_relaciones.py` renombra `customers` a `clientes`, alinea las columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y vuelve obligatorio el teléfono con valores predeterminados para instalaciones existentes.
+- Se refuerzan las relaciones `ventas → clientes` y `repair_orders → clientes`, garantizando que facturas POS y órdenes de reparación referencien `id_cliente` mediante claves foráneas activas y actualizando índices (`ix_clientes_*`) y la unicidad del correo (`uq_clientes_correo`).
+- Los esquemas y CRUD de clientes validan teléfono obligatorio, exponen tipo/estado/límite de crédito, normalizan los montos con decimales y amplían la exportación CSV con los nuevos campos; la prueba `backend/tests/test_clientes_schema.py` verifica columnas, índices y relaciones.
+- La interfaz `Customers.tsx` permite capturar tipo de cliente, estado y límite de crédito, muestra los campos en la tabla de gestión y mantiene los motivos corporativos en altas, ediciones, notas e incrementos de saldo.
+
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
 La actualización UI de febrero 2025 refuerza la experiencia operativa sin modificar rutas ni versiones:

@@ -58,11 +58,17 @@ def test_customer_crud_flow(client):
         "contact_name": "Laura Campos",
         "email": "laura@empresaazul.com",
         "phone": "+52 55 0000 0000",
+        "customer_type": "corporativo",
+        "status": "activo",
+        "credit_limit": 5000.0,
         "history": [{"note": "Cliente corporativo", "timestamp": "2025-02-15T10:00:00"}],
     }
     create_response = client.post("/customers", json=create_payload, headers=headers)
     assert create_response.status_code == status.HTTP_201_CREATED
     customer_id = create_response.json()["id"]
+    created_payload = create_response.json()
+    assert created_payload["customer_type"] == "corporativo"
+    assert created_payload["credit_limit"] == 5000.0
 
     list_response = client.get("/customers", headers={"Authorization": f"Bearer {token}"})
     assert list_response.status_code == status.HTTP_200_OK
@@ -74,12 +80,13 @@ def test_customer_crud_flow(client):
     assert csv_response.status_code == status.HTTP_200_OK
     assert "Empresa Azul" in csv_response.text
 
-    update_payload = {"phone": "+52 55 1111 2222"}
+    update_payload = {"phone": "+52 55 1111 2222", "status": "inactivo"}
     update_response = client.put(
         f"/customers/{customer_id}", json=update_payload, headers=headers
     )
     assert update_response.status_code == status.HTTP_200_OK
     assert update_response.json()["phone"] == "+52 55 1111 2222"
+    assert update_response.json()["status"] == "inactivo"
 
     delete_response = client.delete(f"/customers/{customer_id}", headers=headers)
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT

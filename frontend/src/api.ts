@@ -120,8 +120,11 @@ export type Customer = {
   name: string;
   contact_name?: string | null;
   email?: string | null;
-  phone?: string | null;
+  phone: string;
   address?: string | null;
+  customer_type: string;
+  status: string;
+  credit_limit: number;
   notes?: string | null;
   outstanding_debt: number;
   history: ContactHistoryEntry[];
@@ -134,8 +137,11 @@ export type CustomerPayload = {
   name: string;
   contact_name?: string;
   email?: string;
-  phone?: string;
+  phone: string;
   address?: string;
+  customer_type?: string;
+  status?: string;
+  credit_limit?: number;
   notes?: string;
   outstanding_debt?: number;
   history?: ContactHistoryEntry[];

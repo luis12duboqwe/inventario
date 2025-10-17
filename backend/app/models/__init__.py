@@ -613,19 +613,34 @@ class StoreMembership(Base):
 
 
 class Customer(Base):
-    __tablename__ = "customers"
+    __tablename__ = "clientes"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
-    contact_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
-    outstanding_debt: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False, default=Decimal("0")
+    id: Mapped[int] = mapped_column("id_cliente", Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(
+        "nombre", String(120), nullable=False, unique=True, index=True
     )
+    contact_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    email: Mapped[str | None] = mapped_column(
+        "correo", String(120), nullable=True, unique=True, index=True
+    )
+    phone: Mapped[str] = mapped_column(
+        "telefono", String(40), nullable=False, index=True
+    )
+    address: Mapped[str | None] = mapped_column("direccion", String(255), nullable=True)
+    customer_type: Mapped[str] = mapped_column(
+        "tipo", String(30), nullable=False, default="minorista"
+    )
+    status: Mapped[str] = mapped_column(
+        "estado", String(20), nullable=False, default="activo"
+    )
+    credit_limit: Mapped[Decimal] = mapped_column(
+        "limite_credito", Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    outstanding_debt: Mapped[Decimal] = mapped_column(
+        "saldo", Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    notes: Mapped[str | None] = mapped_column("notas", Text, nullable=True)
+    history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     last_interaction_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -878,7 +893,7 @@ class Sale(Base):
     customer_id: Mapped[int | None] = mapped_column(
         "cliente_id",
         Integer,
-        ForeignKey("customers.id", ondelete="SET NULL"),
+        ForeignKey("clientes.id_cliente", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -1003,7 +1018,7 @@ class RepairOrder(Base):
         Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     customer_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("clientes.id_cliente", ondelete="SET NULL"), nullable=True, index=True
     )
     customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     technician_name: Mapped[str] = mapped_column(String(120), nullable=False)
