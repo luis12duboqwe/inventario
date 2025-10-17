@@ -5428,8 +5428,15 @@ def cancel_sale(
 
     cancel_reason = reason or f"Anulación venta #{sale.id}"
     for item in sale.items:
+        returned_total = sum(
+            existing.quantity for existing in sale.returns if existing.device_id == item.device_id
+        )
+        quantity_to_restore = item.quantity - returned_total
+        if quantity_to_restore <= 0:
+            continue
+
         device = get_device(db, sale.store_id, item.device_id)
-        device.quantity += item.quantity
+        device.quantity += quantity_to_restore
         if device.quantity > 0:
             _restore_device_availability(device)
         db.add(
@@ -5438,7 +5445,7 @@ def cancel_sale(
                 source_store_id=None,
                 device_id=device.id,
                 movement_type=models.MovementType.IN,
-                quantity=item.quantity,
+                quantity=quantity_to_restore,
                 comment=cancel_reason,
                 performed_by_id=performed_by_id,
             )
