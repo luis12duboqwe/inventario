@@ -3,7 +3,7 @@ from fastapi import status
 
 from backend.app.config import settings
 
-from backend.app.core.roles import ADMIN
+from backend.app.core.roles import ADMIN, OPERADOR
 
 
 def _auth_headers(client) -> dict[str, str]:
@@ -24,6 +24,29 @@ def _auth_headers(client) -> dict[str, str]:
     assert token_response.status_code == status.HTTP_200_OK
     token = token_response.json()["access_token"]
     return {"Authorization": f"Bearer {token}", "X-Reason": "Operacion de prueba"}
+
+
+def _create_operator_token(client, admin_headers: dict[str, str]) -> str:
+    payload = {
+        "username": "mov_operator",
+        "password": "MovOperador123*",
+        "full_name": "Operador Inventario",
+        "roles": [OPERADOR],
+    }
+    response = client.post(
+        "/users",
+        json=payload,
+        headers={"Authorization": admin_headers["Authorization"]},
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+
+    token_response = client.post(
+        "/auth/token",
+        data={"username": payload["username"], "password": payload["password"]},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert token_response.status_code == status.HTTP_200_OK
+    return token_response.json()["access_token"]
 
 
 def test_inventory_flow(client) -> None:
@@ -370,6 +393,55 @@ def test_inventory_movement_response_includes_required_fields(client) -> None:
 
     assert payload["usuario"] == "Admin General"
     assert payload["tienda_destino"] == store_payload["name"]
+
+
+def test_operator_can_register_movements_but_not_view_inventory(client) -> None:
+    admin_headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Operador", "location": "GDL", "timezone": "America/Mexico_City"}
+    store_response = client.post("/stores", json=store_payload, headers=admin_headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {"sku": "SKU-OP-001", "name": "Scanner", "quantity": 5, "unit_price": 2500.0}
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=admin_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    operator_token = _create_operator_token(client, admin_headers)
+
+    movement_payload = {
+        "producto_id": device_id,
+        "tipo_movimiento": "salida",
+        "cantidad": 1,
+        "comentario": "Registrar salida",
+    }
+    operator_headers = {"Authorization": f"Bearer {operator_token}", "X-Reason": movement_payload["comentario"]}
+    movement_response = client.post(
+        f"/inventory/stores/{store_id}/movements",
+        json=movement_payload,
+        headers=operator_headers,
+    )
+    assert movement_response.status_code == status.HTTP_201_CREATED
+    movement_data = movement_response.json()
+    assert movement_data["producto_id"] == device_id
+    assert movement_data["tienda_origen_id"] == store_id
+
+    summary_response = client.get(
+        "/inventory/summary",
+        headers={"Authorization": f"Bearer {operator_token}"},
+    )
+    assert summary_response.status_code == status.HTTP_403_FORBIDDEN
+
+    devices_response = client.get(
+        f"/stores/{store_id}/devices",
+        headers={"Authorization": f"Bearer {operator_token}"},
+    )
+    assert devices_response.status_code == status.HTTP_403_FORBIDDEN
 
 
 def test_sale_updates_inventory_value(client) -> None:

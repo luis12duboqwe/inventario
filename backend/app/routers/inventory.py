@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..config import settings
-from ..core.roles import GESTION_ROLES, REPORTE_ROLES
+from ..core.roles import GESTION_ROLES, MOVEMENT_ROLES, REPORTE_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -38,7 +38,7 @@ def register_movement(
     store_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     if payload.comentario != reason:
         raise HTTPException(

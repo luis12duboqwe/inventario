@@ -10,8 +10,9 @@ OPERADOR: Final[str] = "OPERADOR"
 
 DEFAULT_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE, OPERADOR)
 GESTION_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE)
-REPORTE_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE, OPERADOR)
-AUDITORIA_ROLES: Final[tuple[str, ...]] = (ADMIN, OPERADOR)
+REPORTE_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE)
+AUDITORIA_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE)
+MOVEMENT_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE, OPERADOR)
 VALID_ROLES: Final[set[str]] = set(DEFAULT_ROLES)
 
 
@@ -41,6 +42,7 @@ __all__ = [
     "GESTION_ROLES",
     "REPORTE_ROLES",
     "AUDITORIA_ROLES",
+    "MOVEMENT_ROLES",
     "VALID_ROLES",
     "normalize_role",
     "normalize_roles",

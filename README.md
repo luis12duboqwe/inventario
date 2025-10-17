@@ -150,6 +150,13 @@ Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.a
 - **Nuevas palabras clave de severidad**: el utilitario de auditoría reconoce `stock bajo`, `ajuste manual` e `inconsistencia` para clasificar advertencias y críticas en dashboards y recordatorios.
 - **Pruebas y documentación**: `test_manual_adjustment_triggers_alerts` verifica el flujo completo (ajuste → alerta → bitácora), y este README documenta las variables de entorno necesarias para parametrizar los umbrales corporativos.
 
+## Actualización Inventario - Roles y Permisos
+
+- **Control total para ADMIN**: el middleware `require_roles` permite que cualquier usuario con rol `ADMIN` acceda a operaciones sensibles sin importar las restricciones declaradas en cada ruta, garantizando control total sobre inventario, auditoría y sincronización.【F:backend/app/security.py†L7-L11】【F:backend/app/security.py†L73-L93】
+- **GERENTE con visibilidad y ajustes**: las constantes `GESTION_ROLES` y `REPORTE_ROLES` mantienen al gerente con permisos para consultar el inventario, ejecutar ajustes manuales y consumir reportes, alineados a las directrices corporativas.【F:backend/app/core/roles.py†L11-L24】
+- **OPERADOR enfocado en movimientos**: se crea la constante `MOVEMENT_ROLES` para habilitar exclusivamente el registro de entradas y salidas desde `/inventory/stores/{store_id}/movements`, bloqueando consultas y reportes para operadores.【F:backend/app/core/roles.py†L11-L24】【F:backend/app/routers/inventory.py†L23-L60】
+- **Pruebas reforzadas**: `test_operator_can_register_movements_but_not_view_inventory` asegura que los operadores sólo puedan registrar movimientos y reciban `403` al intentar listar inventario o resúmenes, evitando accesos indebidos.【F:backend/tests/test_stores.py†L1-L212】
+
 ## Paso 4 — Documentación y pruebas automatizadas
 
 ### Tablas y rutas destacadas
