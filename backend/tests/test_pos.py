@@ -1,6 +1,8 @@
 from fastapi import status
 from sqlalchemy import select
 
+from backend.app import models
+
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN, OPERADOR
 
@@ -123,11 +125,23 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     assert updated_config["tax_rate"] == 16.0
     assert updated_config["invoice_prefix"] == "POSCDMX"
 
+    customer_response = client.post(
+        "/customers",
+        json={
+            "name": "Cliente POS",
+            "email": "pos@example.com",
+            "phone": "555-100-1000",
+        },
+        headers={**auth_headers, "X-Reason": "Alta cliente POS"},
+    )
+    assert customer_response.status_code == status.HTTP_201_CREATED
+    customer_id = customer_response.json()["id"]
+
     sale_payload = {
         "store_id": store_id,
         "payment_method": "TARJETA",
         "discount_percent": 5.0,
-        "customer_name": "Cliente POS",
+        "customer_id": customer_id,
         "items": [{"device_id": device_id, "quantity": 1, "discount_percent": 5.0}],
         "confirm": True,
         "draft_id": draft_id,
@@ -143,10 +157,22 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     assert sale_data["status"] == "registered"
     sale_info = sale_data["sale"]
     assert sale_info["payment_method"] == "TARJETA"
+    assert sale_info["customer_id"] == customer_id
+    assert sale_info["customer_name"] == "Cliente POS"
+    assert sale_info["customer"]["id"] == customer_id
+    assert sale_info["customer"]["name"] == "Cliente POS"
     assert sale_info["subtotal_amount"] == 95.0
     assert sale_info["tax_amount"] == 15.2
     assert sale_info["total_amount"] == 110.2
     assert any("Stock bajo" in message for message in sale_data["warnings"])
+    assert sale_data["receipt_url"] == f"/pos/receipt/{sale_info['id']}"
+
+    persisted_sale = db_session.execute(
+        select(models.Sale).where(models.Sale.id == sale_info["id"])
+    ).scalar_one()
+    assert persisted_sale.customer_id == customer_id
+    assert persisted_sale.customer is not None
+    assert persisted_sale.customer.name == "Cliente POS"
 
     receipt_response = client.get(
         f"/pos/receipt/{sale_info['id']}",

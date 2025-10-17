@@ -143,6 +143,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Se refuerzan las relaciones `ventas → clientes` y `repair_orders → clientes`, garantizando que facturas POS y órdenes de reparación referencien `id_cliente` mediante claves foráneas activas y actualizando índices (`ix_clientes_*`) y la unicidad del correo (`uq_clientes_correo`).
 - Los esquemas y CRUD de clientes validan teléfono obligatorio, exponen tipo/estado/límite de crédito, normalizan los montos con decimales y amplían la exportación CSV con los nuevos campos; la prueba `backend/tests/test_clientes_schema.py` verifica columnas, índices y relaciones.
 - La interfaz `Customers.tsx` permite capturar tipo de cliente, estado y límite de crédito, muestra los campos en la tabla de gestión y mantiene los motivos corporativos en altas, ediciones, notas e incrementos de saldo.
+- **19/10/2025 14:30 UTC** — Se auditó nuevamente la estructura de `clientes` para confirmar la no nulidad de `limite_credito` y `saldo`, se documentó el índice `ix_ventas_cliente_id` y la prueba `test_pos_sale_with_receipt_and_config` ahora exige un `customer_id` real en ventas POS, asegurando que los recibos PDF muestren al cliente vinculado.
 
 ## Mejora visual v2.2.0 — Dashboard modularizado
 

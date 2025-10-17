@@ -33,6 +33,8 @@ def test_clientes_estructura_general(db_session) -> None:
     assert isinstance(columns["saldo"]["type"], Numeric)
     assert isinstance(columns["notas"]["type"], Text)
     assert columns["telefono"]["nullable"] is False
+    assert columns["limite_credito"]["nullable"] is False
+    assert columns["saldo"]["nullable"] is False
 
     indexes = {index["name"]: index for index in inspector.get_indexes("clientes")}
     assert "ix_clientes_nombre" in indexes
@@ -62,6 +64,11 @@ def test_relaciones_clientes_con_ventas_y_reparaciones(db_session) -> None:
         and fk["constrained_columns"] == ["cliente_id"]
         for fk in ventas_fks
     )
+
+    ventas_indexes = {
+        index["name"]: index for index in inspector.get_indexes("ventas")
+    }
+    assert "ix_ventas_cliente_id" in ventas_indexes
 
     reparaciones_fks = inspector.get_foreign_keys("repair_orders")
     assert any(
