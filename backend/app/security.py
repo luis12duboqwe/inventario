@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from enum import Enum
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -73,8 +74,26 @@ def _normalize_role_name(role_name: str | None) -> str | None:
     return normalized
 
 
-def require_roles(*roles: str):
-    expected_roles = {role.strip().upper() for role in roles if isinstance(role, str)}
+def _normalize_expected_role(role: str | Enum) -> str:
+    """Convierte un rol requerido en su representación normalizada."""
+
+    if isinstance(role, Enum):
+        candidate = role.value if isinstance(role.value, str) else role.name
+    elif isinstance(role, str):
+        candidate = role
+    else:
+        raise ValueError("Los roles requeridos deben ser cadenas o Enum.")
+
+    normalized = _normalize_role_name(candidate)
+    if normalized is None:
+        raise ValueError("Los roles requeridos no pueden estar vacíos.")
+    return normalized
+
+
+def require_roles(*roles: str | Enum):
+    expected_roles = {_normalize_expected_role(role) for role in roles}
+    if not expected_roles:
+        raise ValueError("Debe proporcionar al menos un rol válido para la autorización.")
 
     async def dependency(current_user=Depends(get_current_user)):
         user_roles = {
