@@ -149,6 +149,13 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Mantén cobertura en `backend/tests/test_device_identifiers.py` y extiende pruebas si agregas campos adicionales, garantizando escenarios de conflicto y respuesta 404 cuando un dispositivo no tenga identificadores registrados.
 - Añade regresiones cuando corresponda: `test_device_creation_rejects_conflicts_from_identifier_table` debe seguir comprobando que la creación de dispositivos rechaza IMEIs o series duplicados almacenados en `device_identifiers` con el error `device_identifier_conflict`.
 
+### Actualización Inventario - Valoraciones y Costos
+
+- Asegura que la migración `202503010002_inventory_valuation_view.py` se ejecute para crear la vista `valor_inventario` con costos promedio ponderados, totales por tienda y márgenes por categoría.
+- Utiliza el servicio `services/inventory.calculate_inventory_valuation` y el esquema `InventoryValuation` para exponer la vista sin romper compatibilidad con rutas actuales.
+- Mantén la vista disponible en entornos de prueba invocando los helpers `create_valor_inventario_view`/`drop_valor_inventario_view` desde `backend/app/db/valor_inventario_view.py`.
+- Extiende o ajusta `backend/tests/test_inventory_valuation.py` si agregas columnas adicionales, garantizando validación de márgenes y filtros por tienda/categoría.
+
 ### Registro operativo — 01/03/2025
 
 - ✅ 01/03/2025 — Los reportes de inventario PDF y CSV ahora incluyen columnas financieras completas y los campos del catálogo pro (IMEI, serie, marca, modelo, proveedor, color, capacidad, lote, costo y margen), respaldados por helpers reutilizables en `services/backups.py`.

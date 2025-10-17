@@ -929,6 +929,41 @@ class InventoryTotals(BaseModel):
         return float(value)
 
 
+class InventoryValuation(BaseModel):
+    store_id: int
+    store_name: str
+    device_id: int
+    sku: str
+    device_name: str
+    categoria: str
+    quantity: int
+    costo_promedio_ponderado: Decimal
+    valor_total_producto: Decimal
+    valor_total_tienda: Decimal
+    valor_total_general: Decimal
+    margen_unitario: Decimal
+    margen_producto_porcentaje: Decimal
+    margen_categoria_valor: Decimal
+    margen_categoria_porcentaje: Decimal
+
+    @field_serializer(
+        "costo_promedio_ponderado",
+        "valor_total_producto",
+        "valor_total_tienda",
+        "valor_total_general",
+        "margen_unitario",
+        "margen_categoria_valor",
+    )
+    @classmethod
+    def _serialize_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("margen_producto_porcentaje", "margen_categoria_porcentaje")
+    @classmethod
+    def _serialize_percentage(cls, value: Decimal) -> float:
+        return float(value)
+
+
 class AuditHighlight(BaseModel):
     id: int
     action: str

@@ -120,6 +120,13 @@ Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.a
 - **UI y SDK actualizados**: `frontend/src/api.ts` expone los métodos `getDeviceIdentifier` y `upsertDeviceIdentifier`, mientras que `InventoryTable.tsx` muestra IMEIs duales, número de serie extendido, estado técnico y observaciones cuando están disponibles.
 - **Cobertura de pruebas**: la suite `backend/tests/test_device_identifiers.py` verifica el flujo completo, conflictos de IMEI/serie y la respuesta 404 cuando un producto aún no registra identificadores extendidos.
 
+## Actualización Inventario - Valoraciones y Costos
+
+- **Vista corporativa `valor_inventario`**: la migración `202503010002_inventory_valuation_view.py` crea una vista que consolida el costo promedio ponderado, el valor total por tienda y el valor general del inventario.
+- **Márgenes consolidados**: la vista calcula márgenes unitarios por producto y márgenes agregados por categoría con porcentajes y montos absolutos para reportes ejecutivos.
+- **Servicio reutilizable**: `services/inventory.calculate_inventory_valuation` expone los datos con filtros opcionales por tienda y categoría empleando el esquema `InventoryValuation`.
+- **Cobertura automatizada**: `backend/tests/test_inventory_valuation.py` valida promedios ponderados, márgenes y filtros; `backend/tests/conftest.py` prepara la vista en entornos SQLite para mantener las pruebas aisladas.
+
 ## Paso 4 — Documentación y pruebas automatizadas
 
 ### Tablas y rutas destacadas
