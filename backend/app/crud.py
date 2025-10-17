@@ -4355,12 +4355,11 @@ def _revert_purchase_inventory(
         if net_available <= 0:
             continue
 
-        available_to_revert = min(net_available, device.quantity)
-        if available_to_revert <= 0:
+        if device.quantity <= 0:
             continue
 
-        if available_to_revert < net_available:
-            net_available = available_to_revert
+        if device.quantity < net_available:
+            raise ValueError("purchase_cancellation_insufficient_stock")
 
         current_quantity = device.quantity
         current_cost_total = _to_decimal(device.costo_unitario) * _to_decimal(current_quantity)
