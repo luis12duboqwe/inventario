@@ -269,4 +269,5 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - `frontend/src/modules/operations/components/Customers.tsx` añade selectores de tipo/estado, captura el límite de crédito y muestra los campos en la tabla manteniendo el motivo corporativo en altas, ediciones, notas y ajustes de saldo.
 - **19/10/2025 14:30 UTC** — Auditoría reciente confirma la no nulidad de `limite_credito` y `saldo`, documenta el índice `ix_ventas_cliente_id` y actualiza `test_pos_sale_with_receipt_and_config` para forzar un `customer_id` válido en ventas POS, garantizando que los recibos PDF queden ligados al cliente corporativo.
 - **20/10/2025 11:30 UTC** — Se valida que las claves foráneas `ventas.cliente_id` y `repair_orders.customer_id` utilicen `SET NULL` y se añade la prueba `test_factura_se_vincula_con_cliente` para preservar el vínculo activo entre facturas y clientes.
+- **21/10/2025 09:00 UTC** — Se ajusta `backend/tests/test_clientes_schema.py` importando `Decimal` y reforzando aserciones de índices, mientras que el modelo `Customer` indexa `tipo` y `estado` para conservar los filtros operativos durante las pruebas de facturación ligadas a clientes.
 

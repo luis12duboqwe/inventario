@@ -628,10 +628,10 @@ class Customer(Base):
     )
     address: Mapped[str | None] = mapped_column("direccion", String(255), nullable=True)
     customer_type: Mapped[str] = mapped_column(
-        "tipo", String(30), nullable=False, default="minorista"
+        "tipo", String(30), nullable=False, default="minorista", index=True
     )
     status: Mapped[str] = mapped_column(
-        "estado", String(20), nullable=False, default="activo"
+        "estado", String(20), nullable=False, default="activo", index=True
     )
     credit_limit: Mapped[Decimal] = mapped_column(
         "limite_credito", Numeric(12, 2), nullable=False, default=Decimal("0")
