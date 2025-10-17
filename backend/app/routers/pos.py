@@ -85,6 +85,7 @@ def register_pos_sale_endpoint(
 def download_pos_receipt(
     sale_id: int,
     db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
