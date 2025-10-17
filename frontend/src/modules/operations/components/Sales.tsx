@@ -128,14 +128,21 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
       },
       { total: 0, subtotal: 0, tax: 0, daily: new Map<string, { total: number; count: number }>() }
     );
+    const totalSales = sales.length;
     const dailyStats = Array.from(aggregate.daily.entries())
-      .map(([day, info]) => ({ day, total: info.total, count: info.count }))
+      .map(([day, info]) => ({
+        day,
+        total: info.total,
+        count: info.count,
+        average: info.count > 0 ? info.total / info.count : 0,
+      }))
       .sort((a, b) => (a.day < b.day ? 1 : -1));
     return {
       total: aggregate.total,
       subtotal: aggregate.subtotal,
       tax: aggregate.tax,
-      count: sales.length,
+      count: totalSales,
+      average: totalSales > 0 ? aggregate.total / totalSales : 0,
       dailyStats,
     };
   }, [sales]);
@@ -657,9 +664,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
               <p className="metric-caption">{salesDashboard.count} operaciones registradas</p>
             </article>
             <article className="metric-card metric-secondary">
-              <h4>Impuestos</h4>
+              <h4>Impuestos generados</h4>
               <p className="metric-value">{currencyFormatter.format(salesDashboard.tax)}</p>
               <p className="metric-caption">Subtotal {currencyFormatter.format(salesDashboard.subtotal)}</p>
+            </article>
+            <article className="metric-card metric-primary">
+              <h4>Ticket promedio</h4>
+              <p className="metric-value">{currencyFormatter.format(salesDashboard.average)}</p>
+              <p className="metric-caption">Calculado sobre {salesDashboard.count} ventas</p>
             </article>
           </div>
         )}
@@ -671,6 +683,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
                   <th>Día</th>
                   <th>Total vendido</th>
                   <th>Operaciones</th>
+                  <th>Ticket promedio</th>
                 </tr>
               </thead>
               <tbody>
@@ -679,6 +692,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
                     <td>{entry.day}</td>
                     <td>{currencyFormatter.format(entry.total)}</td>
                     <td>{entry.count}</td>
+                    <td>{currencyFormatter.format(entry.average)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -110,6 +110,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - El backend amplía `GET /sales` con filtros por rango de fechas, cliente, usuario y búsqueda, y añade `/sales/export/pdf|xlsx` para generar reportes con totales y estadísticas diarias reutilizando los estilos corporativos.
 - El dashboard de operaciones muestra tarjetas y tabla de ventas diarias derivadas del mismo dataset, alineando métricas y reportes.
 - **17/10/2025 08:30 UTC** — Se consolidó el formulario de registro para que los botones "Guardar venta" e "Imprimir factura" se asocien correctamente al envío, se reforzó la maquetación responsive del bloque y se añadieron estilos oscuros (`table-responsive`, `totals-card`, `actions-card`) coherentes con Softmobile.
+- **17/10/2025 09:15 UTC** — Se añadieron métricas de ticket promedio y promedios diarios calculados desde el backend, nuevas tarjetas temáticas en el dashboard y estilos oscuros reforzados (`metric-secondary`, `metric-primary`) para destacar totales, impuestos y estadísticas de ventas.
 
 ## Mejora visual v2.2.0 — Dashboard modularizado
 

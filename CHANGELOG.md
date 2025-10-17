@@ -23,6 +23,7 @@
 - Nuevos endpoints `/sales/export/pdf|xlsx` y mejoras en `GET /sales` permiten generar reportes con totales y estadísticas diarias reutilizando los servicios centralizados de reportes.
 - `backend/tests/test_sales.py` valida filtros y exportaciones para asegurar la integridad de datos y el uso correcto del encabezado `X-Reason`.
 - **17/10/2025 08:30 UTC** — Se corrigió la asociación del botón "Guardar venta" con el formulario principal, evitando envíos nulos, y se agregaron estilos responsive/oscuros para tablas, totales y acciones del módulo de ventas.
+- **17/10/2025 09:15 UTC** — Se añadieron tarjetas de ticket promedio y estadísticas diarias con promedios calculados, además de estilos oscuros reforzados (`metric-secondary`, `metric-primary`) para resaltar totales, impuestos y métricas del dashboard de ventas.
 
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.
