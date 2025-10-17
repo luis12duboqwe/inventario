@@ -101,6 +101,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Panel integral de proveedores**: se habilita la administración completa de proveedores de compras (alta/edición, activación/inactivación y exportación CSV) junto con un historial filtrable conectado a `getPurchaseVendorHistory`, mostrando totales y métricas para auditar su desempeño.
 - **Estadísticas operativas**: se consumen los endpoints de métricas para presentar totales de inversión, rankings de proveedores/usuarios y acumulados mensuales en tarjetas responsive que refuerzan la planeación de compras.
 - **Documentación actualizada**: este README, el `CHANGELOG.md` y `AGENTS.md` registran la fase bajo el epígrafe «Actualización Compras - Parte 3 (Interfaz y Reportes)», manteniendo la trazabilidad de la evolución del módulo.
+- **Referencia técnica y pruebas**: la interfaz vive en `frontend/src/modules/operations/components/Purchases.tsx` y consume los servicios de `backend/app/routers/purchases.py`; la suite `backend/tests/test_purchases.py::test_purchase_records_and_vendor_statistics` valida exportaciones PDF/Excel, filtros y estadísticas para asegurar el cumplimiento de los cinco requisitos funcionales del módulo.
 
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
