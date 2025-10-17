@@ -124,6 +124,7 @@ Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.a
 
 - **Vista corporativa `valor_inventario`**: la migración `202503010002_inventory_valuation_view.py` crea una vista que consolida el costo promedio ponderado, el valor total por tienda y el valor general del inventario.
 - **Márgenes consolidados**: la vista calcula márgenes unitarios por producto y márgenes agregados por categoría con porcentajes y montos absolutos para reportes ejecutivos.
+- **Totales comparativos**: la vista también expone `valor_costo_producto`, `valor_costo_tienda`, `valor_costo_general`, `valor_total_categoria`, `margen_total_tienda` y `margen_total_general` para contrastar valor de venta versus costo y márgenes acumulados por tienda y corporativos.
 - **Servicio reutilizable**: `services/inventory.calculate_inventory_valuation` expone los datos con filtros opcionales por tienda y categoría empleando el esquema `InventoryValuation`.
 - **Cobertura automatizada**: `backend/tests/test_inventory_valuation.py` valida promedios ponderados, márgenes y filtros; `backend/tests/conftest.py` prepara la vista en entornos SQLite para mantener las pruebas aisladas.
 

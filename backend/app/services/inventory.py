@@ -61,12 +61,18 @@ def calculate_inventory_valuation(
         column("quantity", Integer),
         column("costo_promedio_ponderado", Numeric),
         column("valor_total_producto", Numeric),
+        column("valor_costo_producto", Numeric),
         column("valor_total_tienda", Numeric),
         column("valor_total_general", Numeric),
+        column("valor_costo_tienda", Numeric),
+        column("valor_costo_general", Numeric),
         column("margen_unitario", Numeric),
         column("margen_producto_porcentaje", Numeric),
+        column("valor_total_categoria", Numeric),
         column("margen_categoria_valor", Numeric),
         column("margen_categoria_porcentaje", Numeric),
+        column("margen_total_tienda", Numeric),
+        column("margen_total_general", Numeric),
     )
 
     stmt = select(valor_inventario).order_by(

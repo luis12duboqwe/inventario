@@ -2,6 +2,7 @@
 
 ## Actualización Inventario - Valoraciones y Costos
 - Se crea la vista `valor_inventario` a través de la migración `202503010002_inventory_valuation_view.py`, consolidando costo promedio ponderado, valores totales por sucursal y márgenes por producto y categoría.
+- Se añaden métricas comparativas (`valor_costo_producto`, `valor_costo_tienda`, `valor_costo_general`, `valor_total_categoria`, `margen_total_tienda`, `margen_total_general`) para contrastar el valor de venta contra el costo y la rentabilidad acumulada.
 - Se añade el servicio `calculate_inventory_valuation` y el esquema `InventoryValuation` para consultar la vista con filtros opcionales por sucursal y categoría desde el backend.
 - `backend/tests/test_inventory_valuation.py` valida el cálculo de promedios ponderados, márgenes y filtros, mientras que `backend/tests/conftest.py` prepara la vista en entornos de prueba.
 

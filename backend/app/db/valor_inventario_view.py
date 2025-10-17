@@ -45,8 +45,11 @@ SELECT
     dm.quantity AS quantity,
     dm.costo_promedio_ponderado AS costo_promedio_ponderado,
     ROUND(dm.quantity * dm.unit_price, 2) AS valor_total_producto,
+    ROUND(dm.quantity * dm.costo_promedio_ponderado, 2) AS valor_costo_producto,
     ROUND(SUM(dm.quantity * dm.unit_price) OVER (PARTITION BY dm.store_id), 2) AS valor_total_tienda,
     ROUND(SUM(dm.quantity * dm.unit_price) OVER (), 2) AS valor_total_general,
+    ROUND(SUM(dm.quantity * dm.costo_promedio_ponderado) OVER (PARTITION BY dm.store_id), 2) AS valor_costo_tienda,
+    ROUND(SUM(dm.quantity * dm.costo_promedio_ponderado) OVER (), 2) AS valor_costo_general,
     ROUND(dm.unit_price - dm.costo_promedio_ponderado, 2) AS margen_unitario,
     ROUND(
         CASE
@@ -55,6 +58,7 @@ SELECT
         END,
         2
     ) AS margen_producto_porcentaje,
+    ROUND(SUM(dm.quantity * dm.unit_price) OVER (PARTITION BY dm.categoria), 2) AS valor_total_categoria,
     ROUND(
         SUM(dm.quantity * (dm.unit_price - dm.costo_promedio_ponderado)) OVER (PARTITION BY dm.categoria),
         2
@@ -68,7 +72,9 @@ SELECT
             ) * 100
         END,
         2
-    ) AS margen_categoria_porcentaje
+    ) AS margen_categoria_porcentaje,
+    ROUND(SUM(dm.quantity * (dm.unit_price - dm.costo_promedio_ponderado)) OVER (PARTITION BY dm.store_id), 2) AS margen_total_tienda,
+    ROUND(SUM(dm.quantity * (dm.unit_price - dm.costo_promedio_ponderado)) OVER (), 2) AS margen_total_general
 FROM device_metrics AS dm
 JOIN stores AS s ON s.id = dm.store_id;
 """

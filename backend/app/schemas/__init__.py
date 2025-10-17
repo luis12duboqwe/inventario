@@ -939,20 +939,32 @@ class InventoryValuation(BaseModel):
     quantity: int
     costo_promedio_ponderado: Decimal
     valor_total_producto: Decimal
+    valor_costo_producto: Decimal
     valor_total_tienda: Decimal
     valor_total_general: Decimal
+    valor_costo_tienda: Decimal
+    valor_costo_general: Decimal
     margen_unitario: Decimal
     margen_producto_porcentaje: Decimal
+    valor_total_categoria: Decimal
     margen_categoria_valor: Decimal
     margen_categoria_porcentaje: Decimal
+    margen_total_tienda: Decimal
+    margen_total_general: Decimal
 
     @field_serializer(
         "costo_promedio_ponderado",
         "valor_total_producto",
+        "valor_costo_producto",
         "valor_total_tienda",
         "valor_total_general",
+        "valor_costo_tienda",
+        "valor_costo_general",
         "margen_unitario",
+        "valor_total_categoria",
         "margen_categoria_valor",
+        "margen_total_tienda",
+        "margen_total_general",
     )
     @classmethod
     def _serialize_decimal(cls, value: Decimal) -> float:
