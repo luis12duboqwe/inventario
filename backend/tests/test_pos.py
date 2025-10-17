@@ -224,6 +224,7 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
             "name": "Cliente Crédito",
             "email": "credito@example.com",
             "phone": "555-500-5000",
+            "credit_limit": 500.0,
         },
         headers=reason_headers,
     )

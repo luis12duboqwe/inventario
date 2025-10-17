@@ -49,6 +49,26 @@ def create_customer_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="El cliente ya existe.",
             ) from exc
+        if str(exc) == "invalid_customer_status":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Estado de cliente inválido.",
+            ) from exc
+        if str(exc) == "invalid_customer_type":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tipo de cliente inválido.",
+            ) from exc
+        if str(exc) == "customer_credit_limit_negative":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El límite de crédito debe ser mayor o igual a cero.",
+            ) from exc
+        if str(exc) == "customer_outstanding_debt_negative":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El saldo pendiente no puede ser negativo.",
+            ) from exc
         raise
     return customer
 
@@ -82,6 +102,29 @@ def update_customer_endpoint(
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado") from exc
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "invalid_customer_status":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Estado de cliente inválido.",
+            ) from exc
+        if detail == "invalid_customer_type":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tipo de cliente inválido.",
+            ) from exc
+        if detail == "customer_credit_limit_negative":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El límite de crédito debe ser mayor o igual a cero.",
+            ) from exc
+        if detail == "customer_outstanding_debt_negative":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El saldo pendiente no puede ser negativo.",
+            ) from exc
+        raise
 
 
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -100,3 +143,76 @@ def delete_customer_endpoint(
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{customer_id}/notes", response_model=schemas.CustomerResponse)
+def append_customer_note_endpoint(
+    customer_id: int,
+    payload: schemas.CustomerNoteCreate,
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.append_customer_note(
+            db,
+            customer_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado") from exc
+
+
+@router.post(
+    "/{customer_id}/payments",
+    response_model=schemas.CustomerLedgerEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register_customer_payment_endpoint(
+    customer_id: int,
+    payload: schemas.CustomerPaymentCreate,
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        ledger_entry = crud.register_customer_payment(
+            db,
+            customer_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
+        return schemas.CustomerLedgerEntryResponse.model_validate(ledger_entry)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado") from exc
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "customer_payment_no_debt":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El cliente no tiene saldo pendiente por cobrar.",
+            ) from exc
+        if detail == "customer_payment_invalid_amount":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El monto del pago es inválido.",
+            ) from exc
+        if detail == "customer_payment_sale_mismatch":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La venta indicada no corresponde al cliente.",
+            ) from exc
+        raise
+
+
+@router.get("/{customer_id}/summary", response_model=schemas.CustomerSummaryResponse)
+def get_customer_summary_endpoint(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.get_customer_summary(db, customer_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado") from exc

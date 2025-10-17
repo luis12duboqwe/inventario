@@ -236,6 +236,7 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "purchase_order": models.SyncOutboxPriority.NORMAL,
     "repair_order": models.SyncOutboxPriority.NORMAL,
     "customer": models.SyncOutboxPriority.NORMAL,
+    "customer_ledger_entry": models.SyncOutboxPriority.NORMAL,
     "pos_config": models.SyncOutboxPriority.NORMAL,
     "supplier": models.SyncOutboxPriority.NORMAL,
     "cash_session": models.SyncOutboxPriority.NORMAL,
@@ -446,6 +447,103 @@ def _append_customer_history(customer: models.Customer, note: str) -> None:
     history.append({"timestamp": datetime.utcnow().isoformat(), "note": note})
     customer.history = history
     customer.last_interaction_at = datetime.utcnow()
+
+
+_ALLOWED_CUSTOMER_STATUSES = {"activo", "inactivo", "moroso", "vip", "bloqueado"}
+_ALLOWED_CUSTOMER_TYPES = {"minorista", "mayorista", "corporativo"}
+
+
+def _normalize_customer_status(value: str | None) -> str:
+    normalized = (value or "activo").strip().lower()
+    if normalized not in _ALLOWED_CUSTOMER_STATUSES:
+        raise ValueError("invalid_customer_status")
+    return normalized
+
+
+def _normalize_customer_type(value: str | None) -> str:
+    normalized = (value or "minorista").strip().lower()
+    if normalized not in _ALLOWED_CUSTOMER_TYPES:
+        raise ValueError("invalid_customer_type")
+    return normalized
+
+
+def _ensure_non_negative_decimal(value: Decimal, error_code: str) -> Decimal:
+    normalized = _to_decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if normalized < Decimal("0"):
+        raise ValueError(error_code)
+    return normalized
+
+
+def _validate_customer_credit(customer: models.Customer, pending_charge: Decimal) -> None:
+    amount = _to_decimal(pending_charge)
+    if amount <= Decimal("0"):
+        return
+    limit = _to_decimal(customer.credit_limit)
+    if limit <= Decimal("0"):
+        raise ValueError("customer_credit_limit_exceeded")
+    projected = (_to_decimal(customer.outstanding_debt) + amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if projected > limit:
+        raise ValueError("customer_credit_limit_exceeded")
+
+
+def _customer_ledger_payload(entry: models.CustomerLedgerEntry) -> dict[str, object]:
+    return {
+        "id": entry.id,
+        "customer_id": entry.customer_id,
+        "entry_type": entry.entry_type.value,
+        "reference_type": entry.reference_type,
+        "reference_id": entry.reference_id,
+        "amount": float(entry.amount),
+        "balance_after": float(entry.balance_after),
+        "note": entry.note,
+        "details": entry.details,
+        "created_at": entry.created_at.isoformat(),
+        "created_by_id": entry.created_by_id,
+    }
+
+
+def _create_customer_ledger_entry(
+    db: Session,
+    *,
+    customer: models.Customer,
+    entry_type: models.CustomerLedgerEntryType,
+    amount: Decimal,
+    note: str | None = None,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+    details: dict[str, object] | None = None,
+    created_by_id: int | None = None,
+) -> models.CustomerLedgerEntry:
+    entry = models.CustomerLedgerEntry(
+        customer_id=customer.id,
+        entry_type=entry_type,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        amount=_to_decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        balance_after=_to_decimal(customer.outstanding_debt).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        ),
+        note=note,
+        details=details or {},
+        created_by_id=created_by_id,
+    )
+    db.add(entry)
+    db.flush()
+    return entry
+
+
+def _sync_customer_ledger_entry(db: Session, entry: models.CustomerLedgerEntry) -> None:
+    db.refresh(entry)
+    db.refresh(entry, attribute_names=["created_by"])
+    enqueue_sync_outbox(
+        db,
+        entity_type="customer_ledger_entry",
+        entity_id=str(entry.id),
+        operation="UPSERT",
+        payload=_customer_ledger_payload(entry),
+    )
 
 
 def _resolve_part_unit_cost(device: models.Device, provided: Decimal | float | int | None) -> Decimal:
@@ -1108,6 +1206,7 @@ def list_customers(
                 func.lower(models.Customer.phone).like(normalized),
                 func.lower(models.Customer.customer_type).like(normalized),
                 func.lower(models.Customer.status).like(normalized),
+                func.lower(func.coalesce(models.Customer.notes, "")).like(normalized),
             )
         )
     return list(db.scalars(statement))
@@ -1128,18 +1227,26 @@ def create_customer(
     performed_by_id: int | None = None,
 ) -> models.Customer:
     history = _history_to_json(payload.history)
+    customer_type = _normalize_customer_type(payload.customer_type)
+    status = _normalize_customer_status(payload.status)
+    credit_limit = _ensure_non_negative_decimal(
+        payload.credit_limit, "customer_credit_limit_negative"
+    )
+    outstanding_debt = _ensure_non_negative_decimal(
+        payload.outstanding_debt, "customer_outstanding_debt_negative"
+    )
     customer = models.Customer(
         name=payload.name,
         contact_name=payload.contact_name,
         email=payload.email,
         phone=payload.phone,
         address=payload.address,
-        customer_type=payload.customer_type,
-        status=payload.status,
-        credit_limit=_to_decimal(payload.credit_limit),
+        customer_type=customer_type,
+        status=status,
+        credit_limit=credit_limit,
         notes=payload.notes,
         history=history,
-        outstanding_debt=_to_decimal(payload.outstanding_debt),
+        outstanding_debt=outstanding_debt,
         last_interaction_at=_last_history_timestamp(history),
     )
     db.add(customer)
@@ -1195,19 +1302,25 @@ def update_customer(
         customer.address = payload.address
         updated_fields["address"] = payload.address
     if payload.customer_type is not None:
-        customer.customer_type = payload.customer_type
-        updated_fields["customer_type"] = payload.customer_type
+        normalized_type = _normalize_customer_type(payload.customer_type)
+        customer.customer_type = normalized_type
+        updated_fields["customer_type"] = normalized_type
     if payload.status is not None:
-        customer.status = payload.status
-        updated_fields["status"] = payload.status
+        normalized_status = _normalize_customer_status(payload.status)
+        customer.status = normalized_status
+        updated_fields["status"] = normalized_status
     if payload.credit_limit is not None:
-        customer.credit_limit = _to_decimal(payload.credit_limit)
+        customer.credit_limit = _ensure_non_negative_decimal(
+            payload.credit_limit, "customer_credit_limit_negative"
+        )
         updated_fields["credit_limit"] = float(customer.credit_limit)
     if payload.notes is not None:
         customer.notes = payload.notes
         updated_fields["notes"] = payload.notes
     if payload.outstanding_debt is not None:
-        customer.outstanding_debt = _to_decimal(payload.outstanding_debt)
+        customer.outstanding_debt = _ensure_non_negative_decimal(
+            payload.outstanding_debt, "customer_outstanding_debt_negative"
+        )
         updated_fields["outstanding_debt"] = float(customer.outstanding_debt)
     if payload.history is not None:
         history = _history_to_json(payload.history)
@@ -1307,6 +1420,249 @@ def export_customers_csv(
             ]
         )
     return buffer.getvalue()
+
+
+def append_customer_note(
+    db: Session,
+    customer_id: int,
+    payload: schemas.CustomerNoteCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Customer:
+    customer = get_customer(db, customer_id)
+    _append_customer_history(customer, payload.note)
+    db.add(customer)
+
+    ledger_entry = _create_customer_ledger_entry(
+        db,
+        customer=customer,
+        entry_type=models.CustomerLedgerEntryType.NOTE,
+        amount=Decimal("0"),
+        note=payload.note,
+        reference_type="note",
+        reference_id=None,
+        details={"event": "note_added", "note": payload.note},
+        created_by_id=performed_by_id,
+    )
+
+    _log_action(
+        db,
+        action="customer_note_added",
+        entity_type="customer",
+        entity_id=str(customer.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"note": payload.note}),
+    )
+
+    db.commit()
+    db.refresh(customer)
+    db.refresh(ledger_entry)
+
+    enqueue_sync_outbox(
+        db,
+        entity_type="customer",
+        entity_id=str(customer.id),
+        operation="UPSERT",
+        payload=_customer_payload(customer),
+    )
+    _sync_customer_ledger_entry(db, ledger_entry)
+    return customer
+
+
+def register_customer_payment(
+    db: Session,
+    customer_id: int,
+    payload: schemas.CustomerPaymentCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.CustomerLedgerEntry:
+    customer = get_customer(db, customer_id)
+    current_debt = _to_decimal(customer.outstanding_debt).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if current_debt <= Decimal("0"):
+        raise ValueError("customer_payment_no_debt")
+
+    amount = _to_decimal(payload.amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if amount <= Decimal("0"):
+        raise ValueError("customer_payment_invalid_amount")
+
+    applied_amount = min(current_debt, amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    sale = None
+    if payload.sale_id is not None:
+        sale = get_sale(db, payload.sale_id)
+        if sale.customer_id != customer.id:
+            raise ValueError("customer_payment_sale_mismatch")
+
+    customer.outstanding_debt = (current_debt - applied_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    _append_customer_history(
+        customer,
+        f"Pago registrado por ${float(applied_amount):.2f}",
+    )
+    db.add(customer)
+
+    payment_details: dict[str, object] = {
+        "method": payload.method,
+        "requested_amount": float(amount),
+        "applied_amount": float(applied_amount),
+    }
+    if payload.reference:
+        payment_details["reference"] = payload.reference
+    if sale is not None:
+        payment_details["sale_id"] = sale.id
+        payment_details["store_id"] = sale.store_id
+    if payload.note:
+        payment_details["note"] = payload.note
+
+    ledger_entry = _create_customer_ledger_entry(
+        db,
+        customer=customer,
+        entry_type=models.CustomerLedgerEntryType.PAYMENT,
+        amount=-applied_amount,
+        note=payload.note,
+        reference_type="sale" if sale is not None else "payment",
+        reference_id=str(sale.id) if sale is not None else None,
+        details=payment_details,
+        created_by_id=performed_by_id,
+    )
+
+    _log_action(
+        db,
+        action="customer_payment_registered",
+        entity_type="customer",
+        entity_id=str(customer.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps(
+            {
+                "applied_amount": float(applied_amount),
+                "method": payload.method,
+                "reference": payload.reference,
+                "sale_id": sale.id if sale is not None else None,
+            }
+        ),
+    )
+
+    db.commit()
+    db.refresh(customer)
+    db.refresh(ledger_entry)
+
+    enqueue_sync_outbox(
+        db,
+        entity_type="customer",
+        entity_id=str(customer.id),
+        operation="UPSERT",
+        payload=_customer_payload(customer),
+    )
+    _sync_customer_ledger_entry(db, ledger_entry)
+    return ledger_entry
+
+
+def get_customer_summary(
+    db: Session, customer_id: int
+) -> schemas.CustomerSummaryResponse:
+    customer = get_customer(db, customer_id)
+
+    ledger_entries = list(
+        db.scalars(
+            select(models.CustomerLedgerEntry)
+            .where(models.CustomerLedgerEntry.customer_id == customer.id)
+            .order_by(models.CustomerLedgerEntry.created_at.desc())
+            .limit(100)
+        )
+    )
+    payments = [
+        entry
+        for entry in ledger_entries
+        if entry.entry_type == models.CustomerLedgerEntryType.PAYMENT
+    ]
+
+    sales = list(
+        db.scalars(
+            select(models.Sale)
+            .options(joinedload(models.Sale.store))
+            .where(models.Sale.customer_id == customer.id)
+            .order_by(models.Sale.created_at.desc())
+            .limit(50)
+        )
+    )
+    store_ids = {sale.store_id for sale in sales}
+    configs: dict[int, models.POSConfig] = {}
+    if store_ids:
+        config_stmt = select(models.POSConfig).where(models.POSConfig.store_id.in_(store_ids))
+        configs = {config.store_id: config for config in db.scalars(config_stmt)}
+
+    sales_summary = [
+        schemas.CustomerSaleSummary(
+            sale_id=sale.id,
+            store_id=sale.store_id,
+            store_name=sale.store.name if sale.store else None,
+            payment_method=sale.payment_method,
+            status=sale.status,
+            subtotal_amount=float(sale.subtotal_amount or Decimal("0")),
+            tax_amount=float(sale.tax_amount or Decimal("0")),
+            total_amount=float(sale.total_amount or Decimal("0")),
+            created_at=sale.created_at,
+        )
+        for sale in sales
+    ]
+
+    invoices = [
+        schemas.CustomerInvoiceSummary(
+            sale_id=sale.id,
+            invoice_number=(
+                f"{configs[sale.store_id].invoice_prefix}-{sale.id:06d}"
+                if sale.store_id in configs
+                else f"VENTA-{sale.id:06d}"
+            ),
+            total_amount=float(sale.total_amount or Decimal("0")),
+            status=sale.status,
+            created_at=sale.created_at,
+            store_id=sale.store_id,
+        )
+        for sale in sales
+    ]
+
+    credit_limit = _to_decimal(customer.credit_limit).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    outstanding = _to_decimal(customer.outstanding_debt).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    available_credit = (credit_limit - outstanding).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    total_sales_credit = sum(
+        float(_to_decimal(sale.total_amount))
+        for sale in sales
+        if sale.payment_method == models.PaymentMethod.CREDITO
+        and (sale.status or "").upper() != "CANCELADA"
+    )
+    total_payments = sum(float(abs(entry.amount)) for entry in payments)
+
+    snapshot = schemas.CustomerFinancialSnapshot(
+        credit_limit=float(credit_limit),
+        outstanding_debt=float(outstanding),
+        available_credit=float(available_credit),
+        total_sales_credit=total_sales_credit,
+        total_payments=total_payments,
+    )
+
+    customer_schema = schemas.CustomerResponse.model_validate(customer)
+    return schemas.CustomerSummaryResponse(
+        customer=customer_schema,
+        totals=snapshot,
+        sales=sales_summary,
+        invoices=invoices,
+        payments=payments[:20],
+        ledger=ledger_entries[:50],
+    )
 
 
 def list_suppliers(
@@ -6001,6 +6357,9 @@ def create_sale(
     db.add(sale)
     db.flush()
 
+    ledger_entry: models.CustomerLedgerEntry | None = None
+    customer_to_sync: models.Customer | None = None
+
     gross_total, total_discount = _apply_sale_items(
         db,
         sale,
@@ -6029,9 +6388,25 @@ def create_sale(
 
     if customer:
         if sale.payment_method == models.PaymentMethod.CREDITO:
+            _validate_customer_credit(customer, sale.total_amount)
             customer.outstanding_debt = (
                 _to_decimal(customer.outstanding_debt) + sale.total_amount
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            ledger_entry = _create_customer_ledger_entry(
+                db,
+                customer=customer,
+                entry_type=models.CustomerLedgerEntryType.SALE,
+                amount=sale.total_amount,
+                note=f"Venta #{sale.id} registrada ({sale.payment_method.value})",
+                reference_type="sale",
+                reference_id=str(sale.id),
+                details={
+                    "store_id": sale.store_id,
+                    "payment_method": sale.payment_method.value,
+                    "status": sale.status,
+                },
+                created_by_id=performed_by_id,
+            )
         _append_customer_history(
             customer,
             f"Venta #{sale.id} registrada ({sale.payment_method.value})",
@@ -6040,6 +6415,17 @@ def create_sale(
 
     db.commit()
     db.refresh(sale)
+
+    if customer and sale.payment_method == models.PaymentMethod.CREDITO:
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
+        )
+    if ledger_entry:
+        _sync_customer_ledger_entry(db, ledger_entry)
 
     _log_action(
         db,
@@ -6102,6 +6488,9 @@ def update_sale(
     previous_customer = sale.customer
     previous_payment_method = sale.payment_method
     previous_total_amount = _to_decimal(sale.total_amount)
+    ledger_reversal: models.CustomerLedgerEntry | None = None
+    ledger_new: models.CustomerLedgerEntry | None = None
+    customers_to_sync: dict[int, models.Customer] = {}
 
     sale_discount_percent = _to_decimal(payload.discount_percent or 0)
     sale.discount_percent = sale_discount_percent.quantize(
@@ -6138,7 +6527,11 @@ def update_sale(
     sale.items.clear()
     db.flush()
 
-    if previous_customer and previous_payment_method == models.PaymentMethod.CREDITO and previous_total_amount > Decimal("0"):
+    if (
+        previous_customer
+        and previous_payment_method == models.PaymentMethod.CREDITO
+        and previous_total_amount > Decimal("0")
+    ):
         updated_debt = (
             _to_decimal(previous_customer.outstanding_debt) - previous_total_amount
         ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -6146,6 +6539,21 @@ def update_sale(
             updated_debt = Decimal("0")
         previous_customer.outstanding_debt = updated_debt
         db.add(previous_customer)
+        customers_to_sync[previous_customer.id] = previous_customer
+        ledger_reversal = _create_customer_ledger_entry(
+            db,
+            customer=previous_customer,
+            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
+            amount=-previous_total_amount,
+            note=f"Ajuste por edición de venta #{sale.id}",
+            reference_type="sale",
+            reference_id=str(sale.id),
+            details={
+                "event": "sale_edit_reversal",
+                "previous_amount": float(previous_total_amount),
+            },
+            created_by_id=performed_by_id,
+        )
 
     gross_total, total_discount = _apply_sale_items(
         db,
@@ -6174,9 +6582,26 @@ def update_sale(
     )
     if target_customer:
         if sale.payment_method == models.PaymentMethod.CREDITO:
+            _validate_customer_credit(target_customer, sale.total_amount)
             target_customer.outstanding_debt = (
                 _to_decimal(target_customer.outstanding_debt) + sale.total_amount
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            customers_to_sync[target_customer.id] = target_customer
+            ledger_new = _create_customer_ledger_entry(
+                db,
+                customer=target_customer,
+                entry_type=models.CustomerLedgerEntryType.SALE,
+                amount=sale.total_amount,
+                note=f"Venta #{sale.id} actualizada ({sale.payment_method.value})",
+                reference_type="sale",
+                reference_id=str(sale.id),
+                details={
+                    "event": "sale_updated",
+                    "payment_method": sale.payment_method.value,
+                    "status": sale.status,
+                },
+                created_by_id=performed_by_id,
+            )
         _append_customer_history(
             target_customer,
             f"Venta #{sale.id} actualizada ({sale.payment_method.value})",
@@ -6187,6 +6612,19 @@ def update_sale(
 
     db.commit()
     db.refresh(sale)
+
+    for customer_to_sync in customers_to_sync.values():
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer_to_sync.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer_to_sync),
+        )
+    if ledger_reversal:
+        _sync_customer_ledger_entry(db, ledger_reversal)
+    if ledger_new:
+        _sync_customer_ledger_entry(db, ledger_new)
 
     _log_action(
         db,
@@ -6243,6 +6681,8 @@ def cancel_sale(
         raise ValueError("sale_already_cancelled")
 
     cancel_reason = reason or f"Anulación venta #{sale.id}"
+    ledger_entry: models.CustomerLedgerEntry | None = None
+    customer_to_sync: models.Customer | None = None
     for item in sale.items:
         device = get_device(db, sale.store_id, item.device_id)
         device.quantity += item.quantity
@@ -6272,12 +6712,35 @@ def cancel_sale(
             f"Venta #{sale.id} anulada",
         )
         db.add(sale.customer)
+        customer_to_sync = sale.customer
+        ledger_entry = _create_customer_ledger_entry(
+            db,
+            customer=sale.customer,
+            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
+            amount=-_to_decimal(sale.total_amount),
+            note=f"Venta #{sale.id} anulada",
+            reference_type="sale",
+            reference_id=str(sale.id),
+            details={"event": "sale_cancelled", "store_id": sale.store_id},
+            created_by_id=performed_by_id,
+        )
 
     sale.status = "CANCELADA"
     _recalculate_store_inventory_value(db, sale.store_id)
 
     db.commit()
     db.refresh(sale)
+
+    if customer_to_sync:
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer_to_sync.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer_to_sync),
+        )
+    if ledger_entry:
+        _sync_customer_ledger_entry(db, ledger_entry)
 
     _log_action(
         db,
@@ -6319,6 +6782,8 @@ def register_sale_return(
     returns: list[models.SaleReturn] = []
     refund_total = Decimal("0")
     items_by_device = {item.device_id: item for item in sale.items}
+    ledger_entry: models.CustomerLedgerEntry | None = None
+    customer_to_sync: models.Customer | None = None
 
     for item in payload.items:
         sale_item = items_by_device.get(item.device_id)
@@ -6395,6 +6860,26 @@ def register_sale_return(
         )
         db.add(sale.customer)
         db.commit()
+        ledger_entry = _create_customer_ledger_entry(
+            db,
+            customer=sale.customer,
+            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
+            amount=-refund_total,
+            note=f"Devolución venta #{sale.id}",
+            reference_type="sale",
+            reference_id=str(sale.id),
+            details={"event": "sale_return", "store_id": sale.store_id},
+            created_by_id=processed_by_id,
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(sale.customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(sale.customer),
+        )
+        if ledger_entry:
+            _sync_customer_ledger_entry(db, ledger_entry)
     return returns
 
 
