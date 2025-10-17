@@ -221,6 +221,13 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - La prueba `backend/tests/test_compras_schema.py` inspecciona columnas, tipos, índices y relaciones para prevenir regresiones estructurales en compras y proveedores.
 - **17/10/2025 10:45 UTC** — Auditoría recurrente confirma que los tipos (`Integer`, `Numeric`, `DateTime`, `Text`) y claves `RESTRICT`/`CASCADE` se conservan en base de datos y que los índices `ix_proveedores_nombre`, `ix_compras_*` e `ix_detalle_compras_*` permanecen vigentes tras ejecutar la suite.
 
+### Actualización Compras - Parte 2 (Lógica e Integración con Inventario) (17/10/2025 11:30 UTC)
+
+- Cada recepción de orden genera movimientos `entrada` en `inventory_movements` con comentarios corporativos que incluyen proveedor, motivo `X-Reason` e identificadores IMEI/serie, dejando rastro del usuario responsable.
+- La cancelación de órdenes revierte unidades recibidas mediante movimientos `salida`, recalcula costos promedio y documenta los artículos revertidos en el log de auditoría.
+- Las devoluciones a proveedor ajustan stock y costo ponderado antes de registrar el movimiento, asegurando consistencia con el valor de inventario por tienda.
+- `backend/tests/test_purchases.py` valida recepciones, devoluciones y cancelaciones para garantizar que el inventario se actualice y se audite conforme a la política corporativa.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Tablas `sales` y `sale_items` renombradas a `ventas` y `detalle_ventas` con columnas homologadas (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
