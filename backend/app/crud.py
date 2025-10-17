@@ -5036,7 +5036,9 @@ def list_sales(
     performed_by_id: int | None = None,
     query: str | None = None,
 ) -> list[models.Sale]:
-    base_statement = select(models.Sale.id).order_by(models.Sale.created_at.desc())
+    base_statement = select(
+        models.Sale.id, models.Sale.created_at
+    ).order_by(models.Sale.created_at.desc())
     if store_id is not None:
         base_statement = base_statement.where(models.Sale.store_id == store_id)
     if customer_id is not None:
