@@ -144,6 +144,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Los esquemas y CRUD de clientes validan teléfono obligatorio, exponen tipo/estado/límite de crédito, normalizan los montos con decimales y amplían la exportación CSV con los nuevos campos; la prueba `backend/tests/test_clientes_schema.py` verifica columnas, índices y relaciones.
 - La interfaz `Customers.tsx` permite capturar tipo de cliente, estado y límite de crédito, muestra los campos en la tabla de gestión y mantiene los motivos corporativos en altas, ediciones, notas e incrementos de saldo.
 - **19/10/2025 14:30 UTC** — Se auditó nuevamente la estructura de `clientes` para confirmar la no nulidad de `limite_credito` y `saldo`, se documentó el índice `ix_ventas_cliente_id` y la prueba `test_pos_sale_with_receipt_and_config` ahora exige un `customer_id` real en ventas POS, asegurando que los recibos PDF muestren al cliente vinculado.
+- **20/10/2025 11:30 UTC** — Se reforzó la validación de claves foráneas `SET NULL` entre `ventas`/`repair_orders` y `clientes`, y se añadió la prueba `test_factura_se_vincula_con_cliente` para verificar que las facturas persistidas conservan el vínculo con el cliente corporativo.
 
 ## Mejora visual v2.2.0 — Dashboard modularizado
 

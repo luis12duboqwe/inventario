@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import Integer, Numeric, String, Text, inspect
+
+from backend.app import models
 
 
 def _column_map(inspector, table_name: str) -> dict[str, dict]:
@@ -62,6 +66,7 @@ def test_relaciones_clientes_con_ventas_y_reparaciones(db_session) -> None:
         fk["referred_table"] == "clientes"
         and fk["referred_columns"] == ["id_cliente"]
         and fk["constrained_columns"] == ["cliente_id"]
+        and fk.get("options", {}).get("ondelete") == "SET NULL"
         for fk in ventas_fks
     )
 
@@ -75,5 +80,33 @@ def test_relaciones_clientes_con_ventas_y_reparaciones(db_session) -> None:
         fk["referred_table"] == "clientes"
         and fk["referred_columns"] == ["id_cliente"]
         and fk["constrained_columns"] == ["customer_id"]
+        and fk.get("options", {}).get("ondelete") == "SET NULL"
         for fk in reparaciones_fks
     )
+
+
+def test_factura_se_vincula_con_cliente(db_session) -> None:
+    store = models.Store(name="Tienda Facturas", timezone="America/Mexico_City")
+    cliente = models.Customer(
+        name="Cliente Factura",
+        phone="5550001122",
+        customer_type="mayorista",
+        status="activo",
+        credit_limit=Decimal("5000"),
+    )
+    venta = models.Sale(
+        store=store,
+        customer=cliente,
+        payment_method=models.PaymentMethod.EFECTIVO,
+        subtotal_amount=Decimal("100"),
+        tax_amount=Decimal("16"),
+        total_amount=Decimal("116"),
+        notes="Factura directa",
+    )
+
+    db_session.add_all([store, cliente, venta])
+    db_session.commit()
+
+    assert venta.customer_id == cliente.id
+    assert venta.customer is cliente
+    assert venta.customer.name == "Cliente Factura"
