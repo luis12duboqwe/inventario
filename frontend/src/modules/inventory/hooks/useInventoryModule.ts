@@ -19,9 +19,17 @@ export function useInventoryModule() {
     }
     try {
       setSupplierBatchLoading(true);
+      const reasonBase = dashboard.selectedStore
+        ? `Consulta lotes ${dashboard.selectedStore.name}`
+        : "Consulta lotes inventario corporativo";
+      const normalizedReason = reasonBase.trim();
+      const reason = normalizedReason.length >= 5
+        ? normalizedReason
+        : "Consulta lotes inventario";
       const data = await inventoryService.fetchSupplierBatchOverview(
         dashboard.token,
         dashboard.selectedStoreId,
+        reason,
       );
       setSupplierBatchOverview(data);
     } catch (error) {
@@ -37,6 +45,7 @@ export function useInventoryModule() {
   }, [
     dashboard.pushToast,
     dashboard.selectedStoreId,
+    dashboard.selectedStore,
     dashboard.setError,
     dashboard.token,
   ]);
