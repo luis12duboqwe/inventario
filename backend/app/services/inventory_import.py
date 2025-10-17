@@ -7,6 +7,7 @@ from decimal import Decimal
 from io import StringIO
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -227,7 +228,7 @@ def import_devices_from_csv(
                     result["updated"] += 1
                 else:
                     result["skipped"] += 1
-        except ValueError as exc:
+        except (ValueError, ValidationError) as exc:
             result["skipped"] += 1
             result["errors"].append({"row": index, "message": str(exc)})
 
