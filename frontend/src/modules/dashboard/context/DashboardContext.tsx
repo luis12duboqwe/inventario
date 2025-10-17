@@ -378,13 +378,41 @@ export function DashboardProvider({ token, children }: ProviderProps) {
 
   const refreshSummary = useCallback(async () => {
     const threshold = getThresholdForStore(selectedStoreId);
-    const [summaryData, metricsData] = await Promise.all([
+    const [storesData, summaryData, metricsData] = await Promise.all([
+      getStores(token),
       getSummary(token),
       getInventoryMetrics(token, threshold),
     ]);
+    setStores(storesData);
+    setLowStockThresholds((current) => {
+      const next = { ...current };
+      const storeIds = new Set<number>();
+      for (const store of storesData) {
+        storeIds.add(store.id);
+        if (next[store.id] === undefined) {
+          next[store.id] = DEFAULT_LOW_STOCK_THRESHOLD;
+        }
+      }
+      for (const key of Object.keys(next)) {
+        const storeId = Number(key);
+        if (!storeIds.has(storeId)) {
+          delete next[storeId];
+        }
+      }
+      return next;
+    });
+    if (selectedStoreId && !storesData.some((store) => store.id === selectedStoreId)) {
+      setSelectedStoreId(storesData.length > 0 ? storesData[0].id : null);
+    }
     setSummary(summaryData);
     setMetrics(metricsData);
-  }, [getThresholdForStore, selectedStoreId, token]);
+  }, [
+    getThresholdForStore,
+    selectedStoreId,
+    setLowStockThresholds,
+    setSelectedStoreId,
+    token,
+  ]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
