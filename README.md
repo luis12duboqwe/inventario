@@ -84,6 +84,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Migración idempotente**: la migración `202502150011_compras_estructura_relaciones.py` crea las tablas cuando no existen y agrega columnas/fks/índices faltantes en instalaciones previas, asegurando claves primarias, tipos numéricos y vínculos con `users` y `devices`.
 - **Verificación automatizada**: la prueba `backend/tests/test_compras_schema.py` inspecciona columnas, tipos, índices y claves foráneas para confirmar que el esquema cumpla con `proveedores → compras → detalle_compras` y la referencia hacia el catálogo de productos.
 - **Documentación corporativa**: este README, el `CHANGELOG.md` y `AGENTS.md` registran la actualización bajo el apartado «Actualización Compras - Parte 1 (Estructura y Relaciones)» para mantener trazabilidad empresarial.
+- **17/10/2025 10:45 UTC — Revalidación estructural**: se volvió a inspeccionar el esquema con SQLAlchemy `inspect`, confirmando tipos `Integer`/`Numeric`/`DateTime`, claves foráneas (`compras.proveedor_id`, `compras.usuario_id`, `detalle_compras.compra_id`, `detalle_compras.producto_id`) y la presencia de índices `ix_*` exigidos por el mandato.
 
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
