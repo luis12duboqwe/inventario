@@ -1865,7 +1865,14 @@ def create_inventory_movement(
     if source_store_id is not None:
         get_store(db, source_store_id)
 
-    device = get_device(db, store_id, payload.producto_id)
+    inventory_store_id = store_id
+    if (
+        source_store_id is not None
+        and payload.tipo_movimiento in {models.MovementType.OUT, models.MovementType.ADJUST}
+    ):
+        inventory_store_id = source_store_id
+
+    device = get_device(db, inventory_store_id, payload.producto_id)
 
     if (
         payload.tipo_movimiento == models.MovementType.OUT
@@ -1923,6 +1930,8 @@ def create_inventory_movement(
     )
     db.commit()
     db.refresh(movement)
+    if inventory_store_id != store_id:
+        _recalculate_store_inventory_value(db, inventory_store_id)
     total_value = _recalculate_store_inventory_value(db, store_id)
     setattr(movement, "store_inventory_value", total_value)
     return movement
