@@ -29,6 +29,12 @@ function MovementForm({ devices, onSubmit }: Props) {
     return <p>Registra al menos un dispositivo para habilitar los movimientos.</p>;
   }
 
+  const minimumQuantity = movementType === "ajuste" ? 0 : 1;
+
+  useEffect(() => {
+    setQuantity((current) => (current < minimumQuantity ? minimumQuantity : current));
+  }, [minimumQuantity]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!deviceId) {
@@ -51,7 +57,7 @@ function MovementForm({ devices, onSubmit }: Props) {
     }
 
     await onSubmit(payload);
-    setQuantity(1);
+    setQuantity(minimumQuantity);
     setReason("");
     setUnitCost("");
   };
@@ -86,16 +92,16 @@ function MovementForm({ devices, onSubmit }: Props) {
       <input
         id="quantity"
         type="number"
-        min={1}
+        min={minimumQuantity}
         step={1}
         value={quantity}
         onChange={(event) => {
           const nextValue = Number(event.target.value);
           if (!Number.isFinite(nextValue)) {
-            setQuantity(1);
+            setQuantity(minimumQuantity);
             return;
           }
-          setQuantity(Math.max(1, Math.floor(nextValue)));
+          setQuantity(Math.max(minimumQuantity, Math.floor(nextValue)));
         }}
         required
       />
