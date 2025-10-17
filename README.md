@@ -94,6 +94,14 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Cobertura de pruebas**: `backend/tests/test_purchases.py` incorpora validaciones de recepción, devolución y cancelación para garantizar el cálculo de stock/costo y la generación de movimientos conforme a la política corporativa.
 - **Compatibilidad heredada con reportes**: se publica la vista SQL `movimientos_inventario` como alias directo de `inventory_movements`, permitiendo que integraciones históricas consulten los movimientos de entradas/salidas sin modificar sus consultas.
 
+## Actualización Compras - Parte 3 (Interfaz y Reportes)
+
+- **Formulario de registro directo**: el módulo de Operaciones incorpora un formulario dedicado para capturar compras inmediatas seleccionando proveedor, productos y tasa de impuesto; calcula subtotal/impuesto/total en tiempo real y registra el movimiento mediante `createPurchaseRecord` respetando el motivo corporativo obligatorio.
+- **Listado corporativo con filtros avanzados**: la vista de historial permite filtrar por proveedor, usuario, rango de fechas, estado o texto libre y expone acciones para exportar el resultado a PDF o Excel usando los nuevos helpers `exportPurchaseRecordsPdf|Excel`.
+- **Panel integral de proveedores**: se habilita la administración completa de proveedores de compras (alta/edición, activación/inactivación y exportación CSV) junto con un historial filtrable conectado a `getPurchaseVendorHistory`, mostrando totales y métricas para auditar su desempeño.
+- **Estadísticas operativas**: se consumen los endpoints de métricas para presentar totales de inversión, rankings de proveedores/usuarios y acumulados mensuales en tarjetas responsive que refuerzan la planeación de compras.
+- **Documentación actualizada**: este README, el `CHANGELOG.md` y `AGENTS.md` registran la fase bajo el epígrafe «Actualización Compras - Parte 3 (Interfaz y Reportes)», manteniendo la trazabilidad de la evolución del módulo.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Se renombran las tablas operativas del módulo POS a `ventas` y `detalle_ventas`, alineando los identificadores físicos con los

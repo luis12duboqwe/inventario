@@ -1421,6 +1421,216 @@ def delete_supplier(
     db.commit()
 
 
+def get_purchase_vendor(db: Session, vendor_id: int) -> models.Proveedor:
+    vendor = db.get(models.Proveedor, vendor_id)
+    if vendor is None:
+        raise LookupError("purchase_vendor_not_found")
+    return vendor
+
+
+def list_purchase_vendors(
+    db: Session,
+    *,
+    vendor_id: int | None = None,
+    query: str | None = None,
+    estado: str | None = None,
+    limit: int = 100,
+) -> list[schemas.PurchaseVendorResponse]:
+    statement = (
+        select(
+            models.Proveedor,
+            func.coalesce(func.sum(models.Compra.total), 0).label("total_compras"),
+            func.coalesce(func.sum(models.Compra.impuesto), 0).label("total_impuesto"),
+            func.count(models.Compra.id_compra).label("compras_registradas"),
+            func.max(models.Compra.fecha).label("ultima_compra"),
+        )
+        .outerjoin(models.Compra, models.Compra.proveedor_id == models.Proveedor.id_proveedor)
+        .group_by(models.Proveedor.id_proveedor)
+        .order_by(models.Proveedor.nombre.asc())
+        .limit(limit)
+    )
+    if vendor_id is not None:
+        statement = statement.where(models.Proveedor.id_proveedor == vendor_id)
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.where(func.lower(models.Proveedor.nombre).like(normalized))
+    if estado:
+        statement = statement.where(func.lower(models.Proveedor.estado) == estado.lower())
+
+    rows = db.execute(statement).all()
+    vendors: list[schemas.PurchaseVendorResponse] = []
+    for vendor, total, tax, count, last_date in rows:
+        vendors.append(
+            schemas.PurchaseVendorResponse(
+                id_proveedor=vendor.id_proveedor,
+                nombre=vendor.nombre,
+                telefono=vendor.telefono,
+                correo=vendor.correo,
+                direccion=vendor.direccion,
+                tipo=vendor.tipo,
+                notas=vendor.notas,
+                estado=vendor.estado,
+                total_compras=_to_decimal(total or 0),
+                total_impuesto=_to_decimal(tax or 0),
+                compras_registradas=int(count or 0),
+                ultima_compra=last_date,
+            )
+        )
+    return vendors
+
+
+def create_purchase_vendor(
+    db: Session,
+    payload: schemas.PurchaseVendorCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Proveedor:
+    vendor = models.Proveedor(
+        nombre=payload.nombre,
+        telefono=payload.telefono,
+        correo=payload.correo,
+        direccion=payload.direccion,
+        tipo=payload.tipo,
+        estado=payload.estado or "activo",
+        notas=payload.notas,
+    )
+    db.add(vendor)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError("purchase_vendor_duplicate") from exc
+    db.refresh(vendor)
+
+    _log_action(
+        db,
+        action="purchase_vendor_created",
+        entity_type="purchase_vendor",
+        entity_id=str(vendor.id_proveedor),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"nombre": vendor.nombre, "estado": vendor.estado}),
+    )
+    db.commit()
+    db.refresh(vendor)
+    return vendor
+
+
+def update_purchase_vendor(
+    db: Session,
+    vendor_id: int,
+    payload: schemas.PurchaseVendorUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Proveedor:
+    vendor = get_purchase_vendor(db, vendor_id)
+    updated_fields: dict[str, object] = {}
+    if payload.nombre is not None:
+        vendor.nombre = payload.nombre
+        updated_fields["nombre"] = payload.nombre
+    if payload.telefono is not None:
+        vendor.telefono = payload.telefono
+        updated_fields["telefono"] = payload.telefono
+    if payload.correo is not None:
+        vendor.correo = payload.correo
+        updated_fields["correo"] = payload.correo
+    if payload.direccion is not None:
+        vendor.direccion = payload.direccion
+        updated_fields["direccion"] = payload.direccion
+    if payload.tipo is not None:
+        vendor.tipo = payload.tipo
+        updated_fields["tipo"] = payload.tipo
+    if payload.notas is not None:
+        vendor.notas = payload.notas
+        updated_fields["notas"] = payload.notas
+    if payload.estado is not None:
+        vendor.estado = payload.estado
+        updated_fields["estado"] = payload.estado
+
+    db.add(vendor)
+    db.commit()
+    db.refresh(vendor)
+
+    if updated_fields:
+        _log_action(
+            db,
+            action="purchase_vendor_updated",
+            entity_type="purchase_vendor",
+            entity_id=str(vendor.id_proveedor),
+            performed_by_id=performed_by_id,
+            details=json.dumps(updated_fields),
+        )
+        db.commit()
+        db.refresh(vendor)
+    return vendor
+
+
+def set_purchase_vendor_status(
+    db: Session,
+    vendor_id: int,
+    estado: str,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Proveedor:
+    vendor = get_purchase_vendor(db, vendor_id)
+    vendor.estado = estado
+    db.add(vendor)
+    db.commit()
+    db.refresh(vendor)
+
+    _log_action(
+        db,
+        action="purchase_vendor_status_updated",
+        entity_type="purchase_vendor",
+        entity_id=str(vendor.id_proveedor),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"estado": estado}),
+    )
+    db.commit()
+    db.refresh(vendor)
+    return vendor
+
+
+def export_purchase_vendors_csv(
+    db: Session,
+    *,
+    query: str | None = None,
+    estado: str | None = None,
+) -> str:
+    vendors = list_purchase_vendors(db, query=query, estado=estado, limit=500)
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "ID",
+            "Nombre",
+            "Estado",
+            "Teléfono",
+            "Correo",
+            "Tipo",
+            "Total compras",
+            "Impuestos",
+            "Órdenes registradas",
+            "Última compra",
+        ]
+    )
+    for vendor in vendors:
+        writer.writerow(
+            [
+                vendor.id,
+                vendor.nombre,
+                vendor.estado,
+                vendor.telefono or "",
+                vendor.correo or "",
+                vendor.tipo or "",
+                float(vendor.total_compras),
+                float(vendor.total_impuesto),
+                vendor.compras_registradas,
+                vendor.ultima_compra.isoformat() if vendor.ultima_compra else "",
+            ]
+        )
+    return buffer.getvalue()
+
+
 def list_supplier_batches(
     db: Session, supplier_id: int, *, limit: int = 50
 ) -> list[models.SupplierBatch]:
@@ -1783,6 +1993,13 @@ def get_device(db: Session, store_id: int, device_id: int) -> models.Device:
         return db.scalars(statement).one()
     except NoResultFound as exc:
         raise LookupError("device_not_found") from exc
+
+
+def get_device_global(db: Session, device_id: int) -> models.Device:
+    device = db.get(models.Device, device_id)
+    if device is None:
+        raise LookupError("device_not_found")
+    return device
 
 
 def update_device(
@@ -4143,6 +4360,417 @@ def create_backup_job(
     db.commit()
     db.refresh(job)
     return job
+
+
+def _purchase_record_statement():
+    return (
+        select(models.Compra)
+        .options(
+            joinedload(models.Compra.proveedor),
+            joinedload(models.Compra.usuario),
+            joinedload(models.Compra.detalles).joinedload(models.DetalleCompra.producto),
+        )
+        .order_by(models.Compra.fecha.desc(), models.Compra.id_compra.desc())
+    )
+
+
+def _apply_purchase_record_filters(
+    statement,
+    *,
+    proveedor_id: int | None,
+    usuario_id: int | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    estado: str | None,
+    query: str | None,
+):
+    if proveedor_id is not None:
+        statement = statement.where(models.Compra.proveedor_id == proveedor_id)
+    if usuario_id is not None:
+        statement = statement.where(models.Compra.usuario_id == usuario_id)
+    if date_from is not None:
+        statement = statement.where(models.Compra.fecha >= date_from)
+    if date_to is not None:
+        statement = statement.where(models.Compra.fecha <= date_to)
+    if estado is not None:
+        statement = statement.where(func.lower(models.Compra.estado) == estado.lower())
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.join(models.Proveedor).where(
+            func.lower(models.Proveedor.nombre).like(normalized)
+        )
+    return statement
+
+
+def _fetch_purchase_records(
+    db: Session,
+    *,
+    proveedor_id: int | None = None,
+    usuario_id: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    estado: str | None = None,
+    query: str | None = None,
+    limit: int | None = 100,
+    offset: int = 0,
+) -> list[models.Compra]:
+    statement = _purchase_record_statement()
+    statement = _apply_purchase_record_filters(
+        statement,
+        proveedor_id=proveedor_id,
+        usuario_id=usuario_id,
+        date_from=date_from,
+        date_to=date_to,
+        estado=estado,
+        query=query,
+    )
+    if limit is not None:
+        statement = statement.limit(limit)
+    if offset:
+        statement = statement.offset(offset)
+    return list(db.scalars(statement).unique())
+
+
+def _build_purchase_record_response(purchase: models.Compra) -> schemas.PurchaseRecordResponse:
+    vendor_name = (
+        purchase.proveedor.nombre if purchase.proveedor else f"Proveedor #{purchase.proveedor_id}"
+    )
+    user_name = None
+    if purchase.usuario:
+        user_name = purchase.usuario.full_name or purchase.usuario.username
+
+    items = []
+    for detail in purchase.detalles:
+        product_name = detail.producto.name if detail.producto else None
+        items.append(
+            schemas.PurchaseRecordItemResponse(
+                id_detalle=detail.id_detalle,
+                producto_id=detail.producto_id,
+                cantidad=detail.cantidad,
+                costo_unitario=detail.costo_unitario,
+                subtotal=detail.subtotal,
+                producto_nombre=product_name,
+            )
+        )
+
+    subtotal_value = purchase.total - purchase.impuesto
+    return schemas.PurchaseRecordResponse(
+        id_compra=purchase.id_compra,
+        proveedor_id=purchase.proveedor_id,
+        proveedor_nombre=vendor_name,
+        usuario_id=purchase.usuario_id,
+        usuario_nombre=user_name,
+        fecha=purchase.fecha,
+        forma_pago=purchase.forma_pago,
+        estado=purchase.estado,
+        subtotal=subtotal_value,
+        impuesto=purchase.impuesto,
+        total=purchase.total,
+        items=items,
+    )
+
+
+def list_purchase_records(
+    db: Session,
+    *,
+    proveedor_id: int | None = None,
+    usuario_id: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    estado: str | None = None,
+    query: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[schemas.PurchaseRecordResponse]:
+    purchases = _fetch_purchase_records(
+        db,
+        proveedor_id=proveedor_id,
+        usuario_id=usuario_id,
+        date_from=date_from,
+        date_to=date_to,
+        estado=estado,
+        query=query,
+        limit=limit,
+        offset=offset,
+    )
+    return [_build_purchase_record_response(purchase) for purchase in purchases]
+
+
+def get_purchase_record(db: Session, record_id: int) -> schemas.PurchaseRecordResponse:
+    statement = _purchase_record_statement().where(models.Compra.id_compra == record_id)
+    purchase = db.scalars(statement).unique().first()
+    if purchase is None:
+        raise LookupError("purchase_record_not_found")
+    return _build_purchase_record_response(purchase)
+
+
+def create_purchase_record(
+    db: Session,
+    payload: schemas.PurchaseRecordCreate,
+    *,
+    performed_by_id: int,
+    reason: str | None = None,
+) -> schemas.PurchaseRecordResponse:
+    if not payload.items:
+        raise ValueError("purchase_record_items_required")
+
+    vendor = get_purchase_vendor(db, payload.proveedor_id)
+    subtotal_total = Decimal("0")
+    purchase = models.Compra(
+        proveedor_id=vendor.id_proveedor,
+        usuario_id=performed_by_id,
+        fecha=payload.fecha or datetime.utcnow(),
+        total=Decimal("0"),
+        impuesto=Decimal("0"),
+        forma_pago=payload.forma_pago,
+        estado=payload.estado or "REGISTRADA",
+    )
+    db.add(purchase)
+    db.flush()
+
+    for item in payload.items:
+        if item.cantidad <= 0:
+            raise ValueError("purchase_record_invalid_quantity")
+        if item.costo_unitario < 0:
+            raise ValueError("purchase_record_invalid_cost")
+
+        device = get_device_global(db, item.producto_id)
+        unit_cost = _to_decimal(item.costo_unitario).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        subtotal = (
+            unit_cost * _to_decimal(item.cantidad)
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        db.add(
+            models.DetalleCompra(
+                compra_id=purchase.id_compra,
+                producto_id=device.id,
+                cantidad=item.cantidad,
+                costo_unitario=unit_cost,
+                subtotal=subtotal,
+            )
+        )
+        subtotal_total += subtotal
+
+    tax_rate = _to_decimal(payload.impuesto_tasa)
+    impuesto = (subtotal_total * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total = (subtotal_total + impuesto).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    purchase.total = total
+    purchase.impuesto = impuesto
+
+    db.commit()
+
+    _log_action(
+        db,
+        action="purchase_record_created",
+        entity_type="purchase_record",
+        entity_id=str(purchase.id_compra),
+        performed_by_id=performed_by_id,
+        details=json.dumps(
+            {
+                "proveedor_id": vendor.id_proveedor,
+                "total": float(total),
+                "impuesto": float(impuesto),
+                "motivo": reason,
+            }
+        ),
+    )
+    db.commit()
+
+    return get_purchase_record(db, purchase.id_compra)
+
+
+def list_purchase_records_for_report(
+    db: Session,
+    *,
+    proveedor_id: int | None = None,
+    usuario_id: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    estado: str | None = None,
+    query: str | None = None,
+) -> list[models.Compra]:
+    return _fetch_purchase_records(
+        db,
+        proveedor_id=proveedor_id,
+        usuario_id=usuario_id,
+        date_from=date_from,
+        date_to=date_to,
+        estado=estado,
+        query=query,
+        limit=None,
+    )
+
+
+def list_vendor_purchase_history(
+    db: Session,
+    vendor_id: int,
+    *,
+    limit: int = 20,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> schemas.PurchaseVendorHistory:
+    vendor = get_purchase_vendor(db, vendor_id)
+    purchases = _fetch_purchase_records(
+        db,
+        proveedor_id=vendor.id_proveedor,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+    records = [_build_purchase_record_response(purchase) for purchase in purchases]
+
+    summary_stmt = select(
+        func.coalesce(func.sum(models.Compra.total), 0),
+        func.coalesce(func.sum(models.Compra.impuesto), 0),
+        func.count(models.Compra.id_compra),
+        func.max(models.Compra.fecha),
+    ).where(models.Compra.proveedor_id == vendor.id_proveedor)
+    if date_from is not None:
+        summary_stmt = summary_stmt.where(models.Compra.fecha >= date_from)
+    if date_to is not None:
+        summary_stmt = summary_stmt.where(models.Compra.fecha <= date_to)
+    total_value, tax_value, count_value, last_purchase = db.execute(summary_stmt).one()
+
+    vendor_response = schemas.PurchaseVendorResponse(
+        id_proveedor=vendor.id_proveedor,
+        nombre=vendor.nombre,
+        telefono=vendor.telefono,
+        correo=vendor.correo,
+        direccion=vendor.direccion,
+        tipo=vendor.tipo,
+        notas=vendor.notas,
+        estado=vendor.estado,
+        total_compras=_to_decimal(total_value or 0),
+        total_impuesto=_to_decimal(tax_value or 0),
+        compras_registradas=int(count_value or 0),
+        ultima_compra=last_purchase,
+    )
+
+    return schemas.PurchaseVendorHistory(
+        proveedor=vendor_response,
+        compras=records,
+        total=_to_decimal(total_value or 0),
+        impuesto=_to_decimal(tax_value or 0),
+        registros=int(count_value or 0),
+    )
+
+
+def get_purchase_statistics(
+    db: Session,
+    *,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    top_limit: int = 5,
+) -> schemas.PurchaseStatistics:
+    base_stmt = select(
+        func.count(models.Compra.id_compra),
+        func.coalesce(func.sum(models.Compra.total), 0),
+        func.coalesce(func.sum(models.Compra.impuesto), 0),
+    )
+    if date_from is not None:
+        base_stmt = base_stmt.where(models.Compra.fecha >= date_from)
+    if date_to is not None:
+        base_stmt = base_stmt.where(models.Compra.fecha <= date_to)
+    total_count, total_amount, total_tax = db.execute(base_stmt).one()
+
+    bind = db.get_bind()
+    dialect_name = bind.dialect.name if bind is not None else ""
+    if dialect_name == "sqlite":
+        month_expression = func.strftime("%Y-%m-01", models.Compra.fecha)
+    else:
+        month_expression = func.date_trunc("month", models.Compra.fecha)
+
+    monthly_stmt = select(
+        month_expression.label("mes"),
+        func.coalesce(func.sum(models.Compra.total), 0).label("total"),
+    )
+    if date_from is not None:
+        monthly_stmt = monthly_stmt.where(models.Compra.fecha >= date_from)
+    if date_to is not None:
+        monthly_stmt = monthly_stmt.where(models.Compra.fecha <= date_to)
+    monthly_stmt = monthly_stmt.group_by("mes").order_by("mes")
+    monthly_rows = db.execute(monthly_stmt).all()
+    monthly_totals: list[schemas.DashboardChartPoint] = []
+    for row in monthly_rows:
+        month_value = row.mes
+        if isinstance(month_value, str):
+            label = month_value[:7]
+        else:
+            label = month_value.strftime("%Y-%m")
+        monthly_totals.append(
+            schemas.DashboardChartPoint(
+                label=label,
+                value=float(row.total),
+            )
+        )
+
+    top_vendors_stmt = (
+        select(
+            models.Proveedor.id_proveedor,
+            models.Proveedor.nombre,
+            func.coalesce(func.sum(models.Compra.total), 0).label("total"),
+            func.count(models.Compra.id_compra).label("ordenes"),
+        )
+        .join(models.Compra, models.Compra.proveedor_id == models.Proveedor.id_proveedor)
+    )
+    if date_from is not None:
+        top_vendors_stmt = top_vendors_stmt.where(models.Compra.fecha >= date_from)
+    if date_to is not None:
+        top_vendors_stmt = top_vendors_stmt.where(models.Compra.fecha <= date_to)
+    top_vendors_stmt = (
+        top_vendors_stmt.group_by(models.Proveedor.id_proveedor, models.Proveedor.nombre)
+        .order_by(func.sum(models.Compra.total).desc())
+        .limit(top_limit)
+    )
+    vendor_rows = db.execute(top_vendors_stmt).all()
+    top_vendors = [
+        schemas.PurchaseVendorRanking(
+            vendor_id=row.id_proveedor,
+            vendor_name=row.nombre,
+            total=_to_decimal(row.total),
+            orders=int(row.ordenes or 0),
+        )
+        for row in vendor_rows
+    ]
+
+    top_users_stmt = (
+        select(
+            models.User.id,
+            func.coalesce(models.User.full_name, models.User.username).label("nombre"),
+            func.coalesce(func.sum(models.Compra.total), 0).label("total"),
+            func.count(models.Compra.id_compra).label("ordenes"),
+        )
+        .join(models.Compra, models.Compra.usuario_id == models.User.id)
+    )
+    if date_from is not None:
+        top_users_stmt = top_users_stmt.where(models.Compra.fecha >= date_from)
+    if date_to is not None:
+        top_users_stmt = top_users_stmt.where(models.Compra.fecha <= date_to)
+    top_users_stmt = (
+        top_users_stmt.group_by(models.User.id, models.User.full_name, models.User.username)
+        .order_by(func.sum(models.Compra.total).desc())
+        .limit(top_limit)
+    )
+    user_rows = db.execute(top_users_stmt).all()
+    top_users = [
+        schemas.PurchaseUserRanking(
+            user_id=row.id,
+            user_name=row.nombre,
+            total=_to_decimal(row.total),
+            orders=int(row.ordenes or 0),
+        )
+        for row in user_rows
+    ]
+
+    return schemas.PurchaseStatistics(
+        updated_at=datetime.utcnow(),
+        compras_registradas=int(total_count or 0),
+        total=_to_decimal(total_amount or 0),
+        impuesto=_to_decimal(total_tax or 0),
+        monthly_totals=monthly_totals,
+        top_vendors=top_vendors,
+        top_users=top_users,
+    )
 
 
 def list_purchase_orders(

@@ -1,7 +1,12 @@
 """Endpoints para la gestión de órdenes de compra."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Path, UploadFile, status
+from datetime import datetime
+from decimal import Decimal
+from io import BytesIO
+
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile, status
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -10,6 +15,7 @@ from ..core.roles import GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import purchase_reports
 
 router = APIRouter(prefix="/purchases", tags=["compras"])
 
@@ -20,6 +26,349 @@ def _ensure_feature_enabled() -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Funcionalidad no disponible",
         )
+
+
+def _prepare_purchase_report(
+    db: Session,
+    *,
+    proveedor_id: int | None,
+    usuario_id: int | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    estado: str | None,
+    query: str | None,
+) -> schemas.PurchaseReport:
+    filters = schemas.PurchaseReportFilters(
+        proveedor_id=proveedor_id,
+        usuario_id=usuario_id,
+        date_from=date_from,
+        date_to=date_to,
+        estado=estado,
+        query=query,
+    )
+    purchases = crud.list_purchase_records_for_report(
+        db,
+        proveedor_id=proveedor_id,
+        usuario_id=usuario_id,
+        date_from=date_from,
+        date_to=date_to,
+        estado=estado,
+        query=query,
+    )
+    return purchase_reports.build_purchase_report(purchases, filters)
+
+
+@router.get("/vendors", response_model=list[schemas.PurchaseVendorResponse])
+def list_purchase_vendors_endpoint(
+    q: str | None = Query(default=None, min_length=1, max_length=120),
+    estado: str | None = Query(default=None, min_length=3, max_length=40),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    query = q.strip() if q else None
+    estado_value = estado.strip() if estado else None
+    return crud.list_purchase_vendors(
+        db,
+        vendor_id=None,
+        query=query,
+        estado=estado_value,
+        limit=limit,
+    )
+
+
+@router.post("/vendors", response_model=schemas.PurchaseVendorResponse, status_code=status.HTTP_201_CREATED)
+def create_purchase_vendor_endpoint(
+    payload: schemas.PurchaseVendorCreate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        vendor = crud.create_purchase_vendor(
+            db,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
+    except ValueError as exc:
+        if str(exc) == "purchase_vendor_duplicate":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El proveedor ya existe.",
+            ) from exc
+        raise
+
+    summary = crud.list_purchase_vendors(db, vendor_id=vendor.id_proveedor, limit=1)
+    if summary:
+        return summary[0]
+    return schemas.PurchaseVendorResponse(
+        id_proveedor=vendor.id_proveedor,
+        nombre=vendor.nombre,
+        telefono=vendor.telefono,
+        correo=vendor.correo,
+        direccion=vendor.direccion,
+        tipo=vendor.tipo,
+        notas=vendor.notas,
+        estado=vendor.estado,
+        total_compras=Decimal("0"),
+        total_impuesto=Decimal("0"),
+        compras_registradas=0,
+        ultima_compra=None,
+    )
+
+
+@router.put("/vendors/{vendor_id}", response_model=schemas.PurchaseVendorResponse)
+def update_purchase_vendor_endpoint(
+    vendor_id: int,
+    payload: schemas.PurchaseVendorUpdate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        crud.update_purchase_vendor(
+            db,
+            vendor_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+
+    summary = crud.list_purchase_vendors(db, vendor_id=vendor_id, limit=1)
+    if not summary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado")
+    return summary[0]
+
+
+@router.post("/vendors/{vendor_id}/status", response_model=schemas.PurchaseVendorResponse)
+def update_purchase_vendor_status_endpoint(
+    vendor_id: int,
+    payload: schemas.PurchaseVendorStatusUpdate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        crud.set_purchase_vendor_status(
+            db,
+            vendor_id,
+            payload.estado,
+            performed_by_id=current_user.id if current_user else None,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+
+    summary = crud.list_purchase_vendors(db, vendor_id=vendor_id, limit=1)
+    if not summary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado")
+    return summary[0]
+
+
+@router.get("/vendors/export/csv")
+def export_purchase_vendors_csv_endpoint(
+    q: str | None = Query(default=None, min_length=1, max_length=120),
+    estado: str | None = Query(default=None, min_length=3, max_length=40),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    query = q.strip() if q else None
+    estado_value = estado.strip() if estado else None
+    csv_content = crud.export_purchase_vendors_csv(
+        db,
+        query=query,
+        estado=estado_value,
+    )
+    filename = f"proveedores_compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    response = Response(
+        content=csv_content.encode("utf-8"),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+    response.headers["Content-Type"] = "text/csv"
+    return response
+
+
+@router.get("/vendors/{vendor_id}/history", response_model=schemas.PurchaseVendorHistory)
+def purchase_vendor_history_endpoint(
+    vendor_id: int,
+    limit: int = Query(default=20, ge=1, le=200),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        return crud.list_vendor_purchase_history(
+            db,
+            vendor_id,
+            limit=limit,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+
+
+@router.get("/records", response_model=list[schemas.PurchaseRecordResponse])
+def list_purchase_records_endpoint(
+    proveedor_id: int | None = Query(default=None, ge=1),
+    usuario_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    estado: str | None = Query(default=None, min_length=3, max_length=40),
+    q: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    query = q.strip() if q else None
+    estado_value = estado.strip() if estado else None
+    return crud.list_purchase_records(
+        db,
+        proveedor_id=proveedor_id,
+        usuario_id=usuario_id,
+        date_from=date_from,
+        date_to=date_to,
+        estado=estado_value,
+        query=query,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/records", response_model=schemas.PurchaseRecordResponse, status_code=status.HTTP_201_CREATED)
+def create_purchase_record_endpoint(
+    payload: schemas.PurchaseRecordCreate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        return crud.create_purchase_record(
+            db,
+            payload,
+            performed_by_id=current_user.id,
+            reason=reason,
+        )
+    except LookupError as exc:
+        detail = str(exc)
+        if detail == "purchase_vendor_not_found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+        if detail == "device_not_found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado") from exc
+        raise
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "purchase_record_items_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Debes agregar productos a la compra.",
+            ) from exc
+        if detail == "purchase_record_invalid_quantity":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cantidad inválida en la compra.",
+            ) from exc
+        if detail == "purchase_record_invalid_cost":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Costo unitario inválido.",
+            ) from exc
+        raise
+
+
+@router.get("/records/export/pdf")
+def export_purchase_records_pdf_endpoint(
+    proveedor_id: int | None = Query(default=None, ge=1),
+    usuario_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    estado: str | None = Query(default=None, min_length=3, max_length=40),
+    q: str | None = Query(default=None, min_length=1, max_length=120),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    query = q.strip() if q else None
+    estado_value = estado.strip() if estado else None
+    report = _prepare_purchase_report(
+        db,
+        proveedor_id=proveedor_id,
+        usuario_id=usuario_id,
+        date_from=date_from,
+        date_to=date_to,
+        estado=estado_value,
+        query=query,
+    )
+    pdf_bytes = purchase_reports.render_purchase_report_pdf(report)
+    filename = f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/records/export/xlsx")
+def export_purchase_records_excel_endpoint(
+    proveedor_id: int | None = Query(default=None, ge=1),
+    usuario_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    estado: str | None = Query(default=None, min_length=3, max_length=40),
+    q: str | None = Query(default=None, min_length=1, max_length=120),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    query = q.strip() if q else None
+    estado_value = estado.strip() if estado else None
+    report = _prepare_purchase_report(
+        db,
+        proveedor_id=proveedor_id,
+        usuario_id=usuario_id,
+        date_from=date_from,
+        date_to=date_to,
+        estado=estado_value,
+        query=query,
+    )
+    excel_bytes = purchase_reports.render_purchase_report_excel(report)
+    filename = f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return StreamingResponse(
+        BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/statistics", response_model=schemas.PurchaseStatistics)
+def get_purchase_statistics_endpoint(
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    top_limit: int = Query(default=5, ge=1, le=10),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    return crud.get_purchase_statistics(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        top_limit=top_limit,
+    )
 
 
 @router.get("/", response_model=list[schemas.PurchaseOrderResponse])

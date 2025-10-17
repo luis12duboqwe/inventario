@@ -1616,6 +1616,239 @@ class PurchaseImportResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class PurchaseVendorBase(BaseModel):
+    nombre: str = Field(..., min_length=3, max_length=150)
+    telefono: str | None = Field(default=None, max_length=40)
+    correo: str | None = Field(default=None, max_length=120)
+    direccion: str | None = Field(default=None, max_length=255)
+    tipo: str | None = Field(default=None, max_length=60)
+    notas: str | None = Field(default=None, max_length=255)
+
+    @field_validator("nombre")
+    @classmethod
+    def _normalize_nombre(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 3:
+            raise ValueError("El nombre del proveedor es obligatorio.")
+        return normalized
+
+    @field_validator("telefono", "correo", "direccion", "tipo", "notas")
+    @classmethod
+    def _normalize_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class PurchaseVendorCreate(PurchaseVendorBase):
+    estado: str = Field(default="activo", max_length=40)
+
+
+class PurchaseVendorUpdate(BaseModel):
+    nombre: str | None = Field(default=None, min_length=3, max_length=150)
+    telefono: str | None = Field(default=None, max_length=40)
+    correo: str | None = Field(default=None, max_length=120)
+    direccion: str | None = Field(default=None, max_length=255)
+    tipo: str | None = Field(default=None, max_length=60)
+    notas: str | None = Field(default=None, max_length=255)
+    estado: str | None = Field(default=None, max_length=40)
+
+    @field_validator("nombre", "telefono", "correo", "direccion", "tipo", "notas", "estado")
+    @classmethod
+    def _normalize_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class PurchaseVendorResponse(PurchaseVendorBase):
+    id: int = Field(alias="id_proveedor")
+    estado: str
+    total_compras: Decimal = Field(default=Decimal("0"))
+    total_impuesto: Decimal = Field(default=Decimal("0"))
+    compras_registradas: int = Field(default=0, ge=0)
+    ultima_compra: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @field_serializer("total_compras", "total_impuesto")
+    @classmethod
+    def _serialize_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseVendorStatusUpdate(BaseModel):
+    estado: Literal["activo", "inactivo"]
+
+
+class PurchaseRecordItemBase(BaseModel):
+    producto_id: int = Field(..., ge=1)
+    cantidad: int = Field(..., ge=1)
+    costo_unitario: Decimal = Field(..., ge=Decimal("0"))
+
+    @field_serializer("costo_unitario")
+    @classmethod
+    def _serialize_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseRecordItemCreate(PurchaseRecordItemBase):
+    pass
+
+
+class PurchaseRecordItemResponse(PurchaseRecordItemBase):
+    id: int = Field(alias="id_detalle")
+    subtotal: Decimal = Field(default=Decimal("0"))
+    producto_nombre: str | None = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @field_serializer("subtotal")
+    @classmethod
+    def _serialize_subtotal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseRecordCreate(BaseModel):
+    proveedor_id: int = Field(..., ge=1)
+    fecha: datetime | None = None
+    forma_pago: str = Field(..., max_length=60)
+    estado: str = Field(default="REGISTRADA", max_length=40)
+    impuesto_tasa: Decimal = Field(default=Decimal("0.16"), ge=Decimal("0"), le=Decimal("1"))
+    items: list[PurchaseRecordItemCreate]
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_items(cls, value: list[PurchaseRecordItemCreate]) -> list[PurchaseRecordItemCreate]:
+        if not value:
+            raise ValueError("Debes agregar productos a la compra.")
+        return value
+
+
+class PurchaseRecordResponse(BaseModel):
+    id: int = Field(alias="id_compra")
+    proveedor_id: int
+    proveedor_nombre: str
+    usuario_id: int
+    usuario_nombre: str | None = None
+    fecha: datetime
+    forma_pago: str
+    estado: str
+    subtotal: Decimal
+    impuesto: Decimal
+    total: Decimal
+    items: list[PurchaseRecordItemResponse]
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @field_serializer("subtotal", "impuesto", "total")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseVendorHistory(BaseModel):
+    proveedor: PurchaseVendorResponse
+    compras: list[PurchaseRecordResponse]
+    total: Decimal
+    impuesto: Decimal
+    registros: int
+
+    @field_serializer("total", "impuesto")
+    @classmethod
+    def _serialize_totals(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseReportFilters(BaseModel):
+    proveedor_id: int | None = None
+    usuario_id: int | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    estado: str | None = None
+    query: str | None = None
+
+
+class PurchaseReportTotals(BaseModel):
+    count: int = Field(default=0, ge=0)
+    subtotal: Decimal = Field(default=Decimal("0"))
+    impuesto: Decimal = Field(default=Decimal("0"))
+    total: Decimal = Field(default=Decimal("0"))
+
+    @field_serializer("subtotal", "impuesto", "total")
+    @classmethod
+    def _serialize_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseReportItem(BaseModel):
+    compra_id: int
+    folio: str
+    proveedor_nombre: str
+    usuario_nombre: str | None
+    forma_pago: str
+    estado: str
+    subtotal: Decimal
+    impuesto: Decimal
+    total: Decimal
+    fecha: datetime
+    items: list[PurchaseRecordItemResponse]
+
+    @field_serializer("subtotal", "impuesto", "total")
+    @classmethod
+    def _serialize_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseReport(BaseModel):
+    generated_at: datetime
+    filters: PurchaseReportFilters
+    totals: PurchaseReportTotals
+    daily_stats: list[DashboardChartPoint]
+    items: list[PurchaseReportItem]
+
+
+class PurchaseVendorRanking(BaseModel):
+    vendor_id: int
+    vendor_name: str
+    total: Decimal
+    orders: int
+
+    @field_serializer("total")
+    @classmethod
+    def _serialize_total(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseUserRanking(BaseModel):
+    user_id: int
+    user_name: str | None
+    total: Decimal
+    orders: int
+
+    @field_serializer("total")
+    @classmethod
+    def _serialize_total(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PurchaseStatistics(BaseModel):
+    updated_at: datetime
+    compras_registradas: int
+    total: Decimal
+    impuesto: Decimal
+    monthly_totals: list[DashboardChartPoint]
+    top_vendors: list[PurchaseVendorRanking]
+    top_users: list[PurchaseUserRanking]
+
+    @field_serializer("total", "impuesto")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
 class RecurringOrderCreate(BaseModel):
     name: str = Field(..., min_length=3, max_length=120)
     description: str | None = Field(default=None, max_length=255)
@@ -2368,6 +2601,24 @@ __all__ = [
     "PurchaseReceiveItem",
     "PurchaseReceiveRequest",
     "PurchaseImportResponse",
+    "PurchaseVendorBase",
+    "PurchaseVendorCreate",
+    "PurchaseVendorUpdate",
+    "PurchaseVendorResponse",
+    "PurchaseVendorStatusUpdate",
+    "PurchaseRecordItemBase",
+    "PurchaseRecordItemCreate",
+    "PurchaseRecordItemResponse",
+    "PurchaseRecordCreate",
+    "PurchaseRecordResponse",
+    "PurchaseVendorHistory",
+    "PurchaseReportFilters",
+    "PurchaseReportTotals",
+    "PurchaseReportItem",
+    "PurchaseReport",
+    "PurchaseVendorRanking",
+    "PurchaseUserRanking",
+    "PurchaseStatistics",
     "PurchaseReturnCreate",
     "PurchaseReturnResponse",
     "RecurringOrderCreate",
