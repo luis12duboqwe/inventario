@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import AUDITORIA_ROLES, REPORTE_ROLES
 from ..database import get_db
@@ -432,6 +432,81 @@ def analytics_export_csv(
     return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
 
 
+@router.get("/inventory/current", response_model=schemas.InventoryCurrentReport)
+def inventory_current(
+    store_ids: list[int] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    return crud.get_inventory_current_report(db, store_ids=store_ids)
+
+
+@router.get("/inventory/value", response_model=schemas.InventoryValueReport)
+def inventory_value(
+    store_ids: list[int] | None = Query(default=None),
+    categories: list[str] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    normalized_categories = [category for category in categories or [] if category]
+    return crud.get_inventory_value_report(
+        db,
+        store_ids=store_ids,
+        categories=normalized_categories if normalized_categories else None,
+    )
+
+
+@router.get(
+    "/inventory/movements",
+    response_model=schemas.InventoryMovementsReport,
+)
+def inventory_movements(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    movement_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    movement_enum: models.MovementType | None = None
+    if movement_type:
+        try:
+            movement_enum = models.MovementType(movement_type)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tipo de movimiento inválido",
+            ) from exc
+    return crud.get_inventory_movements_report(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        movement_type=movement_enum,
+    )
+
+
+@router.get(
+    "/inventory/top-products",
+    response_model=schemas.TopProductsReport,
+)
+def inventory_top_products(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    return crud.get_top_selling_products(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+
+
 @router.get("/inventory/pdf")
 def inventory_pdf(
     db: Session = Depends(get_db),
@@ -568,6 +643,195 @@ def inventory_csv(
 
     buffer.seek(0)
     headers = {"Content-Disposition": "attachment; filename=softmobile_inventario.csv"}
+    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+
+
+@router.get("/inventory/value/csv")
+def inventory_value_csv(
+    store_ids: list[int] | None = Query(default=None),
+    categories: list[str] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    normalized_categories = [category for category in categories or [] if category]
+    report = crud.get_inventory_value_report(
+        db,
+        store_ids=store_ids,
+        categories=normalized_categories if normalized_categories else None,
+    )
+
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Valoración de inventario"])
+    writer.writerow(["Sucursales consideradas", len(report.stores)])
+    writer.writerow([])
+    writer.writerow(["Sucursal", "Valor total (MXN)", "Valor costo (MXN)", "Margen estimado (MXN)"])
+    for store in report.stores:
+        writer.writerow(
+            [
+                store.store_name,
+                f"{store.valor_total:.2f}",
+                f"{store.valor_costo:.2f}",
+                f"{store.margen_total:.2f}",
+            ]
+        )
+
+    writer.writerow([])
+    writer.writerow([
+        "Totales corporativos",
+        f"{report.totals.valor_total:.2f}",
+        f"{report.totals.valor_costo:.2f}",
+        f"{report.totals.margen_total:.2f}",
+    ])
+
+    buffer.seek(0)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_valor_inventario.csv"}
+    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+
+
+@router.get("/inventory/movements/csv")
+def inventory_movements_csv(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    movement_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    movement_enum: models.MovementType | None = None
+    if movement_type:
+        try:
+            movement_enum = models.MovementType(movement_type)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tipo de movimiento inválido",
+            ) from exc
+
+    report = crud.get_inventory_movements_report(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        movement_type=movement_enum,
+    )
+
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Movimientos de inventario"])
+    writer.writerow(["Total registros", report.resumen.total_movimientos])
+    writer.writerow(["Total unidades", report.resumen.total_unidades])
+    writer.writerow(["Valor total (MXN)", f"{report.resumen.total_valor:.2f}"])
+    writer.writerow([])
+    writer.writerow(["Resumen por tipo"])
+    writer.writerow(["Tipo", "Cantidad", "Valor (MXN)"])
+    for entry in report.resumen.por_tipo:
+        writer.writerow(
+            [
+                entry.tipo_movimiento.value,
+                entry.total_cantidad,
+                f"{entry.total_valor:.2f}",
+            ]
+        )
+
+    writer.writerow([])
+    writer.writerow(["Acumulado por periodo"])
+    writer.writerow(["Fecha", "Tipo", "Cantidad", "Valor (MXN)"])
+    for period_entry in report.periodos:
+        writer.writerow(
+            [
+                period_entry.periodo.isoformat(),
+                period_entry.tipo_movimiento.value,
+                period_entry.total_cantidad,
+                f"{period_entry.total_valor:.2f}",
+            ]
+        )
+
+    writer.writerow([])
+    writer.writerow(["Detalle de movimientos"])
+    writer.writerow(
+        [
+            "ID",
+            "Fecha",
+            "Tipo",
+            "Cantidad",
+            "Valor (MXN)",
+            "Sucursal destino",
+            "Sucursal origen",
+            "Usuario",
+            "Comentario",
+        ]
+    )
+    for movement in report.movimientos:
+        writer.writerow(
+            [
+                movement.id,
+                movement.fecha.isoformat(),
+                movement.tipo_movimiento.value,
+                movement.cantidad,
+                f"{movement.valor_total:.2f}",
+                movement.tienda_destino or "-",
+                movement.tienda_origen or "-",
+                movement.usuario or "-",
+                movement.comentario or "-",
+            ]
+        )
+
+    buffer.seek(0)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_movimientos.csv"}
+    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+
+
+@router.get("/inventory/top-products/csv")
+def inventory_top_products_csv(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    report = crud.get_top_selling_products(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Productos más vendidos"])
+    writer.writerow(["Total unidades", report.total_unidades])
+    writer.writerow(["Ingresos totales (MXN)", f"{report.total_ingresos:.2f}"])
+    writer.writerow([])
+    writer.writerow(
+        [
+            "SKU",
+            "Producto",
+            "Sucursal",
+            "Unidades vendidas",
+            "Ingresos (MXN)",
+            "Margen estimado (MXN)",
+        ]
+    )
+    for item in report.items:
+        writer.writerow(
+            [
+                item.sku,
+                item.nombre,
+                item.store_name,
+                item.unidades_vendidas,
+                f"{item.ingresos_totales:.2f}",
+                f"{item.margen_estimado:.2f}",
+            ]
+        )
+
+    buffer.seek(0)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_top_productos.csv"}
     return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
 
 

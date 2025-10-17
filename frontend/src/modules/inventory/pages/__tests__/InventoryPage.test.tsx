@@ -8,8 +8,16 @@ import type {
   DeviceImportSummary,
   DeviceListFilters,
   DeviceUpdateInput,
+  InventoryCurrentFilters,
+  InventoryCurrentReport,
+  InventoryMovementsFilters,
+  InventoryMovementsReport,
+  InventoryTopProductsFilters,
+  InventoryValueFilters,
+  InventoryValueReport,
   LowStockDevice,
   Store,
+  TopProductsReport,
 } from "../../../../api";
 import type { useInventoryModule } from "../../hooks/useInventoryModule";
 
@@ -41,6 +49,15 @@ const downloadInventoryReportMock = vi.fn<(reason: string) => Promise<void>>();
 const downloadInventoryCsvMock = vi.fn<(reason: string) => Promise<void>>();
 const exportCatalogCsvMock = vi.fn<(filters: DeviceListFilters, reason: string) => Promise<void>>();
 const importCatalogCsvMock = vi.fn<(file: unknown, reason: string) => Promise<DeviceImportSummary>>();
+const downloadInventoryValueCsvMock = vi.fn<
+  (reason: string, filters: InventoryValueFilters) => Promise<void>
+>();
+const downloadInventoryMovementsCsvMock = vi.fn<
+  (reason: string, filters: InventoryMovementsFilters) => Promise<void>
+>();
+const downloadTopProductsCsvMock = vi.fn<
+  (reason: string, filters: InventoryTopProductsFilters) => Promise<void>
+>();
 const refreshSummaryMock = vi.fn<() => Promise<void> | void>();
 const promptCorporateReasonMock = vi.fn<(defaultReason: string) => string | null>();
 
@@ -239,6 +256,113 @@ const buildLowStockDevice = (): LowStockDevice => ({
   inventory_value: 30000,
 });
 
+const buildInventoryCurrentReport = (): InventoryCurrentReport => ({
+  stores: [
+    {
+      store_id: 1,
+      store_name: "Sucursal Centro",
+      device_count: 1,
+      total_units: 5,
+      total_value: 75000,
+    },
+  ],
+  totals: {
+    stores: 1,
+    devices: 1,
+    total_units: 5,
+    total_value: 75000,
+  },
+});
+
+const buildInventoryValueReport = (): InventoryValueReport => ({
+  stores: [
+    {
+      store_id: 1,
+      store_name: "Sucursal Centro",
+      valor_total: 75000,
+      valor_costo: 60000,
+      margen_total: 15000,
+    },
+  ],
+  totals: {
+    valor_total: 75000,
+    valor_costo: 60000,
+    margen_total: 15000,
+  },
+});
+
+const buildInventoryMovementsReport = (): InventoryMovementsReport => ({
+  resumen: {
+    total_movimientos: 2,
+    total_unidades: 8,
+    total_valor: 18000,
+    por_tipo: [
+      { tipo_movimiento: "entrada", total_cantidad: 5, total_valor: 9000 },
+      { tipo_movimiento: "salida", total_cantidad: 3, total_valor: 9000 },
+      { tipo_movimiento: "ajuste", total_cantidad: 0, total_valor: 0 },
+    ],
+  },
+  periodos: [
+    {
+      periodo: "2025-03-01",
+      tipo_movimiento: "entrada",
+      total_cantidad: 5,
+      total_valor: 9000,
+    },
+    {
+      periodo: "2025-03-02",
+      tipo_movimiento: "salida",
+      total_cantidad: 3,
+      total_valor: 9000,
+    },
+  ],
+  movimientos: [
+    {
+      id: 1,
+      tipo_movimiento: "entrada",
+      cantidad: 5,
+      valor_total: 9000,
+      tienda_destino_id: 1,
+      tienda_destino: "Sucursal Centro",
+      tienda_origen_id: null,
+      tienda_origen: null,
+      comentario: "Reposición",
+      usuario: "Admin General",
+      fecha: new Date("2025-03-01T12:00:00Z").toISOString(),
+    },
+    {
+      id: 2,
+      tipo_movimiento: "salida",
+      cantidad: 3,
+      valor_total: 9000,
+      tienda_destino_id: 1,
+      tienda_destino: "Sucursal Centro",
+      tienda_origen_id: null,
+      tienda_origen: null,
+      comentario: "Venta mostrador",
+      usuario: "Admin General",
+      fecha: new Date("2025-03-02T16:30:00Z").toISOString(),
+    },
+  ],
+});
+
+const buildTopProductsReport = (): TopProductsReport => ({
+  items: [
+    {
+      device_id: 101,
+      sku: "SKU-001",
+      nombre: "Galaxy S24",
+      store_id: 1,
+      store_name: "Sucursal Centro",
+      unidades_vendidas: 3,
+      ingresos_totales: 45000,
+      margen_estimado: 9000,
+    },
+  ],
+  total_unidades: 3,
+  total_ingresos: 45000,
+});
+
 const createModuleState = (): InventoryModuleState => ({
   token: "token-123",
   enableCatalogPro: true,
@@ -290,6 +414,13 @@ const createModuleState = (): InventoryModuleState => ({
     differencePercent: (3000 / 72000) * 100,
     hasRelevantDifference: true,
   },
+  fetchInventoryCurrentReport: vi.fn().mockResolvedValue(buildInventoryCurrentReport()),
+  fetchInventoryValueReport: vi.fn().mockResolvedValue(buildInventoryValueReport()),
+  fetchInventoryMovementsReport: vi.fn().mockResolvedValue(buildInventoryMovementsReport()),
+  fetchTopProductsReport: vi.fn().mockResolvedValue(buildTopProductsReport()),
+  downloadInventoryValueCsv: downloadInventoryValueCsvMock,
+  downloadInventoryMovementsCsv: downloadInventoryMovementsCsvMock,
+  downloadTopProductsCsv: downloadTopProductsCsvMock,
 });
 
 const openTab = async (user: ReturnType<typeof userEvent.setup>, tabName: RegExp) => {
@@ -322,6 +453,9 @@ beforeEach(() => {
   downloadInventoryCsvMock.mockReset();
   exportCatalogCsvMock.mockReset();
   importCatalogCsvMock.mockReset();
+  downloadInventoryValueCsvMock.mockReset();
+  downloadInventoryMovementsCsvMock.mockReset();
+  downloadTopProductsCsvMock.mockReset();
   refreshSummaryMock.mockReset();
   promptCorporateReasonMock.mockReset();
 
@@ -331,6 +465,9 @@ beforeEach(() => {
   downloadInventoryCsvMock.mockResolvedValue();
   exportCatalogCsvMock.mockResolvedValue();
   importCatalogCsvMock.mockResolvedValue({ created: 0, updated: 0, skipped: 0, errors: [] });
+  downloadInventoryValueCsvMock.mockResolvedValue();
+  downloadInventoryMovementsCsvMock.mockResolvedValue();
+  downloadTopProductsCsvMock.mockResolvedValue();
 
   moduleState = createModuleState();
 });
@@ -439,5 +576,25 @@ describe("InventoryPage", () => {
     expect(pushToastMock).toHaveBeenCalledWith(
       expect.objectContaining({ message: errorMessage, variant: "error" }),
     );
+  });
+
+  it("muestra los reportes de inventario y habilita exportaciones", async () => {
+    promptCorporateReasonMock.mockReturnValue("Reporte inventario");
+
+    const user = await renderInventoryPage();
+
+    await openTab(user, /reportes/i);
+
+    expect(await screen.findByText(/Reportes y estadísticas/i)).toBeInTheDocument();
+    expect(screen.getByText(/Existencias actuales/i)).toBeInTheDocument();
+
+    const exportButtons = screen.getAllByRole("button", { name: /Exportar CSV/i });
+    expect(exportButtons).toHaveLength(3);
+
+    await user.click(exportButtons[0]);
+
+    await waitFor(() => {
+      expect(downloadInventoryValueCsvMock).toHaveBeenCalledWith("Reporte inventario", expect.any(Object));
+    });
   });
 });

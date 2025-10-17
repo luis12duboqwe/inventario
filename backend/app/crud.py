@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement
 
 from . import models, schemas, telemetry
+from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
 from .utils.cache import TTLCache
@@ -135,6 +136,8 @@ def _normalize_date_range(
 
     if isinstance(date_from, datetime):
         start_dt = date_from
+        if start_dt.time() == datetime.min.time():
+            start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
     elif isinstance(date_from, date):
         start_dt = datetime.combine(date_from, datetime.min.time())
     else:
@@ -142,6 +145,8 @@ def _normalize_date_range(
 
     if isinstance(date_to, datetime):
         end_dt = date_to
+        if end_dt.time() == datetime.min.time():
+            end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif isinstance(date_to, date):
         end_dt = datetime.combine(date_to, datetime.max.time())
     else:
@@ -301,6 +306,19 @@ def _log_action(
 
 def _device_value(device: models.Device) -> Decimal:
     return Decimal(device.quantity) * (device.unit_price or Decimal("0"))
+
+
+def _movement_value(movement: models.InventoryMovement) -> Decimal:
+    """Calcula el valor monetario estimado de un movimiento."""
+
+    unit_cost: Decimal | None = movement.unit_cost
+    if unit_cost is None and movement.device is not None:
+        if getattr(movement.device, "costo_unitario", None):
+            unit_cost = movement.device.costo_unitario
+        elif movement.device.unit_price is not None:
+            unit_cost = movement.device.unit_price
+    base_cost = _to_decimal(unit_cost)
+    return (Decimal(movement.quantity) * base_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _recalculate_store_inventory_value(
@@ -2413,6 +2431,293 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         "profit_breakdown": profit_breakdown,
         "audit_alerts": audit_alerts,
     }
+
+
+def get_inventory_current_report(
+    db: Session, *, store_ids: Iterable[int] | None = None
+) -> schemas.InventoryCurrentReport:
+    stores = list_inventory_summary(db)
+    store_filter = _normalize_store_ids(store_ids)
+
+    report_stores: list[schemas.InventoryCurrentStore] = []
+    total_devices = 0
+    total_units = 0
+    total_value = Decimal("0")
+
+    for store in stores:
+        if store_filter and store.id not in store_filter:
+            continue
+        device_count = len(store.devices)
+        store_units = sum(device.quantity for device in store.devices)
+        store_value = sum(_device_value(device) for device in store.devices)
+
+        report_stores.append(
+            schemas.InventoryCurrentStore(
+                store_id=store.id,
+                store_name=store.name,
+                device_count=device_count,
+                total_units=store_units,
+                total_value=store_value,
+            )
+        )
+
+        total_devices += device_count
+        total_units += store_units
+        total_value += store_value
+
+    totals = schemas.InventoryTotals(
+        stores=len(report_stores),
+        devices=total_devices,
+        total_units=total_units,
+        total_value=total_value,
+    )
+
+    return schemas.InventoryCurrentReport(stores=report_stores, totals=totals)
+
+
+def get_inventory_movements_report(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+    movement_type: models.MovementType | None = None,
+) -> schemas.InventoryMovementsReport:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+
+    movement_stmt = (
+        select(models.InventoryMovement)
+        .options(
+            joinedload(models.InventoryMovement.store),
+            joinedload(models.InventoryMovement.source_store),
+            joinedload(models.InventoryMovement.device),
+            joinedload(models.InventoryMovement.performed_by),
+        )
+        .order_by(models.InventoryMovement.created_at.desc())
+    )
+
+    if store_filter:
+        movement_stmt = movement_stmt.where(models.InventoryMovement.store_id.in_(store_filter))
+    movement_stmt = movement_stmt.where(models.InventoryMovement.created_at >= start_dt)
+    movement_stmt = movement_stmt.where(models.InventoryMovement.created_at <= end_dt)
+    if movement_type is not None:
+        movement_stmt = movement_stmt.where(models.InventoryMovement.movement_type == movement_type)
+
+    movements = list(db.scalars(movement_stmt).unique())
+
+    totals_by_type: dict[models.MovementType, dict[str, Decimal | int]] = {}
+    period_map: dict[tuple[date, models.MovementType], dict[str, Decimal | int]] = {}
+    total_units = 0
+    total_value = Decimal("0")
+    report_entries: list[schemas.MovementReportEntry] = []
+
+    for movement in movements:
+        value = _movement_value(movement)
+        total_units += movement.quantity
+        total_value += value
+
+        type_data = totals_by_type.setdefault(
+            movement.movement_type,
+            {"quantity": 0, "value": Decimal("0")},
+        )
+        type_data["quantity"] = int(type_data["quantity"]) + movement.quantity
+        type_data["value"] = _to_decimal(type_data["value"]) + value
+
+        period_key = (movement.created_at.date(), movement.movement_type)
+        period_data = period_map.setdefault(
+            period_key,
+            {"quantity": 0, "value": Decimal("0")},
+        )
+        period_data["quantity"] = int(period_data["quantity"]) + movement.quantity
+        period_data["value"] = _to_decimal(period_data["value"]) + value
+
+        report_entries.append(
+            schemas.MovementReportEntry(
+                id=movement.id,
+                tipo_movimiento=movement.movement_type,
+                cantidad=movement.quantity,
+                valor_total=value,
+                tienda_destino_id=movement.store_id,
+                tienda_destino=movement.tienda_destino,
+                tienda_origen_id=movement.source_store_id,
+                tienda_origen=movement.tienda_origen,
+                comentario=movement.comment,
+                usuario=movement.usuario,
+                fecha=movement.created_at,
+            )
+        )
+
+    period_summaries = [
+        schemas.MovementPeriodSummary(
+            periodo=period,
+            tipo_movimiento=movement_type,
+            total_cantidad=int(data["quantity"]),
+            total_valor=_to_decimal(data["value"]),
+        )
+        for (period, movement_type), data in sorted(period_map.items())
+    ]
+
+    summary_by_type = [
+        schemas.MovementTypeSummary(
+            tipo_movimiento=movement_enum,
+            total_cantidad=int(totals_by_type.get(movement_enum, {}).get("quantity", 0)),
+            total_valor=_to_decimal(totals_by_type.get(movement_enum, {}).get("value", 0)),
+        )
+        for movement_enum in models.MovementType
+    ]
+
+    resumen = schemas.InventoryMovementsSummary(
+        total_movimientos=len(movements),
+        total_unidades=total_units,
+        total_valor=total_value,
+        por_tipo=summary_by_type,
+    )
+
+    return schemas.InventoryMovementsReport(
+        resumen=resumen,
+        periodos=period_summaries,
+        movimientos=report_entries,
+    )
+
+
+def get_top_selling_products(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+    limit: int = 10,
+) -> schemas.TopProductsReport:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+
+    sold_units = func.sum(models.SaleItem.quantity).label("sold_units")
+    total_revenue = func.sum(models.SaleItem.total_line).label("total_revenue")
+    estimated_cost = func.sum(
+        models.SaleItem.quantity
+        * func.coalesce(models.Device.costo_unitario, models.SaleItem.unit_price)
+    ).label("total_cost")
+
+    stmt = (
+        select(
+            models.SaleItem.device_id,
+            models.Device.sku,
+            models.Device.name.label("device_name"),
+            models.Sale.store_id,
+            models.Store.name.label("store_name"),
+            sold_units,
+            total_revenue,
+            estimated_cost,
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .join(models.Store, models.Store.id == models.Sale.store_id)
+        .where(models.Sale.created_at >= start_dt)
+        .where(models.Sale.created_at <= end_dt)
+        .group_by(
+            models.SaleItem.device_id,
+            models.Device.sku,
+            models.Device.name,
+            models.Sale.store_id,
+            models.Store.name,
+        )
+        .order_by(sold_units.desc(), total_revenue.desc())
+        .limit(limit)
+    )
+
+    if store_filter:
+        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+
+    rows = list(db.execute(stmt).mappings())
+
+    items: list[schemas.TopProductReportItem] = []
+    total_units = 0
+    total_income = Decimal("0")
+
+    for row in rows:
+        units = int(row["sold_units"] or 0)
+        income = _to_decimal(row["total_revenue"])
+        cost = _to_decimal(row["total_cost"])
+        margin = income - cost
+
+        items.append(
+            schemas.TopProductReportItem(
+                device_id=row["device_id"],
+                sku=row["sku"],
+                nombre=row["device_name"],
+                store_id=row["store_id"],
+                store_name=row["store_name"],
+                unidades_vendidas=units,
+                ingresos_totales=income,
+                margen_estimado=margin,
+            )
+        )
+
+        total_units += units
+        total_income += income
+
+    return schemas.TopProductsReport(
+        items=items,
+        total_unidades=total_units,
+        total_ingresos=total_income,
+    )
+
+
+def get_inventory_value_report(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    categories: Iterable[str] | None = None,
+) -> schemas.InventoryValueReport:
+    valuations = calculate_inventory_valuation(
+        db, store_ids=store_ids, categories=categories
+    )
+
+    store_map: dict[int, dict[str, Decimal | str]] = {}
+
+    for entry in valuations:
+        store_entry = store_map.setdefault(
+            entry.store_id,
+            {
+                "store_name": entry.store_name,
+                "valor_total": Decimal("0"),
+                "valor_costo": Decimal("0"),
+                "margen_total": Decimal("0"),
+            },
+        )
+        store_entry["valor_total"] = _to_decimal(store_entry["valor_total"]) + _to_decimal(
+            entry.valor_total_producto
+        )
+        store_entry["valor_costo"] = _to_decimal(store_entry["valor_costo"]) + _to_decimal(
+            entry.valor_costo_producto
+        )
+        store_entry["margen_total"] = _to_decimal(store_entry["margen_total"]) + (
+            _to_decimal(entry.valor_total_producto) - _to_decimal(entry.valor_costo_producto)
+        )
+
+    stores = [
+        schemas.InventoryValueStore(
+            store_id=store_id,
+            store_name=data["store_name"],
+            valor_total=_to_decimal(data["valor_total"]),
+            valor_costo=_to_decimal(data["valor_costo"]),
+            margen_total=_to_decimal(data["margen_total"]),
+        )
+        for store_id, data in sorted(store_map.items(), key=lambda item: item[1]["store_name"])
+    ]
+
+    total_valor = sum((store.valor_total for store in stores), Decimal("0"))
+    total_costo = sum((store.valor_costo for store in stores), Decimal("0"))
+    total_margen = sum((store.margen_total for store in stores), Decimal("0"))
+
+    totals = schemas.InventoryValueTotals(
+        valor_total=total_valor,
+        valor_costo=total_costo,
+        margen_total=total_margen,
+    )
+
+    return schemas.InventoryValueReport(stores=stores, totals=totals)
 
 
 def calculate_rotation_analytics(
