@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StoreBase(BaseModel):
@@ -19,8 +19,7 @@ class StoreCreate(StoreBase):
 class StoreResponse(StoreBase):
     id: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DeviceBase(BaseModel):
@@ -37,5 +36,4 @@ class DeviceResponse(DeviceBase):
     id: int
     store_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
