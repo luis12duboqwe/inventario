@@ -55,6 +55,14 @@
 - **20/10/2025 11:30 UTC** — Se comprueba el `ondelete=SET NULL` de las claves foráneas hacia `clientes` y la prueba `test_factura_se_vincula_con_cliente` asegura que las facturas almacenadas mantienen el vínculo activo con el cliente asociado.
 - **21/10/2025 09:00 UTC** — Se corrige la importación de `Decimal` y se amplían las pruebas de índices en `backend/tests/test_clientes_schema.py`, mientras que el modelo `Customer` marca `tipo` y `estado` como campos indexados para reforzar filtros y controles de crédito vinculados a las ventas.
 
+## Actualización Clientes - Parte 2 (Lógica Funcional y Control) (20/10/2025 15:20 UTC)
+- Nueva migración `202503010006_customer_ledger_entries.py` que incorpora la tabla `customer_ledger_entries`, enum de tipo de movimiento y sincronización automática vía `sync_outbox`.
+- El backend suma `/customers/{id}/notes`, `/customers/{id}/payments` y `/customers/{id}/summary`; cada endpoint exige motivo corporativo, actualiza historial/ledger y ofrece un resumen financiero con ventas, facturas, pagos y movimientos recientes.
+- Las ventas a crédito verifican el límite disponible antes de confirmarse, registran cargos y ajustes en la bitácora al editar/cancelar/devolver y reducen saldos al aplicar pagos.
+- `frontend/src/modules/operations/components/Customers.tsx` permite registrar pagos, consultar un resumen financiero interactivo, añadir estados `moroso`/`vip` y gestionar notas dedicadas; el POS advierte cuando la venta agotará o excederá el crédito.
+- Se renombra el campo `metadata` a `details` en las respuestas del ledger y en los consumidores de frontend para prevenir fallos de serialización detectados en las pruebas al consumir `/customers/{id}/summary`.
+- Pruebas nuevas (`test_customer_credit_limit_blocks_sale`, `test_customer_payment_updates_summary`) validan el bloqueo de ventas por sobreendeudamiento y la coherencia del resumen tras registrar abonos.
+
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.
 - Se actualizan `REPORTE_ROLES` y `AUDITORIA_ROLES` para limitar consultas de inventario, reportes y bitácoras a usuarios `ADMIN` y `GERENTE`, alineando la visibilidad con la jerarquía corporativa.

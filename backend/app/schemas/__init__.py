@@ -31,6 +31,7 @@ from ..models import (
     SyncOutboxStatus,
     SyncStatus,
     TransferStatus,
+    CustomerLedgerEntryType,
 )
 from ..utils import audit as audit_utils
 
@@ -532,6 +533,120 @@ class CustomerResponse(CustomerBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerNoteCreate(BaseModel):
+    note: str = Field(..., min_length=3, max_length=255)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _normalize_note(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("La nota del cliente es obligatoria.")
+        return normalized
+
+
+class CustomerPaymentCreate(BaseModel):
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    method: str = Field(default="manual", min_length=3, max_length=40)
+    reference: str | None = Field(default=None, max_length=120)
+    note: str | None = Field(default=None, max_length=255)
+    sale_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("method", mode="before")
+    @classmethod
+    def _normalize_method(cls, value: str | None) -> str:
+        if value is None:
+            return "manual"
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Indica un método de pago válido.")
+        return normalized
+
+    @field_validator("reference", "note", mode="before")
+    @classmethod
+    def _normalize_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class CustomerLedgerEntryResponse(BaseModel):
+    id: int
+    entry_type: CustomerLedgerEntryType
+    reference_type: str | None
+    reference_id: str | None
+    amount: float
+    balance_after: float
+    note: str | None
+    details: dict[str, Any]
+    created_at: datetime
+    created_by: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("balance_after")
+    @classmethod
+    def _serialize_balance_after(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_validator("created_by", mode="before")
+    @classmethod
+    def _normalize_created_by(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        full_name = getattr(value, "full_name", None)
+        if isinstance(full_name, str) and full_name.strip():
+            return full_name.strip()
+        username = getattr(value, "username", None)
+        if isinstance(username, str) and username.strip():
+            return username.strip()
+        return None
+
+
+class CustomerSaleSummary(BaseModel):
+    sale_id: int
+    store_id: int
+    store_name: str | None
+    payment_method: PaymentMethod
+    status: str
+    subtotal_amount: float
+    tax_amount: float
+    total_amount: float
+    created_at: datetime
+
+
+class CustomerInvoiceSummary(BaseModel):
+    sale_id: int
+    invoice_number: str
+    total_amount: float
+    status: str
+    created_at: datetime
+    store_id: int
+
+
+class CustomerFinancialSnapshot(BaseModel):
+    credit_limit: float
+    outstanding_debt: float
+    available_credit: float
+    total_sales_credit: float
+    total_payments: float
+
+
+class CustomerSummaryResponse(BaseModel):
+    customer: CustomerResponse
+    totals: CustomerFinancialSnapshot
+    sales: list[CustomerSaleSummary]
+    invoices: list[CustomerInvoiceSummary]
+    payments: list[CustomerLedgerEntryResponse]
+    ledger: list[CustomerLedgerEntryResponse]
 
 
 class SupplierBase(BaseModel):

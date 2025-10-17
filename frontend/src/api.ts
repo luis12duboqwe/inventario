@@ -147,6 +147,67 @@ export type CustomerPayload = {
   history?: ContactHistoryEntry[];
 };
 
+export type CustomerLedgerEntryType = "sale" | "payment" | "adjustment" | "note";
+
+export type CustomerLedgerEntry = {
+  id: number;
+  entry_type: CustomerLedgerEntryType;
+  reference_type?: string | null;
+  reference_id?: string | null;
+  amount: number;
+  balance_after: number;
+  note?: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+  created_by?: string | null;
+};
+
+export type CustomerSaleSummary = {
+  sale_id: number;
+  store_id: number;
+  store_name?: string | null;
+  payment_method: PaymentMethod;
+  status: string;
+  subtotal_amount: number;
+  tax_amount: number;
+  total_amount: number;
+  created_at: string;
+};
+
+export type CustomerInvoiceSummary = {
+  sale_id: number;
+  invoice_number: string;
+  total_amount: number;
+  status: string;
+  created_at: string;
+  store_id: number;
+};
+
+export type CustomerFinancialSnapshot = {
+  credit_limit: number;
+  outstanding_debt: number;
+  available_credit: number;
+  total_sales_credit: number;
+  total_payments: number;
+};
+
+export type CustomerSummary = {
+  customer: Customer;
+  totals: CustomerFinancialSnapshot;
+  sales: CustomerSaleSummary[];
+  invoices: CustomerInvoiceSummary[];
+  payments: CustomerLedgerEntry[];
+  ledger: CustomerLedgerEntry[];
+};
+
+export type CustomerPaymentPayload = {
+  amount: number;
+  method?: string;
+  reference?: string | null;
+  note?: string | null;
+  sale_id?: number | null;
+};
+
 export type Supplier = {
   id: number;
   name: string;
@@ -2016,6 +2077,48 @@ export function deleteCustomer(token: string, customerId: number, reason: string
   return request<void>(
     `/customers/${customerId}`,
     { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function appendCustomerNote(
+  token: string,
+  customerId: number,
+  note: string,
+  reason: string
+): Promise<Customer> {
+  return request<Customer>(
+    `/customers/${customerId}/notes`,
+    {
+      method: "POST",
+      body: JSON.stringify({ note }),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function registerCustomerPayment(
+  token: string,
+  customerId: number,
+  payload: CustomerPaymentPayload,
+  reason: string
+): Promise<CustomerLedgerEntry> {
+  return request<CustomerLedgerEntry>(
+    `/customers/${customerId}/payments`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function getCustomerSummary(token: string, customerId: number): Promise<CustomerSummary> {
+  return request<CustomerSummary>(
+    `/customers/${customerId}/summary`,
+    { method: "GET" },
     token
   );
 }
