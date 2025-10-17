@@ -1996,8 +1996,14 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         "warning": alert_summary.warning,
         "info": alert_summary.info,
         "has_alerts": alert_summary.has_alerts,
-        "pending_count": len([entry for entry in highlight_entries if entry["status"] != "acknowledged"]),
-        "acknowledged_count": len(acknowledged_entities) or acknowledged_highlights,
+        "pending_count": pending_critical
+        if critical_events
+        else len(
+            [entry for entry in highlight_entries if entry["status"] != "acknowledged"]
+        ),
+        "acknowledged_count": len(acknowledged_entities)
+        if acknowledged_entities
+        else acknowledged_highlights,
         "highlights": highlight_entries,
         "acknowledged_entities": acknowledged_entities,
     }
