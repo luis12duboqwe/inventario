@@ -4228,6 +4228,27 @@ def create_purchase_order(
     return order
 
 
+def _build_purchase_movement_comment(
+    action: str,
+    order: models.PurchaseOrder,
+    device: models.Device,
+    reason: str | None,
+) -> str:
+    """Genera una descripción legible para los movimientos de compras."""
+
+    parts: list[str] = [action, f"OC #{order.id}", f"Proveedor: {order.supplier}"]
+    if device.imei:
+        parts.append(f"IMEI: {device.imei}")
+    if device.serial:
+        parts.append(f"Serie: {device.serial}")
+    if reason:
+        normalized_reason = reason.strip()
+        if normalized_reason:
+            parts.append(normalized_reason)
+    comment = " | ".join(part for part in parts if part)
+    return comment[:255]
+
+
 def receive_purchase_order(
     db: Session,
     order_id: int,
@@ -4256,6 +4277,7 @@ def receive_purchase_order(
         order_item.quantity_received += receive_item.quantity
 
         device = get_device(db, order.store_id, order_item.device_id)
+        device.proveedor = order.supplier
         current_quantity = device.quantity
         new_quantity = current_quantity + receive_item.quantity
         current_cost_total = _to_decimal(device.costo_unitario) * _to_decimal(current_quantity)
@@ -4273,7 +4295,12 @@ def receive_purchase_order(
                 device_id=device.id,
                 movement_type=models.MovementType.IN,
                 quantity=receive_item.quantity,
-                comment=reason,
+                comment=_build_purchase_movement_comment(
+                    "Recepción OC",
+                    order,
+                    device,
+                    reason,
+                ),
                 unit_cost=order_item.unit_cost,
                 performed_by_id=received_by_id,
             )
@@ -4303,6 +4330,73 @@ def receive_purchase_order(
     return order
 
 
+def _revert_purchase_inventory(
+    db: Session,
+    order: models.PurchaseOrder,
+    *,
+    cancelled_by_id: int,
+    reason: str | None,
+) -> dict[str, int]:
+    """Revierte el inventario recibido cuando se cancela una compra."""
+
+    reversal_details: dict[str, int] = {}
+    adjustments_performed = False
+
+    for order_item in order.items:
+        received_qty = order_item.quantity_received
+        if received_qty <= 0:
+            continue
+
+        device = get_device(db, order.store_id, order_item.device_id)
+        if device.quantity < received_qty:
+            raise ValueError("purchase_cancellation_insufficient_stock")
+
+        current_quantity = device.quantity
+        current_cost_total = _to_decimal(device.costo_unitario) * _to_decimal(current_quantity)
+        outgoing_cost_total = _to_decimal(order_item.unit_cost) * _to_decimal(received_qty)
+        remaining_quantity = current_quantity - received_qty
+        remaining_cost_total = current_cost_total - outgoing_cost_total
+        if remaining_cost_total < Decimal("0.00"):
+            remaining_cost_total = Decimal("0.00")
+
+        device.quantity = remaining_quantity
+        if remaining_quantity > 0:
+            divisor = _to_decimal(remaining_quantity)
+            new_average = remaining_cost_total / divisor
+            device.costo_unitario = new_average.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        else:
+            device.costo_unitario = Decimal("0.00")
+
+        _recalculate_sale_price(device)
+
+        db.add(
+            models.InventoryMovement(
+                store_id=order.store_id,
+                source_store_id=order.store_id,
+                device_id=device.id,
+                movement_type=models.MovementType.OUT,
+                quantity=received_qty,
+                comment=_build_purchase_movement_comment(
+                    "Reversión OC",
+                    order,
+                    device,
+                    reason,
+                ),
+                unit_cost=order_item.unit_cost,
+                performed_by_id=cancelled_by_id,
+            )
+        )
+
+        reversal_details[str(device.id)] = received_qty
+        order_item.quantity_received = 0
+        adjustments_performed = True
+
+    if adjustments_performed:
+        _recalculate_store_inventory_value(db, order.store_id)
+
+    return reversal_details
+
+
 def cancel_purchase_order(
     db: Session,
     order_id: int,
@@ -4311,8 +4405,15 @@ def cancel_purchase_order(
     reason: str | None = None,
 ) -> models.PurchaseOrder:
     order = get_purchase_order(db, order_id)
-    if order.status in {models.PurchaseStatus.CANCELADA, models.PurchaseStatus.COMPLETADA}:
+    if order.status == models.PurchaseStatus.CANCELADA:
         raise ValueError("purchase_not_cancellable")
+
+    reversal_details = _revert_purchase_inventory(
+        db,
+        order,
+        cancelled_by_id=cancelled_by_id,
+        reason=reason,
+    )
 
     order.status = models.PurchaseStatus.CANCELADA
     order.closed_at = datetime.utcnow()
@@ -4328,7 +4429,13 @@ def cancel_purchase_order(
         entity_type="purchase_order",
         entity_id=str(order.id),
         performed_by_id=cancelled_by_id,
-        details=json.dumps({"status": order.status.value, "reason": reason}),
+        details=json.dumps(
+            {
+                "status": order.status.value,
+                "reason": reason,
+                "reversed_items": reversal_details,
+            }
+        ),
     )
     db.commit()
     db.refresh(order)
@@ -4360,6 +4467,21 @@ def register_purchase_return(
         raise ValueError("purchase_return_insufficient_stock")
     device.quantity -= payload.quantity
 
+    order_cost = _to_decimal(order_item.unit_cost)
+    current_quantity = device.quantity + payload.quantity
+    current_cost_total = _to_decimal(device.costo_unitario) * _to_decimal(current_quantity)
+    remaining_cost_total = current_cost_total - (order_cost * _to_decimal(payload.quantity))
+    if remaining_cost_total < Decimal("0.00"):
+        remaining_cost_total = Decimal("0.00")
+    if device.quantity > 0:
+        device.costo_unitario = (
+            remaining_cost_total / _to_decimal(device.quantity)
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    else:
+        device.costo_unitario = Decimal("0.00")
+
+    _recalculate_sale_price(device)
+
     db.add(
         models.InventoryMovement(
             store_id=order.store_id,
@@ -4367,7 +4489,13 @@ def register_purchase_return(
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=payload.quantity,
-            comment=payload.reason or reason,
+            comment=_build_purchase_movement_comment(
+                "Devolución proveedor",
+                order,
+                device,
+                payload.reason or reason,
+            ),
+            unit_cost=order_item.unit_cost,
             performed_by_id=processed_by_id,
         )
     )

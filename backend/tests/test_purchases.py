@@ -107,4 +107,107 @@ def test_purchase_receipt_and_return_flow(client, db_session):
     device_post_return = next(item for item in inventory_after_return.json() if item["id"] == device_id)
     assert device_post_return["quantity"] == 18
 
+    movements = list(
+        db_session.execute(
+            select(models.InventoryMovement)
+            .where(models.InventoryMovement.device_id == device_id)
+            .order_by(models.InventoryMovement.created_at)
+        ).scalars()
+    )
+    assert len(movements) == 3
+    received_movements = [m for m in movements if m.movement_type == models.MovementType.IN]
+    assert {movement.quantity for movement in received_movements} == {5}
+    for movement in received_movements:
+        assert movement.performed_by_id == user_id
+        assert movement.comment is not None and "Proveedor Mayorista" in movement.comment
+        assert "Recepción OC" in movement.comment
+    return_movement = next(m for m in movements if m.movement_type == models.MovementType.OUT)
+    assert return_movement.quantity == 2
+    assert return_movement.performed_by_id == user_id
+    assert "Devolución proveedor" in return_movement.comment
+    assert "Proveedor Mayorista" in return_movement.comment
+
+    settings.enable_purchases_sales = False
+
+
+def test_purchase_cancellation_reverts_inventory_and_records_movement(client, db_session):
+    settings.enable_purchases_sales = True
+    token, user_id = _bootstrap_admin(client, db_session)
+    auth_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Motivo compras"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Serial", "location": "GDL", "timezone": "America/Mexico_City"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "SKU-SERIAL-01",
+            "name": "Equipo con serie",
+            "quantity": 0,
+            "unit_price": 2500.0,
+            "costo_unitario": 2000.0,
+            "margen_porcentaje": 10.0,
+            "serial": "SERIE-UNICA-001",
+        },
+        headers=auth_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    order_payload = {
+        "store_id": store_id,
+        "supplier": "Proveedor Serializado",
+        "items": [
+            {"device_id": device_id, "quantity_ordered": 1, "unit_cost": 1800.0},
+        ],
+    }
+    order_response = client.post("/purchases", json=order_payload, headers=auth_headers)
+    assert order_response.status_code == status.HTTP_201_CREATED
+    order_id = order_response.json()["id"]
+
+    receive_response = client.post(
+        f"/purchases/{order_id}/receive",
+        json={"items": [{"device_id": device_id, "quantity": 1}]},
+        headers={**auth_headers, "X-Reason": "Recepcion serial"},
+    )
+    assert receive_response.status_code == status.HTTP_200_OK
+
+    device_record = db_session.execute(
+        select(models.Device).where(models.Device.id == device_id)
+    ).scalar_one()
+    assert device_record.quantity == 1
+
+    cancel_response = client.post(
+        f"/purchases/{order_id}/cancel",
+        headers={**auth_headers, "X-Reason": "Proveedor cancela"},
+    )
+    assert cancel_response.status_code == status.HTTP_200_OK
+    assert cancel_response.json()["status"] == "CANCELADA"
+
+    updated_device = db_session.execute(
+        select(models.Device).where(models.Device.id == device_id)
+    ).scalar_one()
+    assert updated_device.quantity == 0
+    assert Decimal(str(updated_device.costo_unitario)) == Decimal("0.00")
+
+    movements = list(
+        db_session.execute(
+            select(models.InventoryMovement)
+            .where(models.InventoryMovement.device_id == device_id)
+            .order_by(models.InventoryMovement.created_at)
+        ).scalars()
+    )
+    assert len(movements) == 2
+    reversal = next(m for m in movements if m.movement_type == models.MovementType.OUT)
+    assert reversal.quantity == 1
+    assert reversal.performed_by_id == user_id
+    assert "Reversión OC" in reversal.comment
+    assert "Proveedor Serializado" in reversal.comment
+    assert "Serie: SERIE-UNICA-001" in reversal.comment
+
     settings.enable_purchases_sales = False
