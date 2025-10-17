@@ -227,6 +227,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - La cancelación de órdenes revierte unidades recibidas mediante movimientos `salida`, recalcula costos promedio y documenta los artículos revertidos en el log de auditoría.
 - Las devoluciones a proveedor ajustan stock y costo ponderado antes de registrar el movimiento, asegurando consistencia con el valor de inventario por tienda.
 - `backend/tests/test_purchases.py` valida recepciones, devoluciones y cancelaciones para garantizar que el inventario se actualice y se audite conforme a la política corporativa.
+- Se mantiene la vista SQL `movimientos_inventario` como alias de `inventory_movements` para integraciones heredadas que consultan movimientos por nombre en español.
 
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
