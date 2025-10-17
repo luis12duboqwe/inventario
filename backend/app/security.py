@@ -62,10 +62,27 @@ async def get_current_user(
     return user
 
 
+def _normalize_role_name(role_name: str | None) -> str | None:
+    """Normaliza un nombre de rol almacenado para comparaciones resilientes."""
+
+    if role_name is None:
+        return None
+    normalized = role_name.strip().upper()
+    if not normalized:
+        return None
+    return normalized
+
+
 def require_roles(*roles: str):
+    expected_roles = {role.strip().upper() for role in roles if isinstance(role, str)}
+
     async def dependency(current_user=Depends(get_current_user)):
-        user_roles = {assignment.role.name for assignment in current_user.roles}
-        if roles and user_roles.isdisjoint(roles):
+        user_roles = {
+            normalized
+            for assignment in current_user.roles
+            if (normalized := _normalize_role_name(getattr(assignment.role, "name", None)))
+        }
+        if expected_roles and user_roles.isdisjoint(expected_roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No cuenta con permisos para realizar esta acción.",
