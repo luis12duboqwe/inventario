@@ -47,7 +47,7 @@ def upgrade() -> None:
                 sa.func.coalesce(
                     sa.func.sum(sale_items_table.c.total_line),
                     sa.literal(0).cast(sa.Numeric(12, 2)),
-                ),
+                ).label("subtotal"),
             ).group_by(sale_items_table.c.sale_id)
         )
     }
@@ -57,7 +57,9 @@ def upgrade() -> None:
         for row in connection.execute(
             sa.select(
                 pos_configs_table.c.store_id,
-                sa.func.coalesce(pos_configs_table.c.tax_rate, sa.literal(0)),
+                sa.func.coalesce(pos_configs_table.c.tax_rate, sa.literal(0)).label(
+                    "tax_rate"
+                ),
             )
         )
     }
