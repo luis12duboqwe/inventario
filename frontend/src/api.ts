@@ -491,7 +491,7 @@ export type MovementInput = {
   producto_id: number;
   tipo_movimiento: "entrada" | "salida" | "ajuste";
   cantidad: number;
-  comentario?: string;
+  comentario: string;
   tienda_origen_id?: number | null;
   tienda_destino_id?: number | null;
   unit_cost?: number;
