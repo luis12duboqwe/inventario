@@ -111,6 +111,14 @@ Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.a
 - **Frontend adaptado**: `MovementForm.tsx` captura `comentario`, `tipo_movimiento` y `cantidad`, reutilizando el motivo para la cabecera `X-Reason`; `DashboardContext` valida el texto antes de solicitar el movimiento.
 - **Respuesta enriquecida**: cada movimiento expone `usuario`, `tienda_origen` y `tienda_destino` (además de sus identificadores) para los reportes de auditoría y paneles operativos, manteniendo compatibilidad con integraciones anteriores.
 
+## Actualización Inventario - Gestión de IMEI y Series
+
+- **Identificadores extendidos**: se introduce la tabla `device_identifiers` (migración `202503010001_device_identifiers.py`) con los campos `producto_id`, `imei_1`, `imei_2`, `numero_serie`, `estado_tecnico` y `observaciones`, vinculando cada registro al catálogo de dispositivos sin romper compatibilidad.
+- **API dedicada**: nuevos endpoints `GET/PUT /inventory/stores/{store_id}/devices/{device_id}/identifier` permiten consultar y actualizar los identificadores extendidos exigiendo motivo corporativo (`X-Reason` ≥ 5 caracteres) y roles de gestión.
+- **Validaciones corporativas**: el backend bloquea duplicados de IMEI o serie contra `devices` y `device_identifiers`, registrando auditoría (`device_identifier_created`/`device_identifier_updated`) con el motivo recibido.
+- **UI y SDK actualizados**: `frontend/src/api.ts` expone los métodos `getDeviceIdentifier` y `upsertDeviceIdentifier`, mientras que `InventoryTable.tsx` muestra IMEIs duales, número de serie extendido, estado técnico y observaciones cuando están disponibles.
+- **Cobertura de pruebas**: la suite `backend/tests/test_device_identifiers.py` verifica el flujo completo, conflictos de IMEI/serie y la respuesta 404 cuando un producto aún no registra identificadores extendidos.
+
 ## Paso 4 — Documentación y pruebas automatizadas
 
 ### Tablas y rutas destacadas

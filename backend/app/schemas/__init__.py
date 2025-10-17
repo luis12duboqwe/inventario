@@ -302,6 +302,7 @@ class DeviceUpdate(BaseModel):
 class DeviceResponse(DeviceBase):
     id: int
     store_id: int
+    identifier: DeviceIdentifierResponse | None = Field(default=None)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -346,6 +347,50 @@ class DeviceSearchFilters(BaseModel):
 
 class CatalogProDeviceResponse(DeviceResponse):
     store_name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DeviceIdentifierBase(BaseModel):
+    imei_1: str | None = Field(default=None, max_length=18)
+    imei_2: str | None = Field(default=None, max_length=18)
+    numero_serie: str | None = Field(default=None, max_length=120)
+    estado_tecnico: str | None = Field(default=None, max_length=60)
+    observaciones: str | None = Field(default=None, max_length=1024)
+
+    @field_validator("imei_1", "imei_2", "numero_serie", mode="before")
+    @classmethod
+    def _normalize_identifier(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("estado_tecnico", "observaciones", mode="before")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_identifiers(self) -> "DeviceIdentifierBase":
+        identifiers = [self.imei_1, self.imei_2, self.numero_serie]
+        if not any(identifiers):
+            raise ValueError("Debe registrar al menos un IMEI o número de serie.")
+        if self.imei_1 and self.imei_2 and self.imei_1 == self.imei_2:
+            raise ValueError("El IMEI 1 y el IMEI 2 no pueden ser idénticos.")
+        return self
+
+
+class DeviceIdentifierRequest(DeviceIdentifierBase):
+    pass
+
+
+class DeviceIdentifierResponse(DeviceIdentifierBase):
+    id: int
+    producto_id: int
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1981,6 +2026,8 @@ __all__ = [
     "DeviceBase",
     "DeviceCreate",
     "DeviceResponse",
+    "DeviceIdentifierRequest",
+    "DeviceIdentifierResponse",
     "DeviceUpdate",
     "InventoryMetricsResponse",
     "InventorySummary",

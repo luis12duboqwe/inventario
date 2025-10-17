@@ -140,6 +140,14 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - El formulario `MovementForm.tsx` utiliza los nuevos campos (`producto_id`, `tipo_movimiento`, `cantidad`, `comentario`) y exige motivos ≥5 caracteres reutilizados en la cabecera `X-Reason`.
 - Las respuestas del endpoint incluyen `usuario`, `tienda_origen` y `tienda_destino` además de los identificadores para cumplir auditorías sin romper integraciones existentes.
 
+### Actualización Inventario - Gestión de IMEI y Series
+
+- Crea y mantiene la tabla `device_identifiers` (`202503010001_device_identifiers.py`) ligada a `devices.id` y con campos `imei_1`, `imei_2`, `numero_serie`, `estado_tecnico` y `observaciones`; respeta las restricciones de unicidad definidas.
+- Expone operaciones FastAPI `GET/PUT /inventory/stores/{store_id}/devices/{device_id}/identifier`, obligando cabecera `X-Reason` ≥ 5 caracteres y registrando auditoría `device_identifier_created|updated` con el motivo recibido.
+- Asegura que `_ensure_unique_identifiers` y `_ensure_unique_identifier_payload` bloqueen duplicados entre `devices` y `device_identifiers`, devolviendo el código `device_identifier_conflict` ante colisiones.
+- Propaga los datos extendidos al frontend: tipos actualizados en `frontend/src/api.ts`, helpers `getDeviceIdentifier`/`upsertDeviceIdentifier` y visualización en `InventoryTable.tsx` para IMEIs duales, serie extendida, estado técnico y observaciones.
+- Mantén cobertura en `backend/tests/test_device_identifiers.py` y extiende pruebas si agregas campos adicionales, garantizando escenarios de conflicto y respuesta 404 cuando un dispositivo no tenga identificadores registrados.
+
 ### Registro operativo — 01/03/2025
 
 - ✅ 01/03/2025 — Los reportes de inventario PDF y CSV ahora incluyen columnas financieras completas y los campos del catálogo pro (IMEI, serie, marca, modelo, proveedor, color, capacidad, lote, costo y margen), respaldados por helpers reutilizables en `services/backups.py`.

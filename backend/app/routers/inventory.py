@@ -110,6 +110,74 @@ def update_device(
     return device
 
 
+@router.get(
+    "/stores/{store_id}/devices/{device_id}/identifier",
+    response_model=schemas.DeviceIdentifierResponse,
+)
+def retrieve_device_identifier(
+    store_id: int = Path(..., ge=1),
+    device_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.get_device_identifier(db, store_id, device_id)
+    except LookupError as exc:
+        message = str(exc)
+        if message == "device_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "device_not_found", "message": "Dispositivo no encontrado"},
+            ) from exc
+        if message == "device_identifier_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "code": "device_identifier_not_found",
+                    "message": "El dispositivo no tiene identificadores registrados.",
+                },
+            ) from exc
+        raise
+
+
+@router.put(
+    "/stores/{store_id}/devices/{device_id}/identifier",
+    response_model=schemas.DeviceIdentifierResponse,
+)
+def upsert_device_identifier(
+    payload: schemas.DeviceIdentifierRequest,
+    store_id: int = Path(..., ge=1),
+    device_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.upsert_device_identifier(
+            db,
+            store_id,
+            device_id,
+            payload,
+            reason=reason,
+            performed_by_id=current_user.id if current_user else None,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dispositivo no encontrado",
+        ) from exc
+    except ValueError as exc:
+        if str(exc) == "device_identifier_conflict":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "device_identifier_conflict",
+                    "message": "El IMEI o número de serie ya fue registrado en otro producto.",
+                },
+            ) from exc
+        raise
+
+
 @router.get("/devices/search", response_model=list[schemas.CatalogProDeviceResponse])
 def advanced_device_search(
     imei: str | None = Query(default=None, min_length=10, max_length=18),

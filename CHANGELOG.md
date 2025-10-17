@@ -1,5 +1,13 @@
 # Bitácora de cambios
 
+## Actualización Inventario - Gestión de IMEI y Series
+- Se crea la tabla `device_identifiers` (migración `202503010001_device_identifiers.py`) con los campos `producto_id`, `imei_1`, `imei_2`, `numero_serie`, `estado_tecnico` y `observaciones`, vinculada uno a uno con `devices` y con restricciones de unicidad.
+- Nuevos endpoints `GET/PUT /inventory/stores/{store_id}/devices/{device_id}/identifier` permiten consultar y actualizar los identificadores extendidos exigiendo cabecera `X-Reason` y roles de gestión.
+- `_ensure_unique_identifiers` y el helper `_ensure_unique_identifier_payload` bloquean cualquier IMEI/serie duplicado entre `devices` y `device_identifiers`, devolviendo el error `device_identifier_conflict` cuando existe una colisión.
+- Se registran auditorías `device_identifier_created` y `device_identifier_updated` incluyendo el motivo corporativo recibido para cada operación.
+- El SDK web (`frontend/src/api.ts`) agrega los métodos `getDeviceIdentifier`/`upsertDeviceIdentifier` y `InventoryTable.tsx` muestra IMEI dual, número de serie extendido, estado técnico y observaciones.
+- Nueva suite `backend/tests/test_device_identifiers.py` cubre el flujo de alta, consultas posteriores, conflictos de IMEI/serie y la respuesta 404 cuando un dispositivo aún no cuenta con identificadores extendidos.
+
 ## Actualización Inventario - Movimientos de Stock
 - Renombramos columnas de `inventory_movements` (`producto_id`, `tienda_origen_id`, `tienda_destino_id`, `comentario`, `usuario_id`, `fecha`) y añadimos la migración `202502150010_inventory_movements_enhancements` para preservar integridad y nuevos índices.
 - El endpoint de movimientos valida la sucursal destino, impide saldos negativos y devuelve las nuevas claves en `MovementResponse` junto con el valor de inventario actualizado.
