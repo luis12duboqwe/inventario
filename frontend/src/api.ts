@@ -264,6 +264,27 @@ export type CashSession = {
   closed_at?: string | null;
 };
 
+export type SaleDeviceSummary = {
+  id: number;
+  sku: string;
+  name: string;
+  modelo?: string | null;
+  imei?: string | null;
+  serial?: string | null;
+};
+
+export type SaleStoreSummary = {
+  id: number;
+  name: string;
+  location?: string | null;
+};
+
+export type SaleUserSummary = {
+  id: number;
+  username: string;
+  full_name?: string | null;
+};
+
 export type SaleItem = {
   id: number;
   sale_id: number;
@@ -272,6 +293,7 @@ export type SaleItem = {
   unit_price: number;
   discount_amount: number;
   total_line: number;
+  device?: SaleDeviceSummary | null;
 };
 
 export type SaleReturn = {
@@ -302,6 +324,18 @@ export type Sale = {
   cash_session?: CashSession | null;
   items: SaleItem[];
   returns: SaleReturn[];
+  store?: SaleStoreSummary | null;
+  performed_by?: SaleUserSummary | null;
+};
+
+export type SalesFilters = {
+  storeId?: number | null;
+  customerId?: number | null;
+  userId?: number | null;
+  dateFrom?: string;
+  dateTo?: string;
+  query?: string;
+  limit?: number;
 };
 
 export type SaleCreateInput = {
@@ -1327,6 +1361,29 @@ function appendStringList(params: URLSearchParams, key: string, values?: string[
   }
 }
 
+function buildSalesFilterParams(filters: SalesFilters = {}): URLSearchParams {
+  const params = new URLSearchParams();
+  if (typeof filters.storeId === "number") {
+    params.append("store_id", String(filters.storeId));
+  }
+  if (typeof filters.customerId === "number") {
+    params.append("customer_id", String(filters.customerId));
+  }
+  if (typeof filters.userId === "number") {
+    params.append("performed_by_id", String(filters.userId));
+  }
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (filters.query) {
+    params.append("q", filters.query);
+  }
+  return params;
+}
+
 function buildInventoryValueParams(filters: InventoryValueFilters = {}): URLSearchParams {
   const params = new URLSearchParams();
   appendNumericList(params, "store_ids", filters.storeIds);
@@ -1808,13 +1865,12 @@ export function registerMovement(
   }, token);
 }
 
-export function listSales(token: string, storeId?: number, limit = 50): Promise<Sale[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (typeof storeId === "number") {
-    params.append("store_id", String(storeId));
-  }
+export function listSales(token: string, filters: SalesFilters = {}): Promise<Sale[]> {
+  const params = buildSalesFilterParams(filters);
+  const limit = typeof filters.limit === "number" ? filters.limit : 50;
+  params.append("limit", String(limit));
   const query = params.toString();
-  const path = query ? `/sales?${query}` : "/sales";
+  const path = `/sales?${query}`;
   return request<Sale[]>(path, { method: "GET" }, token);
 }
 
@@ -1832,6 +1888,20 @@ export function createSale(
     },
     token
   );
+}
+
+export function exportSalesPdf(token: string, filters: SalesFilters = {}, reason: string): Promise<Blob> {
+  const params = buildSalesFilterParams(filters);
+  const query = params.toString();
+  const path = query ? `/sales/export/pdf?${query}` : "/sales/export/pdf";
+  return request<Blob>(path, { method: "GET", headers: { "X-Reason": reason } }, token);
+}
+
+export function exportSalesExcel(token: string, filters: SalesFilters = {}, reason: string): Promise<Blob> {
+  const params = buildSalesFilterParams(filters);
+  const query = params.toString();
+  const path = query ? `/sales/export/xlsx?${query}` : "/sales/export/xlsx";
+  return request<Blob>(path, { method: "GET", headers: { "X-Reason": reason } }, token);
 }
 
 export function registerSaleReturn(

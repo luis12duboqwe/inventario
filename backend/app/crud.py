@@ -5025,21 +5025,56 @@ def delete_repair_order(
     )
 
 
-def list_sales(db: Session, *, store_id: int | None = None, limit: int = 50) -> list[models.Sale]:
+def list_sales(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    limit: int | None = 50,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+    customer_id: int | None = None,
+    performed_by_id: int | None = None,
+    query: str | None = None,
+) -> list[models.Sale]:
     statement = (
         select(models.Sale)
         .options(
-            joinedload(models.Sale.items),
+            joinedload(models.Sale.store),
+            joinedload(models.Sale.items).joinedload(models.SaleItem.device),
             joinedload(models.Sale.returns),
             joinedload(models.Sale.customer),
             joinedload(models.Sale.cash_session),
+            joinedload(models.Sale.performed_by),
         )
         .order_by(models.Sale.created_at.desc())
-        .limit(limit)
     )
     if store_id is not None:
         statement = statement.where(models.Sale.store_id == store_id)
-    return list(db.scalars(statement).unique())
+    if customer_id is not None:
+        statement = statement.where(models.Sale.customer_id == customer_id)
+    if performed_by_id is not None:
+        statement = statement.where(models.Sale.performed_by_id == performed_by_id)
+    if date_from is not None or date_to is not None:
+        start, end = _normalize_date_range(date_from, date_to)
+        statement = statement.where(
+            models.Sale.created_at >= start, models.Sale.created_at <= end
+        )
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.join(models.Sale.items).join(models.SaleItem.device)
+        statement = statement.where(
+            or_(
+                func.lower(models.Device.sku).like(normalized),
+                func.lower(models.Device.name).like(normalized),
+                func.lower(models.Device.modelo).like(normalized),
+                func.lower(models.Device.imei).like(normalized),
+                func.lower(models.Device.serial).like(normalized),
+            )
+        )
+    results = list(db.scalars(statement).unique())
+    if limit is not None:
+        return results[:limit]
+    return results
 
 
 def get_sale(db: Session, sale_id: int) -> models.Sale:
@@ -5052,6 +5087,7 @@ def get_sale(db: Session, sale_id: int) -> models.Sale:
             joinedload(models.Sale.returns),
             joinedload(models.Sale.customer),
             joinedload(models.Sale.cash_session),
+            joinedload(models.Sale.performed_by),
         )
     )
     try:
