@@ -17,25 +17,7 @@ COLUMN_NAME = "id"
 
 
 def upgrade() -> None:
-    op.execute(
-        sa.text(
-            """
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.sequences
-                    WHERE sequence_schema = 'public'
-                      AND sequence_name = :seq_name
-                ) THEN
-                    EXECUTE format('CREATE SEQUENCE %I', :seq_name);
-                END IF;
-            END;
-            $$
-            """
-        ),
-        {"seq_name": SEQUENCE_NAME},
-    )
+    op.execute(sa.text(f"CREATE SEQUENCE IF NOT EXISTS {SEQUENCE_NAME}"))
 
     op.execute(
         sa.text(
@@ -51,9 +33,8 @@ def upgrade() -> None:
 
     op.execute(
         sa.text(
-            f"ALTER TABLE {TABLE_NAME} ALTER COLUMN {COLUMN_NAME} SET DEFAULT nextval(:seq_name)"
-        ),
-        {"seq_name": SEQUENCE_NAME},
+            f"ALTER TABLE {TABLE_NAME} ALTER COLUMN {COLUMN_NAME} SET DEFAULT nextval('{SEQUENCE_NAME}')"
+        )
     )
 
 
@@ -64,22 +45,4 @@ def downgrade() -> None:
         )
     )
 
-    op.execute(
-        sa.text(
-            """
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.sequences
-                    WHERE sequence_schema = 'public'
-                      AND sequence_name = :seq_name
-                ) THEN
-                    EXECUTE format('DROP SEQUENCE %I', :seq_name);
-                END IF;
-            END;
-            $$
-            """
-        ),
-        {"seq_name": SEQUENCE_NAME},
-    )
+    op.execute(sa.text(f"DROP SEQUENCE IF EXISTS {SEQUENCE_NAME}"))
