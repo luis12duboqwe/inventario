@@ -10,10 +10,11 @@ type Props = {
 function LoginForm({ loading, error, onSubmit }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await onSubmit({ username, password });
+    await onSubmit({ username, password, otp: otp.trim() || undefined });
   };
 
   return (
@@ -38,6 +39,18 @@ function LoginForm({ loading, error, onSubmit }: Props) {
         placeholder="••••••••"
         value={password}
         onChange={(event) => setPassword(event.target.value)}
+      />
+
+      <label htmlFor="otp">Código 2FA (si aplica)</label>
+      <input
+        id="otp"
+        type="text"
+        inputMode="numeric"
+        pattern="\d{6}"
+        autoComplete="one-time-code"
+        placeholder="123456"
+        value={otp}
+        onChange={(event) => setOtp(event.target.value)}
       />
 
       {error ? <div className="alert error">{error}</div> : null}
