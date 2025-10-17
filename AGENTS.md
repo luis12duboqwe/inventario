@@ -147,6 +147,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Asegura que `_ensure_unique_identifiers` y `_ensure_unique_identifier_payload` bloqueen duplicados entre `devices` y `device_identifiers`, devolviendo el código `device_identifier_conflict` ante colisiones.
 - Propaga los datos extendidos al frontend: tipos actualizados en `frontend/src/api.ts`, helpers `getDeviceIdentifier`/`upsertDeviceIdentifier` y visualización en `InventoryTable.tsx` para IMEIs duales, serie extendida, estado técnico y observaciones.
 - Mantén cobertura en `backend/tests/test_device_identifiers.py` y extiende pruebas si agregas campos adicionales, garantizando escenarios de conflicto y respuesta 404 cuando un dispositivo no tenga identificadores registrados.
+- Añade regresiones cuando corresponda: `test_device_creation_rejects_conflicts_from_identifier_table` debe seguir comprobando que la creación de dispositivos rechaza IMEIs o series duplicados almacenados en `device_identifiers` con el error `device_identifier_conflict`.
 
 ### Registro operativo — 01/03/2025
 
