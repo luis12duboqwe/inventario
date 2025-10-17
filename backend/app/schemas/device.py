@@ -1,5 +1,5 @@
 """Pydantic schemas for Device entities."""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DeviceBase(BaseModel):
@@ -16,5 +16,4 @@ class Device(DeviceBase):
     id: int
     store_id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
