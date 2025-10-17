@@ -4348,13 +4348,24 @@ def _revert_purchase_inventory(
             continue
 
         device = get_device(db, order.store_id, order_item.device_id)
-        if device.quantity < received_qty:
-            raise ValueError("purchase_cancellation_insufficient_stock")
+        returned_total = sum(
+            ret.quantity for ret in order.returns if ret.device_id == order_item.device_id
+        )
+        net_available = received_qty - returned_total
+        if net_available <= 0:
+            continue
+
+        available_to_revert = min(net_available, device.quantity)
+        if available_to_revert <= 0:
+            continue
+
+        if available_to_revert < net_available:
+            net_available = available_to_revert
 
         current_quantity = device.quantity
         current_cost_total = _to_decimal(device.costo_unitario) * _to_decimal(current_quantity)
-        outgoing_cost_total = _to_decimal(order_item.unit_cost) * _to_decimal(received_qty)
-        remaining_quantity = current_quantity - received_qty
+        outgoing_cost_total = _to_decimal(order_item.unit_cost) * _to_decimal(net_available)
+        remaining_quantity = current_quantity - net_available
         remaining_cost_total = current_cost_total - outgoing_cost_total
         if remaining_cost_total < Decimal("0.00"):
             remaining_cost_total = Decimal("0.00")
@@ -4375,7 +4386,7 @@ def _revert_purchase_inventory(
                 source_store_id=order.store_id,
                 device_id=device.id,
                 movement_type=models.MovementType.OUT,
-                quantity=received_qty,
+                quantity=net_available,
                 comment=_build_purchase_movement_comment(
                     "Reversión OC",
                     order,
@@ -4387,7 +4398,7 @@ def _revert_purchase_inventory(
             )
         )
 
-        reversal_details[str(device.id)] = received_qty
+        reversal_details[str(device.id)] = net_available
         order_item.quantity_received = 0
         adjustments_performed = True
 

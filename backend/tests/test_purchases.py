@@ -211,3 +211,88 @@ def test_purchase_cancellation_reverts_inventory_and_records_movement(client, db
     assert "Serie: SERIE-UNICA-001" in reversal.comment
 
     settings.enable_purchases_sales = False
+
+
+def test_purchase_cancellation_respects_previous_returns(client, db_session):
+    settings.enable_purchases_sales = True
+    token, user_id = _bootstrap_admin(client, db_session)
+    auth_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Motivo devolucion"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Retornos", "location": "MTY", "timezone": "America/Mexico_City"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "SKU-RET-01",
+            "name": "Equipo retornable",
+            "quantity": 0,
+            "unit_price": 1200.0,
+            "costo_unitario": 900.0,
+            "margen_porcentaje": 20.0,
+        },
+        headers=auth_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    order_payload = {
+        "store_id": store_id,
+        "supplier": "Proveedor Retornos",
+        "items": [
+            {"device_id": device_id, "quantity_ordered": 10, "unit_cost": 700.0},
+        ],
+    }
+    order_response = client.post("/purchases", json=order_payload, headers=auth_headers)
+    assert order_response.status_code == status.HTTP_201_CREATED
+    order_id = order_response.json()["id"]
+
+    receive_response = client.post(
+        f"/purchases/{order_id}/receive",
+        json={"items": [{"device_id": device_id, "quantity": 10}]},
+        headers={**auth_headers, "X-Reason": "Recepcion total"},
+    )
+    assert receive_response.status_code == status.HTTP_200_OK
+
+    return_response = client.post(
+        f"/purchases/{order_id}/returns",
+        json={"device_id": device_id, "quantity": 2, "reason": "Defecto"},
+        headers={**auth_headers, "X-Reason": "Retorno parcial"},
+    )
+    assert return_response.status_code == status.HTTP_200_OK
+
+    cancel_response = client.post(
+        f"/purchases/{order_id}/cancel",
+        headers={**auth_headers, "X-Reason": "Cancelacion proveedor"},
+    )
+    assert cancel_response.status_code == status.HTTP_200_OK
+    assert cancel_response.json()["status"] == "CANCELADA"
+
+    updated_device = db_session.execute(
+        select(models.Device).where(models.Device.id == device_id)
+    ).scalar_one()
+    assert updated_device.quantity == 0
+    assert Decimal(str(updated_device.costo_unitario)) == Decimal("0.00")
+
+    movements = list(
+        db_session.execute(
+            select(models.InventoryMovement)
+            .where(models.InventoryMovement.device_id == device_id)
+            .order_by(models.InventoryMovement.created_at)
+        ).scalars()
+    )
+    assert len(movements) == 3
+    in_movements = [m for m in movements if m.movement_type == models.MovementType.IN]
+    assert len(in_movements) == 1 and in_movements[0].quantity == 10
+    return_movement = next(m for m in movements if "Devolución proveedor" in (m.comment or ""))
+    assert return_movement.quantity == 2
+    cancellation_movement = next(m for m in movements if "Reversión OC" in (m.comment or ""))
+    assert cancellation_movement.quantity == 8
+    assert cancellation_movement.performed_by_id == user_id
+
+    settings.enable_purchases_sales = False
