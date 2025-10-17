@@ -4347,14 +4347,23 @@ def _revert_purchase_inventory(
         if received_qty <= 0:
             continue
 
+        returned_total = sum(
+            purchase_return.quantity
+            for purchase_return in order.returns
+            if purchase_return.device_id == order_item.device_id
+        )
+        effective_qty = received_qty - returned_total
+        if effective_qty <= 0:
+            continue
+
         device = get_device(db, order.store_id, order_item.device_id)
-        if device.quantity < received_qty:
+        if device.quantity < effective_qty:
             raise ValueError("purchase_cancellation_insufficient_stock")
 
         current_quantity = device.quantity
         current_cost_total = _to_decimal(device.costo_unitario) * _to_decimal(current_quantity)
-        outgoing_cost_total = _to_decimal(order_item.unit_cost) * _to_decimal(received_qty)
-        remaining_quantity = current_quantity - received_qty
+        outgoing_cost_total = _to_decimal(order_item.unit_cost) * _to_decimal(effective_qty)
+        remaining_quantity = current_quantity - effective_qty
         remaining_cost_total = current_cost_total - outgoing_cost_total
         if remaining_cost_total < Decimal("0.00"):
             remaining_cost_total = Decimal("0.00")
@@ -4375,7 +4384,7 @@ def _revert_purchase_inventory(
                 source_store_id=order.store_id,
                 device_id=device.id,
                 movement_type=models.MovementType.OUT,
-                quantity=received_qty,
+                quantity=effective_qty,
                 comment=_build_purchase_movement_comment(
                     "Reversión OC",
                     order,
@@ -4387,8 +4396,8 @@ def _revert_purchase_inventory(
             )
         )
 
-        reversal_details[str(device.id)] = received_qty
-        order_item.quantity_received = 0
+        reversal_details[str(device.id)] = effective_qty
+        order_item.quantity_received = returned_total
         adjustments_performed = True
 
     if adjustments_performed:
