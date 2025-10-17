@@ -76,15 +76,22 @@ def test_inventory_valuation_view_and_service(db_session):
     by_sku = {valuation.sku: valuation for valuation in valuations}
     assert float(by_sku["SKU-PHONE-A"].costo_promedio_ponderado) == pytest.approx(95.0)
     assert float(by_sku["SKU-ACC-01"].costo_promedio_ponderado) == pytest.approx(50.0)
+    assert float(by_sku["SKU-PHONE-A"].valor_costo_producto) == pytest.approx(950.0)
 
     expected_store_total = 10 * 150 + 5 * 250 + 2 * 80
     assert float(by_sku["SKU-PHONE-A"].valor_total_tienda) == pytest.approx(expected_store_total)
     assert float(by_sku["SKU-PHONE-B"].valor_total_general) == pytest.approx(expected_store_total)
+    expected_store_cost = 10 * 95 + 5 * 210 + 2 * 50
+    assert float(by_sku["SKU-PHONE-B"].valor_costo_tienda) == pytest.approx(expected_store_cost)
+    assert float(by_sku["SKU-PHONE-B"].valor_costo_general) == pytest.approx(expected_store_cost)
 
     assert float(by_sku["SKU-PHONE-A"].margen_unitario) == pytest.approx(55.0)
     assert float(by_sku["SKU-PHONE-A"].margen_producto_porcentaje) == pytest.approx(36.67, rel=1e-3)
+    assert float(by_sku["SKU-PHONE-A"].valor_total_categoria) == pytest.approx(2750.0)
     assert float(by_sku["SKU-PHONE-B"].margen_categoria_valor) == pytest.approx(750.0)
     assert float(by_sku["SKU-PHONE-B"].margen_categoria_porcentaje) == pytest.approx(27.27, rel=1e-3)
+    assert float(by_sku["SKU-PHONE-B"].margen_total_tienda) == pytest.approx(810.0)
+    assert float(by_sku["SKU-ACC-01"].margen_total_general) == pytest.approx(810.0)
 
     accessories = inventory_service.calculate_inventory_valuation(
         db_session, categories=["Accesorios"], store_ids=[store.id]

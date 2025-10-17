@@ -152,6 +152,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 ### Actualización Inventario - Valoraciones y Costos
 
 - Asegura que la migración `202503010002_inventory_valuation_view.py` se ejecute para crear la vista `valor_inventario` con costos promedio ponderados, totales por tienda y márgenes por categoría.
+- Conserva las columnas comparativas (`valor_costo_*`, `valor_total_categoria`, `margen_total_*`) que permiten contrastar el valor de venta frente al costo y los márgenes acumulados por sucursal y corporativo.
 - Utiliza el servicio `services/inventory.calculate_inventory_valuation` y el esquema `InventoryValuation` para exponer la vista sin romper compatibilidad con rutas actuales.
 - Mantén la vista disponible en entornos de prueba invocando los helpers `create_valor_inventario_view`/`drop_valor_inventario_view` desde `backend/app/db/valor_inventario_view.py`.
 - Extiende o ajusta `backend/tests/test_inventory_valuation.py` si agregas columnas adicionales, garantizando validación de márgenes y filtros por tienda/categoría.
