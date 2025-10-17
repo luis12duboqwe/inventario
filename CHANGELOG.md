@@ -58,10 +58,12 @@
 ## Actualización Clientes - Parte 2 (Lógica Funcional y Control) (20/10/2025 15:20 UTC)
 - Nueva migración `202503010006_customer_ledger_entries.py` que incorpora la tabla `customer_ledger_entries`, enum de tipo de movimiento y sincronización automática vía `sync_outbox`.
 - El backend suma `/customers/{id}/notes`, `/customers/{id}/payments` y `/customers/{id}/summary`; cada endpoint exige motivo corporativo, actualiza historial/ledger y ofrece un resumen financiero con ventas, facturas, pagos y movimientos recientes.
-- Las ventas a crédito verifican el límite disponible antes de confirmarse, registran cargos y ajustes en la bitácora al editar/cancelar/devolver y reducen saldos al aplicar pagos.
+- Las ventas a crédito verifican el límite disponible antes de confirmarse, registran cargos y ajustes en la bitácora al crear/editar/cancelar/devolver y reducen saldos al aplicar pagos.
+- Se normalizan `status` y `customer_type`, se rechazan límites de crédito o saldos negativos y cada entrada del ledger se serializa mediante `_customer_ledger_payload` para sincronizarse en `sync_outbox`.
 - `frontend/src/modules/operations/components/Customers.tsx` permite registrar pagos, consultar un resumen financiero interactivo, añadir estados `moroso`/`vip` y gestionar notas dedicadas; el POS advierte cuando la venta agotará o excederá el crédito.
 - Se renombra el campo `metadata` a `details` en las respuestas del ledger y en los consumidores de frontend para prevenir fallos de serialización detectados en las pruebas al consumir `/customers/{id}/summary`.
-- Pruebas nuevas (`test_customer_credit_limit_blocks_sale`, `test_customer_payment_updates_summary`) validan el bloqueo de ventas por sobreendeudamiento y la coherencia del resumen tras registrar abonos.
+- Pruebas nuevas (`test_customer_credit_limit_blocks_sale`, `test_customer_payments_and_summary`) validan el bloqueo de ventas por sobreendeudamiento y la coherencia del resumen tras registrar abonos.
+- Corrección 22/10/2025 09:40 UTC: se serializa correctamente el campo `created_by` en las respuestas de pagos y se asocian las devoluciones POS a la persona que procesa cada asiento en el ledger, evitando errores `ResponseValidationError` en `/customers/{id}/payments`.
 
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.

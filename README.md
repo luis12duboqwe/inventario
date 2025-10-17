@@ -151,10 +151,12 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 
 - La migración `202503010006_customer_ledger_entries.py` crea la tabla `customer_ledger_entries` y el enumerado `customer_ledger_entry_type`, registrando ventas, pagos, ajustes y notas con saldo posterior, referencia y metadatos sincronizados en `sync_outbox`.
 - Los endpoints `/customers/{id}/notes`, `/customers/{id}/payments` y `/customers/{id}/summary` exigen motivo corporativo, actualizan historial e integran un resumen financiero con ventas, facturas, pagos recientes y bitácora consolidada.
-- Las ventas a crédito invocan `_validate_customer_credit` para bloquear montos que excedan el límite autorizado, registran asientos en la bitácora y actualizan los saldos ante ediciones, cancelaciones y devoluciones; el POS alerta cuando la venta agotará o excederá el crédito disponible.
+- Las ventas a crédito invocan `_validate_customer_credit` para bloquear montos que excedan el límite autorizado, registran asientos en la bitácora y actualizan los saldos ante altas, ediciones, cancelaciones y devoluciones; el POS alerta cuando la venta agotará o excederá el crédito disponible.
+- Se normalizan los campos `status` y `customer_type`, se rechazan límites de crédito o saldos negativos y cada asiento de la bitácora (`sale`, `payment`, `adjustment`, `note`) se sincroniza mediante `_customer_ledger_payload` y `_sync_customer_ledger_entry`.
 - El módulo `Customers.tsx` añade captura de pagos, resumen financiero interactivo, estados adicionales (`moroso`, `vip`), control de notas dedicado y reflejo inmediato del crédito disponible por cliente.
 - Se reemplaza el campo `metadata` por `details` en las respuestas del ledger y en el frontend para evitar errores de serialización en las nuevas rutas `/customers/{id}/payments` y `/customers/{id}/summary`, manteniendo compatibilidad con el historial existente.
-- Se incorporan las pruebas `test_customer_credit_limit_blocks_sale` y `test_customer_payment_updates_summary` que validan el bloqueo de ventas con sobreendeudamiento, la reducción de saldo tras registrar pagos y la presencia de entradas en el resumen corporativo.
+- Se incorporan las pruebas `test_customer_credit_limit_blocks_sale` y `test_customer_payments_and_summary` que validan el bloqueo de ventas con sobreendeudamiento, la reducción de saldo tras registrar pagos y la presencia de entradas en el resumen corporativo.
+- Se corrige la serialización del campo `created_by` en los pagos registrados para evitar `ResponseValidationError` y se refuerza la bitácora de devoluciones POS enlazando el usuario que procesa cada asiento.
 
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
