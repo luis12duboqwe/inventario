@@ -121,6 +121,51 @@ def test_inventory_csv_snapshot(client, tmp_path) -> None:
     assert total_row[valor_total_index] == "48000.00"
 
 
+def test_inventory_current_csv_export(client) -> None:
+    headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Centro", "location": "CDMX", "timezone": "America/Mexico_City"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {
+        "sku": "SM-010",
+        "name": "Softmobile Mini",
+        "quantity": 6,
+        "unit_price": 9500,
+    }
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+
+    csv_response = client.get(
+        "/reports/inventory/current/csv",
+        headers={**headers, "X-Reason": "Revision existencias"},
+    )
+    assert csv_response.status_code == status.HTTP_200_OK
+    assert csv_response.headers["content-type"].startswith("text/csv")
+
+    content = csv_response.content.decode("utf-8")
+    assert "Existencias actuales" in content
+    assert "Sucursal" in content
+    assert "Softmobile Mini" not in content
+    assert "Sucursal Centro" in content
+
+    reader = csv.reader(StringIO(content))
+    rows = list(reader)
+    header_row = next(row for row in rows if row and row[0] == "Sucursal")
+    store_row = next(row for row in rows if row and row[0] == "Sucursal Centro")
+
+    assert header_row == ["Sucursal", "Dispositivos", "Unidades", "Valor total (MXN)"]
+    assert store_row[1] == "1"
+    assert store_row[2] == "6"
+    assert float(store_row[3]) > 0
+
+
 def test_inventory_supplier_batches_overview(client) -> None:
     headers = _auth_headers(client)
     reason_headers = {**headers, "X-Reason": "Registro de lotes"}

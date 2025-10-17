@@ -118,6 +118,12 @@ export function useInventoryModule() {
     [dashboard.token],
   );
 
+  const downloadInventoryCurrentCsv = useCallback(
+    (reason: string, filters: InventoryCurrentFilters = {}) =>
+      inventoryService.downloadInventoryCurrentCsv(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
   const fetchInventoryValueReport = useCallback(
     (filters: InventoryValueFilters = {}) =>
       inventoryService.fetchInventoryValueReport(dashboard.token, filters),
@@ -186,6 +192,7 @@ export function useInventoryModule() {
     refreshSummary: dashboard.refreshSummary,
     storeValuationSnapshot,
     fetchInventoryCurrentReport,
+    downloadInventoryCurrentCsv,
     fetchInventoryValueReport,
     fetchInventoryMovementsReport,
     fetchTopProductsReport,

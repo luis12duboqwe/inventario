@@ -441,6 +441,39 @@ def inventory_current(
     return crud.get_inventory_current_report(db, store_ids=store_ids)
 
 
+@router.get("/inventory/current/csv")
+def inventory_current_csv(
+    store_ids: list[int] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    report = crud.get_inventory_current_report(db, store_ids=store_ids)
+
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Existencias actuales"])
+    writer.writerow(["Sucursales consideradas", report.totals.stores])
+    writer.writerow(["Dispositivos catalogados", report.totals.devices])
+    writer.writerow(["Unidades totales", report.totals.total_units])
+    writer.writerow(["Valor consolidado (MXN)", f"{report.totals.total_value:.2f}"])
+    writer.writerow([])
+    writer.writerow(["Sucursal", "Dispositivos", "Unidades", "Valor total (MXN)"])
+    for store in report.stores:
+        writer.writerow(
+            [
+                store.store_name,
+                store.device_count,
+                store.total_units,
+                f"{store.total_value:.2f}",
+            ]
+        )
+
+    buffer.seek(0)
+    headers = {"Content-Disposition": "attachment; filename=softmobile_existencias.csv"}
+    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+
+
 @router.get("/inventory/value", response_model=schemas.InventoryValueReport)
 def inventory_value(
     store_ids: list[int] | None = Query(default=None),
