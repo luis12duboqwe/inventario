@@ -48,6 +48,7 @@ SENSITIVE_PREFIXES = (
     "/transfers",
     "/security",
     "/sync/outbox",
+    "/users",
 )
 
 ROLE_PROTECTED_PREFIXES: dict[str, set[str]] = {
