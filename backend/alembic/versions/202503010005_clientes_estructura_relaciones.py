@@ -192,7 +192,7 @@ def upgrade() -> None:
                 "    WHERE correo IS NOT NULL"
                 ")"
                 "UPDATE clientes AS c "
-                "SET correo = CONCAT('duplicado+', c.id_cliente, '@invalid.local') "
+                "SET correo = 'duplicado+' || CAST(c.id_cliente AS TEXT) || '@invalid.local' "
                 "FROM duplicates d "
                 "WHERE c.id_cliente = d.id_cliente AND d.rn > 1"
             )
