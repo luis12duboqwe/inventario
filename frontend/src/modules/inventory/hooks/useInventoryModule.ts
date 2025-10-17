@@ -5,6 +5,7 @@ import type {
   InventoryMovementsFilters,
   InventoryTopProductsFilters,
   InventoryValueFilters,
+  MovementReportEntry,
   SupplierBatchOverviewItem,
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
@@ -17,6 +18,8 @@ export function useInventoryModule() {
     SupplierBatchOverviewItem[]
   >([]);
   const [supplierBatchLoading, setSupplierBatchLoading] = useState(false);
+  const [recentMovements, setRecentMovements] = useState<MovementReportEntry[]>([]);
+  const [recentMovementsLoading, setRecentMovementsLoading] = useState(false);
 
   const refreshSupplierBatchOverview = useCallback(async () => {
     if (!dashboard.selectedStoreId) {
@@ -111,6 +114,54 @@ export function useInventoryModule() {
       hasRelevantDifference: differenceAbs >= 1,
     };
   }, [dashboard.selectedStore, dashboard.selectedStoreId, dashboard.summary]);
+
+  const stockByCategory = useMemo(() => {
+    if (!dashboard.metrics) {
+      return [] as Array<{ label: string; value: number }>;
+    }
+    return dashboard.metrics.stock_breakdown.map((entry) => ({
+      label: entry.label,
+      value: entry.value,
+    }));
+  }, [dashboard.metrics]);
+
+  const refreshRecentMovements = useCallback(async () => {
+    try {
+      setRecentMovementsLoading(true);
+      const filters: InventoryMovementsFilters = {};
+      if (dashboard.selectedStoreId) {
+        filters.storeIds = [dashboard.selectedStoreId];
+      }
+      const now = new Date();
+      const pastDate = new Date(now);
+      pastDate.setDate(now.getDate() - 14);
+      filters.dateFrom = pastDate.toISOString();
+      filters.dateTo = now.toISOString();
+      const report = await inventoryService.fetchInventoryMovementsReport(
+        dashboard.token,
+        filters,
+      );
+      setRecentMovements(report.movimientos.slice(0, 8));
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible consultar los movimientos recientes.";
+      dashboard.setError(message);
+      dashboard.pushToast({ message, variant: "error" });
+    } finally {
+      setRecentMovementsLoading(false);
+    }
+  }, [
+    dashboard.pushToast,
+    dashboard.selectedStoreId,
+    dashboard.setError,
+    dashboard.token,
+  ]);
+
+  useEffect(() => {
+    void refreshRecentMovements();
+  }, [refreshRecentMovements, dashboard.lastInventoryRefresh]);
 
   const fetchInventoryCurrentReport = useCallback(
     (filters: InventoryCurrentFilters = {}) =>
@@ -235,6 +286,10 @@ export function useInventoryModule() {
     supplierBatchOverview,
     supplierBatchLoading,
     refreshSupplierBatchOverview,
+    stockByCategory,
+    recentMovements,
+    recentMovementsLoading,
+    refreshRecentMovements,
     lowStockThreshold: dashboard.currentLowStockThreshold,
     updateLowStockThreshold: dashboard.updateLowStockThreshold,
     refreshSummary: dashboard.refreshSummary,

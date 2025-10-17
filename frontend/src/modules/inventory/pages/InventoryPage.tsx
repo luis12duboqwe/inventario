@@ -3,6 +3,16 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
 import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   AlertTriangle,
   BarChart3,
   Boxes,
@@ -55,6 +65,15 @@ type TabContent = TabOption<InventoryTabId> & { content: ReactNode };
 
 const estadoOptions: Device["estado_comercial"][] = ["nuevo", "A", "B", "C"];
 
+const CATEGORY_PALETTE = [
+  "#22d3ee",
+  "#38bdf8",
+  "#60a5fa",
+  "#818cf8",
+  "#a855f7",
+  "#f97316",
+] as const;
+
 const resolveLowStockSeverity = (quantity: number): "critical" | "warning" | "notice" => {
   if (quantity <= 1) {
     return "critical";
@@ -83,6 +102,7 @@ function InventoryPage() {
     formatCurrency,
     topStores,
     lowStockDevices,
+    stockByCategory,
     handleMovement,
     handleDeviceUpdate,
     backupHistory,
@@ -95,6 +115,9 @@ function InventoryPage() {
     supplierBatchOverview,
     supplierBatchLoading,
     refreshSupplierBatchOverview,
+    recentMovements,
+    recentMovementsLoading,
+    refreshRecentMovements,
     lowStockThreshold,
     updateLowStockThreshold,
     refreshSummary,
@@ -203,6 +226,20 @@ function InventoryPage() {
   const highlightedDevices = useMemo(
     () => new Set(lowStockDevices.map((entry) => entry.device_id)),
     [lowStockDevices],
+  );
+
+  const categoryChartData = useMemo(
+    () =>
+      stockByCategory.slice(0, CATEGORY_PALETTE.length).map((entry) => ({
+        label: entry.label || "Sin categoría",
+        value: entry.value,
+      })),
+    [stockByCategory],
+  );
+
+  const totalCategoryUnits = useMemo(
+    () => categoryChartData.reduce((total, entry) => total + entry.value, 0),
+    [categoryChartData],
   );
 
   const refreshBadge: StatusBadge = lastInventoryRefresh
@@ -577,6 +614,82 @@ function InventoryPage() {
         )}
       </section>
 
+      <section className="card chart-card">
+        <header className="card-header">
+          <div>
+            <h2>Stock por categoría</h2>
+            <p className="card-subtitle">Visualiza la distribución de existencias en inventario.</p>
+          </div>
+          <span className="pill neutral">
+            Total {totalCategoryUnits.toLocaleString("es-MX")}
+            {" "}uds
+          </span>
+        </header>
+        {categoryChartData.length > 0 ? (
+          <>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={categoryChartData} margin={{ top: 8, right: 12, left: 0, bottom: 12 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(56, 189, 248, 0.18)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  stroke="var(--text-secondary)"
+                  tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  stroke="var(--text-secondary)"
+                  tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  cursor={{ fill: "rgba(34, 211, 238, 0.12)" }}
+                  contentStyle={{
+                    backgroundColor: "rgba(15, 23, 42, 0.96)",
+                    border: "1px solid rgba(56, 189, 248, 0.35)",
+                    borderRadius: 12,
+                    color: "var(--text-primary)",
+                  }}
+                  labelStyle={{ color: "var(--accent)" }}
+                  formatter={(value: number) => [
+                    `${Number(value).toLocaleString("es-MX")} unidades`,
+                    "Existencias",
+                  ]}
+                />
+                <Bar dataKey="value" radius={[12, 12, 0, 0]}>
+                  {categoryChartData.map((entry, index) => (
+                    <Cell
+                      key={`${entry.label}-${index}`}
+                      fill={CATEGORY_PALETTE[index % CATEGORY_PALETTE.length]}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <ul className="inventory-category-list">
+              {categoryChartData.map((entry) => {
+                const share =
+                  totalCategoryUnits === 0
+                    ? 0
+                    : Math.round((entry.value / totalCategoryUnits) * 100);
+                return (
+                  <li key={entry.label}>
+                    <span>{entry.label}</span>
+                    <span>
+                      {entry.value.toLocaleString("es-MX")} uds · {share}%
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        ) : (
+          <p className="muted-text">Aún no se registra inventario por categoría.</p>
+        )}
+      </section>
+
       <section className="card wide">
         <header className="card-header">
           <div>
@@ -630,6 +743,65 @@ function InventoryPage() {
           </ul>
         )}
       </section>
+
+      <section className="card">
+        <header className="card-header">
+          <div>
+            <h2>Últimos movimientos</h2>
+            <p className="card-subtitle">Entradas, salidas y ajustes más recientes.</p>
+          </div>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => {
+              void refreshRecentMovements();
+            }}
+            disabled={recentMovementsLoading}
+          >
+            <RefreshCcw aria-hidden size={18} />
+            <span>{recentMovementsLoading ? "Actualizando…" : "Actualizar"}</span>
+          </button>
+        </header>
+        {recentMovementsLoading ? (
+          <p className="muted-text">Cargando movimientos recientes…</p>
+        ) : recentMovements.length === 0 ? (
+          <p className="muted-text">No se registran movimientos en los últimos 14 días.</p>
+        ) : (
+          <ul className="inventory-timeline">
+            {recentMovements.map((movement) => {
+              const destination = movement.tienda_destino ?? "Inventario corporativo";
+              const origin = movement.tienda_origen;
+              return (
+                <li
+                  key={movement.id}
+                  className={`inventory-timeline__item inventory-timeline__item--${movement.tipo_movimiento}`}
+                >
+                  <div className="inventory-timeline__meta">
+                    <span className="inventory-timeline__type">{movement.tipo_movimiento.toUpperCase()}</span>
+                    <span className="inventory-timeline__date">
+                      {new Date(movement.fecha).toLocaleString("es-MX")}
+                    </span>
+                  </div>
+                  <div className="inventory-timeline__summary">
+                    <span>
+                      {movement.cantidad.toLocaleString("es-MX")} unidades · {formatCurrency(movement.valor_total)}
+                    </span>
+                    {movement.usuario ? (
+                      <span className="inventory-timeline__user">{movement.usuario}</span>
+                    ) : null}
+                  </div>
+                  <p className="inventory-timeline__route">
+                    {origin ? `${origin} → ${destination}` : destination}
+                  </p>
+                  {movement.comentario ? (
+                    <p className="inventory-timeline__comment">{movement.comentario}</p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 
@@ -649,7 +821,7 @@ function InventoryPage() {
           </div>
         </header>
         <div className="inventory-controls">
-          <label className="input-with-icon" aria-label="Buscar en inventario">
+          <label className="input-with-icon" aria-label="Buscar por IMEI, modelo o SKU">
             <Search size={16} aria-hidden />
             <input
               type="search"
@@ -661,7 +833,7 @@ function InventoryPage() {
                   setGlobalSearchTerm(value);
                 }
               }}
-              placeholder="Buscar por SKU, categoría o ubicación"
+              placeholder="Buscar por IMEI, modelo o SKU"
             />
           </label>
           <label className="select-inline">
