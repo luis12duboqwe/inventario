@@ -2514,23 +2514,27 @@ def get_inventory_movements_report(
 
     for movement in movements:
         value = _movement_value(movement)
-        total_units += movement.quantity
-        total_value += value
+        contributes_to_totals = movement.movement_type != models.MovementType.ADJUST
+        if contributes_to_totals:
+            total_units += movement.quantity
+            total_value += value
 
         type_data = totals_by_type.setdefault(
             movement.movement_type,
             {"quantity": 0, "value": Decimal("0")},
         )
-        type_data["quantity"] = int(type_data["quantity"]) + movement.quantity
-        type_data["value"] = _to_decimal(type_data["value"]) + value
+        if contributes_to_totals:
+            type_data["quantity"] = int(type_data["quantity"]) + movement.quantity
+            type_data["value"] = _to_decimal(type_data["value"]) + value
 
         period_key = (movement.created_at.date(), movement.movement_type)
         period_data = period_map.setdefault(
             period_key,
             {"quantity": 0, "value": Decimal("0")},
         )
-        period_data["quantity"] = int(period_data["quantity"]) + movement.quantity
-        period_data["value"] = _to_decimal(period_data["value"]) + value
+        if contributes_to_totals:
+            period_data["quantity"] = int(period_data["quantity"]) + movement.quantity
+            period_data["value"] = _to_decimal(period_data["value"]) + value
 
         report_entries.append(
             schemas.MovementReportEntry(
