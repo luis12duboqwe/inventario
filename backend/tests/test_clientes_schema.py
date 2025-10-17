@@ -44,6 +44,8 @@ def test_clientes_estructura_general(db_session) -> None:
     assert "ix_clientes_nombre" in indexes
     assert bool(indexes["ix_clientes_nombre"]["unique"]) is True
     assert "ix_clientes_telefono" in indexes
+    assert "ix_clientes_estado" in indexes
+    assert "ix_clientes_tipo" in indexes
 
     unique_constraints = inspector.get_unique_constraints("clientes")
     has_unique_email = any(
