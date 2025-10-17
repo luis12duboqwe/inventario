@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import String, case, cast, func, or_, select
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 
@@ -1056,7 +1056,7 @@ def list_devices(
                 func.lower(models.Device.color).like(normalized),
                 func.lower(models.Device.serial).like(normalized),
                 func.lower(models.Device.imei).like(normalized),
-                func.lower(models.Device.estado_comercial).like(normalized),
+                func.lower(cast(models.Device.estado_comercial, String)).like(normalized),
             )
         )
     statement = statement.order_by(models.Device.sku.asc())
