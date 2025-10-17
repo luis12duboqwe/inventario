@@ -86,6 +86,13 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Documentación corporativa**: este README, el `CHANGELOG.md` y `AGENTS.md` registran la actualización bajo el apartado «Actualización Compras - Parte 1 (Estructura y Relaciones)» para mantener trazabilidad empresarial.
 - **17/10/2025 10:45 UTC — Revalidación estructural**: se volvió a inspeccionar el esquema con SQLAlchemy `inspect`, confirmando tipos `Integer`/`Numeric`/`DateTime`, claves foráneas (`compras.proveedor_id`, `compras.usuario_id`, `detalle_compras.compra_id`, `detalle_compras.producto_id`) y la presencia de índices `ix_*` exigidos por el mandato.
 
+## Actualización Compras - Parte 2 (Lógica e Integración con Inventario)
+
+- **Recepciones trazables**: cada recepción de una orden crea movimientos de tipo **entrada** en `inventory_movements` con comentarios normalizados que incluyen proveedor, motivo corporativo e identificadores IMEI/serie, manteniendo al usuario responsable en `performed_by_id`.
+- **Reversión segura de cancelaciones**: al anular una orden se revierten todas las unidades recibidas mediante movimientos **salida**, se recalcula el costo promedio ponderado y se deja rastro del proveedor y los artículos revertidos en la bitácora.
+- **Devoluciones con costo promedio actualizado**: las devoluciones al proveedor descuentan stock, ajustan el costo ponderado y registran la operación en inventario reutilizando el formato corporativo de comentarios.
+- **Cobertura de pruebas**: `backend/tests/test_purchases.py` incorpora validaciones de recepción, devolución y cancelación para garantizar el cálculo de stock/costo y la generación de movimientos conforme a la política corporativa.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Se renombran las tablas operativas del módulo POS a `ventas` y `detalle_ventas`, alineando los identificadores físicos con los

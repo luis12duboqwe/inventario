@@ -12,6 +12,12 @@
 - Nuevos modelos ORM (`Proveedor`, `Compra`, `DetalleCompra`) y la prueba `backend/tests/test_compras_schema.py` validan tipos, índices y relaciones para prevenir regresiones en el módulo clásico de compras.
 - **17/10/2025 10:45 UTC** — Revalidación periódica mediante `inspect(engine)` confirma que los tipos numéricos/fecha se conservan, que las claves foráneas aplican `RESTRICT`/`CASCADE` según lo previsto y que los índices `ix_proveedores_nombre`, `ix_compras_proveedor_id`, `ix_compras_usuario_id`, `ix_detalle_compras_compra_id` e `ix_detalle_compras_producto_id` permanecen activos.
 
+## Actualización Compras - Parte 2 (Lógica e Integración con Inventario) (17/10/2025 11:30 UTC)
+- Las recepciones de órdenes generan movimientos `entrada` en `inventory_movements` con comentarios que incluyen proveedor, motivo corporativo e identificadores IMEI/serie, garantizando trazabilidad junto al usuario responsable (`performed_by_id`).
+- La cancelación de una orden revierte las unidades recibidas mediante movimientos `salida`, recalcula el costo promedio ponderado y registra los artículos revertidos en la auditoría.
+- Las devoluciones al proveedor ajustan el stock y el costo ponderado antes de crear el movimiento, manteniendo sincronizado el valor del inventario por tienda.
+- `backend/tests/test_purchases.py` agrega casos de recepción, devolución y cancelación para asegurar que stock, costos y movimientos se actualicen conforme a la política corporativa.
+
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
 - Migración `202503010003_sales_ventas_structure.py` garantiza claves foráneas activas hacia clientes, usuarios, ventas y dispositivos, creando índices solo cuando faltan en despliegues anteriores.
