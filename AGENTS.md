@@ -219,6 +219,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Las claves foráneas `compras.proveedor_id → proveedores.id_proveedor`, `compras.usuario_id → users.id`, `detalle_compras.compra_id → compras.id_compra` y `detalle_compras.producto_id → devices.id` (alias corporativo de productos) quedan reforzadas con índices para acelerar consultas.
 - La migración `202502150011_compras_estructura_relaciones.py` es idempotente: sólo crea/ajusta estructuras cuando faltan y respeta instalaciones existentes.
 - La prueba `backend/tests/test_compras_schema.py` inspecciona columnas, tipos, índices y relaciones para prevenir regresiones estructurales en compras y proveedores.
+- **17/10/2025 10:45 UTC** — Auditoría recurrente confirma que los tipos (`Integer`, `Numeric`, `DateTime`, `Text`) y claves `RESTRICT`/`CASCADE` se conservan en base de datos y que los índices `ix_proveedores_nombre`, `ix_compras_*` e `ix_detalle_compras_*` permanecen vigentes tras ejecutar la suite.
 
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 

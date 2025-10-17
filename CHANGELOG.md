@@ -10,6 +10,7 @@
 - Se formalizan las tablas `proveedores`, `compras` y `detalle_compras` con las columnas requeridas (`id_proveedor`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `notas`, `id_compra`, `proveedor_id`, `usuario_id`, `fecha`, `total`, `impuesto`, `forma_pago`, `estado`, `id_detalle`, `compra_id`, `producto_id`, `cantidad`, `costo_unitario`, `subtotal`).
 - La migración `202502150011_compras_estructura_relaciones.py` crea o ajusta estructuras faltantes, reforzando las claves foráneas `compras → proveedores`, `compras → users`, `detalle_compras → compras` y `detalle_compras → devices` con índices dedicados.
 - Nuevos modelos ORM (`Proveedor`, `Compra`, `DetalleCompra`) y la prueba `backend/tests/test_compras_schema.py` validan tipos, índices y relaciones para prevenir regresiones en el módulo clásico de compras.
+- **17/10/2025 10:45 UTC** — Revalidación periódica mediante `inspect(engine)` confirma que los tipos numéricos/fecha se conservan, que las claves foráneas aplican `RESTRICT`/`CASCADE` según lo previsto y que los índices `ix_proveedores_nombre`, `ix_compras_proveedor_id`, `ix_compras_usuario_id`, `ix_detalle_compras_compra_id` e `ix_detalle_compras_producto_id` permanecen activos.
 
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
