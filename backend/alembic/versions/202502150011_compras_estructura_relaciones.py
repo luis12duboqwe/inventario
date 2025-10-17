@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Sequence
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -20,8 +22,24 @@ def _index_names(inspector: sa.Inspector, table_name: str) -> set[str]:
     return {index["name"] for index in inspector.get_indexes(table_name)}
 
 
-def _foreign_key_names(inspector: sa.Inspector, table_name: str) -> set[str]:
-    return {fk["name"] for fk in inspector.get_foreign_keys(table_name)}
+def _foreign_key_exists(
+    inspector: sa.Inspector,
+    table_name: str,
+    constrained_columns: Sequence[str],
+    referred_table: str,
+    referred_columns: Sequence[str],
+) -> bool:
+    constrained = set(constrained_columns)
+    referred = set(referred_columns)
+    for fk in inspector.get_foreign_keys(table_name):
+        if set(fk.get("constrained_columns", ())) != constrained:
+            continue
+        if fk.get("referred_table") != referred_table:
+            continue
+        if set(fk.get("referred_columns", ())) != referred:
+            continue
+        return True
+    return False
 
 
 def upgrade() -> None:
@@ -154,8 +172,13 @@ def upgrade() -> None:
         if "ix_compras_usuario_id" not in indexes:
             op.create_index("ix_compras_usuario_id", "compras", ["usuario_id"])
         inspector = sa.inspect(bind)
-        fk_names = _foreign_key_names(inspector, "compras")
-        if "fk_compras_proveedor_id_proveedores" not in fk_names:
+        if not _foreign_key_exists(
+            inspector,
+            "compras",
+            ["proveedor_id"],
+            "proveedores",
+            ["id_proveedor"],
+        ):
             op.create_foreign_key(
                 "fk_compras_proveedor_id_proveedores",
                 "compras",
@@ -164,7 +187,14 @@ def upgrade() -> None:
                 ["id_proveedor"],
                 ondelete="RESTRICT",
             )
-        if "fk_compras_usuario_id_users" not in fk_names:
+        inspector = sa.inspect(bind)
+        if not _foreign_key_exists(
+            inspector,
+            "compras",
+            ["usuario_id"],
+            "users",
+            ["id"],
+        ):
             op.create_foreign_key(
                 "fk_compras_usuario_id_users",
                 "compras",
@@ -250,8 +280,13 @@ def upgrade() -> None:
                 ["producto_id"],
             )
         inspector = sa.inspect(bind)
-        fk_names = _foreign_key_names(inspector, "detalle_compras")
-        if "fk_detalle_compras_compra_id_compras" not in fk_names:
+        if not _foreign_key_exists(
+            inspector,
+            "detalle_compras",
+            ["compra_id"],
+            "compras",
+            ["id_compra"],
+        ):
             op.create_foreign_key(
                 "fk_detalle_compras_compra_id_compras",
                 "detalle_compras",
@@ -260,7 +295,14 @@ def upgrade() -> None:
                 ["id_compra"],
                 ondelete="CASCADE",
             )
-        if "fk_detalle_compras_producto_id_devices" not in fk_names:
+        inspector = sa.inspect(bind)
+        if not _foreign_key_exists(
+            inspector,
+            "detalle_compras",
+            ["producto_id"],
+            "devices",
+            ["id"],
+        ):
             op.create_foreign_key(
                 "fk_detalle_compras_producto_id_devices",
                 "detalle_compras",
