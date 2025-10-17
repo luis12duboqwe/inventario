@@ -1,7 +1,11 @@
 """Endpoints para ventas y devoluciones."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+from io import BytesIO
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -10,6 +14,7 @@ from ..core.roles import GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import sales_reports
 
 router = APIRouter(prefix="/sales", tags=["ventas"])
 
@@ -19,15 +24,125 @@ def _ensure_feature_enabled() -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
 
 
+def _prepare_sales_report(
+    db: Session,
+    *,
+    store_id: int | None,
+    customer_id: int | None,
+    performed_by_id: int | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    query: str | None,
+) -> schemas.SalesReport:
+    filters = schemas.SalesReportFilters(
+        store_id=store_id,
+        customer_id=customer_id,
+        performed_by_id=performed_by_id,
+        date_from=date_from,
+        date_to=date_to,
+        query=query,
+    )
+    sales = crud.list_sales(
+        db,
+        store_id=store_id,
+        limit=None,
+        date_from=date_from,
+        date_to=date_to,
+        customer_id=customer_id,
+        performed_by_id=performed_by_id,
+        query=query,
+    )
+    return sales_reports.build_sales_report(sales, filters)
+
+
 @router.get("/", response_model=list[schemas.SaleResponse])
 def list_sales_endpoint(
-    limit: int = 50,
-    store_id: int | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    store_id: int | None = Query(default=None, ge=1),
+    customer_id: int | None = Query(default=None, ge=1),
+    performed_by_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    q: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
-    return crud.list_sales(db, store_id=store_id, limit=limit)
+    search = q.strip() if q else None
+    return crud.list_sales(
+        db,
+        store_id=store_id,
+        limit=limit,
+        date_from=date_from,
+        date_to=date_to,
+        customer_id=customer_id,
+        performed_by_id=performed_by_id,
+        query=search,
+    )
+
+
+@router.get("/export/pdf")
+def export_sales_pdf(
+    store_id: int | None = Query(default=None, ge=1),
+    customer_id: int | None = Query(default=None, ge=1),
+    performed_by_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    q: str | None = Query(default=None, min_length=1, max_length=120),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    search = q.strip() if q else None
+    report = _prepare_sales_report(
+        db,
+        store_id=store_id,
+        customer_id=customer_id,
+        performed_by_id=performed_by_id,
+        date_from=date_from,
+        date_to=date_to,
+        query=search,
+    )
+    pdf_bytes = sales_reports.render_sales_report_pdf(report)
+    filename = f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/export/xlsx")
+def export_sales_excel(
+    store_id: int | None = Query(default=None, ge=1),
+    customer_id: int | None = Query(default=None, ge=1),
+    performed_by_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    q: str | None = Query(default=None, min_length=1, max_length=120),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    search = q.strip() if q else None
+    report = _prepare_sales_report(
+        db,
+        store_id=store_id,
+        customer_id=customer_id,
+        performed_by_id=performed_by_id,
+        date_from=date_from,
+        date_to=date_to,
+        query=search,
+    )
+    excel_bytes = sales_reports.render_sales_report_excel(report)
+    filename = f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return StreamingResponse(
+        BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.post("/", response_model=schemas.SaleResponse, status_code=status.HTTP_201_CREATED)

@@ -1906,6 +1906,33 @@ class SaleUpdate(BaseModel):
         return value
 
 
+class SaleStoreSummary(BaseModel):
+    id: int
+    name: str
+    location: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SaleUserSummary(BaseModel):
+    id: int
+    username: str
+    full_name: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SaleDeviceSummary(BaseModel):
+    id: int
+    sku: str
+    name: str
+    modelo: str | None = None
+    imei: str | None = None
+    serial: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SaleItemResponse(BaseModel):
     id: int
     sale_id: int
@@ -1914,6 +1941,7 @@ class SaleItemResponse(BaseModel):
     unit_price: Decimal
     discount_amount: Decimal
     total_line: Decimal
+    device: SaleDeviceSummary | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1964,6 +1992,8 @@ class SaleResponse(BaseModel):
     cash_session: CashSessionSummary | None = None
     items: list[SaleItemResponse]
     returns: list["SaleReturnResponse"] = []
+    store: SaleStoreSummary | None = None
+    performed_by: SaleUserSummary | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2009,6 +2039,54 @@ class SaleReturnResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SalesReportFilters(BaseModel):
+    store_id: int | None = None
+    customer_id: int | None = None
+    performed_by_id: int | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    query: str | None = None
+
+
+class SalesReportTotals(BaseModel):
+    count: int
+    subtotal: Decimal
+    tax: Decimal
+    total: Decimal
+
+    @field_serializer("subtotal", "tax", "total")
+    @classmethod
+    def _serialize_totals(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SalesReportItem(BaseModel):
+    sale_id: int
+    folio: str
+    store_name: str
+    customer_name: str | None
+    performed_by: str | None
+    payment_method: PaymentMethod
+    subtotal: Decimal
+    tax: Decimal
+    total: Decimal
+    created_at: datetime
+    items: list[SaleItemResponse]
+
+    @field_serializer("subtotal", "tax", "total")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SalesReport(BaseModel):
+    generated_at: datetime
+    filters: SalesReportFilters
+    totals: SalesReportTotals
+    daily_stats: list[DashboardChartPoint]
+    items: list[SalesReportItem]
 
 
 class POSCartItem(BaseModel):
@@ -2303,10 +2381,17 @@ __all__ = [
     "SaleUpdate",
     "SaleItemCreate",
     "SaleItemResponse",
+    "SaleStoreSummary",
+    "SaleUserSummary",
+    "SaleDeviceSummary",
     "SaleResponse",
     "SaleReturnCreate",
     "SaleReturnItem",
     "SaleReturnResponse",
+    "SalesReportFilters",
+    "SalesReportTotals",
+    "SalesReportItem",
+    "SalesReport",
     "POSCartItem",
     "POSSaleRequest",
     "POSSaleResponse",

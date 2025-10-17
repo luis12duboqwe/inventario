@@ -226,3 +226,11 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se habilita la edición de ventas mediante `PUT /sales/{id}` con validaciones de stock, actualización de deudas a crédito y auditoría detallada en la bitácora.
 - Se incorpora `POST /sales/{id}/cancel` para anular ventas con reintegro de existencias y sincronización del evento en `sync_outbox`.
 - Las pruebas `backend/tests/test_sales.py` cubren ventas multiartículo, dispositivos con IMEI, ediciones y anulaciones para garantizar la integración con inventario.
+
+### Actualización Ventas - Parte 3 (Interfaz y Reportes) (17/10/2025 07:45 UTC)
+
+- El componente `Sales.tsx` ahora ofrece carrito multiartículo con búsqueda por IMEI/SKU/modelo, selección de clientes registrados o manuales y cálculo automático de subtotal/impuestos/total en tema oscuro.
+- `GET /sales` acepta filtros por fecha, cliente, usuario y texto libre; además se publican `/sales/export/pdf` y `/sales/export/xlsx` para descargar reportes de ventas con motivo corporativo obligatorio.
+- Los reportes PDF/Excel reutilizan estilos corporativos oscuros y muestran totales, impuestos y estadísticas diarias; el dashboard de operaciones refleja los mismos totales para mantener coherencia visual.
+- `frontend/src/api.ts` incorpora helpers `exportSalesPdf|Excel` y tipos enriquecidos (`SaleStoreSummary`, `SaleUserSummary`, `SaleDeviceSummary`); las pruebas `backend/tests/test_sales.py` verifican filtros y exportaciones.
+- **17/10/2025 08:30 UTC** — Se envolvió el flujo de captura en un único formulario para que "Guardar venta" active `handleSubmit`, además de añadir estilos oscuros/fluídos a `Sales.tsx` (`sales-form`, `table-responsive`, `totals-card`, `actions-card`).

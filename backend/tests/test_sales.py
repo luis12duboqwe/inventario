@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi import status
 from sqlalchemy import select
 
@@ -284,5 +286,142 @@ def test_sale_update_adjusts_inventory_and_records_movements(client, db_session)
         and movement.movement_type == models.MovementType.OUT
         for movement in movements
     )
+
+    settings.enable_purchases_sales = False
+
+
+def test_sales_filters_and_exports(client, db_session):
+    settings.enable_purchases_sales = True
+    token, user_id = _bootstrap_admin(client, db_session)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Filtros", "location": "CDMX", "timezone": "America/Mexico_City"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    customer_response = client.post(
+        "/customers",
+        json={"name": "Cliente Filtros", "email": "cliente@example.com"},
+        headers={**auth_headers, "X-Reason": "Alta cliente filtros"},
+    )
+    assert customer_response.status_code == status.HTTP_201_CREATED
+    customer_id = customer_response.json()["id"]
+
+    device_a = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "FILTRO-1001",
+            "name": "Smartphone Filtro",
+            "quantity": 4,
+            "unit_price": 650.0,
+            "costo_unitario": 400.0,
+            "imei": "990000862471854",
+        },
+        headers=auth_headers,
+    )
+    assert device_a.status_code == status.HTTP_201_CREATED
+    device_a_id = device_a.json()["id"]
+
+    device_b = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "FILTRO-2002",
+            "name": "Accesorio Filtro",
+            "quantity": 6,
+            "unit_price": 120.0,
+            "costo_unitario": 60.0,
+        },
+        headers=auth_headers,
+    )
+    assert device_b.status_code == status.HTTP_201_CREATED
+    device_b_id = device_b.json()["id"]
+
+    sale_one = client.post(
+        "/sales",
+        json={
+            "store_id": store_id,
+            "customer_id": customer_id,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": device_a_id, "quantity": 1}],
+        },
+        headers={**auth_headers, "X-Reason": "Venta filtros 1"},
+    )
+    assert sale_one.status_code == status.HTTP_201_CREATED
+    sale_one_id = sale_one.json()["id"]
+
+    sale_two = client.post(
+        "/sales",
+        json={
+            "store_id": store_id,
+            "payment_method": "TARJETA",
+            "items": [{"device_id": device_b_id, "quantity": 2}],
+            "notes": "Venta interna",
+        },
+        headers={**auth_headers, "X-Reason": "Venta filtros 2"},
+    )
+    assert sale_two.status_code == status.HTTP_201_CREATED
+    sale_two_id = sale_two.json()["id"]
+
+    # Ajustar fecha de la segunda venta para probar filtros de rango
+    db_sale_two = db_session.execute(
+        select(models.Sale).where(models.Sale.id == sale_two_id)
+    ).scalar_one()
+    db_sale_two.created_at = db_sale_two.created_at - timedelta(days=5)
+    db_session.commit()
+
+    list_all = client.get(f"/sales?store_id={store_id}", headers=auth_headers)
+    assert list_all.status_code == status.HTTP_200_OK
+    assert {sale["id"] for sale in list_all.json()} == {sale_one_id, sale_two_id}
+
+    list_by_customer = client.get(
+        f"/sales?customer_id={customer_id}", headers=auth_headers
+    )
+    assert list_by_customer.status_code == status.HTTP_200_OK
+    assert len(list_by_customer.json()) == 1
+    assert list_by_customer.json()[0]["customer_id"] == customer_id
+
+    today_iso = datetime.utcnow().date().isoformat()
+    list_recent = client.get(
+        f"/sales?date_from={today_iso}", headers=auth_headers
+    )
+    assert list_recent.status_code == status.HTTP_200_OK
+    assert len(list_recent.json()) == 1
+    assert list_recent.json()[0]["id"] == sale_one_id
+
+    list_by_user = client.get(
+        f"/sales?performed_by_id={user_id}", headers=auth_headers
+    )
+    assert list_by_user.status_code == status.HTTP_200_OK
+    assert len(list_by_user.json()) == 2
+
+    list_by_query = client.get("/sales", params={"q": "FILTRO-1001"}, headers=auth_headers)
+    assert list_by_query.status_code == status.HTTP_200_OK
+    assert len(list_by_query.json()) == 1
+    assert list_by_query.json()[0]["id"] == sale_one_id
+
+    export_without_reason = client.get("/sales/export/pdf", headers=auth_headers)
+    assert export_without_reason.status_code == status.HTTP_400_BAD_REQUEST
+
+    export_pdf = client.get(
+        "/sales/export/pdf",
+        headers={**auth_headers, "X-Reason": "Reporte ventas"},
+    )
+    assert export_pdf.status_code == status.HTTP_200_OK
+    assert export_pdf.headers["content-type"] == "application/pdf"
+    assert len(export_pdf.content) > 0
+
+    export_excel = client.get(
+        "/sales/export/xlsx",
+        headers={**auth_headers, "X-Reason": "Reporte ventas"},
+    )
+    assert export_excel.status_code == status.HTTP_200_OK
+    assert export_excel.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument"
+    )
+    assert len(export_excel.content) > 0
 
     settings.enable_purchases_sales = False

@@ -103,6 +103,14 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Se documentan las pruebas automatizadas que cubren los nuevos flujos en `backend/tests/test_sales.py`, asegurando ventas con
   múltiples productos, cancelaciones y dispositivos con IMEI.
 
+### Actualización Ventas - Parte 3 (Interfaz y Reportes) (17/10/2025 07:45 UTC)
+
+- Se rediseñó la pantalla de ventas con un carrito multiartículo que permite buscar por IMEI, SKU o modelo, seleccionar clientes corporativos o capturar datos manuales y calcula automáticamente subtotal, impuesto y total con la tasa POS.
+- El listado general incorpora filtros por fecha, cliente, usuario y texto libre, además de exportación directa a PDF y Excel que exige motivo corporativo y respeta el tema oscuro de Softmobile.
+- El backend amplía `GET /sales` con filtros por rango de fechas, cliente, usuario y búsqueda, y añade `/sales/export/pdf|xlsx` para generar reportes con totales y estadísticas diarias reutilizando los estilos corporativos.
+- El dashboard de operaciones muestra tarjetas y tabla de ventas diarias derivadas del mismo dataset, alineando métricas y reportes.
+- **17/10/2025 08:30 UTC** — Se consolidó el formulario de registro para que los botones "Guardar venta" e "Imprimir factura" se asocien correctamente al envío, se reforzó la maquetación responsive del bloque y se añadieron estilos oscuros (`table-responsive`, `totals-card`, `actions-card`) coherentes con Softmobile.
+
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
 La actualización UI de febrero 2025 refuerza la experiencia operativa sin modificar rutas ni versiones:

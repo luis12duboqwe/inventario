@@ -81,7 +81,7 @@ function Returns({ token, stores, defaultStoreId = null, onInventoryRefresh }: P
       return;
     }
     try {
-      const data = await listSales(token, storeId);
+      const data = await listSales(token, { storeId, limit: 100 });
       setSales(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible cargar las ventas");
