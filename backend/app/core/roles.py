@@ -13,6 +13,11 @@ GESTION_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE)
 REPORTE_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE, OPERADOR)
 AUDITORIA_ROLES: Final[tuple[str, ...]] = (ADMIN, OPERADOR)
 VALID_ROLES: Final[set[str]] = set(DEFAULT_ROLES)
+LEGACY_ROLE_ALIASES: Final[dict[str, str]] = {
+    "ADMIN": ADMIN,
+    "MANAGER": GERENTE,
+    "AUDITOR": OPERADOR,
+}
 
 
 def normalize_role(role_name: str) -> str:
@@ -21,6 +26,7 @@ def normalize_role(role_name: str) -> str:
     if not isinstance(role_name, str):
         raise ValueError("El nombre de rol debe ser una cadena de texto.")
     normalized = role_name.strip().upper()
+    normalized = LEGACY_ROLE_ALIASES.get(normalized, normalized)
     if normalized not in VALID_ROLES:
         raise ValueError(f"Rol desconocido: {role_name}")
     return normalized
@@ -42,6 +48,7 @@ __all__ = [
     "REPORTE_ROLES",
     "AUDITORIA_ROLES",
     "VALID_ROLES",
+    "LEGACY_ROLE_ALIASES",
     "normalize_role",
     "normalize_roles",
 ]
