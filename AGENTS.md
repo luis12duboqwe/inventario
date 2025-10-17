@@ -176,6 +176,13 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Mantén sincronizadas las palabras clave de severidad en `backend/app/utils/audit.py` para clasificar `stock bajo`, `ajuste manual` e `inconsistencia`.
 - Refuerza pruebas automatizadas en `backend/tests/test_stores.py::test_manual_adjustment_triggers_alerts` si cambian los umbrales o la estructura de la bitácora.
 
+### Actualización Inventario - Roles y Permisos
+
+- `require_roles` debe conceder acceso inmediato a usuarios con rol `ADMIN` aun cuando la ruta restrinja a otros perfiles, asegurando control total corporativo.
+- Mantén `REPORTE_ROLES` y `AUDITORIA_ROLES` limitados a `ADMIN` y `GERENTE` para que únicamente ellos consulten inventario, reportes y bitácoras sensibles.
+- Utiliza `MOVEMENT_ROLES` (ADMIN, GERENTE, OPERADOR) en rutas de movimientos para que operadores sólo registren entradas/salidas sin poder listar inventario ni descargar reportes.
+- Revisa `backend/tests/test_stores.py::test_operator_can_register_movements_but_not_view_inventory` tras cualquier ajuste de permisos para conservar la cobertura sobre accesos denegados.
+
 ### Registro operativo — 01/03/2025
 
 - ✅ 01/03/2025 — Los reportes de inventario PDF y CSV ahora incluyen columnas financieras completas y los campos del catálogo pro (IMEI, serie, marca, modelo, proveedor, color, capacidad, lote, costo y margen), respaldados por helpers reutilizables en `services/backups.py`.

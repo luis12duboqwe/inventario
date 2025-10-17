@@ -1,5 +1,11 @@
 # Bitácora de cambios
 
+## Actualización Inventario - Roles y Permisos
+- `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.
+- Se actualizan `REPORTE_ROLES` y `AUDITORIA_ROLES` para limitar consultas de inventario, reportes y bitácoras a usuarios `ADMIN` y `GERENTE`, alineando la visibilidad con la jerarquía corporativa.
+- Se introduce `MOVEMENT_ROLES` (ADMIN, GERENTE, OPERADOR) y se asigna al registro de movimientos de inventario, habilitando a operadores únicamente para capturar entradas/salidas sin exponer listados o reportes.
+- Nuevas pruebas en `backend/tests/test_stores.py` validan que los operadores puedan registrar movimientos pero reciban `403` al consultar `/inventory/summary` o `/stores/{store_id}/devices`.
+
 ## Actualización Inventario - Ajustes y Auditorías
 - Se amplía `crud.create_inventory_movement` para registrar stock previo, stock actualizado y motivo corporativo en la bitácora, vinculando el ajuste al usuario autenticado.
 - Se introducen los umbrales `SOFTMOBILE_LOW_STOCK_THRESHOLD` y `SOFTMOBILE_ADJUSTMENT_VARIANCE_THRESHOLD` para disparar automáticamente los eventos `inventory_low_stock_alert` (crítica) e `inventory_adjustment_alert` (preventiva).

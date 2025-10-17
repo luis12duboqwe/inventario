@@ -12,6 +12,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from . import crud, schemas
+from .core.roles import ADMIN
 from .config import settings
 from .database import get_db
 
@@ -80,6 +81,8 @@ def verify_totp(secret: str, code: str) -> bool:
 def require_roles(*roles: str):
     async def dependency(current_user=Depends(get_current_user)):
         user_roles = {assignment.role.name for assignment in current_user.roles}
+        if ADMIN in user_roles:
+            return current_user
         if roles and user_roles.isdisjoint(roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
