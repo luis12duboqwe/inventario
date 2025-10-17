@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from sqlalchemy import Integer, Numeric, String, column, select, table
+from sqlalchemy import Integer, Numeric, String, case, column, func, select, table
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -69,9 +69,7 @@ def calculate_inventory_valuation(
         column("margen_categoria_porcentaje", Numeric),
     )
 
-    stmt = select(valor_inventario).order_by(
-        valor_inventario.c.store_name.asc(), valor_inventario.c.device_name.asc()
-    )
+    stmt = select(valor_inventario)
 
     if store_ids:
         store_filter = sorted({int(store_id) for store_id in store_ids if int(store_id) > 0})
@@ -83,5 +81,71 @@ def calculate_inventory_valuation(
         if category_filter:
             stmt = stmt.where(valor_inventario.c.categoria.in_(category_filter))
 
-    rows = db.execute(stmt).mappings()
+    filtered_view = stmt.subquery("filtered_valor_inventario")
+
+    valor_total_tienda_expr = func.round(
+        func.sum(filtered_view.c.valor_total_producto).over(partition_by=filtered_view.c.store_id),
+        2,
+    )
+    valor_total_general_expr = func.round(
+        func.sum(filtered_view.c.valor_total_producto).over(),
+        2,
+    )
+
+    margen_total_producto_expr = filtered_view.c.quantity * filtered_view.c.margen_unitario
+    margen_categoria_valor_total_expr = func.sum(margen_total_producto_expr).over(
+        partition_by=filtered_view.c.categoria
+    )
+    margen_categoria_valor_expr = func.round(
+        margen_categoria_valor_total_expr,
+        2,
+    )
+    ventas_categoria_total_expr = func.sum(filtered_view.c.valor_total_producto).over(
+        partition_by=filtered_view.c.categoria
+    )
+    margen_categoria_porcentaje_expr = func.round(
+        case(
+            (ventas_categoria_total_expr == 0, 0),
+            else_=(
+                margen_categoria_valor_total_expr
+                / func.nullif(ventas_categoria_total_expr, 0)
+                * 100
+            ),
+        ),
+        2,
+    )
+    margen_producto_porcentaje_expr = func.round(
+        case(
+            (filtered_view.c.valor_total_producto == 0, 0),
+            else_=(
+                margen_total_producto_expr
+                / func.nullif(filtered_view.c.valor_total_producto, 0)
+                * 100
+            ),
+        ),
+        2,
+    )
+
+    final_stmt = (
+        select(
+            filtered_view.c.store_id,
+            filtered_view.c.store_name,
+            filtered_view.c.device_id,
+            filtered_view.c.sku,
+            filtered_view.c.device_name,
+            filtered_view.c.categoria,
+            filtered_view.c.quantity,
+            filtered_view.c.costo_promedio_ponderado,
+            filtered_view.c.valor_total_producto,
+            valor_total_tienda_expr.label("valor_total_tienda"),
+            valor_total_general_expr.label("valor_total_general"),
+            filtered_view.c.margen_unitario,
+            margen_producto_porcentaje_expr.label("margen_producto_porcentaje"),
+            margen_categoria_valor_expr.label("margen_categoria_valor"),
+            margen_categoria_porcentaje_expr.label("margen_categoria_porcentaje"),
+        )
+        .order_by(filtered_view.c.store_name.asc(), filtered_view.c.device_name.asc())
+    )
+
+    rows = db.execute(final_stmt).mappings()
     return [schemas.InventoryValuation.model_validate(row) for row in rows]
