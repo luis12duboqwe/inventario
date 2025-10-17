@@ -287,7 +287,11 @@ def update_device(
         device.unit_price = manual_price
     elif {"costo_unitario", "margen_porcentaje"}.intersection(updated_fields):
         _recalculate_sale_price(device)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError("device_identifier_conflict") from exc
     db.refresh(device)
 
     fields_changed = list(updated_fields.keys())
