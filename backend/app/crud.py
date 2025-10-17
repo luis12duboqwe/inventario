@@ -5080,6 +5080,8 @@ def create_sale(
         customer_name = customer_name or customer.name
 
     sale_discount_percent = _to_decimal(payload.discount_percent or 0)
+    sale_status = (payload.status or "COMPLETADA").strip() or "COMPLETADA"
+    normalized_status = sale_status.upper()
     sale = models.Sale(
         store_id=payload.store_id,
         customer_id=customer.id if customer else None,
@@ -5088,6 +5090,7 @@ def create_sale(
         discount_percent=sale_discount_percent.quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         ),
+        status=normalized_status,
         notes=payload.notes,
         performed_by_id=performed_by_id,
     )

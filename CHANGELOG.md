@@ -6,6 +6,11 @@
 - Se verificó la disponibilidad de dependencias críticas de reportes (`openpyxl`) previo a la ejecución de pruebas para evitar fallos de importación.
 - Recomendación: abordar las advertencias de `act(...)` en pruebas React en una iteración futura para mejorar la estabilidad de la suite de frontend.
 
+## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
+- Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
+- Migración `202503010003_sales_ventas_structure.py` garantiza claves foráneas activas hacia clientes, usuarios, ventas y dispositivos, creando índices solo cuando faltan en despliegues anteriores.
+- Modelos ORM, esquemas Pydantic y flujo de creación de ventas incorporan el nuevo estado normalizado, preservando cálculos existentes de subtotal, impuesto y total.
+
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.
 - Se actualizan `REPORTE_ROLES` y `AUDITORIA_ROLES` para limitar consultas de inventario, reportes y bitácoras a usuarios `ADMIN` y `GERENTE`, alineando la visibilidad con la jerarquía corporativa.

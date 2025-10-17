@@ -1833,6 +1833,7 @@ class SaleCreate(BaseModel):
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
     discount_percent: Decimal | None = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    status: str = Field(default="COMPLETADA", max_length=30)
     notes: str | None = Field(default=None, max_length=255)
     items: list[SaleItemCreate]
 
@@ -1851,6 +1852,12 @@ class SaleCreate(BaseModel):
             return value
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("status")
+    @classmethod
+    def _normalize_status(cls, value: str) -> str:
+        normalized = value.strip()
+        return normalized or "COMPLETADA"
 
     @field_validator("items")
     @classmethod
@@ -1909,6 +1916,7 @@ class SaleResponse(BaseModel):
     subtotal_amount: Decimal
     tax_amount: Decimal
     total_amount: Decimal
+    status: str
     notes: str | None
     created_at: datetime
     performed_by_id: int | None
