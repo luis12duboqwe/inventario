@@ -43,6 +43,13 @@
 
 Cumple estas directrices en todas las entregas hasta nuevo aviso.
 
+## Verificación Global - Módulo de Inventario Softmobile 2025 v2.2.0
+
+- **Fecha y hora**: 17/10/2025 05:41 UTC.
+- **Resumen de hallazgos**: revisión integral sin incidencias; se verificó que catálogo, movimientos, identificadores IMEI/series, valuaciones, reportes, alertas, permisos y UI operan conforme a la versión v2.2.0 con feature flags activos. No se detectaron dependencias rotas ni cálculos inconsistentes.
+- **Acciones ejecutadas**: ejecución completa de `pytest`, `npm --prefix frontend run build` y `npm --prefix frontend run test`; verificación manual de dependencias requeridas (incluyendo `openpyxl`) antes de las suites.
+- **Recomendaciones**: continuar atendiendo las advertencias de pruebas React (`act(...)`) en futuras iteraciones y mantener el monitoreo de los umbrales `SOFTMOBILE_LOW_STOCK_THRESHOLD` y `SOFTMOBILE_ADJUSTMENT_VARIANCE_THRESHOLD` en ambientes productivos.
+
 ### Estado operativo iterativo — 15/02/2025
 
 - ✅ **Lote A — Catálogo pro de dispositivos**: campos ampliados, búsquedas avanzadas, auditoría de cambios sensibles y pruebas automatizadas.

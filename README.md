@@ -11,6 +11,26 @@ Softmobile 2025 se compone de dos módulos cooperantes:
 
 La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
 
+## Verificación Global - Módulo de Inventario Softmobile 2025 v2.2.0
+
+- **Fecha y hora**: 17/10/2025 05:41 UTC.
+- **Resumen**: se ejecutó una validación integral que cubre catálogo de productos, existencias, identificadores IMEI/serie, valoración financiera, ajustes y auditoría, reportes avanzados, permisos RBAC e interfaz visual. No se detectaron defectos funcionales ni inconsistencias de datos.
+- **Pruebas ejecutadas**: `pytest`, `npm --prefix frontend run build`, `npm --prefix frontend run test`.
+
+| Área evaluada | Estado | Evidencia clave |
+| --- | --- | --- |
+| Catálogo de productos | Completo | Alta, búsqueda avanzada y auditoría de cambios validados en `backend/tests/test_catalog_pro.py`. |
+| Existencias y movimientos | Completo | Ajustes, alertas y respuestas enriquecidas verificados en `backend/tests/test_stores.py`. |
+| Gestión de IMEI y series | Completo | Endpoints de identificadores y bloqueos de duplicados cubiertos por `backend/tests/test_device_identifiers.py`. |
+| Valoraciones y costos | Completo | Cálculos ponderados ejercitados en `backend/tests/test_inventory_valuation.py`. |
+| Ajustes, auditorías y alertas | Completo | Alertas críticas/preventivas registradas en `backend/tests/test_stores.py`. |
+| Reportes y estadísticas | Completo | Exportaciones CSV/PDF/Excel y agregadores probados en `backend/tests/test_reports_inventory.py`. |
+| Roles y permisos | Completo | Restricciones por rol y utilidades RBAC validadas en `backend/tests/test_stores.py` y `backend/tests/test_roles.py`. |
+| Interfaz visual del inventario | Completo | Composición de pestañas, tablas, reportes y analítica confirmada en `frontend/src/modules/inventory/pages/InventoryPage.tsx` y pruebas Vitest asociadas. |
+
+- **Correcciones aplicadas**: no se requirió modificar código; se aseguraron dependencias de pruebas instaladas (por ejemplo, `openpyxl`) antes de la ejecución de la suite.
+- **Recomendaciones**: mantener la ejecución periódica de las suites de backend y frontend, y monitorear advertencias de React/Vitest para futuros refinamientos de pruebas.
+
 ## Capacidades implementadas
 
 - **API empresarial FastAPI** con modelos SQLAlchemy para tiendas, dispositivos, movimientos, usuarios, roles, sesiones de sincronización, bitácoras y respaldos.
