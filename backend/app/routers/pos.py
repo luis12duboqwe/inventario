@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from sqlalchemy.orm import Session
@@ -85,15 +85,10 @@ def register_pos_sale_endpoint(
 def download_pos_receipt(
     sale_id: int,
     db: Session = Depends(get_db),
-    x_reason: str | None = Header(default=None, alias="X-Reason"),
+    _reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
-    if x_reason is not None and len(x_reason.strip()) < 5:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Reason header inválido",
-        )
     try:
         sale = crud.get_sale(db, sale_id)
     except LookupError as exc:
