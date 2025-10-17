@@ -18,6 +18,9 @@ _CRITICAL_KEYWORDS = (
     "intrusion",
     "breach",
     "error",
+    "stock bajo",
+    "stock-bajo",
+    "stockout",
 )
 _WARNING_KEYWORDS = (
     "password",
@@ -27,6 +30,8 @@ _WARNING_KEYWORDS = (
     "retry",
     "cancel",
     "sync",
+    "ajuste manual",
+    "inconsistencia",
 )
 
 

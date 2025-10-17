@@ -1,5 +1,11 @@
 # Bitácora de cambios
 
+## Actualización Inventario - Ajustes y Auditorías
+- Se amplía `crud.create_inventory_movement` para registrar stock previo, stock actualizado y motivo corporativo en la bitácora, vinculando el ajuste al usuario autenticado.
+- Se introducen los umbrales `SOFTMOBILE_LOW_STOCK_THRESHOLD` y `SOFTMOBILE_ADJUSTMENT_VARIANCE_THRESHOLD` para disparar automáticamente los eventos `inventory_low_stock_alert` (crítica) e `inventory_adjustment_alert` (preventiva).
+- `backend/app/utils/audit.py` reconoce nuevas palabras clave (`stock bajo`, `ajuste manual`, `inconsistencia`) que alimentan resúmenes y recordatorios de seguridad.
+- La prueba `backend/tests/test_stores.py::test_manual_adjustment_triggers_alerts` cubre el flujo completo desde el ajuste manual hasta la generación de alertas y verificación del inventario resultante.
+
 ## Actualización Inventario - Valoraciones y Costos
 - Se crea la vista `valor_inventario` a través de la migración `202503010002_inventory_valuation_view.py`, consolidando costo promedio ponderado, valores totales por sucursal y márgenes por producto y categoría.
 - Se añaden métricas comparativas (`valor_costo_producto`, `valor_costo_tienda`, `valor_costo_general`, `valor_total_categoria`, `margen_total_tienda`, `margen_total_general`) para contrastar el valor de venta contra el costo y la rentabilidad acumulada.

@@ -157,6 +157,13 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Mantén la vista disponible en entornos de prueba invocando los helpers `create_valor_inventario_view`/`drop_valor_inventario_view` desde `backend/app/db/valor_inventario_view.py`.
 - Extiende o ajusta `backend/tests/test_inventory_valuation.py` si agregas columnas adicionales, garantizando validación de márgenes y filtros por tienda/categoría.
 
+### Actualización Inventario - Ajustes y Auditorías
+
+- `crud.create_inventory_movement` debe conservar `stock_previo`, `stock_actual` y el motivo corporativo en los detalles de auditoría para cualquier ajuste manual.
+- Configura los umbrales `SOFTMOBILE_LOW_STOCK_THRESHOLD` y `SOFTMOBILE_ADJUSTMENT_VARIANCE_THRESHOLD` según el plan corporativo; stock ≤ umbral genera `inventory_low_stock_alert` (crítica) y ajustes que superen la variación permitida disparan `inventory_adjustment_alert` (preventiva).
+- Mantén sincronizadas las palabras clave de severidad en `backend/app/utils/audit.py` para clasificar `stock bajo`, `ajuste manual` e `inconsistencia`.
+- Refuerza pruebas automatizadas en `backend/tests/test_stores.py::test_manual_adjustment_triggers_alerts` si cambian los umbrales o la estructura de la bitácora.
+
 ### Registro operativo — 01/03/2025
 
 - ✅ 01/03/2025 — Los reportes de inventario PDF y CSV ahora incluyen columnas financieras completas y los campos del catálogo pro (IMEI, serie, marca, modelo, proveedor, color, capacidad, lote, costo y margen), respaldados por helpers reutilizables en `services/backups.py`.

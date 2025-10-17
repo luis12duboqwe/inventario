@@ -271,6 +271,62 @@ def test_inventory_movement_requires_comment_matching_reason(client) -> None:
     assert "coincidir" in detail["message"]
 
 
+def test_manual_adjustment_triggers_alerts(client) -> None:
+    headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Ajustes", "location": "PUE", "timezone": "America/Mexico_City"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {"sku": "SKU-AJUSTE", "name": "Scanner", "quantity": 12, "unit_price": 2800.0}
+    device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    adjustment_payload = {
+        "producto_id": device_id,
+        "tipo_movimiento": "ajuste",
+        "cantidad": 2,
+        "comentario": "Ajuste conteo fisico",
+    }
+    adjustment_headers = {**headers, "X-Reason": adjustment_payload["comentario"]}
+    adjustment_response = client.post(
+        f"/inventory/stores/{store_id}/movements",
+        json=adjustment_payload,
+        headers=adjustment_headers,
+    )
+    assert adjustment_response.status_code == status.HTTP_201_CREATED
+
+    devices_response = client.get(f"/stores/{store_id}/devices", headers=headers)
+    assert devices_response.status_code == status.HTTP_200_OK
+    devices = devices_response.json()
+    adjusted = next(device for device in devices if device["id"] == device_id)
+    assert adjusted["quantity"] == adjustment_payload["cantidad"]
+
+    logs_response = client.get("/reports/audit", headers=headers)
+    assert logs_response.status_code == status.HTTP_200_OK
+    logs = logs_response.json()
+    device_logs = {
+        log["action"]: log
+        for log in logs
+        if log["entity_type"] == "device" and log["entity_id"] == str(device_id)
+    }
+
+    assert "inventory_movement" in device_logs
+    assert adjustment_payload["comentario"] in device_logs["inventory_movement"]["details"]
+
+    assert "inventory_adjustment_alert" in device_logs
+    adjustment_details = device_logs["inventory_adjustment_alert"]["details"].lower()
+    assert "inconsistencia" in adjustment_details
+    assert device_logs["inventory_adjustment_alert"]["severity"] == "warning"
+
+    assert "inventory_low_stock_alert" in device_logs
+    low_stock_log = device_logs["inventory_low_stock_alert"]
+    assert low_stock_log["severity"] == "critical"
+    assert f"umbral={settings.inventory_low_stock_threshold}" in low_stock_log["details"]
+
+
 def test_inventory_movement_response_includes_required_fields(client) -> None:
     headers = _auth_headers(client)
 
