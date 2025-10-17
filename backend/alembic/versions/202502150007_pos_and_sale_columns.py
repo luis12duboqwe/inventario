@@ -52,7 +52,7 @@ def upgrade() -> None:
 
     op.create_table(
         "pos_draft_sales",
-        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("store_id", sa.Integer(), nullable=False),
         sa.Column("payload", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
