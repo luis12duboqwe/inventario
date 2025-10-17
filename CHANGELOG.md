@@ -19,6 +19,13 @@
 - `backend/tests/test_purchases.py` agrega casos de recepción, devolución y cancelación para asegurar que stock, costos y movimientos se actualicen conforme a la política corporativa.
 - Se publica la vista `movimientos_inventario` para reflejar `inventory_movements` y conservar compatibilidad con reportes y consultas históricas basadas en la nomenclatura en español.
 
+## Actualización Compras - Parte 3 (Interfaz y Reportes) (17/10/2025 12:15 UTC)
+- El módulo de Operaciones recibe un formulario de registro directo de compras con cálculo automático de subtotal, impuestos y total, validaciones de proveedor/producto y motivo corporativo antes de invocar `POST /purchases/records`.
+- Se añade un historial corporativo con filtros por proveedor, usuario, fechas, estado y búsqueda libre, junto con exportaciones PDF y Excel que consumen `/purchases/records/export/{pdf|xlsx}` y respetan la cabecera `X-Reason`.
+- Se publica un panel administrativo de proveedores que permite alta/edición, activación o desactivación y exportación CSV, además de un historial filtrable que consume `/purchases/vendors/{id}/history` para auditar desempeño y totales.
+- El dashboard presenta métricas de compras totales, impuestos, ranking de proveedores/usuarios y acumulados mensuales mediante `GET /purchases/statistics`, alineando la UI con los servicios del backend.
+- README, AGENTS y este CHANGELOG documentan la iteración bajo «Actualización Compras - Parte 3 (Interfaz y Reportes)» para preservar la trazabilidad corporativa.
+
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
 - Migración `202503010003_sales_ventas_structure.py` garantiza claves foráneas activas hacia clientes, usuarios, ventas y dispositivos, creando índices solo cuando faltan en despliegues anteriores.

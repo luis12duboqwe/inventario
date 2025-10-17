@@ -229,6 +229,14 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - `backend/tests/test_purchases.py` valida recepciones, devoluciones y cancelaciones para garantizar que el inventario se actualice y se audite conforme a la política corporativa.
 - Se mantiene la vista SQL `movimientos_inventario` como alias de `inventory_movements` para integraciones heredadas que consultan movimientos por nombre en español.
 
+### Actualización Compras - Parte 3 (Interfaz y Reportes) (17/10/2025 12:15 UTC)
+
+- El componente `frontend/src/modules/operations/components/Purchases.tsx` incorpora un formulario completo de registro directo de compras con cálculo automático de impuestos, selección de proveedor y descarga inmediata de totales.
+- Se publica un listado general de compras con filtros por proveedor, usuario, fechas, estado o búsqueda libre y exportaciones PDF/Excel protegidas por `X-Reason`.
+- Se habilita un panel de proveedores con alta/edición, exportación CSV, activación/inactivación y un historial detallado conectado a los endpoints `/purchases/vendors/*`.
+- El dashboard del módulo muestra tarjetas de estadísticas mensuales, proveedores frecuentes y rankings de usuarios reutilizando `getPurchaseStatistics` para mantener coherencia entre backend y UI.
+- Documentación y bitácora (README, CHANGELOG y este AGENTS) registran la actualización bajo «Actualización Compras - Parte 3 (Interfaz y Reportes)» para preservar trazabilidad corporativa.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Tablas `sales` y `sale_items` renombradas a `ventas` y `detalle_ventas` con columnas homologadas (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).

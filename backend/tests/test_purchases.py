@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from decimal import Decimal
+
 from fastapi import status
 from sqlalchemy import select, text
 
@@ -227,5 +229,129 @@ def test_purchase_cancellation_reverts_inventory_and_records_movement(client, db
     assert "Reversión OC" in reversal.comment
     assert "Proveedor Serializado" in reversal.comment
     assert "Serie: SERIE-UNICA-001" in reversal.comment
+
+    settings.enable_purchases_sales = False
+
+
+def test_purchase_records_and_vendor_statistics(client, db_session):
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Gestion compras"}
+
+    vendor_response = client.post(
+        "/purchases/vendors",
+        json={
+            "nombre": "Proveedor Integrado",
+            "telefono": "555-0101",
+            "correo": "ventas@integrado.mx",
+            "direccion": "Av. Central 101",
+            "tipo": "Mayorista",
+        },
+        headers=base_headers,
+    )
+    assert vendor_response.status_code == status.HTTP_201_CREATED
+    vendor_id = vendor_response.json()["id_proveedor"]
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Compras Norte", "location": "MTY", "timezone": "America/Mexico_City"},
+        headers=base_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "PRC-001",
+            "name": "Equipo corporativo",
+            "quantity": 5,
+            "unit_price": 1500.0,
+            "costo_unitario": 900.0,
+            "margen_porcentaje": 20.0,
+        },
+        headers=base_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    record_payload = {
+        "proveedor_id": vendor_id,
+        "forma_pago": "TRANSFERENCIA",
+        "impuesto_tasa": 0.16,
+        "items": [
+            {"producto_id": device_id, "cantidad": 3, "costo_unitario": 850.0},
+            {"producto_id": device_id, "cantidad": 1, "costo_unitario": 800.0},
+        ],
+    }
+    record_response = client.post(
+        "/purchases/records",
+        json=record_payload,
+        headers=base_headers,
+    )
+    assert record_response.status_code == status.HTTP_201_CREATED
+    record = record_response.json()
+    assert record["proveedor_id"] == vendor_id
+    assert Decimal(str(record["total"])) > Decimal(str(record["subtotal"]))
+    assert len(record["items"]) == 2
+
+    list_response = client.get(
+        "/purchases/records",
+        params={"proveedor_id": vendor_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert list_response.status_code == status.HTTP_200_OK
+    listed = list_response.json()
+    assert any(entry["id_compra"] == record["id_compra"] for entry in listed)
+
+    history_response = client.get(
+        f"/purchases/vendors/{vendor_id}/history",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert history_response.status_code == status.HTTP_200_OK
+    history_payload = history_response.json()
+    assert history_payload["proveedor"]["id_proveedor"] == vendor_id
+    assert history_payload["registros"] >= 1
+
+    csv_response = client.get(
+        "/purchases/vendors/export/csv",
+        headers={"Authorization": f"Bearer {token}", "X-Reason": "Reporte proveedores"},
+    )
+    assert csv_response.status_code == status.HTTP_200_OK
+    assert csv_response.headers["content-type"] == "text/csv"
+
+    pdf_response = client.get(
+        "/purchases/records/export/pdf",
+        headers={"Authorization": f"Bearer {token}", "X-Reason": "Reporte compras"},
+    )
+    assert pdf_response.status_code == status.HTTP_200_OK
+    assert pdf_response.headers["content-type"] == "application/pdf"
+
+    excel_response = client.get(
+        "/purchases/records/export/xlsx",
+        headers={"Authorization": f"Bearer {token}", "X-Reason": "Reporte compras"},
+    )
+    assert excel_response.status_code == status.HTTP_200_OK
+    assert (
+        excel_response.headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    stats_response = client.get(
+        "/purchases/statistics",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert stats_response.status_code == status.HTTP_200_OK
+    stats_payload = stats_response.json()
+    assert stats_payload["compras_registradas"] >= 1
+    assert stats_payload["total"] >= float(record["total"])
+
+    status_response = client.post(
+        f"/purchases/vendors/{vendor_id}/status",
+        json={"estado": "inactivo"},
+        headers=base_headers,
+    )
+    assert status_response.status_code == status.HTTP_200_OK
+    assert status_response.json()["estado"].lower() == "inactivo"
 
     settings.enable_purchases_sales = False

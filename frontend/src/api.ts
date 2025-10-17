@@ -203,6 +203,106 @@ export type SupplierBatchOverviewItem = {
   latest_unit_cost?: number | null;
 };
 
+export type PurchaseVendor = {
+  id_proveedor: number;
+  nombre: string;
+  telefono?: string | null;
+  correo?: string | null;
+  direccion?: string | null;
+  tipo?: string | null;
+  notas?: string | null;
+  estado: string;
+  total_compras: number;
+  total_impuesto: number;
+  compras_registradas: number;
+  ultima_compra?: string | null;
+};
+
+export type PurchaseVendorPayload = {
+  nombre: string;
+  telefono?: string;
+  correo?: string;
+  direccion?: string;
+  tipo?: string;
+  notas?: string;
+  estado?: string;
+};
+
+export type PurchaseVendorStatusPayload = {
+  estado: string;
+};
+
+export type PurchaseRecordItem = {
+  id_detalle: number;
+  producto_id: number;
+  cantidad: number;
+  costo_unitario: number;
+  subtotal: number;
+  producto_nombre?: string | null;
+};
+
+export type PurchaseRecord = {
+  id_compra: number;
+  proveedor_id: number;
+  proveedor_nombre: string;
+  usuario_id: number;
+  usuario_nombre?: string | null;
+  fecha: string;
+  forma_pago: string;
+  estado: string;
+  subtotal: number;
+  impuesto: number;
+  total: number;
+  items: PurchaseRecordItem[];
+};
+
+export type PurchaseRecordItemPayload = {
+  producto_id: number;
+  cantidad: number;
+  costo_unitario: number;
+};
+
+export type PurchaseRecordPayload = {
+  proveedor_id: number;
+  forma_pago: string;
+  estado?: string;
+  impuesto_tasa?: number;
+  fecha?: string;
+  items: PurchaseRecordItemPayload[];
+};
+
+export type PurchaseVendorHistory = {
+  proveedor: PurchaseVendor;
+  compras: PurchaseRecord[];
+  total: number;
+  impuesto: number;
+  registros: number;
+};
+
+export type PurchaseVendorRanking = {
+  vendor_id: number;
+  vendor_name: string;
+  total: number;
+  orders: number;
+};
+
+export type PurchaseUserRanking = {
+  user_id: number;
+  user_name?: string | null;
+  total: number;
+  orders: number;
+};
+
+export type PurchaseStatistics = {
+  updated_at: string;
+  compras_registradas: number;
+  total: number;
+  impuesto: number;
+  monthly_totals: { label: string; value: number }[];
+  top_vendors: PurchaseVendorRanking[];
+  top_users: PurchaseUserRanking[];
+};
+
 export type RepairOrderPart = {
   id: number;
   repair_order_id: number;
@@ -1603,6 +1703,262 @@ export function importPurchaseOrdersCsv(
     },
     token
   );
+}
+
+export function listPurchaseVendors(
+  token: string,
+  filters: { query?: string; status?: string; limit?: number } = {}
+): Promise<PurchaseVendor[]> {
+  const params = new URLSearchParams();
+  if (filters.query) {
+    params.append("q", filters.query);
+  }
+  if (filters.status) {
+    params.append("estado", filters.status);
+  }
+  if (typeof filters.limit === "number") {
+    params.append("limit", String(filters.limit));
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<PurchaseVendor[]>(`/purchases/vendors${suffix}`, { method: "GET" }, token);
+}
+
+export function createPurchaseVendor(
+  token: string,
+  payload: PurchaseVendorPayload,
+  reason: string
+): Promise<PurchaseVendor> {
+  return request<PurchaseVendor>(
+    "/purchases/vendors",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function updatePurchaseVendor(
+  token: string,
+  vendorId: number,
+  payload: PurchaseVendorPayload,
+  reason: string
+): Promise<PurchaseVendor> {
+  return request<PurchaseVendor>(
+    `/purchases/vendors/${vendorId}`,
+    { method: "PUT", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function setPurchaseVendorStatus(
+  token: string,
+  vendorId: number,
+  payload: PurchaseVendorStatusPayload,
+  reason: string
+): Promise<PurchaseVendor> {
+  return request<PurchaseVendor>(
+    `/purchases/vendors/${vendorId}/status`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export async function exportPurchaseVendorsCsv(
+  token: string,
+  filters: { query?: string; status?: string } = {},
+  reason: string,
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (filters.query) {
+    params.append("q", filters.query);
+  }
+  if (filters.status) {
+    params.append("estado", filters.status);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<Blob>(
+    `/purchases/vendors/export/csv${suffix}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function getPurchaseVendorHistory(
+  token: string,
+  vendorId: number,
+  filters: { limit?: number; dateFrom?: string; dateTo?: string } = {}
+): Promise<PurchaseVendorHistory> {
+  const params = new URLSearchParams();
+  if (typeof filters.limit === "number") {
+    params.append("limit", String(filters.limit));
+  }
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<PurchaseVendorHistory>(
+    `/purchases/vendors/${vendorId}/history${suffix}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function listPurchaseRecords(
+  token: string,
+  filters: {
+    proveedorId?: number;
+    usuarioId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    estado?: string;
+    query?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<PurchaseRecord[]> {
+  const params = new URLSearchParams();
+  if (filters.proveedorId) {
+    params.append("proveedor_id", String(filters.proveedorId));
+  }
+  if (filters.usuarioId) {
+    params.append("usuario_id", String(filters.usuarioId));
+  }
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (filters.estado) {
+    params.append("estado", filters.estado);
+  }
+  if (filters.query) {
+    params.append("q", filters.query);
+  }
+  if (typeof filters.limit === "number") {
+    params.append("limit", String(filters.limit));
+  }
+  if (typeof filters.offset === "number") {
+    params.append("offset", String(filters.offset));
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<PurchaseRecord[]>(`/purchases/records${suffix}`, { method: "GET" }, token);
+}
+
+export function createPurchaseRecord(
+  token: string,
+  payload: PurchaseRecordPayload,
+  reason: string
+): Promise<PurchaseRecord> {
+  return request<PurchaseRecord>(
+    "/purchases/records",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function exportPurchaseRecordsPdf(
+  token: string,
+  filters: {
+    proveedorId?: number;
+    usuarioId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    estado?: string;
+    query?: string;
+  } = {},
+  reason: string,
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (filters.proveedorId) {
+    params.append("proveedor_id", String(filters.proveedorId));
+  }
+  if (filters.usuarioId) {
+    params.append("usuario_id", String(filters.usuarioId));
+  }
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (filters.estado) {
+    params.append("estado", filters.estado);
+  }
+  if (filters.query) {
+    params.append("q", filters.query);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<Blob>(
+    `/purchases/records/export/pdf${suffix}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function exportPurchaseRecordsExcel(
+  token: string,
+  filters: {
+    proveedorId?: number;
+    usuarioId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    estado?: string;
+    query?: string;
+  } = {},
+  reason: string,
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (filters.proveedorId) {
+    params.append("proveedor_id", String(filters.proveedorId));
+  }
+  if (filters.usuarioId) {
+    params.append("usuario_id", String(filters.usuarioId));
+  }
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (filters.estado) {
+    params.append("estado", filters.estado);
+  }
+  if (filters.query) {
+    params.append("q", filters.query);
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<Blob>(
+    `/purchases/records/export/xlsx${suffix}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function getPurchaseStatistics(
+  token: string,
+  filters: { dateFrom?: string; dateTo?: string; topLimit?: number } = {}
+): Promise<PurchaseStatistics> {
+  const params = new URLSearchParams();
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (typeof filters.topLimit === "number") {
+    params.append("top_limit", String(filters.topLimit));
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<PurchaseStatistics>(`/purchases/statistics${suffix}`, { method: "GET" }, token);
 }
 
 export function listCustomers(
