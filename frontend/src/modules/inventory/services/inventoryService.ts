@@ -1,13 +1,32 @@
 import {
   downloadInventoryCsv,
+  downloadInventoryMovementsCsv,
   downloadInventoryPdf,
+  downloadInventoryValueCsv,
+  downloadTopProductsCsv,
   exportStoreDevicesCsv,
   getDevices,
+  getInventoryCurrentReport,
+  getInventoryMovementsReport,
+  getInventoryValueReport,
   getSupplierBatchOverview,
+  getTopProductsReport,
   importStoreDevicesCsv,
   registerMovement,
 } from "../../../api";
-import type { DeviceImportSummary, MovementInput, SupplierBatchOverviewItem } from "../../../api";
+import type {
+  DeviceImportSummary,
+  InventoryCurrentFilters,
+  InventoryCurrentReport,
+  InventoryMovementsFilters,
+  InventoryMovementsReport,
+  InventoryTopProductsFilters,
+  InventoryValueFilters,
+  InventoryValueReport,
+  MovementInput,
+  SupplierBatchOverviewItem,
+  TopProductsReport,
+} from "../../../api";
 
 export const inventoryService = {
   fetchDevices: getDevices,
@@ -39,4 +58,35 @@ export const inventoryService = {
     limit = 5,
   ): Promise<SupplierBatchOverviewItem[]> =>
     getSupplierBatchOverview(token, storeId, limit),
+  fetchInventoryCurrentReport: (
+    token: string,
+    filters: InventoryCurrentFilters = {},
+  ): Promise<InventoryCurrentReport> => getInventoryCurrentReport(token, filters),
+  fetchInventoryValueReport: (
+    token: string,
+    filters: InventoryValueFilters = {},
+  ): Promise<InventoryValueReport> => getInventoryValueReport(token, filters),
+  fetchInventoryMovementsReport: (
+    token: string,
+    filters: InventoryMovementsFilters = {},
+  ): Promise<InventoryMovementsReport> => getInventoryMovementsReport(token, filters),
+  fetchTopProductsReport: (
+    token: string,
+    filters: InventoryTopProductsFilters = {},
+  ): Promise<TopProductsReport> => getTopProductsReport(token, filters),
+  downloadInventoryValueCsv: (
+    token: string,
+    reason: string,
+    filters: InventoryValueFilters = {},
+  ) => downloadInventoryValueCsv(token, reason, filters),
+  downloadInventoryMovementsCsv: (
+    token: string,
+    reason: string,
+    filters: InventoryMovementsFilters = {},
+  ) => downloadInventoryMovementsCsv(token, reason, filters),
+  downloadTopProductsCsv: (
+    token: string,
+    reason: string,
+    filters: InventoryTopProductsFilters = {},
+  ) => downloadTopProductsCsv(token, reason, filters),
 };

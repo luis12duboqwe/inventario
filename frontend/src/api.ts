@@ -591,6 +591,122 @@ export type LowStockDevice = {
   inventory_value: number;
 };
 
+export type InventoryCurrentStoreReport = {
+  store_id: number;
+  store_name: string;
+  device_count: number;
+  total_units: number;
+  total_value: number;
+};
+
+export type InventoryTotals = {
+  stores: number;
+  devices: number;
+  total_units: number;
+  total_value: number;
+};
+
+export type InventoryCurrentReport = {
+  stores: InventoryCurrentStoreReport[];
+  totals: InventoryTotals;
+};
+
+export type MovementTypeSummary = {
+  tipo_movimiento: MovementInput["tipo_movimiento"];
+  total_cantidad: number;
+  total_valor: number;
+};
+
+export type MovementPeriodSummary = {
+  periodo: string;
+  tipo_movimiento: MovementInput["tipo_movimiento"];
+  total_cantidad: number;
+  total_valor: number;
+};
+
+export type MovementReportEntry = {
+  id: number;
+  tipo_movimiento: MovementInput["tipo_movimiento"];
+  cantidad: number;
+  valor_total: number;
+  tienda_destino_id?: number | null;
+  tienda_destino?: string | null;
+  tienda_origen_id?: number | null;
+  tienda_origen?: string | null;
+  comentario?: string | null;
+  usuario?: string | null;
+  fecha: string;
+};
+
+export type InventoryMovementsSummary = {
+  total_movimientos: number;
+  total_unidades: number;
+  total_valor: number;
+  por_tipo: MovementTypeSummary[];
+};
+
+export type InventoryMovementsReport = {
+  resumen: InventoryMovementsSummary;
+  periodos: MovementPeriodSummary[];
+  movimientos: MovementReportEntry[];
+};
+
+export type TopProductReportItem = {
+  device_id: number;
+  sku: string;
+  nombre: string;
+  store_id: number;
+  store_name: string;
+  unidades_vendidas: number;
+  ingresos_totales: number;
+  margen_estimado: number;
+};
+
+export type TopProductsReport = {
+  items: TopProductReportItem[];
+  total_unidades: number;
+  total_ingresos: number;
+};
+
+export type InventoryValueStore = {
+  store_id: number;
+  store_name: string;
+  valor_total: number;
+  valor_costo: number;
+  margen_total: number;
+};
+
+export type InventoryValueTotals = {
+  valor_total: number;
+  valor_costo: number;
+  margen_total: number;
+};
+
+export type InventoryValueReport = {
+  stores: InventoryValueStore[];
+  totals: InventoryValueTotals;
+};
+
+export type InventoryCurrentFilters = {
+  storeIds?: number[];
+};
+
+export type InventoryValueFilters = InventoryCurrentFilters & {
+  categories?: string[];
+};
+
+export type InventoryMovementsFilters = InventoryCurrentFilters & {
+  dateFrom?: string;
+  dateTo?: string;
+  movementType?: MovementInput["tipo_movimiento"];
+};
+
+export type InventoryTopProductsFilters = InventoryCurrentFilters & {
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+};
+
 export type DashboardPoint = {
   label: string;
   value: number;
@@ -1103,6 +1219,50 @@ export function getSummary(token: string): Promise<Summary[]> {
   return request<Summary[]>("/inventory/summary", { method: "GET" }, token);
 }
 
+export function getInventoryCurrentReport(
+  token: string,
+  filters: InventoryCurrentFilters = {},
+): Promise<InventoryCurrentReport> {
+  const params = buildInventoryValueParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<InventoryCurrentReport>(`/reports/inventory/current${suffix}`, { method: "GET" }, token);
+}
+
+export function getInventoryValueReport(
+  token: string,
+  filters: InventoryValueFilters = {},
+): Promise<InventoryValueReport> {
+  const params = buildInventoryValueParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<InventoryValueReport>(`/reports/inventory/value${suffix}`, { method: "GET" }, token);
+}
+
+export function getInventoryMovementsReport(
+  token: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<InventoryMovementsReport> {
+  const params = buildInventoryMovementsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<InventoryMovementsReport>(
+    `/reports/inventory/movements${suffix}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function getTopProductsReport(
+  token: string,
+  filters: InventoryTopProductsFilters = {},
+): Promise<TopProductsReport> {
+  const params = buildTopProductsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<TopProductsReport>(`/reports/inventory/top-products${suffix}`, { method: "GET" }, token);
+}
+
 export type DeviceListFilters = {
   search?: string;
   estado?: Device["estado_comercial"];
@@ -1143,6 +1303,61 @@ function buildDeviceFilterParams(filters: DeviceListFilters): URLSearchParams {
   }
   if (filters.fecha_ingreso_hasta) {
     params.append("fecha_ingreso_hasta", filters.fecha_ingreso_hasta);
+  }
+  return params;
+}
+
+function appendNumericList(params: URLSearchParams, key: string, values?: number[]): void {
+  if (!values) {
+    return;
+  }
+  for (const value of values) {
+    params.append(key, String(value));
+  }
+}
+
+function appendStringList(params: URLSearchParams, key: string, values?: string[]): void {
+  if (!values) {
+    return;
+  }
+  for (const value of values) {
+    if (value) {
+      params.append(key, value);
+    }
+  }
+}
+
+function buildInventoryValueParams(filters: InventoryValueFilters = {}): URLSearchParams {
+  const params = new URLSearchParams();
+  appendNumericList(params, "store_ids", filters.storeIds);
+  appendStringList(params, "categories", filters.categories);
+  return params;
+}
+
+function buildInventoryMovementsParams(filters: InventoryMovementsFilters = {}): URLSearchParams {
+  const params = buildInventoryValueParams(filters);
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (filters.movementType) {
+    params.append("movement_type", filters.movementType);
+  }
+  return params;
+}
+
+function buildTopProductsParams(filters: InventoryTopProductsFilters = {}): URLSearchParams {
+  const params = buildInventoryValueParams(filters);
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (typeof filters.limit === "number") {
+    params.append("limit", String(filters.limit));
   }
   return params;
 }
@@ -1846,6 +2061,99 @@ export async function downloadInventoryCsv(token: string, reason: string): Promi
   const link = document.createElement("a");
   link.href = url;
   link.download = "softmobile_inventario.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryValueCsv(
+  token: string,
+  reason: string,
+  filters: InventoryValueFilters = {},
+): Promise<void> {
+  const params = buildInventoryValueParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/value/csv${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar la valoración de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_valor_inventario.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryMovementsCsv(
+  token: string,
+  reason: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<void> {
+  const params = buildInventoryMovementsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/movements/csv${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar los movimientos de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_movimientos.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadTopProductsCsv(
+  token: string,
+  reason: string,
+  filters: InventoryTopProductsFilters = {},
+): Promise<void> {
+  const params = buildTopProductsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const response = await fetch(`${API_URL}/reports/inventory/top-products/csv${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar los productos más vendidos");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_productos_populares.csv";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

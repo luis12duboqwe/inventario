@@ -157,6 +157,16 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Mantén la vista disponible en entornos de prueba invocando los helpers `create_valor_inventario_view`/`drop_valor_inventario_view` desde `backend/app/db/valor_inventario_view.py`.
 - Extiende o ajusta `backend/tests/test_inventory_valuation.py` si agregas columnas adicionales, garantizando validación de márgenes y filtros por tienda/categoría.
 
+### Actualización Inventario - Reportes y Estadísticas (30/03/2025)
+
+- Agrega endpoints `GET /reports/inventory/current|value|movements|top-products` con filtros por sucursal, fechas y tipo de movimiento. Cada ruta cuenta con versión CSV (`/csv`) que exige `X-Reason` y roles de reporte.
+- `crud.py` incorpora los agregadores `get_inventory_current_report`, `get_inventory_movements_report`, `get_top_selling_products` y `get_inventory_value_report`, reutilizados por `reports.py` y cubiertos en `backend/tests/test_reports_inventory.py`.
+- `_normalize_date_range` debe ampliar automáticamente los rangos recibidos como fecha (`YYYY-MM-DD`) hasta las 23:59:59 para no perder movimientos registrados durante la jornada.
+- El tab **Reportes** de `InventoryPage.tsx` usa `InventoryReportsPanel.tsx` para mostrar métricas claves, filtros y botones de exportación. Mantén la estética corporativa (oscuro + acentos cian).
+- `frontend/src/api.ts` y `inventoryService.ts` exponen helpers (`getInventoryMovementsReport`, `downloadInventoryMovementsCsv`, etc.) que deben documentarse al añadir nuevos reportes.
+- Asegura que las exportaciones pidan motivo corporativo y propaguen errores; la prueba `InventoryPage.test.tsx` valida la interacción completa.
+- Cuando envíes `X-Reason` en encabezados HTTP, utiliza sólo caracteres ASCII (sin acentos) para evitar errores de codificación en clientes que restringen el conjunto permitido.
+
 ### Actualización Inventario - Ajustes y Auditorías
 
 - `crud.create_inventory_movement` debe conservar `stock_previo`, `stock_actual` y el motivo corporativo en los detalles de auditoría para cualquier ajuste manual.

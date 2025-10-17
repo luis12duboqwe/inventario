@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
 import {
   AlertTriangle,
+  BarChart3,
   Boxes,
   Building2,
   Cog,
@@ -18,6 +19,7 @@ import {
 
 import AdvancedSearch from "../components/AdvancedSearch";
 import DeviceEditDialog from "../components/DeviceEditDialog";
+import InventoryReportsPanel from "../components/InventoryReportsPanel";
 import InventoryTable from "../components/InventoryTable";
 import MovementForm from "../components/MovementForm";
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
@@ -47,7 +49,7 @@ type StatusCard = {
   badge?: StatusBadge;
 };
 
-type InventoryTabId = "overview" | "movements" | "alerts" | "advanced";
+type InventoryTabId = "overview" | "movements" | "alerts" | "reports" | "advanced";
 
 type TabContent = TabOption<InventoryTabId> & { content: ReactNode };
 
@@ -97,6 +99,13 @@ function InventoryPage() {
     updateLowStockThreshold,
     refreshSummary,
     storeValuationSnapshot,
+    fetchInventoryCurrentReport,
+    fetchInventoryValueReport,
+    fetchInventoryMovementsReport,
+    fetchTopProductsReport,
+    downloadInventoryValueCsv,
+    downloadInventoryMovementsCsv,
+    downloadTopProductsCsv,
   } = useInventoryModule();
 
   const [inventoryQuery, setInventoryQuery] = useState("");
@@ -798,6 +807,22 @@ function InventoryPage() {
     </section>
   );
 
+  const reportsContent: ReactNode = (
+    <InventoryReportsPanel
+      stores={stores}
+      selectedStoreId={selectedStoreId}
+      formatCurrency={formatCurrency}
+      fetchInventoryCurrentReport={fetchInventoryCurrentReport}
+      fetchInventoryValueReport={fetchInventoryValueReport}
+      fetchInventoryMovementsReport={fetchInventoryMovementsReport}
+      fetchTopProductsReport={fetchTopProductsReport}
+      requestDownloadWithReason={requestSnapshotDownload}
+      downloadInventoryValueCsv={downloadInventoryValueCsv}
+      downloadInventoryMovementsCsv={downloadInventoryMovementsCsv}
+      downloadTopProductsCsv={downloadTopProductsCsv}
+    />
+  );
+
   const advancedContent: ReactNode = enableCatalogPro ? (
     <div className="section-grid">
       <AdvancedSearch token={token} />
@@ -906,6 +931,12 @@ function InventoryPage() {
       label: "Alertas",
       icon: <AlertTriangle size={16} aria-hidden />,
       content: alertsContent,
+    },
+    {
+      id: "reports",
+      label: "Reportes",
+      icon: <BarChart3 size={16} aria-hidden />,
+      content: reportsContent,
     },
     {
       id: "advanced",

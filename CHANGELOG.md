@@ -12,6 +12,15 @@
 - Se añade el servicio `calculate_inventory_valuation` y el esquema `InventoryValuation` para consultar la vista con filtros opcionales por sucursal y categoría desde el backend.
 - `backend/tests/test_inventory_valuation.py` valida el cálculo de promedios ponderados, márgenes y filtros, mientras que `backend/tests/conftest.py` prepara la vista en entornos de prueba.
 
+## Actualización Inventario - Reportes y Estadísticas (30/03/2025)
+- Se amplía `reports.py` con rutas `GET /reports/inventory/current`, `/value`, `/movements` y `/top-products`, además de sus exportaciones CSV. Cada descarga exige cabecera `X-Reason` y roles de reporte.
+- `crud.py` incorpora agregadores dedicados para existencias actuales, valoración consolidada, movimientos por periodo y ranking de productos más vendidos, reutilizados por los nuevos endpoints.
+- `_normalize_date_range` reconoce fechas sin hora y extiende el cierre del periodo hasta las 23:59:59 para que los filtros diarios incluyan todos los movimientos registrados.
+- `backend/tests/test_reports_inventory.py` cubre los nuevos reportes validando filtros, totales y contenido de los CSV generados.
+- `frontend/src/api.ts` expone helpers (`getInventoryCurrentReport`, `getInventoryMovementsReport`, `downloadInventoryMovementsCsv`, etc.) consumidos por `inventoryService.ts`.
+- `InventoryPage.tsx` añade el tab **Reportes** mediante `InventoryReportsPanel.tsx`, mostrando métricas y botones de exportación. `InventoryPage.test.tsx` verifica la interacción y las solicitudes de motivo corporativo.
+- Se documenta que las cabeceras `X-Reason` deben enviarse en ASCII para evitar errores de codificación durante las exportaciones CSV.
+
 ## Actualización Inventario - Gestión de IMEI y Series
 - Se crea la tabla `device_identifiers` (migración `202503010001_device_identifiers.py`) con los campos `producto_id`, `imei_1`, `imei_2`, `numero_serie`, `estado_tecnico` y `observaciones`, vinculada uno a uno con `devices` y con restricciones de unicidad.
 - Nuevos endpoints `GET/PUT /inventory/stores/{store_id}/devices/{device_id}/identifier` permiten consultar y actualizar los identificadores extendidos exigiendo cabecera `X-Reason` y roles de gestión.

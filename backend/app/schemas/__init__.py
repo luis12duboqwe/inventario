@@ -894,6 +894,24 @@ class InventorySummary(BaseModel):
         return float(value)
 
 
+class InventoryCurrentStore(BaseModel):
+    store_id: int
+    store_name: str
+    device_count: int
+    total_units: int
+    total_value: Decimal
+
+    @field_serializer("total_value")
+    @classmethod
+    def _serialize_current_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InventoryCurrentReport(BaseModel):
+    stores: list[InventoryCurrentStore]
+    totals: InventoryTotals
+
+
 class StoreValueMetric(BaseModel):
     store_id: int
     store_name: str
@@ -983,6 +1001,122 @@ class InventoryValuation(BaseModel):
     @classmethod
     def _serialize_percentage(cls, value: Decimal) -> float:
         return float(value)
+
+
+class MovementReportEntry(BaseModel):
+    id: int
+    tipo_movimiento: MovementType
+    cantidad: int
+    valor_total: Decimal
+    tienda_destino_id: int | None
+    tienda_destino: str | None
+    tienda_origen_id: int | None
+    tienda_origen: str | None
+    comentario: str | None
+    usuario: str | None
+    fecha: datetime
+
+    @field_serializer("valor_total")
+    @classmethod
+    def _serialize_total_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class MovementTypeSummary(BaseModel):
+    tipo_movimiento: MovementType
+    total_cantidad: int
+    total_valor: Decimal
+
+    @field_serializer("total_valor")
+    @classmethod
+    def _serialize_summary_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class MovementPeriodSummary(BaseModel):
+    periodo: date
+    tipo_movimiento: MovementType
+    total_cantidad: int
+    total_valor: Decimal
+
+    @field_serializer("total_valor")
+    @classmethod
+    def _serialize_period_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InventoryMovementsSummary(BaseModel):
+    total_movimientos: int
+    total_unidades: int
+    total_valor: Decimal
+    por_tipo: list[MovementTypeSummary]
+
+    @field_serializer("total_valor")
+    @classmethod
+    def _serialize_total_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InventoryMovementsReport(BaseModel):
+    resumen: InventoryMovementsSummary
+    periodos: list[MovementPeriodSummary]
+    movimientos: list[MovementReportEntry]
+
+
+class TopProductReportItem(BaseModel):
+    device_id: int
+    sku: str
+    nombre: str
+    store_id: int
+    store_name: str
+    unidades_vendidas: int
+    ingresos_totales: Decimal
+    margen_estimado: Decimal
+
+    @field_serializer("ingresos_totales", "margen_estimado")
+    @classmethod
+    def _serialize_top_values(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class TopProductsReport(BaseModel):
+    items: list[TopProductReportItem]
+    total_unidades: int
+    total_ingresos: Decimal
+
+    @field_serializer("total_ingresos")
+    @classmethod
+    def _serialize_total_income(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InventoryValueStore(BaseModel):
+    store_id: int
+    store_name: str
+    valor_total: Decimal
+    valor_costo: Decimal
+    margen_total: Decimal
+
+    @field_serializer("valor_total", "valor_costo", "margen_total")
+    @classmethod
+    def _serialize_value_fields(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InventoryValueTotals(BaseModel):
+    valor_total: Decimal
+    valor_costo: Decimal
+    margen_total: Decimal
+
+    @field_serializer("valor_total", "valor_costo", "margen_total")
+    @classmethod
+    def _serialize_totals(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InventoryValueReport(BaseModel):
+    stores: list[InventoryValueStore]
+    totals: InventoryValueTotals
 
 
 class AuditHighlight(BaseModel):

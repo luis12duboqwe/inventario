@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { SupplierBatchOverviewItem } from "../../../api";
+import type {
+  InventoryCurrentFilters,
+  InventoryMovementsFilters,
+  InventoryTopProductsFilters,
+  InventoryValueFilters,
+  SupplierBatchOverviewItem,
+} from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { inventoryService } from "../services/inventoryService";
 
@@ -106,6 +112,48 @@ export function useInventoryModule() {
     };
   }, [dashboard.selectedStore, dashboard.selectedStoreId, dashboard.summary]);
 
+  const fetchInventoryCurrentReport = useCallback(
+    (filters: InventoryCurrentFilters = {}) =>
+      inventoryService.fetchInventoryCurrentReport(dashboard.token, filters),
+    [dashboard.token],
+  );
+
+  const fetchInventoryValueReport = useCallback(
+    (filters: InventoryValueFilters = {}) =>
+      inventoryService.fetchInventoryValueReport(dashboard.token, filters),
+    [dashboard.token],
+  );
+
+  const fetchInventoryMovementsReport = useCallback(
+    (filters: InventoryMovementsFilters = {}) =>
+      inventoryService.fetchInventoryMovementsReport(dashboard.token, filters),
+    [dashboard.token],
+  );
+
+  const fetchTopProductsReport = useCallback(
+    (filters: InventoryTopProductsFilters = {}) =>
+      inventoryService.fetchTopProductsReport(dashboard.token, filters),
+    [dashboard.token],
+  );
+
+  const downloadInventoryValueCsv = useCallback(
+    (reason: string, filters: InventoryValueFilters = {}) =>
+      inventoryService.downloadInventoryValueCsv(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
+  const downloadInventoryMovementsCsv = useCallback(
+    (reason: string, filters: InventoryMovementsFilters = {}) =>
+      inventoryService.downloadInventoryMovementsCsv(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
+  const downloadTopProductsCsv = useCallback(
+    (reason: string, filters: InventoryTopProductsFilters = {}) =>
+      inventoryService.downloadTopProductsCsv(dashboard.token, reason, filters),
+    [dashboard.token],
+  );
+
   return {
     token: dashboard.token,
     enableCatalogPro: dashboard.enableCatalogPro,
@@ -137,5 +185,12 @@ export function useInventoryModule() {
     updateLowStockThreshold: dashboard.updateLowStockThreshold,
     refreshSummary: dashboard.refreshSummary,
     storeValuationSnapshot,
+    fetchInventoryCurrentReport,
+    fetchInventoryValueReport,
+    fetchInventoryMovementsReport,
+    fetchTopProductsReport,
+    downloadInventoryValueCsv,
+    downloadInventoryMovementsCsv,
+    downloadTopProductsCsv,
   };
 }
