@@ -4,15 +4,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from datetime import datetime
-from typing import Optional
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .models import BackupMode, MovementType, SyncMode, SyncStatus
-from pydantic import BaseModel, Field, validator
-
-from .models import MovementType, SyncMode, SyncStatus
 
 
 class StoreBase(BaseModel):
@@ -29,8 +23,6 @@ class StoreResponse(StoreBase):
     id: int
 
     model_config = ConfigDict(from_attributes=True)
-    class Config:
-        orm_mode = True
 
 
 class DeviceBase(BaseModel):
@@ -53,8 +45,6 @@ class DeviceResponse(DeviceBase):
     store_id: int
 
     model_config = ConfigDict(from_attributes=True)
-    class Config:
-        orm_mode = True
 
 
 class RoleResponse(BaseModel):
@@ -62,8 +52,6 @@ class RoleResponse(BaseModel):
     name: str
 
     model_config = ConfigDict(from_attributes=True)
-    class Config:
-        orm_mode = True
 
 
 class UserBase(BaseModel):
@@ -91,14 +79,9 @@ class UserResponse(UserBase):
     @field_validator("roles", mode="before")
     @classmethod
     def _flatten_roles(cls, value):
-    class Config:
-        orm_mode = True
-
-    @validator("roles", pre=True)
-    def _flatten_roles(cls, value):  # type: ignore[override]
         if value is None:
             return []
-        flattened = []
+        flattened: list[RoleResponse] = []
         for item in value:
             role = getattr(item, "role", item)
             flattened.append(role)
@@ -118,8 +101,18 @@ class TokenPayload(BaseModel):
 class MovementBase(BaseModel):
     device_id: int = Field(..., ge=1)
     movement_type: MovementType
-    quantity: int = Field(..., gt=0)
+    quantity: int = Field(..., ge=0)
     reason: Optional[str] = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def _validate_quantity(cls, model: "MovementBase") -> "MovementBase":
+        """Asegura cantidades positivas para entradas y salidas."""
+
+        if model.movement_type != MovementType.ADJUST and model.quantity <= 0:
+            raise ValueError(
+                "Las entradas y salidas requieren una cantidad mayor que cero."
+            )
+        return model
 
 
 class MovementCreate(MovementBase):
@@ -133,8 +126,6 @@ class MovementResponse(MovementBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-    class Config:
-        orm_mode = True
 
 
 class InventorySummary(BaseModel):
@@ -155,8 +146,6 @@ class SyncSessionResponse(BaseModel):
     error_message: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
-    class Config:
-        orm_mode = True
 
 
 class SyncRequest(BaseModel):
@@ -190,5 +179,3 @@ class BackupJobResponse(BaseModel):
     triggered_by_id: Optional[int]
 
     model_config = ConfigDict(from_attributes=True)
-    class Config:
-        orm_mode = True
