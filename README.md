@@ -78,6 +78,13 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Repite `pytest` y `npm --prefix frontend run build` antes de fusionar cambios y anota el resultado en la bitácora.
 - Mantén sincronizados README, `AGENTS.md` y `docs/evaluacion_requerimientos.md` tras completar cada paso del plan activo.
 
+## Actualización Compras - Parte 1 (Estructura y Relaciones)
+
+- **Estructura base garantizada**: se añadieron los modelos ORM `Proveedor`, `Compra` y `DetalleCompra` (`backend/app/models/__init__.py`) alineados con las tablas `proveedores`, `compras` y `detalle_compras`. Cada entidad expone relaciones bidireccionales para navegar proveedores, usuarios y dispositivos sin romper compatibilidad con flujos existentes.
+- **Migración idempotente**: la migración `202502150011_compras_estructura_relaciones.py` crea las tablas cuando no existen y agrega columnas/fks/índices faltantes en instalaciones previas, asegurando claves primarias, tipos numéricos y vínculos con `users` y `devices`.
+- **Verificación automatizada**: la prueba `backend/tests/test_compras_schema.py` inspecciona columnas, tipos, índices y claves foráneas para confirmar que el esquema cumpla con `proveedores → compras → detalle_compras` y la referencia hacia el catálogo de productos.
+- **Documentación corporativa**: este README, el `CHANGELOG.md` y `AGENTS.md` registran la actualización bajo el apartado «Actualización Compras - Parte 1 (Estructura y Relaciones)» para mantener trazabilidad empresarial.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Se renombran las tablas operativas del módulo POS a `ventas` y `detalle_ventas`, alineando los identificadores físicos con los

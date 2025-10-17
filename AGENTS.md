@@ -213,6 +213,13 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 3. 🔄 **Pruebas de frontend obligatorias**: incorpora Vitest + React Testing Library para simular recordatorios, registros de acuse y descargas; agrega el script `npm run test` y ejecútalo junto con `npm run build` en cada iteración.
 4. 🔄 **Bitácora corporativa**: registra cada corrida de `pytest`, `npm --prefix frontend run build` y `npm run test` en `docs/bitacora_pruebas_YYYY-MM-DD.md`, indicando hash del commit, responsable y resultado.
 
+### Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
+
+- Se crean las tablas `proveedores`, `compras` y `detalle_compras` con columnas (`id_proveedor`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `notas`, `id_compra`, `proveedor_id`, `usuario_id`, `fecha`, `total`, `impuesto`, `forma_pago`, `estado`, `id_detalle`, `compra_id`, `producto_id`, `cantidad`, `costo_unitario`, `subtotal`) alineadas al mandato Softmobile 2025 v2.2.0.
+- Las claves foráneas `compras.proveedor_id → proveedores.id_proveedor`, `compras.usuario_id → users.id`, `detalle_compras.compra_id → compras.id_compra` y `detalle_compras.producto_id → devices.id` (alias corporativo de productos) quedan reforzadas con índices para acelerar consultas.
+- La migración `202502150011_compras_estructura_relaciones.py` es idempotente: sólo crea/ajusta estructuras cuando faltan y respeta instalaciones existentes.
+- La prueba `backend/tests/test_compras_schema.py` inspecciona columnas, tipos, índices y relaciones para prevenir regresiones estructurales en compras y proveedores.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Tablas `sales` y `sale_items` renombradas a `ventas` y `detalle_ventas` con columnas homologadas (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
