@@ -212,3 +212,9 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 2. ✅ **Tablero global enriquecido**: `GlobalMetrics.tsx` tiene que reflejar `pending_count`/`acknowledged_count`, destacar el último acuse y enlazar a `/dashboard/security` cuando existan pendientes.
 3. 🔄 **Pruebas de frontend obligatorias**: incorpora Vitest + React Testing Library para simular recordatorios, registros de acuse y descargas; agrega el script `npm run test` y ejecútalo junto con `npm run build` en cada iteración.
 4. 🔄 **Bitácora corporativa**: registra cada corrida de `pytest`, `npm --prefix frontend run build` y `npm run test` en `docs/bitacora_pruebas_YYYY-MM-DD.md`, indicando hash del commit, responsable y resultado.
+
+### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
+
+- Tablas `sales` y `sale_items` renombradas a `ventas` y `detalle_ventas` con columnas homologadas (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
+- Migración `202503010003_sales_ventas_structure.py` refuerza claves foráneas hacia `customers`, `users`, `ventas` y `devices`, creando índices únicamente cuando faltan en instalaciones previas.
+- Modelos ORM, esquemas Pydantic y lógica de creación de ventas incorporan el campo `estado`, normalizando el valor recibido y garantizando compatibilidad con los cálculos de impuestos y totales existentes.

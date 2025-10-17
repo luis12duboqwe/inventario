@@ -78,6 +78,18 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Repite `pytest` y `npm --prefix frontend run build` antes de fusionar cambios y anota el resultado en la bitácora.
 - Mantén sincronizados README, `AGENTS.md` y `docs/evaluacion_requerimientos.md` tras completar cada paso del plan activo.
 
+### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
+
+- Se renombran las tablas operativas del módulo POS a `ventas` y `detalle_ventas`, alineando los identificadores físicos con los
+  requerimientos corporativos sin romper la compatibilidad del ORM existente.
+- Las columnas clave se ajustan a la nomenclatura solicitada (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`,
+  `total`, `estado`, `precio_unitario`, `subtotal`, `producto_id`, `venta_id`) manteniendo los tipos numéricos y decimales
+  originales.
+- Se refuerzan las relaciones foráneas hacia `customers`, `users`, `ventas` y `devices` (alias corporativo de productos) mediante una
+  nueva migración Alembic condicionada para instalaciones existentes.
+- Se incorpora el estado de la venta en los modelos, esquemas Pydantic y lógica de creación, normalizando el valor recibido y
+  preservando los cálculos de impuestos y totales vigentes.
+
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
 La actualización UI de febrero 2025 refuerza la experiencia operativa sin modificar rutas ni versiones:

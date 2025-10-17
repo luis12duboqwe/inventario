@@ -783,17 +783,22 @@ class PurchaseReturn(Base):
 
 
 class Sale(Base):
-    __tablename__ = "sales"
+    __tablename__ = "ventas"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column("id_venta", Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     customer_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+        "cliente_id",
+        Integer,
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     payment_method: Mapped[PaymentMethod] = mapped_column(
+        "forma_pago",
         Enum(PaymentMethod, name="payment_method"),
         nullable=False,
         default=PaymentMethod.EFECTIVO,
@@ -802,18 +807,27 @@ class Sale(Base):
         Numeric(5, 2), nullable=False, default=Decimal("0")
     )
     subtotal_amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False, default=Decimal("0")
+        "subtotal", Numeric(12, 2), nullable=False, default=Decimal("0")
     )
     tax_amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False, default=Decimal("0")
+        "impuesto", Numeric(12, 2), nullable=False, default=Decimal("0")
     )
     total_amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False, default=Decimal("0")
+        "total", Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    status: Mapped[str] = mapped_column(
+        "estado", String(30), nullable=False, default="COMPLETADA"
     )
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        "fecha", DateTime(timezone=True), default=datetime.utcnow
+    )
     performed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        "usuario_id",
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     cash_session_id: Mapped[int | None] = mapped_column(
         Integer,
@@ -837,21 +851,33 @@ class Sale(Base):
 
 
 class SaleItem(Base):
-    __tablename__ = "sale_items"
+    __tablename__ = "detalle_ventas"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column("id_detalle", Integer, primary_key=True, index=True)
     sale_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("sales.id", ondelete="CASCADE"), nullable=False, index=True
+        "venta_id",
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     device_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
+        "producto_id",
+        Integer,
+        ForeignKey("devices.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    unit_price: Mapped[Decimal] = mapped_column(
+        "precio_unitario", Numeric(12, 2), nullable=False
+    )
     discount_amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0")
     )
-    total_line: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    total_line: Mapped[Decimal] = mapped_column(
+        "subtotal", Numeric(12, 2), nullable=False
+    )
 
     sale: Mapped[Sale] = relationship("Sale", back_populates="items")
     device: Mapped[Device] = relationship("Device")
@@ -862,7 +888,11 @@ class SaleReturn(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     sale_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("sales.id", ondelete="CASCADE"), nullable=False, index=True
+        "venta_id",
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     device_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
