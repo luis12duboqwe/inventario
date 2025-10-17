@@ -1237,6 +1237,126 @@ button.link:hover:not(:disabled) {
   font-size: 0.85rem;
 }
 
+.inventory-category-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.inventory-category-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.inventory-category-list li span:first-child {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.inventory-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.inventory-timeline__item {
+  position: relative;
+  padding-left: 1.5rem;
+  border-left: 2px solid rgba(56, 189, 248, 0.22);
+}
+
+.inventory-timeline__item::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 0.6rem;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.95);
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.18);
+}
+
+.inventory-timeline__item--entrada::before {
+  background: var(--success);
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.22);
+}
+
+.inventory-timeline__item--salida::before {
+  background: var(--error);
+  box-shadow: 0 0 0 4px rgba(218, 54, 51, 0.22);
+}
+
+.inventory-timeline__item--ajuste::before {
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.22);
+}
+
+.inventory-timeline__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.inventory-timeline__type {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.inventory-timeline__item--salida .inventory-timeline__type {
+  color: var(--error);
+}
+
+.inventory-timeline__item--ajuste .inventory-timeline__type {
+  color: #fbbf24;
+}
+
+.inventory-timeline__date {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.inventory-timeline__summary {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-weight: 600;
+}
+
+.inventory-timeline__summary span {
+  color: var(--text-primary);
+}
+
+.inventory-timeline__summary .inventory-timeline__user {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.inventory-timeline__route {
+  margin-top: 0.35rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.inventory-timeline__comment {
+  margin-top: 0.3rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 .sync-history-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

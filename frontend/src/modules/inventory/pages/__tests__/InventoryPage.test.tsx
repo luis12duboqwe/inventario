@@ -86,6 +86,7 @@ const downloadTopProductsXlsxMock = vi.fn<
   (reason: string, filters: InventoryTopProductsFilters) => Promise<void>
 >();
 const refreshSummaryMock = vi.fn<() => Promise<void> | void>();
+const refreshRecentMovementsMock = vi.fn<() => Promise<void>>();
 const promptCorporateReasonMock = vi.fn<(defaultReason: string) => string | null>();
 
 const inventoryTableMock = vi.hoisted(() =>
@@ -416,6 +417,10 @@ const createModuleState = (): InventoryModuleState => ({
     },
   ],
   lowStockDevices: [buildLowStockDevice()],
+  stockByCategory: [
+    { label: "Smartphones", value: 12 },
+    { label: "Tablets", value: 4 },
+  ],
   handleMovement: vi.fn(),
   handleDeviceUpdate: handleDeviceUpdateMock,
   backupHistory: [],
@@ -428,6 +433,9 @@ const createModuleState = (): InventoryModuleState => ({
   supplierBatchOverview: [],
   supplierBatchLoading: false,
   refreshSupplierBatchOverview: vi.fn(),
+  recentMovements: buildInventoryMovementsReport().movimientos,
+  recentMovementsLoading: false,
+  refreshRecentMovements: refreshRecentMovementsMock,
   lowStockThreshold: 7,
   updateLowStockThreshold: updateLowStockThresholdMock,
   refreshSummary: refreshSummaryMock,
@@ -502,6 +510,7 @@ beforeEach(() => {
   downloadTopProductsPdfMock.mockReset();
   downloadTopProductsXlsxMock.mockReset();
   refreshSummaryMock.mockReset();
+  refreshRecentMovementsMock.mockReset();
   promptCorporateReasonMock.mockReset();
 
   handleDeviceUpdateMock.mockResolvedValue();
@@ -522,6 +531,7 @@ beforeEach(() => {
   downloadTopProductsCsvMock.mockResolvedValue();
   downloadTopProductsPdfMock.mockResolvedValue();
   downloadTopProductsXlsxMock.mockResolvedValue();
+  refreshRecentMovementsMock.mockResolvedValue();
 
   moduleState = createModuleState();
 });
@@ -560,6 +570,39 @@ describe("InventoryPage", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+  });
+
+  it("muestra el stock por categoría con totales visibles", async () => {
+    await renderInventoryPage();
+
+    const heading = await screen.findByRole("heading", { name: /Stock por categoría/i });
+    const section = heading.closest("section");
+    expect(section).not.toBeNull();
+
+    const sectionScope = within(section as HTMLElement);
+    expect(sectionScope.getByText(/Total 16 uds/i)).toBeInTheDocument();
+
+    const categoryItems = sectionScope.getAllByRole("listitem");
+    expect(categoryItems).toHaveLength(2);
+    expect(categoryItems[0]).toHaveTextContent(/Smartphones/i);
+    expect(categoryItems[0]).toHaveTextContent(/12 uds/i);
+    expect(categoryItems[1]).toHaveTextContent(/Tablets/i);
+  });
+
+  it("despliega los últimos movimientos y permite actualizarlos", async () => {
+    const user = await renderInventoryPage();
+
+    const heading = await screen.findByRole("heading", { name: /Últimos movimientos/i });
+    const section = heading.closest("section");
+    expect(section).not.toBeNull();
+
+    const sectionScope = within(section as HTMLElement);
+    expect(sectionScope.getByText(/Reposición/i)).toBeInTheDocument();
+    expect(sectionScope.getByText(/Venta mostrador/i)).toBeInTheDocument();
+
+    const refreshButton = sectionScope.getByRole("button", { name: /Actualizar/i });
+    await user.click(refreshButton);
+    expect(refreshRecentMovementsMock).toHaveBeenCalled();
   });
 
   it("actualiza el umbral de stock bajo y muestra confirmación", async () => {

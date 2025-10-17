@@ -112,6 +112,13 @@ Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.a
 - **Frontend adaptado**: `MovementForm.tsx` captura `comentario`, `tipo_movimiento` y `cantidad`, reutilizando el motivo para la cabecera `X-Reason`; `DashboardContext` valida el texto antes de solicitar el movimiento.
 - **Respuesta enriquecida**: cada movimiento expone `usuario`, `tienda_origen` y `tienda_destino` (además de sus identificadores) para los reportes de auditoría y paneles operativos, manteniendo compatibilidad con integraciones anteriores.
 
+## Actualización Inventario - Interfaz Visual
+
+- **Resumen ejecutivo nítido**: la pestaña "Vista general" ahora enfatiza las tarjetas de existencias y valor total, mostrando en vivo las unidades consolidadas y el último corte automático para cada sucursal desde `InventoryPage.tsx`.
+- **Gráfica de stock por categoría**: se añadió un panel interactivo con Recharts que refleja hasta seis categorías principales, totales acumulados y porcentaje relativo (`Stock por categoría`), estilizado en `styles.css` para mantener el tema oscuro corporativo.
+- **Timeline de últimos movimientos**: el nuevo bloque "Últimos movimientos" despliega una línea de tiempo animada con entradas, salidas y ajustes más recientes, incluyendo usuario, motivo y tiendas implicadas, con refresco manual que reutiliza `inventoryService.fetchInventoryMovementsReport`.
+- **Buscador por IMEI/modelo/SKU**: el campo de búsqueda del inventario destaca explícitamente los criterios admitidos y mantiene la sincronización con el buscador global, simplificando la localización por identificadores sensibles.
+
 ## Actualización Inventario - Gestión de IMEI y Series
 
 - **Identificadores extendidos**: se introduce la tabla `device_identifiers` (migración `202503010001_device_identifiers.py`) con los campos `producto_id`, `imei_1`, `imei_2`, `numero_serie`, `estado_tecnico` y `observaciones`, vinculando cada registro al catálogo de dispositivos sin romper compatibilidad.
