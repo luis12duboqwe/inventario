@@ -90,6 +90,19 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Se incorpora el estado de la venta en los modelos, esquemas Pydantic y lógica de creación, normalizando el valor recibido y
   preservando los cálculos de impuestos y totales vigentes.
 
+### Actualización Ventas - Parte 2 (Lógica Funcional e Integración con Inventario) (17/10/2025 06:54 UTC)
+
+- Cada venta genera movimientos de inventario tipo **salida** en `inventory_movements` y marca como `vendido` a los dispositivos
+  con IMEI o número de serie, impidiendo que se vuelvan a seleccionar mientras no exista stock disponible.
+- Las devoluciones, cancelaciones y ediciones revierten existencias mediante movimientos de **entrada**, restauran el estado
+  `disponible` de los dispositivos identificados y recalculan automáticamente el valor del inventario por sucursal.
+- Se añade soporte para editar ventas (ajuste de artículos, descuentos y método de pago) validando stock en tiempo real, con
+  impacto inmediato sobre la deuda de clientes a crédito y la bitácora de auditoría.
+- La anulación de ventas restaura existencias, actualiza saldos de crédito y sincroniza el cambio en la cola `sync_outbox` para
+  mantener integraciones externas.
+- Se documentan las pruebas automatizadas que cubren los nuevos flujos en `backend/tests/test_sales.py`, asegurando ventas con
+  múltiples productos, cancelaciones y dispositivos con IMEI.
+
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
 La actualización UI de febrero 2025 refuerza la experiencia operativa sin modificar rutas ni versiones:

@@ -5060,6 +5060,94 @@ def get_sale(db: Session, sale_id: int) -> models.Sale:
         raise LookupError("sale_not_found") from exc
 
 
+def _ensure_device_available_for_sale(
+    device: models.Device, quantity: int
+) -> None:
+    if quantity <= 0:
+        raise ValueError("sale_invalid_quantity")
+    if device.quantity < quantity:
+        raise ValueError("sale_insufficient_stock")
+    if device.imei or device.serial:
+        if device.estado and device.estado.lower() == "vendido":
+            raise ValueError("sale_device_already_sold")
+        if quantity > 1:
+            raise ValueError("sale_requires_single_unit")
+
+
+def _mark_device_sold(device: models.Device) -> None:
+    if device.imei or device.serial:
+        device.estado = "vendido"
+
+
+def _restore_device_availability(device: models.Device) -> None:
+    if device.imei or device.serial:
+        device.estado = "disponible"
+
+
+def _apply_sale_items(
+    db: Session,
+    sale: models.Sale,
+    items: list[schemas.SaleItemCreate],
+    *,
+    sale_discount_percent: Decimal,
+    performed_by_id: int,
+    reason: str | None,
+) -> tuple[Decimal, Decimal]:
+    gross_total = Decimal("0")
+    total_discount = Decimal("0")
+    for item in items:
+        device = get_device(db, sale.store_id, item.device_id)
+        _ensure_device_available_for_sale(device, item.quantity)
+
+        line_unit_price = _to_decimal(device.unit_price).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        quantity_decimal = _to_decimal(item.quantity)
+        line_total = (line_unit_price * quantity_decimal).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        gross_total += line_total
+
+        line_discount_percent = _to_decimal(getattr(item, "discount_percent", None))
+        if line_discount_percent == Decimal("0"):
+            line_discount_percent = sale_discount_percent
+        discount_fraction = line_discount_percent / Decimal("100")
+        line_discount_amount = (line_total * discount_fraction).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        total_discount += line_discount_amount
+        net_line_total = (line_total - line_discount_amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        device.quantity -= item.quantity
+        if device.quantity <= 0:
+            _mark_device_sold(device)
+
+        sale_item = models.SaleItem(
+            sale_id=sale.id,
+            device_id=device.id,
+            quantity=item.quantity,
+            unit_price=line_unit_price,
+            discount_amount=line_discount_amount,
+            total_line=net_line_total,
+        )
+        sale.items.append(sale_item)
+
+        db.add(
+            models.InventoryMovement(
+                store_id=sale.store_id,
+                source_store_id=sale.store_id,
+                device_id=device.id,
+                movement_type=models.MovementType.OUT,
+                quantity=item.quantity,
+                comment=reason,
+                performed_by_id=performed_by_id,
+            )
+        )
+    return gross_total, total_discount
+
+
 def create_sale(
     db: Session,
     payload: schemas.SaleCreate,
@@ -5097,59 +5185,14 @@ def create_sale(
     db.add(sale)
     db.flush()
 
-    gross_total = Decimal("0")
-    total_discount = Decimal("0")
-    for item in payload.items:
-        if item.quantity <= 0:
-            raise ValueError("sale_invalid_quantity")
-        device = get_device(db, payload.store_id, item.device_id)
-        if device.quantity < item.quantity:
-            raise ValueError("sale_insufficient_stock")
-
-        line_unit_price = _to_decimal(device.unit_price).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        quantity_decimal = _to_decimal(item.quantity)
-        line_total = (line_unit_price * quantity_decimal).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        gross_total += line_total
-
-        line_discount_percent = _to_decimal(getattr(item, "discount_percent", None))
-        if line_discount_percent == Decimal("0"):
-            line_discount_percent = sale_discount_percent
-        discount_fraction = line_discount_percent / Decimal("100")
-        line_discount_amount = (line_total * discount_fraction).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        total_discount += line_discount_amount
-        net_line_total = (line_total - line_discount_amount).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-
-        device.quantity -= item.quantity
-
-        sale_item = models.SaleItem(
-            sale_id=sale.id,
-            device_id=device.id,
-            quantity=item.quantity,
-            unit_price=line_unit_price,
-            discount_amount=line_discount_amount,
-            total_line=net_line_total,
-        )
-        db.add(sale_item)
-
-        db.add(
-            models.InventoryMovement(
-                store_id=payload.store_id,
-                source_store_id=payload.store_id,
-                device_id=device.id,
-                movement_type=models.MovementType.OUT,
-                quantity=item.quantity,
-                comment=reason,
-                performed_by_id=performed_by_id,
-            )
-        )
+    gross_total, total_discount = _apply_sale_items(
+        db,
+        sale,
+        payload.items,
+        sale_discount_percent=sale_discount_percent,
+        performed_by_id=performed_by_id,
+        reason=reason,
+    )
 
     subtotal = (gross_total - total_discount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -5224,6 +5267,228 @@ def create_sale(
     return sale
 
 
+def update_sale(
+    db: Session,
+    sale_id: int,
+    payload: schemas.SaleUpdate,
+    *,
+    performed_by_id: int,
+    reason: str | None = None,
+) -> models.Sale:
+    sale = get_sale(db, sale_id)
+    if sale.status and sale.status.upper() == "CANCELADA":
+        raise ValueError("sale_already_cancelled")
+    if not payload.items:
+        raise ValueError("sale_items_required")
+    if sale.returns:
+        raise ValueError("sale_has_returns")
+
+    previous_customer = sale.customer
+    previous_payment_method = sale.payment_method
+    previous_total_amount = _to_decimal(sale.total_amount)
+
+    sale_discount_percent = _to_decimal(payload.discount_percent or 0)
+    sale.discount_percent = sale_discount_percent.quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    sale_status = (payload.status or sale.status or "COMPLETADA").strip() or "COMPLETADA"
+    sale.status = sale_status.upper()
+    sale.notes = payload.notes
+
+    customer = None
+    customer_name = payload.customer_name
+    if payload.customer_id:
+        customer = get_customer(db, payload.customer_id)
+        customer_name = customer_name or customer.name
+    sale.customer_id = customer.id if customer else None
+    sale.customer_name = customer_name
+
+    reversal_comment = reason or f"Edición venta #{sale.id}"
+    for existing_item in list(sale.items):
+        device = get_device(db, sale.store_id, existing_item.device_id)
+        device.quantity += existing_item.quantity
+        _restore_device_availability(device)
+        db.add(
+            models.InventoryMovement(
+                store_id=sale.store_id,
+                source_store_id=None,
+                device_id=device.id,
+                movement_type=models.MovementType.IN,
+                quantity=existing_item.quantity,
+                comment=reversal_comment,
+                performed_by_id=performed_by_id,
+            )
+        )
+    sale.items.clear()
+    db.flush()
+
+    if previous_customer and previous_payment_method == models.PaymentMethod.CREDITO and previous_total_amount > Decimal("0"):
+        updated_debt = (
+            _to_decimal(previous_customer.outstanding_debt) - previous_total_amount
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if updated_debt < Decimal("0"):
+            updated_debt = Decimal("0")
+        previous_customer.outstanding_debt = updated_debt
+        db.add(previous_customer)
+
+    gross_total, total_discount = _apply_sale_items(
+        db,
+        sale,
+        payload.items,
+        sale_discount_percent=sale_discount_percent,
+        performed_by_id=performed_by_id,
+        reason=reason,
+    )
+
+    subtotal = (gross_total - total_discount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    sale.subtotal_amount = subtotal
+
+    tax_value = _to_decimal(None)
+    tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
+    sale.tax_amount = (subtotal * tax_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    sale.payment_method = models.PaymentMethod(payload.payment_method)
+    sale.total_amount = (subtotal + sale.tax_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    target_customer = customer or (
+        previous_customer if previous_customer and previous_customer.id == sale.customer_id else None
+    )
+    if target_customer:
+        if sale.payment_method == models.PaymentMethod.CREDITO:
+            target_customer.outstanding_debt = (
+                _to_decimal(target_customer.outstanding_debt) + sale.total_amount
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        _append_customer_history(
+            target_customer,
+            f"Venta #{sale.id} actualizada ({sale.payment_method.value})",
+        )
+        db.add(target_customer)
+
+    _recalculate_store_inventory_value(db, sale.store_id)
+
+    db.commit()
+    db.refresh(sale)
+
+    _log_action(
+        db,
+        action="sale_updated",
+        entity_type="sale",
+        entity_id=str(sale.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"store_id": sale.store_id, "reason": reason}),
+    )
+    db.commit()
+    db.refresh(sale)
+
+    sale_payload = {
+        "sale_id": sale.id,
+        "store_id": sale.store_id,
+        "customer_id": sale.customer_id,
+        "customer_name": sale.customer_name,
+        "payment_method": sale.payment_method.value,
+        "discount_percent": float(sale.discount_percent),
+        "subtotal_amount": float(sale.subtotal_amount),
+        "tax_amount": float(sale.tax_amount),
+        "total_amount": float(sale.total_amount),
+        "created_at": sale.created_at.isoformat(),
+        "items": [
+            {
+                "device_id": item.device_id,
+                "quantity": item.quantity,
+                "unit_price": float(item.unit_price),
+                "discount_amount": float(item.discount_amount),
+                "total_line": float(item.total_line),
+            }
+            for item in sale.items
+        ],
+    }
+    enqueue_sync_outbox(
+        db,
+        entity_type="sale",
+        entity_id=str(sale.id),
+        operation="UPSERT",
+        payload=sale_payload,
+    )
+    return sale
+
+
+def cancel_sale(
+    db: Session,
+    sale_id: int,
+    *,
+    performed_by_id: int,
+    reason: str | None = None,
+) -> models.Sale:
+    sale = get_sale(db, sale_id)
+    if sale.status and sale.status.upper() == "CANCELADA":
+        raise ValueError("sale_already_cancelled")
+
+    cancel_reason = reason or f"Anulación venta #{sale.id}"
+    for item in sale.items:
+        device = get_device(db, sale.store_id, item.device_id)
+        device.quantity += item.quantity
+        if device.quantity > 0:
+            _restore_device_availability(device)
+        db.add(
+            models.InventoryMovement(
+                store_id=sale.store_id,
+                source_store_id=None,
+                device_id=device.id,
+                movement_type=models.MovementType.IN,
+                quantity=item.quantity,
+                comment=cancel_reason,
+                performed_by_id=performed_by_id,
+            )
+        )
+
+    if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and sale.total_amount > Decimal("0"):
+        updated_debt = (
+            _to_decimal(sale.customer.outstanding_debt) - _to_decimal(sale.total_amount)
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if updated_debt < Decimal("0"):
+            updated_debt = Decimal("0")
+        sale.customer.outstanding_debt = updated_debt
+        _append_customer_history(
+            sale.customer,
+            f"Venta #{sale.id} anulada",
+        )
+        db.add(sale.customer)
+
+    sale.status = "CANCELADA"
+    _recalculate_store_inventory_value(db, sale.store_id)
+
+    db.commit()
+    db.refresh(sale)
+
+    _log_action(
+        db,
+        action="sale_cancelled",
+        entity_type="sale",
+        entity_id=str(sale.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps({"reason": cancel_reason}),
+    )
+    db.commit()
+    db.refresh(sale)
+
+    sale_payload = {
+        "sale_id": sale.id,
+        "store_id": sale.store_id,
+        "status": sale.status,
+    }
+    enqueue_sync_outbox(
+        db,
+        entity_type="sale",
+        entity_id=str(sale.id),
+        operation="UPSERT",
+        payload=sale_payload,
+    )
+    return sale
+
+
 def register_sale_return(
     db: Session,
     payload: schemas.SaleReturnCreate,
@@ -5254,6 +5519,8 @@ def register_sale_return(
 
         device = get_device(db, sale.store_id, item.device_id)
         device.quantity += item.quantity
+        if device.quantity > 0:
+            _restore_device_availability(device)
 
         sale_return = models.SaleReturn(
             sale_id=sale.id,
