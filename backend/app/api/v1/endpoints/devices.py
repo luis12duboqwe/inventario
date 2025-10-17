@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from .... import schemas
-from ....models.store import Store
+from ....models import Store
 from ....services.inventory import create_device, list_devices
 from ...deps import get_db
 
