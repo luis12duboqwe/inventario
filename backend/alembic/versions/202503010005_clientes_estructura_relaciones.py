@@ -169,6 +169,34 @@ def upgrade() -> None:
         inspector = _refresh_inspector(bind)
 
     if not _unique_exists(inspector, "clientes", "uq_clientes_correo"):
+        op.execute(
+            sa.text(
+                "UPDATE clientes "
+                "SET correo = NULL "
+                "WHERE correo IS NULL OR TRIM(correo) = ''"
+            )
+        )
+        op.execute(
+            sa.text(
+                "UPDATE clientes "
+                "SET correo = LOWER(TRIM(correo)) "
+                "WHERE correo IS NOT NULL"
+            )
+        )
+        op.execute(
+            sa.text(
+                "WITH duplicates AS ("
+                "    SELECT id_cliente, correo,"
+                "           ROW_NUMBER() OVER (PARTITION BY correo ORDER BY id_cliente) AS rn"
+                "    FROM clientes"
+                "    WHERE correo IS NOT NULL"
+                ")"
+                "UPDATE clientes AS c "
+                "SET correo = CONCAT('duplicado+', c.id_cliente, '@invalid.local') "
+                "FROM duplicates d "
+                "WHERE c.id_cliente = d.id_cliente AND d.rn > 1"
+            )
+        )
         op.create_unique_constraint("uq_clientes_correo", "clientes", ["correo"])
         inspector = _refresh_inspector(bind)
 
