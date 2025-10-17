@@ -11,6 +11,12 @@
 - Migración `202503010003_sales_ventas_structure.py` garantiza claves foráneas activas hacia clientes, usuarios, ventas y dispositivos, creando índices solo cuando faltan en despliegues anteriores.
 - Modelos ORM, esquemas Pydantic y flujo de creación de ventas incorporan el nuevo estado normalizado, preservando cálculos existentes de subtotal, impuesto y total.
 
+## Actualización Ventas - Parte 2 (Lógica Funcional e Integración con Inventario) (17/10/2025 06:54 UTC)
+- Se consolidó la integración entre ventas y movimientos de inventario registrando salidas `OUT`, descontando stock y marcando los dispositivos con IMEI/serie como `vendido` para impedir reprocesos.
+- Las devoluciones, cancelaciones y ediciones de ventas generan entradas `IN`, restauran el estado `disponible` y recalculan el valor del inventario por sucursal de forma automática.
+- Se añadieron los endpoints `PUT /sales/{id}` y `POST /sales/{id}/cancel` para editar o anular ventas con validaciones de stock, actualización de deudas a crédito y registro en `sync_outbox`.
+- `backend/tests/test_sales.py` incorpora casos con múltiples productos, dispositivos identificados por IMEI, ediciones y anulaciones asegurando la coherencia entre ventas e inventario.
+
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.
 - Se actualizan `REPORTE_ROLES` y `AUDITORIA_ROLES` para limitar consultas de inventario, reportes y bitácoras a usuarios `ADMIN` y `GERENTE`, alineando la visibilidad con la jerarquía corporativa.

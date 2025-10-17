@@ -78,7 +78,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         return;
       }
       try {
-        const data = await getDevices(token, form.storeId);
+        const data = await getDevices(token, form.storeId, { estado_inventario: "disponible" });
         setDevices(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "No fue posible cargar los dispositivos");

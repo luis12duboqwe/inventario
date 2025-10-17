@@ -218,3 +218,11 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Tablas `sales` y `sale_items` renombradas a `ventas` y `detalle_ventas` con columnas homologadas (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
 - Migración `202503010003_sales_ventas_structure.py` refuerza claves foráneas hacia `customers`, `users`, `ventas` y `devices`, creando índices únicamente cuando faltan en instalaciones previas.
 - Modelos ORM, esquemas Pydantic y lógica de creación de ventas incorporan el campo `estado`, normalizando el valor recibido y garantizando compatibilidad con los cálculos de impuestos y totales existentes.
+
+### Actualización Ventas - Parte 2 (Lógica Funcional e Integración con Inventario) (17/10/2025 06:54 UTC)
+
+- Cada venta registra un movimiento `OUT` en `inventory_movements`, descuenta stock y marca los dispositivos con IMEI o serie como `vendido` para impedir reprocesos.
+- Al editar, cancelar o devolver ventas se crean movimientos `IN`, se restaura el estado `disponible` de los dispositivos identificados y se recalcula automáticamente el valor del inventario por tienda.
+- Se habilita la edición de ventas mediante `PUT /sales/{id}` con validaciones de stock, actualización de deudas a crédito y auditoría detallada en la bitácora.
+- Se incorpora `POST /sales/{id}/cancel` para anular ventas con reintegro de existencias y sincronización del evento en `sync_outbox`.
+- Las pruebas `backend/tests/test_sales.py` cubren ventas multiartículo, dispositivos con IMEI, ediciones y anulaciones para garantizar la integración con inventario.

@@ -1867,6 +1867,45 @@ class SaleCreate(BaseModel):
         return value
 
 
+class SaleUpdate(BaseModel):
+    customer_id: int | None = Field(default=None, ge=1)
+    customer_name: str | None = Field(default=None, max_length=120)
+    payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
+    discount_percent: Decimal | None = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    status: str = Field(default="COMPLETADA", max_length=30)
+    notes: str | None = Field(default=None, max_length=255)
+    items: list[SaleItemCreate]
+
+    @field_validator("customer_name")
+    @classmethod
+    def _normalize_update_customer(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_update_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("status")
+    @classmethod
+    def _normalize_update_status(cls, value: str) -> str:
+        normalized = value.strip()
+        return normalized or "COMPLETADA"
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_update_items(cls, value: list[SaleItemCreate]) -> list[SaleItemCreate]:
+        if not value:
+            raise ValueError("Debes agregar artículos a la venta.")
+        return value
+
+
 class SaleItemResponse(BaseModel):
     id: int
     sale_id: int
@@ -2261,6 +2300,7 @@ __all__ = [
     "OperationHistoryType",
     "OperationsHistoryResponse",
     "SaleCreate",
+    "SaleUpdate",
     "SaleItemCreate",
     "SaleItemResponse",
     "SaleResponse",

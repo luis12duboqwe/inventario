@@ -104,3 +104,185 @@ def test_sale_and_return_flow(client, db_session):
     assert invalid_return.status_code == status.HTTP_409_CONFLICT
 
     settings.enable_purchases_sales = False
+
+
+def test_sale_with_identifiers_marks_device_as_sold_and_cancel_restores(client, db_session):
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal IMEI", "location": "MX", "timezone": "America/Mexico_City"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "IMEI-0001",
+            "name": "Smartphone Elite",
+            "quantity": 1,
+            "unit_price": 800.0,
+            "costo_unitario": 500.0,
+            "margen_porcentaje": 25.0,
+            "imei": "356789012345678",
+        },
+        headers=auth_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    sale_response = client.post(
+        "/sales",
+        json={"store_id": store_id, "items": [{"device_id": device_id, "quantity": 1}]},
+        headers={**auth_headers, "X-Reason": "Venta IMEI"},
+    )
+    assert sale_response.status_code == status.HTTP_201_CREATED
+    sale_id = sale_response.json()["id"]
+
+    device_record = db_session.execute(
+        select(models.Device).where(models.Device.id == device_id)
+    ).scalar_one()
+    assert device_record.quantity == 0
+    assert device_record.estado == "vendido"
+
+    duplicate_sale = client.post(
+        "/sales",
+        json={"store_id": store_id, "items": [{"device_id": device_id, "quantity": 1}]},
+        headers={**auth_headers, "X-Reason": "Intento duplicado"},
+    )
+    assert duplicate_sale.status_code == status.HTTP_409_CONFLICT
+
+    cancel_response = client.post(
+        f"/sales/{sale_id}/cancel",
+        headers={**auth_headers, "X-Reason": "Cliente se arrepiente"},
+    )
+    assert cancel_response.status_code == status.HTTP_200_OK
+
+    refreshed_device = db_session.execute(
+        select(models.Device).where(models.Device.id == device_id)
+    ).scalar_one()
+    assert refreshed_device.quantity == 1
+    assert refreshed_device.estado == "disponible"
+
+    movements = list(
+        db_session.execute(
+            select(models.InventoryMovement).where(models.InventoryMovement.device_id == device_id)
+        ).scalars()
+    )
+    assert len(movements) == 2
+    assert movements[0].movement_type == models.MovementType.OUT
+    assert movements[1].movement_type == models.MovementType.IN
+
+    settings.enable_purchases_sales = False
+
+
+def test_sale_update_adjusts_inventory_and_records_movements(client, db_session):
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Centro", "location": "MX", "timezone": "America/Mexico_City"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_a = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "SKU-A",
+            "name": "Auriculares",
+            "quantity": 5,
+            "unit_price": 50.0,
+            "costo_unitario": 20.0,
+            "margen_porcentaje": 15.0,
+        },
+        headers=auth_headers,
+    )
+    device_b = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "SKU-B",
+            "name": "Cargador",
+            "quantity": 6,
+            "unit_price": 30.0,
+            "costo_unitario": 10.0,
+            "margen_porcentaje": 20.0,
+        },
+        headers=auth_headers,
+    )
+    assert device_a.status_code == status.HTTP_201_CREATED
+    assert device_b.status_code == status.HTTP_201_CREATED
+    device_a_id = device_a.json()["id"]
+    device_b_id = device_b.json()["id"]
+
+    sale_response = client.post(
+        "/sales",
+        json={
+            "store_id": store_id,
+            "payment_method": "EFECTIVO",
+            "items": [
+                {"device_id": device_a_id, "quantity": 2},
+                {"device_id": device_b_id, "quantity": 1},
+            ],
+        },
+        headers={**auth_headers, "X-Reason": "Venta inicial"},
+    )
+    assert sale_response.status_code == status.HTTP_201_CREATED
+    sale_id = sale_response.json()["id"]
+
+    update_response = client.put(
+        f"/sales/{sale_id}",
+        json={
+            "payment_method": "TARJETA",
+            "discount_percent": 5.0,
+            "items": [
+                {"device_id": device_a_id, "quantity": 1},
+                {"device_id": device_b_id, "quantity": 3},
+            ],
+        },
+        headers={**auth_headers, "X-Reason": "Actualizacion venta"},
+    )
+    assert update_response.status_code == status.HTTP_200_OK
+    updated_sale = update_response.json()
+    assert updated_sale["payment_method"] == "TARJETA"
+    assert sorted(item["device_id"] for item in updated_sale["items"]) == sorted([device_a_id, device_b_id])
+
+    device_a_record = db_session.execute(
+        select(models.Device).where(models.Device.id == device_a_id)
+    ).scalar_one()
+    device_b_record = db_session.execute(
+        select(models.Device).where(models.Device.id == device_b_id)
+    ).scalar_one()
+    assert device_a_record.quantity == 4
+    assert device_b_record.quantity == 3
+
+    movements = list(
+        db_session.execute(
+            select(models.InventoryMovement)
+            .where(models.InventoryMovement.store_id == store_id)
+            .order_by(models.InventoryMovement.created_at.asc())
+        ).scalars()
+    )
+    assert any(movement.quantity == 2 and movement.device_id == device_a_id for movement in movements)
+    assert any(movement.quantity == 1 and movement.device_id == device_b_id for movement in movements)
+    assert any(
+        movement.quantity == 1
+        and movement.device_id == device_a_id
+        and movement.movement_type == models.MovementType.OUT
+        for movement in movements
+    )
+    assert any(
+        movement.quantity == 3
+        and movement.device_id == device_b_id
+        and movement.movement_type == models.MovementType.OUT
+        for movement in movements
+    )
+
+    settings.enable_purchases_sales = False
