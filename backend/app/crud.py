@@ -1863,6 +1863,12 @@ def create_inventory_movement(
 
     source_store_id = payload.tienda_origen_id
     if source_store_id is not None:
+        if (
+            payload.tipo_movimiento
+            in {models.MovementType.OUT, models.MovementType.ADJUST}
+            and source_store_id != store_id
+        ):
+            raise ValueError("forbidden_source_store")
         get_store(db, source_store_id)
 
     inventory_store_id = store_id
