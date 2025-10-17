@@ -435,13 +435,25 @@ class ContactHistoryEntry(BaseModel):
 class CustomerBase(BaseModel):
     contact_name: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=120)
-    phone: str | None = Field(default=None, max_length=40)
+    phone: str = Field(..., min_length=5, max_length=40)
     address: str | None = Field(default=None, max_length=255)
+    customer_type: str = Field(default="minorista", min_length=3, max_length=30)
+    status: str = Field(default="activo", min_length=3, max_length=20)
+    credit_limit: Decimal = Field(default=Decimal("0"))
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal = Field(default=Decimal("0"))
     history: list[ContactHistoryEntry] = Field(default_factory=list)
 
-    @field_validator("contact_name", "email", "phone", "address", "notes", mode="before")
+    @field_validator(
+        "contact_name",
+        "email",
+        "phone",
+        "address",
+        "customer_type",
+        "status",
+        "notes",
+        mode="before",
+    )
     @classmethod
     def _normalize_optional_text(cls, value: str | None) -> str | None:
         if value is None:
@@ -453,6 +465,19 @@ class CustomerBase(BaseModel):
     @classmethod
     def _serialize_debt(cls, value: Decimal) -> float:
         return float(value)
+
+    @field_serializer("credit_limit")
+    @classmethod
+    def _serialize_credit_limit(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_validator("phone", mode="after")
+    @classmethod
+    def _ensure_phone(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El teléfono del cliente es obligatorio.")
+        return normalized
 
 
 class CustomerCreate(CustomerBase):
@@ -473,11 +498,24 @@ class CustomerUpdate(BaseModel):
     email: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
     address: str | None = Field(default=None, max_length=255)
+    customer_type: str | None = Field(default=None, max_length=30)
+    status: str | None = Field(default=None, max_length=20)
+    credit_limit: Decimal | None = Field(default=None)
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal | None = Field(default=None)
     history: list[ContactHistoryEntry] | None = Field(default=None)
 
-    @field_validator("name", "contact_name", "email", "phone", "address", "notes", mode="before")
+    @field_validator(
+        "name",
+        "contact_name",
+        "email",
+        "phone",
+        "address",
+        "customer_type",
+        "status",
+        "notes",
+        mode="before",
+    )
     @classmethod
     def _normalize_update_text(cls, value: str | None) -> str | None:
         if value is None:

@@ -194,7 +194,11 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
 
     customer_response = client.post(
         "/customers",
-        json={"name": "Cliente Crédito", "email": "credito@example.com"},
+        json={
+            "name": "Cliente Crédito",
+            "email": "credito@example.com",
+            "phone": "555-500-5000",
+        },
         headers=reason_headers,
     )
     assert customer_response.status_code == 201

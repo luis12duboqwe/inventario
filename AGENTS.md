@@ -260,3 +260,11 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - `frontend/src/api.ts` incorpora helpers `exportSalesPdf|Excel` y tipos enriquecidos (`SaleStoreSummary`, `SaleUserSummary`, `SaleDeviceSummary`); las pruebas `backend/tests/test_sales.py` verifican filtros y exportaciones.
 - **17/10/2025 08:30 UTC** — Se envolvió el flujo de captura en un único formulario para que "Guardar venta" active `handleSubmit`, además de añadir estilos oscuros/fluídos a `Sales.tsx` (`sales-form`, `table-responsive`, `totals-card`, `actions-card`).
 - **17/10/2025 09:15 UTC** — Se reforzó el dashboard con tarjetas de ticket promedio y columna de promedios diarios, reutilizando el cálculo del backend y nuevos estilos (`metric-secondary`, `metric-primary`) para remarcar totales, impuestos y estadísticas de ventas.
+
+### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
+
+- La migración `202503010005_clientes_estructura_relaciones.py` renombra la tabla `customers` a `clientes`, ajusta columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y marca el teléfono como obligatorio con valores de contingencia para datos históricos.
+- Se actualizan las claves foráneas `ventas.cliente_id` y `repair_orders.customer_id` para apuntar a `clientes.id_cliente`, preservando el enlace de facturas POS y órdenes de reparación con cada cliente; se crean índices `ix_clientes_*` y la unicidad `uq_clientes_correo`.
+- Los esquemas y CRUD de clientes exponen tipo, estado y límite de crédito, validan teléfonos y saldos con decimales y amplían la exportación CSV con los nuevos campos; la prueba `backend/tests/test_clientes_schema.py` inspecciona columnas, índices y relaciones.
+- `frontend/src/modules/operations/components/Customers.tsx` añade selectores de tipo/estado, captura el límite de crédito y muestra los campos en la tabla manteniendo el motivo corporativo en altas, ediciones, notas y ajustes de saldo.
+

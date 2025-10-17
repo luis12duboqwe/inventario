@@ -357,6 +357,9 @@ def _customer_payload(customer: models.Customer) -> dict[str, object]:
         "contact_name": customer.contact_name,
         "email": customer.email,
         "phone": customer.phone,
+        "customer_type": customer.customer_type,
+        "status": customer.status,
+        "credit_limit": float(customer.credit_limit or Decimal("0")),
         "outstanding_debt": float(customer.outstanding_debt or Decimal("0")),
         "last_interaction_at": customer.last_interaction_at.isoformat() if customer.last_interaction_at else None,
         "updated_at": customer.updated_at.isoformat(),
@@ -1102,6 +1105,9 @@ def list_customers(
                 func.lower(models.Customer.name).like(normalized),
                 func.lower(models.Customer.contact_name).like(normalized),
                 func.lower(models.Customer.email).like(normalized),
+                func.lower(models.Customer.phone).like(normalized),
+                func.lower(models.Customer.customer_type).like(normalized),
+                func.lower(models.Customer.status).like(normalized),
             )
         )
     return list(db.scalars(statement))
@@ -1128,6 +1134,9 @@ def create_customer(
         email=payload.email,
         phone=payload.phone,
         address=payload.address,
+        customer_type=payload.customer_type,
+        status=payload.status,
+        credit_limit=_to_decimal(payload.credit_limit),
         notes=payload.notes,
         history=history,
         outstanding_debt=_to_decimal(payload.outstanding_debt),
@@ -1185,6 +1194,15 @@ def update_customer(
     if payload.address is not None:
         customer.address = payload.address
         updated_fields["address"] = payload.address
+    if payload.customer_type is not None:
+        customer.customer_type = payload.customer_type
+        updated_fields["customer_type"] = payload.customer_type
+    if payload.status is not None:
+        customer.status = payload.status
+        updated_fields["status"] = payload.status
+    if payload.credit_limit is not None:
+        customer.credit_limit = _to_decimal(payload.credit_limit)
+        updated_fields["credit_limit"] = float(customer.credit_limit)
     if payload.notes is not None:
         customer.notes = payload.notes
         updated_fields["notes"] = payload.notes
@@ -1259,11 +1277,14 @@ def export_customers_csv(
         [
             "ID",
             "Nombre",
+            "Tipo",
+            "Estado",
             "Contacto",
             "Correo",
             "Teléfono",
             "Dirección",
-            "Deuda",
+            "Límite de crédito",
+            "Saldo",
             "Última interacción",
         ]
     )
@@ -1272,10 +1293,13 @@ def export_customers_csv(
             [
                 customer.id,
                 customer.name,
+                customer.customer_type,
+                customer.status,
                 customer.contact_name or "",
                 customer.email or "",
                 customer.phone or "",
                 customer.address or "",
+                float(customer.credit_limit),
                 float(customer.outstanding_debt),
                 customer.last_interaction_at.isoformat()
                 if customer.last_interaction_at

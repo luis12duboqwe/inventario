@@ -46,6 +46,12 @@
 - **17/10/2025 08:30 UTC** — Se corrigió la asociación del botón "Guardar venta" con el formulario principal, evitando envíos nulos, y se agregaron estilos responsive/oscuros para tablas, totales y acciones del módulo de ventas.
 - **17/10/2025 09:15 UTC** — Se añadieron tarjetas de ticket promedio y estadísticas diarias con promedios calculados, además de estilos oscuros reforzados (`metric-secondary`, `metric-primary`) para resaltar totales, impuestos y métricas del dashboard de ventas.
 
+## Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
+- La migración `202503010005_clientes_estructura_relaciones.py` renombra `customers` a `clientes`, homologa columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y vuelve obligatorio el teléfono, además de crear índices `ix_clientes_*` y la restricción `uq_clientes_correo`.
+- Se actualizan las claves foráneas de `ventas.cliente_id` y `repair_orders.customer_id` para apuntar a `clientes.id_cliente`, preservando la asociación de facturas POS y órdenes de reparación con su cliente.
+- Los esquemas FastAPI exigen teléfono, exponen tipo/estado/límite de crédito y normalizan saldos; `crud.py` amplía la exportación CSV y la prueba `backend/tests/test_clientes_schema.py` valida columnas, índices y relaciones.
+- `frontend/src/modules/operations/components/Customers.tsx` incorpora selectores de tipo y estado, captura el límite de crédito y muestra los nuevos campos en la tabla, manteniendo la solicitud de motivo corporativo en altas, ediciones, notas y ajustes de saldo.
+
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.
 - Se actualizan `REPORTE_ROLES` y `AUDITORIA_ROLES` para limitar consultas de inventario, reportes y bitácoras a usuarios `ADMIN` y `GERENTE`, alineando la visibilidad con la jerarquía corporativa.

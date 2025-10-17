@@ -305,7 +305,11 @@ def test_sales_filters_and_exports(client, db_session):
 
     customer_response = client.post(
         "/customers",
-        json={"name": "Cliente Filtros", "email": "cliente@example.com"},
+        json={
+            "name": "Cliente Filtros",
+            "email": "cliente@example.com",
+            "phone": "555-200-3000",
+        },
         headers={**auth_headers, "X-Reason": "Alta cliente filtros"},
     )
     assert customer_response.status_code == status.HTTP_201_CREATED
