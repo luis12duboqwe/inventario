@@ -1323,9 +1323,9 @@ def create_inventory_movement(
         performed_by_id=performed_by_id,
         details=f"tipo={payload.movement_type.value}, cantidad={payload.quantity}",
     )
+    total_value = _recalculate_store_inventory_value(db, store_id)
     db.commit()
     db.refresh(movement)
-    total_value = _recalculate_store_inventory_value(db, store_id)
     setattr(movement, "store_inventory_value", total_value)
     return movement
 
