@@ -1,5 +1,10 @@
 # Bitácora de cambios
 
+## Actualización Inventario - Valoraciones y Costos
+- Se crea la vista `valor_inventario` a través de la migración `202503010002_inventory_valuation_view.py`, consolidando costo promedio ponderado, valores totales por sucursal y márgenes por producto y categoría.
+- Se añade el servicio `calculate_inventory_valuation` y el esquema `InventoryValuation` para consultar la vista con filtros opcionales por sucursal y categoría desde el backend.
+- `backend/tests/test_inventory_valuation.py` valida el cálculo de promedios ponderados, márgenes y filtros, mientras que `backend/tests/conftest.py` prepara la vista en entornos de prueba.
+
 ## Actualización Inventario - Gestión de IMEI y Series
 - Se crea la tabla `device_identifiers` (migración `202503010001_device_identifiers.py`) con los campos `producto_id`, `imei_1`, `imei_2`, `numero_serie`, `estado_tecnico` y `observaciones`, vinculada uno a uno con `devices` y con restricciones de unicidad.
 - Nuevos endpoints `GET/PUT /inventory/stores/{store_id}/devices/{device_id}/identifier` permiten consultar y actualizar los identificadores extendidos exigiendo cabecera `X-Reason` y roles de gestión.

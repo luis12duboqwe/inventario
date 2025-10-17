@@ -9,6 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.config import settings
 from backend.app.database import Base, create_engine_from_url, get_db
+from backend.app.db.valor_inventario_view import (
+    create_valor_inventario_view,
+    drop_valor_inventario_view,
+)
 from backend.app.main import create_app
 
 
@@ -29,6 +33,9 @@ def db_session(db_engine) -> Iterator[Session]:
     """Entrega una sesión limpia por prueba y garantiza el rollback."""
 
     Base.metadata.create_all(bind=db_engine)
+    with db_engine.connect() as setup_connection:
+        create_valor_inventario_view(setup_connection)
+
     connection = db_engine.connect()
     transaction = connection.begin()
     session_factory = sessionmaker(bind=connection, autocommit=False, autoflush=False, future=True)
@@ -40,6 +47,8 @@ def db_session(db_engine) -> Iterator[Session]:
         session.close()
         transaction.rollback()
         connection.close()
+        with db_engine.connect() as cleanup_connection:
+            drop_valor_inventario_view(cleanup_connection)
         Base.metadata.drop_all(bind=db_engine)
 
 
