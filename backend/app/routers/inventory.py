@@ -63,6 +63,14 @@ def register_movement(
                     "message": "La sucursal destino del movimiento debe coincidir con la seleccionada.",
                 },
             ) from exc
+        if str(exc) == "forbidden_source_store":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "forbidden_source_store",
+                    "message": "No tienes permisos para descontar inventario de otra sucursal.",
+                },
+            ) from exc
         raise
     return movement
 
