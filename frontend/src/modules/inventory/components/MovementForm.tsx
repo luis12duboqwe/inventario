@@ -20,6 +20,12 @@ function MovementForm({ devices, onSubmit }: Props) {
   }, [movementType]);
 
   useEffect(() => {
+    if (movementType !== "ajuste") {
+      setQuantity((current) => Math.max(1, current));
+    }
+  }, [movementType]);
+
+  useEffect(() => {
     if (devices.length > 0) {
       setDeviceId(devices[0].id);
     }
@@ -86,16 +92,18 @@ function MovementForm({ devices, onSubmit }: Props) {
       <input
         id="quantity"
         type="number"
-        min={1}
+        min={movementType === "ajuste" ? 0 : 1}
         step={1}
         value={quantity}
         onChange={(event) => {
           const nextValue = Number(event.target.value);
           if (!Number.isFinite(nextValue)) {
-            setQuantity(1);
+            setQuantity(movementType === "ajuste" ? 0 : 1);
             return;
           }
-          setQuantity(Math.max(1, Math.floor(nextValue)));
+          const normalizedValue = Math.floor(nextValue);
+          const minimum = movementType === "ajuste" ? 0 : 1;
+          setQuantity(Math.max(minimum, normalizedValue));
         }}
         required
       />
