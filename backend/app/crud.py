@@ -2512,9 +2512,14 @@ def get_inventory_movements_report(
     total_value = Decimal("0")
     report_entries: list[schemas.MovementReportEntry] = []
 
+    include_adjustments_in_totals = movement_type == models.MovementType.ADJUST
+
     for movement in movements:
         value = _movement_value(movement)
-        contributes_to_totals = movement.movement_type != models.MovementType.ADJUST
+        contributes_to_totals = (
+            movement.movement_type != models.MovementType.ADJUST
+            or include_adjustments_in_totals
+        )
         if contributes_to_totals:
             total_units += movement.quantity
             total_value += value
