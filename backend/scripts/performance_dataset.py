@@ -15,9 +15,9 @@ from typing import Any, Callable, Iterable, TypeVar, cast
 from fastapi.testclient import TestClient
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-DB_PATH = ROOT_DIR / "softmobile_performance.db"
+PERFORMANCE_DB_PATH = (ROOT_DIR / "softmobile_performance.db").resolve()
 
-os.environ.setdefault("SOFTMOBILE_DATABASE_URL", f"sqlite:///{DB_PATH}")
+os.environ["SOFTMOBILE_DATABASE_URL"] = f"sqlite:///{PERFORMANCE_DB_PATH}"
 os.environ.setdefault("SOFTMOBILE_ENABLE_CATALOG_PRO", "1")
 os.environ.setdefault("SOFTMOBILE_ENABLE_TRANSFERS", "1")
 os.environ.setdefault("SOFTMOBILE_ENABLE_PURCHASES_SALES", "1")
@@ -31,6 +31,7 @@ os.environ.setdefault(
     "http://127.0.0.1:5173,http://localhost:5173,http://0.0.0.0:5173",
 )
 
+from backend.app.config import settings  # noqa: E402  # cargar configuración tras forzar entorno
 from backend.app.main import app  # noqa: E402  # import after configurar entorno
 
 
@@ -56,6 +57,21 @@ class ScenarioError(RuntimeError):
 
 
 T = TypeVar("T")
+
+
+def _database_path_from_url(database_url: str) -> Path:
+    if not database_url.startswith("sqlite:///"):
+        raise ScenarioError(
+            "El escenario de rendimiento requiere una base SQLite dedicada."
+        )
+    raw_path = database_url.removeprefix("sqlite:///")
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = (ROOT_DIR / raw_path).resolve()
+    return candidate
+
+
+DB_PATH = _database_path_from_url(settings.database_url)
 
 
 def _reset_database() -> None:
