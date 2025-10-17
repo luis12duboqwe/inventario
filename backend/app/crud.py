@@ -747,7 +747,7 @@ def receive_transfer_order(
     reason: str | None,
 ) -> models.TransferOrder:
     order = get_transfer_order(db, transfer_id)
-    if order.status not in {models.TransferStatus.SOLICITADA, models.TransferStatus.EN_TRANSITO}:
+    if order.status != models.TransferStatus.EN_TRANSITO:
         raise ValueError("transfer_invalid_transition")
 
     _require_store_permission(
