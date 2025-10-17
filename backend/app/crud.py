@@ -5036,6 +5036,40 @@ def list_sales(
     performed_by_id: int | None = None,
     query: str | None = None,
 ) -> list[models.Sale]:
+    base_statement = select(models.Sale.id).order_by(models.Sale.created_at.desc())
+    if store_id is not None:
+        base_statement = base_statement.where(models.Sale.store_id == store_id)
+    if customer_id is not None:
+        base_statement = base_statement.where(models.Sale.customer_id == customer_id)
+    if performed_by_id is not None:
+        base_statement = base_statement.where(
+            models.Sale.performed_by_id == performed_by_id
+        )
+    if date_from is not None or date_to is not None:
+        start, end = _normalize_date_range(date_from, date_to)
+        base_statement = base_statement.where(
+            models.Sale.created_at >= start, models.Sale.created_at <= end
+        )
+    if query:
+        normalized = f"%{query.lower()}%"
+        base_statement = base_statement.join(models.Sale.items).join(
+            models.SaleItem.device
+        )
+        base_statement = base_statement.where(
+            or_(
+                func.lower(models.Device.sku).like(normalized),
+                func.lower(models.Device.name).like(normalized),
+                func.lower(models.Device.modelo).like(normalized),
+                func.lower(models.Device.imei).like(normalized),
+                func.lower(models.Device.serial).like(normalized),
+            )
+        )
+        base_statement = base_statement.distinct()
+    if limit is not None:
+        base_statement = base_statement.limit(limit)
+
+    sales_subquery = base_statement.subquery()
+
     statement = (
         select(models.Sale)
         .options(
@@ -5046,35 +5080,11 @@ def list_sales(
             joinedload(models.Sale.cash_session),
             joinedload(models.Sale.performed_by),
         )
+        .join(sales_subquery, models.Sale.id == sales_subquery.c.id)
         .order_by(models.Sale.created_at.desc())
     )
-    if store_id is not None:
-        statement = statement.where(models.Sale.store_id == store_id)
-    if customer_id is not None:
-        statement = statement.where(models.Sale.customer_id == customer_id)
-    if performed_by_id is not None:
-        statement = statement.where(models.Sale.performed_by_id == performed_by_id)
-    if date_from is not None or date_to is not None:
-        start, end = _normalize_date_range(date_from, date_to)
-        statement = statement.where(
-            models.Sale.created_at >= start, models.Sale.created_at <= end
-        )
-    if query:
-        normalized = f"%{query.lower()}%"
-        statement = statement.join(models.Sale.items).join(models.SaleItem.device)
-        statement = statement.where(
-            or_(
-                func.lower(models.Device.sku).like(normalized),
-                func.lower(models.Device.name).like(normalized),
-                func.lower(models.Device.modelo).like(normalized),
-                func.lower(models.Device.imei).like(normalized),
-                func.lower(models.Device.serial).like(normalized),
-            )
-        )
-    results = list(db.scalars(statement).unique())
-    if limit is not None:
-        return results[:limit]
-    return results
+
+    return list(db.scalars(statement).unique())
 
 
 def get_sale(db: Session, sale_id: int) -> models.Sale:
