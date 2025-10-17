@@ -197,6 +197,12 @@ class Device(Base):
         back_populates="device",
         cascade="all, delete-orphan",
     )
+    identifier: Mapped["DeviceIdentifier | None"] = relationship(
+        "DeviceIdentifier",
+        back_populates="device",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     @property
     def costo_compra(self) -> Decimal:
@@ -217,6 +223,28 @@ class Device(Base):
     @precio_venta.setter
     def precio_venta(self, value: Decimal) -> None:
         self.unit_price = value
+
+
+class DeviceIdentifier(Base):
+    __tablename__ = "device_identifiers"
+    __table_args__ = (
+        UniqueConstraint("producto_id", name="uq_device_identifiers_producto"),
+        UniqueConstraint("imei_1", name="uq_device_identifiers_imei_1"),
+        UniqueConstraint("imei_2", name="uq_device_identifiers_imei_2"),
+        UniqueConstraint("numero_serie", name="uq_device_identifiers_numero_serie"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    producto_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
+    )
+    imei_1: Mapped[str | None] = mapped_column(String(18), nullable=True)
+    imei_2: Mapped[str | None] = mapped_column(String(18), nullable=True)
+    numero_serie: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    estado_tecnico: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    observaciones: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    device: Mapped[Device] = relationship("Device", back_populates="identifier")
 
 
 class Role(Base):
@@ -1080,6 +1108,7 @@ __all__ = [
     "BackupJob",
     "BackupMode",
     "ActiveSession",
+    "DeviceIdentifier",
     "Device",
     "InventoryMovement",
     "MovementType",

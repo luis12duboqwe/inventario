@@ -34,11 +34,88 @@ def _ensure_unique_identifiers(
             statement = statement.where(models.Device.id != exclude_device_id)
         if db.scalars(statement).first() is not None:
             raise ValueError("device_identifier_conflict")
+        identifier_statement = select(models.DeviceIdentifier).where(
+            or_(
+                models.DeviceIdentifier.imei_1 == imei,
+                models.DeviceIdentifier.imei_2 == imei,
+            )
+        )
+        if exclude_device_id:
+            identifier_statement = identifier_statement.where(
+                models.DeviceIdentifier.producto_id != exclude_device_id
+            )
+        if db.scalars(identifier_statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
     if serial:
         statement = select(models.Device).where(models.Device.serial == serial)
         if exclude_device_id:
             statement = statement.where(models.Device.id != exclude_device_id)
         if db.scalars(statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
+        identifier_statement = select(models.DeviceIdentifier).where(
+            models.DeviceIdentifier.numero_serie == serial
+        )
+        if exclude_device_id:
+            identifier_statement = identifier_statement.where(
+                models.DeviceIdentifier.producto_id != exclude_device_id
+            )
+        if db.scalars(identifier_statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
+
+
+def _ensure_unique_identifier_payload(
+    db: Session,
+    *,
+    imei_1: str | None,
+    imei_2: str | None,
+    numero_serie: str | None,
+    exclude_device_id: int | None = None,
+    exclude_identifier_id: int | None = None,
+) -> None:
+    imei_values = {value for value in (imei_1, imei_2) if value}
+    for imei in imei_values:
+        statement = select(models.Device).where(models.Device.imei == imei)
+        if exclude_device_id:
+            statement = statement.where(models.Device.id != exclude_device_id)
+        if db.scalars(statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
+
+        identifier_statement = select(models.DeviceIdentifier).where(
+            or_(
+                models.DeviceIdentifier.imei_1 == imei,
+                models.DeviceIdentifier.imei_2 == imei,
+            )
+        )
+        if exclude_device_id:
+            identifier_statement = identifier_statement.where(
+                models.DeviceIdentifier.producto_id != exclude_device_id
+            )
+        if exclude_identifier_id:
+            identifier_statement = identifier_statement.where(
+                models.DeviceIdentifier.id != exclude_identifier_id
+            )
+        if db.scalars(identifier_statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
+
+    if numero_serie:
+        statement = select(models.Device).where(models.Device.serial == numero_serie)
+        if exclude_device_id:
+            statement = statement.where(models.Device.id != exclude_device_id)
+        if db.scalars(statement).first() is not None:
+            raise ValueError("device_identifier_conflict")
+
+        identifier_statement = select(models.DeviceIdentifier).where(
+            models.DeviceIdentifier.numero_serie == numero_serie
+        )
+        if exclude_device_id:
+            identifier_statement = identifier_statement.where(
+                models.DeviceIdentifier.producto_id != exclude_device_id
+            )
+        if exclude_identifier_id:
+            identifier_statement = identifier_statement.where(
+                models.DeviceIdentifier.id != exclude_identifier_id
+            )
+        if db.scalars(identifier_statement).first() is not None:
             raise ValueError("device_identifier_conflict")
 
 
@@ -1757,6 +1834,79 @@ def update_device(
     return device
 
 
+def upsert_device_identifier(
+    db: Session,
+    store_id: int,
+    device_id: int,
+    payload: schemas.DeviceIdentifierRequest,
+    *,
+    reason: str | None = None,
+    performed_by_id: int | None = None,
+) -> models.DeviceIdentifier:
+    device = get_device(db, store_id, device_id)
+    payload_data = payload.model_dump()
+    imei_1 = payload_data.get("imei_1")
+    imei_2 = payload_data.get("imei_2")
+    numero_serie = payload_data.get("numero_serie")
+    _ensure_unique_identifier_payload(
+        db,
+        imei_1=imei_1,
+        imei_2=imei_2,
+        numero_serie=numero_serie,
+        exclude_device_id=device.id,
+        exclude_identifier_id=device.identifier.id if device.identifier else None,
+    )
+
+    identifier = device.identifier
+    created = False
+    if identifier is None:
+        identifier = models.DeviceIdentifier(producto_id=device.id)
+        created = True
+
+    identifier.imei_1 = imei_1
+    identifier.imei_2 = imei_2
+    identifier.numero_serie = numero_serie
+    identifier.estado_tecnico = payload_data.get("estado_tecnico")
+    identifier.observaciones = payload_data.get("observaciones")
+
+    db.add(identifier)
+    db.commit()
+    db.refresh(identifier)
+
+    action = "device_identifier_created" if created else "device_identifier_updated"
+    details_parts: list[str] = []
+    if imei_1:
+        details_parts.append(f"IMEI1={imei_1}")
+    if imei_2:
+        details_parts.append(f"IMEI2={imei_2}")
+    if numero_serie:
+        details_parts.append(f"SERIE={numero_serie}")
+    if reason:
+        details_parts.append(f"MOTIVO={reason}")
+    details = ", ".join(details_parts) if details_parts else None
+
+    _log_action(
+        db,
+        action=action,
+        entity_type="device",
+        entity_id=str(device.id),
+        performed_by_id=performed_by_id,
+        details=details,
+    )
+    db.commit()
+    db.refresh(identifier)
+    return identifier
+
+
+def get_device_identifier(
+    db: Session, store_id: int, device_id: int
+) -> models.DeviceIdentifier:
+    device = get_device(db, store_id, device_id)
+    if device.identifier is None:
+        raise LookupError("device_identifier_not_found")
+    return device.identifier
+
+
 def list_devices(
     db: Session,
     store_id: int,
@@ -1772,7 +1922,11 @@ def list_devices(
     fecha_ingreso_hasta: date | None = None,
 ) -> list[models.Device]:
     get_store(db, store_id)
-    statement = select(models.Device).where(models.Device.store_id == store_id)
+    statement = (
+        select(models.Device)
+        .options(joinedload(models.Device.identifier))
+        .where(models.Device.store_id == store_id)
+    )
     if estado is not None:
         statement = statement.where(models.Device.estado_comercial == estado)
     if categoria:
@@ -1817,7 +1971,10 @@ def list_devices(
 def search_devices(db: Session, filters: schemas.DeviceSearchFilters) -> list[models.Device]:
     statement = (
         select(models.Device)
-        .options(joinedload(models.Device.store))
+        .options(
+            joinedload(models.Device.store),
+            joinedload(models.Device.identifier),
+        )
         .join(models.Store)
     )
     if filters.imei:

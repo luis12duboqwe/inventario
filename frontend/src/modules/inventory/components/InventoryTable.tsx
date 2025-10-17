@@ -161,9 +161,26 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
           <td data-label="Ubicación">{device.ubicacion ?? "—"}</td>
           <td data-label="Identificadores">
             <div className="identifier-stack">
-              {device.imei ? <span>IMEI: {device.imei}</span> : null}
-              {device.serial ? <span>Serie: {device.serial}</span> : null}
-              {!device.imei && !device.serial ? <span className="muted-text">—</span> : null}
+              {device.imei ? <span>IMEI catálogo: {device.imei}</span> : null}
+              {device.serial ? <span>Serie catálogo: {device.serial}</span> : null}
+              {device.identifier?.imei_1 ? <span>IMEI 1: {device.identifier.imei_1}</span> : null}
+              {device.identifier?.imei_2 ? <span>IMEI 2: {device.identifier.imei_2}</span> : null}
+              {device.identifier?.numero_serie ? (
+                <span>Serie extendida: {device.identifier.numero_serie}</span>
+              ) : null}
+              {device.identifier?.estado_tecnico ? (
+                <span>Estado técnico: {device.identifier.estado_tecnico}</span>
+              ) : null}
+              {device.identifier?.observaciones ? (
+                <span>Notas: {device.identifier.observaciones}</span>
+              ) : null}
+              {!device.imei &&
+              !device.serial &&
+              !device.identifier?.imei_1 &&
+              !device.identifier?.imei_2 &&
+              !device.identifier?.numero_serie ? (
+                <span className="muted-text">—</span>
+              ) : null}
             </div>
           </td>
           <td data-label="Cantidad">{device.quantity}</td>

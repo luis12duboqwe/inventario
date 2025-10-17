@@ -25,6 +25,24 @@ export type UserAccount = {
   roles: Role[];
 };
 
+export type DeviceIdentifier = {
+  id: number;
+  producto_id: number;
+  imei_1?: string | null;
+  imei_2?: string | null;
+  numero_serie?: string | null;
+  estado_tecnico?: string | null;
+  observaciones?: string | null;
+};
+
+export type DeviceIdentifierInput = {
+  imei_1?: string | null;
+  imei_2?: string | null;
+  numero_serie?: string | null;
+  estado_tecnico?: string | null;
+  observaciones?: string | null;
+};
+
 export type Device = {
   id: number;
   sku: string;
@@ -56,6 +74,7 @@ export type Device = {
   descripcion?: string | null;
   imagen_url?: string | null;
   precio_venta?: number;
+  identifier?: DeviceIdentifier | null;
 };
 
 export type CatalogDevice = Device & { store_name: string };
@@ -1137,6 +1156,36 @@ export function getDevices(
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   return request<Device[]>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
+}
+
+export function getDeviceIdentifier(
+  token: string,
+  storeId: number,
+  deviceId: number,
+): Promise<DeviceIdentifier> {
+  return request<DeviceIdentifier>(
+    `/inventory/stores/${storeId}/devices/${deviceId}/identifier`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function upsertDeviceIdentifier(
+  token: string,
+  storeId: number,
+  deviceId: number,
+  payload: DeviceIdentifierInput,
+  reason: string,
+): Promise<DeviceIdentifier> {
+  return request<DeviceIdentifier>(
+    `/inventory/stores/${storeId}/devices/${deviceId}/identifier`,
+    {
+      method: "PUT",
+      headers: { "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
 }
 
 export async function exportStoreDevicesCsv(
