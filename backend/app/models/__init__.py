@@ -706,6 +706,92 @@ class SupplierBatch(Base):
     device: Mapped[Device | None] = relationship("Device")
 
 
+class Proveedor(Base):
+    """Catálogo simplificado de proveedores corporativos."""
+
+    __tablename__ = "proveedores"
+
+    id_proveedor: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    nombre: Mapped[str] = mapped_column(String(150), nullable=False, unique=True, index=True)
+    telefono: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    correo: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    direccion: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tipo: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    estado: Mapped[str] = mapped_column(String(40), nullable=False, default="activo")
+    notas: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    compras: Mapped[list["Compra"]] = relationship(
+        "Compra", back_populates="proveedor", cascade="all, delete-orphan"
+    )
+
+
+class Compra(Base):
+    """Encabezado de compras directas registradas en el módulo clásico."""
+
+    __tablename__ = "compras"
+
+    id_compra: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    proveedor_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("proveedores.id_proveedor", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    usuario_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    fecha: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, default=Decimal("0")
+    )
+    impuesto: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    forma_pago: Mapped[str] = mapped_column(String(60), nullable=False)
+    estado: Mapped[str] = mapped_column(String(40), nullable=False, default="PENDIENTE")
+
+    proveedor: Mapped[Proveedor] = relationship("Proveedor", back_populates="compras")
+    usuario: Mapped["User"] = relationship("User")
+    detalles: Mapped[list["DetalleCompra"]] = relationship(
+        "DetalleCompra", back_populates="compra", cascade="all, delete-orphan"
+    )
+
+
+class DetalleCompra(Base):
+    """Detalle de productos asociados a una compra simplificada."""
+
+    __tablename__ = "detalle_compras"
+
+    id_detalle: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    compra_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("compras.id_compra", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    producto_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
+    costo_unitario: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    subtotal: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, default=Decimal("0")
+    )
+
+    compra: Mapped[Compra] = relationship("Compra", back_populates="detalles")
+    producto: Mapped[Device] = relationship("Device")
+
+
 class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 

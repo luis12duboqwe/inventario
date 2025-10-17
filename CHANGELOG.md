@@ -6,6 +6,11 @@
 - Se verificó la disponibilidad de dependencias críticas de reportes (`openpyxl`) previo a la ejecución de pruebas para evitar fallos de importación.
 - Recomendación: abordar las advertencias de `act(...)` en pruebas React en una iteración futura para mejorar la estabilidad de la suite de frontend.
 
+## Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
+- Se formalizan las tablas `proveedores`, `compras` y `detalle_compras` con las columnas requeridas (`id_proveedor`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `notas`, `id_compra`, `proveedor_id`, `usuario_id`, `fecha`, `total`, `impuesto`, `forma_pago`, `estado`, `id_detalle`, `compra_id`, `producto_id`, `cantidad`, `costo_unitario`, `subtotal`).
+- La migración `202502150011_compras_estructura_relaciones.py` crea o ajusta estructuras faltantes, reforzando las claves foráneas `compras → proveedores`, `compras → users`, `detalle_compras → compras` y `detalle_compras → devices` con índices dedicados.
+- Nuevos modelos ORM (`Proveedor`, `Compra`, `DetalleCompra`) y la prueba `backend/tests/test_compras_schema.py` validan tipos, índices y relaciones para prevenir regresiones en el módulo clásico de compras.
+
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
 - Migración `202503010003_sales_ventas_structure.py` garantiza claves foráneas activas hacia clientes, usuarios, ventas y dispositivos, creando índices solo cuando faltan en despliegues anteriores.
