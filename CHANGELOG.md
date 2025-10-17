@@ -1,5 +1,11 @@
 # Bitácora de cambios
 
+## Verificación Global - Módulo de Inventario Softmobile 2025 v2.2.0 (17/10/2025 05:41 UTC)
+- Validación corporativa sin incidencias que abarca catálogo avanzado, movimientos y alertas, gestión de IMEI y series, valuaciones financieras, reportes multiformato, roles RBAC e interfaz visual del inventario.
+- Se confirmaron integraciones entre movimientos → productos → reportes → alertas mediante la suite `pytest` y las pruebas de frontend (Vitest), garantizando cálculos y referencias coherentes.
+- Se verificó la disponibilidad de dependencias críticas de reportes (`openpyxl`) previo a la ejecución de pruebas para evitar fallos de importación.
+- Recomendación: abordar las advertencias de `act(...)` en pruebas React en una iteración futura para mejorar la estabilidad de la suite de frontend.
+
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.
 - Se actualizan `REPORTE_ROLES` y `AUDITORIA_ROLES` para limitar consultas de inventario, reportes y bitácoras a usuarios `ADMIN` y `GERENTE`, alineando la visibilidad con la jerarquía corporativa.
