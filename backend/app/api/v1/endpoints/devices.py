@@ -3,18 +3,18 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from .... import schemas
-from ....models.store import Store
+from ....models import Store
 from ....services.inventory import create_device, list_devices
 from ...deps import get_db
 
 router = APIRouter()
 
 
-@router.get("/", response_model=list[schemas.Device], summary="Listar dispositivos")
+@router.get("/", response_model=list[schemas.DeviceResponse], summary="Listar dispositivos")
 def get_devices(
     store_id: int = Path(..., description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
-) -> list[schemas.Device]:
+) -> list[schemas.DeviceResponse]:
     """Return every device belonging to the requested store."""
 
     store = db.get(Store, store_id)
@@ -25,7 +25,7 @@ def get_devices(
 
 @router.post(
     "/",
-    response_model=schemas.Device,
+    response_model=schemas.DeviceResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar dispositivo",
 )
@@ -34,7 +34,7 @@ def add_device(
     store_id: int = Path(..., description="Identificador de la sucursal"),
     device_in: schemas.DeviceCreate,
     db: Session = Depends(get_db),
-) -> schemas.Device:
+) -> schemas.DeviceResponse:
     """Create a new device for the selected store."""
 
     store = db.get(Store, store_id)

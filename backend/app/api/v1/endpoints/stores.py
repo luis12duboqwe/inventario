@@ -3,15 +3,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .... import schemas
-from ....models.store import Store as StoreModel
+from ....models import Store
 from ....services.inventory import create_store, list_stores
 from ...deps import get_db
 
 router = APIRouter()
 
 
-@router.get("/", response_model=list[schemas.Store], summary="Listar sucursales")
-def get_stores(db: Session = Depends(get_db)) -> list[schemas.Store]:
+@router.get("/", response_model=list[schemas.StoreResponse], summary="Listar sucursales")
+def get_stores(db: Session = Depends(get_db)) -> list[schemas.StoreResponse]:
     """Return every registered store."""
 
     return list_stores(db)
@@ -19,14 +19,16 @@ def get_stores(db: Session = Depends(get_db)) -> list[schemas.Store]:
 
 @router.post(
     "/",
-    response_model=schemas.Store,
+    response_model=schemas.StoreResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Crear nueva sucursal",
 )
-def add_store(store_in: schemas.StoreCreate, db: Session = Depends(get_db)) -> schemas.Store:
+def add_store(
+    store_in: schemas.StoreCreate, db: Session = Depends(get_db)
+) -> schemas.StoreResponse:
     """Create a new store ensuring uniqueness by name."""
 
-    existing = db.query(StoreModel).filter(StoreModel.name == store_in.name).first()
+    existing = db.query(Store).filter(Store.name == store_in.name).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
