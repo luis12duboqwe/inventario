@@ -50,15 +50,39 @@ const downloadInventoryCsvMock = vi.fn<(reason: string) => Promise<void>>();
 const downloadInventoryCurrentCsvMock = vi.fn<
   (reason: string, filters: InventoryCurrentFilters) => Promise<void>
 >();
+const downloadInventoryCurrentPdfMock = vi.fn<
+  (reason: string, filters: InventoryCurrentFilters) => Promise<void>
+>();
+const downloadInventoryCurrentXlsxMock = vi.fn<
+  (reason: string, filters: InventoryCurrentFilters) => Promise<void>
+>();
 const exportCatalogCsvMock = vi.fn<(filters: DeviceListFilters, reason: string) => Promise<void>>();
 const importCatalogCsvMock = vi.fn<(file: unknown, reason: string) => Promise<DeviceImportSummary>>();
 const downloadInventoryValueCsvMock = vi.fn<
   (reason: string, filters: InventoryValueFilters) => Promise<void>
 >();
+const downloadInventoryValuePdfMock = vi.fn<
+  (reason: string, filters: InventoryValueFilters) => Promise<void>
+>();
+const downloadInventoryValueXlsxMock = vi.fn<
+  (reason: string, filters: InventoryValueFilters) => Promise<void>
+>();
 const downloadInventoryMovementsCsvMock = vi.fn<
   (reason: string, filters: InventoryMovementsFilters) => Promise<void>
 >();
+const downloadInventoryMovementsPdfMock = vi.fn<
+  (reason: string, filters: InventoryMovementsFilters) => Promise<void>
+>();
+const downloadInventoryMovementsXlsxMock = vi.fn<
+  (reason: string, filters: InventoryMovementsFilters) => Promise<void>
+>();
 const downloadTopProductsCsvMock = vi.fn<
+  (reason: string, filters: InventoryTopProductsFilters) => Promise<void>
+>();
+const downloadTopProductsPdfMock = vi.fn<
+  (reason: string, filters: InventoryTopProductsFilters) => Promise<void>
+>();
+const downloadTopProductsXlsxMock = vi.fn<
   (reason: string, filters: InventoryTopProductsFilters) => Promise<void>
 >();
 const refreshSummaryMock = vi.fn<() => Promise<void> | void>();
@@ -422,9 +446,17 @@ const createModuleState = (): InventoryModuleState => ({
   fetchInventoryMovementsReport: vi.fn().mockResolvedValue(buildInventoryMovementsReport()),
   fetchTopProductsReport: vi.fn().mockResolvedValue(buildTopProductsReport()),
   downloadInventoryCurrentCsv: downloadInventoryCurrentCsvMock,
+  downloadInventoryCurrentPdf: downloadInventoryCurrentPdfMock,
+  downloadInventoryCurrentXlsx: downloadInventoryCurrentXlsxMock,
   downloadInventoryValueCsv: downloadInventoryValueCsvMock,
+  downloadInventoryValuePdf: downloadInventoryValuePdfMock,
+  downloadInventoryValueXlsx: downloadInventoryValueXlsxMock,
   downloadInventoryMovementsCsv: downloadInventoryMovementsCsvMock,
+  downloadInventoryMovementsPdf: downloadInventoryMovementsPdfMock,
+  downloadInventoryMovementsXlsx: downloadInventoryMovementsXlsxMock,
   downloadTopProductsCsv: downloadTopProductsCsvMock,
+  downloadTopProductsPdf: downloadTopProductsPdfMock,
+  downloadTopProductsXlsx: downloadTopProductsXlsxMock,
 });
 
 const openTab = async (user: ReturnType<typeof userEvent.setup>, tabName: RegExp) => {
@@ -456,11 +488,19 @@ beforeEach(() => {
   downloadInventoryReportMock.mockReset();
   downloadInventoryCsvMock.mockReset();
   downloadInventoryCurrentCsvMock.mockReset();
+  downloadInventoryCurrentPdfMock.mockReset();
+  downloadInventoryCurrentXlsxMock.mockReset();
   exportCatalogCsvMock.mockReset();
   importCatalogCsvMock.mockReset();
   downloadInventoryValueCsvMock.mockReset();
+  downloadInventoryValuePdfMock.mockReset();
+  downloadInventoryValueXlsxMock.mockReset();
   downloadInventoryMovementsCsvMock.mockReset();
+  downloadInventoryMovementsPdfMock.mockReset();
+  downloadInventoryMovementsXlsxMock.mockReset();
   downloadTopProductsCsvMock.mockReset();
+  downloadTopProductsPdfMock.mockReset();
+  downloadTopProductsXlsxMock.mockReset();
   refreshSummaryMock.mockReset();
   promptCorporateReasonMock.mockReset();
 
@@ -469,11 +509,19 @@ beforeEach(() => {
   downloadInventoryReportMock.mockResolvedValue();
   downloadInventoryCsvMock.mockResolvedValue();
   downloadInventoryCurrentCsvMock.mockResolvedValue();
+  downloadInventoryCurrentPdfMock.mockResolvedValue();
+  downloadInventoryCurrentXlsxMock.mockResolvedValue();
   exportCatalogCsvMock.mockResolvedValue();
   importCatalogCsvMock.mockResolvedValue({ created: 0, updated: 0, skipped: 0, errors: [] });
   downloadInventoryValueCsvMock.mockResolvedValue();
+  downloadInventoryValuePdfMock.mockResolvedValue();
+  downloadInventoryValueXlsxMock.mockResolvedValue();
   downloadInventoryMovementsCsvMock.mockResolvedValue();
+  downloadInventoryMovementsPdfMock.mockResolvedValue();
+  downloadInventoryMovementsXlsxMock.mockResolvedValue();
   downloadTopProductsCsvMock.mockResolvedValue();
+  downloadTopProductsPdfMock.mockResolvedValue();
+  downloadTopProductsXlsxMock.mockResolvedValue();
 
   moduleState = createModuleState();
 });
@@ -604,10 +652,10 @@ describe("InventoryPage", () => {
     expect(movementsSection).not.toBeNull();
     expect(topProductsSection).not.toBeNull();
 
-    const existencesButton = within(existencesSection as HTMLElement).getByRole("button", {
-      name: /Exportar CSV/i,
+    const existencesCsvButton = within(existencesSection as HTMLElement).getByRole("button", {
+      name: /^CSV$/i,
     });
-    await user.click(existencesButton);
+    await user.click(existencesCsvButton);
     await waitFor(() => {
       expect(downloadInventoryCurrentCsvMock).toHaveBeenCalledWith(
         "Reporte inventario",
@@ -615,16 +663,56 @@ describe("InventoryPage", () => {
       );
     });
 
-    const valuationButton = within(valueSection as HTMLElement).getByRole("button", { name: /Exportar CSV/i });
-    await user.click(valuationButton);
+    const existencesPdfButton = within(existencesSection as HTMLElement).getByRole("button", {
+      name: /^PDF$/i,
+    });
+    await user.click(existencesPdfButton);
+    await waitFor(() => {
+      expect(downloadInventoryCurrentPdfMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
+    });
+
+    const existencesExcelButton = within(existencesSection as HTMLElement).getByRole("button", {
+      name: /^Excel$/i,
+    });
+    await user.click(existencesExcelButton);
+    await waitFor(() => {
+      expect(downloadInventoryCurrentXlsxMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
+    });
+
+    const valuationCsvButton = within(valueSection as HTMLElement).getByRole("button", { name: /^CSV$/i });
+    await user.click(valuationCsvButton);
     await waitFor(() => {
       expect(downloadInventoryValueCsvMock).toHaveBeenCalledWith("Reporte inventario", expect.any(Object));
     });
 
-    const movementsButton = within(movementsSection as HTMLElement).getByRole("button", {
-      name: /Exportar CSV/i,
+    const valuationPdfButton = within(valueSection as HTMLElement).getByRole("button", { name: /^PDF$/i });
+    await user.click(valuationPdfButton);
+    await waitFor(() => {
+      expect(downloadInventoryValuePdfMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
     });
-    await user.click(movementsButton);
+
+    const valuationExcelButton = within(valueSection as HTMLElement).getByRole("button", { name: /^Excel$/i });
+    await user.click(valuationExcelButton);
+    await waitFor(() => {
+      expect(downloadInventoryValueXlsxMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
+    });
+
+    const movementsCsvButton = within(movementsSection as HTMLElement).getByRole("button", {
+      name: /^CSV$/i,
+    });
+    await user.click(movementsCsvButton);
     await waitFor(() => {
       expect(downloadInventoryMovementsCsvMock).toHaveBeenCalledWith(
         "Reporte inventario",
@@ -632,12 +720,56 @@ describe("InventoryPage", () => {
       );
     });
 
-    const topProductsButton = within(topProductsSection as HTMLElement).getByRole("button", {
-      name: /Exportar CSV/i,
+    const movementsPdfButton = within(movementsSection as HTMLElement).getByRole("button", {
+      name: /^PDF$/i,
     });
-    await user.click(topProductsButton);
+    await user.click(movementsPdfButton);
+    await waitFor(() => {
+      expect(downloadInventoryMovementsPdfMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
+    });
+
+    const movementsExcelButton = within(movementsSection as HTMLElement).getByRole("button", {
+      name: /^Excel$/i,
+    });
+    await user.click(movementsExcelButton);
+    await waitFor(() => {
+      expect(downloadInventoryMovementsXlsxMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
+    });
+
+    const topProductsCsvButton = within(topProductsSection as HTMLElement).getByRole("button", {
+      name: /^CSV$/i,
+    });
+    await user.click(topProductsCsvButton);
     await waitFor(() => {
       expect(downloadTopProductsCsvMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
+    });
+
+    const topProductsPdfButton = within(topProductsSection as HTMLElement).getByRole("button", {
+      name: /^PDF$/i,
+    });
+    await user.click(topProductsPdfButton);
+    await waitFor(() => {
+      expect(downloadTopProductsPdfMock).toHaveBeenCalledWith(
+        "Reporte inventario",
+        expect.any(Object),
+      );
+    });
+
+    const topProductsExcelButton = within(topProductsSection as HTMLElement).getByRole("button", {
+      name: /^Excel$/i,
+    });
+    await user.click(topProductsExcelButton);
+    await waitFor(() => {
+      expect(downloadTopProductsXlsxMock).toHaveBeenCalledWith(
         "Reporte inventario",
         expect.any(Object),
       );

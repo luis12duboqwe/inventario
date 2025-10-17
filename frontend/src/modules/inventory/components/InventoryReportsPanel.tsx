@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { BarChart3, Download, RefreshCcw } from "lucide-react";
+import { BarChart3, Download, FileSpreadsheet, FileText, RefreshCcw } from "lucide-react";
 
 import type {
   InventoryCurrentFilters,
@@ -36,6 +36,14 @@ type InventoryReportsPanelProps = {
     reason: string,
     filters: InventoryCurrentFilters,
   ) => Promise<void>;
+  downloadInventoryCurrentPdf: (
+    reason: string,
+    filters: InventoryCurrentFilters,
+  ) => Promise<void>;
+  downloadInventoryCurrentXlsx: (
+    reason: string,
+    filters: InventoryCurrentFilters,
+  ) => Promise<void>;
   fetchInventoryValueReport: (filters: InventoryValueFilters) => Promise<InventoryValueReport>;
   fetchInventoryMovementsReport: (filters: InventoryMovementsFilters) => Promise<InventoryMovementsReport>;
   fetchTopProductsReport: (filters: InventoryTopProductsFilters) => Promise<TopProductsReport>;
@@ -44,8 +52,20 @@ type InventoryReportsPanelProps = {
     successMessage: string,
   ) => Promise<void>;
   downloadInventoryValueCsv: (reason: string, filters: InventoryValueFilters) => Promise<void>;
+  downloadInventoryValuePdf: (reason: string, filters: InventoryValueFilters) => Promise<void>;
+  downloadInventoryValueXlsx: (reason: string, filters: InventoryValueFilters) => Promise<void>;
   downloadInventoryMovementsCsv: (reason: string, filters: InventoryMovementsFilters) => Promise<void>;
+  downloadInventoryMovementsPdf: (
+    reason: string,
+    filters: InventoryMovementsFilters,
+  ) => Promise<void>;
+  downloadInventoryMovementsXlsx: (
+    reason: string,
+    filters: InventoryMovementsFilters,
+  ) => Promise<void>;
   downloadTopProductsCsv: (reason: string, filters: InventoryTopProductsFilters) => Promise<void>;
+  downloadTopProductsPdf: (reason: string, filters: InventoryTopProductsFilters) => Promise<void>;
+  downloadTopProductsXlsx: (reason: string, filters: InventoryTopProductsFilters) => Promise<void>;
 };
 
 function InventoryReportsPanel({
@@ -54,13 +74,21 @@ function InventoryReportsPanel({
   formatCurrency,
   fetchInventoryCurrentReport,
   downloadInventoryCurrentCsv,
+  downloadInventoryCurrentPdf,
+  downloadInventoryCurrentXlsx,
   fetchInventoryValueReport,
   fetchInventoryMovementsReport,
   fetchTopProductsReport,
   requestDownloadWithReason,
   downloadInventoryValueCsv,
+  downloadInventoryValuePdf,
+  downloadInventoryValueXlsx,
   downloadInventoryMovementsCsv,
+  downloadInventoryMovementsPdf,
+  downloadInventoryMovementsXlsx,
   downloadTopProductsCsv,
+  downloadTopProductsPdf,
+  downloadTopProductsXlsx,
 }: InventoryReportsPanelProps) {
   const dashboard = useDashboard();
 
@@ -158,10 +186,38 @@ function InventoryReportsPanel({
     );
   };
 
+  const handleValuePdfDownload = async () => {
+    await requestDownloadWithReason(
+      (reason) => downloadInventoryValuePdf(reason, filters),
+      "PDF de valoración descargado",
+    );
+  };
+
+  const handleValueExcelDownload = async () => {
+    await requestDownloadWithReason(
+      (reason) => downloadInventoryValueXlsx(reason, filters),
+      "Excel de valoración descargado",
+    );
+  };
+
   const handleCurrentDownload = async () => {
     await requestDownloadWithReason(
       (reason) => downloadInventoryCurrentCsv(reason, filters),
       "CSV de existencias descargado",
+    );
+  };
+
+  const handleCurrentPdfDownload = async () => {
+    await requestDownloadWithReason(
+      (reason) => downloadInventoryCurrentPdf(reason, filters),
+      "PDF de existencias descargado",
+    );
+  };
+
+  const handleCurrentExcelDownload = async () => {
+    await requestDownloadWithReason(
+      (reason) => downloadInventoryCurrentXlsx(reason, filters),
+      "Excel de existencias descargado",
     );
   };
 
@@ -172,10 +228,38 @@ function InventoryReportsPanel({
     );
   };
 
+  const handleMovementsPdfDownload = async () => {
+    await requestDownloadWithReason(
+      (reason) => downloadInventoryMovementsPdf(reason, movementsFilters),
+      "PDF de movimientos descargado",
+    );
+  };
+
+  const handleMovementsExcelDownload = async () => {
+    await requestDownloadWithReason(
+      (reason) => downloadInventoryMovementsXlsx(reason, movementsFilters),
+      "Excel de movimientos descargado",
+    );
+  };
+
   const handleTopProductsDownload = async () => {
     await requestDownloadWithReason(
       (reason) => downloadTopProductsCsv(reason, topProductsFilters),
       "CSV de productos más vendidos descargado",
+    );
+  };
+
+  const handleTopProductsPdfDownload = async () => {
+    await requestDownloadWithReason(
+      (reason) => downloadTopProductsPdf(reason, topProductsFilters),
+      "PDF de productos más vendidos descargado",
+    );
+  };
+
+  const handleTopProductsExcelDownload = async () => {
+    await requestDownloadWithReason(
+      (reason) => downloadTopProductsXlsx(reason, topProductsFilters),
+      "Excel de productos más vendidos descargado",
     );
   };
 
@@ -233,21 +317,29 @@ function InventoryReportsPanel({
       ) : (
         <div className="section-grid reports-grid">
           <section className="card report-card">
-            <header className="card-header">
-              <div>
-                <h3>Existencias actuales</h3>
-                <p className="card-subtitle">Resumen por sucursal y total consolidado.</p>
-              </div>
-              <div className="report-actions">
-                <button type="button" className="btn btn--ghost" onClick={() => void handleCurrentDownload()}>
-                  <Download size={16} aria-hidden />
-                  Exportar CSV
-                </button>
-                <span className="report-icon" aria-hidden>
-                  <BarChart3 size={18} />
-                </span>
-              </div>
-            </header>
+          <header className="card-header">
+            <div>
+              <h3>Existencias actuales</h3>
+              <p className="card-subtitle">Resumen por sucursal y total consolidado.</p>
+            </div>
+            <div className="report-actions">
+              <button type="button" className="btn btn--ghost" onClick={() => void handleCurrentDownload()}>
+                <Download size={16} aria-hidden />
+                CSV
+              </button>
+              <button type="button" className="btn btn--ghost" onClick={() => void handleCurrentPdfDownload()}>
+                <FileText size={16} aria-hidden />
+                PDF
+              </button>
+              <button type="button" className="btn btn--ghost" onClick={() => void handleCurrentExcelDownload()}>
+                <FileSpreadsheet size={16} aria-hidden />
+                Excel
+              </button>
+              <span className="report-icon" aria-hidden>
+                <BarChart3 size={18} />
+              </span>
+            </div>
+          </header>
             {currentReport ? (
               <div className="card-content">
                 <p className="report-highlight">
@@ -281,10 +373,20 @@ function InventoryReportsPanel({
                 <h3>Valor total del inventario</h3>
                 <p className="card-subtitle">Comparativo entre costo registrado y margen proyectado.</p>
               </div>
-              <button type="button" className="btn btn--ghost" onClick={() => void handleValueDownload()}>
-                <Download size={16} aria-hidden />
-                Exportar CSV
-              </button>
+              <div className="report-actions">
+                <button type="button" className="btn btn--ghost" onClick={() => void handleValueDownload()}>
+                  <Download size={16} aria-hidden />
+                  CSV
+                </button>
+                <button type="button" className="btn btn--ghost" onClick={() => void handleValuePdfDownload()}>
+                  <FileText size={16} aria-hidden />
+                  PDF
+                </button>
+                <button type="button" className="btn btn--ghost" onClick={() => void handleValueExcelDownload()}>
+                  <FileSpreadsheet size={16} aria-hidden />
+                  Excel
+                </button>
+              </div>
             </header>
             {valueReport ? (
               <div className="card-content">
@@ -313,10 +415,20 @@ function InventoryReportsPanel({
                 <h3>Movimientos por periodo</h3>
                 <p className="card-subtitle">Entradas, salidas y ajustes filtrados por fechas.</p>
               </div>
-              <button type="button" className="btn btn--ghost" onClick={() => void handleMovementsDownload()}>
-                <Download size={16} aria-hidden />
-                Exportar CSV
-              </button>
+              <div className="report-actions">
+                <button type="button" className="btn btn--ghost" onClick={() => void handleMovementsDownload()}>
+                  <Download size={16} aria-hidden />
+                  CSV
+                </button>
+                <button type="button" className="btn btn--ghost" onClick={() => void handleMovementsPdfDownload()}>
+                  <FileText size={16} aria-hidden />
+                  PDF
+                </button>
+                <button type="button" className="btn btn--ghost" onClick={() => void handleMovementsExcelDownload()}>
+                  <FileSpreadsheet size={16} aria-hidden />
+                  Excel
+                </button>
+              </div>
             </header>
             {movementsReport ? (
               <div className="card-content">
@@ -348,10 +460,20 @@ function InventoryReportsPanel({
                 <h3>Productos más vendidos</h3>
                 <p className="card-subtitle">Conoce el desempeño de tus dispositivos destacados.</p>
               </div>
-              <button type="button" className="btn btn--ghost" onClick={() => void handleTopProductsDownload()}>
-                <Download size={16} aria-hidden />
-                Exportar CSV
-              </button>
+              <div className="report-actions">
+                <button type="button" className="btn btn--ghost" onClick={() => void handleTopProductsDownload()}>
+                  <Download size={16} aria-hidden />
+                  CSV
+                </button>
+                <button type="button" className="btn btn--ghost" onClick={() => void handleTopProductsPdfDownload()}>
+                  <FileText size={16} aria-hidden />
+                  PDF
+                </button>
+                <button type="button" className="btn btn--ghost" onClick={() => void handleTopProductsExcelDownload()}>
+                  <FileSpreadsheet size={16} aria-hidden />
+                  Excel
+                </button>
+              </div>
             </header>
             {topProductsReport && topProductsReport.items.length > 0 ? (
               <div className="card-content">

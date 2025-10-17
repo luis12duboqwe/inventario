@@ -39,6 +39,31 @@ def test_inventory_csv_requires_reason(client) -> None:
     assert response.json()["detail"] == "Reason header requerido"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/reports/inventory/pdf",
+        "/reports/inventory/current/pdf",
+        "/reports/inventory/current/xlsx",
+        "/reports/inventory/value/csv",
+        "/reports/inventory/value/pdf",
+        "/reports/inventory/value/xlsx",
+        "/reports/inventory/movements/csv",
+        "/reports/inventory/movements/pdf",
+        "/reports/inventory/movements/xlsx",
+        "/reports/inventory/top-products/csv",
+        "/reports/inventory/top-products/pdf",
+        "/reports/inventory/top-products/xlsx",
+    ],
+)
+def test_inventory_export_requires_reason(client, path: str) -> None:
+    headers = _auth_headers(client)
+
+    response = client.get(path, headers=headers)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["detail"] == "Reason header requerido"
+
+
 def test_inventory_csv_snapshot(client, tmp_path) -> None:
     headers = _auth_headers(client)
     settings.backup_directory = str(tmp_path / "respaldos")
@@ -164,6 +189,101 @@ def test_inventory_current_csv_export(client) -> None:
     assert store_row[1] == "1"
     assert store_row[2] == "6"
     assert float(store_row[3]) > 0
+
+    pdf_response = client.get(
+        "/reports/inventory/current/pdf",
+        headers={**headers, "X-Reason": "Revision existencias"},
+    )
+    assert pdf_response.status_code == status.HTTP_200_OK
+    assert pdf_response.headers["content-type"].startswith("application/pdf")
+
+    xlsx_response = client.get(
+        "/reports/inventory/current/xlsx",
+        headers={**headers, "X-Reason": "Revision existencias"},
+    )
+    assert xlsx_response.status_code == status.HTTP_200_OK
+    assert xlsx_response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+def test_inventory_value_pdf_and_excel(client) -> None:
+    headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Norte", "location": "MTY", "timezone": "America/Monterrey"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {
+        "sku": "SM-020",
+        "name": "Softmobile Pro",
+        "quantity": 2,
+        "unit_price": 15000,
+        "costo_unitario": 11000,
+    }
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+
+    pdf_response = client.get(
+        "/reports/inventory/value/pdf",
+        headers={**headers, "X-Reason": "Valoracion inventario"},
+    )
+    assert pdf_response.status_code == status.HTTP_200_OK
+    assert pdf_response.headers["content-type"].startswith("application/pdf")
+
+    xlsx_response = client.get(
+        "/reports/inventory/value/xlsx",
+        headers={**headers, "X-Reason": "Valoracion inventario"},
+    )
+    assert xlsx_response.status_code == status.HTTP_200_OK
+    assert xlsx_response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+def test_inventory_movements_pdf_and_excel(client) -> None:
+    headers = _auth_headers(client)
+
+    pdf_response = client.get(
+        "/reports/inventory/movements/pdf",
+        headers={**headers, "X-Reason": "Revision movimientos"},
+    )
+    assert pdf_response.status_code == status.HTTP_200_OK
+    assert pdf_response.headers["content-type"].startswith("application/pdf")
+
+    xlsx_response = client.get(
+        "/reports/inventory/movements/xlsx",
+        headers={**headers, "X-Reason": "Revision movimientos"},
+    )
+    assert xlsx_response.status_code == status.HTTP_200_OK
+    assert xlsx_response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+def test_inventory_top_products_pdf_and_excel(client) -> None:
+    headers = _auth_headers(client)
+
+    pdf_response = client.get(
+        "/reports/inventory/top-products/pdf",
+        headers={**headers, "X-Reason": "Ranking ventas"},
+    )
+    assert pdf_response.status_code == status.HTTP_200_OK
+    assert pdf_response.headers["content-type"].startswith("application/pdf")
+
+    xlsx_response = client.get(
+        "/reports/inventory/top-products/xlsx",
+        headers={**headers, "X-Reason": "Ranking ventas"},
+    )
+    assert xlsx_response.status_code == status.HTTP_200_OK
+    assert xlsx_response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 
 def test_inventory_supplier_batches_overview(client) -> None:

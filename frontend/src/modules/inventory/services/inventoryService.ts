@@ -1,10 +1,18 @@
 import {
   downloadInventoryCsv,
   downloadInventoryCurrentCsv,
+  downloadInventoryCurrentPdf,
+  downloadInventoryCurrentXlsx,
   downloadInventoryMovementsCsv,
+  downloadInventoryMovementsPdf,
+  downloadInventoryMovementsXlsx,
   downloadInventoryPdf,
   downloadInventoryValueCsv,
+  downloadInventoryValuePdf,
+  downloadInventoryValueXlsx,
   downloadTopProductsCsv,
+  downloadTopProductsPdf,
+  downloadTopProductsXlsx,
   exportStoreDevicesCsv,
   getDevices,
   getInventoryCurrentReport,
@@ -80,19 +88,59 @@ export const inventoryService = {
     reason: string,
     filters: InventoryCurrentFilters = {},
   ) => downloadInventoryCurrentCsv(token, reason, filters),
+  downloadInventoryCurrentPdf: (
+    token: string,
+    reason: string,
+    filters: InventoryCurrentFilters = {},
+  ) => downloadInventoryCurrentPdf(token, reason, filters),
+  downloadInventoryCurrentXlsx: (
+    token: string,
+    reason: string,
+    filters: InventoryCurrentFilters = {},
+  ) => downloadInventoryCurrentXlsx(token, reason, filters),
   downloadInventoryValueCsv: (
     token: string,
     reason: string,
     filters: InventoryValueFilters = {},
   ) => downloadInventoryValueCsv(token, reason, filters),
+  downloadInventoryValuePdf: (
+    token: string,
+    reason: string,
+    filters: InventoryValueFilters = {},
+  ) => downloadInventoryValuePdf(token, reason, filters),
+  downloadInventoryValueXlsx: (
+    token: string,
+    reason: string,
+    filters: InventoryValueFilters = {},
+  ) => downloadInventoryValueXlsx(token, reason, filters),
   downloadInventoryMovementsCsv: (
     token: string,
     reason: string,
     filters: InventoryMovementsFilters = {},
   ) => downloadInventoryMovementsCsv(token, reason, filters),
+  downloadInventoryMovementsPdf: (
+    token: string,
+    reason: string,
+    filters: InventoryMovementsFilters = {},
+  ) => downloadInventoryMovementsPdf(token, reason, filters),
+  downloadInventoryMovementsXlsx: (
+    token: string,
+    reason: string,
+    filters: InventoryMovementsFilters = {},
+  ) => downloadInventoryMovementsXlsx(token, reason, filters),
   downloadTopProductsCsv: (
     token: string,
     reason: string,
     filters: InventoryTopProductsFilters = {},
   ) => downloadTopProductsCsv(token, reason, filters),
+  downloadTopProductsPdf: (
+    token: string,
+    reason: string,
+    filters: InventoryTopProductsFilters = {},
+  ) => downloadTopProductsPdf(token, reason, filters),
+  downloadTopProductsXlsx: (
+    token: string,
+    reason: string,
+    filters: InventoryTopProductsFilters = {},
+  ) => downloadTopProductsXlsx(token, reason, filters),
 };
