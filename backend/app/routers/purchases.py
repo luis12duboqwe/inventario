@@ -168,10 +168,16 @@ def cancel_purchase_order_endpoint(
             detail="Orden no encontrada",
         ) from exc
     except ValueError as exc:
-        if str(exc) == "purchase_not_cancellable":
+        detail = str(exc)
+        if detail == "purchase_not_cancellable":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La orden ya fue cerrada.",
+            ) from exc
+        if detail == "purchase_cancellation_insufficient_stock":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Inventario insuficiente para cancelar la compra.",
             ) from exc
         raise
 
