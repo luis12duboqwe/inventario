@@ -1276,11 +1276,12 @@ export function deleteSupplier(token: string, supplierId: number, reason: string
 export function getSupplierBatchOverview(
   token: string,
   storeId: number,
+  reason: string,
   limit = 5,
 ): Promise<SupplierBatchOverviewItem[]> {
   return request<SupplierBatchOverviewItem[]>(
     `/reports/inventory/supplier-batches?store_id=${storeId}&limit=${limit}`,
-    { method: "GET" },
+    { method: "GET", headers: { "X-Reason": reason } },
     token,
   );
 }

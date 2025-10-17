@@ -22,7 +22,8 @@ export const inventoryService = {
   fetchSupplierBatchOverview: (
     token: string,
     storeId: number,
+    reason: string,
     limit = 5,
   ): Promise<SupplierBatchOverviewItem[]> =>
-    getSupplierBatchOverview(token, storeId, limit),
+    getSupplierBatchOverview(token, storeId, reason, limit),
 };

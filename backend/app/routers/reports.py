@@ -489,6 +489,7 @@ def inventory_supplier_batches(
     limit: int = Query(default=5, ge=1, le=25),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
 ):
     return crud.get_supplier_batch_overview(db, store_id=store_id, limit=limit)
 

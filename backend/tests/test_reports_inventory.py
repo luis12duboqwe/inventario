@@ -159,7 +159,7 @@ def test_inventory_supplier_batches_overview(client) -> None:
 
     overview_response = client.get(
         f"/reports/inventory/supplier-batches?store_id={store_id}&limit=3",
-        headers=headers,
+        headers={**headers, **reason_headers},
     )
     assert overview_response.status_code == status.HTTP_200_OK
     overview = overview_response.json()
