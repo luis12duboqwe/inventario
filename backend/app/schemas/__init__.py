@@ -733,13 +733,46 @@ class SessionRevokeRequest(BaseModel):
 
 
 class MovementBase(BaseModel):
-    producto_id: int = Field(..., ge=1)
-    tipo_movimiento: MovementType
-    cantidad: int = Field(..., gt=0)
-    comentario: str | None = Field(default=None, max_length=255)
-    tienda_origen_id: int | None = Field(default=None, ge=1)
-    tienda_destino_id: int | None = Field(default=None, ge=1)
-    unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+    producto_id: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("producto_id", "device_id"),
+        serialization_alias="producto_id",
+    )
+    tipo_movimiento: MovementType = Field(
+        validation_alias=AliasChoices("tipo_movimiento", "movement_type"),
+        serialization_alias="tipo_movimiento",
+    )
+    cantidad: int = Field(
+        ...,
+        gt=0,
+        validation_alias=AliasChoices("cantidad", "quantity"),
+        serialization_alias="cantidad",
+    )
+    comentario: str | None = Field(
+        default=None,
+        max_length=255,
+        validation_alias=AliasChoices("comentario", "comment"),
+        serialization_alias="comentario",
+    )
+    tienda_origen_id: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("tienda_origen_id", "source_store_id"),
+        serialization_alias="tienda_origen_id",
+    )
+    tienda_destino_id: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("tienda_destino_id", "store_id"),
+        serialization_alias="tienda_destino_id",
+    )
+    unit_cost: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        validation_alias=AliasChoices("unit_cost", "costo_unitario"),
+        serialization_alias="unit_cost",
+    )
 
 
 class MovementCreate(MovementBase):
