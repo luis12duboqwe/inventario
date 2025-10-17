@@ -43,7 +43,7 @@ function MovementForm({ devices, onSubmit }: Props) {
       producto_id: Number(deviceId),
       tipo_movimiento: movementType,
       cantidad: quantity,
-      comentario: normalizedComment || undefined,
+      comentario: normalizedComment,
     };
 
     if (typeof parsedUnitCost === "number" && Number.isFinite(parsedUnitCost) && parsedUnitCost >= 0) {

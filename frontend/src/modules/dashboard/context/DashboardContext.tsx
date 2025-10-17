@@ -413,7 +413,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     if (!selectedStoreId) {
       return;
     }
-    const comment = payload.comentario?.trim() ?? "";
+    const comment = payload.comentario.trim();
     if (comment.length < 5) {
       setError("Indica un motivo corporativo de al menos 5 caracteres.");
       return;

@@ -40,6 +40,14 @@ def register_movement(
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
+    if payload.comentario != reason:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "reason_comment_mismatch",
+                "message": "El comentario debe coincidir con el motivo corporativo enviado en la cabecera X-Reason.",
+            },
+        )
     try:
         movement = crud.create_inventory_movement(
             db,

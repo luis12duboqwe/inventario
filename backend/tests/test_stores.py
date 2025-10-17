@@ -52,8 +52,11 @@ def test_inventory_flow(client) -> None:
         "cantidad": 10,
         "comentario": "Inventario inicial",
     }
+    movement_headers = {**headers, "X-Reason": movement_payload["comentario"]}
     movement_response = client.post(
-        f"/inventory/stores/{store_id}/movements", json=movement_payload, headers=headers
+        f"/inventory/stores/{store_id}/movements",
+        json=movement_payload,
+        headers=movement_headers,
     )
     assert movement_response.status_code == status.HTTP_201_CREATED
     movement_data = movement_response.json()
@@ -198,7 +201,7 @@ def test_inventory_movement_rejects_negative_stock(client) -> None:
     movement_response = client.post(
         f"/inventory/stores/{store_id}/movements",
         json=movement_payload,
-        headers=headers,
+        headers={**headers, "X-Reason": movement_payload["comentario"]},
     )
     assert movement_response.status_code == status.HTTP_409_CONFLICT
     assert "Stock insuficiente" in movement_response.json()["detail"]
@@ -227,7 +230,7 @@ def test_inventory_movement_requires_comment_length(client) -> None:
     response = client.post(
         f"/inventory/stores/{store_id}/movements",
         json=movement_payload,
-        headers=headers,
+        headers={**headers, "X-Reason": "Operacion de prueba"},
     )
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     detail = response.json()["detail"]
@@ -235,6 +238,37 @@ def test_inventory_movement_requires_comment_length(client) -> None:
         "El comentario debe tener al menos 5 caracteres." in error.get("msg", "")
         for error in detail
     )
+
+
+def test_inventory_movement_requires_comment_matching_reason(client) -> None:
+    headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Motivos", "location": "LEON", "timezone": "America/Mexico_City"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {"sku": "SKU-MTV", "name": "Monitor", "quantity": 4, "unit_price": 5200.0}
+    device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    movement_payload = {
+        "producto_id": device_id,
+        "tipo_movimiento": "salida",
+        "cantidad": 1,
+        "comentario": "Salida controlada",
+    }
+
+    response = client.post(
+        f"/inventory/stores/{store_id}/movements",
+        json=movement_payload,
+        headers=headers,
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    detail = response.json()["detail"]
+    assert detail["code"] == "reason_comment_mismatch"
+    assert "coincidir" in detail["message"]
 
 
 def test_inventory_movement_response_includes_required_fields(client) -> None:
@@ -260,7 +294,7 @@ def test_inventory_movement_response_includes_required_fields(client) -> None:
     response = client.post(
         f"/inventory/stores/{store_id}/movements",
         json=movement_payload,
-        headers=headers,
+        headers={**headers, "X-Reason": movement_payload["comentario"]},
     )
     assert response.status_code == status.HTTP_201_CREATED
 

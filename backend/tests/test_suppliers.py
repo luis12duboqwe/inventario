@@ -150,13 +150,14 @@ def test_supplier_batches_and_inventory_value(client):
         "producto_id": device_id,
         "tipo_movimiento": "entrada",
         "cantidad": 5,
-        "comentario": "Reposición",
+        "comentario": "Reposicion programada",
         "unit_cost": 900,
     }
+    movement_headers = {**auth_headers, "X-Reason": movement_payload["comentario"]}
     movement_response = client.post(
         f"/inventory/stores/{store_id}/movements",
         json=movement_payload,
-        headers=reason_headers,
+        headers=movement_headers,
     )
     assert movement_response.status_code == status.HTTP_201_CREATED
     movement_data = movement_response.json()

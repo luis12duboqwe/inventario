@@ -736,19 +736,17 @@ class MovementBase(BaseModel):
     producto_id: int = Field(..., ge=1)
     tipo_movimiento: MovementType
     cantidad: int = Field(..., gt=0)
-    comentario: str | None = Field(default=None, max_length=255)
+    comentario: str = Field(..., max_length=255)
     tienda_origen_id: int | None = Field(default=None, ge=1)
     tienda_destino_id: int | None = Field(default=None, ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
     @field_validator("comentario", mode="before")
     @classmethod
-    def _normalize_comment(cls, value: str | None) -> str | None:
+    def _normalize_comment(cls, value: str | None) -> str:
         if value is None:
-            return value
+            raise ValueError("El comentario es obligatorio.")
         normalized = value.strip()
-        if not normalized:
-            return None
         if len(normalized) < 5:
             raise ValueError("El comentario debe tener al menos 5 caracteres.")
         return normalized
