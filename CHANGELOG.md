@@ -51,6 +51,7 @@
 - Se actualizan las claves foráneas de `ventas.cliente_id` y `repair_orders.customer_id` para apuntar a `clientes.id_cliente`, preservando la asociación de facturas POS y órdenes de reparación con su cliente.
 - Los esquemas FastAPI exigen teléfono, exponen tipo/estado/límite de crédito y normalizan saldos; `crud.py` amplía la exportación CSV y la prueba `backend/tests/test_clientes_schema.py` valida columnas, índices y relaciones.
 - `frontend/src/modules/operations/components/Customers.tsx` incorpora selectores de tipo y estado, captura el límite de crédito y muestra los nuevos campos en la tabla, manteniendo la solicitud de motivo corporativo en altas, ediciones, notas y ajustes de saldo.
+- **19/10/2025 14:30 UTC** — Revisión de integridad confirma que `limite_credito` y `saldo` permanecen no nulos, se documenta el índice `ix_ventas_cliente_id` y se refuerza `test_pos_sale_with_receipt_and_config` para exigir `customer_id` en ventas POS, garantizando que los recibos PDF muestren al cliente enlazado.
 
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.

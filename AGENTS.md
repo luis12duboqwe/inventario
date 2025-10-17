@@ -267,4 +267,5 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se actualizan las claves foráneas `ventas.cliente_id` y `repair_orders.customer_id` para apuntar a `clientes.id_cliente`, preservando el enlace de facturas POS y órdenes de reparación con cada cliente; se crean índices `ix_clientes_*` y la unicidad `uq_clientes_correo`.
 - Los esquemas y CRUD de clientes exponen tipo, estado y límite de crédito, validan teléfonos y saldos con decimales y amplían la exportación CSV con los nuevos campos; la prueba `backend/tests/test_clientes_schema.py` inspecciona columnas, índices y relaciones.
 - `frontend/src/modules/operations/components/Customers.tsx` añade selectores de tipo/estado, captura el límite de crédito y muestra los campos en la tabla manteniendo el motivo corporativo en altas, ediciones, notas y ajustes de saldo.
+- **19/10/2025 14:30 UTC** — Auditoría reciente confirma la no nulidad de `limite_credito` y `saldo`, documenta el índice `ix_ventas_cliente_id` y actualiza `test_pos_sale_with_receipt_and_config` para forzar un `customer_id` válido en ventas POS, garantizando que los recibos PDF queden ligados al cliente corporativo.
 
