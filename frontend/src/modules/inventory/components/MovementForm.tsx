@@ -25,6 +25,12 @@ function MovementForm({ devices, onSubmit }: Props) {
     }
   }, [devices]);
 
+  useEffect(() => {
+    if (movementType !== "ajuste" && quantity === 0) {
+      setQuantity(1);
+    }
+  }, [movementType, quantity]);
+
   if (devices.length === 0) {
     return <p>Registra al menos un dispositivo para habilitar los movimientos.</p>;
   }
@@ -86,7 +92,7 @@ function MovementForm({ devices, onSubmit }: Props) {
       <input
         id="quantity"
         type="number"
-        min={1}
+        min={movementType === "ajuste" ? 0 : 1}
         step={1}
         value={quantity}
         onChange={(event) => {
@@ -95,7 +101,8 @@ function MovementForm({ devices, onSubmit }: Props) {
             setQuantity(1);
             return;
           }
-          setQuantity(Math.max(1, Math.floor(nextValue)));
+          const minQuantity = movementType === "ajuste" ? 0 : 1;
+          setQuantity(Math.max(minQuantity, Math.floor(nextValue)));
         }}
         required
       />
