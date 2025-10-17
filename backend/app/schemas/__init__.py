@@ -581,9 +581,15 @@ class SessionRevokeRequest(BaseModel):
 class MovementBase(BaseModel):
     device_id: int = Field(..., ge=1)
     movement_type: MovementType
-    quantity: int = Field(..., gt=0)
+    quantity: int = Field(..., ge=0)
     reason: str | None = Field(default=None, max_length=255)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+
+    @model_validator(mode="after")
+    def _validate_quantity(self) -> "MovementBase":
+        if self.movement_type is not MovementType.ADJUST and self.quantity == 0:
+            raise ValueError("Los movimientos de entrada y salida deben tener una cantidad mayor a cero.")
+        return self
 
 
 class MovementCreate(MovementBase):

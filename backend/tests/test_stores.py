@@ -80,6 +80,45 @@ def test_inventory_flow(client) -> None:
     assert isinstance(audit_alerts["highlights"], list)
 
 
+def test_adjustment_allows_zero_quantity(client) -> None:
+    headers = _auth_headers(client)
+
+    store_payload = {"name": "Sucursal Ajustes", "location": "GDL", "timezone": "America/Mexico_City"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {"sku": "SKU-AJUSTE", "name": "Pixel 8", "quantity": 3, "unit_price": 9000.0}
+    device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    invalid_entry = {"device_id": device_id, "movement_type": "entrada", "quantity": 0}
+    entry_response = client.post(
+        f"/inventory/stores/{store_id}/movements", json=invalid_entry, headers=headers
+    )
+    assert entry_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    invalid_exit = {"device_id": device_id, "movement_type": "salida", "quantity": 0}
+    exit_response = client.post(
+        f"/inventory/stores/{store_id}/movements", json=invalid_exit, headers=headers
+    )
+    assert exit_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    adjustment_payload = {"device_id": device_id, "movement_type": "ajuste", "quantity": 0}
+    adjustment_response = client.post(
+        f"/inventory/stores/{store_id}/movements", json=adjustment_payload, headers=headers
+    )
+    assert adjustment_response.status_code == status.HTTP_201_CREATED
+    adjustment_data = adjustment_response.json()
+    assert adjustment_data["quantity"] == 0
+
+    devices_response = client.get(f"/stores/{store_id}/devices", headers=headers)
+    assert devices_response.status_code == status.HTTP_200_OK
+    device_list = devices_response.json()
+    assert any(device["id"] == device_id and device["quantity"] == 0 for device in device_list)
+
+
 def test_device_filters_by_search_and_state(client) -> None:
     headers = _auth_headers(client)
 
