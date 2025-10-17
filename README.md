@@ -92,6 +92,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Reversión segura de cancelaciones**: al anular una orden se revierten todas las unidades recibidas mediante movimientos **salida**, se recalcula el costo promedio ponderado y se deja rastro del proveedor y los artículos revertidos en la bitácora.
 - **Devoluciones con costo promedio actualizado**: las devoluciones al proveedor descuentan stock, ajustan el costo ponderado y registran la operación en inventario reutilizando el formato corporativo de comentarios.
 - **Cobertura de pruebas**: `backend/tests/test_purchases.py` incorpora validaciones de recepción, devolución y cancelación para garantizar el cálculo de stock/costo y la generación de movimientos conforme a la política corporativa.
+- **Compatibilidad heredada con reportes**: se publica la vista SQL `movimientos_inventario` como alias directo de `inventory_movements`, permitiendo que integraciones históricas consulten los movimientos de entradas/salidas sin modificar sus consultas.
 
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 

@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from fastapi import status
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from backend.app import models
 from backend.app.config import settings
@@ -126,6 +126,24 @@ def test_purchase_receipt_and_return_flow(client, db_session):
     assert return_movement.performed_by_id == user_id
     assert "Devolución proveedor" in return_movement.comment
     assert "Proveedor Mayorista" in return_movement.comment
+
+    legacy_rows = db_session.execute(
+        text(
+            """
+            SELECT tipo_movimiento, cantidad, comentario, usuario_id
+            FROM movimientos_inventario
+            WHERE producto_id = :device_id
+            ORDER BY fecha
+            """
+        ),
+        {"device_id": device_id},
+    ).mappings().all()
+    assert len(legacy_rows) == len(movements)
+    assert {row["tipo_movimiento"] for row in legacy_rows} == {
+        movement.movement_type.value for movement in movements
+    }
+    assert all(row["usuario_id"] == user_id for row in legacy_rows)
+    assert any("Proveedor Mayorista" in row["comentario"] for row in legacy_rows)
 
     settings.enable_purchases_sales = False
 

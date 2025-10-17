@@ -17,6 +17,7 @@
 - La cancelación de una orden revierte las unidades recibidas mediante movimientos `salida`, recalcula el costo promedio ponderado y registra los artículos revertidos en la auditoría.
 - Las devoluciones al proveedor ajustan el stock y el costo ponderado antes de crear el movimiento, manteniendo sincronizado el valor del inventario por tienda.
 - `backend/tests/test_purchases.py` agrega casos de recepción, devolución y cancelación para asegurar que stock, costos y movimientos se actualicen conforme a la política corporativa.
+- Se publica la vista `movimientos_inventario` para reflejar `inventory_movements` y conservar compatibilidad con reportes y consultas históricas basadas en la nomenclatura en español.
 
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
