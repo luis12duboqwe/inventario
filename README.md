@@ -16,6 +16,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **API empresarial FastAPI** con modelos SQLAlchemy para tiendas, dispositivos, movimientos, usuarios, roles, sesiones de sincronización, bitácoras y respaldos.
 - **Seguridad por roles** con autenticación JWT, alta inicial segura (`/auth/bootstrap`), administración de usuarios y auditoría completa. Los roles corporativos vigentes son `ADMIN`, `GERENTE` y `OPERADOR`.
 - **Gestión de inventario** con movimientos de entrada/salida/ajuste, actualización de dispositivos, reportes consolidados por tienda e impresión de etiquetas individuales con QR (generadas en frontend mediante la librería `qrcode`) para cada dispositivo.
+- **Ajustes manuales auditables** con motivo obligatorio, captura del usuario responsable y alertas automáticas de stock bajo o inconsistencias registradas en la bitácora corporativa.
 - **Valuación y métricas financieras** con precios unitarios, ranking de sucursales y alertas de stock bajo expuestos vía `/reports/metrics` y el panel React.
 - **Sincronización programada y bajo demanda** mediante un orquestador asincrónico que ejecuta tareas periódicas configurables.
 - **Respaldos empresariales** con generación automática/manual de PDF y archivos comprimidos JSON usando ReportLab; historial consultable vía API.
@@ -127,6 +128,14 @@ Para obtener capturas actualizadas del flujo completo ejecuta `uvicorn backend.a
 - **Totales comparativos**: la vista también expone `valor_costo_producto`, `valor_costo_tienda`, `valor_costo_general`, `valor_total_categoria`, `margen_total_tienda` y `margen_total_general` para contrastar valor de venta versus costo y márgenes acumulados por tienda y corporativos.
 - **Servicio reutilizable**: `services/inventory.calculate_inventory_valuation` expone los datos con filtros opcionales por tienda y categoría empleando el esquema `InventoryValuation`.
 - **Cobertura automatizada**: `backend/tests/test_inventory_valuation.py` valida promedios ponderados, márgenes y filtros; `backend/tests/conftest.py` prepara la vista en entornos SQLite para mantener las pruebas aisladas.
+
+## Actualización Inventario - Ajustes y Auditorías (05/04/2025)
+
+- **Registro completo de ajustes manuales**: `crud.create_inventory_movement` conserva el stock previo y actual en la bitácora, vincula el motivo enviado en `X-Reason` y deja rastro del usuario que ejecuta el ajuste.
+- **Alertas automáticas por inconsistencias**: cuando un ajuste modifica el inventario más allá del umbral `SOFTMOBILE_ADJUSTMENT_VARIANCE_THRESHOLD`, se genera el evento `inventory_adjustment_alert` con detalle del desvío detectado.
+- **Detección inmediata de stock bajo**: cualquier movimiento que deje una existencia por debajo de `SOFTMOBILE_LOW_STOCK_THRESHOLD` dispara `inventory_low_stock_alert`, clasificando la entrada como crítica y mostrando sucursal, SKU y umbral aplicado.
+- **Nuevas palabras clave de severidad**: el utilitario de auditoría reconoce `stock bajo`, `ajuste manual` e `inconsistencia` para clasificar advertencias y críticas en dashboards y recordatorios.
+- **Pruebas y documentación**: `test_manual_adjustment_triggers_alerts` verifica el flujo completo (ajuste → alerta → bitácora), y este README documenta las variables de entorno necesarias para parametrizar los umbrales corporativos.
 
 ## Paso 4 — Documentación y pruebas automatizadas
 
@@ -523,7 +532,7 @@ Una versión sólo se declara lista para entrega cuando el checklist se ha compl
 
 - **Métricas globales**: `GET /reports/metrics` devuelve el número de sucursales, dispositivos, unidades totales y el valor financiero del inventario.
 - **Ranking por valor**: el mismo endpoint incluye las cinco sucursales con mayor valor inventariado para priorizar decisiones comerciales.
-- **Alertas de stock bajo**: ajusta el parámetro `low_stock_threshold` para recibir hasta diez dispositivos críticos, con precios unitarios y valor actual.
+- **Alertas de stock bajo**: ajusta el parámetro `low_stock_threshold` o la variable `SOFTMOBILE_LOW_STOCK_THRESHOLD` para recibir hasta diez dispositivos críticos; cada disparo genera una entrada `inventory_low_stock_alert` en la bitácora con el usuario responsable y el umbral aplicado.
 - **Comparativos multi-sucursal**: `GET /reports/analytics/comparative` y el tablero `AnalyticsBoard.tsx` permiten contrastar inventario, rotación y ventas recientes por sucursal, filtrando por tiendas específicas.
 - **Margen y proyección de ventas**: `GET /reports/analytics/profit_margin` y `/reports/analytics/sales_forecast` calculan utilidad, ticket promedio y confianza estadística para horizontes de 30 días.
 - **Exportaciones ejecutivas**: `GET /reports/analytics/export.csv` y `GET /reports/analytics/pdf` generan entregables consolidados en tema oscuro listos para comités corporativos.

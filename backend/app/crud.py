@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement
 
 from . import models, schemas, telemetry
+from .config import settings
 from .utils import audit as audit_utils
 from .utils.cache import TTLCache
 
@@ -2020,10 +2021,12 @@ def create_inventory_movement(
         raise ValueError("invalid_destination_store")
 
     source_store_id = payload.tienda_origen_id
-    if source_store_id is not None:
-        get_store(db, source_store_id)
 
     device = get_device(db, store_id, payload.producto_id)
+
+    previous_quantity = device.quantity
+    if source_store_id is not None:
+        get_store(db, source_store_id)
 
     if (
         payload.tipo_movimiento == models.MovementType.OUT
@@ -2055,6 +2058,15 @@ def create_inventory_movement(
         if source_store_id is None:
             source_store_id = store_id
 
+    new_quantity = device.quantity
+    quantity_delta = new_quantity - previous_quantity
+    reason_segment = f", motivo={payload.comentario}" if payload.comentario else ""
+    movement_details = (
+        "tipo="
+        f"{payload.tipo_movimiento.value}, cantidad={payload.cantidad}, "
+        f"stock_previo={previous_quantity}, stock_actual={new_quantity}{reason_segment}"
+    )
+
     movement = models.InventoryMovement(
         store=store,
         source_store_id=source_store_id,
@@ -2084,8 +2096,45 @@ def create_inventory_movement(
         entity_type="device",
         entity_id=str(device.id),
         performed_by_id=performed_by_id,
-        details=f"tipo={payload.tipo_movimiento.value}, cantidad={payload.cantidad}",
+        details=movement_details,
     )
+
+    if (
+        payload.tipo_movimiento == models.MovementType.ADJUST
+        and quantity_delta != 0
+        and abs(quantity_delta) >= settings.inventory_adjustment_variance_threshold
+    ):
+        adjustment_reason = (
+            f", motivo={payload.comentario}" if payload.comentario else ""
+        )
+        _log_action(
+            db,
+            action="inventory_adjustment_alert",
+            entity_type="device",
+            entity_id=str(device.id),
+            performed_by_id=performed_by_id,
+            details=(
+                "Ajuste manual registrado; inconsistencia detectada"
+                f" en la sucursal {store.name}. stock_previo={previous_quantity}, "
+                f"stock_actual={new_quantity}, variacion={quantity_delta:+d}"
+                f", umbral={settings.inventory_adjustment_variance_threshold}{adjustment_reason}"
+            ),
+        )
+
+    if new_quantity <= settings.inventory_low_stock_threshold:
+        _log_action(
+            db,
+            action="inventory_low_stock_alert",
+            entity_type="device",
+            entity_id=str(device.id),
+            performed_by_id=performed_by_id,
+            details=(
+                "Stock bajo detectado"
+                f" en la sucursal {store.name}. dispositivo={device.sku}, "
+                f"stock_actual={new_quantity}, umbral={settings.inventory_low_stock_threshold}"
+            ),
+        )
+
     db.commit()
     db.refresh(movement)
     total_value = _recalculate_store_inventory_value(db, store_id)

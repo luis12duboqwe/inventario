@@ -32,6 +32,7 @@ from ..models import (
     SyncStatus,
     TransferStatus,
 )
+from ..utils import audit as audit_utils
 
 
 class StoreBase(BaseModel):
@@ -780,7 +781,7 @@ class SessionRevokeRequest(BaseModel):
 class MovementBase(BaseModel):
     producto_id: int = Field(..., ge=1)
     tipo_movimiento: MovementType
-    cantidad: int = Field(..., gt=0)
+    cantidad: int = Field(..., ge=0)
     comentario: str = Field(..., max_length=255)
     tienda_origen_id: int | None = Field(default=None, ge=1)
     tienda_destino_id: int | None = Field(default=None, ge=1)
@@ -795,6 +796,14 @@ class MovementBase(BaseModel):
         if len(normalized) < 5:
             raise ValueError("El comentario debe tener al menos 5 caracteres.")
         return normalized
+
+    @model_validator(mode="after")
+    def _validate_quantity(self) -> "MovementBase":
+        if self.tipo_movimiento in {MovementType.IN, MovementType.OUT} and self.cantidad <= 0:
+            raise ValueError("La cantidad debe ser mayor que cero para entradas o salidas.")
+        if self.tipo_movimiento == MovementType.ADJUST and self.cantidad < 0:
+            raise ValueError("La cantidad no puede ser negativa en un ajuste.")
+        return self
 
 
 class MovementCreate(MovementBase):
@@ -1270,6 +1279,14 @@ class AuditLogResponse(BaseModel):
     severity_label: str = Field(default="Informativa")
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _derive_severity(self) -> "AuditLogResponse":
+        severity = audit_utils.classify_severity(self.action or "", self.details)
+        label = audit_utils.severity_label(severity)
+        object.__setattr__(self, "severity", severity)
+        object.__setattr__(self, "severity_label", label)
+        return self
 
 
 class AuditReminderEntry(BaseModel):

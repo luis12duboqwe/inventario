@@ -72,6 +72,14 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_HYBRID_PREP", "0")
         not in {"0", "false", "False"}
     )
+    inventory_low_stock_threshold: int = Field(
+        default_factory=lambda: int(os.getenv("SOFTMOBILE_LOW_STOCK_THRESHOLD", "5"))
+    )
+    inventory_adjustment_variance_threshold: int = Field(
+        default_factory=lambda: int(
+            os.getenv("SOFTMOBILE_ADJUSTMENT_VARIANCE_THRESHOLD", "3")
+        )
+    )
     backup_interval_seconds: int = Field(
         default_factory=lambda: int(os.getenv("SOFTMOBILE_BACKUP_INTERVAL_SECONDS", "43200"))
     )
@@ -110,6 +118,16 @@ class Settings(BaseModel):
         if isinstance(value, (list, tuple)):
             return [str(origin).strip() for origin in value if str(origin).strip()]
         raise ValueError("allowed_origins debe ser una lista de orígenes válidos")
+
+    @field_validator(
+        "inventory_low_stock_threshold",
+        "inventory_adjustment_variance_threshold",
+    )
+    @classmethod
+    def _ensure_non_negative(cls, value: int, info: ValidationInfo) -> int:
+        if value < 0:
+            raise ValueError(f"{info.field_name} debe ser mayor o igual que cero")
+        return value
 
 
 settings = Settings()
