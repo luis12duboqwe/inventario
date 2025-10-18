@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Sequence
 
@@ -21,10 +21,21 @@ ACCENT = colors.HexColor("#38bdf8")
 TEXT_PRIMARY = colors.HexColor("#e2e8f0")
 
 
+def _ensure_timezone_aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
 def _format_timestamp(value: datetime | None) -> str:
     if value is None:
         return "—"
-    return value.astimezone().strftime("%d/%m/%Y %H:%M")
+    aware_value = _ensure_timezone_aware(value)
+    if aware_value is None:
+        return "—"
+    return aware_value.astimezone().strftime("%d/%m/%Y %H:%M")
 
 
 def _format_store(store: models.Store | None, store_id: int) -> str:

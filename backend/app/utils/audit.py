@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Literal, TypedDict
 
 from ..models import AuditLog
@@ -33,6 +33,14 @@ _WARNING_KEYWORDS = (
     "ajuste manual",
     "inconsistencia",
 )
+
+
+def _ensure_timezone_aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 def classify_severity(action: str, details: str | None = None) -> AuditSeverity:
@@ -146,7 +154,11 @@ def identify_persistent_critical_alerts(
 ) -> list[dict[str, object]]:
     """Detecta alertas críticas recurrentes para alimentar recordatorios."""
 
-    reference_time = reference_time or datetime.utcnow()
+    reference_time = (
+        _ensure_timezone_aware(reference_time)
+        if reference_time is not None
+        else datetime.now(timezone.utc)
+    )
     threshold_delta = timedelta(minutes=threshold_minutes)
 
     aggregates: dict[tuple[str, str], dict[str, object]] = {}
@@ -154,22 +166,24 @@ def identify_persistent_critical_alerts(
         severity = classify_severity(log.action or "", log.details)
         if severity != "critical":
             continue
+        log_timestamp = _ensure_timezone_aware(log.created_at) or reference_time
         key = (log.entity_type, log.entity_id)
         entry = aggregates.get(key)
         if entry is None:
             entry = {
                 "entity_type": log.entity_type,
                 "entity_id": log.entity_id,
-                "first_seen": log.created_at,
-                "last_seen": log.created_at,
+                "first_seen": log_timestamp,
+                "last_seen": log_timestamp,
                 "occurrences": 0,
                 "latest_action": log.action,
                 "latest_details": log.details,
             }
             aggregates[key] = entry
         entry["occurrences"] += 1
-        if log.created_at > entry["last_seen"]:
-            entry["last_seen"] = log.created_at
+        last_seen = entry["last_seen"]
+        if isinstance(last_seen, datetime) and log_timestamp > last_seen:
+            entry["last_seen"] = log_timestamp
             entry["latest_action"] = log.action
             entry["latest_details"] = log.details
 
@@ -177,7 +191,12 @@ def identify_persistent_critical_alerts(
     for entry in aggregates.values():
         if entry["occurrences"] < min_occurrences:
             continue
-        if threshold_minutes > 0 and reference_time - entry["last_seen"] > threshold_delta:
+        last_seen = entry["last_seen"]
+        if (
+            threshold_minutes > 0
+            and isinstance(last_seen, datetime)
+            and reference_time - last_seen > threshold_delta
+        ):
             continue
         candidates.append(entry)
 
