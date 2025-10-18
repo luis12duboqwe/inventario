@@ -93,6 +93,15 @@
 - Nueva cobertura `test_system_logs_rejects_non_admin_access` confirma que `/logs/sistema` rechaza peticiones sin autenticación o sin el rol `ADMIN`, blindando el acceso a la bitácora corporativa con respuestas `401/403`.【F:backend/tests/test_system_logs.py†L152-L187】【F:backend/app/routers/system_logs.py†L1-L67】
 - Documentación sincronizada: README, CHANGELOG y AGENTS reflejan la fase «Actualización Sistema - Parte 1 (Logs y Auditoría General)».
 
+## Actualización Sistema - Parte 2 (Respaldos y Recuperación) (30/10/2025 11:20 UTC)
+
+- El servicio `services/backups.generate_backup` genera respaldos manuales o automáticos con componentes predeterminados (base de datos, configuración y archivos críticos), serializa snapshots JSON/SQL/PDF, consolida un ZIP corporativo y persiste rutas absolutas junto al tamaño total en `backup_jobs`.【F:backend/app/services/backups.py†L205-L320】【F:backend/app/crud.py†L6575-L6624】
+- `_dump_database_sql` reemplaza el volcado SQLite por instrucciones `DELETE/INSERT` compatibles con restauraciones idempotentes, normaliza literales (fechas, enums, binarios) y omite `backup_jobs` para preservar el histórico de respaldos tras una recuperación parcial.【F:backend/app/services/backups.py†L72-L121】
+- `restore_backup` acepta destinos personalizados, decide por componente si copia archivos o aplica el SQL directamente, registra cada recuperación en `logs_sistema` mediante `crud.register_backup_restore` y mantiene disponible el job original incluso después de restaurar la base en caliente.【F:backend/app/services/backups.py†L324-L374】【F:backend/app/crud.py†L6629-L6645】
+- El router `/backups` exige rol `ADMIN`, expone `/run` para respaldos manuales, `/history` para consultar el catálogo reciente y `/backups/{id}/restore` para restauraciones totales o parciales con bandera opcional `aplicar_base_datos`.【F:backend/app/routers/backups.py†L1-L49】
+- `schemas.BackupRunRequest` y `BackupRestoreResponse` describen notas, componentes y destinos opcionales para asegurar validaciones corporativas en FastAPI, mientras que el enum `BackupComponent` identifica base de datos, configuración y archivos críticos dentro del modelo `BackupJob`.【F:backend/app/schemas/__init__.py†L3103-L3159】【F:backend/app/models/__init__.py†L66-L111】【F:backend/app/models/__init__.py†L588-L613】
+- La prueba `backend/tests/test_backups.py` cubre generación, restauraciones completas y por componentes, verificación de archivos críticos y registros en `logs_sistema`, asegurando compatibilidad con sesiones reautenticadas tras un restore SQL.【F:backend/tests/test_backups.py†L1-L205】
+
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
 - Migración `202503010003_sales_ventas_structure.py` garantiza claves foráneas activas hacia clientes, usuarios, ventas y dispositivos, creando índices solo cuando faltan en despliegues anteriores.

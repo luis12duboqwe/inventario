@@ -8,6 +8,17 @@ from backend.app.core.roles import ADMIN
 from backend.app.services import backups as backup_services
 
 
+def _login_headers(client, username: str = "admin", password: str = "MuySegura123") -> dict[str, str]:
+    token_response = client.post(
+        "/auth/token",
+        data={"username": username, "password": password},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert token_response.status_code == status.HTTP_200_OK, token_response.json()
+    token = token_response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _auth_headers(client) -> dict[str, str]:
     payload = {
         "username": "admin",
@@ -16,16 +27,11 @@ def _auth_headers(client) -> dict[str, str]:
         "roles": [ADMIN],
     }
     response = client.post("/auth/bootstrap", json=payload)
-    assert response.status_code == status.HTTP_201_CREATED
-
-    token_response = client.post(
-        "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
-        headers={"content-type": "application/x-www-form-urlencoded"},
-    )
-    assert token_response.status_code == status.HTTP_200_OK
-    token = token_response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    assert response.status_code in {
+        status.HTTP_201_CREATED,
+        status.HTTP_400_BAD_REQUEST,
+    }
+    return _login_headers(client, payload["username"], payload["password"])
 
 
 def test_backup_generation_and_pdf(client, tmp_path) -> None:
@@ -64,15 +70,50 @@ def test_backup_generation_and_pdf(client, tmp_path) -> None:
 
     pdf_path = Path(backup_data["pdf_path"])
     archive_path = Path(backup_data["archive_path"])
-    assert pdf_path.exists()
-    assert archive_path.exists()
-    assert backup_data["total_size_bytes"] == pdf_path.stat().st_size + archive_path.stat().st_size
+    json_path = Path(backup_data["json_path"])
+    sql_path = Path(backup_data["sql_path"])
+    config_path = Path(backup_data["config_path"])
+    metadata_path = Path(backup_data["metadata_path"])
+    critical_directory = Path(backup_data["critical_directory"])
 
+    for path in [
+        pdf_path,
+        archive_path,
+        json_path,
+        sql_path,
+        config_path,
+        metadata_path,
+    ]:
+        assert path.exists()
+
+    assert critical_directory.exists() and critical_directory.is_dir()
+    expected_size = sum(
+        path.stat().st_size for path in [pdf_path, archive_path, json_path, sql_path, config_path, metadata_path]
+    )
+    expected_size += sum(file_path.stat().st_size for file_path in critical_directory.rglob("*") if file_path.is_file())
+    assert backup_data["total_size_bytes"] == expected_size
+    assert set(backup_data["components"]) == {
+        "database",
+        "configuration",
+        "critical_files",
+    }
+
+    headers = _auth_headers(client)
     history_response = client.get("/backups/history", headers=headers)
-    assert history_response.status_code == status.HTTP_200_OK
+    assert history_response.status_code == status.HTTP_200_OK, history_response.json()
     history = history_response.json()
     assert history
     assert history[0]["notes"] == "Respaldo QA"
+    assert set(history[0]["components"]) == {
+        "database",
+        "configuration",
+        "critical_files",
+    }
+
+    logs_response = client.get("/logs/sistema", headers=headers)
+    assert logs_response.status_code == status.HTTP_200_OK
+    logs = logs_response.json()
+    assert any(log["accion"] == "backup_generated" for log in logs)
 
     pdf_response = client.get(
         "/reports/inventory/pdf",
@@ -81,6 +122,76 @@ def test_backup_generation_and_pdf(client, tmp_path) -> None:
     assert pdf_response.status_code == status.HTTP_200_OK
     assert pdf_response.headers["content-type"] == "application/pdf"
     assert pdf_response.content.startswith(b"%PDF")
+
+
+def test_backup_restore_database_and_files(client, tmp_path) -> None:
+    headers = _auth_headers(client)
+    settings.backup_directory = str(tmp_path / "respaldos")
+
+    store_payload = {"name": "Sucursal Centro", "location": "CDMX", "timezone": "America/Mexico_City"}
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {
+        "sku": "SM-RESTORE-01",
+        "name": "Tablet Restore",
+        "quantity": 2,
+        "unit_price": 5500.0,
+        "imei": "351234567890123",
+        "serial": "REST-0001",
+        "marca": "Softmobile",
+        "modelo": "Restore Tab",
+    }
+    device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
+    assert device_response.status_code == status.HTTP_201_CREATED
+
+    backup_response = client.post("/backups/run", json={}, headers=headers)
+    assert backup_response.status_code == status.HTTP_201_CREATED
+    backup_data = backup_response.json()
+    backup_id = backup_data["id"]
+
+    headers = _auth_headers(client)
+    extra_store = client.post(
+        "/stores",
+        json={"name": "Sucursal Temporal", "location": "TMP", "timezone": "UTC"},
+        headers=headers,
+    )
+    assert extra_store.status_code == status.HTTP_201_CREATED, extra_store.json()
+
+    restore_response = client.post(
+        f"/backups/{backup_id}/restore",
+        json={"componentes": ["database"], "aplicar_base_datos": True},
+        headers=headers,
+    )
+    assert restore_response.status_code == status.HTTP_200_OK
+    restore_data = restore_response.json()
+    assert restore_data["job_id"] == backup_id
+    assert "database" in restore_data["componentes"]
+    assert restore_data["resultados"]["database"].startswith("Base de datos restaurada")
+
+    headers = _auth_headers(client)
+    stores_after_restore = client.get("/stores", headers=headers)
+    assert stores_after_restore.status_code == status.HTTP_200_OK
+    stores_payload = stores_after_restore.json()
+    store_names = {store["name"] for store in stores_payload}
+    assert "Sucursal Temporal" not in store_names
+
+    destino_personalizado = tmp_path / "restaurados"
+    restore_files_response = client.post(
+        f"/backups/{backup_id}/restore",
+        json={"componentes": ["configuration", "critical_files"], "destino": str(destino_personalizado)},
+        headers=headers,
+    )
+    assert restore_files_response.status_code == status.HTTP_200_OK
+    restore_files_data = restore_files_response.json()
+    assert Path(restore_files_data["destino"]).exists()
+    assert (Path(restore_files_data["destino"]) / "archivos_criticos").exists()
+
+    logs_response = client.get("/logs/sistema", headers=headers)
+    assert logs_response.status_code == status.HTTP_200_OK
+    logs = logs_response.json()
+    assert any(log["accion"] == "backup_restored" for log in logs)
 
 
 def test_inventory_pdf_requires_reason(client) -> None:

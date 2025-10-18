@@ -322,6 +322,7 @@ _SYSTEM_MODULE_MAP: dict[str, str] = {
     "supplier_batch": "inventario",
     "inventory_adjustment": "ajustes",
     "adjustment": "ajustes",
+    "backup": "respaldos",
     "user": "usuarios",
     "role": "usuarios",
     "auth": "usuarios",
@@ -6577,6 +6578,12 @@ def create_backup_job(
     mode: models.BackupMode,
     pdf_path: str,
     archive_path: str,
+    json_path: str,
+    sql_path: str,
+    config_path: str,
+    metadata_path: str,
+    critical_directory: str,
+    components: list[str],
     total_size_bytes: int,
     notes: str | None,
     triggered_by_id: int | None,
@@ -6585,25 +6592,60 @@ def create_backup_job(
         mode=mode,
         pdf_path=pdf_path,
         archive_path=archive_path,
+        json_path=json_path,
+        sql_path=sql_path,
+        config_path=config_path,
+        metadata_path=metadata_path,
+        critical_directory=critical_directory,
+        components=components,
         total_size_bytes=total_size_bytes,
         notes=notes,
         triggered_by_id=triggered_by_id,
     )
     db.add(job)
-    db.commit()
-    db.refresh(job)
+    db.flush()
 
+    componentes = ",".join(components)
+    detalles = (
+        f"modo={mode.value}; tamaño={total_size_bytes}; componentes={componentes}; archivos={archive_path}"
+    )
     _log_action(
         db,
         action="backup_generated",
         entity_type="backup",
         entity_id=str(job.id),
         performed_by_id=triggered_by_id,
-        details=f"modo={mode.value}; tamaño={total_size_bytes}",
+        details=detalles,
     )
     db.commit()
     db.refresh(job)
     return job
+
+
+def get_backup_job(db: Session, backup_id: int) -> models.BackupJob | None:
+    return db.get(models.BackupJob, backup_id)
+
+
+def register_backup_restore(
+    db: Session,
+    *,
+    backup_id: int,
+    triggered_by_id: int | None,
+    components: list[str],
+    destination: str,
+    applied_database: bool,
+) -> None:
+    detalles = (
+        f"componentes={','.join(components)}; destino={destination}; aplicar_db={applied_database}"
+    )
+    _log_action(
+        db,
+        action="backup_restored",
+        entity_type="backup",
+        entity_id=str(backup_id),
+        performed_by_id=triggered_by_id,
+        details=detalles,
+    )
 
 
 def _purchase_record_statement():

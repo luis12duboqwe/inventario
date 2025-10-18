@@ -70,6 +70,14 @@ class BackupMode(str, enum.Enum):
     MANUAL = "manual"
 
 
+class BackupComponent(str, enum.Enum):
+    """Componentes disponibles dentro de un respaldo corporativo."""
+
+    DATABASE = "database"
+    CONFIGURATION = "configuration"
+    CRITICAL_FILES = "critical_files"
+
+
 class SystemLogLevel(str, enum.Enum):
     """Niveles de severidad admitidos en la bitácora general."""
 
@@ -585,6 +593,12 @@ class BackupJob(Base):
     executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     pdf_path: Mapped[str] = mapped_column(String(255), nullable=False)
     archive_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    json_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    sql_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    config_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    metadata_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    critical_directory: Mapped[str] = mapped_column(String(255), nullable=False)
+    components: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     total_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
