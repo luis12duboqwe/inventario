@@ -18,6 +18,13 @@ def upgrade() -> None:
 
     op.alter_column("usuarios", "id", new_column_name="id_usuario")
     op.alter_column("usuarios", "username", new_column_name="correo")
+    op.alter_column(
+        "usuarios",
+        "correo",
+        existing_type=sa.String(length=80),
+        type_=sa.String(length=120),
+        existing_nullable=False,
+    )
     op.alter_column("usuarios", "full_name", new_column_name="nombre")
     op.alter_column("usuarios", "created_at", new_column_name="fecha_creacion")
 
@@ -78,6 +85,13 @@ def downgrade() -> None:
 
     op.alter_column("usuarios", "fecha_creacion", new_column_name="created_at")
     op.alter_column("usuarios", "nombre", new_column_name="full_name")
+    op.alter_column(
+        "usuarios",
+        "correo",
+        existing_type=sa.String(length=120),
+        type_=sa.String(length=80),
+        existing_nullable=False,
+    )
     op.alter_column("usuarios", "correo", new_column_name="username")
     op.alter_column("usuarios", "id_usuario", new_column_name="id")
 
