@@ -1,6 +1,7 @@
 """Pruebas de integridad para la estructura del módulo de usuarios."""
 from sqlalchemy import Boolean, DateTime, Integer, String, inspect
 
+from backend.app import models  # noqa: F401 - necesario para registrar metadatos
 from backend.app.core.roles import DEFAULT_ROLES
 
 
@@ -45,6 +46,9 @@ def test_usuarios_columnas_indices_y_fk(db_session) -> None:
     indexes = _index_map(inspector, "usuarios")
     assert "ix_usuarios_correo" in indexes
     assert bool(indexes["ix_usuarios_correo"]["unique"]) is True
+
+    assert columns["rol"]["default"] in {"'OPERADOR'", "OPERADOR"}
+    assert columns["estado"]["default"] in {"'ACTIVO'", "ACTIVO"}
 
     foreign_keys = inspector.get_foreign_keys("usuarios")
     assert any(

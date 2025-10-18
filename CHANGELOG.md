@@ -57,6 +57,7 @@
 - El rol `INVITADO` se agrega al catálogo base y el CRUD de usuarios persiste el rol principal junto con los alias en español de los esquemas (`correo`, `nombre`, `sucursal_id`, `fecha_creacion`).
 - Nueva migración `202503010011_usuarios_permisos_table.py` crea la tabla `permisos` con claves foráneas hacia `roles.name`, unicidad (`uq_permisos_rol_modulo`) e índices dedicados para consultas por rol y módulo.
 - Se documenta y prueba la integridad del módulo con `backend/tests/test_usuarios_schema.py`, que verifica columnas, índices, claves foráneas y la disponibilidad de los roles base (ADMIN, GERENTE, OPERADOR, INVITADO).
+- Se añadieron validaciones explícitas sobre los valores predeterminados `OPERADOR` y `ACTIVO` de las columnas `rol` y `estado`, así como sobre la unicidad del índice `ix_usuarios_correo`, cubriéndolos en la misma prueba estructural.
 - README, AGENTS y CHANGELOG registran la fase bajo el epígrafe «Actualización Usuarios - Parte 1 (Estructura y Roles Base)» para mantener trazabilidad sobre la evolución del módulo de seguridad.
 
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
