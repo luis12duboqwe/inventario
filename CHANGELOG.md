@@ -67,6 +67,7 @@
 - Ajuste 23/10/2025 10:05 UTC: las rutas `/sales` y `/pos/sale` devuelven `409 Conflict` cuando la venta a crédito excede el límite aprobado y la prueba `test_credit_sale_rejected_when_limit_exceeded` garantiza que el inventario permanezca intacto tras el bloqueo.
 - Mejora 24/10/2025 08:10 UTC: los ajustes manuales de saldo hechos desde `PUT /customers/{id}` generan asientos `adjustment` con detalle de saldo previo/posterior, se anexan al historial y quedan cubiertos por la prueba `test_customer_manual_debt_adjustment_creates_ledger_entry`.
 - Validación 25/10/2025 11:05 UTC: se impide crear o actualizar clientes con deudas superiores a su límite de crédito, devolviendo `422` y mensaje descriptivo; la prueba `test_customer_debt_cannot_exceed_credit_limit` asegura la regla y mantiene congruente el control financiero.
+- Refinamiento 26/10/2025 09:15 UTC: el listado de clientes acepta filtros explícitos por `status_filter` y `customer_type_filter`, sincronizados con la UI (`Customers.tsx`) para aislar rápidamente clientes morosos, VIP o corporativos; la prueba `test_customer_list_filters_by_status_and_type` respalda el comportamiento.
 
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.

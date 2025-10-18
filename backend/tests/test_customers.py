@@ -382,3 +382,74 @@ def test_customer_manual_debt_adjustment_creates_ledger_entry(client):
     assert adjustment_entry["details"]["difference"] == pytest.approx(250.0)
     assert adjustment_entry["note"].startswith("Ajuste manual de saldo")
 
+
+def test_customer_list_filters_by_status_and_type(client):
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Registro filtros clientes"}
+
+    customers_payload = [
+        {
+            "name": "Cliente Filtro Minorista",
+            "phone": "555-010-0001",
+            "customer_type": "minorista",
+            "status": "activo",
+        },
+        {
+            "name": "Cliente Filtro Corporativo",
+            "phone": "555-010-0002",
+            "customer_type": "corporativo",
+            "status": "moroso",
+        },
+        {
+            "name": "Cliente Filtro Mayorista",
+            "phone": "555-010-0003",
+            "customer_type": "mayorista",
+            "status": "inactivo",
+        },
+    ]
+
+    for payload in customers_payload:
+        response = client.post("/customers", json=payload, headers=reason_headers)
+        assert response.status_code == status.HTTP_201_CREATED
+
+    moroso_response = client.get(
+        "/customers",
+        headers=auth_headers,
+        params={"status_filter": "moroso"},
+    )
+    assert moroso_response.status_code == status.HTTP_200_OK
+    moroso_customers = moroso_response.json()
+    assert len(moroso_customers) == 1
+    assert moroso_customers[0]["status"] == "moroso"
+    assert moroso_customers[0]["customer_type"] == "corporativo"
+
+    corporativo_response = client.get(
+        "/customers",
+        headers=auth_headers,
+        params={"customer_type_filter": "corporativo"},
+    )
+    assert corporativo_response.status_code == status.HTTP_200_OK
+    corporativo_customers = corporativo_response.json()
+    assert len(corporativo_customers) == 1
+    assert corporativo_customers[0]["name"] == "Cliente Filtro Corporativo"
+
+    combined_response = client.get(
+        "/customers",
+        headers=auth_headers,
+        params={"status_filter": "activo", "customer_type_filter": "minorista"},
+    )
+    assert combined_response.status_code == status.HTTP_200_OK
+    combined_customers = combined_response.json()
+    assert len(combined_customers) == 1
+    assert combined_customers[0]["name"] == "Cliente Filtro Minorista"
+
+    invalid_status_response = client.get(
+        "/customers",
+        headers=auth_headers,
+        params={"status_filter": "desconocido"},
+    )
+    assert invalid_status_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert "estado de cliente" in invalid_status_response.json()["detail"].lower()
+
+
