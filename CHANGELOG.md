@@ -21,6 +21,7 @@
 - Cada evento sincronizado genera un log `sync_outbox_sent`, reforzando la trazabilidad corporativa exigida por Softmobile 2025 v2.2.0.【F:backend/app/crud.py†L4690-L4732】
 - `services/backups.generate_backup` produce respaldos ZIP/PDF (verificados por `backend/tests/test_backups.py`) para complementar la replicación con exportaciones corporativas.【F:backend/app/services/backups.py†L241-L275】【F:backend/tests/test_backups.py†L24-L78】
 - La cobertura se refuerza con `backend/tests/test_sync_replication.py` y `backend/tests/test_sync_full.py`, que aseguran la sincronización de inventario, ventas y compras, así como el registro de discrepancias inter-sucursal.【F:backend/tests/test_sync_replication.py†L34-L129】【F:backend/tests/test_sync_full.py†L23-L121】
+- **30/10/2025 12:55 UTC** — Auditoría del módulo de respaldos confirma ejecución manual y automática diferenciada por `mode`, exportaciones disponibles en `.zip`, `.sql` y `.json`, restauraciones selectivas por componente (base de datos, configuraciones, archivos críticos) con registro en `logs_sistema` y restricción permanente a usuarios con rol `ADMIN`, verificado mediante `backend/tests/test_backups.py`.
 
 ## Actualización Sucursales - Parte 3 (Interfaz y Control Central) (28/10/2025 10:20 UTC)
 - `frontend/src/modules/sync/pages/SyncPage.tsx` integra un dashboard central que expone estado actual, última ejecución, monitoreo de sucursales, inventario agregado, cola híbrida y transferencias activas con los logs más recientes de `/sync/sessions`.
