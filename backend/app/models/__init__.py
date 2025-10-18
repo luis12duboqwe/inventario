@@ -276,6 +276,33 @@ class Role(Base):
     users: Mapped[list["UserRole"]] = relationship(
         "UserRole", back_populates="role", cascade="all, delete-orphan"
     )
+    permissions: Mapped[list["Permission"]] = relationship(
+        "Permission", back_populates="role", cascade="all, delete-orphan"
+    )
+
+
+class Permission(Base):
+    __tablename__ = "permisos"
+    __table_args__ = (
+        UniqueConstraint("rol", "modulo", name="uq_permisos_rol_modulo"),
+    )
+
+    id: Mapped[int] = mapped_column("id_permiso", Integer, primary_key=True, index=True)
+    role_name: Mapped[str] = mapped_column(
+        "rol",
+        String(50),
+        ForeignKey("roles.name", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    module: Mapped[str] = mapped_column("modulo", String(120), nullable=False, index=True)
+    can_view: Mapped[bool] = mapped_column("puede_ver", Boolean, nullable=False, default=False)
+    can_edit: Mapped[bool] = mapped_column("puede_editar", Boolean, nullable=False, default=False)
+    can_delete: Mapped[bool] = mapped_column("puede_borrar", Boolean, nullable=False, default=False)
+
+    rol = synonym("role_name")
+
+    role: Mapped[Role] = relationship("Role", back_populates="permissions")
 
 
 class User(Base):
@@ -1401,6 +1428,7 @@ __all__ = [
     "StoreMembership",
     "User",
     "UserRole",
+    "Permission",
     "Sale",
     "SaleItem",
     "SaleReturn",
