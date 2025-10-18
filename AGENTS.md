@@ -308,6 +308,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 ### Actualización Usuarios - Parte 3 (Interfaz y Panel de Roles) (27/10/2025 22:10 UTC)
 
 - `frontend/src/modules/users/components/UserManagement.tsx` incorpora un dashboard oscuro con totales, actividad y sesiones en vivo consumiendo `GET /users/dashboard`, además de filtros combinados y formulario lateral para altas/ediciones.
+- **28/10/2025 22:15 UTC** — Se ratificó que la pantalla presenta listado con filtros, formulario de creación/edición, toggles de estado activo/inactivo, checkboxes de asignación de roles y la matriz editable de permisos, además de botones de exportación PDF/Excel conectados a los endpoints de seguridad existentes.
 - El backend expone `PUT /users/{id}` para actualizar nombre, teléfono, sucursal y contraseña con motivo corporativo, además de `GET /users/export` (PDF/Excel) y nuevos filtros server-side (`search`, `role`, `status`, `store_id`).
 - Se habilita el gestor de permisos por rol vía `GET /users/permissions` y `PUT /users/roles/{role}/permissions`, persistiendo cambios en la tabla `permisos` y registrando la acción auditada `role_permissions_updated`.
 - `backend/app/services/user_reports.py` genera los reportes PDF/Excel en tema oscuro para usuarios, siguiendo la paleta `#0f172a/#111827/#38bdf8` y reutilizando la cabecera `X-Reason` como en otros módulos.
