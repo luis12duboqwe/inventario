@@ -41,7 +41,23 @@ const severityBadgeClass: Record<SyncConflictLog["severity"], string> = {
   sin_registros: "badge neutral",
 };
 
+const moduleStatusBadgeClass: Record<ModuleStatus, string> = {
+  ok: "badge success",
+  warning: "badge warning",
+  critical: "badge critical",
+};
+
 const MIN_REASON_LENGTH = 5;
+
+type RecentSyncLog = {
+  id: string;
+  storeName: string;
+  status: string;
+  mode: string;
+  startedAt: string;
+  finishedAt: string | null;
+  errorMessage: string | null;
+};
 
 function formatDateTime(value?: string | null): string {
   if (!value) {
@@ -115,6 +131,19 @@ function SyncPage() {
     moduleStatus = "warning";
     moduleStatusLabel = `${outbox.length} eventos pendientes en la cola local`;
   }
+
+  const storeNameById = useMemo(() => {
+    const mapping = new Map<number, string>();
+    stores.forEach((store) => {
+      mapping.set(store.id, store.name);
+    });
+    return mapping;
+  }, [stores]);
+
+  const formatStoreName = useCallback(
+    (storeId: number) => storeNameById.get(storeId) ?? `Sucursal #${storeId}`,
+    [storeNameById],
+  );
 
   const requestReason = useCallback(
     (defaultReason: string) => {
@@ -317,6 +346,43 @@ function SyncPage() {
     return branchOverview.reduce((acc, item) => acc + item.pending_transfers, 0);
   }, [branchOverview]);
 
+  const totalOpenConflicts = useMemo(() => {
+    return branchOverview.reduce((acc, item) => acc + item.open_conflicts, 0);
+  }, [branchOverview]);
+
+  const recentSyncLogs = useMemo<RecentSyncLog[]>(() => {
+    return syncHistory
+      .flatMap((storeHistory) =>
+        storeHistory.sessions.map((session) => ({
+          id: `${storeHistory.store_id ?? "global"}-${session.id}`,
+          storeName: storeHistory.store_name,
+          status: session.status,
+          mode: session.mode,
+          startedAt: session.started_at,
+          finishedAt: session.finished_at ?? null,
+          errorMessage: session.error_message ?? null,
+        })),
+      )
+      .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+      .slice(0, 6);
+  }, [syncHistory]);
+
+  const lastSyncExecution = recentSyncLogs.length > 0 ? recentSyncLogs[0] : null;
+
+  const transferReportItems = useMemo(() => {
+    return transferReport ? transferReport.items.slice(0, 6) : [];
+  }, [transferReport]);
+
+  const extraTransferItems = useMemo(() => {
+    if (!transferReport) {
+      return 0;
+    }
+    return Math.max(transferReport.items.length - transferReportItems.length, 0);
+  }, [transferReport, transferReportItems]);
+
+  const currentSyncLabel = syncStatus ?? moduleStatusLabel;
+  const totalPendingOutbox = outbox.length;
+
   const topConflicts = useMemo(() => conflicts.slice(0, 6), [conflicts]);
 
   return (
@@ -335,6 +401,88 @@ function SyncPage() {
       />
       <div className="section-scroll">
         <div className="section-grid">
+          <section className="card sync-dashboard">
+            <div className="sync-dashboard__header">
+              <h2>Dashboard de sincronización</h2>
+              <span className={moduleStatusBadgeClass[moduleStatus]}>{moduleStatusLabel}</span>
+            </div>
+            <div className="sync-dashboard__summary">
+              <div className="sync-metric">
+                <span>Estado actual</span>
+                <strong>{currentSyncLabel}</strong>
+                <small>
+                  {hasSyncFailure
+                    ? "Atiende los errores pendientes para recuperar la sincronización"
+                    : "Monitoreo híbrido en ejecución"}
+                </small>
+              </div>
+              <div className="sync-metric">
+                <span>Última ejecución</span>
+                <strong>{lastSyncExecution ? formatDateTime(lastSyncExecution.startedAt) : "Sin registros"}</strong>
+                <small>
+                  {lastSyncExecution
+                    ? `${lastSyncExecution.storeName} · ${lastSyncExecution.mode}`
+                    : "Ejecuta una sincronización manual para registrar actividad"}
+                </small>
+              </div>
+              <div className="sync-metric">
+                <span>Sucursales monitoreadas</span>
+                <strong>{branchOverview.length}</strong>
+                <small>{branchOverview.length === 1 ? "1 tienda activa" : `${branchOverview.length} tiendas activas`}</small>
+              </div>
+              <div className="sync-metric">
+                <span>Inventario monitoreado</span>
+                <strong>{branchOverview.length > 0 ? formatCurrency(totalInventoryValue) : "—"}</strong>
+                <small>Valor acumulado por sucursal</small>
+              </div>
+              <div className="sync-metric">
+                <span>Cola local pendiente</span>
+                <strong>{totalPendingOutbox}</strong>
+                <small>{enableHybridPrep ? "Eventos por replicar" : "Habilita el modo híbrido"}</small>
+              </div>
+              <div className="sync-metric">
+                <span>Conflictos abiertos</span>
+                <strong>{totalOpenConflicts}</strong>
+                <small>{totalOpenConflicts === 1 ? "Un conflicto detectado" : "Conflictos por resolver"}</small>
+              </div>
+              <div className="sync-metric">
+                <span>Transferencias activas</span>
+                <strong>{totalPendingTransfers}</strong>
+                <small>Solicitadas o en tránsito</small>
+              </div>
+            </div>
+            <div className="sync-dashboard__logs">
+              <h3>Últimos registros</h3>
+              {recentSyncLogs.length === 0 ? (
+                <p className="muted-text">Sin ejecuciones registradas en la bitácora.</p>
+              ) : (
+                <ul className="sync-log-list">
+                  {recentSyncLogs.map((log) => (
+                    <li key={log.id} className="sync-log__item">
+                      <div className="sync-log__header">
+                        <div
+                          className={`badge ${log.status === "exitoso" ? "success" : "warning"}`}
+                          aria-label={log.status === "exitoso" ? "Ejecución exitosa" : "Ejecución con fallos"}
+                        >
+                          {log.status === "exitoso" ? "Exitoso" : "Fallido"}
+                        </div>
+                        <span className="sync-log__time">{formatDateTime(log.startedAt)}</span>
+                      </div>
+                      <div className="sync-log__meta">
+                        <span>{log.storeName}</span>
+                        <span>Modo: {log.mode}</span>
+                        {log.finishedAt ? <span>Finalizó {formatDateTime(log.finishedAt)}</span> : null}
+                      </div>
+                      {log.errorMessage ? (
+                        <p className="sync-log__error">⚠️ {log.errorMessage}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+
           <section className="card">
             <div className="card-header">
               <h2>Panorama de sucursales</h2>
@@ -479,12 +627,15 @@ function SyncPage() {
                         <div className="transfer-body">
                           <p>
                             <strong>
-                              {transfer.origin_store_id} → {transfer.destination_store_id}
+                              {formatStoreName(transfer.origin_store_id)} → {formatStoreName(transfer.destination_store_id)}
                             </strong>
                           </p>
                           <p className="muted-text">
                             Registrada el {formatDateTime(transfer.created_at)}
                           </p>
+                          {transfer.reason ? (
+                            <p className="muted-text">Motivo: {transfer.reason}</p>
+                          ) : null}
                           <p className="muted-text">
                             Artículos: {transfer.items.reduce((acc, item) => acc + item.quantity, 0)}
                           </p>
@@ -493,6 +644,63 @@ function SyncPage() {
                     ))}
                   </ul>
                 )}
+                {transferReportItems.length > 0 ? (
+                  <div className="table-responsive transfer-details-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Folio</th>
+                          <th>Origen</th>
+                          <th>Destino</th>
+                          <th>Estado</th>
+                          <th>Productos y cantidades</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {transferReportItems.map((item) => (
+                          <tr key={item.id}>
+                            <td>
+                              <div className="transfer-meta">
+                                <strong>{item.folio}</strong>
+                                <span className="muted-text">{formatDateTime(item.requested_at)}</span>
+                              </div>
+                            </td>
+                            <td>{item.origin_store}</td>
+                            <td>{item.destination_store}</td>
+                            <td>
+                              <span className={`badge transfer-${item.status.toLowerCase()}`}>
+                                {transferStatusLabels[item.status]}
+                              </span>
+                            </td>
+                            <td>
+                              {item.devices.length === 0 ? (
+                                <span className="muted-text">Sin productos registrados</span>
+                              ) : (
+                                <ul className="transfer-devices">
+                                  {item.devices.map((device, index) => (
+                                    <li key={`${item.id}-${device.sku ?? device.name ?? index}-${index}`}>
+                                      <span className="transfer-device-name">{device.name ?? "Producto"}</span>
+                                      {device.sku ? (
+                                        <span className="transfer-device-sku">SKU {device.sku}</span>
+                                      ) : null}
+                                      <span className="transfer-device-qty">×{device.quantity}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+                {extraTransferItems > 0 ? (
+                  <p className="muted-text transfer-details-footnote">
+                    Se muestran las últimas {transferReportItems.length} transferencias. Descarga el reporte para ver las {" "}
+                    {transferReport?.items.length} registradas.
+                  </p>
+                ) : null}
               </>
             )}
           </section>

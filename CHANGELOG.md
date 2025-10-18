@@ -22,11 +22,11 @@
 - `services/backups.generate_backup` produce respaldos ZIP/PDF (verificados por `backend/tests/test_backups.py`) para complementar la replicación con exportaciones corporativas.【F:backend/app/services/backups.py†L241-L275】【F:backend/tests/test_backups.py†L24-L78】
 - La cobertura se refuerza con `backend/tests/test_sync_replication.py` y `backend/tests/test_sync_full.py`, que aseguran la sincronización de inventario, ventas y compras, así como el registro de discrepancias inter-sucursal.【F:backend/tests/test_sync_replication.py†L34-L129】【F:backend/tests/test_sync_full.py†L23-L121】
 
-## Actualización Sucursales - Parte 3 (Interfaz y Control Central) (27/10/2025 17:45 UTC)
-- La vista de sincronización incorpora un tablero corporativo (`SyncPage`) que resume estado, última sincronización, inventario y transferencias pendientes por sucursal a partir del endpoint `/sync/overview`.
-- Se habilitan `/sync/conflicts` y `/sync/conflicts/export/{pdf|xlsx}` para consultar y descargar discrepancias `sync_discrepancy` con detalle de tiendas afectadas, además de integrarse en la interfaz.
-- `/transfers/report` y `/transfers/export/{pdf|xlsx}` permiten obtener reportes ejecutivos y exportaciones multiformato, enlazados desde la UI con motivo corporativo obligatorio.
-- `backend/tests/test_sync_interface.py` valida el tablero, los reportes y las nuevas rutas, documentando esta iteración en README, AGENTS y CHANGELOG bajo «Actualización Sucursales - Parte 3 (Interfaz y Control Central)».
+## Actualización Sucursales - Parte 3 (Interfaz y Control Central) (28/10/2025 10:20 UTC)
+- `frontend/src/modules/sync/pages/SyncPage.tsx` integra un dashboard central que expone estado actual, última ejecución, monitoreo de sucursales, inventario agregado, cola híbrida y transferencias activas con los logs más recientes de `/sync/sessions`.
+- Se enriquece la vista de transferencias con la tabla de detalle (origen, destino, productos y cantidades) alimentada por `/transfers/report`, junto con totales ejecutivos y exportaciones PDF/Excel.
+- El módulo conserva el panel de conflictos con exportaciones PDF/Excel y las acciones de sincronización manual, respaldos y reportes del `SyncPanel`, manteniendo la trazabilidad corporativa.
+- README, AGENTS y este CHANGELOG registran la fase bajo «Actualización Sucursales - Parte 3 (Interfaz y Control Central)» para preservar la línea de tiempo.
 
 ## Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
 - Se formalizan las tablas `proveedores`, `compras` y `detalle_compras` con las columnas requeridas (`id_proveedor`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `notas`, `id_compra`, `proveedor_id`, `usuario_id`, `fecha`, `total`, `impuesto`, `forma_pago`, `estado`, `id_detalle`, `compra_id`, `producto_id`, `cantidad`, `costo_unitario`, `subtotal`).

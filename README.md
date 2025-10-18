@@ -112,10 +112,10 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 
 ## Actualización Sucursales - Parte 3 (Interfaz y Control Central)
 
-- **Panel unificado de sucursales**: la vista `SyncPage` agrega una tabla dinámica con el estado de cada tienda, su última sincronización, inventario monitoreado, transferencias pendientes y conflictos detectados, integrando datos de `/sync/overview`.
-- **Control de transferencias**: se incorporan resúmenes ejecutivos y exportaciones PDF/Excel (`/transfers/report|export`) que consolidan totales por estado y permiten descargar los reportes con motivo corporativo obligatorio.
-- **Conflictos exportables**: los registros `sync_discrepancy` pueden consultarse mediante `/sync/conflicts` y exportarse en formatos PDF/Excel para auditar discrepancias entre sucursales.
-- **Cobertura automatizada**: la nueva prueba `backend/tests/test_sync_interface.py` verifica el tablero de sucursales y las exportaciones para asegurar la trazabilidad del módulo de sincronización central.
+- **Dashboard centralizado**: `frontend/src/modules/sync/pages/SyncPage.tsx` incorpora una tarjeta «Dashboard de sincronización» que resume estado actual, última ejecución, sucursales monitorizadas, inventario agregado, cola híbrida y transferencias activas con los registros recientes de `/sync/sessions`.【F:frontend/src/modules/sync/pages/SyncPage.tsx†L56-L184】【F:frontend/src/styles.css†L186-L272】
+- **Detalle operativo de sucursales**: se mantiene la tabla «Panorama de sucursales» con estado, última sincronización, transferencias pendientes, conflictos abiertos e inventario para cada tienda, respaldando la supervisión diaria desde `/sync/overview`.【F:frontend/src/modules/sync/pages/SyncPage.tsx†L186-L259】
+- **Sistema de transferencias enriquecido**: la sección «Transferencias entre tiendas» ahora muestra el flujo origen→destino con motivo, totales y un cuadro detallado de productos/quantidades gracias a los datos de `/transfers/report`, además de conservar los totales ejecutivos y exportaciones PDF/Excel.【F:frontend/src/modules/sync/pages/SyncPage.tsx†L261-L360】【F:frontend/src/styles.css†L308-L370】
+- **Conflictos y reportes corporativos**: se preserva el panel de discrepancias con exportación PDF/Excel y el módulo `SyncPanel` continúa ofreciendo sincronización manual, respaldos y descargas de inventario con motivo corporativo obligatorio.【F:frontend/src/modules/sync/pages/SyncPage.tsx†L362-L515】
 - **Documentación actualizada**: este README, `CHANGELOG.md` y `AGENTS.md` registran la fase bajo «Actualización Sucursales - Parte 3 (Interfaz y Control Central)» para preservar la línea de tiempo corporativa.
 
 ## Actualización Compras - Parte 3 (Interfaz y Reportes)
