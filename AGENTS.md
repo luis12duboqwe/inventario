@@ -213,6 +213,13 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 3. 🔄 **Pruebas de frontend obligatorias**: incorpora Vitest + React Testing Library para simular recordatorios, registros de acuse y descargas; agrega el script `npm run test` y ejecútalo junto con `npm run build` en cada iteración.
 4. 🔄 **Bitácora corporativa**: registra cada corrida de `pytest`, `npm --prefix frontend run build` y `npm run test` en `docs/bitacora_pruebas_YYYY-MM-DD.md`, indicando hash del commit, responsable y resultado.
 
+### Actualización Sucursales - Parte 1 (Estructura y Relaciones) (22/10/2025 16:00 UTC)
+
+- La migración `202503010007_sucursales_estructura_relaciones.py` renombra `stores` a `sucursales`, alinea las columnas (`id_sucursal`, `nombre`, `direccion`, `telefono`, `responsable`, `estado`, `codigo`, `fecha_creacion`) y conserva `timezone`/`inventory_value` para mantener compatibilidad con instalaciones previas.
+- Se regeneran los índices `ix_sucursales_nombre`, `ix_sucursales_codigo` (únicos) e `ix_sucursales_estado`, poblando valores por defecto (`estado="activa"`, `codigo="SUC-###"`) para sucursales existentes.
+- El catálogo de productos (`devices`, alias `productos`), `users` e `inventory_movements` referencian `sucursales.id_sucursal` mediante `sucursal_id`, `sucursal_destino_id` y `sucursal_origen_id` con políticas `CASCADE`/`SET NULL` según el flujo operativo.
+- La prueba `backend/tests/test_sucursales_schema.py` debe mantenerse verde; inspecciona columnas, tipos, índices y claves foráneas para impedir regresiones del módulo de sucursales.
+
 ### Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
 
 - Se crean las tablas `proveedores`, `compras` y `detalle_compras` con columnas (`id_proveedor`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `notas`, `id_compra`, `proveedor_id`, `usuario_id`, `fecha`, `total`, `impuesto`, `forma_pago`, `estado`, `id_detalle`, `compra_id`, `producto_id`, `cantidad`, `costo_unitario`, `subtotal`) alineadas al mandato Softmobile 2025 v2.2.0.

@@ -94,6 +94,13 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Cobertura de pruebas**: `backend/tests/test_purchases.py` incorpora validaciones de recepción, devolución y cancelación para garantizar el cálculo de stock/costo y la generación de movimientos conforme a la política corporativa.
 - **Compatibilidad heredada con reportes**: se publica la vista SQL `movimientos_inventario` como alias directo de `inventory_movements`, permitiendo que integraciones históricas consulten los movimientos de entradas/salidas sin modificar sus consultas.
 
+## Actualización Sucursales - Parte 1 (Estructura y Relaciones)
+
+- La migración `202503010007_sucursales_estructura_relaciones.py` renombra `stores` a `sucursales` y homologa los campos obligatorios (`id_sucursal`, `nombre`, `direccion`, `telefono`, `responsable`, `estado`, `codigo`, `fecha_creacion`), manteniendo `timezone` e `inventory_value` para conservar compatibilidad histórica.
+- Se reconstruyen índices únicos `ix_sucursales_nombre` e `ix_sucursales_codigo`, además del filtro operacional `ix_sucursales_estado`, poblando valores por omisión (`estado="activa"`, `codigo="SUC-###"`) para registros legados.
+- Se actualizan las relaciones de integridad: el catálogo de productos (`devices`, alias corporativo de `productos`) y `users` referencian `sucursales.id_sucursal` mediante `sucursal_id`, mientras que `inventory_movements` enlaza `sucursal_destino_id` y `sucursal_origen_id` con reglas `CASCADE`/`SET NULL` según corresponda.
+- La prueba `backend/tests/test_sucursales_schema.py` inspecciona columnas, tipos, índices y claves foráneas para evitar regresiones del módulo de sucursales.
+
 ## Actualización Compras - Parte 3 (Interfaz y Reportes)
 
 - **Formulario de registro directo**: el módulo de Operaciones incorpora un formulario dedicado para capturar compras inmediatas seleccionando proveedor, productos y tasa de impuesto; calcula subtotal/impuesto/total en tiempo real y registra el movimiento mediante `createPurchaseRecord` respetando el motivo corporativo obligatorio.

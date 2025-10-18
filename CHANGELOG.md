@@ -10,6 +10,7 @@
 - La migración `202503010007_sucursales_estructura_relaciones.py` renombra `stores` a `sucursales` y homologa las columnas corporativas (`id_sucursal`, `nombre`, `direccion`, `telefono`, `responsable`, `estado`, `codigo`, `fecha_creacion`), preservando `timezone` e `inventory_value` para compatibilidad histórica.
 - Se crean índices dedicados `ix_sucursales_nombre`, `ix_sucursales_estado` e `ix_sucursales_codigo` (único), además de poblar `estado="activa"` y códigos `SUC-###` para registros previos garantizando no nulidad y unicidad.
 - Las relaciones principales se actualizan: `devices.sucursal_id` y `users.sucursal_id` apuntan a `sucursales.id_sucursal`, mientras que `inventory_movements` emplea `sucursal_destino_id`/`sucursal_origen_id` con restricciones `CASCADE`/`SET NULL`. Se reconstruyen los índices y claves foráneas asociados a compras, ventas, transferencias, POS y sincronización.
+- La suite suma `backend/tests/test_sucursales_schema.py`, que inspecciona columnas, tipos, índices y claves foráneas de `sucursales`, `devices`/`productos`, `users` e `inventory_movements` para prevenir regresiones estructurales.
 - Se mantienen vistas y esquemas compatibles mediante alias (`tienda_*`) en schemas y vistas SQL, asegurando que integraciones existentes continúen operativas bajo la versión Softmobile 2025 v2.2.0 sin romper rutas previas.
 
 ## Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
