@@ -193,7 +193,13 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
     async (query?: string) => {
       try {
         const trimmed = query?.trim();
-        const results = await listCustomers(token, trimmed && trimmed.length > 0 ? trimmed : undefined, 100);
+        const results = await listCustomers(
+          token,
+          {
+            query: trimmed && trimmed.length > 0 ? trimmed : undefined,
+            limit: 100,
+          }
+        );
         setCustomers(results);
       } catch (err) {
         setError(formatError(err, "No fue posible cargar los clientes para reparaciones."));

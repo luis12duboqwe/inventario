@@ -103,11 +103,10 @@ function POSDashboard({ token, stores, defaultStoreId = null, onInventoryRefresh
       try {
         setCustomerLoading(true);
         const normalized = query?.trim();
-        const data = await listCustomers(
-          token,
-          normalized && normalized.length > 0 ? normalized : undefined,
-          100
-        );
+        const data = await listCustomers(token, {
+          query: normalized && normalized.length > 0 ? normalized : undefined,
+          limit: 100,
+        });
         setCustomerOptions(data);
       } catch (err) {
         setError((current) =>
