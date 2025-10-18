@@ -313,6 +313,27 @@ _OUTBOX_PRIORITY_ORDER: dict[models.SyncOutboxPriority, int] = {
     models.SyncOutboxPriority.LOW: 2,
 }
 
+_SYSTEM_MODULE_MAP: dict[str, str] = {
+    "sale": "ventas",
+    "pos": "ventas",
+    "purchase": "compras",
+    "inventory": "inventario",
+    "device": "inventario",
+    "supplier_batch": "inventario",
+    "inventory_adjustment": "ajustes",
+    "adjustment": "ajustes",
+    "user": "usuarios",
+    "role": "usuarios",
+    "auth": "usuarios",
+    "store": "inventario",
+    "customer": "clientes",
+    "supplier": "proveedores",
+    "transfer_order": "inventario",
+    "purchase_order": "compras",
+    "purchase_vendor": "compras",
+    "cash_session": "ventas",
+}
+
 
 def _resolve_outbox_priority(entity_type: str, priority: models.SyncOutboxPriority | None) -> models.SyncOutboxPriority:
     if priority is not None:
@@ -324,6 +345,50 @@ def _priority_weight(priority: models.SyncOutboxPriority | None) -> int:
     if priority is None:
         return _OUTBOX_PRIORITY_ORDER[models.SyncOutboxPriority.NORMAL]
     return _OUTBOX_PRIORITY_ORDER.get(priority, 1)
+
+
+def _resolve_system_module(entity_type: str) -> str:
+    normalized = (entity_type or "").lower()
+    for prefix, module in _SYSTEM_MODULE_MAP.items():
+        if normalized.startswith(prefix):
+            return module
+    return "general"
+
+
+def _map_system_level(action: str, details: str | None) -> models.SystemLogLevel:
+    severity = audit_utils.classify_severity(action or "", details)
+    if severity == "critical":
+        return models.SystemLogLevel.CRITICAL
+    if severity == "warning":
+        return models.SystemLogLevel.WARNING
+    return models.SystemLogLevel.INFO
+
+
+def _create_system_log(
+    db: Session,
+    *,
+    audit_log: models.AuditLog | None,
+    usuario: str | None,
+    module: str,
+    action: str,
+    description: str,
+    level: models.SystemLogLevel,
+    ip_address: str | None = None,
+) -> models.SystemLog:
+    normalized_module = (module or "general").lower()
+    entry = models.SystemLog(
+        usuario=usuario,
+        modulo=normalized_module,
+        accion=action,
+        descripcion=description,
+        fecha=datetime.utcnow(),
+        nivel=level,
+        ip_origen=ip_address,
+        audit_log=audit_log,
+    )
+    db.add(entry)
+    db.flush()
+    return entry
 
 
 def _recalculate_sale_price(device: models.Device) -> None:
@@ -360,8 +425,100 @@ def _log_action(
     )
     db.add(log)
     db.flush()
+    usuario = None
+    if performed_by_id is not None:
+        user = db.get(models.User, performed_by_id)
+        if user is not None:
+            usuario = user.username
+    module = _resolve_system_module(entity_type)
+    description = details or f"{action} sobre {entity_type} {entity_id}"
+    level = _map_system_level(action, details)
+    _create_system_log(
+        db,
+        audit_log=log,
+        usuario=usuario,
+        module=module,
+        action=action,
+        description=description,
+        level=level,
+    )
     invalidate_persistent_audit_alerts_cache()
     return log
+
+
+def register_system_error(
+    db: Session,
+    *,
+    mensaje: str,
+    stack_trace: str | None,
+    modulo: str,
+    usuario: str | None,
+    ip_origen: str | None = None,
+) -> models.SystemError:
+    normalized_module = (modulo or "general").lower()
+    error = models.SystemError(
+        mensaje=mensaje,
+        stack_trace=stack_trace,
+        modulo=normalized_module,
+        fecha=datetime.utcnow(),
+        usuario=usuario,
+    )
+    db.add(error)
+    db.flush()
+    _create_system_log(
+        db,
+        audit_log=None,
+        usuario=usuario,
+        module=normalized_module,
+        action="system_error",
+        description=mensaje,
+        level=models.SystemLogLevel.ERROR,
+        ip_address=ip_origen,
+    )
+    return error
+
+
+def list_system_logs(
+    db: Session,
+    *,
+    usuario: str | None = None,
+    modulo: str | None = None,
+    nivel: models.SystemLogLevel | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> list[models.SystemLog]:
+    statement = select(models.SystemLog).order_by(models.SystemLog.fecha.desc())
+    if usuario:
+        statement = statement.where(models.SystemLog.usuario == usuario)
+    if modulo:
+        statement = statement.where(models.SystemLog.modulo == modulo.lower())
+    if nivel:
+        statement = statement.where(models.SystemLog.nivel == nivel)
+    if date_from:
+        statement = statement.where(models.SystemLog.fecha >= date_from)
+    if date_to:
+        statement = statement.where(models.SystemLog.fecha <= date_to)
+    return list(db.scalars(statement).all())
+
+
+def list_system_errors(
+    db: Session,
+    *,
+    usuario: str | None = None,
+    modulo: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> list[models.SystemError]:
+    statement = select(models.SystemError).order_by(models.SystemError.fecha.desc())
+    if usuario:
+        statement = statement.where(models.SystemError.usuario == usuario)
+    if modulo:
+        statement = statement.where(models.SystemError.modulo == modulo.lower())
+    if date_from:
+        statement = statement.where(models.SystemError.fecha >= date_from)
+    if date_to:
+        statement = statement.where(models.SystemError.fecha <= date_to)
+    return list(db.scalars(statement).all())
 
 
 def _device_value(device: models.Device) -> Decimal:

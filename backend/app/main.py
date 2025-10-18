@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-
 from datetime import datetime, timezone
+import traceback
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +29,7 @@ from .routers import (
     reports,
     sales,
     security as security_router,
+    system_logs,
     stores,
     suppliers,
     sync,
@@ -130,6 +131,41 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
 
+    def _persist_system_error(request: Request, exc: Exception, *, status_code: int | None = None) -> None:
+        if status_code is not None and status_code < 500:
+            return
+        module = _resolve_module(request.url.path) or "general"
+        message = getattr(exc, "detail", str(exc))
+        stack_trace = "".join(
+            traceback.format_exception(type(exc), exc, exc.__traceback__)
+        )
+        client_host = request.client.host if request.client else None
+        try:
+            with SessionLocal() as session:
+                username: str | None = None
+                auth_header = request.headers.get("Authorization") or ""
+                token_parts = auth_header.split(" ", 1)
+                if len(token_parts) == 2 and token_parts[0].lower() == "bearer":
+                    token = token_parts[1].strip()
+                    try:
+                        payload = security_core.decode_token(token)
+                        user = crud.get_user_by_username(session, payload.sub)
+                        if user is not None:
+                            username = user.username
+                    except HTTPException:
+                        username = None
+                crud.register_system_error(
+                    session,
+                    mensaje=message,
+                    stack_trace=stack_trace,
+                    modulo=module,
+                    usuario=username,
+                    ip_origen=client_host,
+                )
+                session.commit()
+        except Exception:  # pragma: no cover - evitamos fallos en el logger
+            pass
+
     @app.middleware("http")
     async def enforce_reason_header(request: Request, call_next):
         if request.method.upper() in SENSITIVE_METHODS and any(
@@ -146,6 +182,17 @@ def create_app() -> FastAPI:
             request.state.x_reason = reason.strip()
         response = await call_next(request)
         return response
+
+    @app.middleware("http")
+    async def capture_internal_errors(request: Request, call_next):
+        try:
+            return await call_next(request)
+        except HTTPException as exc:
+            _persist_system_error(request, exc, status_code=exc.status_code)
+            raise
+        except Exception as exc:  # pragma: no cover - errores inesperados
+            _persist_system_error(request, exc)
+            raise
 
     @app.middleware("http")
     async def enforce_route_permissions(request: Request, call_next):
@@ -281,6 +328,7 @@ def create_app() -> FastAPI:
     app.include_router(backups.router)
     app.include_router(reports.router)
     app.include_router(security_router.router)
+    app.include_router(system_logs.router)
     app.include_router(monitoring.router)
     app.include_router(audit.router)
     return app
