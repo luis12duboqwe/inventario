@@ -328,6 +328,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - El middleware `capture_internal_errors` captura excepciones HTTP ≥500 y fallos inesperados guardando stack trace, módulo derivado por ruta y dirección IP de origen sin exponer datos sensibles.
 - El router `/logs` publica `/logs/sistema` y `/logs/errores` con filtros por usuario, módulo, nivel y fecha ISO 8601, restringidos al rol ADMIN y respaldados por los esquemas `SystemLogEntry` y `SystemErrorEntry`.
 - La prueba `backend/tests/test_system_logs.py` asegura la bitácora para ventas, compras, inventario, ajustes y usuarios, validando severidades `info/warning/error/critical`, filtros por usuario/módulo/fechas e IP de origen en errores.
+- Cobertura reforzada: `test_system_logs_rejects_non_admin_access` confirma que `/logs/sistema` devuelve `401` sin autenticación y `403` a usuarios sin rol `ADMIN`, manteniendo los registros protegidos frente a accesos no autorizados.
 - README, CHANGELOG y este AGENTS documentan la fase bajo «Actualización Sistema - Parte 1 (Logs y Auditoría General)» para asegurar trazabilidad.
 
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)

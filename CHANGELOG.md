@@ -90,6 +90,7 @@
 - Middleware `capture_internal_errors` documenta excepciones HTTP ≥500 y fallos inesperados, guardando stack trace, módulo resuelto por ruta y la IP de origen; el helper `_persist_system_error` reutiliza JWT/roles existentes sin exponer datos sensibles.【F:backend/app/main.py†L56-L123】
 - Se publica el router `/logs` con endpoints `/logs/sistema` y `/logs/errores`, ambos restringidos a administradores, que permiten filtrar por usuario, módulo, nivel y rango ISO 8601; la respuesta utiliza los nuevos esquemas `SystemLogEntry` y `SystemErrorEntry`.【F:backend/app/routers/system_logs.py†L1-L67】【F:backend/app/schemas/__init__.py†L1938-L1986】
 - La prueba `backend/tests/test_system_logs.py` valida la trazabilidad de ventas, compras, inventario, ajustes y usuarios, comprueba las severidades `info`, `warning`, `error`, `critical`, los filtros por usuario/módulo/rango de fechas y que los errores corporativos preserven la IP de origen en la bitácora.【F:backend/tests/test_system_logs.py†L1-L144】
+- Nueva cobertura `test_system_logs_rejects_non_admin_access` confirma que `/logs/sistema` rechaza peticiones sin autenticación o sin el rol `ADMIN`, blindando el acceso a la bitácora corporativa con respuestas `401/403`.【F:backend/tests/test_system_logs.py†L152-L187】【F:backend/app/routers/system_logs.py†L1-L67】
 - Documentación sincronizada: README, CHANGELOG y AGENTS reflejan la fase «Actualización Sistema - Parte 1 (Logs y Auditoría General)».
 
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
