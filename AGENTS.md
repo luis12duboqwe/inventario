@@ -305,6 +305,17 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Cobertura en `backend/tests/test_security.py` valida bloqueo, restablecimiento, sesión por cookie y rechazo de operaciones de edición para roles `INVITADO`, garantizando el cumplimiento del plan «Seguridad y Auditoría» de Softmobile 2025 v2.2.0.
 - **27/10/2025 19:30 UTC** — Se verificó nuevamente el paquete de seguridad y auditoría confirmando los siete controles solicitados (JWT/cookie segura, hash + salt, sesiones activas, bitácora operativa, bloqueo por intentos, recuperación con token y permisos modulares). `pytest` se ejecutó completo en esta iteración para documentar el estado en verde.
 
+### Actualización Usuarios - Parte 3 (Interfaz y Panel de Roles) (27/10/2025 22:10 UTC)
+
+- `frontend/src/modules/users/components/UserManagement.tsx` incorpora un dashboard oscuro con totales, actividad y sesiones en vivo consumiendo `GET /users/dashboard`, además de filtros combinados y formulario lateral para altas/ediciones.
+- El backend expone `PUT /users/{id}` para actualizar nombre, teléfono, sucursal y contraseña con motivo corporativo, además de `GET /users/export` (PDF/Excel) y nuevos filtros server-side (`search`, `role`, `status`, `store_id`).
+- Se habilita el gestor de permisos por rol vía `GET /users/permissions` y `PUT /users/roles/{role}/permissions`, persistiendo cambios en la tabla `permisos` y registrando la acción auditada `role_permissions_updated`.
+- `backend/app/services/user_reports.py` genera los reportes PDF/Excel en tema oscuro para usuarios, siguiendo la paleta `#0f172a/#111827/#38bdf8` y reutilizando la cabecera `X-Reason` como en otros módulos.
+- `frontend/src/api.ts` y `usersService` agregan funciones dedicadas a dashboard, permisos, exportaciones y CRUD, mientras que `frontend/src/styles.css` introduce grillas responsivas (`user-dashboard__*`, `stat-card`, `permissions-panel`, `user-form`) para mantener la estética Softmobile.
+- Pruebas nuevas en `backend/tests/test_users_management.py` validan filtros, exportaciones, actualización de perfiles y edición de permisos para garantizar la cobertura mínima solicitada.
+- README, CHANGELOG y este AGENTS registran la fase bajo «Actualización Usuarios - Parte 3 (Interfaz y Panel de Roles)» para preservar la trazabilidad.
+- **28/10/2025 09:55 UTC** — Se corrigió la consulta `list_users` aplicando `.unique()` para evitar `InvalidRequestError` con `joinedload`, se dejó de sobrescribir permisos personalizados en `ensure_role_permissions`, se reactivan cuentas al renovar la contraseña y se reordenaron las rutas de `/users` para que `/users/dashboard` y `/users/export` no colisionen con `/{user_id}`. Las pruebas `backend/tests/test_users_management.py` quedaron en verde.
+
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
 - La migración `202503010005_clientes_estructura_relaciones.py` renombra la tabla `customers` a `clientes`, ajusta columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y marca el teléfono como obligatorio con valores de contingencia para datos históricos.

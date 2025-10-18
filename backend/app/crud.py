@@ -745,7 +745,7 @@ def list_audit_logs(
         statement = statement.where(
             models.AuditLog.created_at >= start_dt, models.AuditLog.created_at <= end_dt
         )
-    return list(db.scalars(statement))
+    return list(db.scalars(statement).unique())
 
 
 class AuditAcknowledgementError(Exception):
@@ -1073,10 +1073,17 @@ def ensure_role_permissions(db: Session, role_name: str) -> None:
         permission = db.scalars(statement).first()
         if permission is None:
             permission = models.Permission(role_name=role_name, module=module)
+            permission.can_view = bool(flags.get("can_view", False))
+            permission.can_edit = bool(flags.get("can_edit", False))
+            permission.can_delete = bool(flags.get("can_delete", False))
             db.add(permission)
-        permission.can_view = bool(flags.get("can_view", False))
-        permission.can_edit = bool(flags.get("can_edit", False))
-        permission.can_delete = bool(flags.get("can_delete", False))
+        else:
+            if permission.can_view is None:
+                permission.can_view = bool(flags.get("can_view", False))
+            if permission.can_edit is None:
+                permission.can_edit = bool(flags.get("can_edit", False))
+            if permission.can_delete is None:
+                permission.can_delete = bool(flags.get("can_delete", False))
     db.flush()
 
 
@@ -1093,7 +1100,7 @@ def ensure_role(db: Session, name: str) -> models.Role:
 
 def list_roles(db: Session) -> list[models.Role]:
     statement = select(models.Role).order_by(models.Role.name.asc())
-    return list(db.scalars(statement))
+    return list(db.scalars(statement).unique())
 
 
 def user_has_module_permission(
@@ -1218,7 +1225,14 @@ def create_user(
     return user
 
 
-def list_users(db: Session) -> list[models.User]:
+def list_users(
+    db: Session,
+    *,
+    search: str | None = None,
+    role: str | None = None,
+    status: Literal["all", "active", "inactive"] = "all",
+    store_id: int | None = None,
+) -> list[models.User]:
     statement = (
         select(models.User)
         .options(
@@ -1227,7 +1241,39 @@ def list_users(db: Session) -> list[models.User]:
         )
         .order_by(models.User.username.asc())
     )
-    return list(db.scalars(statement))
+
+    if search:
+        normalized = f"%{search.strip().lower()}%"
+        statement = statement.where(
+            or_(
+                func.lower(models.User.username).like(normalized),
+                func.lower(models.User.full_name).like(normalized),
+            )
+        )
+
+    if role:
+        normalized_role = role.strip().upper()
+        statement = statement.where(
+            or_(
+                func.upper(models.User.rol) == normalized_role,
+                models.User.roles.any(
+                    models.UserRole.role.has(
+                        func.upper(models.Role.name) == normalized_role
+                    )
+                ),
+            )
+        )
+
+    status_normalized = (status or "all").lower()
+    if status_normalized == "active":
+        statement = statement.where(models.User.is_active.is_(True))
+    elif status_normalized == "inactive":
+        statement = statement.where(models.User.is_active.is_(False))
+
+    if store_id is not None:
+        statement = statement.where(models.User.store_id == store_id)
+
+    return list(db.scalars(statement).unique())
 
 
 def set_user_roles(db: Session, user: models.User, role_names: Iterable[str]) -> models.User:
@@ -1267,6 +1313,437 @@ def set_user_status(
     db.refresh(user)
     return user
 
+
+def get_role(db: Session, name: str) -> models.Role:
+    statement = select(models.Role).where(func.upper(models.Role.name) == name.strip().upper())
+    role = db.scalars(statement).first()
+    if role is None:
+        raise LookupError("role_not_found")
+    return role
+
+
+def update_user(
+    db: Session,
+    user: models.User,
+    updates: dict[str, object],
+    *,
+    password_hash: str | None = None,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.User:
+    was_inactive = not user.is_active
+    changes: dict[str, object] = {}
+
+    if "full_name" in updates:
+        raw_name = updates.get("full_name")
+        normalized_name = raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else None
+        if user.full_name != normalized_name:
+            user.full_name = normalized_name
+            changes["full_name"] = normalized_name
+
+    if "telefono" in updates:
+        raw_phone = updates.get("telefono")
+        normalized_phone = raw_phone.strip() if isinstance(raw_phone, str) and raw_phone.strip() else None
+        if user.telefono != normalized_phone:
+            user.telefono = normalized_phone
+            changes["telefono"] = normalized_phone
+
+    if "store_id" in updates:
+        store_value = updates.get("store_id")
+        if store_value is None:
+            if user.store_id is not None:
+                user.store_id = None
+                changes["store_id"] = None
+        else:
+            try:
+                store_id = int(store_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("invalid_store_id") from exc
+            try:
+                store = get_store(db, store_id)
+            except LookupError as exc:
+                raise ValueError("store_not_found") from exc
+            if user.store_id != store.id:
+                user.store_id = store.id
+                changes["store_id"] = store.id
+
+    if password_hash:
+        user.password_hash = password_hash
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        changes["password_changed"] = True
+        if was_inactive:
+            user.is_active = True
+            user.estado = "ACTIVO"
+            changes["is_active"] = True
+            changes["estado"] = "ACTIVO"
+
+    if not changes:
+        return user
+
+    db.commit()
+    db.refresh(user)
+
+    log_payload: dict[str, object] = {"changes": changes}
+    if reason:
+        log_payload["reason"] = reason
+    _log_action(
+        db,
+        action="user_updated",
+        entity_type="user",
+        entity_id=str(user.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps(log_payload, ensure_ascii=False),
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def list_role_permissions(
+    db: Session,
+    *,
+    role_name: str | None = None,
+) -> list[schemas.RolePermissionMatrix]:
+    role_names: list[str]
+    if role_name:
+        role = get_role(db, role_name)
+        role_names = [role.name]
+    else:
+        role_names = [role.name for role in list_roles(db)]
+
+    if not role_names:
+        return []
+
+    for name in role_names:
+        ensure_role_permissions(db, name)
+    db.commit()
+
+    statement = (
+        select(models.Permission)
+        .where(models.Permission.role_name.in_(role_names))
+        .order_by(models.Permission.role_name.asc(), models.Permission.module.asc())
+    )
+    records = list(db.scalars(statement))
+
+    grouped: dict[str, list[schemas.RoleModulePermission]] = {name: [] for name in role_names}
+    for permission in records:
+        grouped.setdefault(permission.role_name, []).append(
+            schemas.RoleModulePermission(
+                module=permission.module,
+                can_view=permission.can_view,
+                can_edit=permission.can_edit,
+                can_delete=permission.can_delete,
+            )
+        )
+
+    matrices: list[schemas.RolePermissionMatrix] = []
+    for name in role_names:
+        permissions = sorted(grouped.get(name, []), key=lambda item: item.module)
+        matrices.append(schemas.RolePermissionMatrix(role=name, permissions=permissions))
+    return matrices
+
+
+def update_role_permissions(
+    db: Session,
+    role_name: str,
+    permissions: Sequence[schemas.RoleModulePermission],
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> schemas.RolePermissionMatrix:
+    role = get_role(db, role_name)
+    ensure_role_permissions(db, role.name)
+    db.flush()
+
+    updated_modules: list[dict[str, object]] = []
+    for entry in permissions:
+        module_key = entry.module.strip().lower()
+        statement = (
+            select(models.Permission)
+            .where(models.Permission.role_name == role.name)
+            .where(models.Permission.module == module_key)
+        )
+        permission = db.scalars(statement).first()
+        if permission is None:
+            permission = models.Permission(role_name=role.name, module=module_key)
+            db.add(permission)
+        permission.can_view = bool(entry.can_view)
+        permission.can_edit = bool(entry.can_edit)
+        permission.can_delete = bool(entry.can_delete)
+        updated_modules.append(
+            {
+                "module": module_key,
+                "can_view": permission.can_view,
+                "can_edit": permission.can_edit,
+                "can_delete": permission.can_delete,
+            }
+        )
+
+    db.commit()
+
+    log_payload: dict[str, object] = {"permissions": updated_modules}
+    if reason:
+        log_payload["reason"] = reason
+    _log_action(
+        db,
+        action="role_permissions_updated",
+        entity_type="role",
+        entity_id=role.name,
+        performed_by_id=performed_by_id,
+        details=json.dumps(log_payload, ensure_ascii=False),
+    )
+    db.commit()
+
+    return list_role_permissions(db, role_name=role.name)[0]
+
+
+def _user_is_locked(user: models.User) -> bool:
+    locked_until = user.locked_until
+    if locked_until is None:
+        return False
+    if locked_until.tzinfo is None:
+        return locked_until > datetime.utcnow()
+    return locked_until > datetime.now(timezone.utc)
+
+
+def build_user_directory(
+    db: Session,
+    *,
+    search: str | None = None,
+    role: str | None = None,
+    status: Literal["all", "active", "inactive"] = "all",
+    store_id: int | None = None,
+) -> schemas.UserDirectoryReport:
+    users = list_users(
+        db,
+        search=search,
+        role=role,
+        status=status,
+        store_id=store_id,
+    )
+
+    active_count = sum(1 for user in users if user.is_active)
+    inactive_count = sum(1 for user in users if not user.is_active)
+    locked_count = sum(1 for user in users if _user_is_locked(user))
+
+    items = [
+        schemas.UserDirectoryEntry(
+            id=user.id,
+            username=user.username,
+            full_name=user.full_name,
+            telefono=user.telefono,
+            rol=user.rol,
+            estado=user.estado,
+            is_active=user.is_active,
+            roles=sorted({assignment.role.name for assignment in user.roles}),
+            store_id=user.store_id,
+            store_name=user.store.name if user.store else None,
+            last_login_at=user.last_login_attempt_at,
+        )
+        for user in users
+    ]
+
+    report = schemas.UserDirectoryReport(
+        generated_at=datetime.utcnow(),
+        filters=schemas.UserDirectoryFilters(
+            search=search,
+            role=role,
+            status=status,
+            store_id=store_id,
+        ),
+        totals=schemas.UserDirectoryTotals(
+            total=len(users),
+            active=active_count,
+            inactive=inactive_count,
+            locked=locked_count,
+        ),
+        items=items,
+    )
+    return report
+
+
+def get_user_dashboard_metrics(
+    db: Session,
+    *,
+    activity_limit: int = 12,
+    session_limit: int = 8,
+    lookback_hours: int = 48,
+) -> schemas.UserDashboardMetrics:
+    activity_limit = max(1, min(activity_limit, 50))
+    session_limit = max(1, min(session_limit, 25))
+
+    directory = build_user_directory(db)
+
+    activity_statement = (
+        select(models.AuditLog)
+        .options(joinedload(models.AuditLog.performed_by))
+        .where(
+            or_(
+                models.AuditLog.entity_type.in_(["user", "usuarios", "security"]),
+                models.AuditLog.action.ilike("auth_%"),
+                models.AuditLog.action.ilike("user_%"),
+            )
+        )
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(activity_limit)
+    )
+    logs = list(db.scalars(activity_statement))
+
+    target_ids = {
+        int(log.entity_id)
+        for log in logs
+        if log.entity_type in {"user", "usuarios"} and str(log.entity_id).isdigit()
+    }
+    user_lookup: dict[int, models.User] = {}
+    if target_ids:
+        lookup_statement = (
+            select(models.User)
+            .options(joinedload(models.User.store))
+            .where(models.User.id.in_(target_ids))
+        )
+        user_lookup = {user.id: user for user in db.scalars(lookup_statement)}
+
+    recent_activity: list[schemas.UserDashboardActivity] = []
+    for log in logs:
+        details: dict[str, object] | None = None
+        if log.details:
+            try:
+                parsed = json.loads(log.details)
+                if isinstance(parsed, dict):
+                    details = parsed
+                else:
+                    details = {"raw": log.details}
+            except json.JSONDecodeError:
+                details = {"raw": log.details}
+
+        target_user_id: int | None = None
+        target_username: str | None = None
+        if log.entity_type in {"user", "usuarios"} and str(log.entity_id).isdigit():
+            target_user_id = int(log.entity_id)
+            target = user_lookup.get(target_user_id)
+            if target is not None:
+                target_username = _user_display_name(target)
+
+        recent_activity.append(
+            schemas.UserDashboardActivity(
+                id=log.id,
+                action=log.action,
+                created_at=log.created_at,
+                severity=audit_utils.classify_severity(log.action or "", log.details),
+                performed_by_id=log.performed_by_id,
+                performed_by_name=_user_display_name(log.performed_by),
+                target_user_id=target_user_id,
+                target_username=target_username,
+                details=details,
+            )
+        )
+
+    sessions = list_active_sessions(db)[:session_limit]
+    session_entries: list[schemas.UserSessionSummary] = []
+    for session in sessions:
+        status = "activa"
+        if session.revoked_at is not None:
+            status = "revocada"
+        elif is_session_expired(session.expires_at):
+            status = "expirada"
+        session_entries.append(
+            schemas.UserSessionSummary(
+                session_id=session.id,
+                user_id=session.user_id,
+                username=_user_display_name(session.user) or f"Usuario {session.user_id}",
+                created_at=session.created_at,
+                last_used_at=session.last_used_at,
+                expires_at=session.expires_at,
+                status=status,
+                revoke_reason=session.revoke_reason,
+            )
+        )
+
+    persistent_alerts = [
+        alert
+        for alert in get_persistent_audit_alerts(
+            db,
+            threshold_minutes=60,
+            min_occurrences=1,
+            lookback_hours=lookback_hours,
+            limit=10,
+        )
+        if str(alert.get("entity_type", "")).lower()
+        in {"user", "usuarios", "security"}
+    ]
+    persistent_map = {
+        (str(alert["entity_type"]), str(alert["entity_id"])): alert
+        for alert in persistent_alerts
+    }
+
+    alert_logs_statement = (
+        select(models.AuditLog)
+        .where(models.AuditLog.entity_type.in_(["user", "usuarios", "security"]))
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(100)
+    )
+    alert_logs = list(db.scalars(alert_logs_statement))
+    summary = audit_utils.summarize_alerts(alert_logs, max_highlights=5)
+
+    highlights: list[schemas.AuditHighlight] = []
+    acknowledged_entities: dict[tuple[str, str], schemas.AuditAcknowledgedEntity] = {}
+    for highlight in summary.highlights:
+        key = (highlight["entity_type"], highlight["entity_id"])
+        alert_data = persistent_map.get(key)
+        status = str(alert_data.get("status", "pending")) if alert_data else "pending"
+        acknowledged_at = alert_data.get("acknowledged_at") if alert_data else None
+        acknowledged_by_id = alert_data.get("acknowledged_by_id") if alert_data else None
+        acknowledged_by_name = alert_data.get("acknowledged_by_name") if alert_data else None
+        acknowledged_note = alert_data.get("acknowledged_note") if alert_data else None
+
+        if status == "acknowledged" and acknowledged_at is not None:
+            acknowledged_entities[key] = schemas.AuditAcknowledgedEntity(
+                entity_type=highlight["entity_type"],
+                entity_id=highlight["entity_id"],
+                acknowledged_at=acknowledged_at,
+                acknowledged_by_id=acknowledged_by_id,
+                acknowledged_by_name=acknowledged_by_name,
+                note=acknowledged_note,
+            )
+
+        highlights.append(
+            schemas.AuditHighlight(
+                id=highlight["id"],
+                action=highlight["action"],
+                created_at=highlight["created_at"],
+                severity=highlight["severity"],
+                entity_type=highlight["entity_type"],
+                entity_id=highlight["entity_id"],
+                status="acknowledged" if status == "acknowledged" else "pending",
+                acknowledged_at=acknowledged_at,
+                acknowledged_by_id=acknowledged_by_id,
+                acknowledged_by_name=acknowledged_by_name,
+                acknowledged_note=acknowledged_note,
+            )
+        )
+
+    pending_count = len([item for item in highlights if item.status != "acknowledged"])
+    acknowledged_list = list(acknowledged_entities.values())
+
+    audit_alerts = schemas.DashboardAuditAlerts(
+        total=summary.total,
+        critical=summary.critical,
+        warning=summary.warning,
+        info=summary.info,
+        pending_count=pending_count,
+        acknowledged_count=len(acknowledged_list),
+        highlights=highlights,
+        acknowledged_entities=acknowledged_list,
+    )
+
+    return schemas.UserDashboardMetrics(
+        generated_at=datetime.utcnow(),
+        totals=directory.totals,
+        recent_activity=recent_activity,
+        active_sessions=session_entries,
+        audit_alerts=audit_alerts,
+    )
 
 def get_totp_secret(db: Session, user_id: int) -> models.UserTOTPSecret | None:
     statement = select(models.UserTOTPSecret).where(models.UserTOTPSecret.user_id == user_id)

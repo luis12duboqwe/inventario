@@ -1083,6 +1083,101 @@ class UserResponse(UserBase):
         return self.store_id
 
 
+class UserUpdate(BaseModel):
+    full_name: str | None = Field(default=None, max_length=120, validation_alias=AliasChoices("full_name", "nombre"))
+    telefono: str | None = Field(default=None, max_length=30)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    store_id: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("store_id", "sucursal_id"),
+    )
+
+
+class RoleModulePermission(BaseModel):
+    module: str = Field(..., min_length=2, max_length=120)
+    can_view: bool = Field(default=False)
+    can_edit: bool = Field(default=False)
+    can_delete: bool = Field(default=False)
+
+
+class RolePermissionMatrix(BaseModel):
+    role: str = Field(..., min_length=2, max_length=60)
+    permissions: list[RoleModulePermission] = Field(default_factory=list)
+
+
+class RolePermissionUpdate(BaseModel):
+    permissions: list[RoleModulePermission] = Field(default_factory=list)
+
+
+class UserDirectoryFilters(BaseModel):
+    search: str | None = Field(default=None, max_length=120)
+    role: str | None = Field(default=None, max_length=60)
+    status: Literal["all", "active", "inactive"] = "all"
+    store_id: int | None = Field(default=None, ge=1)
+
+
+class UserDirectoryTotals(BaseModel):
+    total: int
+    active: int
+    inactive: int
+    locked: int
+
+
+class UserDirectoryEntry(BaseModel):
+    user_id: int = Field(alias="id")
+    username: str
+    full_name: str | None = Field(default=None)
+    telefono: str | None = Field(default=None)
+    rol: str
+    estado: str
+    is_active: bool
+    roles: list[str] = Field(default_factory=list)
+    store_id: int | None = Field(default=None)
+    store_name: str | None = Field(default=None)
+    last_login_at: datetime | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class UserDirectoryReport(BaseModel):
+    generated_at: datetime
+    filters: UserDirectoryFilters
+    totals: UserDirectoryTotals
+    items: list[UserDirectoryEntry]
+
+
+class UserDashboardActivity(BaseModel):
+    id: int
+    action: str
+    created_at: datetime
+    severity: Literal["info", "warning", "critical"]
+    performed_by_id: int | None = None
+    performed_by_name: str | None = None
+    target_user_id: int | None = None
+    target_username: str | None = None
+    details: dict[str, Any] | None = None
+
+
+class UserSessionSummary(BaseModel):
+    session_id: int
+    user_id: int
+    username: str
+    created_at: datetime
+    last_used_at: datetime | None = None
+    expires_at: datetime | None = None
+    status: Literal["activa", "revocada", "expirada"]
+    revoke_reason: str | None = None
+
+
+class UserDashboardMetrics(BaseModel):
+    generated_at: datetime
+    totals: UserDirectoryTotals
+    recent_activity: list[UserDashboardActivity] = Field(default_factory=list)
+    active_sessions: list[UserSessionSummary] = Field(default_factory=list)
+    audit_alerts: DashboardAuditAlerts
+
+
 class TokenResponse(BaseModel):
     access_token: str
     session_id: int
@@ -3134,9 +3229,20 @@ __all__ = [
     "UpdateStatus",
     "UserBase",
     "UserCreate",
+    "UserUpdate",
     "UserResponse",
     "UserRolesUpdate",
     "UserStatusUpdate",
+    "RoleModulePermission",
+    "RolePermissionMatrix",
+    "RolePermissionUpdate",
+    "UserDirectoryFilters",
+    "UserDirectoryTotals",
+    "UserDirectoryEntry",
+    "UserDirectoryReport",
+    "UserDashboardActivity",
+    "UserSessionSummary",
+    "UserDashboardMetrics",
     "ProfitMarginMetric",
     "RotationMetric",
     "SalesProjectionMetric",
