@@ -79,8 +79,8 @@ type UserDashboardPanelProps = {
 
 function UserDashboardPanel({ dashboard, loading, onRefresh }: UserDashboardPanelProps) {
   const totals = dashboard?.totals ?? { total: 0, active: 0, inactive: 0, locked: 0 };
-  const recentActivity = dashboard?.recent_activity.slice(0, 5) ?? [];
-  const recentSessions = dashboard?.active_sessions.slice(0, 5) ?? [];
+  const recentActivity = dashboard?.recent_activity?.slice(0, 5) ?? [];
+  const recentSessions = dashboard?.active_sessions?.slice(0, 5) ?? [];
   const alerts = dashboard?.audit_alerts;
 
   return (
@@ -830,7 +830,18 @@ function UserManagement({ token }: Props) {
     }
   };
 
-  const roleNames = useMemo(() => roles.map((role) => role.name), [roles]);
+  const sortedRoles = useMemo(() => {
+    return [...roles].sort((a, b) => a.name.localeCompare(b.name));
+  }, [roles]);
+
+  const roleNames = useMemo(() => {
+    const uniqueNames = new Set(sortedRoles.map((role) => role.name));
+    return Array.from(uniqueNames);
+  }, [sortedRoles]);
+
+  const sortedPermissionsMatrix = useMemo(() => {
+    return [...permissionsMatrix].sort((a, b) => a.role.localeCompare(b.role));
+  }, [permissionsMatrix]);
 
   return (
     <section className="card user-management">
@@ -985,12 +996,12 @@ function UserManagement({ token }: Props) {
               setSelectedUserId(null);
               setFormState(DEFAULT_FORM_STATE);
             }}
-            roles={roles}
+            roles={sortedRoles}
             stores={stores}
             saving={savingUser}
           />
           <RolePermissionsMatrix
-            roles={permissionsMatrix.sort((a, b) => a.role.localeCompare(b.role))}
+            roles={sortedPermissionsMatrix}
             selectedRole={selectedRole}
             permissions={currentPermissions}
             onSelectRole={(role) => {
