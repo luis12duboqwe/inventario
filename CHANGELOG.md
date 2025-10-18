@@ -13,6 +13,13 @@
 - La suite suma `backend/tests/test_sucursales_schema.py`, que inspecciona columnas, tipos, índices y claves foráneas de `sucursales`, `devices`/`productos`, `users` e `inventory_movements` para prevenir regresiones estructurales.
 - Se mantienen vistas y esquemas compatibles mediante alias (`tienda_*`) en schemas y vistas SQL, asegurando que integraciones existentes continúen operativas bajo la versión Softmobile 2025 v2.2.0 sin romper rutas previas.
 
+## Actualización Sucursales - Parte 2 (Sincronización y Replicación) (24/10/2025 09:10 UTC)
+- `crud.enqueue_sync_outbox` ahora cubre dispositivos, movimientos de inventario y el ciclo de compras, serializando `store_id`, cantidades y costos para garantizar la replicación multi-sucursal de inventario, ventas y compras.
+- El servicio `services/sync.run_sync_cycle` procesa la cola híbrida, marca eventos como `SENT`, reintenta fallidos y registra sesiones con métricas (`eventos_procesados`, `diferencias_detectadas`) tanto para ejecuciones automáticas (`_sync_job`) como manuales (`POST /sync/run`).
+- Se introduce `detect_inventory_discrepancies`, que contrasta cantidades por SKU entre sucursales y registra alertas `sync_discrepancy` en `AuditLog` para auditar divergencias de stock.
+- Cada evento sincronizado genera un log `sync_outbox_sent`, reforzando la trazabilidad corporativa exigida por Softmobile 2025 v2.2.0.
+- Nueva cobertura `backend/tests/test_sync_replication.py` verifica la transición a `SENT`, la sincronización de inventario/compras y la generación de discrepancias inter-sucursal.
+
 ## Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
 - Se formalizan las tablas `proveedores`, `compras` y `detalle_compras` con las columnas requeridas (`id_proveedor`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `notas`, `id_compra`, `proveedor_id`, `usuario_id`, `fecha`, `total`, `impuesto`, `forma_pago`, `estado`, `id_detalle`, `compra_id`, `producto_id`, `cantidad`, `costo_unitario`, `subtotal`).
 - La migración `202502150011_compras_estructura_relaciones.py` crea o ajusta estructuras faltantes, reforzando las claves foráneas `compras → proveedores`, `compras → users`, `detalle_compras → compras` y `detalle_compras → devices` con índices dedicados.

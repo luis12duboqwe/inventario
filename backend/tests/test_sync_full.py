@@ -147,7 +147,12 @@ def test_full_sync_outbox_for_sales_and_repairs(client, db_session):
         by_type = {}
         for entry in entries:
             by_type.setdefault(entry.entity_type, []).append(entry)
-            assert entry.status == models.SyncOutboxStatus.PENDING
+            assert entry.status in {
+                models.SyncOutboxStatus.PENDING,
+                models.SyncOutboxStatus.SENT,
+            }
+
+        assert any(entry.status == models.SyncOutboxStatus.SENT for entry in entries)
 
         assert "customer" in by_type
         assert "pos_config" in by_type

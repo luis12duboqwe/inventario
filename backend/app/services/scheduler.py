@@ -85,14 +85,33 @@ class BackgroundScheduler:
 
 def _sync_job() -> None:
     with SessionLocal() as session:
-        crud.record_sync_session(
-            session,
-            store_id=None,
-            mode=models.SyncMode.AUTOMATIC,
-            status=models.SyncStatus.SUCCESS,
-            triggered_by_id=None,
-        )
-        sync_service.requeue_failed_outbox_entries(session)
+        status = models.SyncStatus.SUCCESS
+        processed_events = 0
+        differences_count = 0
+        error_message: str | None = None
+        try:
+            requeued = sync_service.requeue_failed_outbox_entries(session)
+            if requeued:
+                logger.info("Cola híbrida: %s eventos listos para reintentar", len(requeued))
+            result = sync_service.run_sync_cycle(session, performed_by_id=None)
+            processed_events = int(result.get("processed", 0))
+            discrepancies = result.get("discrepancies", [])
+            differences_count = len(discrepancies) if isinstance(discrepancies, list) else 0
+        except Exception as exc:  # pragma: no cover - logged error path
+            status = models.SyncStatus.FAILED
+            error_message = str(exc)
+            logger.exception("Fallo durante el job automático de sincronización: %s", exc)
+        finally:
+            crud.record_sync_session(
+                session,
+                store_id=None,
+                mode=models.SyncMode.AUTOMATIC,
+                status=status,
+                triggered_by_id=None,
+                error_message=error_message,
+                processed_events=processed_events,
+                differences_detected=differences_count,
+            )
 
 
 def _backup_job() -> None:

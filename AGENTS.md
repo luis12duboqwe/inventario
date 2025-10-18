@@ -220,6 +220,14 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - El catálogo de productos (`devices`, alias `productos`), `users` e `inventory_movements` referencian `sucursales.id_sucursal` mediante `sucursal_id`, `sucursal_destino_id` y `sucursal_origen_id` con políticas `CASCADE`/`SET NULL` según el flujo operativo.
 - La prueba `backend/tests/test_sucursales_schema.py` debe mantenerse verde; inspecciona columnas, tipos, índices y claves foráneas para impedir regresiones del módulo de sucursales.
 
+### Actualización Sucursales - Parte 2 (Sincronización y Replicación) (24/10/2025 09:10 UTC)
+
+- Mantén `crud.enqueue_sync_outbox` invocado en altas/ediciones de dispositivos, movimientos de inventario y el ciclo de compras para asegurar que cada cambio lleve `store_id`, cantidades y costos al replicador híbrido.
+- `services/sync.run_sync_cycle` es la única vía autorizada para procesar la cola: marca eventos como `SENT`, registra métricas en `record_sync_session` y debe llamarse tanto desde `_sync_job` (cron) como desde `POST /sync/run`.
+- No elimines `detect_inventory_discrepancies` ni los logs `sync_discrepancy`/`sync_outbox_sent`; cualquier ajuste debe seguir registrando diferencias inter-sucursal en `AuditLog` para auditoría corporativa.
+- La prueba `backend/tests/test_sync_replication.py` valida estados `SENT`, discrepancias y sincronización de inventario/compras; manténla actualizada si cambias flujos híbridos o cargas útiles.
+- Documenta nuevas rutas o métricas de sincronización en README/CHANGELOG bajo este epígrafe y ejecuta `pytest` tras modificar la cola `sync_outbox`.
+
 ### Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
 
 - Se crean las tablas `proveedores`, `compras` y `detalle_compras` con columnas (`id_proveedor`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `notas`, `id_compra`, `proveedor_id`, `usuario_id`, `fecha`, `total`, `impuesto`, `forma_pago`, `estado`, `id_detalle`, `compra_id`, `producto_id`, `cantidad`, `costo_unitario`, `subtotal`) alineadas al mandato Softmobile 2025 v2.2.0.

@@ -101,6 +101,14 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Se actualizan las relaciones de integridad: el catálogo de productos (`devices`, alias corporativo de `productos`) y `users` referencian `sucursales.id_sucursal` mediante `sucursal_id`, mientras que `inventory_movements` enlaza `sucursal_destino_id` y `sucursal_origen_id` con reglas `CASCADE`/`SET NULL` según corresponda.
 - La prueba `backend/tests/test_sucursales_schema.py` inspecciona columnas, tipos, índices y claves foráneas para evitar regresiones del módulo de sucursales.
 
+## Actualización Sucursales - Parte 2 (Sincronización y Replicación)
+
+- **Sincronización integral de inventario y compras**: las operaciones críticas (`create_device`, `update_device`, movimientos de inventario y el ciclo completo de compras) ahora generan eventos estructurados en `sync_outbox` con `store_id`, cantidades y costos para cada sucursal, garantizando que inventario, ventas y compras se repliquen con prioridad corporativa.
+- **Ejecución automática y manual reforzada**: el servicio `run_sync_cycle` marca eventos como `SENT`, reintenta fallidos y registra sesiones con métricas (`eventos_procesados`, `diferencias_detectadas`) tanto desde el cron interno (`_sync_job`) como al invocar `POST /sync/run`.
+- **Detección activa de discrepancias**: `detect_inventory_discrepancies` compara cantidades por SKU entre sucursales y registra alertas `sync_discrepancy` en `AuditLog`, permitiendo auditar desviaciones de stock entre tiendas.
+- **Auditoría de cola híbrida**: `mark_outbox_entries_sent` documenta cada evento sincronizado (`sync_outbox_sent`) con operación y estado, reforzando la trazabilidad exigida por Softmobile 2025 v2.2.0.
+- **Cobertura de pruebas**: la suite incorpora `backend/tests/test_sync_replication.py`, que valida la sincronización de inventario/compras, el cambio de estado a `SENT` y la generación de discrepancias multi-sucursal.
+
 ## Actualización Compras - Parte 3 (Interfaz y Reportes)
 
 - **Formulario de registro directo**: el módulo de Operaciones incorpora un formulario dedicado para capturar compras inmediatas seleccionando proveedor, productos y tasa de impuesto; calcula subtotal/impuesto/total en tiempo real y registra el movimiento mediante `createPurchaseRecord` respetando el motivo corporativo obligatorio.
