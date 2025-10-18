@@ -36,6 +36,14 @@ def create_store(
                     "message": "Ya existe una sucursal con ese nombre.",
                 },
             ) from exc
+        if str(exc) == "store_code_already_exists":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "store_code_already_exists",
+                    "message": "Ya existe una sucursal con ese código.",
+                },
+            ) from exc
         raise
     return store
 

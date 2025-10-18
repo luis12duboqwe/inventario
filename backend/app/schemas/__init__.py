@@ -38,22 +38,45 @@ from ..utils import audit as audit_utils
 
 class StoreBase(BaseModel):
     name: str = Field(..., max_length=120, description="Nombre visible de la sucursal")
-    location: str | None = Field(default=None, max_length=120, description="Dirección o referencia")
+    location: str | None = Field(
+        default=None, max_length=255, description="Dirección física o referencia de la sucursal"
+    )
+    phone: str | None = Field(
+        default=None, max_length=30, description="Teléfono de contacto principal"
+    )
+    manager: str | None = Field(
+        default=None, max_length=120, description="Responsable operativo de la sucursal"
+    )
+    status: str = Field(
+        default="activa", max_length=30, description="Estado operativo de la sucursal"
+    )
     timezone: str = Field(default="UTC", max_length=50, description="Zona horaria de la sucursal")
 
 
 class StoreCreate(StoreBase):
     """Carga de datos necesaria para registrar una nueva sucursal."""
 
+    code: str | None = Field(
+        default=None,
+        max_length=20,
+        description="Código interno único de la sucursal",
+    )
+
 
 class StoreUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
-    location: str | None = Field(default=None, max_length=120)
+    location: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=30)
+    manager: str | None = Field(default=None, max_length=120)
+    status: str | None = Field(default=None, max_length=30)
+    code: str | None = Field(default=None, max_length=20)
     timezone: str | None = Field(default=None, max_length=50)
 
 
 class StoreResponse(StoreBase):
     id: int
+    code: str
+    created_at: datetime
     inventory_value: Decimal = Field(default=Decimal("0"))
 
     model_config = ConfigDict(from_attributes=True)
@@ -915,6 +938,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=128)
     roles: list[str] = Field(default_factory=list)
+    store_id: int | None = Field(default=None, ge=1)
 
 
 class UserRolesUpdate(BaseModel):
@@ -930,6 +954,7 @@ class UserResponse(UserBase):
     is_active: bool
     created_at: datetime
     roles: list[RoleResponse]
+    store: StoreResponse | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -946,6 +971,22 @@ class UserResponse(UserBase):
             role_obj = getattr(item, "role", item)
             flattened.append(RoleResponse.model_validate(role_obj))
         return flattened
+
+    @computed_field
+    @property
+    def store_id(self) -> int | None:
+        store_obj = self.store
+        if store_obj is None:
+            return None
+        return store_obj.id
+
+    @computed_field
+    @property
+    def store_name(self) -> str | None:
+        store_obj = self.store
+        if store_obj is None:
+            return None
+        return store_obj.name
 
 
 class TokenResponse(BaseModel):
@@ -997,8 +1038,18 @@ class MovementBase(BaseModel):
     tipo_movimiento: MovementType
     cantidad: int = Field(..., ge=0)
     comentario: str = Field(..., max_length=255)
-    tienda_origen_id: int | None = Field(default=None, ge=1)
-    tienda_destino_id: int | None = Field(default=None, ge=1)
+    sucursal_origen_id: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("sucursal_origen_id", "tienda_origen_id"),
+        serialization_alias="sucursal_origen_id",
+    )
+    sucursal_destino_id: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("sucursal_destino_id", "tienda_destino_id"),
+        serialization_alias="sucursal_destino_id",
+    )
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
     @field_validator("comentario", mode="before")
@@ -1043,25 +1094,25 @@ class MovementResponse(BaseModel):
         validation_alias=AliasChoices("comentario", "comment"),
         serialization_alias="comentario",
     )
-    tienda_origen_id: int | None = Field(
+    sucursal_origen_id: int | None = Field(
         default=None,
-        validation_alias=AliasChoices("tienda_origen_id", "source_store_id"),
-        serialization_alias="tienda_origen_id",
+        validation_alias=AliasChoices("sucursal_origen_id", "tienda_origen_id", "source_store_id"),
+        serialization_alias="sucursal_origen_id",
     )
-    tienda_origen: str | None = Field(
+    sucursal_origen: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("tienda_origen"),
-        serialization_alias="tienda_origen",
+        validation_alias=AliasChoices("sucursal_origen", "tienda_origen"),
+        serialization_alias="sucursal_origen",
     )
-    tienda_destino_id: int | None = Field(
+    sucursal_destino_id: int | None = Field(
         default=None,
-        validation_alias=AliasChoices("tienda_destino_id", "store_id"),
-        serialization_alias="tienda_destino_id",
+        validation_alias=AliasChoices("sucursal_destino_id", "tienda_destino_id", "store_id"),
+        serialization_alias="sucursal_destino_id",
     )
-    tienda_destino: str | None = Field(
+    sucursal_destino: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("tienda_destino"),
-        serialization_alias="tienda_destino",
+        validation_alias=AliasChoices("sucursal_destino", "tienda_destino"),
+        serialization_alias="sucursal_destino",
     )
     usuario_id: int | None = Field(
         default=None,
@@ -1222,10 +1273,10 @@ class MovementReportEntry(BaseModel):
     tipo_movimiento: MovementType
     cantidad: int
     valor_total: Decimal
-    tienda_destino_id: int | None
-    tienda_destino: str | None
-    tienda_origen_id: int | None
-    tienda_origen: str | None
+    sucursal_destino_id: int | None
+    sucursal_destino: str | None
+    sucursal_origen_id: int | None
+    sucursal_origen: str | None
     comentario: str | None
     usuario: str | None
     fecha: datetime

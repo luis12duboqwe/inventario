@@ -19,7 +19,7 @@ WITH purchase_totals AS (
 device_metrics AS (
     SELECT
         d.id AS device_id,
-        d.store_id AS store_id,
+        d.sucursal_id AS store_id,
         COALESCE(NULLIF(d.categoria, ''), 'Sin categoría') AS categoria,
         d.sku AS sku,
         d.name AS device_name,
@@ -37,7 +37,7 @@ device_metrics AS (
 )
 SELECT
     dm.store_id AS store_id,
-    s.name AS store_name,
+    s.nombre AS store_name,
     dm.device_id AS device_id,
     dm.sku AS sku,
     dm.device_name AS device_name,
@@ -76,7 +76,7 @@ SELECT
     ROUND(SUM(dm.quantity * (dm.unit_price - dm.costo_promedio_ponderado)) OVER (PARTITION BY dm.store_id), 2) AS margen_total_tienda,
     ROUND(SUM(dm.quantity * (dm.unit_price - dm.costo_promedio_ponderado)) OVER (), 2) AS margen_total_general
 FROM device_metrics AS dm
-JOIN stores AS s ON s.id = dm.store_id;
+JOIN sucursales AS s ON s.id_sucursal = dm.store_id;
 """
 
 DROP_VALOR_INVENTARIO_VIEW_SQL = "DROP VIEW IF EXISTS valor_inventario"

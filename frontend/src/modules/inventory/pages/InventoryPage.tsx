@@ -769,8 +769,8 @@ function InventoryPage() {
         ) : (
           <ul className="inventory-timeline">
             {recentMovements.map((movement) => {
-              const destination = movement.tienda_destino ?? "Inventario corporativo";
-              const origin = movement.tienda_origen;
+              const destination = movement.sucursal_destino ?? "Inventario corporativo";
+              const origin = movement.sucursal_origen;
               return (
                 <li
                   key={movement.id}

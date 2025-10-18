@@ -71,11 +71,26 @@ class BackupMode(str, enum.Enum):
 
 
 class Store(Base):
-    __tablename__ = "stores"
+    __tablename__ = "sucursales"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
-    location: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    id: Mapped[int] = mapped_column(
+        "id_sucursal", Integer, primary_key=True, index=True
+    )
+    name: Mapped[str] = mapped_column(
+        "nombre", String(120), nullable=False, unique=True, index=True
+    )
+    location: Mapped[str | None] = mapped_column("direccion", String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column("telefono", String(30), nullable=True)
+    manager: Mapped[str | None] = mapped_column("responsable", String(120), nullable=True)
+    status: Mapped[str] = mapped_column(
+        "estado", String(30), nullable=False, default="activa", index=True
+    )
+    code: Mapped[str] = mapped_column(
+        "codigo", String(20), nullable=False, unique=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        "fecha_creacion", DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
     timezone: Mapped[str] = mapped_column(String(50), nullable=False, default="UTC")
     inventory_value: Mapped[Decimal] = mapped_column(
         Numeric(14, 2), nullable=False, default=Decimal("0")
@@ -96,6 +111,7 @@ class Store(Base):
     supplier_batches: Mapped[list["SupplierBatch"]] = relationship(
         "SupplierBatch", back_populates="store", cascade="all, delete-orphan"
     )
+    users: Mapped[list["User"]] = relationship("User", back_populates="store")
 
 
 class CommercialState(str, enum.Enum):
@@ -154,14 +170,18 @@ class PaymentMethod(str, enum.Enum):
 class Device(Base):
     __tablename__ = "devices"
     __table_args__ = (
-        UniqueConstraint("store_id", "sku", name="uq_devices_store_sku"),
+        UniqueConstraint("sucursal_id", "sku", name="uq_devices_store_sku"),
         UniqueConstraint("imei", name="uq_devices_imei"),
         UniqueConstraint("serial", name="uq_devices_serial"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     sku: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -267,6 +287,13 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    store_id: Mapped[int | None] = mapped_column(
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     roles: Mapped[list["UserRole"]] = relationship(
         "UserRole", back_populates="user", cascade="all, delete-orphan"
@@ -278,6 +305,7 @@ class User(Base):
     totp_secret: Mapped[UserTOTPSecret | None] = relationship(
         "UserTOTPSecret", back_populates="user", uselist=False
     )
+    store: Mapped[Store | None] = relationship("Store", back_populates="users")
     active_sessions: Mapped[list["ActiveSession"]] = relationship(
         "ActiveSession",
         back_populates="user",
@@ -308,15 +336,15 @@ class InventoryMovement(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
-        "tienda_destino_id",
+        "sucursal_destino_id",
         Integer,
-        ForeignKey("stores.id", ondelete="CASCADE"),
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
         index=True,
     )
     source_store_id: Mapped[int | None] = mapped_column(
-        "tienda_origen_id",
+        "sucursal_origen_id",
         Integer,
-        ForeignKey("stores.id", ondelete="SET NULL"),
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -383,13 +411,25 @@ class InventoryMovement(Base):
             return None
         return self.store.name
 
+    @property
+    def sucursal_origen(self) -> str | None:
+        return self.tienda_origen
+
+    @property
+    def sucursal_destino(self) -> str | None:
+        return self.tienda_destino
+
 
 class SyncSession(Base):
     __tablename__ = "sync_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     mode: Mapped[SyncMode] = mapped_column(Enum(SyncMode, name="sync_mode"), nullable=False)
     status: Mapped[SyncStatus] = mapped_column(Enum(SyncStatus, name="sync_status"), nullable=False)
@@ -471,10 +511,16 @@ class TransferOrder(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     origin_store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     destination_store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     status: Mapped[TransferStatus] = mapped_column(
         Enum(TransferStatus, name="transfer_status"),
@@ -556,8 +602,9 @@ class RecurringOrder(Base):
         nullable=False,
     )
     store_id: Mapped[int | None] = mapped_column(
+        "sucursal_id",
         Integer,
-        ForeignKey("stores.id", ondelete="SET NULL"),
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -594,7 +641,7 @@ class RecurringOrder(Base):
 class StoreMembership(Base):
     __tablename__ = "store_memberships"
     __table_args__ = (
-        UniqueConstraint("user_id", "store_id", name="uq_membership_user_store"),
+        UniqueConstraint("user_id", "sucursal_id", name="uq_membership_user_store"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -602,7 +649,11 @@ class StoreMembership(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     can_create_transfer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_receive_transfer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -743,7 +794,11 @@ class SupplierBatch(Base):
         Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False, index=True
     )
     store_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     device_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True
@@ -862,7 +917,11 @@ class PurchaseOrder(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     supplier: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[PurchaseStatus] = mapped_column(
@@ -938,7 +997,11 @@ class Sale(Base):
 
     id: Mapped[int] = mapped_column("id_venta", Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     customer_id: Mapped[int | None] = mapped_column(
         "cliente_id",
@@ -1065,7 +1128,11 @@ class RepairOrder(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     customer_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("clientes.id_cliente", ondelete="SET NULL"), nullable=True, index=True
@@ -1133,7 +1200,11 @@ class CashRegisterSession(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     status: Mapped[CashSessionStatus] = mapped_column(
         Enum(CashSessionStatus, name="cash_session_status"),
@@ -1177,8 +1248,9 @@ class POSConfig(Base):
     __tablename__ = "pos_configs"
 
     store_id: Mapped[int] = mapped_column(
+        "sucursal_id",
         Integer,
-        ForeignKey("stores.id", ondelete="CASCADE"),
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
         primary_key=True,
         index=True,
     )
@@ -1199,7 +1271,11 @@ class POSDraftSale(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

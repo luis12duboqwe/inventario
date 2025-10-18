@@ -11,7 +11,7 @@ from backend.app.services import inventory as inventory_service
 
 @pytest.mark.usefixtures("db_session")
 def test_inventory_valuation_view_and_service(db_session):
-    store = models.Store(name="Central", timezone="UTC")
+    store = models.Store(name="Central", code="SUC-001", timezone="UTC")
     db_session.add(store)
     db_session.flush()
 

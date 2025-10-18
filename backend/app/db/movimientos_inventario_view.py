@@ -10,8 +10,8 @@ CREATE_MOVIMIENTOS_INVENTARIO_VIEW_SQL = """
 CREATE VIEW movimientos_inventario AS
 SELECT
     id,
-    tienda_destino_id,
-    tienda_origen_id,
+    sucursal_destino_id AS tienda_destino_id,
+    sucursal_origen_id AS tienda_origen_id,
     producto_id,
     CASE
         WHEN tipo_movimiento = 'IN' THEN 'entrada'

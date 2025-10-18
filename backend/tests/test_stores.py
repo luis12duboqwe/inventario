@@ -84,7 +84,7 @@ def test_inventory_flow(client) -> None:
     assert movement_response.status_code == status.HTTP_201_CREATED
     movement_data = movement_response.json()
     assert movement_data["producto_id"] == device_id
-    assert movement_data["tienda_destino_id"] == store_id
+    assert movement_data["sucursal_destino_id"] == store_id
 
     summary_response = client.get("/inventory/summary", headers=headers)
     assert summary_response.status_code == status.HTTP_200_OK
@@ -385,14 +385,14 @@ def test_inventory_movement_response_includes_required_fields(client) -> None:
         "cantidad",
         "fecha",
         "usuario",
-        "tienda_origen",
-        "tienda_destino",
+        "sucursal_origen",
+        "sucursal_destino",
         "comentario",
     ]:
         assert key in payload, f"Falta el campo obligatorio {key}"
 
     assert payload["usuario"] == "Admin General"
-    assert payload["tienda_destino"] == store_payload["name"]
+    assert payload["sucursal_destino"] == store_payload["name"]
 
 
 def test_operator_can_register_movements_but_not_view_inventory(client) -> None:
@@ -429,7 +429,7 @@ def test_operator_can_register_movements_but_not_view_inventory(client) -> None:
     assert movement_response.status_code == status.HTTP_201_CREATED
     movement_data = movement_response.json()
     assert movement_data["producto_id"] == device_id
-    assert movement_data["tienda_origen_id"] == store_id
+    assert movement_data["sucursal_origen_id"] == store_id
 
     summary_response = client.get(
         "/inventory/summary",

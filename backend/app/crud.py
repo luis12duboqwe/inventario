@@ -931,8 +931,13 @@ def list_roles(db: Session) -> list[models.Role]:
 
 
 def get_user_by_username(db: Session, username: str) -> models.User | None:
-    statement = select(models.User).options(joinedload(models.User.roles).joinedload(models.UserRole.role)).where(
-        models.User.username == username
+    statement = (
+        select(models.User)
+        .options(
+            joinedload(models.User.roles).joinedload(models.UserRole.role),
+            joinedload(models.User.store),
+        )
+        .where(models.User.username == username)
     )
     return db.scalars(statement).first()
 
@@ -940,7 +945,10 @@ def get_user_by_username(db: Session, username: str) -> models.User | None:
 def get_user(db: Session, user_id: int) -> models.User:
     statement = (
         select(models.User)
-        .options(joinedload(models.User.roles).joinedload(models.UserRole.role))
+        .options(
+            joinedload(models.User.roles).joinedload(models.UserRole.role),
+            joinedload(models.User.store),
+        )
         .where(models.User.id == user_id)
     )
     try:
@@ -956,7 +964,19 @@ def create_user(
     password_hash: str,
     role_names: Iterable[str],
 ) -> models.User:
-    user = models.User(username=payload.username, full_name=payload.full_name, password_hash=password_hash)
+    store_id: int | None = None
+    if payload.store_id is not None:
+        try:
+            store = get_store(db, payload.store_id)
+        except LookupError as exc:
+            raise ValueError("store_not_found") from exc
+        store_id = store.id
+    user = models.User(
+        username=payload.username,
+        full_name=payload.full_name,
+        password_hash=password_hash,
+        store_id=store_id,
+    )
     db.add(user)
     try:
         db.flush()
@@ -985,8 +1005,13 @@ def create_user(
 
 
 def list_users(db: Session) -> list[models.User]:
-    statement = select(models.User).options(joinedload(models.User.roles).joinedload(models.UserRole.role)).order_by(
-        models.User.username.asc()
+    statement = (
+        select(models.User)
+        .options(
+            joinedload(models.User.roles).joinedload(models.UserRole.role),
+            joinedload(models.User.store),
+        )
+        .order_by(models.User.username.asc())
     )
     return list(db.scalars(statement))
 
@@ -1180,13 +1205,54 @@ def revoke_session(
     return session
 
 
+def _normalize_store_status(value: str | None) -> str:
+    if value is None:
+        return "activa"
+    normalized = value.strip().lower()
+    return normalized or "activa"
+
+
+def _normalize_store_code(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().upper()
+    return normalized or None
+
+
+def _generate_store_code(db: Session) -> str:
+    statement = select(models.Store.code)
+    highest_sequence = 0
+    for existing_code in db.scalars(statement):
+        if not existing_code:
+            continue
+        prefix, separator, suffix = existing_code.partition("-")
+        if prefix != "SUC" or separator != "-" or not suffix.isdigit():
+            continue
+        highest_sequence = max(highest_sequence, int(suffix))
+    return f"SUC-{highest_sequence + 1:03d}"
+
+
 def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: int | None = None) -> models.Store:
-    store = models.Store(**payload.model_dump())
+    status = _normalize_store_status(payload.status)
+    code = _normalize_store_code(payload.code)
+    timezone = (payload.timezone or "UTC").strip()
+    store = models.Store(
+        name=payload.name.strip(),
+        location=payload.location.strip() if payload.location else None,
+        phone=payload.phone.strip() if payload.phone else None,
+        manager=payload.manager.strip() if payload.manager else None,
+        status=status,
+        code=code or _generate_store_code(db),
+        timezone=timezone or "UTC",
+    )
     db.add(store)
     try:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
+        message = str(getattr(exc, "orig", exc)).lower()
+        if "codigo" in message or "uq_sucursales_codigo" in message:
+            raise ValueError("store_code_already_exists") from exc
         raise ValueError("store_already_exists") from exc
     db.refresh(store)
 
@@ -2938,10 +3004,13 @@ def create_inventory_movement(
     performed_by_id: int | None = None,
 ) -> models.InventoryMovement:
     store = get_store(db, store_id)
-    if payload.tienda_destino_id is not None and payload.tienda_destino_id != store_id:
+    if (
+        payload.sucursal_destino_id is not None
+        and payload.sucursal_destino_id != store_id
+    ):
         raise ValueError("invalid_destination_store")
 
-    source_store_id = payload.tienda_origen_id
+    source_store_id = payload.sucursal_origen_id
 
     device = get_device(db, store_id, payload.producto_id)
 
@@ -3441,10 +3510,10 @@ def get_inventory_movements_report(
                 tipo_movimiento=movement.movement_type,
                 cantidad=movement.quantity,
                 valor_total=value,
-                tienda_destino_id=movement.store_id,
-                tienda_destino=movement.tienda_destino,
-                tienda_origen_id=movement.source_store_id,
-                tienda_origen=movement.tienda_origen,
+                sucursal_destino_id=movement.store_id,
+                sucursal_destino=movement.tienda_destino,
+                sucursal_origen_id=movement.source_store_id,
+                sucursal_origen=movement.tienda_origen,
                 comentario=movement.comment,
                 usuario=movement.usuario,
                 fecha=movement.created_at,
@@ -7912,8 +7981,8 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
         "movements": [
             {
                 "id": movement.id,
-                "tienda_destino_id": movement.store_id,
-                "tienda_origen_id": movement.source_store_id,
+                "sucursal_destino_id": movement.store_id,
+                "sucursal_origen_id": movement.source_store_id,
                 "device_id": movement.device_id,
                 "movement_type": movement.movement_type.value,
                 "quantity": movement.quantity,
