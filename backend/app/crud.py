@@ -1285,7 +1285,14 @@ def update_customer(
     performed_by_id: int | None = None,
 ) -> models.Customer:
     customer = get_customer(db, customer_id)
+    previous_outstanding = _to_decimal(customer.outstanding_debt).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
     updated_fields: dict[str, object] = {}
+    outstanding_delta: Decimal | None = None
+    ledger_entry: models.CustomerLedgerEntry | None = None
+    ledger_details: dict[str, object] | None = None
+    history_note: str | None = None
     if payload.name is not None:
         customer.name = payload.name
         updated_fields["name"] = payload.name
@@ -1318,18 +1325,52 @@ def update_customer(
         customer.notes = payload.notes
         updated_fields["notes"] = payload.notes
     if payload.outstanding_debt is not None:
-        customer.outstanding_debt = _ensure_non_negative_decimal(
+        new_outstanding = _ensure_non_negative_decimal(
             payload.outstanding_debt, "customer_outstanding_debt_negative"
         )
-        updated_fields["outstanding_debt"] = float(customer.outstanding_debt)
+        difference = (new_outstanding - previous_outstanding).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        customer.outstanding_debt = new_outstanding
+        updated_fields["outstanding_debt"] = float(new_outstanding)
+        if difference != Decimal("0"):
+            outstanding_delta = difference
+            history_note = (
+                "Ajuste manual de saldo: antes $"
+                f"{float(previous_outstanding):.2f}, ahora ${float(new_outstanding):.2f}"
+            )
+            ledger_details = {
+                "previous_balance": float(previous_outstanding),
+                "new_balance": float(new_outstanding),
+                "difference": float(difference),
+            }
+            updated_fields["outstanding_debt_delta"] = float(difference)
     if payload.history is not None:
         history = _history_to_json(payload.history)
         customer.history = history
         customer.last_interaction_at = _last_history_timestamp(history)
         updated_fields["history"] = history
+    if history_note:
+        _append_customer_history(customer, history_note)
+        updated_fields.setdefault("history_note", history_note)
+    if outstanding_delta is not None and ledger_details is not None:
+        ledger_entry = _create_customer_ledger_entry(
+            db,
+            customer=customer,
+            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
+            amount=outstanding_delta,
+            note=history_note,
+            reference_type="adjustment",
+            reference_id=None,
+            details=ledger_details,
+            created_by_id=performed_by_id,
+        )
     db.add(customer)
     db.commit()
     db.refresh(customer)
+
+    if ledger_entry is not None:
+        _sync_customer_ledger_entry(db, ledger_entry)
 
     if updated_fields:
         _log_action(

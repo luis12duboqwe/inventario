@@ -282,4 +282,5 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Cobertura reforzada: `test_customer_credit_limit_blocks_sale` y `test_customer_payments_and_summary` verifican bloqueo de crédito en ventas y que el resumen corporativo liste ventas, facturas, pagos y notas con saldos coherentes.
 - Ajuste 22/10/2025 09:40 UTC: garantizar que `/customers/{id}/payments` devuelva el campo `created_by` serializado correctamente y que las devoluciones a crédito registren al usuario responsable en el ledger.
 - Ajuste 23/10/2025 10:05 UTC: `/sales` y `/pos/sale` responden con `409 Conflict` si la venta a crédito rebasa el límite aprobado; la prueba `test_credit_sale_rejected_when_limit_exceeded` confirma que el inventario se mantiene sin cambios cuando ocurre el bloqueo.
+- Mejora 24/10/2025 08:10 UTC: al ajustar `outstanding_debt` mediante `PUT /customers/{id}` se genera un asiento `adjustment` con saldo previo/posterior, se agrega la nota al historial y la prueba `test_customer_manual_debt_adjustment_creates_ledger_entry` cubre el escenario.
 

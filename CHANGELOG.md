@@ -65,6 +65,7 @@
 - Pruebas nuevas (`test_customer_credit_limit_blocks_sale`, `test_customer_payments_and_summary`) validan el bloqueo de ventas por sobreendeudamiento y que el resumen exponga ventas, facturas, pagos y notas con saldos consistentes tras registrar abonos.
 - Corrección 22/10/2025 09:40 UTC: se serializa correctamente el campo `created_by` en las respuestas de pagos y se asocian las devoluciones POS a la persona que procesa cada asiento en el ledger, evitando errores `ResponseValidationError` en `/customers/{id}/payments`.
 - Ajuste 23/10/2025 10:05 UTC: las rutas `/sales` y `/pos/sale` devuelven `409 Conflict` cuando la venta a crédito excede el límite aprobado y la prueba `test_credit_sale_rejected_when_limit_exceeded` garantiza que el inventario permanezca intacto tras el bloqueo.
+- Mejora 24/10/2025 08:10 UTC: los ajustes manuales de saldo hechos desde `PUT /customers/{id}` generan asientos `adjustment` con detalle de saldo previo/posterior, se anexan al historial y quedan cubiertos por la prueba `test_customer_manual_debt_adjustment_creates_ledger_entry`.
 
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.

@@ -158,6 +158,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Se incorporan las pruebas `test_customer_credit_limit_blocks_sale` y `test_customer_payments_and_summary` que validan el bloqueo de ventas con sobreendeudamiento, la reducción de saldo tras registrar pagos y la visibilidad de ventas, facturas, pagos y notas en el resumen corporativo.
 - Se corrige la serialización del campo `created_by` en los pagos registrados para evitar `ResponseValidationError` y se refuerza la bitácora de devoluciones POS enlazando el usuario que procesa cada asiento.
 - Se devuelve un error HTTP 409 explícito cuando una venta a crédito (API clásica o POS) intenta exceder el límite autorizado, con cobertura automatizada (`test_credit_sale_rejected_when_limit_exceeded`) que garantiza que el inventario permanezca intacto ante bloqueos.
+- Los ajustes manuales de saldo realizados desde `PUT /customers/{id}` quedan registrados como asientos `adjustment` en la bitácora financiera, con historial automático y detalles de saldo previo/posterior para facilitar auditorías desde la UI de clientes.
 
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
