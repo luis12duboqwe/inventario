@@ -167,6 +167,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Severidades alineadas**: los eventos se clasifican automáticamente en `info`, `warning`, `error` y `critical`, integrándose con la bitácora de auditoría existente.
 - **Filtros corporativos**: nuevos endpoints `/logs/sistema` y `/logs/errores` permiten filtrar por usuario, módulo y rango de fechas ISO 8601 con acceso restringido a administradores.【F:backend/app/routers/system_logs.py†L1-L67】
 - **Registro automático de errores**: middleware central captura fallos críticos del API, preserva stack trace, módulo y dirección IP de origen sin exponer datos sensibles.【F:backend/app/main.py†L56-L123】
+- **Cobertura automatizada**: `backend/tests/test_system_logs.py` valida la clasificación `info/warning/error/critical`, los filtros por usuario, módulo (ventas, compras, inventario, ajustes, usuarios) y fechas, además de conservar la IP de origen en los errores corporativos y comprobar que los ajustes se cataloguen bajo `ajustes` gracias al mapeo por prefijos específicos.【F:backend/tests/test_system_logs.py†L1-L150】【F:backend/app/crud.py†L326-L434】
 - **Documentación sincronizada**: este README, `CHANGELOG.md` y `AGENTS.md` registran la actualización bajo «Actualización Sistema - Parte 1 (Logs y Auditoría General)» para mantener la trazabilidad operativa.
 
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)

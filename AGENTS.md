@@ -324,9 +324,10 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 ### Actualización Sistema - Parte 1 (Logs y Auditoría General) (29/10/2025 08:30 UTC)
 
 - La migración `202503010012_system_logs_tables.py` crea `logs_sistema` y `errores_sistema`, índices corporativos y la restricción `uq_logs_sistema_audit` para enlazar acciones con `audit_logs`.
-- `_log_action` replica cada evento con severidad `info/warning/critical` en `logs_sistema`, mientras `register_system_error` almacena incidentes con nivel `error` y genera entradas `system_error`.
+- `_log_action` replica cada evento con severidad `info/warning/critical` en `logs_sistema`, mientras `register_system_error` almacena incidentes con nivel `error` y genera entradas `system_error`; el mapeo prioriza prefijos como `inventory_adjustment` → `ajustes` para ubicar correctamente los ajustes.
 - El middleware `capture_internal_errors` captura excepciones HTTP ≥500 y fallos inesperados guardando stack trace, módulo derivado por ruta y dirección IP de origen sin exponer datos sensibles.
 - El router `/logs` publica `/logs/sistema` y `/logs/errores` con filtros por usuario, módulo, nivel y fecha ISO 8601, restringidos al rol ADMIN y respaldados por los esquemas `SystemLogEntry` y `SystemErrorEntry`.
+- La prueba `backend/tests/test_system_logs.py` asegura la bitácora para ventas, compras, inventario, ajustes y usuarios, validando severidades `info/warning/error/critical`, filtros por usuario/módulo/fechas e IP de origen en errores.
 - README, CHANGELOG y este AGENTS documentan la fase bajo «Actualización Sistema - Parte 1 (Logs y Auditoría General)» para asegurar trazabilidad.
 
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
