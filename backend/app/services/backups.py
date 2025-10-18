@@ -46,8 +46,12 @@ def build_inventory_snapshot(db: Session) -> dict[str, Any]:
 
 def _normalize_components(
     components: Iterable[models.BackupComponent | str] | None,
+    *,
+    include_mandatory: bool = True,
 ) -> list[str]:
-    selected: set[models.BackupComponent] = set(MANDATORY_COMPONENTS)
+    selected: set[models.BackupComponent] = set()
+    if include_mandatory:
+        selected.update(MANDATORY_COMPONENTS)
     if components:
         for component in components:
             if isinstance(component, models.BackupComponent):
@@ -409,7 +413,7 @@ def generate_backup(
 ) -> models.BackupJob:
     """Genera los archivos de respaldo y persiste el registro en la base."""
 
-    selected_components = _normalize_components(components)
+    selected_components = _normalize_components(components, include_mandatory=True)
     snapshot = build_inventory_snapshot(db)
     pdf_bytes = render_snapshot_pdf(snapshot)
     json_bytes = serialize_snapshot(snapshot)
@@ -492,7 +496,29 @@ def restore_backup(
     apply_database: bool,
     triggered_by_id: int | None,
 ) -> dict[str, Any]:
-    selected_components = _normalize_components(components)
+    if components:
+        requested_components: set[models.BackupComponent] = set()
+        for component in components:
+            if isinstance(component, models.BackupComponent):
+                requested_components.add(component)
+            else:
+                requested_components.add(models.BackupComponent(str(component)))
+    else:
+        requested_components = {models.BackupComponent(component) for component in job.components}
+
+    available_components = {models.BackupComponent(component) for component in job.components}
+    if not available_components:
+        raise ValueError("El respaldo no tiene componentes registrados para restaurar")
+
+    unknown_components = requested_components.difference(available_components)
+    if unknown_components:
+        nombres = ", ".join(component.value for component in sorted(unknown_components, key=lambda c: c.value))
+        raise ValueError(f"Componentes no disponibles en el respaldo: {nombres}")
+
+    selected_components = _normalize_components(
+        requested_components or available_components,
+        include_mandatory=False,
+    )
     job_id = int(job.id)
     archive_file = Path(job.archive_path)
     json_file = Path(job.json_path)
