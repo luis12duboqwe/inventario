@@ -22,6 +22,7 @@ import {
   registerCustomerPayment,
   updateCustomer,
 } from "../../../api";
+import { colors } from "../../../theme/designTokens";
 
 type Props = {
   token: string;
@@ -1659,7 +1660,7 @@ function Customers({ token }: Props) {
                     <div
                       className="morosity-ring__fill"
                       style={{
-                        background: `conic-gradient(#38bdf8 0% ${delinquentRatio.percentage}%, rgba(56, 189, 248, 0.2) ${delinquentRatio.percentage}% 100%)`,
+                        background: `conic-gradient(${colors.accent} 0% ${delinquentRatio.percentage}%, ${colors.accentSoft} ${delinquentRatio.percentage}% 100%)`,
                       }}
                     />
                     <span>{delinquentRatio.percentage}%</span>

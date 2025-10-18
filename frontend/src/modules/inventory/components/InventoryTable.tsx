@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 
 import ScrollableTable from "../../../components/ScrollableTable";
 import { Device } from "../../../api";
+import { colors } from "../../../theme/designTokens";
 
 type Props = {
   devices: Device[];
@@ -89,9 +90,9 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
     <title>Etiqueta ${modelLabel}</title>
     <style>
       * { box-sizing: border-box; }
-      body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 16px; }
-      .label { width: 260px; border: 2px solid #38bdf8; border-radius: 12px; padding: 16px; margin: 0 auto; text-align: center; }
-      h1 { font-size: 18px; margin: 0 0 12px; color: #38bdf8; }
+      body { font-family: 'Segoe UI', sans-serif; background: ${colors.backgroundSecondary}; color: ${colors.textSecondary}; margin: 0; padding: 16px; }
+      .label { width: 260px; border: 2px solid ${colors.accent}; border-radius: 12px; padding: 16px; margin: 0 auto; text-align: center; }
+      h1 { font-size: 18px; margin: 0 0 12px; color: ${colors.accent}; }
       p { margin: 4px 0; font-size: 13px; }
       .meta { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
       .qr { margin-top: 8px; }

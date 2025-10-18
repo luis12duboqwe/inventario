@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { ArrowUp } from "lucide-react";
+
+import Button from "./ui/Button";
 
 function BackToTopButton() {
   const [visible, setVisible] = useState(false);
@@ -21,9 +24,17 @@ function BackToTopButton() {
   }
 
   return (
-    <button type="button" className="back-to-top" onClick={handleClick} aria-label="Volver arriba">
-      ↑
-    </button>
+    <Button
+      type="button"
+      className="back-to-top"
+      variant="primary"
+      size="sm"
+      leadingIcon={<ArrowUp size={18} />}
+      onClick={handleClick}
+      aria-label="Volver arriba"
+    >
+      <span className="sr-only">Volver arriba</span>
+    </Button>
   );
 }
 

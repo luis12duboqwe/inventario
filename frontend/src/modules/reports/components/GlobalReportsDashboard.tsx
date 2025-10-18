@@ -31,8 +31,16 @@ import LoadingOverlay from "../../../components/LoadingOverlay";
 import ScrollableTable from "../../../components/ScrollableTable";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import { useReportsModule } from "../hooks/useReportsModule";
+import { colors } from "../../../theme/designTokens";
 
-const PIE_COLORS = ["#38bdf8", "#1d4ed8", "#22d3ee", "#0ea5e9", "#0f172a", "#7dd3fc"];
+const PIE_COLORS = [
+  colors.accent,
+  colors.chartIndigo,
+  colors.accentBright,
+  colors.chartSky,
+  colors.backgroundSecondary,
+  colors.chartCyan,
+];
 
 const severityLabels: Record<SystemLogLevel, string> = {
   info: "Info",
@@ -315,11 +323,18 @@ function GlobalReportsDashboard() {
                 <YAxis stroke="var(--text-secondary)" />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="info" name="Info" stroke="#38bdf8" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="warning" name="Alertas" stroke="#fbbf24" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="error" name="Errores" stroke="#f97316" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="critical" name="Críticos" stroke="#ef4444" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="system_errors" name="Errores sistema" stroke="#7dd3fc" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="info" name="Info" stroke={colors.accent} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="warning" name="Alertas" stroke={colors.warning} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="error" name="Errores" stroke={colors.chartOrange} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="critical" name="Críticos" stroke={colors.danger} strokeWidth={2} dot={false} />
+                <Line
+                  type="monotone"
+                  dataKey="system_errors"
+                  name="Errores sistema"
+                  stroke={colors.accentStrong}
+                  strokeWidth={2}
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -340,7 +355,7 @@ function GlobalReportsDashboard() {
                 <YAxis stroke="var(--text-secondary)" />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="value" name="Eventos" fill="#1d4ed8" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="value" name="Eventos" fill={colors.chartIndigo} radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}

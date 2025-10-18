@@ -44,6 +44,7 @@ import type {
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
 import { promptCorporateReason } from "../../../utils/corporateReason";
+import { colors } from "../../../theme/designTokens";
 
 type StatusBadge = {
   tone: "warning" | "success";
@@ -66,12 +67,12 @@ type TabContent = TabOption<InventoryTabId> & { content: ReactNode };
 const estadoOptions: Device["estado_comercial"][] = ["nuevo", "A", "B", "C"];
 
 const CATEGORY_PALETTE = [
-  "#22d3ee",
-  "#38bdf8",
-  "#60a5fa",
-  "#818cf8",
-  "#a855f7",
-  "#f97316",
+  colors.accentBright,
+  colors.accent,
+  colors.chartSky,
+  colors.chartPurple,
+  colors.chartAmber,
+  colors.chartOrange,
 ] as const;
 
 const resolveLowStockSeverity = (quantity: number): "critical" | "warning" | "notice" => {
