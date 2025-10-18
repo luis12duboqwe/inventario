@@ -43,6 +43,13 @@
 - README, AGENTS y este CHANGELOG documentan la iteración bajo «Actualización Compras - Parte 3 (Interfaz y Reportes)» para preservar la trazabilidad corporativa.
 - Referencia cruzada: la UI está centralizada en `frontend/src/modules/operations/components/Purchases.tsx` y depende de `backend/app/routers/purchases.py`; la prueba `backend/tests/test_purchases.py::test_purchase_records_and_vendor_statistics` confirma exportaciones PDF/Excel, filtros y métricas activas.
 
+## Actualización Usuarios - Parte 1 (Estructura y Roles Base) (27/10/2025 14:10 UTC)
+
+- Se renombra la tabla histórica `users` a `usuarios` y se homologa la nomenclatura de columnas (`id_usuario`, `correo`, `nombre`, `telefono`, `rol`, `sucursal_id`, `estado`, `fecha_creacion`), manteniendo compatibilidad con contraseñas y relaciones existentes.
+- La migración `202503010008_usuarios_estructura_roles.py` actualiza índices únicos, sincroniza `estado` con `is_active` y calcula el rol primario por prioridad corporativa (ADMIN→GERENTE→OPERADOR→INVITADO).
+- El rol `INVITADO` se agrega al catálogo base y el CRUD de usuarios persiste el rol principal junto con los alias en español de los esquemas (`correo`, `nombre`, `sucursal_id`, `fecha_creacion`).
+- README, AGENTS y CHANGELOG registran la fase bajo el epígrafe «Actualización Usuarios - Parte 1 (Estructura y Roles Base)» para mantener trazabilidad sobre la evolución del módulo de seguridad.
+
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
 - Migración `202503010003_sales_ventas_structure.py` garantiza claves foráneas activas hacia clientes, usuarios, ventas y dispositivos, creando índices solo cuando faltan en despliegues anteriores.

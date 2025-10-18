@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement
 
 from . import models, schemas, telemetry
+from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
@@ -1044,6 +1045,23 @@ def get_user(db: Session, user_id: int) -> models.User:
         raise LookupError("user_not_found") from exc
 
 
+ROLE_PRIORITY: dict[str, int] = {
+    ADMIN: 0,
+    GERENTE: 1,
+    OPERADOR: 2,
+    INVITADO: 3,
+}
+
+
+def _select_primary_role(role_names: Iterable[str]) -> str:
+    """Determina el rol primario a persistir en la tabla de usuarios."""
+
+    ordered_roles = [role for role in role_names if role in ROLE_PRIORITY]
+    if not ordered_roles:
+        return OPERADOR
+    return min(ordered_roles, key=ROLE_PRIORITY.__getitem__)
+
+
 def create_user(
     db: Session,
     payload: schemas.UserCreate,
@@ -1051,6 +1069,7 @@ def create_user(
     password_hash: str,
     role_names: Iterable[str],
 ) -> models.User:
+    role_names = list(role_names)
     store_id: int | None = None
     if payload.store_id is not None:
         try:
@@ -1058,9 +1077,13 @@ def create_user(
         except LookupError as exc:
             raise ValueError("store_not_found") from exc
         store_id = store.id
+    primary_role = _select_primary_role(role_names)
     user = models.User(
         username=payload.username,
         full_name=payload.full_name,
+        telefono=payload.telefono,
+        rol=primary_role,
+        estado="ACTIVO",
         password_hash=password_hash,
         store_id=store_id,
     )
@@ -1104,12 +1127,14 @@ def list_users(db: Session) -> list[models.User]:
 
 
 def set_user_roles(db: Session, user: models.User, role_names: Iterable[str]) -> models.User:
+    role_names = list(role_names)
     user.roles.clear()
     db.flush()
     for role_name in role_names:
         role = ensure_role(db, role_name)
         db.add(models.UserRole(user=user, role=role))
 
+    user.rol = _select_primary_role(role_names)
     db.commit()
     db.refresh(user)
     return user
@@ -1123,6 +1148,7 @@ def set_user_status(
     performed_by_id: int | None = None,
 ) -> models.User:
     user.is_active = is_active
+    user.estado = "ACTIVO" if is_active else "INACTIVO"
     db.commit()
     db.refresh(user)
     _log_action(
@@ -1131,7 +1157,7 @@ def set_user_status(
         entity_type="user",
         entity_id=str(user.id),
         performed_by_id=performed_by_id,
-        details=json.dumps({"is_active": is_active}),
+        details=json.dumps({"is_active": is_active, "estado": user.estado}),
     )
     db.commit()
     db.refresh(user)

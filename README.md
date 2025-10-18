@@ -119,6 +119,13 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Documentación actualizada**: este README, el `CHANGELOG.md` y `AGENTS.md` registran la fase bajo el epígrafe «Actualización Compras - Parte 3 (Interfaz y Reportes)», manteniendo la trazabilidad de la evolución del módulo.
 - **Referencia técnica y pruebas**: la interfaz vive en `frontend/src/modules/operations/components/Purchases.tsx` y consume los servicios de `backend/app/routers/purchases.py`; la suite `backend/tests/test_purchases.py::test_purchase_records_and_vendor_statistics` valida exportaciones PDF/Excel, filtros y estadísticas para asegurar el cumplimiento de los cinco requisitos funcionales del módulo.
 
+## Actualización Usuarios - Parte 1 (Estructura y Roles Base)
+
+- **Tabla `usuarios` normalizada**: la entidad histórica `users` se renombró a `usuarios` incorporando los campos corporativos `id_usuario`, `correo` (único), `nombre`, `telefono`, `rol`, `sucursal_id`, `estado` y `fecha_creacion`, además de mantener `password_hash` e integraciones existentes. El ORM utiliza alias para conservar compatibilidad con consumidores previos.
+- **Migración 202503010008**: la nueva migración renombra columnas e índices, sincroniza `estado` con `is_active`, preserva contraseñas y calcula el rol primario de cada colaborador usando prioridad ADMIN→GERENTE→OPERADOR→INVITADO. La unicidad de correos queda reforzada por un índice exclusivo.
+- **Roles base ampliados**: se incorporó el rol `INVITADO` al conjunto predeterminado y la lógica de creación/actualización de usuarios ahora persiste el rol principal en la columna `rol`, manteniendo la tabla relacional `user_roles` para múltiples permisos corporativos.
+- **API y esquemas**: los esquemas Pydantic aceptan alias en español (`correo`, `nombre`, `sucursal_id`) y devuelven metadatos (`fecha_creacion`, `estado`, `rol`, `telefono`) sin romper las pruebas existentes. La documentación se actualizó para reflejar los nuevos campos obligatorios del módulo de seguridad.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Se renombran las tablas operativas del módulo POS a `ventas` y `detalle_ventas`, alineando los identificadores físicos con los

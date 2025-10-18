@@ -7,8 +7,9 @@ from typing import Final
 ADMIN: Final[str] = "ADMIN"
 GERENTE: Final[str] = "GERENTE"
 OPERADOR: Final[str] = "OPERADOR"
+INVITADO: Final[str] = "INVITADO"
 
-DEFAULT_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE, OPERADOR)
+DEFAULT_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE, OPERADOR, INVITADO)
 GESTION_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE)
 REPORTE_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE)
 AUDITORIA_ROLES: Final[tuple[str, ...]] = (ADMIN, GERENTE)
@@ -38,6 +39,7 @@ __all__ = [
     "ADMIN",
     "GERENTE",
     "OPERADOR",
+    "INVITADO",
     "DEFAULT_ROLES",
     "GESTION_ROLES",
     "REPORTE_ROLES",

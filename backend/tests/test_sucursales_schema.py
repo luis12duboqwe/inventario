@@ -68,16 +68,31 @@ def test_sucursales_relaciones_principales(db_session) -> None:
             for fk in productos_fks
         )
 
-    users_columns = _column_map(inspector, "users")
-    assert "sucursal_id" in users_columns
-    assert isinstance(users_columns["sucursal_id"]["type"], Integer)
+    usuarios_columns = _column_map(inspector, "usuarios")
+    assert {
+        "id_usuario",
+        "correo",
+        "nombre",
+        "telefono",
+        "rol",
+        "sucursal_id",
+        "estado",
+        "fecha_creacion",
+    }.issubset(usuarios_columns.keys())
+    assert isinstance(usuarios_columns["sucursal_id"]["type"], Integer)
+    assert isinstance(usuarios_columns["correo"]["type"], String)
+    assert usuarios_columns["correo"]["nullable"] is False
 
-    users_fks = inspector.get_foreign_keys("users")
+    usuarios_indexes = _index_map(inspector, "usuarios")
+    assert "ix_usuarios_correo" in usuarios_indexes
+    assert bool(usuarios_indexes["ix_usuarios_correo"]["unique"]) is True
+
+    usuarios_fks = inspector.get_foreign_keys("usuarios")
     assert any(
         fk["referred_table"] == "sucursales"
         and fk["constrained_columns"] == ["sucursal_id"]
         and fk["referred_columns"] == ["id_sucursal"]
-        for fk in users_fks
+        for fk in usuarios_fks
     )
 
     movimientos_columns = _column_map(inspector, "inventory_movements")
