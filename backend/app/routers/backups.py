@@ -1,7 +1,10 @@
 """Gestión de respaldos y descargas empresariales."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
@@ -62,3 +65,28 @@ def restore_backup(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/{job_id}/download")
+def download_backup(
+    job_id: int,
+    formato: schemas.BackupExportFormat,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+) -> FileResponse:
+    job = crud.get_backup_job(db, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Respaldo no encontrado")
+
+    attribute_map = {
+        schemas.BackupExportFormat.ZIP: (job.archive_path, "application/zip"),
+        schemas.BackupExportFormat.SQL: (job.sql_path, "application/sql"),
+        schemas.BackupExportFormat.JSON: (job.json_path, "application/json"),
+    }
+
+    file_path_str, media_type = attribute_map[formato]
+    file_path = Path(file_path_str)
+    if not file_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no disponible")
+
+    return FileResponse(file_path, media_type=media_type, filename=file_path.name)

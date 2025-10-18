@@ -215,6 +215,51 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
     assert any(log["accion"] == "backup_restored" for log in logs)
 
 
+def test_backup_download_formats(client, tmp_path) -> None:
+    headers = _auth_headers(client)
+    settings.backup_directory = str(tmp_path / "respaldos")
+
+    backup_response = client.post("/backups/run", json={}, headers=headers)
+    assert backup_response.status_code == status.HTTP_201_CREATED, backup_response.json()
+    backup_data = backup_response.json()
+    backup_id = backup_data["id"]
+
+    formatos = (
+        ("zip", "archive_path", "application/zip"),
+        ("sql", "sql_path", "application/sql"),
+        ("json", "json_path", "application/json"),
+    )
+
+    for formato, attr, media_type in formatos:
+        response = client.get(
+            f"/backups/{backup_id}/download",
+            params={"formato": formato},
+            headers=headers,
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.headers["content-type"].startswith(media_type)
+        expected_filename = Path(backup_data[attr]).name
+        assert expected_filename in response.headers["content-disposition"]
+
+    limited_user_payload = {
+        "username": "operador",
+        "password": "Clave12345",
+        "full_name": "Operador Local",
+        "roles": [],
+    }
+    created = client.post("/auth/bootstrap", json=limited_user_payload)
+    if created.status_code == status.HTTP_201_CREATED:
+        user_headers = _login_headers(
+            client, limited_user_payload["username"], limited_user_payload["password"]
+        )
+        forbidden = client.get(
+            f"/backups/{backup_id}/download",
+            params={"formato": "zip"},
+            headers=user_headers,
+        )
+        assert forbidden.status_code == status.HTTP_403_FORBIDDEN
+
+
 def test_inventory_pdf_requires_reason(client) -> None:
     headers = _auth_headers(client)
 

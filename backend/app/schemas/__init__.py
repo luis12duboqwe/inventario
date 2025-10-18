@@ -38,6 +38,14 @@ from ..models import (
 from ..utils import audit as audit_utils
 
 
+class BackupExportFormat(str, enum.Enum):
+    """Formatos disponibles para exportar archivos de respaldo."""
+
+    ZIP = "zip"
+    SQL = "sql"
+    JSON = "json"
+
+
 class StoreBase(BaseModel):
     name: str = Field(..., max_length=120, description="Nombre visible de la sucursal")
     location: str | None = Field(
@@ -3191,6 +3199,7 @@ __all__ = [
     "BackupRunRequest",
     "BackupRestoreRequest",
     "BackupRestoreResponse",
+    "BackupExportFormat",
     "DeviceBase",
     "DeviceCreate",
     "DeviceResponse",
