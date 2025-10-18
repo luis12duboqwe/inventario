@@ -69,6 +69,16 @@
 - `backend/tests/test_security.py` cubre bloqueo, restablecimiento, sesión basada en cookies y restricciones de rol `INVITADO`, asegurando cumplimiento del plan «Seguridad y Auditoría» para Softmobile 2025 v2.2.0.
 - **27/10/2025 19:30 UTC** — Se verificó el paquete de seguridad confirmando autenticación híbrida (JWT o sesión segura), hash bcrypt con `salt`, control y revocación de sesiones, auditoría de operaciones clave, bloqueo tras intentos fallidos, recuperación de contraseña con token temporal y la matriz de permisos modulares. `pytest` se ejecutó completo en verde para registrar el estado.
 
+## Actualización Usuarios - Parte 3 (Interfaz y Panel de Roles) (27/10/2025 22:10 UTC)
+
+- `frontend/src/modules/users/components/UserManagement.tsx` se rediseña con un tablero oscuro que muestra totales de cuentas, actividad reciente, sesiones activas y alertas, alimentado por el nuevo endpoint `GET /users/dashboard`.
+- El formulario lateral permite crear y editar usuarios con filtros combinados (búsqueda, rol, estado, sucursal), asignar sucursales, actualizar contraseñas y alternar estados con motivo corporativo (`PUT /users/{id}` y `PATCH /users/{id}`).
+- Se expone `GET /users/permissions` y `PUT /users/roles/{role}/permissions` para editar la matriz de permisos desde la UI, almacenando los cambios en la tabla `permisos` y registrándolos vía auditoría (`role_permissions_updated`).
+- `backend/app/services/user_reports.py` genera reportes PDF/Excel oscuros para `GET /users/export`, habilitando descargas corporativas desde la interfaz con cabecera `X-Reason`.
+- `frontend/src/api.ts` y `usersService` incorporan funciones para dashboard, permisos, exportaciones y creación/edición, manteniendo compatibilidad con módulos existentes.
+- La suite `backend/tests/test_users_management.py` cubre filtros, actualización de perfiles, exportaciones y edición de permisos, asegurando que la nueva interfaz cumpla los cinco requisitos funcionales.
+- **28/10/2025 09:55 UTC** — Se normalizó la consulta `list_users` con `.unique()` para permitir `joinedload` sobre roles sin errores, se respetan los permisos personalizados al reutilizar `ensure_role_permissions`, la actualización de contraseña reactiva cuentas inactivas y se reordenaron las rutas de `/users` para evitar conflictos con `/users/dashboard`. Las pruebas del módulo quedaron en verde.
+
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
 - Migración `202503010003_sales_ventas_structure.py` garantiza claves foráneas activas hacia clientes, usuarios, ventas y dispositivos, creando índices solo cuando faltan en despliegues anteriores.
