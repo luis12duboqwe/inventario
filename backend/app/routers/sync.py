@@ -1,6 +1,8 @@
 """Sincronización automática y bajo demanda."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,9 @@ from ..core.roles import GESTION_ROLES, REPORTE_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import sync as sync_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sync", tags=["sincronizacion"])
 
@@ -32,13 +37,37 @@ def trigger_sync(
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="Sucursal no encontrada") from exc
 
+    status = models.SyncStatus.SUCCESS
+    error_message: str | None = None
+    processed_events = 0
+    differences_count = 0
+    try:
+        result = sync_service.run_sync_cycle(
+            db,
+            store_id=store_id,
+            performed_by_id=current_user.id if current_user else None,
+        )
+        processed_events = int(result.get("processed", 0))
+        discrepancies = result.get("discrepancies", [])
+        differences_count = len(discrepancies) if isinstance(discrepancies, list) else 0
+    except Exception as exc:
+        db.rollback()
+        status = models.SyncStatus.FAILED
+        error_message = str(exc)
+        logger.exception("No fue posible completar la sincronización manual: %s", exc)
+
     session = crud.record_sync_session(
         db,
         store_id=store_id,
         mode=models.SyncMode.MANUAL,
-        status=models.SyncStatus.SUCCESS,
+        status=status,
         triggered_by_id=current_user.id if current_user else None,
+        error_message=error_message,
+        processed_events=processed_events,
+        differences_detected=differences_count,
     )
+    if status is models.SyncStatus.FAILED:
+        raise HTTPException(status_code=500, detail="No fue posible completar la sincronización")
     return session
 
 

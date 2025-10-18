@@ -368,6 +368,93 @@ def _customer_payload(customer: models.Customer) -> dict[str, object]:
     }
 
 
+def _device_sync_payload(device: models.Device) -> dict[str, object]:
+    """Construye el payload serializado de un dispositivo para sincronización."""
+
+    commercial_state = getattr(device.estado_comercial, "value", device.estado_comercial)
+    updated_at = getattr(device, "updated_at", None)
+    store_name = device.store.name if getattr(device, "store", None) else None
+    return {
+        "id": device.id,
+        "store_id": device.store_id,
+        "store_name": store_name,
+        "sku": device.sku,
+        "name": device.name,
+        "quantity": device.quantity,
+        "unit_price": float(_to_decimal(device.unit_price)),
+        "costo_unitario": float(_to_decimal(device.costo_unitario)),
+        "margen_porcentaje": float(_to_decimal(device.margen_porcentaje)),
+        "estado": device.estado,
+        "estado_comercial": commercial_state,
+        "imei": device.imei,
+        "serial": device.serial,
+        "marca": device.marca,
+        "modelo": device.modelo,
+        "color": device.color,
+        "capacidad_gb": device.capacidad_gb,
+        "garantia_meses": device.garantia_meses,
+        "proveedor": device.proveedor,
+        "lote": device.lote,
+        "fecha_compra": device.fecha_compra.isoformat() if device.fecha_compra else None,
+        "fecha_ingreso": device.fecha_ingreso.isoformat() if device.fecha_ingreso else None,
+        "updated_at": updated_at.isoformat() if isinstance(updated_at, datetime) else None,
+    }
+
+
+def _inventory_movement_payload(movement: models.InventoryMovement) -> dict[str, object]:
+    """Genera el payload de sincronización para un movimiento de inventario."""
+
+    store_name = movement.store.name if movement.store else None
+    source_name = movement.source_store.name if movement.source_store else None
+    device = movement.device
+    performed_by = _user_display_name(movement.performed_by)
+    created_at = movement.created_at.isoformat() if movement.created_at else None
+    return {
+        "id": movement.id,
+        "store_id": movement.store_id,
+        "store_name": store_name,
+        "source_store_id": movement.source_store_id,
+        "source_store_name": source_name,
+        "device_id": movement.device_id,
+        "device_sku": device.sku if device else None,
+        "movement_type": movement.movement_type.value,
+        "quantity": movement.quantity,
+        "comment": movement.comment,
+        "unit_cost": float(_to_decimal(movement.unit_cost)) if movement.unit_cost is not None else None,
+        "performed_by_id": movement.performed_by_id,
+        "performed_by_name": performed_by,
+        "created_at": created_at,
+    }
+
+
+def _purchase_order_payload(order: models.PurchaseOrder) -> dict[str, object]:
+    """Serializa una orden de compra para la cola de sincronización."""
+
+    store_name = order.store.name if getattr(order, "store", None) else None
+    status_value = getattr(order.status, "value", order.status)
+    items_payload = [
+        {
+            "device_id": item.device_id,
+            "quantity_ordered": item.quantity_ordered,
+            "quantity_received": item.quantity_received,
+            "unit_cost": float(_to_decimal(item.unit_cost)),
+        }
+        for item in order.items
+    ]
+    return {
+        "id": order.id,
+        "store_id": order.store_id,
+        "store_name": store_name,
+        "supplier": order.supplier,
+        "status": status_value,
+        "notes": order.notes,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "updated_at": order.updated_at.isoformat() if order.updated_at else None,
+        "closed_at": order.closed_at.isoformat() if order.closed_at else None,
+        "items": items_payload,
+    }
+
+
 def _repair_payload(order: models.RepairOrder) -> dict[str, object]:
     return {
         "id": order.id,
@@ -2733,6 +2820,13 @@ def create_device(
     db.commit()
     db.refresh(device)
     _recalculate_store_inventory_value(db, store_id)
+    enqueue_sync_outbox(
+        db,
+        entity_type="device",
+        entity_id=str(device.id),
+        operation="UPSERT",
+        payload=_device_sync_payload(device),
+    )
     return device
 
 
@@ -2819,6 +2913,13 @@ def update_device(
         db.commit()
         db.refresh(device)
     _recalculate_store_inventory_value(db, store_id)
+    enqueue_sync_outbox(
+        db,
+        entity_type="device",
+        entity_id=str(device.id),
+        operation="UPSERT",
+        payload=_device_sync_payload(device),
+    )
     return device
 
 
@@ -3129,6 +3230,21 @@ def create_inventory_movement(
     db.refresh(movement)
     total_value = _recalculate_store_inventory_value(db, store_id)
     setattr(movement, "store_inventory_value", total_value)
+    enqueue_sync_outbox(
+        db,
+        entity_type="inventory",
+        entity_id=str(movement.id),
+        operation="UPSERT",
+        payload=_inventory_movement_payload(movement),
+    )
+    if movement.device is not None:
+        enqueue_sync_outbox(
+            db,
+            entity_type="device",
+            entity_id=str(movement.device.id),
+            operation="UPSERT",
+            payload=_device_sync_payload(movement.device),
+        )
     return movement
 
 
@@ -4509,6 +4625,8 @@ def record_sync_session(
     status: models.SyncStatus,
     triggered_by_id: int | None,
     error_message: str | None = None,
+    processed_events: int = 0,
+    differences_detected: int = 0,
 ) -> models.SyncSession:
     session = models.SyncSession(
         store_id=store_id,
@@ -4529,11 +4647,88 @@ def record_sync_session(
         entity_type="store" if store_id else "global",
         entity_id=str(store_id or 0),
         performed_by_id=triggered_by_id,
-        details=f"estado={status.value}; modo={mode.value}",
+        details=json.dumps(
+            {
+                "estado": status.value,
+                "modo": mode.value,
+                "eventos_procesados": processed_events,
+                "diferencias_detectadas": differences_detected,
+            },
+            ensure_ascii=False,
+        ),
     )
     db.commit()
     db.refresh(session)
     return session
+
+
+def log_sync_discrepancies(
+    db: Session,
+    discrepancies: Sequence[dict[str, object]],
+    *,
+    performed_by_id: int | None = None,
+) -> None:
+    """Registra discrepancias detectadas entre sucursales en la bitácora."""
+
+    if not discrepancies:
+        return
+
+    for discrepancy in discrepancies:
+        entity_id = str(discrepancy.get("sku") or discrepancy.get("entity", "global"))
+        _log_action(
+            db,
+            action="sync_discrepancy",
+            entity_type="inventory",
+            entity_id=entity_id,
+            performed_by_id=performed_by_id,
+            details=json.dumps(discrepancy, ensure_ascii=False, default=str),
+        )
+    db.commit()
+
+
+def mark_outbox_entries_sent(
+    db: Session,
+    entry_ids: Iterable[int],
+    *,
+    performed_by_id: int | None = None,
+) -> list[models.SyncOutbox]:
+    """Marca entradas de la cola de sincronización como enviadas y las audita."""
+
+    ids_tuple = tuple({int(entry_id) for entry_id in entry_ids})
+    if not ids_tuple:
+        return []
+
+    statement = select(models.SyncOutbox).where(models.SyncOutbox.id.in_(ids_tuple))
+    entries = list(db.scalars(statement))
+    if not entries:
+        return []
+
+    now = datetime.utcnow()
+    for entry in entries:
+        entry.status = models.SyncOutboxStatus.SENT
+        entry.last_attempt_at = now
+        entry.attempt_count = (entry.attempt_count or 0) + 1
+        entry.error_message = None
+        entry.updated_at = now
+    db.commit()
+
+    for entry in entries:
+        db.refresh(entry)
+        _log_action(
+            db,
+            action="sync_outbox_sent",
+            entity_type=entry.entity_type,
+            entity_id=entry.entity_id,
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {"operation": entry.operation, "status": entry.status.value},
+                ensure_ascii=False,
+            ),
+        )
+    db.commit()
+    for entry in entries:
+        db.refresh(entry)
+    return entries
 
 
 def list_sync_sessions(db: Session, limit: int = 50) -> list[models.SyncSession]:
@@ -5608,6 +5803,13 @@ def create_purchase_order(
     )
     db.commit()
     db.refresh(order)
+    enqueue_sync_outbox(
+        db,
+        entity_type="purchase_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_purchase_order_payload(order),
+    )
     return order
 
 
@@ -5710,6 +5912,13 @@ def receive_purchase_order(
     )
     db.commit()
     db.refresh(order)
+    enqueue_sync_outbox(
+        db,
+        entity_type="purchase_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_purchase_order_payload(order),
+    )
     return order
 
 
@@ -5822,6 +6031,13 @@ def cancel_purchase_order(
     )
     db.commit()
     db.refresh(order)
+    enqueue_sync_outbox(
+        db,
+        entity_type="purchase_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_purchase_order_payload(order),
+    )
     return order
 
 
@@ -5906,6 +6122,13 @@ def register_purchase_return(
     )
     db.commit()
     db.refresh(order)
+    enqueue_sync_outbox(
+        db,
+        entity_type="purchase_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_purchase_order_payload(order),
+    )
     return purchase_return
 
 
