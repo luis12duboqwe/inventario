@@ -297,4 +297,5 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 
 - Refinamiento 26/10/2025 09:15 UTC: el listado de clientes (`GET /customers`) admite filtros dedicados `status_filter` y `customer_type_filter` que se consumen desde `Customers.tsx`, habilitando segmentaciones rápidas (activo, moroso, VIP, corporativo) y cobertura automática en `test_customer_list_filters_by_status_and_type`.
 - **26/10/2025 18:20 UTC** — El perfil de clientes despliega notas internas ordenadas, historial de contacto y facturas emitidas recientes dentro de `Customers.tsx`, utilizando las clases `notes-stack` y `history-stack`. Se resalta la fila seleccionada en el listado para reforzar el contexto visual antes de exportar o registrar movimientos financieros.
+- **27/10/2025 09:30 UTC** — El dashboard de clientes ajusta las barras de altas mensuales en `Customers.tsx` tomando como referencia el mayor crecimiento del periodo para evitar distorsiones visuales y el anillo de morosidad usa un gradiente corregido que representa con precisión el porcentaje de clientes morosos.
 
