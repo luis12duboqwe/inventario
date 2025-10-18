@@ -229,12 +229,12 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Las pruebas `backend/tests/test_sync_replication.py` y `backend/tests/test_sync_full.py` validan estados `SENT`, discrepancias y sincronización de inventario/ventas/compras; mantenlas actualizadas si cambias flujos híbridos o cargas útiles.
 - Documenta nuevas rutas, métricas de sincronización u opciones de respaldo en README/CHANGELOG bajo este epígrafe y ejecuta `pytest` tras modificar la cola `sync_outbox` o `services/backups`.
 
-### Actualización Sucursales - Parte 3 (Interfaz y Control Central) (27/10/2025 17:45 UTC)
+### Actualización Sucursales - Parte 3 (Interfaz y Control Central) (28/10/2025 10:20 UTC)
 
-- La vista `frontend/src/modules/sync/pages/SyncPage.tsx` debe conservar el tablero con el estado por sucursal (columna de salud, última sincronización, inventario, transferencias pendientes y conflictos) alimentado por `/sync/overview`.
-- Mantén habilitados los reportes de transferencias (`/transfers/report`, `/transfers/export/{pdf|xlsx}`) y sus botones en la UI; cualquier ajuste debe respetar la cabecera `X-Reason` y actualizar `backend/tests/test_sync_interface.py`.
-- Los conflictos de sincronización deben listarse y exportarse a PDF/Excel desde `/sync/conflicts` sin eliminar la trazabilidad `sync_discrepancy`; preserva la generación de badges y detalles de tiendas involucradas.
-- Documenta nuevas métricas o flujos en README/CHANGELOG bajo «Actualización Sucursales - Parte 3 (Interfaz y Control Central)» y asegúrate de ejecutar `pytest` al modificar reportes, exportaciones o el tablero.
+- El tablero de sincronización debe incluir la tarjeta «Dashboard de sincronización» con métricas globales (estado actual, última ejecución, inventario monitoreado, cola híbrida, transferencias activas y conflictos) y la lista de logs recientes provenientes de `/sync/sessions`; cualquier cambio se aplica en `frontend/src/modules/sync/pages/SyncPage.tsx` y sus estilos asociados.
+- La sección de transferencias tiene que mostrar origen, destino, motivo y el detalle de productos/cantidades por transferencia reutilizando `/transfers/report`, además de mantener los totales ejecutivos y botones de exportación PDF/Excel con motivo corporativo obligatorio.
+- Conserva el panel de conflictos (`/sync/conflicts` y exportaciones) y las acciones de `SyncPanel` (sincronización manual, respaldos, exportación CSV/PDF) sin romper la trazabilidad de `sync_discrepancy`.
+- Registra cualquier métrica nueva en README/CHANGELOG bajo «Actualización Sucursales - Parte 3 (Interfaz y Control Central)» y ejecuta `pytest` después de modificar el tablero, los reportes o las exportaciones vinculadas.
 
 ### Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
 
