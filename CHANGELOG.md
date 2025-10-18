@@ -68,6 +68,13 @@
 - Mejora 24/10/2025 08:10 UTC: los ajustes manuales de saldo hechos desde `PUT /customers/{id}` generan asientos `adjustment` con detalle de saldo previo/posterior, se anexan al historial y quedan cubiertos por la prueba `test_customer_manual_debt_adjustment_creates_ledger_entry`.
 - Validación 25/10/2025 11:05 UTC: se impide crear o actualizar clientes con deudas superiores a su límite de crédito, devolviendo `422` y mensaje descriptivo; la prueba `test_customer_debt_cannot_exceed_credit_limit` asegura la regla y mantiene congruente el control financiero.
 
+## Actualización Clientes - Parte 3 (Interfaz y Reportes) (26/10/2025 12:00 UTC)
+- `frontend/src/modules/operations/components/Customers.tsx` suma filtros combinados por estado/tipo/saldo, un panel de portafolios con exportación PDF/Excel y un dashboard oscuro con altas mensuales y ranking de compradores parametrizable.
+- `backend/app/routers/customers.py` incorpora `/customers/dashboard` para servir métricas consolidadas y extiende `/customers` con filtros `status`, `customer_type` y `has_debt` sin romper compatibilidad previa.
+- `backend/app/routers/reports.py` añade `/reports/customers/portfolio` con entregas JSON/PDF/Excel protegidas por motivo corporativo, apoyándose en `backend/app/services/customer_reports.py` para aplicar estilos oscuros y consistentes.
+- Nuevos modelos en `backend/app/schemas/__init__.py` describen portafolios, totales y rankings; `backend/app/crud.py` incorpora `build_customer_portfolio` y `get_customer_dashboard_metrics` para centralizar cálculos.
+- `backend/tests/test_customers.py` agrega escenarios de filtros, métricas y exportaciones (`test_customer_filters_and_reports`, `test_customer_portfolio_exports`) que validan cabeceras `X-Reason`, formatos PDF/Excel y coherencia del dashboard.
+
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.
 - Se actualizan `REPORTE_ROLES` y `AUDITORIA_ROLES` para limitar consultas de inventario, reportes y bitácoras a usuarios `ADMIN` y `GERENTE`, alineando la visibilidad con la jerarquía corporativa.

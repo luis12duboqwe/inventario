@@ -15,11 +15,23 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 def list_customers_endpoint(
     q: str | None = Query(default=None, description="Término de búsqueda"),
     limit: int = Query(default=100, ge=1, le=500),
+    status_filter: str | None = Query(default=None, alias="status", description="Estado corporativo"),
+    customer_type: str | None = Query(default=None, description="Tipo de cliente"),
+    has_debt: bool | None = Query(
+        default=None, description="Filtra clientes con (true) o sin (false) saldo"
+    ),
     export: str | None = Query(default=None, description="Formato de exportación"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
-    customers = crud.list_customers(db, query=q, limit=limit)
+    customers = crud.list_customers(
+        db,
+        query=q,
+        limit=limit,
+        status=status_filter,
+        customer_type=customer_type,
+        has_debt=has_debt,
+    )
     if export == "csv":
         csv_content = crud.export_customers_csv(db, query=q)
         return Response(
@@ -28,6 +40,16 @@ def list_customers_endpoint(
             headers={"Content-Disposition": "attachment; filename=clientes.csv"},
         )
     return customers
+
+
+@router.get("/dashboard", response_model=schemas.CustomerDashboardMetrics)
+def get_customer_dashboard_metrics_endpoint(
+    months: int = Query(default=6, ge=1, le=24),
+    top_limit: int = Query(default=5, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    return crud.get_customer_dashboard_metrics(db, months=months, top_limit=top_limit)
 
 
 @router.post("/", response_model=schemas.CustomerResponse, status_code=status.HTTP_201_CREATED)

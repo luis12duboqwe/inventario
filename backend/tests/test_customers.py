@@ -382,3 +382,201 @@ def test_customer_manual_debt_adjustment_creates_ledger_entry(client):
     assert adjustment_entry["details"]["difference"] == pytest.approx(250.0)
     assert adjustment_entry["note"].startswith("Ajuste manual de saldo")
 
+
+def test_customer_filters_and_reports(client):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Panel clientes"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Clientes Norte", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "SKU-CLI-100",
+                "name": "Tablet Ejecutiva",
+                "quantity": 10,
+                "unit_price": 300.0,
+                "costo_unitario": 220.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        moroso_response = client.post(
+            "/customers",
+            json={
+                "name": "Cliente Moroso",
+                "phone": "555-777-8888",
+                "status": "moroso",
+                "credit_limit": 500.0,
+                "outstanding_debt": 280.0,
+            },
+            headers=reason_headers,
+        )
+        assert moroso_response.status_code == status.HTTP_201_CREATED
+        moroso_id = moroso_response.json()["id"]
+
+        frecuente_response = client.post(
+            "/customers",
+            json={
+                "name": "Cliente Frecuente",
+                "phone": "555-666-5555",
+                "customer_type": "corporativo",
+                "credit_limit": 1500.0,
+            },
+            headers=reason_headers,
+        )
+        assert frecuente_response.status_code == status.HTTP_201_CREATED
+        frecuente_id = frecuente_response.json()["id"]
+
+        sale_response = client.post(
+            "/sales",
+            json={
+                "store_id": store_id,
+                "customer_id": frecuente_id,
+                "payment_method": "CREDITO",
+                "items": [{"device_id": device_id, "quantity": 2}],
+            },
+            headers={**auth_headers, "X-Reason": "Venta clientes"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+
+        filtered_status = client.get(
+            "/customers",
+            params={"status": "moroso"},
+            headers=auth_headers,
+        )
+        assert filtered_status.status_code == status.HTTP_200_OK
+        assert len(filtered_status.json()) == 1
+        assert filtered_status.json()[0]["id"] == moroso_id
+
+        filtered_type = client.get(
+            "/customers",
+            params={"customer_type": "corporativo"},
+            headers=auth_headers,
+        )
+        assert filtered_type.status_code == status.HTTP_200_OK
+        assert any(item["id"] == frecuente_id for item in filtered_type.json())
+
+        filtered_debt = client.get(
+            "/customers",
+            params={"has_debt": "true"},
+            headers=auth_headers,
+        )
+        assert filtered_debt.status_code == status.HTTP_200_OK
+        ids_with_debt = {item["id"] for item in filtered_debt.json()}
+        assert moroso_id in ids_with_debt
+        assert frecuente_id in ids_with_debt
+
+        dashboard_response = client.get(
+            "/customers/dashboard",
+            params={"months": 6, "top_limit": 5},
+            headers=auth_headers,
+        )
+        assert dashboard_response.status_code == status.HTTP_200_OK, dashboard_response.json()
+        payload = dashboard_response.json()
+        assert payload["months"] == 6
+        assert payload["delinquent_summary"]["customers_with_debt"] >= 1
+        assert payload["top_customers"], "Debe existir al menos un cliente frecuente en el ranking"
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_customer_portfolio_exports(client):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Reportes clientes"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Clientes Sur", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "SKU-CLI-200",
+                "name": "Laptop Premium",
+                "quantity": 5,
+                "unit_price": 900.0,
+                "costo_unitario": 700.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        cliente_response = client.post(
+            "/customers",
+            json={
+                "name": "Cliente Reporte",
+                "phone": "555-123-9090",
+                "customer_type": "corporativo",
+                "credit_limit": 2500.0,
+                "outstanding_debt": 600.0,
+                "status": "moroso",
+            },
+            headers=reason_headers,
+        )
+        assert cliente_response.status_code == status.HTTP_201_CREATED
+        customer_id = cliente_response.json()["id"]
+
+        sale_response = client.post(
+            "/sales",
+            json={
+                "store_id": store_id,
+                "customer_id": customer_id,
+                "payment_method": "CREDITO",
+                "items": [{"device_id": device_id, "quantity": 1}],
+            },
+            headers={**auth_headers, "X-Reason": "Venta reporte"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+
+        json_response = client.get(
+            "/reports/customers/portfolio",
+            params={"category": "delinquent", "limit": 10},
+            headers=auth_headers,
+        )
+        assert json_response.status_code == status.HTTP_200_OK
+        data = json_response.json()
+        assert data["category"] == "delinquent"
+        assert any(item["customer_id"] == customer_id for item in data["items"])
+
+        pdf_response = client.get(
+            "/reports/customers/portfolio",
+            params={"category": "delinquent", "export": "pdf"},
+            headers=reason_headers,
+        )
+        assert pdf_response.status_code == status.HTTP_200_OK
+        assert pdf_response.headers["content-type"] == "application/pdf"
+
+        xlsx_response = client.get(
+            "/reports/customers/portfolio",
+            params={"category": "frequent", "export": "xlsx"},
+            headers=reason_headers,
+        )
+        assert xlsx_response.status_code == status.HTTP_200_OK
+        assert (
+            xlsx_response.headers["content-type"]
+            == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    finally:
+        settings.enable_purchases_sales = previous_flag

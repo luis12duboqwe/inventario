@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Customer, CustomerLedgerEntry, CustomerSummary } from "../../../api";
+import type {
+  Customer,
+  CustomerDashboardMetrics,
+  CustomerLedgerEntry,
+  CustomerPortfolioReport,
+  CustomerSummary,
+} from "../../../api";
 import {
   appendCustomerNote,
   createCustomer,
   deleteCustomer,
+  exportCustomerPortfolioExcel,
+  exportCustomerPortfolioPdf,
   exportCustomersCsv,
+  getCustomerDashboardMetrics,
   getCustomerSummary,
+  getCustomerPortfolio,
   listCustomers,
   registerCustomerPayment,
   updateCustomer,
@@ -64,6 +74,12 @@ const LEDGER_LABELS: Record<CustomerLedgerEntry["entry_type"], string> = {
   note: "Nota registrada",
 };
 
+const DEBT_FILTERS = [
+  { value: "todos", label: "Todos" },
+  { value: "con_deuda", label: "Con saldo pendiente" },
+  { value: "sin_deuda", label: "Sin saldo" },
+];
+
 function Customers({ token }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [form, setForm] = useState<CustomerForm>({ ...initialForm });
@@ -77,6 +93,24 @@ function Customers({ token }: Props) {
   const [summaryCustomerId, setSummaryCustomerId] = useState<number | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("todos");
+  const [typeFilter, setTypeFilter] = useState<string>("todos");
+  const [debtFilter, setDebtFilter] = useState<string>("todos");
+  const [portfolioCategory, setPortfolioCategory] = useState<"delinquent" | "frequent">(
+    "delinquent"
+  );
+  const [portfolioLimit, setPortfolioLimit] = useState<number>(10);
+  const [portfolioDateFrom, setPortfolioDateFrom] = useState<string>("");
+  const [portfolioDateTo, setPortfolioDateTo] = useState<string>("");
+  const [portfolioReport, setPortfolioReport] = useState<CustomerPortfolioReport | null>(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioError, setPortfolioError] = useState<string | null>(null);
+  const [exportingPortfolio, setExportingPortfolio] = useState<"pdf" | "xlsx" | null>(null);
+  const [dashboardMetrics, setDashboardMetrics] = useState<CustomerDashboardMetrics | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [dashboardMonths, setDashboardMonths] = useState<number>(6);
+  const [dashboardTopLimit, setDashboardTopLimit] = useState<number>(5);
 
   const refreshCustomerSummary = useCallback(
     async (customerId: number) => {
@@ -101,11 +135,18 @@ function Customers({ token }: Props) {
     async (query?: string) => {
       try {
         setLoading(true);
-        const data = await listCustomers(
-          token,
-          query && query.length > 0 ? query : undefined,
-          200
-        );
+        const data = await listCustomers(token, {
+          query: query && query.length > 0 ? query : undefined,
+          limit: 200,
+          status: statusFilter !== "todos" ? statusFilter : undefined,
+          customerType: typeFilter !== "todos" ? typeFilter : undefined,
+          hasDebt:
+            debtFilter === "con_deuda"
+              ? true
+              : debtFilter === "sin_deuda"
+              ? false
+              : undefined,
+        });
         setCustomers(data);
         if (summaryCustomerId) {
           const exists = data.some((customer) => customer.id === summaryCustomerId);
@@ -122,8 +163,59 @@ function Customers({ token }: Props) {
         setLoading(false);
       }
     },
-    [token, summaryCustomerId, refreshCustomerSummary]
+    [
+      token,
+      summaryCustomerId,
+      refreshCustomerSummary,
+      statusFilter,
+      typeFilter,
+      debtFilter,
+    ]
   );
+
+  const buildPortfolioParams = useCallback(
+    () => ({
+      category: portfolioCategory,
+      limit: portfolioLimit,
+      dateFrom: portfolioDateFrom || undefined,
+      dateTo: portfolioDateTo || undefined,
+    }),
+    [portfolioCategory, portfolioLimit, portfolioDateFrom, portfolioDateTo]
+  );
+
+  const refreshPortfolio = useCallback(async () => {
+    try {
+      setPortfolioLoading(true);
+      setPortfolioError(null);
+      const params = buildPortfolioParams();
+      const report = await getCustomerPortfolio(token, params);
+      setPortfolioReport(report);
+    } catch (err) {
+      setPortfolioError(
+        err instanceof Error ? err.message : "No fue posible obtener el portafolio."
+      );
+    } finally {
+      setPortfolioLoading(false);
+    }
+  }, [token, buildPortfolioParams]);
+
+  const refreshDashboard = useCallback(async () => {
+    try {
+      setDashboardLoading(true);
+      setDashboardError(null);
+      const metrics = await getCustomerDashboardMetrics(token, {
+        months: dashboardMonths,
+        topLimit: dashboardTopLimit,
+      });
+      setDashboardMetrics(metrics);
+    } catch (err) {
+      setDashboardError(
+        err instanceof Error ? err.message : "No fue posible cargar el dashboard."
+      );
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [token, dashboardMonths, dashboardTopLimit]);
 
   useEffect(() => {
     void refreshCustomers();
@@ -136,6 +228,14 @@ function Customers({ token }: Props) {
     }, 350);
     return () => window.clearTimeout(handler);
   }, [search, refreshCustomers]);
+
+  useEffect(() => {
+    void refreshPortfolio();
+  }, [refreshPortfolio]);
+
+  useEffect(() => {
+    void refreshDashboard();
+  }, [refreshDashboard]);
 
   const totalDebt = useMemo(
     () => customers.reduce((acc, customer) => acc + (customer.outstanding_debt ?? 0), 0),
@@ -165,6 +265,15 @@ function Customers({ token }: Props) {
     }
     return new Map(summary.invoices.map((invoice) => [invoice.sale_id, invoice.invoice_number]));
   }, [summary]);
+
+  const maxMonthlyNew = useMemo(() => {
+    if (!dashboardMetrics || dashboardMetrics.new_customers_per_month.length === 0) {
+      return 1;
+    }
+    const values = dashboardMetrics.new_customers_per_month.map((point) => point.value);
+    const maxValue = Math.max(...values);
+    return maxValue <= 0 ? 1 : maxValue;
+  }, [dashboardMetrics]);
 
   const updateForm = (updates: Partial<CustomerForm>) => {
     setForm((current) => ({ ...current, ...updates }));
@@ -406,6 +515,50 @@ function Customers({ token }: Props) {
     }
   };
 
+  const handleExportPortfolio = async (format: "pdf" | "xlsx") => {
+    const reason = askReason(
+      format === "pdf"
+        ? "Motivo corporativo para exportar el reporte PDF"
+        : "Motivo corporativo para exportar el reporte Excel"
+    );
+    if (!reason) {
+      return;
+    }
+    try {
+      setPortfolioError(null);
+      setExportingPortfolio(format);
+      const params = buildPortfolioParams();
+      const blob =
+        format === "pdf"
+          ? await exportCustomerPortfolioPdf(token, params, reason)
+          : await exportCustomerPortfolioExcel(token, params, reason);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        format === "pdf"
+          ? `clientes_${params.category}.pdf`
+          : `clientes_${params.category}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setMessage(
+        format === "pdf"
+          ? "Reporte PDF de clientes generado correctamente."
+          : "Reporte Excel de clientes generado correctamente."
+      );
+    } catch (err) {
+      setPortfolioError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible exportar el reporte de clientes."
+      );
+    } finally {
+      setExportingPortfolio(null);
+    }
+  };
+
   return (
     <section className="card wide">
       <h2>Clientes corporativos</h2>
@@ -525,6 +678,44 @@ function Customers({ token }: Props) {
             placeholder="Nombre, correo, nota o contacto"
           />
           <span className="muted-text">Se refresca automáticamente al escribir.</span>
+        </label>
+        <label>
+          Estado
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="todos">Todos</option>
+            {CUSTOMER_STATUSES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Tipo
+          <select
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value)}
+          >
+            <option value="todos">Todos</option>
+            {CUSTOMER_TYPES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Saldo pendiente
+          <select value={debtFilter} onChange={(event) => setDebtFilter(event.target.value)}>
+            {DEBT_FILTERS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
         </label>
         <div>
           <span className="muted-text">Clientes encontrados</span>
@@ -755,6 +946,324 @@ function Customers({ token }: Props) {
           ) : null}
         </section>
       ) : null}
+      <section className="card">
+        <div className="actions-row">
+          <h3>Reportes de clientes corporativos</h3>
+          <div className="actions-row">
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={() => handleExportPortfolio("pdf")}
+              disabled={exportingPortfolio === "pdf" || portfolioLoading}
+            >
+              {exportingPortfolio === "pdf" ? "Exportando PDF..." : "Exportar PDF"}
+            </button>
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={() => handleExportPortfolio("xlsx")}
+              disabled={exportingPortfolio === "xlsx" || portfolioLoading}
+            >
+              {exportingPortfolio === "xlsx" ? "Exportando Excel..." : "Exportar Excel"}
+            </button>
+          </div>
+        </div>
+        <p className="card-subtitle">
+          Descarga reportes temáticos en PDF o Excel de clientes morosos o compradores frecuentes.
+        </p>
+        {portfolioError ? <div className="alert error">{portfolioError}</div> : null}
+        <div className="form-grid">
+          <label>
+            Categoría
+            <select
+              value={portfolioCategory}
+              onChange={(event) =>
+                setPortfolioCategory(event.target.value as "delinquent" | "frequent")
+              }
+            >
+              <option value="delinquent">Clientes morosos</option>
+              <option value="frequent">Compradores frecuentes</option>
+            </select>
+          </label>
+          <label>
+            Límite de filas
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={portfolioLimit}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isNaN(value)) {
+                  setPortfolioLimit(1);
+                  return;
+                }
+                setPortfolioLimit(Math.min(500, Math.max(1, Math.trunc(value))));
+              }}
+            />
+          </label>
+          <label>
+            Desde
+            <input
+              type="date"
+              value={portfolioDateFrom}
+              onChange={(event) => setPortfolioDateFrom(event.target.value)}
+            />
+          </label>
+          <label>
+            Hasta
+            <input
+              type="date"
+              value={portfolioDateTo}
+              onChange={(event) => setPortfolioDateTo(event.target.value)}
+            />
+          </label>
+          <div className="actions-row wide">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={refreshPortfolio}
+              disabled={portfolioLoading}
+            >
+              {portfolioLoading ? "Actualizando..." : "Actualizar panel"}
+            </button>
+          </div>
+        </div>
+        {portfolioLoading ? (
+          <p className="muted-text">Generando resumen de portafolio...</p>
+        ) : portfolioReport ? (
+          <>
+            <div className="form-grid">
+              <div>
+                <span className="muted-text">Generado</span>
+                <strong>
+                  {new Date(portfolioReport.generated_at).toLocaleString("es-MX")}
+                </strong>
+              </div>
+              <div>
+                <span className="muted-text">Clientes incluidos</span>
+                <strong>{portfolioReport.totals.customers}</strong>
+              </div>
+              <div>
+                <span className="muted-text">Marcados morosos</span>
+                <strong>{portfolioReport.totals.moroso_flagged}</strong>
+              </div>
+              <div>
+                <span className="muted-text">Deuda consolidada</span>
+                <strong>${formatCurrency(portfolioReport.totals.outstanding_debt)}</strong>
+              </div>
+              <div>
+                <span className="muted-text">Ventas acumuladas</span>
+                <strong>${formatCurrency(portfolioReport.totals.sales_total)}</strong>
+              </div>
+            </div>
+            {portfolioReport.items.length === 0 ? (
+              <p className="muted-text">No hay clientes que coincidan con los filtros actuales.</p>
+            ) : (
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Estado</th>
+                      <th>Tipo</th>
+                      <th>Crédito</th>
+                      <th>Saldo</th>
+                      <th>Disponible</th>
+                      <th>Ventas</th>
+                      <th>Operaciones</th>
+                      <th>Última venta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {portfolioReport.items.map((item) => (
+                      <tr key={item.customer_id}>
+                        <td>{item.name}</td>
+                        <td>{item.status}</td>
+                        <td>{item.customer_type}</td>
+                        <td>${formatCurrency(item.credit_limit)}</td>
+                        <td>${formatCurrency(item.outstanding_debt)}</td>
+                        <td>${formatCurrency(item.available_credit)}</td>
+                        <td>${formatCurrency(item.sales_total)}</td>
+                        <td>{item.sales_count}</td>
+                        <td>
+                          {item.last_sale_at
+                            ? new Date(item.last_sale_at).toLocaleString("es-MX")
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="muted-text">
+            Configura los filtros y pulsa «Actualizar panel» para generar el portafolio.
+          </p>
+        )}
+      </section>
+      <section className="card">
+        <div className="actions-row">
+          <h3>Dashboard de comportamiento de clientes</h3>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={refreshDashboard}
+            disabled={dashboardLoading}
+          >
+            {dashboardLoading ? "Actualizando..." : "Actualizar métricas"}
+          </button>
+        </div>
+        <p className="card-subtitle">
+          Visualiza altas mensuales, saldos y el top de compradores con el tema oscuro corporativo.
+        </p>
+        {dashboardError ? <div className="alert error">{dashboardError}</div> : null}
+        <div className="form-grid">
+          <label>
+            Meses a evaluar
+            <input
+              type="number"
+              min={1}
+              max={24}
+              value={dashboardMonths}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isNaN(value)) {
+                  setDashboardMonths(1);
+                  return;
+                }
+                setDashboardMonths(Math.min(24, Math.max(1, Math.trunc(value))));
+              }}
+            />
+          </label>
+          <label>
+            Top compradores
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={dashboardTopLimit}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isNaN(value)) {
+                  setDashboardTopLimit(1);
+                  return;
+                }
+                setDashboardTopLimit(Math.min(50, Math.max(1, Math.trunc(value))));
+              }}
+            />
+          </label>
+        </div>
+        {dashboardLoading ? (
+          <p className="muted-text">Consultando métricas de clientes...</p>
+        ) : dashboardMetrics ? (
+          <>
+            <div className="form-grid">
+              <div>
+                <span className="muted-text">Clientes con deuda</span>
+                <strong>{dashboardMetrics.delinquent_summary.customers_with_debt}</strong>
+              </div>
+              <div>
+                <span className="muted-text">Marcados como morosos</span>
+                <strong>{dashboardMetrics.delinquent_summary.moroso_flagged}</strong>
+              </div>
+              <div>
+                <span className="muted-text">Deuda total</span>
+                <strong>
+                  ${formatCurrency(dashboardMetrics.delinquent_summary.total_outstanding_debt)}
+                </strong>
+              </div>
+            </div>
+            <h4>Nuevos clientes por mes</h4>
+            {dashboardMetrics.new_customers_per_month.length === 0 ? (
+              <p className="muted-text">Sin registros de nuevos clientes en el periodo.</p>
+            ) : (
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Mes</th>
+                      <th>Actividad</th>
+                      <th>Nuevos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dashboardMetrics.new_customers_per_month.map((point) => {
+                      const percentage = Math.round((point.value / maxMonthlyNew) * 100);
+                      return (
+                        <tr key={point.label}>
+                          <td>{point.label}</td>
+                          <td>
+                            <div
+                              style={{
+                                background: "#1f2937",
+                                borderRadius: "6px",
+                                height: "8px",
+                                width: "100%",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${percentage}%`,
+                                  background: "#38bdf8",
+                                  height: "8px",
+                                  borderRadius: "6px",
+                                }}
+                              />
+                            </div>
+                          </td>
+                          <td>{point.value}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <h4>Top compradores</h4>
+            {dashboardMetrics.top_customers.length === 0 ? (
+              <p className="muted-text">Aún no hay clientes destacados en ventas.</p>
+            ) : (
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Estado</th>
+                      <th>Ventas</th>
+                      <th>Operaciones</th>
+                      <th>Saldo</th>
+                      <th>Última compra</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dashboardMetrics.top_customers.map((item) => (
+                      <tr key={item.customer_id}>
+                        <td>{item.name}</td>
+                        <td>{item.status}</td>
+                        <td>${formatCurrency(item.sales_total)}</td>
+                        <td>{item.sales_count}</td>
+                        <td>${formatCurrency(item.outstanding_debt)}</td>
+                        <td>
+                          {item.last_sale_at
+                            ? new Date(item.last_sale_at).toLocaleString("es-MX")
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="muted-text">
+            Ajusta los parámetros y pulsa «Actualizar métricas» para consultar el dashboard de clientes.
+          </p>
+        )}
+      </section>
     </section>
   );
 }

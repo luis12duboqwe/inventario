@@ -285,3 +285,12 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Mejora 24/10/2025 08:10 UTC: al ajustar `outstanding_debt` mediante `PUT /customers/{id}` se genera un asiento `adjustment` con saldo previo/posterior, se agrega la nota al historial y la prueba `test_customer_manual_debt_adjustment_creates_ledger_entry` cubre el escenario.
 - Validación 25/10/2025 11:05 UTC: las altas o ediciones con deudas que superen el límite de crédito configurado se rechazan con `422` y mensaje claro; la prueba `test_customer_debt_cannot_exceed_credit_limit` garantiza el comportamiento y evita que clientes sin crédito acumulen saldo.
 
+### Actualización Clientes - Parte 3 (Interfaz y Reportes) (26/10/2025 12:00 UTC)
+
+- `frontend/src/modules/operations/components/Customers.tsx` agrega filtros por estado/tipo/saldo, panel de portafolios PDF/Excel y dashboard oscuro de altas mensuales/top compradores; cualquier ajuste debe preservar los selectores, las barras proporcionales y los botones con motivo corporativo.
+- `backend/app/routers/customers.py` expone `/customers/dashboard` y soporta los nuevos filtros `status`, `customer_type`, `has_debt` en el listado general; mantener compatibilidad con la búsqueda y el límite original.
+- `backend/app/routers/reports.py` publica `/reports/customers/portfolio` con soporte JSON/PDF/Excel; toda exportación exige cabecera `X-Reason` y reutiliza `backend/app/services/customer_reports.py` para estilos oscuros.
+- `backend/app/services/customer_reports.py` genera PDF/Excel en tema oscuro para portafolios; no modificar colores corporativos (`#0f172a`, `#111827`, acento `#38bdf8`) sin actualizar esta bitácora.
+- Los nuevos esquemas (`CustomerPortfolioReport`, `CustomerDashboardMetrics`, etc.) viven en `backend/app/schemas/__init__.py` y deben mantenerse en sincronía con `backend/app/crud.py` y el frontend.
+- Cobertura: `backend/tests/test_customers.py` incorpora casos `test_customer_filters_and_reports` y `test_customer_portfolio_exports`; cualquier cambio en reportes o métricas debe actualizar estas pruebas.
+

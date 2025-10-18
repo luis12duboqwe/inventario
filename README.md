@@ -161,6 +161,14 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Se devuelve un error HTTP 409 explícito cuando una venta a crédito (API clásica o POS) intenta exceder el límite autorizado, con cobertura automatizada (`test_credit_sale_rejected_when_limit_exceeded`) que garantiza que el inventario permanezca intacto ante bloqueos.
 - Los ajustes manuales de saldo realizados desde `PUT /customers/{id}` quedan registrados como asientos `adjustment` en la bitácora financiera, con historial automático y detalles de saldo previo/posterior para facilitar auditorías desde la UI de clientes.
 
+## Actualización Clientes - Parte 3 (Interfaz y Reportes)
+
+- El listado `Customers.tsx` incorpora filtros combinados por estado, tipo y saldo, conserva el tema oscuro corporativo y muestra indicadores agregados de clientes encontrados y deuda consolidada.
+- Se añade un panel de reportes que consume la nueva API `/reports/customers/portfolio`, permitiendo descargar portafolios de clientes morosos o compradores frecuentes en PDF/Excel con motivo corporativo obligatorio y configuración de límite y rango de fechas.
+- El dashboard de clientes consume `/customers/dashboard` para representar altas mensuales, totales de deuda y top compradores en tablas oscuras con barras proporcionales, parametrizando meses y tamaño del ranking.
+- El backend expone `build_customer_portfolio` y `get_customer_dashboard_metrics`, con exportación PDF/Excel estilizada en `backend/app/services/customer_reports.py` y nuevos esquemas Pydantic para métricas y portafolios.
+- Se documentan pruebas automatizadas en `backend/tests/test_customers.py` que cubren filtros del listado, métricas del dashboard y exportaciones PDF/Excel de portafolios, asegurando compatibilidad con motivo corporativo y formato oscuro.
+
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
 La actualización UI de febrero 2025 refuerza la experiencia operativa sin modificar rutas ni versiones:

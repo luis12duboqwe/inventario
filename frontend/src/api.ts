@@ -200,6 +200,65 @@ export type CustomerSummary = {
   ledger: CustomerLedgerEntry[];
 };
 
+export type CustomerPortfolioItem = {
+  customer_id: number;
+  name: string;
+  status: string;
+  customer_type: string;
+  credit_limit: number;
+  outstanding_debt: number;
+  available_credit: number;
+  sales_total: number;
+  sales_count: number;
+  last_sale_at?: string | null;
+  last_interaction_at?: string | null;
+};
+
+export type CustomerPortfolioTotals = {
+  customers: number;
+  moroso_flagged: number;
+  outstanding_debt: number;
+  sales_total: number;
+};
+
+export type CustomerPortfolioReport = {
+  generated_at: string;
+  category: "delinquent" | "frequent";
+  filters: {
+    category: "delinquent" | "frequent";
+    date_from?: string | null;
+    date_to?: string | null;
+    limit: number;
+  };
+  items: CustomerPortfolioItem[];
+  totals: CustomerPortfolioTotals;
+};
+
+export type CustomerLeaderboardEntry = {
+  customer_id: number;
+  name: string;
+  status: string;
+  customer_type: string;
+  sales_total: number;
+  sales_count: number;
+  last_sale_at?: string | null;
+  outstanding_debt: number;
+};
+
+export type CustomerDelinquentSummary = {
+  customers_with_debt: number;
+  moroso_flagged: number;
+  total_outstanding_debt: number;
+};
+
+export type CustomerDashboardMetrics = {
+  generated_at: string;
+  months: number;
+  new_customers_per_month: { label: string; value: number }[];
+  top_customers: CustomerLeaderboardEntry[];
+  delinquent_summary: CustomerDelinquentSummary;
+};
+
 export type CustomerPaymentPayload = {
   amount: number;
   method?: string;
@@ -2030,12 +2089,26 @@ export function getPurchaseStatistics(
 
 export function listCustomers(
   token: string,
-  query?: string,
-  limit = 100
+  options: {
+    query?: string;
+    limit?: number;
+    status?: string;
+    customerType?: string;
+    hasDebt?: boolean;
+  } = {}
 ): Promise<Customer[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (query) {
-    params.append("q", query);
+  const params = new URLSearchParams({ limit: String(options.limit ?? 100) });
+  if (options.query) {
+    params.append("q", options.query);
+  }
+  if (options.status) {
+    params.append("status", options.status);
+  }
+  if (options.customerType) {
+    params.append("customer_type", options.customerType);
+  }
+  if (typeof options.hasDebt === "boolean") {
+    params.append("has_debt", String(options.hasDebt));
   }
   return request<Customer[]>(`/customers?${params.toString()}`, { method: "GET" }, token);
 }
@@ -2046,6 +2119,110 @@ export function exportCustomersCsv(token: string, query?: string): Promise<Blob>
     params.append("q", query);
   }
   return request<Blob>(`/customers?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function getCustomerPortfolio(
+  token: string,
+  params: {
+    category?: "delinquent" | "frequent";
+    limit?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  } = {}
+): Promise<CustomerPortfolioReport> {
+  const searchParams = new URLSearchParams();
+  searchParams.append("category", params.category ?? "delinquent");
+  if (typeof params.limit === "number") {
+    searchParams.append("limit", String(params.limit));
+  }
+  if (params.dateFrom) {
+    searchParams.append("date_from", params.dateFrom);
+  }
+  if (params.dateTo) {
+    searchParams.append("date_to", params.dateTo);
+  }
+  const queryString = searchParams.toString();
+  return request<CustomerPortfolioReport>(
+    `/reports/customers/portfolio?${queryString}`,
+    { method: "GET" },
+    token
+  );
+}
+
+export function exportCustomerPortfolioPdf(
+  token: string,
+  params: {
+    category?: "delinquent" | "frequent";
+    limit?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  },
+  reason: string
+): Promise<Blob> {
+  const searchParams = new URLSearchParams({ export: "pdf" });
+  searchParams.append("category", params.category ?? "delinquent");
+  if (typeof params.limit === "number") {
+    searchParams.append("limit", String(params.limit));
+  }
+  if (params.dateFrom) {
+    searchParams.append("date_from", params.dateFrom);
+  }
+  if (params.dateTo) {
+    searchParams.append("date_to", params.dateTo);
+  }
+  return request<Blob>(
+    `/reports/customers/portfolio?${searchParams.toString()}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function exportCustomerPortfolioExcel(
+  token: string,
+  params: {
+    category?: "delinquent" | "frequent";
+    limit?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  },
+  reason: string
+): Promise<Blob> {
+  const searchParams = new URLSearchParams({ export: "xlsx" });
+  searchParams.append("category", params.category ?? "delinquent");
+  if (typeof params.limit === "number") {
+    searchParams.append("limit", String(params.limit));
+  }
+  if (params.dateFrom) {
+    searchParams.append("date_from", params.dateFrom);
+  }
+  if (params.dateTo) {
+    searchParams.append("date_to", params.dateTo);
+  }
+  return request<Blob>(
+    `/reports/customers/portfolio?${searchParams.toString()}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function getCustomerDashboardMetrics(
+  token: string,
+  params: { months?: number; topLimit?: number } = {}
+): Promise<CustomerDashboardMetrics> {
+  const searchParams = new URLSearchParams();
+  if (typeof params.months === "number") {
+    searchParams.append("months", String(params.months));
+  }
+  if (typeof params.topLimit === "number") {
+    searchParams.append("top_limit", String(params.topLimit));
+  }
+  const suffix = searchParams.toString();
+  const query = suffix ? `?${suffix}` : "";
+  return request<CustomerDashboardMetrics>(
+    `/customers/dashboard${query}`,
+    { method: "GET" },
+    token
+  );
 }
 
 export function createCustomer(
