@@ -263,3 +263,49 @@ def test_customer_payments_and_summary(client):
         assert {"note", "sale", "payment"}.issubset(ledger_types)
     finally:
         settings.enable_purchases_sales = previous_flag
+
+
+def test_customer_manual_debt_adjustment_creates_ledger_entry(client):
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Ajuste saldo clientes"}
+
+    create_response = client.post(
+        "/customers",
+        json={
+            "name": "Cliente Ajuste",
+            "phone": "555-303-4040",
+            "credit_limit": 800.0,
+        },
+        headers=reason_headers,
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    customer_id = create_response.json()["id"]
+
+    update_response = client.put(
+        f"/customers/{customer_id}",
+        json={"outstanding_debt": 250.0},
+        headers=reason_headers,
+    )
+    assert update_response.status_code == status.HTTP_200_OK
+    payload = update_response.json()
+    assert payload["outstanding_debt"] == pytest.approx(250.0)
+    assert payload["history"]
+    assert payload["history"][-1]["note"].startswith("Ajuste manual de saldo")
+
+    summary_response = client.get(
+        f"/customers/{customer_id}/summary",
+        headers=auth_headers,
+    )
+    assert summary_response.status_code == status.HTTP_200_OK
+    ledger_entries = summary_response.json()["ledger"]
+    adjustment_entry = next(
+        entry for entry in ledger_entries if entry["entry_type"] == "adjustment"
+    )
+    assert adjustment_entry["amount"] == pytest.approx(250.0)
+    assert adjustment_entry["balance_after"] == pytest.approx(250.0)
+    assert adjustment_entry["details"]["previous_balance"] == pytest.approx(0.0)
+    assert adjustment_entry["details"]["new_balance"] == pytest.approx(250.0)
+    assert adjustment_entry["details"]["difference"] == pytest.approx(250.0)
+    assert adjustment_entry["note"].startswith("Ajuste manual de saldo")
+
