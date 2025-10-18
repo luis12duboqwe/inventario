@@ -292,6 +292,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se añadió el rol `INVITADO` al catálogo base (`DEFAULT_ROLES`) y el CRUD de usuarios persiste el rol primario en la columna `rol`, además de exponer los nuevos metadatos (`telefono`, `estado`, `fecha_creacion`) en los esquemas Pydantic.
 - La tabla opcional `permisos` consolida la matriz (`id_permiso`, `rol`, `modulo`, `puede_ver`, `puede_editar`, `puede_borrar`) con FK a `roles.name`, índice por rol/módulo y unicidad `uq_permisos_rol_modulo` para evitar duplicidades.
 - La prueba `backend/tests/test_usuarios_schema.py` audita columnas, índices, claves foráneas y la presencia de los roles ADMIN/GERENTE/OPERADOR/INVITADO para garantizar unicidad de correos y alineación con la estructura objetivo.
+- Se añadieron aserciones explícitas en la prueba estructural para confirmar los valores predeterminados `OPERADOR` (rol) y `ACTIVO` (estado) y mantener la unicidad del índice `ix_usuarios_correo` sobre la columna `correo`.
 - Documentación corporativa (README, CHANGELOG y este AGENTS) registra la fase bajo «Actualización Usuarios - Parte 1 (Estructura y Roles Base)» para sostener la trazabilidad del módulo de seguridad.
 
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
