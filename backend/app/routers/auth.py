@@ -1,7 +1,10 @@
 """Rutas de autenticación y alta inicial del sistema."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, HTTPException, status
+from datetime import datetime, timedelta, timezone
+import secrets
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -16,6 +19,62 @@ from ..security import (
     verify_password,
     verify_totp,
 )
+
+
+def _authenticate_user(
+    db: Session,
+    *,
+    username: str,
+    password: str,
+    otp: str,
+):
+    user = crud.get_user_by_username(db, username)
+    if user is None:
+        crud.log_unknown_login_attempt(db, username)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales inválidas",
+        )
+    crud.clear_login_lock(db, user)
+    if user.locked_until and user.locked_until > datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Cuenta bloqueada hasta {user.locked_until.isoformat()}",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuario inactivo.",
+        )
+    if not verify_password(password, user.password_hash):
+        crud.register_failed_login(db, user, reason="invalid_credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales inválidas",
+        )
+    roles = {assignment.role.name for assignment in user.roles}
+    secret = crud.get_totp_secret(db, user.id)
+    requires_totp = (
+        settings.enable_2fa
+        and roles.intersection({ADMIN, GERENTE})
+        and secret is not None
+        and secret.is_active
+    )
+    if requires_totp and not otp:
+        crud.register_failed_login(db, user, reason="missing_totp")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Código TOTP requerido",
+        )
+    if requires_totp and not verify_totp(secret.secret, otp):
+        crud.register_failed_login(db, user, reason="invalid_totp")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Código TOTP inválido",
+        )
+    if requires_totp:
+        crud.update_totp_last_verified(db, user.id)
+    return user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -63,28 +122,125 @@ class OAuth2PasswordRequestFormWithOTP(OAuth2PasswordRequestForm):
 
 @router.post("/token", response_model=schemas.TokenResponse)
 def login(form_data: OAuth2PasswordRequestFormWithOTP = Depends(), db: Session = Depends(get_db)):
-    user = crud.get_user_by_username(db, form_data.username)
-    if user is None or not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
-    roles = {assignment.role.name for assignment in user.roles}
-    secret = crud.get_totp_secret(db, user.id)
-    requires_totp = (
-        settings.enable_2fa
-        and roles.intersection({ADMIN, GERENTE})
-        and secret is not None
-        and secret.is_active
+    user = _authenticate_user(
+        db,
+        username=form_data.username,
+        password=form_data.password,
+        otp=form_data.otp,
     )
-    if requires_totp:
-        if not form_data.otp:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Código TOTP requerido")
-        if not verify_totp(secret.secret, form_data.otp):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Código TOTP inválido")
-        crud.update_totp_last_verified(db, user.id)
-    token, session_token = create_access_token(subject=user.username)
-    session = crud.create_active_session(db, user_id=user.id, session_token=session_token)
+    token, session_token, expires_at = create_access_token(subject=user.username)
+    session = crud.create_active_session(
+        db,
+        user_id=user.id,
+        session_token=session_token,
+        expires_at=expires_at,
+    )
+    crud.register_successful_login(db, user, session_token=session.session_token)
     return schemas.TokenResponse(access_token=token, session_id=session.id)
+
+
+@router.post("/session", response_model=schemas.SessionLoginResponse)
+def login_with_session(
+    response: Response,
+    form_data: OAuth2PasswordRequestFormWithOTP = Depends(),
+    db: Session = Depends(get_db),
+):
+    user = _authenticate_user(
+        db,
+        username=form_data.username,
+        password=form_data.password,
+        otp=form_data.otp,
+    )
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.session_cookie_expire_minutes
+    )
+    session_token = secrets.token_urlsafe(48)
+    session = crud.create_active_session(
+        db,
+        user_id=user.id,
+        session_token=session_token,
+        expires_at=expires_at,
+    )
+    crud.register_successful_login(db, user, session_token=session.session_token)
+    response.set_cookie(
+        key=settings.session_cookie_name,
+        value=session_token,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite=settings.session_cookie_samesite,
+        max_age=settings.session_cookie_expire_minutes * 60,
+        expires=expires_at,
+    )
+    return schemas.SessionLoginResponse(
+        session_id=session.id,
+        detail="Sesión iniciada correctamente.",
+    )
 
 
 @router.get("/me", response_model=schemas.UserResponse)
 async def read_current_user(current_user=Depends(require_active_user)):
     return current_user
+
+
+@router.post(
+    "/password/request",
+    response_model=schemas.PasswordResetResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_password_reset(
+    payload: schemas.PasswordRecoveryRequest, db: Session = Depends(get_db)
+):
+    reset_token: str | None = None
+    user = crud.get_user_by_username(db, payload.username)
+    if user is not None:
+        record = crud.create_password_reset_token(
+            db,
+            user.id,
+            expires_minutes=settings.password_reset_token_minutes,
+        )
+        if settings.testing_mode:
+            reset_token = record.token
+    detail = "Si el usuario existe, se envió un enlace de recuperación."
+    return schemas.PasswordResetResponse(detail=detail, reset_token=reset_token)
+
+
+@router.post(
+    "/password/reset",
+    response_model=schemas.PasswordResetResponse,
+    status_code=status.HTTP_200_OK,
+)
+def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(get_db)):
+    record = crud.get_password_reset_token(db, payload.token)
+    if (
+        record is None
+        or record.used_at is not None
+        or record.expires_at <= datetime.utcnow()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido o expirado.",
+        )
+    try:
+        user = crud.get_user(db, record.user_id)
+    except LookupError as exc:  # pragma: no cover - defensivo
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado.",
+        ) from exc
+    hashed = hash_password(payload.new_password)
+    crud.reset_user_password(db, user, password_hash=hashed, performed_by_id=None)
+    crud.mark_password_reset_token_used(db, record)
+    active_sessions = crud.list_active_sessions(db, user_id=user.id)
+    for session in active_sessions:
+        if session.revoked_at is None:
+            crud.revoke_session(
+                db,
+                session.id,
+                revoked_by_id=None,
+                reason="password_reset",
+            )
+    detail = "Contraseña actualizada correctamente."
+    response_payload = schemas.PasswordResetResponse(detail=detail)
+    if settings.testing_mode:
+        response_payload.reset_token = record.token
+    return response_payload

@@ -1089,6 +1089,25 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class SessionLoginResponse(BaseModel):
+    session_id: int
+    detail: str
+
+
+class PasswordRecoveryRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=120)
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(..., min_length=20, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class PasswordResetResponse(BaseModel):
+    detail: str
+    reset_token: str | None = Field(default=None)
+
+
 class TokenPayload(BaseModel):
     sub: str
     exp: int
@@ -1116,6 +1135,7 @@ class ActiveSessionResponse(BaseModel):
     session_token: str
     created_at: datetime
     last_used_at: datetime | None
+    expires_at: datetime | None
     revoked_at: datetime | None
     revoked_by_id: int | None
     revoke_reason: str | None
@@ -3107,6 +3127,10 @@ __all__ = [
     "TransferReportTotals",
     "TokenPayload",
     "TokenResponse",
+    "SessionLoginResponse",
+    "PasswordRecoveryRequest",
+    "PasswordResetConfirm",
+    "PasswordResetResponse",
     "UpdateStatus",
     "UserBase",
     "UserCreate",

@@ -5,9 +5,10 @@ import copy
 import csv
 import json
 import math
+import secrets
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 from typing import Literal
@@ -23,6 +24,62 @@ from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
 from .utils.cache import TTLCache
+
+DEFAULT_SECURITY_MODULES: list[str] = [
+    "usuarios",
+    "seguridad",
+    "inventario",
+    "ventas",
+    "compras",
+    "pos",
+    "clientes",
+    "proveedores",
+    "reparaciones",
+    "transferencias",
+    "operaciones",
+    "reportes",
+    "auditoria",
+    "sincronizacion",
+    "respaldos",
+    "tiendas",
+    "actualizaciones",
+]
+
+_RESTRICTED_DELETE_FOR_MANAGER = {"seguridad", "respaldos", "usuarios", "actualizaciones"}
+_RESTRICTED_EDIT_FOR_OPERATOR = {"seguridad", "respaldos", "usuarios", "actualizaciones", "auditoria"}
+_RESTRICTED_DELETE_FOR_OPERATOR = _RESTRICTED_EDIT_FOR_OPERATOR | {"reportes", "sincronizacion"}
+
+ROLE_MODULE_PERMISSION_MATRIX: dict[str, dict[str, dict[str, bool]]] = {
+    ADMIN: {
+        module: {"can_view": True, "can_edit": True, "can_delete": True}
+        for module in DEFAULT_SECURITY_MODULES
+    },
+    GERENTE: {
+        module: {
+            "can_view": True,
+            "can_edit": True,
+            "can_delete": module not in _RESTRICTED_DELETE_FOR_MANAGER,
+        }
+        for module in DEFAULT_SECURITY_MODULES
+    },
+    OPERADOR: {
+        module: {
+            "can_view": True,
+            "can_edit": module not in _RESTRICTED_EDIT_FOR_OPERATOR,
+            "can_delete": module not in _RESTRICTED_DELETE_FOR_OPERATOR,
+        }
+        for module in DEFAULT_SECURITY_MODULES
+    },
+    INVITADO: {
+        module: {
+            "can_view": module
+            in {"inventario", "reportes", "clientes", "proveedores", "ventas"},
+            "can_edit": False,
+            "can_delete": False,
+        }
+        for module in DEFAULT_SECURITY_MODULES
+    },
+}
 
 
 def _ensure_unique_identifiers(
@@ -1003,6 +1060,26 @@ def get_persistent_audit_alerts(
     return enriched
 
 
+def ensure_role_permissions(db: Session, role_name: str) -> None:
+    defaults = ROLE_MODULE_PERMISSION_MATRIX.get(role_name)
+    if not defaults:
+        return
+    for module, flags in defaults.items():
+        statement = (
+            select(models.Permission)
+            .where(models.Permission.role_name == role_name)
+            .where(models.Permission.module == module)
+        )
+        permission = db.scalars(statement).first()
+        if permission is None:
+            permission = models.Permission(role_name=role_name, module=module)
+            db.add(permission)
+        permission.can_view = bool(flags.get("can_view", False))
+        permission.can_edit = bool(flags.get("can_edit", False))
+        permission.can_delete = bool(flags.get("can_delete", False))
+    db.flush()
+
+
 def ensure_role(db: Session, name: str) -> models.Role:
     statement = select(models.Role).where(models.Role.name == name)
     role = db.scalars(statement).first()
@@ -1010,12 +1087,39 @@ def ensure_role(db: Session, name: str) -> models.Role:
         role = models.Role(name=name)
         db.add(role)
         db.flush()
+    ensure_role_permissions(db, name)
     return role
 
 
 def list_roles(db: Session) -> list[models.Role]:
     statement = select(models.Role).order_by(models.Role.name.asc())
     return list(db.scalars(statement))
+
+
+def user_has_module_permission(
+    db: Session, user: models.User, module: str, action: Literal["view", "edit", "delete"]
+) -> bool:
+    normalized_module = module.strip().lower()
+    if not normalized_module:
+        return False
+    roles = {assignment.role.name for assignment in user.roles}
+    roles.add(user.rol)
+    if ADMIN in roles:
+        return True
+    field_name = {
+        "view": "can_view",
+        "edit": "can_edit",
+        "delete": "can_delete",
+    }[action]
+    statement = (
+        select(models.Permission)
+        .where(models.Permission.role_name.in_(roles))
+        .where(models.Permission.module == normalized_module)
+    )
+    for permission in db.scalars(statement):
+        if bool(getattr(permission, field_name)):
+            return True
+    return False
 
 
 def get_user_by_username(db: Session, username: str) -> models.User | None:
@@ -1267,8 +1371,181 @@ def update_totp_last_verified(db: Session, user_id: int) -> None:
     db.commit()
 
 
-def create_active_session(db: Session, user_id: int, *, session_token: str) -> models.ActiveSession:
-    session = models.ActiveSession(user_id=user_id, session_token=session_token)
+def clear_login_lock(db: Session, user: models.User) -> models.User:
+    if user.locked_until and user.locked_until <= datetime.utcnow():
+        user.locked_until = None
+        user.failed_login_attempts = 0
+        db.commit()
+        db.refresh(user)
+    return user
+
+
+def register_failed_login(
+    db: Session, user: models.User, *, reason: str | None = None
+) -> models.User:
+    now = datetime.utcnow()
+    user.failed_login_attempts += 1
+    user.last_login_attempt_at = now
+    locked_until: datetime | None = None
+    if user.failed_login_attempts >= settings.max_failed_login_attempts:
+        locked_until = now + timedelta(minutes=settings.account_lock_minutes)
+        user.locked_until = locked_until
+    db.commit()
+    db.refresh(user)
+
+    details_payload: dict[str, object] = {
+        "attempts": user.failed_login_attempts,
+        "locked_until": locked_until.isoformat() if locked_until else None,
+    }
+    if reason:
+        details_payload["reason"] = reason
+    details = json.dumps(details_payload, ensure_ascii=False)
+    _log_action(
+        db,
+        action="auth_login_failed",
+        entity_type="user",
+        entity_id=str(user.id),
+        performed_by_id=user.id,
+        details=details,
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def register_successful_login(
+    db: Session, user: models.User, *, session_token: str | None = None
+) -> models.User:
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.last_login_attempt_at = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+
+    details_payload = (
+        {"session_hint": session_token[-6:]} if session_token else None
+    )
+    details = (
+        json.dumps(details_payload, ensure_ascii=False)
+        if details_payload is not None
+        else None
+    )
+    _log_action(
+        db,
+        action="auth_login_success",
+        entity_type="user",
+        entity_id=str(user.id),
+        performed_by_id=user.id,
+        details=details,
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def log_unknown_login_attempt(db: Session, username: str) -> None:
+    _log_action(
+        db,
+        action="auth_login_failed",
+        entity_type="auth",
+        entity_id=username,
+        performed_by_id=None,
+    )
+    db.commit()
+
+
+def create_password_reset_token(
+    db: Session, user_id: int, *, expires_minutes: int
+) -> models.PasswordResetToken:
+    token = secrets.token_urlsafe(48)
+    expires_at = datetime.utcnow() + timedelta(minutes=expires_minutes)
+    record = models.PasswordResetToken(
+        user_id=user_id,
+        token=token,
+        expires_at=expires_at,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    details = json.dumps(
+        {"expires_at": record.expires_at.isoformat()}, ensure_ascii=False
+    )
+    _log_action(
+        db,
+        action="password_reset_requested",
+        entity_type="user",
+        entity_id=str(user_id),
+        performed_by_id=None,
+        details=details,
+    )
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def get_password_reset_token(
+    db: Session, token: str
+) -> models.PasswordResetToken | None:
+    statement = select(models.PasswordResetToken).where(
+        models.PasswordResetToken.token == token
+    )
+    return db.scalars(statement).first()
+
+
+def mark_password_reset_token_used(
+    db: Session, token_record: models.PasswordResetToken
+) -> models.PasswordResetToken:
+    token_record.used_at = datetime.utcnow()
+    db.commit()
+    db.refresh(token_record)
+    return token_record
+
+
+def reset_user_password(
+    db: Session,
+    user: models.User,
+    *,
+    password_hash: str,
+    performed_by_id: int | None = None,
+) -> models.User:
+    user.password_hash = password_hash
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.last_login_attempt_at = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+
+    _log_action(
+        db,
+        action="password_reset_completed",
+        entity_type="user",
+        entity_id=str(user.id),
+        performed_by_id=performed_by_id,
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def is_session_expired(expires_at: datetime | None) -> bool:
+    if expires_at is None:
+        return False
+    if expires_at.tzinfo is None:
+        return expires_at <= datetime.utcnow()
+    return expires_at <= datetime.now(timezone.utc)
+
+
+def create_active_session(
+    db: Session,
+    user_id: int,
+    *,
+    session_token: str,
+    expires_at: datetime | None = None,
+) -> models.ActiveSession:
+    session = models.ActiveSession(
+        user_id=user_id, session_token=session_token, expires_at=expires_at
+    )
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -1276,13 +1553,28 @@ def create_active_session(db: Session, user_id: int, *, session_token: str) -> m
 
 
 def get_active_session_by_token(db: Session, session_token: str) -> models.ActiveSession | None:
-    statement = select(models.ActiveSession).where(models.ActiveSession.session_token == session_token)
+    statement = (
+        select(models.ActiveSession)
+        .options(
+            joinedload(models.ActiveSession.user)
+            .joinedload(models.User.roles)
+            .joinedload(models.UserRole.role)
+        )
+        .where(models.ActiveSession.session_token == session_token)
+    )
     return db.scalars(statement).first()
 
 
 def mark_session_used(db: Session, session_token: str) -> models.ActiveSession | None:
     session = get_active_session_by_token(db, session_token)
     if session is None or session.revoked_at is not None:
+        return None
+    if is_session_expired(session.expires_at):
+        if session.revoked_at is None:
+            session.revoked_at = datetime.now(timezone.utc)
+            session.revoke_reason = session.revoke_reason or "expired"
+            db.commit()
+            db.refresh(session)
         return None
     session.last_used_at = datetime.utcnow()
     db.commit()

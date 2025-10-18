@@ -60,6 +60,14 @@
 - Se añadieron validaciones explícitas sobre los valores predeterminados `OPERADOR` y `ACTIVO` de las columnas `rol` y `estado`, así como sobre la unicidad del índice `ix_usuarios_correo`, cubriéndolos en la misma prueba estructural.
 - README, AGENTS y CHANGELOG registran la fase bajo el epígrafe «Actualización Usuarios - Parte 1 (Estructura y Roles Base)» para mantener trazabilidad sobre la evolución del módulo de seguridad.
 
+## Actualización Usuarios - Parte 2 (Seguridad y Auditoría) (27/10/2025 18:40 UTC)
+
+- `usuarios` incorpora métricas de seguridad (`failed_login_attempts`, `last_login_attempt_at`, `locked_until`) para bloquear cuentas tras el umbral `SOFTMOBILE_MAX_FAILED_LOGIN_ATTEMPTS`, registrando cada intento en `audit_logs`.
+- Se crea `password_reset_tokens` y se publican `/auth/password/request` y `/auth/password/reset` para recuperar acceso con tokens temporales, restablecer contraseñas con hash bcrypt y revocar sesiones activas automáticamente.
+- `/auth/session` habilita autenticación por cookie segura (HTTPOnly/SameSite configurable) y `active_sessions` añade `expires_at`, permitiendo auditoría y revocación automática por expiración.
+- El middleware global valida `permisos.puede_ver/editar/borrar` por módulo, evitando operaciones sobre inventario, ventas, compras, POS, clientes, proveedores, reparaciones, transferencias, seguridad, usuarios, sincronización, reportes, respaldos y actualizaciones si el rol carece de autorización.
+- `backend/tests/test_security.py` cubre bloqueo, restablecimiento, sesión basada en cookies y restricciones de rol `INVITADO`, asegurando cumplimiento del plan «Seguridad y Auditoría» para Softmobile 2025 v2.2.0.
+
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
 - Migración `202503010003_sales_ventas_structure.py` garantiza claves foráneas activas hacia clientes, usuarios, ventas y dispositivos, creando índices solo cuando faltan en despliegues anteriores.

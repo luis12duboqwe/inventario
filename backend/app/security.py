@@ -1,12 +1,12 @@
 """Utilidades de seguridad y autenticación para la API."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 
 import jwt
 import pyotp
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ from .config import settings
 from .database import get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 ALGORITHM = "HS256"
 
 
@@ -29,13 +29,15 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
-def create_access_token(*, subject: str, expires_minutes: int | None = None) -> tuple[str, str]:
+def create_access_token(
+    *, subject: str, expires_minutes: int | None = None
+) -> tuple[str, str, datetime]:
     expire_minutes = expires_minutes or settings.access_token_expire_minutes
-    expire = datetime.utcnow() + timedelta(minutes=expire_minutes)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
     session_id = uuid.uuid4().hex
     payload = {"sub": subject, "exp": int(expire.timestamp()), "jti": session_id}
     token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
-    return token, session_id
+    return token, session_id, expire
 
 
 def decode_token(token: str) -> schemas.TokenPayload:
@@ -57,19 +59,51 @@ def decode_token(token: str) -> schemas.TokenPayload:
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
-    token_payload = decode_token(token)
-    session = crud.get_active_session_by_token(db, token_payload.jti)
-    if session is None or session.revoked_at is not None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión inválida o revocada.")
-    user = crud.get_user_by_username(db, token_payload.sub)
+    session_token: str | None = None
+    if token:
+        token_payload = decode_token(token)
+        session_token = token_payload.jti
+        session = crud.get_active_session_by_token(db, session_token)
+        if session is None or session.revoked_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Sesión inválida o revocada.",
+            )
+        if crud.is_session_expired(session.expires_at):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Sesión expirada.",
+            )
+        user = crud.get_user_by_username(db, token_payload.sub)
+    else:
+        session_token = request.cookies.get(settings.session_cookie_name)
+        if not session_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Autenticación requerida.",
+            )
+        session = crud.get_active_session_by_token(db, session_token)
+        if session is None or session.revoked_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Sesión inválida o revocada.",
+            )
+        if crud.is_session_expired(session.expires_at):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Sesión expirada.",
+            )
+        user = session.user
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado.")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo.")
-    crud.mark_session_used(db, token_payload.jti)
+    if session_token:
+        crud.mark_session_used(db, session_token)
     return user
 
 
