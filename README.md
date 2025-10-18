@@ -181,6 +181,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Esquemas consistentes**: `BackupRunRequest`, `BackupRestoreRequest` y `BackupRestoreResponse` describen notas, componentes y destino opcional, mientras que el enum `BackupComponent` queda registrado en el modelo `BackupJob` para mantener la trazabilidad de los archivos generados.【F:backend/app/schemas/__init__.py†L3103-L3159】【F:backend/app/models/__init__.py†L66-L111】【F:backend/app/models/__init__.py†L588-L613】
 - **Cobertura automatizada**: `backend/tests/test_backups.py` valida respaldos completos, restauraciones por componente, presencia de archivos críticos, registros en `logs_sistema` y la reautenticación posterior cuando se aplica el SQL sobre la base activa.【F:backend/tests/test_backups.py†L1-L205】
 - **Documentación sincronizada**: este README, `CHANGELOG.md` y `AGENTS.md` documentan la fase «Actualización Sistema - Parte 2 (Respaldos y Recuperación)» para preservar la trazabilidad operativa.
+- **Verificación 30/10/2025 12:55 UTC**: se confirmó que los respaldos programados y manuales se registran con modo correspondiente, que las exportaciones `.zip`, `.sql` y `.json` permanecen disponibles por respaldo, que la restauración admite seleccionar base de datos, configuraciones o archivos críticos por separado y que cada operación queda asentada en `logs_sistema`, restringiendo las rutas al rol `ADMIN` conforme a las pruebas activas (`test_backups.py`).
 
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 

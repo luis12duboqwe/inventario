@@ -341,6 +341,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Los esquemas `BackupRunRequest`, `BackupRestoreRequest` y `BackupRestoreResponse` validan notas, componentes y destino opcional, mientras que el enum `BackupComponent` y el modelo `BackupJob` registran rutas JSON/SQL/configuración/archivos críticos junto al tamaño agregado.
 - `backend/tests/test_backups.py` asegura generación de archivos, restauraciones por componente, reautenticación tras aplicar SQL y el registro de eventos `backup_generated`/`backup_restored` en `logs_sistema`.
 - README y CHANGELOG documentan esta fase como «Actualización Sistema - Parte 2 (Respaldos y Recuperación)», preservando la trazabilidad con este AGENTS.
+- **30/10/2025 12:55 UTC** — Auditoría del servicio ratifica respaldos automáticos/manuales diferenciados por `mode`, exportaciones `.zip/.sql/.json`, restauraciones parciales (base de datos, configuraciones, archivos críticos), bitácora `logs_sistema` activa y restricciones de rol `ADMIN`, según la suite `backend/tests/test_backups.py`.
 
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
