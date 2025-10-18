@@ -1,5 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Credentials } from "../api";
+import Button from "./ui/Button";
+import TextField from "./ui/TextField";
 
 type Props = {
   loading: boolean;
@@ -17,10 +19,10 @@ function LoginForm({ loading, error, onSubmit }: Props) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="form-grid">
-      <label htmlFor="username">Usuario</label>
-      <input
+    <form onSubmit={handleSubmit} className="auth-form">
+      <TextField
         id="username"
+        label="Usuario"
         type="text"
         required
         autoComplete="username"
@@ -29,9 +31,9 @@ function LoginForm({ loading, error, onSubmit }: Props) {
         onChange={(event) => setUsername(event.target.value)}
       />
 
-      <label htmlFor="password">Contraseña</label>
-      <input
+      <TextField
         id="password"
+        label="Contraseña"
         type="password"
         required
         autoComplete="current-password"
@@ -42,9 +44,9 @@ function LoginForm({ loading, error, onSubmit }: Props) {
 
       {error ? <div className="alert error">{error}</div> : null}
 
-      <button type="submit" disabled={loading} className="submit-button">
+      <Button type="submit" disabled={loading} className="auth-form__submit">
         {loading ? "Conectando…" : "Ingresar"}
-      </button>
+      </Button>
     </form>
   );
 }

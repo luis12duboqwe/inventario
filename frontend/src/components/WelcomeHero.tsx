@@ -1,6 +1,9 @@
 import { memo } from "react";
 import { motion } from "framer-motion";
 
+import Button from "./ui/Button";
+import { colors } from "../theme/designTokens";
+
 type Props = {
   themeLabel: string;
   onToggleTheme: () => void;
@@ -29,9 +32,9 @@ function WelcomeHero({ themeLabel, onToggleTheme, activeTheme }: Props) {
         <svg viewBox="0 0 180 64" role="img" aria-label="Softmobile" focusable="false">
           <defs>
             <linearGradient id="softmobileGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#38bdf8" />
-              <stop offset="50%" stopColor="#22d3ee" />
-              <stop offset="100%" stopColor="#0ea5e9" />
+              <stop offset="0%" stopColor={colors.accent} />
+              <stop offset="50%" stopColor={colors.accentBright} />
+              <stop offset="100%" stopColor={colors.accentDeep} />
             </linearGradient>
           </defs>
           <path
@@ -40,7 +43,7 @@ function WelcomeHero({ themeLabel, onToggleTheme, activeTheme }: Props) {
           />
           <path
             d="M50.7 47.6V16.4h10.6v5c1.9-3.8 5.8-5.7 11-5.7 8.7 0 14.8 6.1 14.8 15.3v16.6H76.4V33c0-4.7-3-7.8-7.5-7.8-5 0-7.9 3.3-7.9 8.6v13.8H50.7ZM119.3 48.3c-10.4 0-18-7.1-18-16.6 0-9.6 7.5-16.6 18.2-16.6 10.4 0 18 7 18 16.5 0 9.6-7.5 16.7-18.2 16.7Zm0-9.2c4.7 0 8-3.1 8-7.5 0-4.4-3.3-7.5-8-7.5s-8 3.1-8 7.5c0 4.4 3.3 7.5 8 7.5ZM162.3 48.3c-10.4 0-18-7.1-18-16.6 0-9.6 7.5-16.6 18.2-16.6 10.4 0 18 7 18 16.5 0 9.6-7.5 16.7-18.2 16.7Zm0-9.2c4.7 0 8-3.1 8-7.5 0-4.4-3.3-7.5-8-7.5s-8 3.1-8 7.5c0 4.4 3.3 7.5 8 7.5Z"
-            fill="#e6edf3"
+            fill={colors.textSecondary}
           />
         </svg>
       </motion.div>
@@ -51,9 +54,9 @@ function WelcomeHero({ themeLabel, onToggleTheme, activeTheme }: Props) {
           tema {themeLabel}.
         </p>
         <div className="welcome-actions">
-          <button className="ghost" type="button" onClick={onToggleTheme}>
+          <Button type="button" variant="ghost" size="sm" onClick={onToggleTheme}>
             Cambiar a tema {activeTheme === "dark" ? "claro" : "oscuro"}
-          </button>
+          </Button>
         </div>
       </motion.div>
     </motion.section>

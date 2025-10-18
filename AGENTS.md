@@ -348,6 +348,15 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se depuró `backend/tests/test_global_reports.py` para importar únicamente `datetime`, simulando fallos recientes de sincronización sin dependencias sobrantes y garantizando que las alertas automáticas sigan cubiertas por la suite.
 - README y CHANGELOG registran esta iteración bajo «Actualización Sistema - Parte 3 (Reportes y Notificaciones)», manteniendo alineada la documentación corporativa con este mandato operativo.
 
+### Actualización Interfaz - Parte 1 (Coherencia Visual y Componentes Globales) (02/11/2025 09:10 UTC)
+
+- Se incorporó `frontend/src/theme/designTokens.ts` con paleta, espaciados, radios y sombras corporativas; `styles.css` migró a variables `--color-*`, nuevos estilos (`.app-sidebar`, `.page-header`, `.ui-button`, `.ui-field`, `.ui-modal`, `.app-search`) y reglas responsivas que sostienen el layout oscuro en escritorios y tablets sin romper clases heredadas.
+- Se añadieron componentes reutilizables `Button`, `TextField`, `PageHeader`, `Modal` y `SidebarMenu` en `frontend/src/components/ui/`, habilitando iconografía accesible, variantes (primario, ghost, peligro, enlace) y tamaños consistentes.
+- `DashboardLayout` adopta `PageHeader` y `SidebarMenu` para unificar encabezados, menú lateral, búsqueda global y acciones de sesión; `CompactModeToggle`, `LoginForm` y `WelcomeHero` reutilizan los nuevos botones/inputs.
+- `DeviceEditDialog` utiliza el nuevo `Modal` con cierre bloqueado al enviar y botones reutilizables; las vistas analíticas (`GlobalMetrics`, `GlobalReportsDashboard`, `InventoryPage`, `Customers`) dejan los hexadecimales en favor de los tokens corporativos de color.
+- Se homologaron botones legacy (`.btn`, `.button`), formularios heredados, badges, alerts y el botón flotante de retorno para consumir los nuevos tokens de color/bordes, asegurar foco accesible y mantener el tema oscuro consistente en módulos antiguos.
+- README, CHANGELOG y este AGENTS documentan la fase bajo «Actualización Interfaz - Parte 1 (Coherencia Visual y Componentes Globales)», manteniendo la trazabilidad de la refactorización visual.
+
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
 - La migración `202503010005_clientes_estructura_relaciones.py` renombra la tabla `customers` a `clientes`, ajusta columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y marca el teléfono como obligatorio con valores de contingencia para datos históricos.

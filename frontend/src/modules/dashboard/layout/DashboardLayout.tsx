@@ -23,6 +23,8 @@ import GlobalMetrics from "../components/GlobalMetrics";
 import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
 import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
+import Button from "../../../components/ui/Button";
+import PageHeader from "../../../components/ui/PageHeader";
 
 type NavItem = SidebarNavItem & {
   description: string;
@@ -276,51 +278,64 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
           ) : null}
         </AnimatePresence>
 
-        <header className="dashboard-topbar" role="banner">
-          <div className="dashboard-topbar__titles">
-            <h1>{moduleTitle}</h1>
-            <p className="muted-text">{moduleDescription}</p>
-          </div>
-          <div className="dashboard-topbar__actions">
-            <button
-              type="button"
-              className="btn btn--ghost dashboard-mobile-menu"
-              onClick={toggleSidebar}
-              aria-expanded={isSidebarOpen}
-              aria-controls="dashboard-navigation"
-            >
-              <Menu size={16} aria-hidden="true" />
-              <span>{isSidebarOpen ? "Cerrar menú" : "Menú"}</span>
-            </button>
-            <label className="dashboard-search" aria-label="Buscador global">
-              <Search size={16} aria-hidden="true" />
-              <input
-                type="search"
-                value={globalSearchTerm}
-                onChange={(event) => setGlobalSearchTerm(event.target.value)}
-                placeholder="Buscar en Softmobile"
-              />
-            </label>
-            <button type="button" className="btn btn--ghost" onClick={handleQuickHelp}>
-              <HelpCircle size={16} aria-hidden="true" />
-              <span>Ayuda rápida</span>
-            </button>
-            <CompactModeToggle />
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={onToggleTheme}
-              aria-pressed={theme === "light"}
-            >
-              <SunMoon size={16} aria-hidden="true" />
-              <span>Tema {theme === "dark" ? "oscuro" : "claro"}</span>
-            </button>
-            <button type="button" className="btn btn--danger" onClick={onLogout}>
-              <LogOut size={16} aria-hidden="true" />
-              <span>Cerrar sesión</span>
-            </button>
-          </div>
-        </header>
+        <PageHeader
+          title={moduleTitle}
+          description={moduleDescription}
+          actions={
+            <div className="page-header__actions-row">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="page-header__action--menu"
+                onClick={toggleSidebar}
+                aria-expanded={isSidebarOpen}
+                aria-controls="dashboard-navigation"
+                leadingIcon={<Menu size={16} aria-hidden="true" />}
+              >
+                {isSidebarOpen ? "Cerrar menú" : "Menú"}
+              </Button>
+              <label className="app-search" aria-label="Buscador global">
+                <Search size={16} aria-hidden="true" />
+                <input
+                  type="search"
+                  value={globalSearchTerm}
+                  onChange={(event) => setGlobalSearchTerm(event.target.value)}
+                  placeholder="Buscar en Softmobile"
+                />
+              </label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleQuickHelp}
+                leadingIcon={<HelpCircle size={16} aria-hidden="true" />}
+              >
+                Ayuda rápida
+              </Button>
+              <CompactModeToggle />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onToggleTheme}
+                aria-pressed={theme === "light"}
+                leadingIcon={<SunMoon size={16} aria-hidden="true" />}
+              >
+                Tema {theme === "dark" ? "oscuro" : "claro"}
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={onLogout}
+                leadingIcon={<LogOut size={16} aria-hidden="true" />}
+              >
+                Cerrar sesión
+              </Button>
+            </div>
+          }
+        />
 
         <main className="dashboard-content">
           <GlobalMetrics />

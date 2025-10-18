@@ -16,8 +16,9 @@ import {
   YAxis,
 } from "recharts";
 import { useDashboard } from "../context/DashboardContext";
+import { colors } from "../../../theme/designTokens";
 
-const PIE_COLORS = ["#06b6d4", "#22d3ee", "#38bdf8", "#0ea5e9", "#0891b2"];
+const PIE_COLORS = [colors.chartCyan, colors.accentBright, colors.accent, colors.chartSky, colors.chartTeal];
 
 function resolveStatusTone(value: number, threshold: number, inverse = false): "good" | "alert" | "info" {
   if (inverse) {
@@ -236,7 +237,7 @@ function GlobalMetrics() {
                 <YAxis stroke="var(--text-secondary)" tickFormatter={(value) => formatCurrency(value).replace("MX$", "")} />
                 <Tooltip formatter={(value: number) => formatCurrency(value)} />
                 <Legend />
-                <Line type="monotone" dataKey="value" stroke="#06b6d4" strokeWidth={2} dot={{ r: 3 }} name="Ventas" />
+                <Line type="monotone" dataKey="value" stroke={colors.chartCyan} strokeWidth={2} dot={{ r: 3 }} name="Ventas" />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -257,7 +258,7 @@ function GlobalMetrics() {
                 <YAxis stroke="var(--text-secondary)" />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="value" fill="#1d4ed8" name="Unidades" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="value" fill={colors.chartIndigo} name="Unidades" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -300,7 +301,7 @@ function GlobalMetrics() {
                 <YAxis stroke="var(--text-secondary)" />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="value" fill="#22d3ee" name="Órdenes" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="value" fill={colors.accentBright} name="Órdenes" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}

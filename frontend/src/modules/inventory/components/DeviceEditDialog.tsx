@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 
 import type { Device, DeviceUpdateInput } from "../../../api";
+import Modal from "../../../components/ui/Modal";
+import Button from "../../../components/ui/Button";
 
 type Props = {
   device: Device | null;
@@ -321,35 +322,29 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     }
   };
 
+  const isOpen = open && Boolean(device);
+
   return (
-    <AnimatePresence>
-      {open && device ? (
-        <motion.div
-          className="device-edit-dialog__backdrop"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            className="device-edit-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={dialogTitle}
-            initial={{ scale: 0.96, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.96, opacity: 0 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-          >
-            <header className="device-edit-dialog__header">
-              <div>
-                <h2>{dialogTitle}</h2>
-                <p className="muted-text">Actualiza la ficha del dispositivo sin perder la trazabilidad corporativa.</p>
-              </div>
-              <button type="button" className="btn btn--ghost" onClick={closeDialog} disabled={isSubmitting}>
-                Cerrar
-              </button>
-            </header>
-            <form onSubmit={handleSubmit} className="device-edit-dialog__form">
+    <Modal
+      open={isOpen}
+      title={dialogTitle}
+      description="Actualiza la ficha del dispositivo sin perder la trazabilidad corporativa."
+      onClose={closeDialog}
+      size="xl"
+      dismissDisabled={isSubmitting}
+      footer={
+        <div className="device-edit-dialog__actions">
+          <Button type="button" variant="ghost" onClick={closeDialog} disabled={isSubmitting}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="device-edit-form" disabled={isSubmitting}>
+            {isSubmitting ? "Guardando…" : "Guardar cambios"}
+          </Button>
+        </div>
+      }
+    >
+      {device ? (
+        <form id="device-edit-form" onSubmit={handleSubmit} className="device-edit-dialog__form">
               <div className="device-edit-dialog__grid">
                 <label>
                   <span>Nombre comercial</span>
@@ -579,19 +574,9 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
                 />
               </label>
               {error ? <p className="device-edit-dialog__error">{error}</p> : null}
-              <div className="device-edit-dialog__actions">
-                <button type="button" className="btn btn--ghost" onClick={closeDialog} disabled={isSubmitting}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn--primary" disabled={isSubmitting}>
-                  {isSubmitting ? "Guardando…" : "Guardar cambios"}
-                </button>
-              </div>
             </form>
-          </motion.div>
-        </motion.div>
       ) : null}
-    </AnimatePresence>
+    </Modal>
   );
 }
 

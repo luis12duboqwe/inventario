@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo, useState } from "react";
-import { NavLink } from "react-router-dom";
 import { ChevronLeft, ChevronRight, PanelsTopLeft } from "lucide-react";
+
+import SidebarMenu, { type SidebarMenuItem } from "../../../components/ui/SidebarMenu";
 
 export type SidebarNavItem = {
   to: string;
@@ -46,53 +47,42 @@ function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: Sidebar
     onNavigate?.();
   };
 
-  const sidebarClassName = [
-    "dashboard-sidebar",
-    collapsed ? "collapsed" : "",
-    mobileOpen ? "mobile-open" : "",
-  ]
+  const sidebarClassName = ["app-sidebar", collapsed ? "is-collapsed" : "", mobileOpen ? "is-mobile-open" : ""]
     .filter(Boolean)
     .join(" ");
 
+  const menuItems: SidebarMenuItem[] = useMemo(
+    () =>
+      items.map((item) => ({
+        to: item.to,
+        label: item.label,
+        icon: item.icon,
+      })),
+    [items],
+  );
+
   return (
     <aside id="dashboard-navigation" className={sidebarClassName} aria-label="Menú principal">
-      <div className="dashboard-sidebar__brand">
-        <span className="dashboard-sidebar__brand-icon" aria-hidden="true">
+      <div className="app-sidebar__brand">
+        <span className="app-sidebar__brand-icon" aria-hidden="true">
           <PanelsTopLeft size={20} />
         </span>
-        <div className="dashboard-sidebar__brand-text">
+        <div className="app-sidebar__brand-text">
           <strong>Softmobile 2025</strong>
           <span>v2.2.0 · {activeLabel}</span>
         </div>
       </div>
-      <nav className="dashboard-sidebar__nav">
-        {items.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              `dashboard-sidebar__link${isActive ? " active" : ""}`
-            }
-            aria-label={collapsed ? item.label : undefined}
-            onClick={handleNavigate}
-          >
-            <span className="dashboard-sidebar__icon" aria-hidden="true">
-              {item.icon}
-            </span>
-            <span className="dashboard-sidebar__label">{item.label}</span>
-          </NavLink>
-        ))}
-      </nav>
+      <SidebarMenu items={menuItems} collapsed={collapsed} onNavigate={handleNavigate} />
       <button
         type="button"
-        className="dashboard-sidebar__toggle"
+        className="app-sidebar__toggle"
         onClick={handleToggle}
         aria-pressed={collapsed}
         aria-label={toggleLabel}
         title={toggleLabel}
       >
         <span aria-hidden="true">{collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}</span>
-        <span className="dashboard-sidebar__toggle-label">{toggleLabel}</span>
+        <span className="app-sidebar__toggle-label">{toggleLabel}</span>
       </button>
     </aside>
   );
