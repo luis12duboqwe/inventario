@@ -182,6 +182,11 @@ def create_sale_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Inventario insuficiente para la venta.",
             ) from exc
+        if detail == "customer_credit_limit_exceeded":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El cliente no cuenta con crédito disponible para esta venta.",
+            ) from exc
         if detail == "sale_device_already_sold":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -268,6 +273,11 @@ def update_sale_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Inventario insuficiente para la venta.",
+            ) from exc
+        if detail == "customer_credit_limit_exceeded":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El cliente no cuenta con crédito disponible para esta venta.",
             ) from exc
         if detail == "sale_device_already_sold":
             raise HTTPException(
