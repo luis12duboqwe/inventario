@@ -721,6 +721,42 @@ function Customers({ token }: Props) {
     return { percentage, total: summary.total_outstanding_debt };
   }, [dashboardMetrics]);
 
+  const customerNotes = useMemo(() => {
+    if (!customerSummary?.customer?.notes) {
+      return [] as string[];
+    }
+    return customerSummary.customer.notes
+      .split(/\r?\n+/)
+      .map((note) => note.trim())
+      .filter((note) => note.length > 0);
+  }, [customerSummary]);
+
+  const customerHistory = useMemo(() => {
+    if (!customerSummary?.customer?.history) {
+      return [] as ContactHistoryEntry[];
+    }
+    return [...customerSummary.customer.history]
+      .sort(
+        (left, right) =>
+          new Date(right.timestamp).getTime() -
+          new Date(left.timestamp).getTime(),
+      )
+      .slice(0, 6);
+  }, [customerSummary]);
+
+  const recentInvoices = useMemo(() => {
+    if (!customerSummary?.invoices) {
+      return [] as CustomerSummary["invoices"];
+    }
+    return [...customerSummary.invoices]
+      .sort(
+        (left, right) =>
+          new Date(right.created_at).getTime() -
+          new Date(left.created_at).getTime(),
+      )
+      .slice(0, 5);
+  }, [customerSummary]);
+
   return (
     <section className="customers-module">
       {error ? <div className="alert error">{error}</div> : null}
@@ -1045,7 +1081,12 @@ function Customers({ token }: Props) {
                         ? "badge success"
                         : "badge neutral";
                     return (
-                      <tr key={customer.id}>
+                      <tr
+                        key={customer.id}
+                        className={
+                          selectedCustomerId === customer.id ? "is-selected" : undefined
+                        }
+                      >
                         <td>#{customer.id}</td>
                         <td>
                           <strong>{customer.name}</strong>
@@ -1187,10 +1228,12 @@ function Customers({ token }: Props) {
                     <ul className="summary-list">
                       {customerSummary.payments.slice(0, 5).map((payment) => (
                         <li key={payment.id}>
-                          <strong>{LEDGER_LABELS[payment.entry_type]}</strong>
-                          <span className="muted-text">
-                            {new Date(payment.created_at).toLocaleString("es-MX")}
-                          </span>
+                          <div>
+                            <strong>{LEDGER_LABELS[payment.entry_type]}</strong>
+                            <span className="muted-text small">
+                              {new Date(payment.created_at).toLocaleString("es-MX")}
+                            </span>
+                          </div>
                           <span className="summary-amount">
                             ${formatCurrency(payment.amount)}
                           </span>
@@ -1199,6 +1242,71 @@ function Customers({ token }: Props) {
                     </ul>
                   )}
                 </div>
+                <div>
+                  <h5>Facturas emitidas</h5>
+                  {recentInvoices.length === 0 ? (
+                    <p className="muted-text">Sin facturas generadas.</p>
+                  ) : (
+                    <ul className="summary-list">
+                      {recentInvoices.map((invoice) => (
+                        <li key={invoice.invoice_number}>
+                          <div>
+                            <strong>{invoice.invoice_number}</strong>
+                            <span className="muted-text small">
+                              {new Date(invoice.created_at).toLocaleString("es-MX")}
+                              {invoice.store_id ? ` · Sucursal ${invoice.store_id}` : ""}
+                            </span>
+                          </div>
+                          <span className="summary-amount">
+                            ${formatCurrency(invoice.total_amount)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <h5>Notas y seguimiento</h5>
+                  {customerNotes.length === 0 && customerHistory.length === 0 ? (
+                    <p className="muted-text">Sin notas registradas.</p>
+                  ) : (
+                    <ul className="notes-stack">
+                      {customerNotes.map((note, index) => (
+                        <li key={`note-${index}`}>
+                          <span className="note-chip">Nota interna</span>
+                          <p>{note}</p>
+                        </li>
+                      ))}
+                      {customerHistory.map((entry) => (
+                        <li key={`history-${entry.timestamp}`}>
+                          <span className="note-chip">
+                            Seguimiento · {new Date(entry.timestamp).toLocaleString("es-MX")}
+                          </span>
+                          <p>{entry.note}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h5>Historial de contacto</h5>
+                {customerHistory.length === 0 ? (
+                  <p className="muted-text">Sin interacciones registradas.</p>
+                ) : (
+                  <ul className="history-stack">
+                    {customerHistory.map((entry) => (
+                      <li key={`history-card-${entry.timestamp}`}>
+                        <div>
+                          <strong>{new Date(entry.timestamp).toLocaleString("es-MX")}</strong>
+                          <span className="muted-text small">Bitácora de seguimiento</span>
+                        </div>
+                        <p>{entry.note}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div>
@@ -1224,16 +1332,21 @@ function Customers({ token }: Props) {
                             <tr key={entry.id}>
                               <td>{new Date(entry.created_at).toLocaleString("es-MX")}</td>
                               <td>{LEDGER_LABELS[entry.entry_type]}</td>
-                              <td>
-                                {entry.note ?? enriched.detailsLabel ?? "—"}
-                                {enriched.detailsValue ? (
-                                  <span className="muted-text"> · {enriched.detailsValue}</span>
-                                ) : null}
-                              </td>
-                              <td>${formatCurrency(entry.amount)}</td>
-                              <td>${formatCurrency(entry.balance_after)}</td>
-                            </tr>
-                          );
+                            <td>
+                              {entry.note ?? enriched.detailsLabel ?? "—"}
+                              {enriched.detailsValue ? (
+                                <span className="muted-text"> · {enriched.detailsValue}</span>
+                              ) : null}
+                              {entry.created_by ? (
+                                <span className="muted-text note-meta">
+                                  · Registrado por {entry.created_by}
+                                </span>
+                              ) : null}
+                            </td>
+                            <td>${formatCurrency(entry.amount)}</td>
+                            <td>${formatCurrency(entry.balance_after)}</td>
+                          </tr>
+                        );
                         })}
                       </tbody>
                     </table>
@@ -1377,7 +1490,7 @@ function Customers({ token }: Props) {
                       <th>Estado</th>
                       <th>Saldo</th>
                       <th>Ventas</th>
-                      <th>Compras recientes</th>
+                      <th>Última compra</th>
                     </tr>
                   </thead>
                   <tbody>
