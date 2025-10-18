@@ -474,6 +474,23 @@ def _ensure_non_negative_decimal(value: Decimal, error_code: str) -> Decimal:
     return normalized
 
 
+def _ensure_debt_respects_limit(credit_limit: Decimal, outstanding: Decimal) -> None:
+    """Valida que el saldo pendiente no supere el límite de crédito configurado."""
+
+    normalized_limit = _to_decimal(credit_limit).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    normalized_outstanding = _to_decimal(outstanding).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if normalized_outstanding <= Decimal("0"):
+        return
+    if normalized_limit <= Decimal("0"):
+        raise ValueError("customer_outstanding_exceeds_limit")
+    if normalized_outstanding > normalized_limit:
+        raise ValueError("customer_outstanding_exceeds_limit")
+
+
 def _validate_customer_credit(customer: models.Customer, pending_charge: Decimal) -> None:
     amount = _to_decimal(pending_charge)
     if amount <= Decimal("0"):
@@ -1235,6 +1252,7 @@ def create_customer(
     outstanding_debt = _ensure_non_negative_decimal(
         payload.outstanding_debt, "customer_outstanding_debt_negative"
     )
+    _ensure_debt_respects_limit(credit_limit, outstanding_debt)
     customer = models.Customer(
         name=payload.name,
         contact_name=payload.contact_name,
@@ -1292,7 +1310,8 @@ def update_customer(
     outstanding_delta: Decimal | None = None
     ledger_entry: models.CustomerLedgerEntry | None = None
     ledger_details: dict[str, object] | None = None
-    history_note: str | None = None
+    pending_history_note: str | None = None
+    pending_ledger_entry_kwargs: dict[str, object] | None = None
     if payload.name is not None:
         customer.name = payload.name
         updated_fields["name"] = payload.name
@@ -1335,7 +1354,7 @@ def update_customer(
         updated_fields["outstanding_debt"] = float(new_outstanding)
         if difference != Decimal("0"):
             outstanding_delta = difference
-            history_note = (
+            pending_history_note = (
                 "Ajuste manual de saldo: antes $"
                 f"{float(previous_outstanding):.2f}, ahora ${float(new_outstanding):.2f}"
             )
@@ -1345,25 +1364,30 @@ def update_customer(
                 "difference": float(difference),
             }
             updated_fields["outstanding_debt_delta"] = float(difference)
+            pending_ledger_entry_kwargs = {
+                "entry_type": models.CustomerLedgerEntryType.ADJUSTMENT,
+                "amount": outstanding_delta,
+                "note": pending_history_note,
+                "reference_type": "adjustment",
+                "reference_id": None,
+                "details": ledger_details,
+                "created_by_id": performed_by_id,
+            }
+        previous_outstanding = new_outstanding
     if payload.history is not None:
         history = _history_to_json(payload.history)
         customer.history = history
         customer.last_interaction_at = _last_history_timestamp(history)
         updated_fields["history"] = history
-    if history_note:
-        _append_customer_history(customer, history_note)
-        updated_fields.setdefault("history_note", history_note)
-    if outstanding_delta is not None and ledger_details is not None:
+    _ensure_debt_respects_limit(customer.credit_limit, customer.outstanding_debt)
+    if pending_history_note:
+        _append_customer_history(customer, pending_history_note)
+        updated_fields.setdefault("history_note", pending_history_note)
+    if pending_ledger_entry_kwargs is not None:
         ledger_entry = _create_customer_ledger_entry(
             db,
             customer=customer,
-            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
-            amount=outstanding_delta,
-            note=history_note,
-            reference_type="adjustment",
-            reference_id=None,
-            details=ledger_details,
-            created_by_id=performed_by_id,
+            **pending_ledger_entry_kwargs,
         )
     db.add(customer)
     db.commit()
