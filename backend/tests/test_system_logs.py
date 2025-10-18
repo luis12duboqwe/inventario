@@ -43,11 +43,27 @@ def test_system_logs_filters_and_levels(client, db_session):
     )
     crud._log_action(
         db_session,
-        action="inventory_adjustment",
-        entity_type="inventory",
+        action="purchase_order_created",
+        entity_type="purchase_order",
+        entity_id="compra-1",
+        performed_by_id=admin["id"],
+        details="Orden de compra generada para proveedor",
+    )
+    crud._log_action(
+        db_session,
+        action="inventory_adjustment_performed",
+        entity_type="inventory_adjustment",
         entity_id="inv-ajuste-1",
         performed_by_id=admin["id"],
         details="Ajuste manual de inventario por reconteo",
+    )
+    crud._log_action(
+        db_session,
+        action="inventory_warning",
+        entity_type="inventory",
+        entity_id="inv-alerta-1",
+        performed_by_id=admin["id"],
+        details="Ajuste manual por conteo preventivo",
     )
     crud._log_action(
         db_session,
@@ -56,6 +72,14 @@ def test_system_logs_filters_and_levels(client, db_session):
         entity_id="inv-critico-1",
         performed_by_id=admin["id"],
         details="Stock bajo detectado en sucursal",
+    )
+    crud._log_action(
+        db_session,
+        action="user_password_reset",
+        entity_type="user",
+        entity_id=str(admin["id"]),
+        performed_by_id=admin["id"],
+        details="Actualización de credenciales por política corporativa",
     )
     crud.register_system_error(
         db_session,
@@ -74,6 +98,14 @@ def test_system_logs_filters_and_levels(client, db_session):
     info_payload = info_logs.json()
     assert any(entry["accion"] == "sale_created" for entry in info_payload)
 
+    compras_logs = client.get(
+        "/logs/sistema",
+        params={"modulo": "compras"},
+        headers=auth_headers,
+    )
+    assert compras_logs.status_code == status.HTTP_200_OK
+    assert any(entry["accion"] == "purchase_order_created" for entry in compras_logs.json())
+
     warning_logs = client.get(
         "/logs/sistema",
         params={"nivel": "warning", "modulo": "inventario"},
@@ -83,6 +115,15 @@ def test_system_logs_filters_and_levels(client, db_session):
     warning_payload = warning_logs.json()
     assert all(entry["nivel"] == "warning" for entry in warning_payload)
 
+    ajustes_logs = client.get(
+        "/logs/sistema",
+        params={"modulo": "ajustes", "nivel": "warning"},
+        headers=auth_headers,
+    )
+    assert ajustes_logs.status_code == status.HTTP_200_OK
+    ajustes_payload = ajustes_logs.json()
+    assert any(entry["accion"] == "inventory_adjustment_performed" for entry in ajustes_payload)
+
     critical_logs = client.get(
         "/logs/sistema",
         params={"nivel": "critical"},
@@ -91,6 +132,14 @@ def test_system_logs_filters_and_levels(client, db_session):
     assert critical_logs.status_code == status.HTTP_200_OK
     critical_payload = critical_logs.json()
     assert any(entry["nivel"] == "critical" for entry in critical_payload)
+
+    usuarios_logs = client.get(
+        "/logs/sistema",
+        params={"modulo": "usuarios"},
+        headers=auth_headers,
+    )
+    assert usuarios_logs.status_code == status.HTTP_200_OK
+    assert any(entry["accion"] == "user_password_reset" for entry in usuarios_logs.json())
 
     user_logs = client.get(
         "/logs/sistema",
@@ -109,6 +158,17 @@ def test_system_logs_filters_and_levels(client, db_session):
     )
     assert empty_logs.status_code == status.HTTP_200_OK
     assert empty_logs.json() == []
+
+    error_level_logs = client.get(
+        "/logs/sistema",
+        params={"nivel": "error"},
+        headers=auth_headers,
+    )
+    assert error_level_logs.status_code == status.HTTP_200_OK
+    assert any(
+        entry["accion"] == "system_error" and entry["ip_origen"] == "127.0.0.1"
+        for entry in error_level_logs.json()
+    )
 
     error_logs = client.get(
         "/logs/errores",

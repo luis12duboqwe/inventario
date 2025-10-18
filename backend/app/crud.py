@@ -349,7 +349,9 @@ def _priority_weight(priority: models.SyncOutboxPriority | None) -> int:
 
 def _resolve_system_module(entity_type: str) -> str:
     normalized = (entity_type or "").lower()
-    for prefix, module in _SYSTEM_MODULE_MAP.items():
+    for prefix, module in sorted(
+        _SYSTEM_MODULE_MAP.items(), key=lambda item: len(item[0]), reverse=True
+    ):
         if normalized.startswith(prefix):
             return module
     return "general"
