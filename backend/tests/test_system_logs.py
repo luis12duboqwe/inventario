@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 
 from fastapi import status
 
-from backend.app.core.roles import ADMIN
-from backend.app import crud
+from backend.app.core.roles import ADMIN, OPERADOR
+from backend.app import crud, schemas, security
 
 
 def _bootstrap_admin(client):
@@ -179,3 +179,35 @@ def test_system_logs_filters_and_levels(client, db_session):
     error_payload = error_logs.json()
     assert any(entry["mensaje"] == "Fallo al generar factura" for entry in error_payload)
     assert all(entry["modulo"] == "ventas" for entry in error_payload)
+
+
+def test_system_logs_rejects_non_admin_access(client, db_session):
+    _admin, credentials = _bootstrap_admin(client)
+    _login(client, credentials["username"], credentials["password"])
+
+    operator_payload = schemas.UserCreate(
+        username="operadora.logs@example.com",
+        password="Operadora123*",
+        full_name="Operadora Logs",
+        roles=[OPERADOR],
+    )
+    crud.create_user(
+        db_session,
+        operator_payload,
+        password_hash=security.hash_password(operator_payload.password),
+        role_names=operator_payload.roles,
+    )
+
+    unauthenticated = client.get("/logs/sistema")
+    assert unauthenticated.status_code == status.HTTP_401_UNAUTHORIZED
+
+    operator_tokens = _login(
+        client,
+        operator_payload.username,
+        operator_payload.password,
+    )
+    forbidden_response = client.get(
+        "/logs/sistema",
+        headers={"Authorization": f"Bearer {operator_tokens['access_token']}"},
+    )
+    assert forbidden_response.status_code == status.HTTP_403_FORBIDDEN
