@@ -8,6 +8,7 @@ import SecurityPage from "../security/pages/SecurityPage";
 import SyncPage from "../sync/pages/SyncPage";
 import UsersPage from "../users/pages/UsersPage";
 import RepairsPage from "../repairs/pages/RepairsPage";
+import GlobalReportsPage from "../reports/pages/GlobalReportsPage";
 
 type DashboardRoutesProps = {
   theme: "dark" | "light";
@@ -19,6 +20,7 @@ const allowedModules = new Set([
   "inventory",
   "operations",
   "analytics",
+  "reports",
   "security",
   "sync",
   "users",
@@ -49,6 +51,7 @@ function DashboardRoutes({ theme, onToggleTheme, onLogout }: DashboardRoutesProp
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="operations" element={<OperationsPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="reports" element={<GlobalReportsPage />} />
         <Route path="security" element={<SecurityPage />} />
         <Route path="sync" element={<SyncPage />} />
         <Route path="users" element={<UsersPage />} />

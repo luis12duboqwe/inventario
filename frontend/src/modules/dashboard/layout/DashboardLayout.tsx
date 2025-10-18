@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
+  BellRing,
   Boxes,
   Cog,
   Menu,
@@ -135,6 +136,13 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         description: "Indicadores avanzados de rotación, aging y proyecciones.",
         icon: <BarChart3 className="icon" aria-hidden="true" />,
         isEnabled: enableAnalyticsAdv,
+      },
+      {
+        to: "/dashboard/reports",
+        label: "Reportes",
+        description: "Alertas críticas, bitácora global y exportaciones corporativas.",
+        icon: <BellRing className="icon" aria-hidden="true" />,
+        isEnabled: true,
       },
       {
         to: "/dashboard/security",

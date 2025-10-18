@@ -182,6 +182,15 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Cobertura automatizada**: `backend/tests/test_backups.py` valida respaldos completos, restauraciones por componente, presencia de archivos críticos, registros en `logs_sistema` y la reautenticación posterior cuando se aplica el SQL sobre la base activa.【F:backend/tests/test_backups.py†L1-L205】
 - **Documentación sincronizada**: este README, `CHANGELOG.md` y `AGENTS.md` documentan la fase «Actualización Sistema - Parte 2 (Respaldos y Recuperación)» para preservar la trazabilidad operativa.
 
+## Actualización Sistema - Parte 3 (Reportes y Notificaciones) (31/10/2025 09:40 UTC)
+
+- El router `/reports/global` incorpora los endpoints `overview`, `dashboard` y `export` para consolidar bitácoras, totales por severidad, distribución por módulo y alertas de sincronización crítica; el acceso permanece restringido a `REPORTE_ROLES` y exige motivo corporativo en exportaciones multiformato.【F:backend/app/routers/reports.py†L1-L160】【F:backend/app/crud.py†L360-L760】
+- El servicio `services/global_reports.py` genera PDF, Excel y CSV en tema oscuro con tablas de métricas, series de actividad, alertas y detalle de logs/errores reutilizando los colores corporativos para conservar la identidad visual en auditorías ejecutivas.【F:backend/app/services/global_reports.py†L1-L285】
+- La prueba `backend/tests/test_global_reports.py` cubre filtros, agregados, alertas por sincronización fallida y las tres exportaciones para garantizar que el backend permanezca íntegro al consumir los nuevos servicios.【F:backend/tests/test_global_reports.py†L1-L138】
+- La UI suma el módulo «Reportes globales» con navegación dedicada, filtros por fecha/módulo/severidad, tablero gráfico (línea, barras, pastel), listas de alertas y tablas accesibles de logs/errores mediante el componente `GlobalReportsDashboard`. Las descargas respetan el motivo corporativo y reutilizan la paleta azul/cian.【F:frontend/src/modules/dashboard/layout/DashboardLayout.tsx†L1-L140】【F:frontend/src/modules/reports/components/GlobalReportsDashboard.tsx†L1-L324】【F:frontend/src/modules/reports/pages/GlobalReportsPage.tsx†L1-L20】
+- El SDK web expone helpers tipados para consultar y exportar el reporte global (`getGlobalReportOverview|Dashboard`, `downloadGlobalReportPdf|Xlsx|Csv`), además de los tipos `GlobalReport*` que normalizan severidades y alertas en la capa cliente.【F:frontend/src/api.ts†L120-L470】【F:frontend/src/api.ts†L3680-L3820】
+- La suite de frontend añade `GlobalReportsDashboard.test.tsx` para validar la renderización de métricas y alertas, evitando regresiones al simular respuestas del backend y motivos corporativos automatizados.【F:frontend/src/modules/reports/components/__tests__/GlobalReportsDashboard.test.tsx†L1-L108】
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Se renombran las tablas operativas del módulo POS a `ventas` y `detalle_ventas`, alineando los identificadores físicos con los
