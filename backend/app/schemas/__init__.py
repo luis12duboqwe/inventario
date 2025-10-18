@@ -2001,6 +2001,93 @@ class SystemErrorEntry(BaseModel):
         return value.isoformat()
 
 
+class GlobalReportFiltersState(BaseModel):
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    module: str | None = None
+    severity: SystemLogLevel | None = None
+
+    @field_serializer("date_from", "date_to", when_used="json")
+    @classmethod
+    def _serialize_datetime(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class GlobalReportTotals(BaseModel):
+    logs: int = Field(default=0, ge=0)
+    errors: int = Field(default=0, ge=0)
+    info: int = Field(default=0, ge=0)
+    warning: int = Field(default=0, ge=0)
+    error: int = Field(default=0, ge=0)
+    critical: int = Field(default=0, ge=0)
+    sync_pending: int = Field(default=0, ge=0)
+    sync_failed: int = Field(default=0, ge=0)
+    last_activity_at: datetime | None = None
+
+    @field_serializer("last_activity_at", when_used="json")
+    @classmethod
+    def _serialize_last_activity(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class GlobalReportBreakdownItem(BaseModel):
+    name: str
+    total: int = Field(default=0, ge=0)
+
+
+class GlobalReportAlert(BaseModel):
+    type: Literal["critical_log", "system_error", "sync_failure"]
+    level: SystemLogLevel
+    message: str
+    module: str | None = None
+    occurred_at: datetime | None = None
+    reference: str | None = None
+    count: int = Field(default=1, ge=1)
+
+    @field_serializer("occurred_at", when_used="json")
+    @classmethod
+    def _serialize_occurred_at(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class GlobalReportOverview(BaseModel):
+    generated_at: datetime
+    filters: GlobalReportFiltersState
+    totals: GlobalReportTotals
+    module_breakdown: list[GlobalReportBreakdownItem]
+    severity_breakdown: list[GlobalReportBreakdownItem]
+    recent_logs: list[SystemLogEntry]
+    recent_errors: list[SystemErrorEntry]
+    alerts: list[GlobalReportAlert]
+
+    @field_serializer("generated_at", when_used="json")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class GlobalReportSeriesPoint(BaseModel):
+    date: date
+    info: int = Field(default=0, ge=0)
+    warning: int = Field(default=0, ge=0)
+    error: int = Field(default=0, ge=0)
+    critical: int = Field(default=0, ge=0)
+    system_errors: int = Field(default=0, ge=0)
+
+
+class GlobalReportDashboard(BaseModel):
+    generated_at: datetime
+    filters: GlobalReportFiltersState
+    activity_series: list[GlobalReportSeriesPoint]
+    module_distribution: list[GlobalReportBreakdownItem]
+    severity_distribution: list[GlobalReportBreakdownItem]
+
+    @field_serializer("generated_at", when_used="json")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
 class AuditReminderEntry(BaseModel):
     entity_type: str
     entity_id: str
@@ -3192,6 +3279,13 @@ __all__ = [
     "AuditLogResponse",
     "SystemLogEntry",
     "SystemErrorEntry",
+    "GlobalReportFiltersState",
+    "GlobalReportTotals",
+    "GlobalReportBreakdownItem",
+    "GlobalReportAlert",
+    "GlobalReportOverview",
+    "GlobalReportSeriesPoint",
+    "GlobalReportDashboard",
     "AuditReminderEntry",
     "AuditReminderSummary",
     "DashboardAuditAlerts",

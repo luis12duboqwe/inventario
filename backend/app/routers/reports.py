@@ -19,6 +19,7 @@ from ..security import require_roles
 from ..services import analytics as analytics_service
 from ..services import audit as audit_service
 from ..services import backups as backup_services
+from ..services import global_reports as global_reports_service
 from ..services import customer_reports
 from ..services import inventory_reports as inventory_reports_service
 from ..utils import audit as audit_utils
@@ -29,6 +30,107 @@ router = APIRouter(prefix="/reports", tags=["reportes"])
 def _ensure_analytics_enabled() -> None:
     if not settings.enable_analytics_adv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
+
+
+def _coerce_datetime(value: datetime | date | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    return datetime.combine(value, datetime.min.time())
+
+
+@router.get("/global/overview", response_model=schemas.GlobalReportOverview)
+def global_report_overview(
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    module: str | None = Query(default=None, max_length=80),
+    severity: schemas.SystemLogLevel | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    normalized_from = _coerce_datetime(date_from)
+    normalized_to = _coerce_datetime(date_to)
+    return crud.build_global_report_overview(
+        db,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        module=module,
+        severity=severity,
+    )
+
+
+@router.get("/global/dashboard", response_model=schemas.GlobalReportDashboard)
+def global_report_dashboard(
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    module: str | None = Query(default=None, max_length=80),
+    severity: schemas.SystemLogLevel | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    normalized_from = _coerce_datetime(date_from)
+    normalized_to = _coerce_datetime(date_to)
+    return crud.build_global_report_dashboard(
+        db,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        module=module,
+        severity=severity,
+    )
+
+
+@router.get("/global/export")
+def export_global_report(
+    format: Literal["pdf", "xlsx", "csv"] = Query(default="pdf"),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    module: str | None = Query(default=None, max_length=80),
+    severity: schemas.SystemLogLevel | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    _reason: str = Depends(require_reason),
+):
+    normalized_from = _coerce_datetime(date_from)
+    normalized_to = _coerce_datetime(date_to)
+    overview = crud.build_global_report_overview(
+        db,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        module=module,
+        severity=severity,
+    )
+    dashboard = crud.build_global_report_dashboard(
+        db,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        module=module,
+        severity=severity,
+    )
+
+    if format == "pdf":
+        pdf_bytes = global_reports_service.render_global_report_pdf(overview, dashboard)
+        buffer = BytesIO(pdf_bytes)
+        headers = {"Content-Disposition": "attachment; filename=softmobile_reporte_global.pdf"}
+        return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    if format == "xlsx":
+        workbook = global_reports_service.render_global_report_xlsx(overview, dashboard)
+        headers = {
+            "Content-Disposition": "attachment; filename=softmobile_reporte_global.xlsx"
+        }
+        return StreamingResponse(
+            workbook,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
+    if format == "csv":
+        csv_buffer = global_reports_service.render_global_report_csv(overview, dashboard)
+        headers = {"Content-Disposition": "attachment; filename=softmobile_reporte_global.csv"}
+        return StreamingResponse(iter([csv_buffer.getvalue()]), media_type="text/csv", headers=headers)
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de exportación no soportado"
+    )
 
 
 @router.get("/customers/portfolio", response_model=schemas.CustomerPortfolioReport)

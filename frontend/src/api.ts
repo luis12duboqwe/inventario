@@ -21,6 +21,8 @@ export type Role = {
   name: string;
 };
 
+export type SystemLogLevel = "info" | "warning" | "error" | "critical";
+
 export type UserAccount = {
   id: number;
   username: string;
@@ -1141,6 +1143,88 @@ export type DashboardAuditAlerts = {
   acknowledged_count: number;
   highlights: AuditHighlight[];
   acknowledged_entities: AuditAcknowledgedEntity[];
+};
+
+export type GlobalReportFiltersState = {
+  date_from?: string | null;
+  date_to?: string | null;
+  module?: string | null;
+  severity?: SystemLogLevel | null;
+};
+
+export type GlobalReportTotals = {
+  logs: number;
+  errors: number;
+  info: number;
+  warning: number;
+  error: number;
+  critical: number;
+  sync_pending: number;
+  sync_failed: number;
+  last_activity_at?: string | null;
+};
+
+export type GlobalReportBreakdownItem = {
+  name: string;
+  total: number;
+};
+
+export type GlobalReportAlert = {
+  type: "critical_log" | "system_error" | "sync_failure";
+  level: SystemLogLevel;
+  message: string;
+  module?: string | null;
+  occurred_at?: string | null;
+  reference?: string | null;
+  count: number;
+};
+
+export type GlobalReportLogEntry = {
+  id_log: number;
+  usuario?: string | null;
+  modulo: string;
+  accion: string;
+  descripcion: string;
+  fecha: string;
+  nivel: SystemLogLevel;
+  ip_origen?: string | null;
+};
+
+export type GlobalReportErrorEntry = {
+  id_error: number;
+  mensaje: string;
+  stack_trace?: string | null;
+  modulo: string;
+  fecha: string;
+  usuario?: string | null;
+};
+
+export type GlobalReportOverview = {
+  generated_at: string;
+  filters: GlobalReportFiltersState;
+  totals: GlobalReportTotals;
+  module_breakdown: GlobalReportBreakdownItem[];
+  severity_breakdown: GlobalReportBreakdownItem[];
+  recent_logs: GlobalReportLogEntry[];
+  recent_errors: GlobalReportErrorEntry[];
+  alerts: GlobalReportAlert[];
+};
+
+export type GlobalReportSeriesPoint = {
+  date: string;
+  info: number;
+  warning: number;
+  error: number;
+  critical: number;
+  system_errors: number;
+};
+
+export type GlobalReportDashboard = {
+  generated_at: string;
+  filters: GlobalReportFiltersState;
+  activity_series: GlobalReportSeriesPoint[];
+  module_distribution: GlobalReportBreakdownItem[];
+  severity_distribution: GlobalReportBreakdownItem[];
 };
 
 export type AuditReminderEntry = {
@@ -3621,6 +3705,137 @@ export async function downloadAnalyticsCsv(
   const link = document.createElement("a");
   link.href = url;
   link.download = "softmobile_analytics.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export type GlobalReportFilters = {
+  dateFrom?: string;
+  dateTo?: string;
+  module?: string;
+  severity?: SystemLogLevel;
+};
+
+function buildGlobalReportQuery(filters: GlobalReportFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  if (filters.module) {
+    params.set("module", filters.module);
+  }
+  if (filters.severity) {
+    params.set("severity", filters.severity);
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export function getGlobalReportOverview(
+  token: string,
+  filters: GlobalReportFilters = {},
+): Promise<GlobalReportOverview> {
+  const query = buildGlobalReportQuery(filters);
+  return request<GlobalReportOverview>(`/reports/global/overview${query}`, { method: "GET" }, token);
+}
+
+export function getGlobalReportDashboard(
+  token: string,
+  filters: GlobalReportFilters = {},
+): Promise<GlobalReportDashboard> {
+  const query = buildGlobalReportQuery(filters);
+  return request<GlobalReportDashboard>(`/reports/global/dashboard${query}`, { method: "GET" }, token);
+}
+
+export async function downloadGlobalReportPdf(
+  token: string,
+  reason: string,
+  filters: GlobalReportFilters = {},
+): Promise<void> {
+  const query = buildGlobalReportQuery(filters);
+  const suffix = query ? `${query}&format=pdf` : "?format=pdf";
+  const response = await fetch(`${API_URL}/reports/global/export${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de reportes globales");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_reporte_global.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadGlobalReportXlsx(
+  token: string,
+  reason: string,
+  filters: GlobalReportFilters = {},
+): Promise<void> {
+  const query = buildGlobalReportQuery(filters);
+  const suffix = query ? `${query}&format=xlsx` : "?format=xlsx";
+  const response = await fetch(`${API_URL}/reports/global/export${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el Excel de reportes globales");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_reporte_global.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadGlobalReportCsv(
+  token: string,
+  reason: string,
+  filters: GlobalReportFilters = {},
+): Promise<void> {
+  const query = buildGlobalReportQuery(filters);
+  const suffix = query ? `${query}&format=csv` : "?format=csv";
+  const response = await fetch(`${API_URL}/reports/global/export${suffix}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el CSV de reportes globales");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_reporte_global.csv";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
