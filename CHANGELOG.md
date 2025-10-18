@@ -77,6 +77,7 @@
 - `frontend/src/api.ts` actualiza `listCustomers` y `exportCustomersCsv` para aceptar filtros extendidos (`status`, `customer_type`, `has_debt`, `status_filter`, `customer_type_filter`) utilizados por POS, reparaciones y el nuevo listado.
 - `backend/tests/test_customers.py` agrega escenarios de filtros, métricas y exportaciones (`test_customer_filters_and_reports`, `test_customer_portfolio_exports`) que validan cabeceras `X-Reason`, formatos PDF/Excel y coherencia del dashboard.
 - **26/10/2025 18:20 UTC** — `Customers.tsx` añade paneles para facturas emitidas, notas internas e historial de contacto, con resaltado visual del cliente activo y metadatos de registro en la bitácora financiera.
+- **27/10/2025 09:30 UTC** — Se normaliza la visualización del dashboard de clientes: las barras de altas mensuales se escalan contra el máximo del periodo y el anillo de morosidad aplica un gradiente continuo acorde al porcentaje real de morosos.
 
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.

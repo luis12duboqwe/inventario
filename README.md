@@ -170,6 +170,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - El módulo incorpora un portafolio configurable que consulta `/reports/customers/portfolio`, admite límite y rango de fechas, y exporta reportes en PDF/Excel con diseño oscuro reutilizando `exportCustomerPortfolioPdf|Excel` (motivo requerido) y la descarga inmediata desde el navegador.
 - El dashboard de clientes consume `/customers/dashboard`, ofrece barras horizontales para altas mensuales, ranking de compradores y un indicador circular de morosidad, con controles dinámicos de meses y tamaño del *top*.
 - Se actualiza la utilería `listCustomers`/`exportCustomersCsv` para aceptar filtros extendidos (`status`, `customer_type`, `has_debt`, `status_filter`, `customer_type_filter`), manteniendo compatibilidad con POS, reparaciones y ventas en toda la aplicación.
+- Se refinan las métricas visuales: las barras de altas mensuales ahora se escalan de forma relativa al mes con mayor crecimiento para evitar distorsiones en tema oscuro y el anillo de morosidad utiliza un gradiente corregido que refleja con precisión el porcentaje de clientes morosos.
 
 ## Mejora visual v2.2.0 — Dashboard modularizado
 

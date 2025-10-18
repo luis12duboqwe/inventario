@@ -721,6 +721,15 @@ function Customers({ token }: Props) {
     return { percentage, total: summary.total_outstanding_debt };
   }, [dashboardMetrics]);
 
+  const newCustomersMaxValue = useMemo(() => {
+    if (!dashboardMetrics?.new_customers_per_month?.length) {
+      return 0;
+    }
+    return Math.max(
+      ...dashboardMetrics.new_customers_per_month.map((point) => point.value),
+    );
+  }, [dashboardMetrics?.new_customers_per_month]);
+
   const customerNotes = useMemo(() => {
     if (!customerSummary?.customer?.notes) {
       return [] as string[];
@@ -1586,18 +1595,34 @@ function Customers({ token }: Props) {
                   <p className="muted-text">Sin registros en el rango indicado.</p>
                 ) : (
                   <ul className="bars-list">
-                    {dashboardMetrics.new_customers_per_month.map((point) => (
-                      <li key={point.label}>
-                        <span>{point.label}</span>
-                        <div className="bar">
-                          <div
-                            className="bar__fill"
-                            style={{ width: `${Math.min(100, point.value * 8)}%` }}
-                          />
-                          <span className="bar__value">{point.value}</span>
-                        </div>
-                      </li>
-                    ))}
+                    {dashboardMetrics.new_customers_per_month.map((point) => {
+                      const normalizedWidth =
+                        newCustomersMaxValue > 0
+                          ? point.value > 0
+                            ? Math.max(
+                                8,
+                                Math.min(
+                                  100,
+                                  Math.round(
+                                    (point.value / newCustomersMaxValue) * 100,
+                                  ),
+                                ),
+                              )
+                            : 0
+                          : 0;
+                      return (
+                        <li key={point.label}>
+                          <span>{point.label}</span>
+                          <div className="bar">
+                            <div
+                              className="bar__fill"
+                              style={{ width: `${normalizedWidth}%` }}
+                            />
+                            <span className="bar__value">{point.value}</span>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
@@ -1634,7 +1659,7 @@ function Customers({ token }: Props) {
                     <div
                       className="morosity-ring__fill"
                       style={{
-                        background: `conic-gradient(#38bdf8 ${delinquentRatio.percentage}%, rgba(56, 189, 248, 0.2) 0)`
+                        background: `conic-gradient(#38bdf8 0% ${delinquentRatio.percentage}%, rgba(56, 189, 248, 0.2) ${delinquentRatio.percentage}% 100%)`,
                       }}
                     />
                     <span>{delinquentRatio.percentage}%</span>
