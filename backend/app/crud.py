@@ -6610,7 +6610,16 @@ def update_sale(
 
     validation_customer = customer or previous_customer
     if new_payment_method == models.PaymentMethod.CREDITO and validation_customer:
-        _validate_customer_credit(validation_customer, preview_total)
+        validation_amount = preview_total
+        if (
+            previous_customer
+            and validation_customer.id == previous_customer.id
+            and previous_payment_method == models.PaymentMethod.CREDITO
+        ):
+            validation_amount = (
+                preview_total - previous_total_amount
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        _validate_customer_credit(validation_customer, validation_amount)
 
     sale.discount_percent = sale_discount_percent.quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
