@@ -88,7 +88,11 @@ def test_relaciones_clientes_con_ventas_y_reparaciones(db_session) -> None:
 
 
 def test_factura_se_vincula_con_cliente(db_session) -> None:
-    store = models.Store(name="Tienda Facturas", timezone="America/Mexico_City")
+    store = models.Store(
+        name="Tienda Facturas",
+        code="SUC-001",
+        timezone="America/Mexico_City",
+    )
     cliente = models.Customer(
         name="Cliente Factura",
         phone="5550001122",

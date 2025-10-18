@@ -7,8 +7,13 @@ export type Store = {
   id: number;
   name: string;
   location?: string | null;
+  phone?: string | null;
+  manager?: string | null;
+  status: string;
+  code: string;
   timezone: string;
   inventory_value: number;
+  created_at: string;
 };
 
 export type Role = {
@@ -23,6 +28,8 @@ export type UserAccount = {
   is_active: boolean;
   created_at: string;
   roles: Role[];
+  store_id?: number | null;
+  store_name?: string | null;
 };
 
 export type DeviceIdentifier = {
@@ -771,8 +778,8 @@ export type MovementInput = {
   tipo_movimiento: "entrada" | "salida" | "ajuste";
   cantidad: number;
   comentario: string;
-  tienda_origen_id?: number | null;
-  tienda_destino_id?: number | null;
+  sucursal_origen_id?: number | null;
+  sucursal_destino_id?: number | null;
   unit_cost?: number;
 };
 
@@ -889,10 +896,10 @@ export type MovementReportEntry = {
   tipo_movimiento: MovementInput["tipo_movimiento"];
   cantidad: number;
   valor_total: number;
-  tienda_destino_id?: number | null;
-  tienda_destino?: string | null;
-  tienda_origen_id?: number | null;
-  tienda_origen?: string | null;
+  sucursal_destino_id?: number | null;
+  sucursal_destino?: string | null;
+  sucursal_origen_id?: number | null;
+  sucursal_origen?: string | null;
   comentario?: string | null;
   usuario?: string | null;
   fecha: string;

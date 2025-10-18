@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from http import HTTPStatus
 from typing import Any
 
@@ -28,14 +29,24 @@ class Store:
     id: int
     name: str
     location: str | None = None
+    phone: str | None = None
+    manager: str | None = None
+    status: str = "activa"
+    code: str = ""
     timezone: str = "UTC"
+    created_at: datetime = field(default_factory=datetime.utcnow)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
             "location": self.location,
+            "phone": self.phone,
+            "manager": self.manager,
+            "status": self.status,
+            "code": self.code,
             "timezone": self.timezone,
+            "created_at": self.created_at.isoformat(),
         }
 
 
@@ -81,7 +92,18 @@ class InMemoryRepository:
                 code="store_already_exists",
                 message="Ya existe una sucursal con ese nombre.",
             )
+        code = data.get("code")
+        if code and any(store.code.lower() == code.lower() for store in self.stores.values()):
+            raise SoftmobileError(
+                status_code=int(HTTPStatus.CONFLICT),
+                code="store_code_already_exists",
+                message="Ya existe una sucursal con ese código.",
+            )
         self._store_sequence += 1
+        if not code:
+            code = f"SUC-{self._store_sequence:03d}"
+            data["code"] = code
+        data["status"] = (data.get("status") or "activa").lower()
         store = Store(id=self._store_sequence, **data)
         self.stores[store.id] = store
         return store
@@ -142,9 +164,21 @@ def _validate_store_payload(payload: dict[str, Any]) -> dict[str, Any]:
             message="Se esperaba un objeto JSON para la sucursal.",
         )
     name = _require_string(payload, "name", max_length=120)
-    location = _optional_string(payload, "location", max_length=120)
+    location = _optional_string(payload, "location", max_length=255)
+    phone = _optional_string(payload, "phone", max_length=30)
+    manager = _optional_string(payload, "manager", max_length=120)
+    status = _optional_string(payload, "status", default="activa", max_length=30)
+    code = _optional_string(payload, "code", max_length=20)
     timezone = _optional_string(payload, "timezone", default="UTC", max_length=50)
-    return {"name": name, "location": location, "timezone": timezone}
+    return {
+        "name": name,
+        "location": location,
+        "phone": phone,
+        "manager": manager,
+        "status": status or "activa",
+        "code": code,
+        "timezone": timezone or "UTC",
+    }
 
 
 def _validate_device_payload(payload: dict[str, Any]) -> dict[str, Any]:

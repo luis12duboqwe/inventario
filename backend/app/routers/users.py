@@ -34,12 +34,17 @@ def create_user(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if not role_names:
         role_names = {GERENTE}
-    user = crud.create_user(
-        db,
-        payload,
-        password_hash=hash_password(payload.password),
-        role_names=sorted(role_names),
-    )
+    try:
+        user = crud.create_user(
+            db,
+            payload,
+            password_hash=hash_password(payload.password),
+            role_names=sorted(role_names),
+        )
+    except ValueError as exc:
+        if str(exc) == "store_not_found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La sucursal asignada no existe") from exc
+        raise
     return user
 
 

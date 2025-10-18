@@ -940,8 +940,8 @@ def inventory_movements_csv(
                 movement.tipo_movimiento.value,
                 movement.cantidad,
                 f"{movement.valor_total:.2f}",
-                movement.tienda_destino or "-",
-                movement.tienda_origen or "-",
+                movement.sucursal_destino or "-",
+                movement.sucursal_origen or "-",
                 movement.usuario or "-",
                 movement.comentario or "-",
             ]

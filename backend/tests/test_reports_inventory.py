@@ -472,7 +472,7 @@ def test_inventory_movements_report_and_csv(client) -> None:
         "tipo_movimiento": "entrada",
         "cantidad": 5,
         "comentario": "Ajuste inicial",
-        "tienda_destino_id": store_id,
+        "sucursal_destino_id": store_id,
         "unit_cost": 1250,
     }
     entrada_response = client.post(
@@ -487,7 +487,7 @@ def test_inventory_movements_report_and_csv(client) -> None:
         "tipo_movimiento": "salida",
         "cantidad": 3,
         "comentario": "Salida por venta",
-        "tienda_destino_id": store_id,
+        "sucursal_destino_id": store_id,
         "unit_cost": 1800,
     }
     salida_response = client.post(

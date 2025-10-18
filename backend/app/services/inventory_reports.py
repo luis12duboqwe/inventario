@@ -229,8 +229,8 @@ def render_inventory_movements_pdf(report: schemas.InventoryMovementsReport) -> 
                 movement.tipo_movimiento.value.upper(),
                 _format_units(movement.cantidad),
                 _format_currency(movement.valor_total),
-                movement.tienda_destino or "-",
-                movement.tienda_origen or "-",
+                movement.sucursal_destino or "-",
+                movement.sucursal_origen or "-",
                 movement.usuario or "-",
                 movement.comentario or "-",
             ]
@@ -434,8 +434,8 @@ def build_inventory_movements_excel(report: schemas.InventoryMovementsReport) ->
                 movement.tipo_movimiento.value.upper(),
                 movement.cantidad,
                 float(movement.valor_total),
-                movement.tienda_destino or "-",
-                movement.tienda_origen or "-",
+                movement.sucursal_destino or "-",
+                movement.sucursal_origen or "-",
                 movement.usuario or "-",
                 movement.comentario or "-",
             ]
