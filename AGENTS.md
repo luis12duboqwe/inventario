@@ -294,3 +294,5 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Los nuevos esquemas (`CustomerPortfolioReport`, `CustomerDashboardMetrics`, etc.) viven en `backend/app/schemas/__init__.py` y deben mantenerse en sincronía con `backend/app/crud.py` y el frontend.
 - Cobertura: `backend/tests/test_customers.py` incorpora casos `test_customer_filters_and_reports` y `test_customer_portfolio_exports`; cualquier cambio en reportes o métricas debe actualizar estas pruebas.
 
+- Refinamiento 26/10/2025 09:15 UTC: el listado de clientes (`GET /customers`) admite filtros dedicados `status_filter` y `customer_type_filter` que se consumen desde `Customers.tsx`, habilitando segmentaciones rápidas (activo, moroso, VIP, corporativo) y cobertura automática en `test_customer_list_filters_by_status_and_type`.
+

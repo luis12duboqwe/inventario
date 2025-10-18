@@ -21,6 +21,8 @@ def list_customers_endpoint(
         default=None, description="Filtra clientes con (true) o sin (false) saldo"
     ),
     export: str | None = Query(default=None, description="Formato de exportación"),
+    status_filter: str | None = Query(default=None, description="Filtrar por estado del cliente"),
+    customer_type_filter: str | None = Query(default=None, description="Filtrar por tipo de cliente"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
@@ -32,8 +34,34 @@ def list_customers_endpoint(
         customer_type=customer_type,
         has_debt=has_debt,
     )
+    try:
+        customers = crud.list_customers(
+            db,
+            query=q,
+            limit=limit,
+            status=status_filter,
+            customer_type=customer_type_filter,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "invalid_customer_status":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Estado de cliente inválido.",
+            ) from exc
+        if detail == "invalid_customer_type":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tipo de cliente inválido.",
+            ) from exc
+        raise
     if export == "csv":
-        csv_content = crud.export_customers_csv(db, query=q)
+        csv_content = crud.export_customers_csv(
+            db,
+            query=q,
+            status=status_filter,
+            customer_type=customer_type_filter,
+        )
         return Response(
             content=csv_content,
             media_type="text/csv",

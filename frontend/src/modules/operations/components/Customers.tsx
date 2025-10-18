@@ -111,6 +111,8 @@ function Customers({ token }: Props) {
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [dashboardMonths, setDashboardMonths] = useState<number>(6);
   const [dashboardTopLimit, setDashboardTopLimit] = useState<number>(5);
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("");
 
   const refreshCustomerSummary = useCallback(
     async (customerId: number) => {
@@ -147,6 +149,15 @@ function Customers({ token }: Props) {
               ? false
               : undefined,
         });
+        const data = await listCustomers(
+          token,
+          query && query.length > 0 ? query : undefined,
+          200,
+          {
+            status: statusFilter || undefined,
+            customerType: typeFilter || undefined,
+          }
+        );
         setCustomers(data);
         if (summaryCustomerId) {
           const exists = data.some((customer) => customer.id === summaryCustomerId);
@@ -181,6 +192,7 @@ function Customers({ token }: Props) {
       dateTo: portfolioDateTo || undefined,
     }),
     [portfolioCategory, portfolioLimit, portfolioDateFrom, portfolioDateTo]
+    ]
   );
 
   const refreshPortfolio = useCallback(async () => {
@@ -498,7 +510,14 @@ function Customers({ token }: Props) {
     try {
       setExporting(true);
       const trimmed = search.trim();
-      const blob = await exportCustomersCsv(token, trimmed.length >= 2 ? trimmed : undefined);
+      const blob = await exportCustomersCsv(
+        token,
+        trimmed.length >= 2 ? trimmed : undefined,
+        {
+          status: statusFilter || undefined,
+          customerType: typeFilter || undefined,
+        }
+      );
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -686,6 +705,8 @@ function Customers({ token }: Props) {
             onChange={(event) => setStatusFilter(event.target.value)}
           >
             <option value="todos">Todos</option>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">Todos</option>
             {CUSTOMER_STATUSES.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
@@ -700,6 +721,8 @@ function Customers({ token }: Props) {
             onChange={(event) => setTypeFilter(event.target.value)}
           >
             <option value="todos">Todos</option>
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+            <option value="">Todos</option>
             {CUSTOMER_TYPES.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}

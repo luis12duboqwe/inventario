@@ -2087,6 +2087,11 @@ export function getPurchaseStatistics(
   return request<PurchaseStatistics>(`/purchases/statistics${suffix}`, { method: "GET" }, token);
 }
 
+type CustomerListFilters = {
+  status?: string;
+  customerType?: string;
+};
+
 export function listCustomers(
   token: string,
   options: {
@@ -2096,6 +2101,9 @@ export function listCustomers(
     customerType?: string;
     hasDebt?: boolean;
   } = {}
+  query?: string,
+  limit = 100,
+  filters?: CustomerListFilters
 ): Promise<Customer[]> {
   const params = new URLSearchParams({ limit: String(options.limit ?? 100) });
   if (options.query) {
@@ -2110,13 +2118,29 @@ export function listCustomers(
   if (typeof options.hasDebt === "boolean") {
     params.append("has_debt", String(options.hasDebt));
   }
+  if (filters?.status) {
+    params.append("status_filter", filters.status);
+  }
+  if (filters?.customerType) {
+    params.append("customer_type_filter", filters.customerType);
+  }
   return request<Customer[]>(`/customers?${params.toString()}`, { method: "GET" }, token);
 }
 
-export function exportCustomersCsv(token: string, query?: string): Promise<Blob> {
+export function exportCustomersCsv(
+  token: string,
+  query?: string,
+  filters?: CustomerListFilters
+): Promise<Blob> {
   const params = new URLSearchParams({ export: "csv" });
   if (query) {
     params.append("q", query);
+  }
+  if (filters?.status) {
+    params.append("status_filter", filters.status);
+  }
+  if (filters?.customerType) {
+    params.append("customer_type_filter", filters.customerType);
   }
   return request<Blob>(`/customers?${params.toString()}`, { method: "GET" }, token);
 }

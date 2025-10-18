@@ -160,6 +160,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - Se corrige la serialización del campo `created_by` en los pagos registrados para evitar `ResponseValidationError` y se refuerza la bitácora de devoluciones POS enlazando el usuario que procesa cada asiento.
 - Se devuelve un error HTTP 409 explícito cuando una venta a crédito (API clásica o POS) intenta exceder el límite autorizado, con cobertura automatizada (`test_credit_sale_rejected_when_limit_exceeded`) que garantiza que el inventario permanezca intacto ante bloqueos.
 - Los ajustes manuales de saldo realizados desde `PUT /customers/{id}` quedan registrados como asientos `adjustment` en la bitácora financiera, con historial automático y detalles de saldo previo/posterior para facilitar auditorías desde la UI de clientes.
+- El listado corporativo de clientes admite filtros dedicados por estado y tipo desde la API (`status_filter`, `customer_type_filter`) y la UI (`Customers.tsx`), permitiendo localizar rápidamente perfiles morosos, VIP o minoristas; la prueba `test_customer_list_filters_by_status_and_type` verifica la regla.
 
 ## Actualización Clientes - Parte 3 (Interfaz y Reportes)
 
