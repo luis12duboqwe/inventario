@@ -2087,25 +2087,22 @@ export function getPurchaseStatistics(
   return request<PurchaseStatistics>(`/purchases/statistics${suffix}`, { method: "GET" }, token);
 }
 
-type CustomerListFilters = {
+type CustomerListOptions = {
+  query?: string;
+  limit?: number;
   status?: string;
   customerType?: string;
+  hasDebt?: boolean;
+  statusFilter?: string;
+  customerTypeFilter?: string;
 };
 
 export function listCustomers(
   token: string,
-  options: {
-    query?: string;
-    limit?: number;
-    status?: string;
-    customerType?: string;
-    hasDebt?: boolean;
-  } = {}
-  query?: string,
-  limit = 100,
-  filters?: CustomerListFilters
+  options: CustomerListOptions = {}
 ): Promise<Customer[]> {
-  const params = new URLSearchParams({ limit: String(options.limit ?? 100) });
+  const params = new URLSearchParams();
+  params.append("limit", String(options.limit ?? 100));
   if (options.query) {
     params.append("q", options.query);
   }
@@ -2118,31 +2115,41 @@ export function listCustomers(
   if (typeof options.hasDebt === "boolean") {
     params.append("has_debt", String(options.hasDebt));
   }
-  if (filters?.status) {
-    params.append("status_filter", filters.status);
+  if (options.statusFilter) {
+    params.append("status_filter", options.statusFilter);
   }
-  if (filters?.customerType) {
-    params.append("customer_type_filter", filters.customerType);
+  if (options.customerTypeFilter) {
+    params.append("customer_type_filter", options.customerTypeFilter);
   }
-  return request<Customer[]>(`/customers?${params.toString()}`, { method: "GET" }, token);
+  const queryString = params.toString();
+  return request<Customer[]>(`/customers?${queryString}`, { method: "GET" }, token);
 }
 
 export function exportCustomersCsv(
   token: string,
-  query?: string,
-  filters?: CustomerListFilters
+  options: CustomerListOptions = {}
 ): Promise<Blob> {
   const params = new URLSearchParams({ export: "csv" });
-  if (query) {
-    params.append("q", query);
+  if (options.query) {
+    params.append("q", options.query);
   }
-  if (filters?.status) {
-    params.append("status_filter", filters.status);
+  if (options.status) {
+    params.append("status", options.status);
   }
-  if (filters?.customerType) {
-    params.append("customer_type_filter", filters.customerType);
+  if (options.customerType) {
+    params.append("customer_type", options.customerType);
   }
-  return request<Blob>(`/customers?${params.toString()}`, { method: "GET" }, token);
+  if (typeof options.hasDebt === "boolean") {
+    params.append("has_debt", String(options.hasDebt));
+  }
+  if (options.statusFilter) {
+    params.append("status_filter", options.statusFilter);
+  }
+  if (options.customerTypeFilter) {
+    params.append("customer_type_filter", options.customerTypeFilter);
+  }
+  const queryString = params.toString();
+  return request<Blob>(`/customers?${queryString}`, { method: "GET" }, token);
 }
 
 export function getCustomerPortfolio(

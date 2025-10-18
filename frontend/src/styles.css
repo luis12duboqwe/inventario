@@ -3418,3 +3418,193 @@ ol {
     padding: 1.25rem;
   }
 }
+
+/* Clientes — Interfaz y reportes */
+.customers-module {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.customers-columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1080px) {
+  .customers-columns {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+  }
+}
+
+.customer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+@media (min-width: 1280px) {
+  .customer-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+.customer-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.summary-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.summary-header h4 {
+  margin: 0;
+}
+
+.summary-financial {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(56, 189, 248, 0.12));
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.summary-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.2rem;
+}
+
+.summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.summary-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.14);
+}
+
+.summary-amount {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.portfolio-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.portfolio-summary div {
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.customers-dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+
+.dashboard-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 14px;
+  padding: 1rem;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.dashboard-card h4 {
+  margin: 0;
+}
+
+.bars-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.bars-list li {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bar__fill {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(31, 107, 255, 0.85), rgba(56, 189, 248, 0.9));
+}
+
+.bar__value {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.morosity-indicator {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.morosity-ring {
+  position: relative;
+  width: 96px;
+  height: 96px;
+}
+
+.morosity-ring__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.morosity-ring span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.small {
+  font-size: 0.75rem;
+}

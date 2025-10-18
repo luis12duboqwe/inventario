@@ -164,11 +164,11 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 
 ## Actualización Clientes - Parte 3 (Interfaz y Reportes)
 
-- El listado `Customers.tsx` incorpora filtros combinados por estado, tipo y saldo, conserva el tema oscuro corporativo y muestra indicadores agregados de clientes encontrados y deuda consolidada.
-- Se añade un panel de reportes que consume la nueva API `/reports/customers/portfolio`, permitiendo descargar portafolios de clientes morosos o compradores frecuentes en PDF/Excel con motivo corporativo obligatorio y configuración de límite y rango de fechas.
-- El dashboard de clientes consume `/customers/dashboard` para representar altas mensuales, totales de deuda y top compradores en tablas oscuras con barras proporcionales, parametrizando meses y tamaño del ranking.
-- El backend expone `build_customer_portfolio` y `get_customer_dashboard_metrics`, con exportación PDF/Excel estilizada en `backend/app/services/customer_reports.py` y nuevos esquemas Pydantic para métricas y portafolios.
-- Se documentan pruebas automatizadas en `backend/tests/test_customers.py` que cubren filtros del listado, métricas del dashboard y exportaciones PDF/Excel de portafolios, asegurando compatibilidad con motivo corporativo y formato oscuro.
+- La vista `frontend/src/modules/operations/components/Customers.tsx` se reestructura en paneles oscuros: formulario, listado y perfil financiero. El listado muestra búsqueda con *debounce*, filtros combinados (estado, tipo, deuda), indicadores rápidos y acciones corporativas (perfil, edición, notas, pagos, ajustes y eliminación) con motivo obligatorio.
+- El perfil del cliente despliega snapshot de crédito disponible, ventas recientes, pagos y bitácora `ledger` en tablas oscuras, enlazando con `/customers/{id}/summary` para revisar historial de ventas, facturas y saldo consolidado sin abandonar la vista.
+- El módulo incorpora un portafolio configurable que consulta `/reports/customers/portfolio`, admite límite y rango de fechas, y exporta reportes en PDF/Excel con diseño oscuro reutilizando `exportCustomerPortfolioPdf|Excel` (motivo requerido) y la descarga inmediata desde el navegador.
+- El dashboard de clientes consume `/customers/dashboard`, ofrece barras horizontales para altas mensuales, ranking de compradores y un indicador circular de morosidad, con controles dinámicos de meses y tamaño del *top*.
+- Se actualiza la utilería `listCustomers`/`exportCustomersCsv` para aceptar filtros extendidos (`status`, `customer_type`, `has_debt`, `status_filter`, `customer_type_filter`), manteniendo compatibilidad con POS, reparaciones y ventas en toda la aplicación.
 
 ## Mejora visual v2.2.0 — Dashboard modularizado
 
