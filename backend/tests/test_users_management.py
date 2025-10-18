@@ -1,5 +1,7 @@
 from fastapi import status
 
+from backend.app.config import settings
+
 
 def _bootstrap_admin(client):
     payload = {
@@ -80,6 +82,27 @@ def test_user_filters_dashboard_and_export(client):
     )
     assert token_response.status_code == status.HTTP_200_OK
 
+    original_max_attempts = settings.max_failed_login_attempts
+    try:
+        settings.max_failed_login_attempts = 1
+        failed_login = client.post(
+            "/auth/token",
+            data={"username": create_payload["username"], "password": "ContraseñaInvalida!"},
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+        assert failed_login.status_code == status.HTTP_401_UNAUTHORIZED
+    finally:
+        settings.max_failed_login_attempts = original_max_attempts
+
+    locked_list = client.get(
+        "/users",
+        headers=auth_headers,
+        params={"status": "locked"},
+    )
+    assert locked_list.status_code == status.HTTP_200_OK
+    locked_users = locked_list.json()
+    assert any(item["id"] == user_id for item in locked_users)
+
     # Consultar el dashboard de usuarios
     dashboard_response = client.get("/users/dashboard", headers=auth_headers)
     assert dashboard_response.status_code == status.HTTP_200_OK
@@ -88,6 +111,11 @@ def test_user_filters_dashboard_and_export(client):
     assert "recent_activity" in dashboard
     assert "active_sessions" in dashboard
     assert "audit_alerts" in dashboard
+    assert dashboard["totals"]["locked"] >= 0
+
+    refreshed_dashboard = client.get("/users/dashboard", headers=auth_headers)
+    assert refreshed_dashboard.status_code == status.HTTP_200_OK
+    assert refreshed_dashboard.json()["totals"]["locked"] >= 1
 
     # Exportar a PDF
     pdf_response = client.get(
@@ -98,11 +126,18 @@ def test_user_filters_dashboard_and_export(client):
     assert pdf_response.status_code == status.HTTP_200_OK
     assert pdf_response.headers["content-type"] == "application/pdf"
 
+    locked_pdf = client.get(
+        "/users/export",
+        headers={**auth_headers, "X-Reason": "Auditoria usuarios"},
+        params={"format": "pdf", "status": "locked"},
+    )
+    assert locked_pdf.status_code == status.HTTP_200_OK
+
     # Exportar a Excel
     xlsx_response = client.get(
         "/users/export",
         headers={**auth_headers, "X-Reason": "Auditoria usuarios"},
-        params={"format": "xlsx"},
+        params={"format": "xlsx", "status": "locked"},
     )
     assert xlsx_response.status_code == status.HTTP_200_OK
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in xlsx_response.headers["content-type"]

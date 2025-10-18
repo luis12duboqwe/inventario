@@ -1230,7 +1230,7 @@ def list_users(
     *,
     search: str | None = None,
     role: str | None = None,
-    status: Literal["all", "active", "inactive"] = "all",
+    status: Literal["all", "active", "inactive", "locked"] = "all",
     store_id: int | None = None,
 ) -> list[models.User]:
     statement = (
@@ -1273,7 +1273,10 @@ def list_users(
     if store_id is not None:
         statement = statement.where(models.User.store_id == store_id)
 
-    return list(db.scalars(statement).unique())
+    users = list(db.scalars(statement).unique())
+    if status_normalized == "locked":
+        return [user for user in users if _user_is_locked(user)]
+    return users
 
 
 def set_user_roles(
@@ -1540,7 +1543,7 @@ def build_user_directory(
     *,
     search: str | None = None,
     role: str | None = None,
-    status: Literal["all", "active", "inactive"] = "all",
+    status: Literal["all", "active", "inactive", "locked"] = "all",
     store_id: int | None = None,
 ) -> schemas.UserDirectoryReport:
     users = list_users(
