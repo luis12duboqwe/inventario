@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import logging
 
+from datetime import datetime
+from io import BytesIO
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
@@ -13,6 +17,7 @@ from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import sync as sync_service
+from ..services import sync_conflict_reports
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +83,113 @@ def list_sessions(
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     return crud.list_sync_sessions(db, limit=limit)
+
+
+@router.get("/overview", response_model=list[schemas.SyncBranchOverview])
+def sync_overview(
+    store_id: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    data = crud.get_store_sync_overview(db, store_id=store_id)
+    return [schemas.SyncBranchOverview(**entry) for entry in data]
+
+
+def _prepare_conflict_report(
+    db: Session,
+    *,
+    store_id: int | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    severity: schemas.SyncBranchHealth | None,
+) -> schemas.SyncConflictReport:
+    conflicts = crud.list_sync_conflicts(
+        db,
+        store_id=store_id,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+        limit=500,
+    )
+    filters = schemas.SyncConflictReportFilters(
+        store_id=store_id,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+    )
+    return sync_conflict_reports.build_conflict_report(conflicts, filters)
+
+
+@router.get("/conflicts", response_model=list[schemas.SyncConflictLog])
+def list_conflicts(
+    store_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    severity: schemas.SyncBranchHealth | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    return crud.list_sync_conflicts(
+        db,
+        store_id=store_id,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+        limit=limit,
+    )
+
+
+@router.get("/conflicts/export/pdf")
+def export_conflicts_pdf(
+    store_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    severity: schemas.SyncBranchHealth | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    report = _prepare_conflict_report(
+        db,
+        store_id=store_id,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+    )
+    pdf_bytes = sync_conflict_reports.render_conflict_report_pdf(report)
+    filename = f"conflictos_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/conflicts/export/xlsx")
+def export_conflicts_excel(
+    store_id: int | None = Query(default=None, ge=1),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    severity: schemas.SyncBranchHealth | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    report = _prepare_conflict_report(
+        db,
+        store_id=store_id,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+    )
+    excel_bytes = sync_conflict_reports.render_conflict_report_excel(report)
+    filename = f"conflictos_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return StreamingResponse(
+        BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.get("/outbox", response_model=list[schemas.SyncOutboxEntryResponse])

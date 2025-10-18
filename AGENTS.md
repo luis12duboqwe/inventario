@@ -229,6 +229,13 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Las pruebas `backend/tests/test_sync_replication.py` y `backend/tests/test_sync_full.py` validan estados `SENT`, discrepancias y sincronización de inventario/ventas/compras; mantenlas actualizadas si cambias flujos híbridos o cargas útiles.
 - Documenta nuevas rutas, métricas de sincronización u opciones de respaldo en README/CHANGELOG bajo este epígrafe y ejecuta `pytest` tras modificar la cola `sync_outbox` o `services/backups`.
 
+### Actualización Sucursales - Parte 3 (Interfaz y Control Central) (27/10/2025 17:45 UTC)
+
+- La vista `frontend/src/modules/sync/pages/SyncPage.tsx` debe conservar el tablero con el estado por sucursal (columna de salud, última sincronización, inventario, transferencias pendientes y conflictos) alimentado por `/sync/overview`.
+- Mantén habilitados los reportes de transferencias (`/transfers/report`, `/transfers/export/{pdf|xlsx}`) y sus botones en la UI; cualquier ajuste debe respetar la cabecera `X-Reason` y actualizar `backend/tests/test_sync_interface.py`.
+- Los conflictos de sincronización deben listarse y exportarse a PDF/Excel desde `/sync/conflicts` sin eliminar la trazabilidad `sync_discrepancy`; preserva la generación de badges y detalles de tiendas involucradas.
+- Documenta nuevas métricas o flujos en README/CHANGELOG bajo «Actualización Sucursales - Parte 3 (Interfaz y Control Central)» y asegúrate de ejecutar `pytest` al modificar reportes, exportaciones o el tablero.
+
 ### Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
 
 - Se crean las tablas `proveedores`, `compras` y `detalle_compras` con columnas (`id_proveedor`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `notas`, `id_compra`, `proveedor_id`, `usuario_id`, `fecha`, `total`, `impuesto`, `forma_pago`, `estado`, `id_detalle`, `compra_id`, `producto_id`, `cantidad`, `costo_unitario`, `subtotal`) alineadas al mandato Softmobile 2025 v2.2.0.

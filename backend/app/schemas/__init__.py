@@ -923,6 +923,56 @@ class TransferOrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TransferReportFilters(BaseModel):
+    store_id: int | None = None
+    origin_store_id: int | None = None
+    destination_store_id: int | None = None
+    status: TransferStatus | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+
+
+class TransferReportDevice(BaseModel):
+    sku: str | None
+    name: str | None
+    quantity: int
+
+
+class TransferReportItem(BaseModel):
+    id: int
+    folio: str
+    origin_store: str
+    destination_store: str
+    status: TransferStatus
+    reason: str | None
+    requested_at: datetime
+    dispatched_at: datetime | None
+    received_at: datetime | None
+    cancelled_at: datetime | None
+    requested_by: str | None
+    dispatched_by: str | None
+    received_by: str | None
+    cancelled_by: str | None
+    total_quantity: int
+    devices: list[TransferReportDevice]
+
+
+class TransferReportTotals(BaseModel):
+    total_transfers: int
+    pending: int
+    in_transit: int
+    completed: int
+    cancelled: int
+    total_quantity: int
+
+
+class TransferReport(BaseModel):
+    generated_at: datetime
+    filters: TransferReportFilters
+    totals: TransferReportTotals
+    items: list[TransferReportItem]
+
+
 class RoleResponse(BaseModel):
     id: int
     name: str
@@ -1621,6 +1671,66 @@ class SyncStoreHistory(BaseModel):
     store_id: int | None
     store_name: str
     sessions: list[SyncSessionCompact]
+
+
+class SyncBranchHealth(str, enum.Enum):
+    OPERATIVE = "operativa"
+    WARNING = "alerta"
+    CRITICAL = "critica"
+    UNKNOWN = "sin_registros"
+
+
+class SyncBranchStoreDetail(BaseModel):
+    store_id: int
+    store_name: str
+    quantity: int
+
+
+class SyncBranchOverview(BaseModel):
+    store_id: int
+    store_name: str
+    store_code: str
+    timezone: str
+    inventory_value: Decimal
+    last_sync_at: datetime | None
+    last_sync_mode: SyncMode | None
+    last_sync_status: SyncStatus | None
+    health: SyncBranchHealth
+    health_label: str
+    pending_transfers: int
+    open_conflicts: int
+
+
+class SyncConflictLog(BaseModel):
+    id: int
+    sku: str
+    product_name: str | None
+    detected_at: datetime
+    difference: int
+    severity: SyncBranchHealth
+    stores_max: list[SyncBranchStoreDetail]
+    stores_min: list[SyncBranchStoreDetail]
+
+
+class SyncConflictReportFilters(BaseModel):
+    store_id: int | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    severity: SyncBranchHealth | None = None
+
+
+class SyncConflictReportTotals(BaseModel):
+    count: int
+    critical: int
+    warning: int
+    affected_skus: int
+
+
+class SyncConflictReport(BaseModel):
+    generated_at: datetime
+    filters: SyncConflictReportFilters
+    totals: SyncConflictReportTotals
+    items: list[SyncConflictLog]
 
 
 class StoreComparativeMetric(BaseModel):
@@ -2979,10 +3089,22 @@ __all__ = [
     "SyncOutboxEntryResponse",
     "SyncOutboxPriority",
     "SyncOutboxStatsEntry",
+    "SyncBranchHealth",
+    "SyncBranchOverview",
+    "SyncBranchStoreDetail",
+    "SyncConflictLog",
+    "SyncConflictReport",
+    "SyncConflictReportFilters",
+    "SyncConflictReportTotals",
     "SyncSessionCompact",
     "SyncStoreHistory",
     "SyncOutboxReplayRequest",
     "SyncSessionResponse",
+    "TransferReport",
+    "TransferReportDevice",
+    "TransferReportFilters",
+    "TransferReportItem",
+    "TransferReportTotals",
     "TokenPayload",
     "TokenResponse",
     "UpdateStatus",
