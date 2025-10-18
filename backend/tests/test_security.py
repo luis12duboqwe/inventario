@@ -1,8 +1,9 @@
 from fastapi import status
 import pyotp
 
+from backend.app import models
 from backend.app.config import settings
-from backend.app.core.roles import ADMIN
+from backend.app.core.roles import ADMIN, OPERADOR
 
 
 def _bootstrap_admin(client):
@@ -84,3 +85,134 @@ def test_totp_flow_and_session_revocation(client):
     assert me_response.status_code == status.HTTP_401_UNAUTHORIZED
 
     settings.enable_2fa = False
+
+
+def test_login_lockout_and_password_reset_flow(client):
+    original_max = settings.max_failed_login_attempts
+    original_lock = settings.account_lock_minutes
+    original_testing = settings.testing_mode
+    try:
+        settings.max_failed_login_attempts = 3
+        settings.account_lock_minutes = 30
+        settings.testing_mode = True
+        payload = _bootstrap_admin(client)
+
+        for _ in range(settings.max_failed_login_attempts):
+            response = client.post(
+                "/auth/token",
+                data={"username": payload["username"], "password": "Falla123"},
+                headers={"content-type": "application/x-www-form-urlencoded"},
+            )
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+        locked_response = client.post(
+            "/auth/token",
+            data={"username": payload["username"], "password": payload["password"]},
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+        assert locked_response.status_code == status.HTTP_403_FORBIDDEN
+
+        reset_request = client.post(
+            "/auth/password/request",
+            json={"username": payload["username"]},
+        )
+        assert reset_request.status_code == status.HTTP_202_ACCEPTED
+        reset_token = reset_request.json().get("reset_token")
+        assert reset_token
+
+        new_password = "ReinicioSeguro123$"
+        reset_response = client.post(
+            "/auth/password/reset",
+            json={"token": reset_token, "new_password": new_password},
+        )
+        assert reset_response.status_code == status.HTTP_200_OK
+
+        success_login = client.post(
+            "/auth/token",
+            data={"username": payload["username"], "password": new_password},
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+        assert success_login.status_code == status.HTTP_200_OK
+    finally:
+        settings.max_failed_login_attempts = original_max
+        settings.account_lock_minutes = original_lock
+        settings.testing_mode = original_testing
+
+
+def test_session_cookie_login_allows_me_endpoint(client):
+    payload = _bootstrap_admin(client)
+
+    session_login = client.post(
+        "/auth/session",
+        data={"username": payload["username"], "password": payload["password"]},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert session_login.status_code == status.HTTP_200_OK
+    cookie_name = settings.session_cookie_name
+    assert cookie_name in session_login.cookies
+    session_cookie = session_login.cookies.get(cookie_name)
+    assert session_cookie
+
+    me_response = client.get("/auth/me")
+    assert me_response.status_code == status.HTTP_200_OK
+    assert me_response.json()["username"] == payload["username"]
+
+
+def test_module_permissions_block_operator_edit_without_permission(client, db_session):
+    admin_payload = _bootstrap_admin(client)
+    login_response = client.post(
+        "/auth/token",
+        data={"username": admin_payload["username"], "password": admin_payload["password"]},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert login_response.status_code == status.HTTP_200_OK
+    admin_token = login_response.json()["access_token"]
+
+    operator_payload = {
+        "username": "operador@example.com",
+        "password": "Operador123$",
+        "full_name": "Usuario Operador",
+        "roles": [OPERADOR],
+    }
+    create_response = client.post(
+        "/users",
+        json=operator_payload,
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+
+    permission = (
+        db_session.query(models.Permission)
+        .filter(
+            models.Permission.role_name == OPERADOR,
+            models.Permission.module == "inventario",
+        )
+        .one()
+    )
+    permission.can_edit = False
+    db_session.commit()
+
+    operator_login = client.post(
+        "/auth/token",
+        data={"username": operator_payload["username"], "password": operator_payload["password"]},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert operator_login.status_code == status.HTTP_200_OK
+    operator_token = operator_login.json()["access_token"]
+
+    movement_payload = {
+        "producto_id": 1,
+        "tipo_movimiento": "IN",
+        "cantidad": 1,
+        "comentario": "Ajuste inventario",
+        "sucursal_origen_id": None,
+    }
+    denied_response = client.post(
+        "/inventory/stores/1/movements",
+        json=movement_payload,
+        headers={
+            "Authorization": f"Bearer {operator_token}",
+            "X-Reason": "Ajuste inventario",
+        },
+    )
+    assert denied_response.status_code == status.HTTP_403_FORBIDDEN

@@ -295,6 +295,15 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se añadieron aserciones explícitas en la prueba estructural para confirmar los valores predeterminados `OPERADOR` (rol) y `ACTIVO` (estado) y mantener la unicidad del índice `ix_usuarios_correo` sobre la columna `correo`.
 - Documentación corporativa (README, CHANGELOG y este AGENTS) registra la fase bajo «Actualización Usuarios - Parte 1 (Estructura y Roles Base)» para sostener la trazabilidad del módulo de seguridad.
 
+### Actualización Usuarios - Parte 2 (Seguridad y Auditoría) (27/10/2025 18:40 UTC)
+
+- Autenticación híbrida reforzada: `/auth/token` ahora registra sesiones con expiración (`expires_at`) y `/auth/session` habilita cookies HTTPOnly configurables (`SOFTMOBILE_SESSION_COOKIE_*`) sin abandonar la compatibilidad con JWT.
+- Se añaden los campos `failed_login_attempts`, `last_login_attempt_at` y `locked_until` a `usuarios` para bloquear cuentas tras `SOFTMOBILE_MAX_FAILED_LOGIN_ATTEMPTS`; los eventos quedan auditados en `audit_logs` y se limpian automáticamente al autenticar correctamente.
+- Nuevo repositorio `password_reset_tokens` con tokens temporales generados por `/auth/password/request` y consumidos en `/auth/password/reset`, que además revoca sesiones activas y restablece la contraseña con hash bcrypt.
+- El middleware de seguridad valida permisos modulares (`permisos.puede_ver/editar/borrar`) para inventario, ventas, compras, POS, clientes, proveedores, reparaciones, transferencias, seguridad, usuarios, sincronización, reportes, respaldos y actualizaciones antes de ejecutar cualquier handler.
+- `ActiveSession` incorpora `expires_at` y la revocación automática por expiración; los endpoints de sesiones siguen disponibles para gerencia con motivo corporativo.
+- Cobertura en `backend/tests/test_security.py` valida bloqueo, restablecimiento, sesión por cookie y rechazo de operaciones de edición para roles `INVITADO`, garantizando el cumplimiento del plan «Seguridad y Auditoría» de Softmobile 2025 v2.2.0.
+
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
 - La migración `202503010005_clientes_estructura_relaciones.py` renombra la tabla `customers` a `clientes`, ajusta columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y marca el teléfono como obligatorio con valores de contingencia para datos históricos.

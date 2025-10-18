@@ -138,6 +138,15 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Valores predeterminados auditados**: la prueba `backend/tests/test_usuarios_schema.py::test_usuarios_columnas_indices_y_fk` también confirma que `rol` y `estado` conserven los valores por omisión `OPERADOR` y `ACTIVO`, respectivamente, y que el índice `ix_usuarios_correo` mantenga la unicidad sobre la columna `correo`.
 - **API y esquemas**: los esquemas Pydantic aceptan alias en español (`correo`, `nombre`, `sucursal_id`) y devuelven metadatos (`fecha_creacion`, `estado`, `rol`, `telefono`) sin romper las pruebas existentes. La documentación se actualizó para reflejar los nuevos campos obligatorios del módulo de seguridad.
 
+## Actualización Usuarios - Parte 2 (Seguridad y Auditoría)
+
+- **Autenticación dual**: `/auth/token` continúa emitiendo JWT y ahora registra sesiones con fecha de expiración; además se estrena `/auth/session`, que crea una sesión segura persistida en base de datos y entrega una cookie HTTPOnly configurable (`SOFTMOBILE_SESSION_COOKIE_*`).
+- **Control de intentos y bloqueo automático**: cada credencial inválida incrementa `failed_login_attempts`, persiste la fecha de intento y, al alcanzar `SOFTMOBILE_MAX_FAILED_LOGIN_ATTEMPTS`, fija `locked_until` evitando accesos durante `SOFTMOBILE_ACCOUNT_LOCK_MINUTES`. Los eventos se auditan en `audit_logs` como `auth_login_failed` y `auth_login_success`.
+- **Recuperación de contraseña con token temporal**: `/auth/password/request` genera tokens efímeros almacenados en `password_reset_tokens` y `/auth/password/reset` permite reestablecer la clave (hash bcrypt con `salt`), revoca sesiones activas y limpia contadores de bloqueo. En modo pruebas se devuelve el `reset_token` para automatizar flujos.
+- **Permisos modulares obligatorios**: el middleware centraliza la validación de permisos por módulo mediante la tabla `permisos` y la nueva matriz `ROLE_MODULE_PERMISSION_MATRIX`. Cada petición determina la acción (`view`, `edit`, `delete`) según el método HTTP y rechaza accesos sin `puede_ver/editar/borrar`, garantizando trazabilidad por rol sin romper compatibilidad.
+- **Sesiones auditables**: `active_sessions` incluye `expires_at`, se actualiza `last_used_at` al utilizar cookies o JWT y se registra la revocación automática cuando expiran. Las rutas `/security/sessions` siguen permitiendo listar y revocar sesiones activas con motivo corporativo.
+- **Cobertura automatizada**: `backend/tests/test_security.py` incorpora pruebas para bloqueo y restablecimiento de contraseñas, sesión basada en cookies y rechazo de operaciones de edición para roles `INVITADO`, asegurando el cumplimiento de requisitos de seguridad y auditoría en Softmobile 2025 v2.2.0.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Se renombran las tablas operativas del módulo POS a `ventas` y `detalle_ventas`, alineando los identificadores físicos con los

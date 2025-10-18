@@ -31,6 +31,18 @@ class Settings(BaseModel):
     access_token_expire_minutes: int = Field(
         default_factory=lambda: int(os.getenv("SOFTMOBILE_TOKEN_MINUTES", "60"))
     )
+    session_cookie_expire_minutes: int = Field(
+        default_factory=lambda: int(os.getenv("SOFTMOBILE_SESSION_COOKIE_MINUTES", "480"))
+    )
+    max_failed_login_attempts: int = Field(
+        default_factory=lambda: int(os.getenv("SOFTMOBILE_MAX_FAILED_LOGIN_ATTEMPTS", "5"))
+    )
+    account_lock_minutes: int = Field(
+        default_factory=lambda: int(os.getenv("SOFTMOBILE_ACCOUNT_LOCK_MINUTES", "15"))
+    )
+    password_reset_token_minutes: int = Field(
+        default_factory=lambda: int(os.getenv("SOFTMOBILE_PASSWORD_RESET_MINUTES", "30"))
+    )
     sync_interval_seconds: int = Field(
         default_factory=lambda: int(os.getenv("SOFTMOBILE_SYNC_INTERVAL_SECONDS", "1800"))
     )
@@ -89,6 +101,15 @@ class Settings(BaseModel):
     update_feed_path: str = Field(
         default_factory=lambda: os.getenv("SOFTMOBILE_UPDATE_FEED_PATH", "./docs/releases.json")
     )
+    session_cookie_name: str = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_SESSION_COOKIE_NAME", "softmobile_session")
+    )
+    session_cookie_secure: bool = Field(
+        default_factory=lambda: _is_truthy(os.getenv("SOFTMOBILE_SESSION_COOKIE_SECURE"))
+    )
+    session_cookie_samesite: str = Field(
+        default_factory=lambda: os.getenv("SOFTMOBILE_SESSION_COOKIE_SAMESITE", "lax")
+    )
     allowed_origins: list[str] = Field(
         default_factory=lambda: os.getenv("SOFTMOBILE_ALLOWED_ORIGINS", "http://127.0.0.1:5173")
     )
@@ -103,6 +124,10 @@ class Settings(BaseModel):
         "sync_retry_interval_seconds",
         "sync_max_attempts",
         "backup_interval_seconds",
+        "session_cookie_expire_minutes",
+        "max_failed_login_attempts",
+        "account_lock_minutes",
+        "password_reset_token_minutes",
     )
     @classmethod
     def _ensure_positive(cls, value: int, info: ValidationInfo) -> int:
@@ -118,6 +143,16 @@ class Settings(BaseModel):
         if isinstance(value, (list, tuple)):
             return [str(origin).strip() for origin in value if str(origin).strip()]
         raise ValueError("allowed_origins debe ser una lista de orígenes válidos")
+
+    @field_validator("session_cookie_samesite", mode="before")
+    @classmethod
+    def _normalize_samesite(cls, value: Any) -> str:
+        if value is None:
+            return "lax"
+        normalized = str(value).strip().lower()
+        if normalized not in {"lax", "strict", "none"}:
+            raise ValueError("session_cookie_samesite debe ser lax, strict o none")
+        return normalized
 
     @field_validator(
         "inventory_low_stock_threshold",

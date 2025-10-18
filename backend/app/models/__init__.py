@@ -319,6 +319,11 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         "fecha_creacion", DateTime(timezone=True), default=datetime.utcnow
     )
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_login_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     store_id: Mapped[int | None] = mapped_column(
         "sucursal_id",
         Integer,
@@ -350,6 +355,11 @@ class User(Base):
     audit_acknowledgements: Mapped[list["AuditAlertAcknowledgement"]] = relationship(
         "AuditAlertAcknowledgement",
         back_populates="acknowledged_by",
+        cascade="all, delete-orphan",
+    )
+    password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
+        "PasswordResetToken",
+        back_populates="user",
         cascade="all, delete-orphan",
     )
 
@@ -1350,6 +1360,7 @@ class ActiveSession(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
@@ -1362,6 +1373,25 @@ class ActiveSession(Base):
     revoked_by: Mapped[User | None] = relationship(
         "User", foreign_keys=[revoked_by_id]
     )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (UniqueConstraint("token", name="uq_password_reset_token"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    user: Mapped[User] = relationship("User", back_populates="password_reset_tokens")
 
 
 class SyncOutbox(Base):
@@ -1400,6 +1430,7 @@ __all__ = [
     "BackupJob",
     "BackupMode",
     "ActiveSession",
+    "PasswordResetToken",
     "DeviceIdentifier",
     "Device",
     "InventoryMovement",
