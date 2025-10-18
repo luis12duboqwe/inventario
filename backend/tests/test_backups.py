@@ -185,8 +185,29 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
     )
     assert restore_files_response.status_code == status.HTTP_200_OK
     restore_files_data = restore_files_response.json()
+    assert restore_files_data["componentes"] == ["configuration", "critical_files"]
     assert Path(restore_files_data["destino"]).exists()
     assert (Path(restore_files_data["destino"]) / "archivos_criticos").exists()
+    assert "database" not in restore_files_data["resultados"]
+
+    restore_config_response = client.post(
+        f"/backups/{backup_id}/restore",
+        json={"componentes": ["configuration"]},
+        headers=headers,
+    )
+    assert restore_config_response.status_code == status.HTTP_200_OK
+    restore_config_data = restore_config_response.json()
+    assert restore_config_data["componentes"] == ["configuration"]
+    assert "database" not in restore_config_data["resultados"]
+
+    invalid_restore = client.post(
+        f"/backups/{backup_id}/restore",
+        json={"componentes": ["unknown_component"]},
+        headers=headers,
+    )
+    assert invalid_restore.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    error_detail = invalid_restore.json()["detail"][0]["msg"]
+    assert "Input should be" in error_detail and "critical_files" in error_detail
 
     logs_response = client.get("/logs/sistema", headers=headers)
     assert logs_response.status_code == status.HTTP_200_OK
