@@ -70,6 +70,15 @@ class BackupMode(str, enum.Enum):
     MANUAL = "manual"
 
 
+class SystemLogLevel(str, enum.Enum):
+    """Niveles de severidad admitidos en la bitácora general."""
+
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
 class Store(Base):
     __tablename__ = "sucursales"
 
@@ -503,6 +512,9 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     performed_by: Mapped[User | None] = relationship("User", back_populates="logs")
+    system_log: Mapped[Optional["SystemLog"]] = relationship(
+        "SystemLog", back_populates="audit_log", uselist=False
+    )
 
 
 class AuditAlertAcknowledgement(Base):
@@ -528,6 +540,41 @@ class AuditAlertAcknowledgement(Base):
     acknowledged_by: Mapped[User | None] = relationship(
         "User", back_populates="audit_acknowledgements"
     )
+
+
+class SystemLog(Base):
+    __tablename__ = "logs_sistema"
+
+    id: Mapped[int] = mapped_column("id_log", Integer, primary_key=True, index=True)
+    usuario: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    modulo: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    accion: Mapped[str] = mapped_column(String(120), nullable=False)
+    descripcion: Mapped[str] = mapped_column(Text, nullable=False)
+    fecha: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True
+    )
+    nivel: Mapped[SystemLogLevel] = mapped_column(
+        Enum(SystemLogLevel, name="system_log_level"), nullable=False, index=True
+    )
+    ip_origen: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    audit_log_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("audit_logs.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
+
+    audit_log: Mapped[AuditLog | None] = relationship("AuditLog", back_populates="system_log")
+
+
+class SystemError(Base):
+    __tablename__ = "errores_sistema"
+
+    id: Mapped[int] = mapped_column("id_error", Integer, primary_key=True, index=True)
+    mensaje: Mapped[str] = mapped_column(String(255), nullable=False)
+    stack_trace: Mapped[str | None] = mapped_column(Text, nullable=True)
+    modulo: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    fecha: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True
+    )
+    usuario: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
 
 
 class BackupJob(Base):
@@ -1427,6 +1474,9 @@ __all__ = [
     "CashSessionStatus",
     "Customer",
     "AuditLog",
+    "SystemLog",
+    "SystemError",
+    "SystemLogLevel",
     "BackupJob",
     "BackupMode",
     "ActiveSession",

@@ -32,6 +32,7 @@ from ..models import (
     SyncStatus,
     TransferStatus,
     CustomerLedgerEntryType,
+    SystemLogLevel,
 )
 from ..utils import audit as audit_utils
 
@@ -1957,6 +1958,40 @@ class AuditLogResponse(BaseModel):
         return self
 
 
+class SystemLogEntry(BaseModel):
+    id_log: int = Field(validation_alias=AliasChoices("id_log", "id"))
+    usuario: str | None
+    modulo: str
+    accion: str
+    descripcion: str
+    fecha: datetime
+    nivel: SystemLogLevel
+    ip_origen: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("fecha", when_used="json")
+    @classmethod
+    def _serialize_fecha(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class SystemErrorEntry(BaseModel):
+    id_error: int = Field(validation_alias=AliasChoices("id_error", "id"))
+    mensaje: str
+    stack_trace: str | None
+    modulo: str
+    fecha: datetime
+    usuario: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("fecha", when_used="json")
+    @classmethod
+    def _serialize_fecha(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
 class AuditReminderEntry(BaseModel):
     entity_type: str
     entity_id: str
@@ -3108,6 +3143,8 @@ __all__ = [
     "AuditAcknowledgementResponse",
     "AuditHighlight",
     "AuditLogResponse",
+    "SystemLogEntry",
+    "SystemErrorEntry",
     "AuditReminderEntry",
     "AuditReminderSummary",
     "DashboardAuditAlerts",

@@ -161,6 +161,14 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Motivos obligatorios y bitácora ampliada**: los endpoints `PUT /users/{id}/roles` y `PATCH /users/{id}` ahora exigen `X-Reason`, registran acciones `user_roles_updated`/`user_status_changed` con el motivo en auditoría y cuentan con pruebas que confirman el rechazo cuando falta el encabezado corporativo.【F:backend/app/routers/users.py†L136-L198】【F:backend/app/crud.py†L1289-L1324】【F:backend/tests/test_users_management.py†L173-L234】
 - **28/10/2025 09:55 UTC** — Se ajustó `crud.list_users` para aplicar `.unique()` en consultas con `joinedload`, se preservan permisos personalizados en `ensure_role_permissions`, las cuentas inactivas se reactivan al renovar contraseña y las rutas `/users/dashboard` y `/users/export` quedaron antes de `/{user_id}` para evitar respuestas 422. `pytest` se ejecutó completo en esta iteración.【F:backend/app/crud.py†L1236-L1325】【F:backend/app/routers/users.py†L109-L210】【85adf2†L1-L24】
 
+## Actualización Sistema - Parte 1 (Logs y Auditoría General)
+
+- **Tablas dedicadas**: se incorporan `logs_sistema` y `errores_sistema` con índices por usuario, módulo, fecha y nivel para garantizar trazabilidad segura.
+- **Severidades alineadas**: los eventos se clasifican automáticamente en `info`, `warning`, `error` y `critical`, integrándose con la bitácora de auditoría existente.
+- **Filtros corporativos**: nuevos endpoints `/logs/sistema` y `/logs/errores` permiten filtrar por usuario, módulo y rango de fechas ISO 8601 con acceso restringido a administradores.【F:backend/app/routers/system_logs.py†L1-L67】
+- **Registro automático de errores**: middleware central captura fallos críticos del API, preserva stack trace, módulo y dirección IP de origen sin exponer datos sensibles.【F:backend/app/main.py†L56-L123】
+- **Documentación sincronizada**: este README, `CHANGELOG.md` y `AGENTS.md` registran la actualización bajo «Actualización Sistema - Parte 1 (Logs y Auditoría General)» para mantener la trazabilidad operativa.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Se renombran las tablas operativas del módulo POS a `ventas` y `detalle_ventas`, alineando los identificadores físicos con los
