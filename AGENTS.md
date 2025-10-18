@@ -279,6 +279,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se normalizan los campos `status` y `customer_type`, se rechazan límites de crédito o saldos negativos y cada asiento (`sale`, `payment`, `adjustment`, `note`) se serializa con `_customer_ledger_payload` para su sincronización híbrida.
 - El POS alerta cuando la venta a crédito agotará o excederá el límite configurado y el módulo `Customers.tsx` incorpora registro directo de pagos, resumen financiero interactivo, estados `moroso/vip` y notas dedicadas, manteniendo motivo corporativo obligatorio.
 - Se normaliza el payload del ledger cambiando `metadata` por `details` en backend y frontend para eliminar referencias obsoletas que causaban fallos en `pytest` al consultar `/customers/{id}/summary`.
-- Cobertura reforzada: `test_customer_credit_limit_blocks_sale` y `test_customer_payments_and_summary` verifican bloqueo de crédito en ventas y el reflejo de pagos/ledger en el nuevo resumen corporativo.
+- Cobertura reforzada: `test_customer_credit_limit_blocks_sale` y `test_customer_payments_and_summary` verifican bloqueo de crédito en ventas y que el resumen corporativo liste ventas, facturas, pagos y notas con saldos coherentes.
 - Ajuste 22/10/2025 09:40 UTC: garantizar que `/customers/{id}/payments` devuelva el campo `created_by` serializado correctamente y que las devoluciones a crédito registren al usuario responsable en el ledger.
+- Ajuste 23/10/2025 10:05 UTC: `/sales` y `/pos/sale` responden con `409 Conflict` si la venta a crédito rebasa el límite aprobado; la prueba `test_credit_sale_rejected_when_limit_exceeded` confirma que el inventario se mantiene sin cambios cuando ocurre el bloqueo.
 

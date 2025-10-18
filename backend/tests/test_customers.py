@@ -1,5 +1,7 @@
+import pytest
 from fastapi import status
 
+from backend.app.config import settings
 from backend.app.core.roles import ADMIN, OPERADOR
 
 
@@ -144,3 +146,120 @@ def test_customers_operator_forbidden(client):
         headers={**headers, "X-Reason": "Intento Operador"},
     )
     assert create_response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_customer_payments_and_summary(client):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Gestion clientes"}
+
+        store_response = client.post(
+            "/stores",
+            json={
+                "name": "Clientes Centro",
+                "location": "MX",
+                "timezone": "America/Mexico_City",
+            },
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "SKU-CLI-001",
+                "name": "Smartphone Corporativo",
+                "quantity": 3,
+                "unit_price": 200.0,
+                "costo_unitario": 150.0,
+                "margen_porcentaje": 10.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        customer_response = client.post(
+            "/customers",
+            json={
+                "name": "Cliente Financiero",
+                "phone": "555-404-5050",
+                "customer_type": "corporativo",
+                "status": "activo",
+                "credit_limit": 1000.0,
+            },
+            headers=reason_headers,
+        )
+        assert customer_response.status_code == status.HTTP_201_CREATED
+        customer_id = customer_response.json()["id"]
+
+        note_response = client.post(
+            f"/customers/{customer_id}/notes",
+            json={"note": "Seguimiento anual"},
+            headers=reason_headers,
+        )
+        assert note_response.status_code == status.HTTP_200_OK
+        assert any(
+            entry["note"] == "Seguimiento anual" for entry in note_response.json()["history"]
+        )
+
+        sale_response = client.post(
+            "/sales",
+            json={
+                "store_id": store_id,
+                "customer_id": customer_id,
+                "payment_method": "CREDITO",
+                "items": [{"device_id": device_id, "quantity": 1}],
+                "notes": "Venta a crédito",
+            },
+            headers={**auth_headers, "X-Reason": "Venta credito clientes"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+        sale_data = sale_response.json()
+
+        payment_response = client.post(
+            f"/customers/{customer_id}/payments",
+            json={
+                "amount": 80.0,
+                "method": "transferencia",
+                "sale_id": sale_data["id"],
+                "note": "Abono inicial",
+            },
+            headers=reason_headers,
+        )
+        assert payment_response.status_code == status.HTTP_201_CREATED
+        payment_data = payment_response.json()
+        assert payment_data["details"]["sale_id"] == sale_data["id"]
+        assert payment_data["balance_after"] == pytest.approx(sale_data["total_amount"] - 80.0)
+
+        summary_response = client.get(
+            f"/customers/{customer_id}/summary", headers=auth_headers
+        )
+        assert summary_response.status_code == status.HTTP_200_OK
+        summary = summary_response.json()
+
+        assert summary["customer"]["id"] == customer_id
+        assert summary["totals"]["credit_limit"] == 1000.0
+        assert summary["totals"]["outstanding_debt"] == pytest.approx(
+            sale_data["total_amount"] - 80.0
+        )
+        assert summary["totals"]["available_credit"] == pytest.approx(
+            1000.0 - (sale_data["total_amount"] - 80.0)
+        )
+
+        assert summary["sales"][0]["sale_id"] == sale_data["id"]
+        assert summary["sales"][0]["payment_method"] == "CREDITO"
+        assert summary["invoices"][0]["sale_id"] == sale_data["id"]
+        assert summary["invoices"][0]["invoice_number"].startswith("VENTA-")
+
+        assert summary["payments"][0]["entry_type"] == "payment"
+        assert summary["payments"][0]["details"]["applied_amount"] == pytest.approx(80.0)
+
+        ledger_types = {entry["entry_type"] for entry in summary["ledger"]}
+        assert {"note", "sale", "payment"}.issubset(ledger_types)
+    finally:
+        settings.enable_purchases_sales = previous_flag

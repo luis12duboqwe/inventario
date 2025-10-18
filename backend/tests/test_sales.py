@@ -429,3 +429,89 @@ def test_sales_filters_and_exports(client, db_session):
     assert len(export_excel.content) > 0
 
     settings.enable_purchases_sales = False
+
+
+def test_credit_sale_rejected_when_limit_exceeded(client, db_session):
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Control credito"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Credito", "location": "MX", "timezone": "America/Mexico_City"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "SKU-CREDITO-001",
+            "name": "Laptop Corporativa",
+            "quantity": 2,
+            "unit_price": 150.0,
+            "costo_unitario": 100.0,
+            "margen_porcentaje": 15.0,
+        },
+        headers=auth_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    customer_response = client.post(
+        "/customers",
+        json={
+            "name": "Cliente Crédito Limitado",
+            "phone": "555-202-3030",
+            "credit_limit": 100.0,
+            "customer_type": "corporativo",
+            "status": "activo",
+        },
+        headers=reason_headers,
+    )
+    assert customer_response.status_code == status.HTTP_201_CREATED
+    customer_id = customer_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "customer_id": customer_id,
+        "payment_method": "CREDITO",
+        "items": [{"device_id": device_id, "quantity": 1}],
+    }
+    blocked_sale = client.post(
+        "/sales",
+        json=sale_payload,
+        headers={**auth_headers, "X-Reason": "Venta credito"},
+    )
+    assert blocked_sale.status_code == status.HTTP_409_CONFLICT
+    assert (
+        blocked_sale.json()["detail"]
+        == "El cliente excede el límite de crédito disponible."
+    )
+
+    pos_payload = {
+        "store_id": store_id,
+        "customer_id": customer_id,
+        "payment_method": "CREDITO",
+        "items": [{"device_id": device_id, "quantity": 1}],
+        "confirm": True,
+    }
+    blocked_pos_sale = client.post(
+        "/pos/sale",
+        json=pos_payload,
+        headers={**auth_headers, "X-Reason": "POS credito"},
+    )
+    assert blocked_pos_sale.status_code == status.HTTP_409_CONFLICT
+    assert (
+        blocked_pos_sale.json()["detail"]
+        == "El cliente excede el límite de crédito disponible."
+    )
+
+    devices_response = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
+    assert devices_response.status_code == status.HTTP_200_OK
+    device_record = next(item for item in devices_response.json() if item["id"] == device_id)
+    assert device_record["quantity"] == 2
+
+    settings.enable_purchases_sales = False
