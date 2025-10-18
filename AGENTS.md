@@ -234,6 +234,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - El tablero de sincronización debe incluir la tarjeta «Dashboard de sincronización» con métricas globales (estado actual, última ejecución, inventario monitoreado, cola híbrida, transferencias activas y conflictos) y la lista de logs recientes provenientes de `/sync/sessions`; cualquier cambio se aplica en `frontend/src/modules/sync/pages/SyncPage.tsx` y sus estilos asociados.
 - La sección de transferencias tiene que mostrar origen, destino, motivo y el detalle de productos/cantidades por transferencia reutilizando `/transfers/report`, además de mantener los totales ejecutivos y botones de exportación PDF/Excel con motivo corporativo obligatorio.
 - Conserva el panel de conflictos (`/sync/conflicts` y exportaciones) y las acciones de `SyncPanel` (sincronización manual, respaldos, exportación CSV/PDF) sin romper la trazabilidad de `sync_discrepancy`.
+- **28/10/2025 11:10 UTC** — El helper `listTransfers` en `frontend/src/api.ts` quedó fijado a `/transfers?limit=25&store_id=…` para eliminar redirecciones y asegurar que el panel de sincronización cargue datos consistentes desde la API.
 - Registra cualquier métrica nueva en README/CHANGELOG bajo «Actualización Sucursales - Parte 3 (Interfaz y Control Central)» y ejecuta `pytest` después de modificar el tablero, los reportes o las exportaciones vinculadas.
 
 ### Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)

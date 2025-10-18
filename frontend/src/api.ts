@@ -2709,9 +2709,14 @@ export function upsertStoreMembership(
 }
 
 export function listTransfers(token: string, storeId?: number): Promise<TransferOrder[]> {
-  const query = typeof storeId === "number" ? `?store_id=${storeId}` : "";
-  const path = query ? `/transfers/${query}` : "/transfers";
-  return request(path, { method: "GET" }, token);
+  const params = new URLSearchParams();
+  params.set("limit", "25");
+  if (typeof storeId === "number") {
+    params.set("store_id", String(storeId));
+  }
+  const query = params.toString();
+  const path = `/transfers${query ? `?${query}` : ""}`;
+  return request<TransferOrder[]>(path, { method: "GET" }, token);
 }
 
 export function createTransferOrder(
