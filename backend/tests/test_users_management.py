@@ -168,3 +168,36 @@ def test_role_permissions_update(client):
         perm for perm in confirm_matrix["permissions"] if perm["module"] == "inventario"
     )
     assert confirm_permission == inventario_permission
+
+
+def test_update_user_roles_requires_reason(client):
+    _, admin_token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    create_payload = {
+        "username": "cambios_roles@softmobile.test",
+        "password": "CambioRoles123*",
+        "full_name": "Cambios Roles",
+        "roles": ["OPERADOR"],
+    }
+    create_response = client.post("/users", json=create_payload, headers=auth_headers)
+    assert create_response.status_code == status.HTTP_201_CREATED
+    user_id = create_response.json()["id"]
+
+    missing_reason = client.put(
+        f"/users/{user_id}/roles",
+        json={"roles": ["GERENTE"]},
+        headers=auth_headers,
+    )
+    assert missing_reason.status_code == status.HTTP_400_BAD_REQUEST
+
+    update_headers = {**auth_headers, "X-Reason": "Reasignacion de rol"}
+    update_response = client.put(
+        f"/users/{user_id}/roles",
+        json={"roles": ["GERENTE"]},
+        headers=update_headers,
+    )
+    assert update_response.status_code == status.HTTP_200_OK
+    updated_user = update_response.json()
+    assert updated_user["rol"] == "GERENTE"
+    assert sorted(role["name"] for role in updated_user["roles"]) == ["GERENTE"]

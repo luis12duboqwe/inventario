@@ -1276,7 +1276,14 @@ def list_users(
     return list(db.scalars(statement).unique())
 
 
-def set_user_roles(db: Session, user: models.User, role_names: Iterable[str]) -> models.User:
+def set_user_roles(
+    db: Session,
+    user: models.User,
+    role_names: Iterable[str],
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.User:
     role_names = list(role_names)
     user.roles.clear()
     db.flush()
@@ -1285,6 +1292,20 @@ def set_user_roles(db: Session, user: models.User, role_names: Iterable[str]) ->
         db.add(models.UserRole(user=user, role=role))
 
     user.rol = _select_primary_role(role_names)
+    db.commit()
+    db.refresh(user)
+
+    log_payload: dict[str, object] = {"roles": sorted(role_names)}
+    if reason:
+        log_payload["reason"] = reason
+    _log_action(
+        db,
+        action="user_roles_updated",
+        entity_type="user",
+        entity_id=str(user.id),
+        performed_by_id=performed_by_id,
+        details=json.dumps(log_payload, ensure_ascii=False),
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -1296,18 +1317,25 @@ def set_user_status(
     *,
     is_active: bool,
     performed_by_id: int | None = None,
+    reason: str | None = None,
 ) -> models.User:
     user.is_active = is_active
     user.estado = "ACTIVO" if is_active else "INACTIVO"
     db.commit()
     db.refresh(user)
+    log_payload: dict[str, object] = {
+        "is_active": is_active,
+        "estado": user.estado,
+    }
+    if reason:
+        log_payload["reason"] = reason
     _log_action(
         db,
         action="user_status_changed",
         entity_type="user",
         entity_id=str(user.id),
         performed_by_id=performed_by_id,
-        details=json.dumps({"is_active": is_active, "estado": user.estado}),
+        details=json.dumps(log_payload, ensure_ascii=False),
     )
     db.commit()
     db.refresh(user)

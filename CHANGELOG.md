@@ -77,6 +77,7 @@
 - `backend/app/services/user_reports.py` genera reportes PDF/Excel oscuros para `GET /users/export`, habilitando descargas corporativas desde la interfaz con cabecera `X-Reason`.
 - `frontend/src/api.ts` y `usersService` incorporan funciones para dashboard, permisos, exportaciones y creación/edición, manteniendo compatibilidad con módulos existentes.
 - La suite `backend/tests/test_users_management.py` cubre filtros, actualización de perfiles, exportaciones y edición de permisos, asegurando que la nueva interfaz cumpla los cinco requisitos funcionales.
+- Se refuerza la auditoría corporativa exigiendo `X-Reason` en `PUT /users/{id}/roles` y `PATCH /users/{id}`; ambas rutas registran `user_roles_updated` y `user_status_changed` con el motivo recibido y cuentan con una prueba que confirma el rechazo ante encabezados faltantes.
 - **28/10/2025 09:55 UTC** — Se normalizó la consulta `list_users` con `.unique()` para permitir `joinedload` sobre roles sin errores, se respetan los permisos personalizados al reutilizar `ensure_role_permissions`, la actualización de contraseña reactiva cuentas inactivas y se reordenaron las rutas de `/users` para evitar conflictos con `/users/dashboard`. Las pruebas del módulo quedaron en verde.
 
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
