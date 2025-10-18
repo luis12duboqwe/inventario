@@ -265,6 +265,79 @@ def test_customer_payments_and_summary(client):
         settings.enable_purchases_sales = previous_flag
 
 
+def test_customer_debt_cannot_exceed_credit_limit(client):
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Control credito clientes"}
+
+    invalid_payload = {
+        "name": "Cliente Sobreendeudado",
+        "phone": "555-600-7000",
+        "credit_limit": 300.0,
+        "outstanding_debt": 320.0,
+    }
+    invalid_response = client.post(
+        "/customers",
+        json=invalid_payload,
+        headers=reason_headers,
+    )
+    assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert (
+        "límite de crédito" in invalid_response.json()["detail"].lower()
+    )
+
+    create_response = client.post(
+        "/customers",
+        json={
+            "name": "Cliente Controlado",
+            "phone": "555-101-3030",
+            "credit_limit": 500.0,
+            "outstanding_debt": 300.0,
+        },
+        headers=reason_headers,
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    customer_id = create_response.json()["id"]
+
+    exceeds_response = client.put(
+        f"/customers/{customer_id}",
+        json={"outstanding_debt": 620.0},
+        headers=reason_headers,
+    )
+    assert exceeds_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    valid_adjustment = client.put(
+        f"/customers/{customer_id}",
+        json={"outstanding_debt": 450.0},
+        headers=reason_headers,
+    )
+    assert valid_adjustment.status_code == status.HTTP_200_OK
+    assert valid_adjustment.json()["outstanding_debt"] == pytest.approx(450.0)
+
+    lower_limit_response = client.put(
+        f"/customers/{customer_id}",
+        json={"credit_limit": 400.0},
+        headers=reason_headers,
+    )
+    assert lower_limit_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    reduce_debt_response = client.put(
+        f"/customers/{customer_id}",
+        json={"outstanding_debt": 350.0},
+        headers=reason_headers,
+    )
+    assert reduce_debt_response.status_code == status.HTTP_200_OK
+    assert reduce_debt_response.json()["outstanding_debt"] == pytest.approx(350.0)
+
+    final_limit_response = client.put(
+        f"/customers/{customer_id}",
+        json={"credit_limit": 400.0},
+        headers=reason_headers,
+    )
+    assert final_limit_response.status_code == status.HTTP_200_OK
+    assert final_limit_response.json()["credit_limit"] == pytest.approx(400.0)
+
+
 def test_customer_manual_debt_adjustment_creates_ledger_entry(client):
     token = _bootstrap_admin(client)
     auth_headers = {"Authorization": f"Bearer {token}"}

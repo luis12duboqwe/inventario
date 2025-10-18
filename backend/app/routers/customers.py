@@ -69,6 +69,11 @@ def create_customer_endpoint(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="El saldo pendiente no puede ser negativo.",
             ) from exc
+        if str(exc) == "customer_outstanding_exceeds_limit":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El saldo pendiente no puede exceder el límite de crédito configurado.",
+            ) from exc
         raise
     return customer
 
@@ -123,6 +128,11 @@ def update_customer_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="El saldo pendiente no puede ser negativo.",
+            ) from exc
+        if detail == "customer_outstanding_exceeds_limit":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El saldo pendiente no puede exceder el límite de crédito configurado.",
             ) from exc
         raise
 
