@@ -1211,8 +1211,16 @@ def list_customers(
     *,
     query: str | None = None,
     limit: int = 100,
+    status: str | None = None,
+    customer_type: str | None = None,
 ) -> list[models.Customer]:
     statement = select(models.Customer).order_by(models.Customer.name.asc()).limit(limit)
+    if status:
+        normalized_status = _normalize_customer_status(status)
+        statement = statement.where(models.Customer.status == normalized_status)
+    if customer_type:
+        normalized_type = _normalize_customer_type(customer_type)
+        statement = statement.where(models.Customer.customer_type == normalized_type)
     if query:
         normalized = f"%{query.lower()}%"
         statement = statement.where(
@@ -1447,8 +1455,16 @@ def export_customers_csv(
     db: Session,
     *,
     query: str | None = None,
+    status: str | None = None,
+    customer_type: str | None = None,
 ) -> str:
-    customers = list_customers(db, query=query, limit=5000)
+    customers = list_customers(
+        db,
+        query=query,
+        limit=5000,
+        status=status,
+        customer_type=customer_type,
+    )
     buffer = StringIO()
     writer = csv.writer(buffer)
     writer.writerow(

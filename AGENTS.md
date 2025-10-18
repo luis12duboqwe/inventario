@@ -285,3 +285,6 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Mejora 24/10/2025 08:10 UTC: al ajustar `outstanding_debt` mediante `PUT /customers/{id}` se genera un asiento `adjustment` con saldo previo/posterior, se agrega la nota al historial y la prueba `test_customer_manual_debt_adjustment_creates_ledger_entry` cubre el escenario.
 - Validación 25/10/2025 11:05 UTC: las altas o ediciones con deudas que superen el límite de crédito configurado se rechazan con `422` y mensaje claro; la prueba `test_customer_debt_cannot_exceed_credit_limit` garantiza el comportamiento y evita que clientes sin crédito acumulen saldo.
 
+
+- Refinamiento 26/10/2025 09:15 UTC: el listado de clientes (`GET /customers`) admite filtros dedicados `status_filter` y `customer_type_filter` que se consumen desde `Customers.tsx`, habilitando segmentaciones rápidas (activo, moroso, VIP, corporativo) y cobertura automática en `test_customer_list_filters_by_status_and_type`.
+
