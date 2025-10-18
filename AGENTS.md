@@ -303,6 +303,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - El middleware de seguridad valida permisos modulares (`permisos.puede_ver/editar/borrar`) para inventario, ventas, compras, POS, clientes, proveedores, reparaciones, transferencias, seguridad, usuarios, sincronización, reportes, respaldos y actualizaciones antes de ejecutar cualquier handler.
 - `ActiveSession` incorpora `expires_at` y la revocación automática por expiración; los endpoints de sesiones siguen disponibles para gerencia con motivo corporativo.
 - Cobertura en `backend/tests/test_security.py` valida bloqueo, restablecimiento, sesión por cookie y rechazo de operaciones de edición para roles `INVITADO`, garantizando el cumplimiento del plan «Seguridad y Auditoría» de Softmobile 2025 v2.2.0.
+- **27/10/2025 19:30 UTC** — Se verificó nuevamente el paquete de seguridad y auditoría confirmando los siete controles solicitados (JWT/cookie segura, hash + salt, sesiones activas, bitácora operativa, bloqueo por intentos, recuperación con token y permisos modulares). `pytest` se ejecutó completo en esta iteración para documentar el estado en verde.
 
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 

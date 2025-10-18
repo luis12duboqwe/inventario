@@ -67,6 +67,7 @@
 - `/auth/session` habilita autenticación por cookie segura (HTTPOnly/SameSite configurable) y `active_sessions` añade `expires_at`, permitiendo auditoría y revocación automática por expiración.
 - El middleware global valida `permisos.puede_ver/editar/borrar` por módulo, evitando operaciones sobre inventario, ventas, compras, POS, clientes, proveedores, reparaciones, transferencias, seguridad, usuarios, sincronización, reportes, respaldos y actualizaciones si el rol carece de autorización.
 - `backend/tests/test_security.py` cubre bloqueo, restablecimiento, sesión basada en cookies y restricciones de rol `INVITADO`, asegurando cumplimiento del plan «Seguridad y Auditoría» para Softmobile 2025 v2.2.0.
+- **27/10/2025 19:30 UTC** — Se verificó el paquete de seguridad confirmando autenticación híbrida (JWT o sesión segura), hash bcrypt con `salt`, control y revocación de sesiones, auditoría de operaciones clave, bloqueo tras intentos fallidos, recuperación de contraseña con token temporal y la matriz de permisos modulares. `pytest` se ejecutó completo en verde para registrar el estado.
 
 ## Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 - Tablas de ventas renombradas a `ventas` y `detalle_ventas` con columnas alineadas a la nomenclatura corporativa (`id_venta`, `cliente_id`, `usuario_id`, `fecha`, `forma_pago`, `impuesto`, `total`, `estado`, `venta_id`, `producto_id`, `precio_unitario`, `subtotal`).
