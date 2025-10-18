@@ -222,11 +222,12 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 
 ### Actualización Sucursales - Parte 2 (Sincronización y Replicación) (24/10/2025 09:10 UTC)
 
-- Mantén `crud.enqueue_sync_outbox` invocado en altas/ediciones de dispositivos, movimientos de inventario y el ciclo de compras para asegurar que cada cambio lleve `store_id`, cantidades y costos al replicador híbrido.
+- Mantén `crud.enqueue_sync_outbox` invocado en altas/ediciones de dispositivos, movimientos de inventario, ventas POS y el ciclo de compras para asegurar que cada cambio lleve `store_id`, cantidades y costos al replicador híbrido.
 - `services/sync.run_sync_cycle` es la única vía autorizada para procesar la cola: marca eventos como `SENT`, registra métricas en `record_sync_session` y debe llamarse tanto desde `_sync_job` (cron) como desde `POST /sync/run`.
+- `requeue_failed_outbox_entries` garantiza el modo offline: no lo elimines ni alteres la lógica de reintentos sin actualizar `backend/tests/test_sync_offline_mode.py` y la documentación.
 - No elimines `detect_inventory_discrepancies` ni los logs `sync_discrepancy`/`sync_outbox_sent`; cualquier ajuste debe seguir registrando diferencias inter-sucursal en `AuditLog` para auditoría corporativa.
-- La prueba `backend/tests/test_sync_replication.py` valida estados `SENT`, discrepancias y sincronización de inventario/compras; manténla actualizada si cambias flujos híbridos o cargas útiles.
-- Documenta nuevas rutas o métricas de sincronización en README/CHANGELOG bajo este epígrafe y ejecuta `pytest` tras modificar la cola `sync_outbox`.
+- Las pruebas `backend/tests/test_sync_replication.py` y `backend/tests/test_sync_full.py` validan estados `SENT`, discrepancias y sincronización de inventario/ventas/compras; mantenlas actualizadas si cambias flujos híbridos o cargas útiles.
+- Documenta nuevas rutas, métricas de sincronización u opciones de respaldo en README/CHANGELOG bajo este epígrafe y ejecuta `pytest` tras modificar la cola `sync_outbox` o `services/backups`.
 
 ### Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
 
