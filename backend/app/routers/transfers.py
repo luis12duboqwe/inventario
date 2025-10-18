@@ -1,14 +1,20 @@
 """Rutas para gestionar transferencias entre sucursales."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from datetime import datetime
+from io import BytesIO
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import GESTION_ROLES
 from ..database import get_db
+from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import transfer_reports
 
 router = APIRouter(prefix="/transfers", tags=["transferencias"])
 
@@ -18,16 +24,146 @@ def _ensure_feature_enabled() -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
 
 
+def _prepare_transfer_report(
+    db: Session,
+    *,
+    store_id: int | None,
+    origin_store_id: int | None,
+    destination_store_id: int | None,
+    status: models.TransferStatus | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+) -> schemas.TransferReport:
+    transfers = crud.list_transfer_orders(
+        db,
+        store_id=store_id,
+        origin_store_id=origin_store_id,
+        destination_store_id=destination_store_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        limit=500,
+    )
+    filters = schemas.TransferReportFilters(
+        store_id=store_id,
+        origin_store_id=origin_store_id,
+        destination_store_id=destination_store_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return transfer_reports.build_transfer_report(transfers, filters)
+
+
 @router.get("/", response_model=list[schemas.TransferOrderResponse])
 def list_transfers(
-    limit: int = 50,
-    store_id: int | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    store_id: int | None = Query(default=None, ge=1),
+    origin_store_id: int | None = Query(default=None, ge=1),
+    destination_store_id: int | None = Query(default=None, ge=1),
+    status: models.TransferStatus | None = Query(default=None),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
-    orders = crud.list_transfer_orders(db, store_id=store_id, limit=min(limit, 100))
+    orders = crud.list_transfer_orders(
+        db,
+        store_id=store_id,
+        origin_store_id=origin_store_id,
+        destination_store_id=destination_store_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        limit=min(limit, 200),
+    )
     return orders
+
+
+@router.get("/report", response_model=schemas.TransferReport)
+def transfer_report(
+    store_id: int | None = Query(default=None, ge=1),
+    origin_store_id: int | None = Query(default=None, ge=1),
+    destination_store_id: int | None = Query(default=None, ge=1),
+    status: models.TransferStatus | None = Query(default=None),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    return _prepare_transfer_report(
+        db,
+        store_id=store_id,
+        origin_store_id=origin_store_id,
+        destination_store_id=destination_store_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@router.get("/export/pdf")
+def export_transfer_report_pdf(
+    store_id: int | None = Query(default=None, ge=1),
+    origin_store_id: int | None = Query(default=None, ge=1),
+    destination_store_id: int | None = Query(default=None, ge=1),
+    status: models.TransferStatus | None = Query(default=None),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    report = _prepare_transfer_report(
+        db,
+        store_id=store_id,
+        origin_store_id=origin_store_id,
+        destination_store_id=destination_store_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    pdf_bytes = transfer_reports.render_transfer_report_pdf(report)
+    filename = f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/export/xlsx")
+def export_transfer_report_excel(
+    store_id: int | None = Query(default=None, ge=1),
+    origin_store_id: int | None = Query(default=None, ge=1),
+    destination_store_id: int | None = Query(default=None, ge=1),
+    status: models.TransferStatus | None = Query(default=None),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    report = _prepare_transfer_report(
+        db,
+        store_id=store_id,
+        origin_store_id=origin_store_id,
+        destination_store_id=destination_store_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    excel_bytes = transfer_reports.render_transfer_report_excel(report)
+    filename = f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return StreamingResponse(
+        BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.post("/", response_model=schemas.TransferOrderResponse, status_code=status.HTTP_201_CREATED)

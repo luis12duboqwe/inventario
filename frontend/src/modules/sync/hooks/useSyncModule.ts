@@ -20,5 +20,14 @@ export function useSyncModule() {
     syncHistory: dashboard.syncHistory,
     syncHistoryError: dashboard.syncHistoryError,
     refreshSyncHistory: dashboard.refreshSyncHistory,
+    token: dashboard.token,
+    stores: dashboard.stores,
+    enableTransfers: dashboard.enableTransfers,
+    pushToast: dashboard.pushToast,
+    setError: dashboard.setError,
+    setMessage: dashboard.setMessage,
+    selectedStoreId: dashboard.selectedStoreId,
+    selectedStore: dashboard.selectedStore,
+    formatCurrency: dashboard.formatCurrency,
   };
 }

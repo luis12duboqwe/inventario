@@ -839,6 +839,56 @@ export type TransferTransitionInput = {
   reason?: string;
 };
 
+export type TransferReportDevice = {
+  sku?: string | null;
+  name?: string | null;
+  quantity: number;
+};
+
+export type TransferReportItem = {
+  id: number;
+  folio: string;
+  origin_store: string;
+  destination_store: string;
+  status: TransferOrder["status"];
+  reason?: string | null;
+  requested_at: string;
+  dispatched_at?: string | null;
+  received_at?: string | null;
+  cancelled_at?: string | null;
+  requested_by?: string | null;
+  dispatched_by?: string | null;
+  received_by?: string | null;
+  cancelled_by?: string | null;
+  total_quantity: number;
+  devices: TransferReportDevice[];
+};
+
+export type TransferReportTotals = {
+  total_transfers: number;
+  pending: number;
+  in_transit: number;
+  completed: number;
+  cancelled: number;
+  total_quantity: number;
+};
+
+export type TransferReportFilters = {
+  store_id?: number;
+  origin_store_id?: number;
+  destination_store_id?: number;
+  status?: TransferOrder["status"];
+  date_from?: string;
+  date_to?: string;
+};
+
+export type TransferReport = {
+  generated_at: string;
+  filters: TransferReportFilters;
+  totals: TransferReportTotals;
+  items: TransferReportItem[];
+};
+
 export type StoreValueMetric = {
   store_id: number;
   store_name: string;
@@ -1302,6 +1352,48 @@ export type SyncStoreHistory = {
   store_id: number | null;
   store_name: string;
   sessions: SyncSessionCompact[];
+};
+
+export type SyncBranchHealth = "operativa" | "alerta" | "critica" | "sin_registros";
+
+export type SyncBranchOverview = {
+  store_id: number;
+  store_name: string;
+  store_code: string;
+  timezone: string;
+  inventory_value: number;
+  last_sync_at?: string | null;
+  last_sync_mode?: string | null;
+  last_sync_status?: string | null;
+  health: SyncBranchHealth;
+  health_label: string;
+  pending_transfers: number;
+  open_conflicts: number;
+};
+
+export type SyncConflictStoreDetail = {
+  store_id: number;
+  store_name: string;
+  quantity: number;
+};
+
+export type SyncConflictLog = {
+  id: number;
+  sku: string;
+  product_name?: string | null;
+  detected_at: string;
+  difference: number;
+  severity: SyncBranchHealth;
+  stores_max: SyncConflictStoreDetail[];
+  stores_min: SyncConflictStoreDetail[];
+};
+
+export type SyncConflictFilters = {
+  store_id?: number;
+  date_from?: string;
+  date_to?: string;
+  severity?: SyncBranchHealth;
+  limit?: number;
 };
 
 export type BackupJob = {
@@ -2685,6 +2777,64 @@ export function cancelTransferOrder(
   );
 }
 
+function buildTransferReportQuery(filters: TransferReportFilters = {}): string {
+  const params = new URLSearchParams();
+  if (typeof filters.store_id === "number") {
+    params.set("store_id", String(filters.store_id));
+  }
+  if (typeof filters.origin_store_id === "number") {
+    params.set("origin_store_id", String(filters.origin_store_id));
+  }
+  if (typeof filters.destination_store_id === "number") {
+    params.set("destination_store_id", String(filters.destination_store_id));
+  }
+  if (filters.status) {
+    params.set("status", filters.status);
+  }
+  if (filters.date_from) {
+    params.set("date_from", filters.date_from);
+  }
+  if (filters.date_to) {
+    params.set("date_to", filters.date_to);
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export function getTransferReport(
+  token: string,
+  filters: TransferReportFilters = {},
+): Promise<TransferReport> {
+  const query = buildTransferReportQuery(filters);
+  return request<TransferReport>(`/transfers/report${query}`, { method: "GET" }, token);
+}
+
+export function exportTransferReportPdf(
+  token: string,
+  reason: string,
+  filters: TransferReportFilters = {},
+): Promise<Blob> {
+  const query = buildTransferReportQuery(filters);
+  return request<Blob>(
+    `/transfers/export/pdf${query}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function exportTransferReportExcel(
+  token: string,
+  reason: string,
+  filters: TransferReportFilters = {},
+): Promise<Blob> {
+  const query = buildTransferReportQuery(filters);
+  return request<Blob>(
+    `/transfers/export/xlsx${query}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
 export function listRecurringOrders(
   token: string,
   orderType?: RecurringOrderType
@@ -3402,6 +3552,66 @@ export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncSt
   return request<SyncStoreHistory[]>(
     `/sync/history?limit_per_store=${limitPerStore}`,
     { method: "GET" },
+    token,
+  );
+}
+
+export function getSyncOverview(token: string, storeId?: number): Promise<SyncBranchOverview[]> {
+  const query = typeof storeId === "number" ? `?store_id=${storeId}` : "";
+  return request<SyncBranchOverview[]>(`/sync/overview${query}`, { method: "GET" }, token);
+}
+
+function buildSyncConflictQuery(filters: SyncConflictFilters = {}): string {
+  const params = new URLSearchParams();
+  if (typeof filters.store_id === "number") {
+    params.set("store_id", String(filters.store_id));
+  }
+  if (filters.date_from) {
+    params.set("date_from", filters.date_from);
+  }
+  if (filters.date_to) {
+    params.set("date_to", filters.date_to);
+  }
+  if (filters.severity) {
+    params.set("severity", filters.severity);
+  }
+  if (typeof filters.limit === "number") {
+    params.set("limit", String(filters.limit));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export function listSyncConflicts(
+  token: string,
+  filters: SyncConflictFilters = {},
+): Promise<SyncConflictLog[]> {
+  const query = buildSyncConflictQuery(filters);
+  return request<SyncConflictLog[]>(`/sync/conflicts${query}`, { method: "GET" }, token);
+}
+
+export function exportSyncConflictsPdf(
+  token: string,
+  reason: string,
+  filters: SyncConflictFilters = {},
+): Promise<Blob> {
+  const query = buildSyncConflictQuery(filters);
+  return request<Blob>(
+    `/sync/conflicts/export/pdf${query}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function exportSyncConflictsExcel(
+  token: string,
+  reason: string,
+  filters: SyncConflictFilters = {},
+): Promise<Blob> {
+  const query = buildSyncConflictQuery(filters);
+  return request<Blob>(
+    `/sync/conflicts/export/xlsx${query}`,
+    { method: "GET", headers: { "X-Reason": reason } },
     token,
   );
 }

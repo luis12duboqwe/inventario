@@ -110,6 +110,14 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Auditoría y respaldo corporativo**: `mark_outbox_entries_sent` deja trazas `sync_outbox_sent` por cada evento sincronizado y `services/backups.generate_backup` ofrece exportaciones ZIP/PDF, cubiertas por `backend/tests/test_backups.py`, para respaldar los datos distribuidos.【F:backend/app/crud.py†L4690-L4732】【F:backend/app/services/backups.py†L241-L275】【F:backend/tests/test_backups.py†L24-L78】
 - **Cobertura de pruebas integral**: la suite incorpora `backend/tests/test_sync_replication.py` y `backend/tests/test_sync_full.py`, que validan la sincronización de inventario, ventas y compras, el cambio de estado a `SENT` y la generación de discrepancias multi-sucursal.【F:backend/tests/test_sync_replication.py†L34-L129】【F:backend/tests/test_sync_full.py†L23-L121】
 
+## Actualización Sucursales - Parte 3 (Interfaz y Control Central)
+
+- **Panel unificado de sucursales**: la vista `SyncPage` agrega una tabla dinámica con el estado de cada tienda, su última sincronización, inventario monitoreado, transferencias pendientes y conflictos detectados, integrando datos de `/sync/overview`.
+- **Control de transferencias**: se incorporan resúmenes ejecutivos y exportaciones PDF/Excel (`/transfers/report|export`) que consolidan totales por estado y permiten descargar los reportes con motivo corporativo obligatorio.
+- **Conflictos exportables**: los registros `sync_discrepancy` pueden consultarse mediante `/sync/conflicts` y exportarse en formatos PDF/Excel para auditar discrepancias entre sucursales.
+- **Cobertura automatizada**: la nueva prueba `backend/tests/test_sync_interface.py` verifica el tablero de sucursales y las exportaciones para asegurar la trazabilidad del módulo de sincronización central.
+- **Documentación actualizada**: este README, `CHANGELOG.md` y `AGENTS.md` registran la fase bajo «Actualización Sucursales - Parte 3 (Interfaz y Control Central)» para preservar la línea de tiempo corporativa.
+
 ## Actualización Compras - Parte 3 (Interfaz y Reportes)
 
 - **Formulario de registro directo**: el módulo de Operaciones incorpora un formulario dedicado para capturar compras inmediatas seleccionando proveedor, productos y tasa de impuesto; calcula subtotal/impuesto/total en tiempo real y registra el movimiento mediante `createPurchaseRecord` respetando el motivo corporativo obligatorio.

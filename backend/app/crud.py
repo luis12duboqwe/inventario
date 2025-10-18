@@ -1040,7 +1040,7 @@ def get_user(db: Session, user_id: int) -> models.User:
         .where(models.User.id == user_id)
     )
     try:
-        return db.scalars(statement).one()
+        return db.scalars(statement).unique().one()
     except NoResultFound as exc:
         raise LookupError("user_not_found") from exc
 
@@ -4967,6 +4967,269 @@ def get_sync_outbox_statistics(db: Session) -> list[dict[str, object]]:
     return results
 
 
+def get_store_sync_overview(
+    db: Session,
+    *,
+    store_id: int | None = None,
+) -> list[dict[str, object]]:
+    stores_stmt = (
+        select(
+            models.Store.id,
+            models.Store.name,
+            models.Store.code,
+            models.Store.timezone,
+            models.Store.inventory_value,
+        )
+        .order_by(models.Store.name)
+    )
+    if store_id is not None:
+        stores_stmt = stores_stmt.where(models.Store.id == store_id)
+
+    store_rows = list(db.execute(stores_stmt))
+    if not store_rows:
+        return []
+
+    session_stmt = select(models.SyncSession).order_by(
+        models.SyncSession.finished_at.desc(),
+        models.SyncSession.started_at.desc(),
+    )
+    sessions = list(db.scalars(session_stmt))
+    latest_by_store: dict[int, models.SyncSession] = {}
+    latest_global: models.SyncSession | None = None
+    for session in sessions:
+        if session.store_id is None:
+            if latest_global is None:
+                latest_global = session
+            continue
+        key = int(session.store_id)
+        if store_id is not None and key != store_id:
+            continue
+        if key not in latest_by_store:
+            latest_by_store[key] = session
+
+    active_statuses = (
+        models.TransferStatus.SOLICITADA,
+        models.TransferStatus.EN_TRANSITO,
+    )
+    transfer_counts: dict[int, int] = defaultdict(int)
+    pending_stmt = select(
+        models.TransferOrder.origin_store_id,
+        models.TransferOrder.destination_store_id,
+    ).where(models.TransferOrder.status.in_(active_statuses))
+    if store_id is not None:
+        pending_stmt = pending_stmt.where(
+            (models.TransferOrder.origin_store_id == store_id)
+            | (models.TransferOrder.destination_store_id == store_id)
+        )
+    for row in db.execute(pending_stmt):
+        if row.origin_store_id is not None:
+            transfer_counts[int(row.origin_store_id)] += 1
+        if row.destination_store_id is not None:
+            transfer_counts[int(row.destination_store_id)] += 1
+
+    conflict_counts: dict[int, int] = defaultdict(int)
+    conflict_stmt = (
+        select(models.AuditLog)
+        .where(models.AuditLog.action == "sync_discrepancy")
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(500)
+    )
+    for log in db.scalars(conflict_stmt):
+        try:
+            payload = json.loads(log.details or "{}") if log.details else {}
+        except json.JSONDecodeError:
+            payload = {}
+        for key in ("max", "min"):
+            entries = payload.get(key) or []
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                store_candidate = entry.get("store_id") or entry.get("sucursal_id")
+                if store_candidate is None:
+                    continue
+                try:
+                    candidate_id = int(store_candidate)
+                except (TypeError, ValueError):
+                    continue
+                if store_id is not None and candidate_id != store_id:
+                    continue
+                conflict_counts[candidate_id] += 1
+
+    results: list[dict[str, object]] = []
+    now = datetime.utcnow()
+    stale_threshold = timedelta(hours=12)
+    for row in store_rows:
+        key = int(row.id)
+        session = latest_by_store.get(key) or latest_global
+        last_status = session.status if session else None
+        last_mode = session.mode if session else None
+        last_timestamp = None
+        if session:
+            last_timestamp = session.finished_at or session.started_at
+
+        health = schemas.SyncBranchHealth.UNKNOWN
+        label = "Sin registros de sincronización"
+        if session:
+            timestamp_label = (
+                last_timestamp.astimezone().strftime("%d/%m/%Y %H:%M")
+                if last_timestamp
+                else "sin hora"
+            )
+            if session.status is models.SyncStatus.FAILED:
+                health = schemas.SyncBranchHealth.CRITICAL
+                label = f"Fallo registrado el {timestamp_label}"
+            else:
+                health = schemas.SyncBranchHealth.OPERATIVE
+                label = f"Actualizado el {timestamp_label}"
+                if last_timestamp and now - last_timestamp > stale_threshold:
+                    health = schemas.SyncBranchHealth.WARNING
+                    label = f"Sincronización antigua ({timestamp_label})"
+
+        pending_transfers = transfer_counts.get(key, 0)
+        open_conflicts = conflict_counts.get(key, 0)
+        if health is schemas.SyncBranchHealth.OPERATIVE:
+            if open_conflicts > 0:
+                health = schemas.SyncBranchHealth.WARNING
+                label = "Conflictos de inventario pendientes"
+            elif pending_transfers > 0:
+                health = schemas.SyncBranchHealth.WARNING
+                label = "Transferencias activas requieren seguimiento"
+
+        results.append(
+            {
+                "store_id": key,
+                "store_name": row.name,
+                "store_code": row.code,
+                "timezone": row.timezone,
+                "inventory_value": row.inventory_value,
+                "last_sync_at": last_timestamp,
+                "last_sync_mode": last_mode,
+                "last_sync_status": last_status,
+                "health": health,
+                "health_label": label,
+                "pending_transfers": pending_transfers,
+                "open_conflicts": open_conflicts,
+            }
+        )
+
+    return results
+
+
+def list_sync_conflicts(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    severity: schemas.SyncBranchHealth | None = None,
+    limit: int = 100,
+) -> list[schemas.SyncConflictLog]:
+    statement = (
+        select(models.AuditLog)
+        .where(models.AuditLog.action == "sync_discrepancy")
+        .order_by(models.AuditLog.created_at.desc())
+    )
+    if date_from is not None:
+        statement = statement.where(models.AuditLog.created_at >= date_from)
+    if date_to is not None:
+        statement = statement.where(models.AuditLog.created_at <= date_to)
+
+    raw_logs = list(db.scalars(statement.limit(max(limit * 3, 200))))
+    results: list[schemas.SyncConflictLog] = []
+
+    def _build_store_detail(data: dict[str, object]) -> tuple[schemas.SyncBranchStoreDetail, int | None]:
+        candidate = data.get("store_id") or data.get("sucursal_id")
+        store_identifier: int | None = None
+        if candidate is not None:
+            try:
+                store_identifier = int(candidate)
+            except (TypeError, ValueError):
+                store_identifier = None
+        quantity_raw = data.get("quantity") or data.get("qty") or 0
+        try:
+            quantity = int(quantity_raw)
+        except (TypeError, ValueError):
+            quantity = 0
+        name = (
+            data.get("store_name")
+            or data.get("nombre")
+            or data.get("store")
+            or (f"Sucursal #{store_identifier}" if store_identifier else "Sucursal no identificada")
+        )
+        detail = schemas.SyncBranchStoreDetail(
+            store_id=store_identifier or 0,
+            store_name=str(name),
+            quantity=quantity,
+        )
+        return detail, store_identifier
+
+    for log in raw_logs:
+        try:
+            payload = json.loads(log.details or "{}") if log.details else {}
+        except json.JSONDecodeError:
+            payload = {}
+
+        sku = str(
+            payload.get("sku")
+            or payload.get("device_sku")
+            or payload.get("entity")
+            or f"SYNC-{log.id}"
+        )
+        product_name = payload.get("product_name") or payload.get("nombre")
+        difference_raw = payload.get("diferencia") or payload.get("difference") or 0
+        try:
+            difference = int(difference_raw)
+        except (TypeError, ValueError):
+            difference = 0
+
+        stores_max: list[schemas.SyncBranchStoreDetail] = []
+        stores_min: list[schemas.SyncBranchStoreDetail] = []
+        related_store_ids: set[int] = set()
+
+        for entry in payload.get("max", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            detail, identifier = _build_store_detail(entry)
+            stores_max.append(detail)
+            if identifier is not None:
+                related_store_ids.add(identifier)
+
+        for entry in payload.get("min", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            detail, identifier = _build_store_detail(entry)
+            stores_min.append(detail)
+            if identifier is not None:
+                related_store_ids.add(identifier)
+
+        if store_id is not None and store_id not in related_store_ids:
+            continue
+
+        severity_value = schemas.SyncBranchHealth.WARNING
+        severity_hint = str(payload.get("severity") or "").lower()
+        if severity_hint == "critical" or difference >= 10:
+            severity_value = schemas.SyncBranchHealth.CRITICAL
+
+        if severity is not None and severity_value != severity:
+            continue
+
+        conflict = schemas.SyncConflictLog(
+            id=log.id,
+            sku=sku,
+            product_name=product_name,
+            detected_at=log.created_at,
+            difference=difference,
+            severity=severity_value,
+            stores_max=stores_max,
+            stores_min=stores_min,
+        )
+        results.append(conflict)
+        if len(results) >= limit:
+            break
+
+    return results
+
+
 def get_store_membership(db: Session, *, user_id: int, store_id: int) -> models.StoreMembership | None:
     statement = select(models.StoreMembership).where(
         models.StoreMembership.user_id == user_id,
@@ -5017,6 +5280,21 @@ def _require_store_permission(
     return membership
 
 
+def _user_can_override_transfer(
+    db: Session,
+    *,
+    user_id: int,
+    store_id: int,
+) -> bool:
+    user = get_user(db, user_id)
+    user_roles = {assignment.role.name for assignment in user.roles}
+    if ADMIN in user_roles:
+        return True
+    if GERENTE in user_roles and user.store_id == store_id:
+        return True
+    return False
+
+
 def list_store_memberships(db: Session, store_id: int) -> list[models.StoreMembership]:
     statement = (
         select(models.StoreMembership)
@@ -5039,12 +5317,19 @@ def create_transfer_order(
     origin_store = get_store(db, payload.origin_store_id)
     destination_store = get_store(db, payload.destination_store_id)
 
-    _require_store_permission(
-        db,
-        user_id=requested_by_id,
-        store_id=origin_store.id,
-        permission="create",
-    )
+    try:
+        _require_store_permission(
+            db,
+            user_id=requested_by_id,
+            store_id=origin_store.id,
+            permission="create",
+        )
+    except PermissionError:
+        normalized_reason = (payload.reason or "").strip()
+        if len(normalized_reason) < 5 or not _user_can_override_transfer(
+            db, user_id=requested_by_id, store_id=origin_store.id
+        ):
+            raise
 
     if not payload.items:
         raise ValueError("transfer_items_required")
@@ -5283,19 +5568,43 @@ def list_transfer_orders(
     db: Session,
     *,
     store_id: int | None = None,
-    limit: int = 50,
+    origin_store_id: int | None = None,
+    destination_store_id: int | None = None,
+    status: models.TransferStatus | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    limit: int | None = 50,
 ) -> list[models.TransferOrder]:
     statement = (
         select(models.TransferOrder)
-        .options(joinedload(models.TransferOrder.items))
+        .options(
+            joinedload(models.TransferOrder.items).joinedload(models.TransferOrderItem.device),
+            joinedload(models.TransferOrder.origin_store),
+            joinedload(models.TransferOrder.destination_store),
+            joinedload(models.TransferOrder.requested_by),
+            joinedload(models.TransferOrder.dispatched_by),
+            joinedload(models.TransferOrder.received_by),
+            joinedload(models.TransferOrder.cancelled_by),
+        )
         .order_by(models.TransferOrder.created_at.desc())
-        .limit(limit)
     )
     if store_id is not None:
         statement = statement.where(
             (models.TransferOrder.origin_store_id == store_id)
             | (models.TransferOrder.destination_store_id == store_id)
         )
+    if origin_store_id is not None:
+        statement = statement.where(models.TransferOrder.origin_store_id == origin_store_id)
+    if destination_store_id is not None:
+        statement = statement.where(models.TransferOrder.destination_store_id == destination_store_id)
+    if status is not None:
+        statement = statement.where(models.TransferOrder.status == status)
+    if date_from is not None:
+        statement = statement.where(models.TransferOrder.created_at >= date_from)
+    if date_to is not None:
+        statement = statement.where(models.TransferOrder.created_at <= date_to)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
 
 
