@@ -1113,7 +1113,7 @@ class RolePermissionUpdate(BaseModel):
 class UserDirectoryFilters(BaseModel):
     search: str | None = Field(default=None, max_length=120)
     role: str | None = Field(default=None, max_length=60)
-    status: Literal["all", "active", "inactive"] = "all"
+    status: Literal["all", "active", "inactive", "locked"] = "all"
     store_id: int | None = Field(default=None, ge=1)
 
 

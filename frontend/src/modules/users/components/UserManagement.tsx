@@ -71,6 +71,17 @@ const formatDateTime = (value: string | null | undefined): string => {
   }
 };
 
+const isUserLocked = (user: UserAccount): boolean => {
+  if (!user.locked_until) {
+    return false;
+  }
+  const lockedUntil = new Date(user.locked_until);
+  if (Number.isNaN(lockedUntil.getTime())) {
+    return false;
+  }
+  return lockedUntil.getTime() > Date.now();
+};
+
 type UserDashboardPanelProps = {
   dashboard: UserDashboardMetrics | null;
   loading: boolean;
@@ -904,6 +915,7 @@ function UserManagement({ token }: Props) {
                 <option value="all">Todos</option>
                 <option value="active">Activos</option>
                 <option value="inactive">Inactivos</option>
+                <option value="locked">Bloqueados</option>
               </select>
             </label>
             <label>
@@ -936,18 +948,21 @@ function UserManagement({ token }: Props) {
                     <th>Sucursal</th>
                     <th>Estado</th>
                     <th>Activo</th>
+                    <th>Bloqueado</th>
                     {roleNames.map((role) => (
                       <th key={role}>{role}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => (
-                    <tr
-                      key={user.id}
-                      className={selectedUserId === user.id ? "is-selected" : undefined}
-                      onClick={() => setSelectedUserId(user.id)}
-                    >
+                  {users.map((user) => {
+                    const locked = isUserLocked(user);
+                    return (
+                      <tr
+                        key={user.id}
+                        className={selectedUserId === user.id ? "is-selected" : undefined}
+                        onClick={() => setSelectedUserId(user.id)}
+                      >
                       <td>{user.username}</td>
                       <td>{user.full_name ?? "—"}</td>
                       <td>{user.store_name ?? "—"}</td>
@@ -962,6 +977,17 @@ function UserManagement({ token }: Props) {
                           />
                           <span className="toggle-slider" />
                         </label>
+                      </td>
+                      <td>
+                        <span
+                          className={`user-lock-indicator${
+                            locked ? " user-lock-indicator--active" : " user-lock-indicator--clear"
+                          }`}
+                          title={locked ? `Bloqueado hasta ${formatDateTime(user.locked_until)}` : "Sin bloqueo activo"}
+                        >
+                          <span className="user-lock-indicator__dot" aria-hidden="true" />
+                          {locked ? "Sí" : "No"}
+                        </span>
                       </td>
                       {roleNames.map((roleName) => {
                         const hasRole = user.roles.some((role) => role.name === roleName);
@@ -979,8 +1005,9 @@ function UserManagement({ token }: Props) {
                           </td>
                         );
                       })}
-                    </tr>
-                  ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

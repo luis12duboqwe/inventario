@@ -90,7 +90,7 @@ def create_user(
 def list_users(
     search: str | None = Query(default=None, min_length=1, max_length=120),
     role: str | None = Query(default=None, min_length=1, max_length=60),
-    status_filter: Literal["all", "active", "inactive"] = Query(
+    status_filter: Literal["all", "active", "inactive", "locked"] = Query(
         default="all", alias="status"
     ),
     store_id: int | None = Query(default=None, ge=1),
@@ -119,7 +119,7 @@ def export_users(
     format: Literal["pdf", "xlsx"] = Query(default="pdf"),
     search: str | None = Query(default=None, min_length=1, max_length=120),
     role: str | None = Query(default=None, min_length=1, max_length=60),
-    status_filter: Literal["all", "active", "inactive"] = Query(
+    status_filter: Literal["all", "active", "inactive", "locked"] = Query(
         default="all", alias="status"
     ),
     store_id: int | None = Query(default=None, ge=1),

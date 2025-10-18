@@ -41,7 +41,7 @@ export type UserAccount = {
 export type UserQueryFilters = {
   search?: string;
   role?: string;
-  status?: "all" | "active" | "inactive";
+  status?: "all" | "active" | "inactive" | "locked";
   storeId?: number;
 };
 

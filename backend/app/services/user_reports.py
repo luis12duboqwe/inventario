@@ -69,7 +69,12 @@ def render_user_directory_pdf(report: schemas.UserDirectoryReport) -> bytes:
     if report.filters.role:
         filters.append(f"Rol: {report.filters.role}")
     if report.filters.status != "all":
-        estado = "Activos" if report.filters.status == "active" else "Inactivos"
+        estado_map = {
+            "active": "Activos",
+            "inactive": "Inactivos",
+            "locked": "Bloqueados",
+        }
+        estado = estado_map.get(report.filters.status, report.filters.status.title())
         filters.append(f"Estado: {estado}")
     if report.filters.store_id is not None:
         filters.append(f"Sucursal ID: {report.filters.store_id}")
