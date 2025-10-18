@@ -312,10 +312,12 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se habilita el gestor de permisos por rol vía `GET /users/permissions` y `PUT /users/roles/{role}/permissions`, persistiendo cambios en la tabla `permisos` y registrando la acción auditada `role_permissions_updated`.
 - `backend/app/services/user_reports.py` genera los reportes PDF/Excel en tema oscuro para usuarios, siguiendo la paleta `#0f172a/#111827/#38bdf8` y reutilizando la cabecera `X-Reason` como en otros módulos.
 - `frontend/src/api.ts` y `usersService` agregan funciones dedicadas a dashboard, permisos, exportaciones y CRUD, mientras que `frontend/src/styles.css` introduce grillas responsivas (`user-dashboard__*`, `stat-card`, `permissions-panel`, `user-form`) para mantener la estética Softmobile.
+- El panel de usuarios ahora maneja métricas vacías sin fallos, ordena roles y permisos antes de renderizar para evitar mutaciones de estado y mantiene las columnas de la tabla en sincronía con la matriz de seguridad.
 - Pruebas nuevas en `backend/tests/test_users_management.py` validan filtros, exportaciones, actualización de perfiles y edición de permisos para garantizar la cobertura mínima solicitada.
 - README, CHANGELOG y este AGENTS registran la fase bajo «Actualización Usuarios - Parte 3 (Interfaz y Panel de Roles)» para preservar la trazabilidad.
 - **28/10/2025 09:55 UTC** — Se corrigió la consulta `list_users` aplicando `.unique()` para evitar `InvalidRequestError` con `joinedload`, se dejó de sobrescribir permisos personalizados en `ensure_role_permissions`, se reactivan cuentas al renovar la contraseña y se reordenaron las rutas de `/users` para que `/users/dashboard` y `/users/export` no colisionen con `/{user_id}`. Las pruebas `backend/tests/test_users_management.py` quedaron en verde.
 - **28/10/2025 12:45 UTC** — `PUT /users/{id}/roles` y `PATCH /users/{id}` exigen ahora `X-Reason`, registran `user_roles_updated`/`user_status_changed` con el motivo recibido y se añadió una prueba dedicada que verifica el rechazo cuando falta el encabezado corporativo.
+- **28/10/2025 16:40 UTC** — Se reforzó la resiliencia del panel de usuarios frente a métricas vacías y se añadió una prueba que confirma el rechazo de `PATCH /users/{id}` sin `X-Reason` antes de aceptar la suspensión corporativa.
 
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
