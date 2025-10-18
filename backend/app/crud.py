@@ -7,7 +7,7 @@ import json
 import math
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 from typing import Literal
@@ -23,6 +23,14 @@ from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
 from .utils.cache import TTLCache
+
+
+def _ensure_timezone_aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 def _ensure_unique_identifiers(
@@ -134,23 +142,27 @@ def _to_decimal(value: Decimal | float | int | None) -> Decimal:
 def _normalize_date_range(
     date_from: date | datetime | None, date_to: date | datetime | None
 ) -> tuple[datetime, datetime]:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if isinstance(date_from, datetime):
-        start_dt = date_from
+        start_dt = _ensure_timezone_aware(date_from) or now
         if start_dt.time() == datetime.min.time():
             start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
     elif isinstance(date_from, date):
-        start_dt = datetime.combine(date_from, datetime.min.time())
+        start_dt = datetime.combine(date_from, datetime.min.time()).replace(
+            tzinfo=timezone.utc
+        )
     else:
         start_dt = now - timedelta(days=30)
 
     if isinstance(date_to, datetime):
-        end_dt = date_to
+        end_dt = _ensure_timezone_aware(date_to) or now
         if end_dt.time() == datetime.min.time():
             end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif isinstance(date_to, date):
-        end_dt = datetime.combine(date_to, datetime.max.time())
+        end_dt = datetime.combine(date_to, datetime.max.time()).replace(
+            tzinfo=timezone.utc
+        )
     else:
         end_dt = now
 
@@ -850,11 +862,19 @@ def acknowledge_audit_alert(
         .where(models.AuditAlertAcknowledgement.entity_id == normalized_id)
     )
     acknowledgement = db.scalars(statement).first()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
+    last_critical_ts = _ensure_timezone_aware(last_critical.created_at)
+    ack_existing_ts = (
+        _ensure_timezone_aware(acknowledgement.acknowledged_at)
+        if acknowledgement and acknowledgement.acknowledged_at is not None
+        else None
+    )
 
     if (
         acknowledgement is not None
-        and acknowledgement.acknowledged_at >= last_critical.created_at
+        and ack_existing_ts is not None
+        and last_critical_ts is not None
+        and ack_existing_ts >= last_critical_ts
     ):
         telemetry.record_audit_acknowledgement_failure(
             normalized_type, "already_acknowledged"
@@ -927,7 +947,7 @@ def get_persistent_audit_alerts(
     if cached is not None:
         return copy.deepcopy(cached)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     lookback_start = now - timedelta(hours=lookback_hours)
 
     statement = (
@@ -971,9 +991,18 @@ def get_persistent_audit_alerts(
         acknowledged_by_id = None
         acknowledged_by_name = None
         acknowledged_note = None
-        if acknowledgement and acknowledgement.acknowledged_at >= alert["last_seen"]:
+        acknowledged_ts = None
+        if acknowledgement and acknowledgement.acknowledged_at is not None:
+            acknowledged_ts = _ensure_timezone_aware(acknowledgement.acknowledged_at)
+        last_seen = alert.get("last_seen")
+        if (
+            acknowledgement
+            and acknowledged_ts is not None
+            and isinstance(last_seen, datetime)
+            and acknowledged_ts >= last_seen
+        ):
             status = "acknowledged"
-            acknowledged_at = acknowledgement.acknowledged_at
+            acknowledged_at = acknowledged_ts
             acknowledged_by_id = acknowledgement.acknowledged_by_id
             if acknowledgement.acknowledged_by is not None:
                 acknowledged_by_name = (
@@ -5056,7 +5085,7 @@ def get_store_sync_overview(
                 conflict_counts[candidate_id] += 1
 
     results: list[dict[str, object]] = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     stale_threshold = timedelta(hours=12)
     for row in store_rows:
         key = int(row.id)
@@ -5065,7 +5094,9 @@ def get_store_sync_overview(
         last_mode = session.mode if session else None
         last_timestamp = None
         if session:
-            last_timestamp = session.finished_at or session.started_at
+            last_timestamp = _ensure_timezone_aware(
+                session.finished_at or session.started_at
+            )
 
         health = schemas.SyncBranchHealth.UNKNOWN
         label = "Sin registros de sincronización"
