@@ -343,6 +343,11 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - README y CHANGELOG documentan esta fase como «Actualización Sistema - Parte 2 (Respaldos y Recuperación)», preservando la trazabilidad con este AGENTS.
 - **30/10/2025 12:55 UTC** — Auditoría del servicio ratifica respaldos automáticos/manuales diferenciados por `mode`, exportaciones `.zip/.sql/.json`, restauraciones parciales (base de datos, configuraciones, archivos críticos), bitácora `logs_sistema` activa y restricciones de rol `ADMIN`, según la suite `backend/tests/test_backups.py`.
 
+### Actualización Sistema - Parte 3 (Reportes y Notificaciones) (31/10/2025 09:40 UTC)
+
+- Se depuró `backend/tests/test_global_reports.py` para importar únicamente `datetime`, simulando fallos recientes de sincronización sin dependencias sobrantes y garantizando que las alertas automáticas sigan cubiertas por la suite.
+- README y CHANGELOG registran esta iteración bajo «Actualización Sistema - Parte 3 (Reportes y Notificaciones)», manteniendo alineada la documentación corporativa con este mandato operativo.
+
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
 - La migración `202503010005_clientes_estructura_relaciones.py` renombra la tabla `customers` a `clientes`, ajusta columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y marca el teléfono como obligatorio con valores de contingencia para datos históricos.
