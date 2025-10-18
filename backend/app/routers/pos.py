@@ -92,6 +92,11 @@ def register_pos_sale_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La caja indicada no está abierta.",
             ) from exc
+        if detail == "customer_credit_limit_exceeded":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El cliente excede el límite de crédito disponible.",
+            ) from exc
         raise
 
 

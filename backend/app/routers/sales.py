@@ -192,6 +192,11 @@ def create_sale_endpoint(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Los dispositivos con IMEI o serie se venden por unidad.",
             ) from exc
+        if detail == "customer_credit_limit_exceeded":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El cliente excede el límite de crédito disponible.",
+            ) from exc
         raise
 
 
@@ -288,6 +293,11 @@ def update_sale_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La venta ya se encuentra anulada.",
+            ) from exc
+        if detail == "customer_credit_limit_exceeded":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El cliente excede el límite de crédito disponible.",
             ) from exc
         raise
 

@@ -6256,6 +6256,65 @@ def _restore_device_availability(device: models.Device) -> None:
         device.estado = "disponible"
 
 
+def _ensure_device_available_for_preview(
+    device: models.Device, quantity: int, *, reserved_quantity: int = 0
+) -> None:
+    if quantity <= 0:
+        raise ValueError("sale_invalid_quantity")
+    available_quantity = device.quantity + reserved_quantity
+    if available_quantity < quantity:
+        raise ValueError("sale_insufficient_stock")
+    if device.imei or device.serial:
+        if (
+            device.estado
+            and device.estado.lower() == "vendido"
+            and reserved_quantity <= 0
+        ):
+            raise ValueError("sale_device_already_sold")
+        if quantity > 1:
+            raise ValueError("sale_requires_single_unit")
+
+
+def _preview_sale_totals(
+    db: Session,
+    store_id: int,
+    items: list[schemas.SaleItemCreate],
+    *,
+    sale_discount_percent: Decimal,
+    reserved_quantities: dict[int, int] | None = None,
+) -> tuple[Decimal, Decimal]:
+    gross_total = Decimal("0")
+    total_discount = Decimal("0")
+    reserved = reserved_quantities or {}
+
+    for item in items:
+        device = get_device(db, store_id, item.device_id)
+        reserved_quantity = reserved.get(device.id, 0)
+        _ensure_device_available_for_preview(
+            device, item.quantity, reserved_quantity=reserved_quantity
+        )
+
+        line_unit_price = _to_decimal(device.unit_price).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        quantity_decimal = _to_decimal(item.quantity)
+        line_total = (line_unit_price * quantity_decimal).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        gross_total += line_total
+
+        line_discount_percent = _to_decimal(getattr(item, "discount_percent", None))
+        if line_discount_percent == Decimal("0"):
+            line_discount_percent = sale_discount_percent
+        discount_fraction = line_discount_percent / Decimal("100")
+        line_discount_amount = (line_total * discount_fraction).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        total_discount += line_discount_amount
+
+    return gross_total, total_discount
+
+
 def _apply_sale_items(
     db: Session,
     sale: models.Sale,
@@ -6355,6 +6414,34 @@ def create_sale(
         performed_by_id=performed_by_id,
     )
     db.add(sale)
+
+    tax_value = _to_decimal(tax_rate)
+    if tax_value < Decimal("0"):
+        tax_value = Decimal("0")
+    tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
+
+    try:
+        preview_gross_total, preview_discount = _preview_sale_totals(
+            db,
+            sale.store_id,
+            payload.items,
+            sale_discount_percent=sale_discount_percent,
+        )
+        preview_subtotal = (preview_gross_total - preview_discount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        preview_tax_amount = (preview_subtotal * tax_fraction).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        preview_total = (preview_subtotal + preview_tax_amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if customer and sale.payment_method == models.PaymentMethod.CREDITO:
+            _validate_customer_credit(customer, preview_total)
+    except ValueError:
+        db.expunge(sale)
+        raise
+
     db.flush()
 
     ledger_entry: models.CustomerLedgerEntry | None = None
@@ -6373,11 +6460,6 @@ def create_sale(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     sale.subtotal_amount = subtotal
-
-    tax_value = _to_decimal(tax_rate)
-    if tax_value < Decimal("0"):
-        tax_value = Decimal("0")
-    tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
     tax_amount = (subtotal * tax_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     sale.tax_amount = tax_amount
     sale.total_amount = (subtotal + tax_amount).quantize(
@@ -6388,7 +6470,6 @@ def create_sale(
 
     if customer:
         if sale.payment_method == models.PaymentMethod.CREDITO:
-            _validate_customer_credit(customer, sale.total_amount)
             customer.outstanding_debt = (
                 _to_decimal(customer.outstanding_debt) + sale.total_amount
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -6488,23 +6569,54 @@ def update_sale(
     previous_customer = sale.customer
     previous_payment_method = sale.payment_method
     previous_total_amount = _to_decimal(sale.total_amount)
+    reserved_quantities: dict[int, int] = {}
+    for existing_item in sale.items:
+        reserved_quantities[existing_item.device_id] = (
+            reserved_quantities.get(existing_item.device_id, 0) + existing_item.quantity
+        )
     ledger_reversal: models.CustomerLedgerEntry | None = None
     ledger_new: models.CustomerLedgerEntry | None = None
     customers_to_sync: dict[int, models.Customer] = {}
 
     sale_discount_percent = _to_decimal(payload.discount_percent or 0)
-    sale.discount_percent = sale_discount_percent.quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
+    new_payment_method = models.PaymentMethod(payload.payment_method)
     sale_status = (payload.status or sale.status or "COMPLETADA").strip() or "COMPLETADA"
-    sale.status = sale_status.upper()
-    sale.notes = payload.notes
+    normalized_status = sale_status.upper()
 
     customer = None
     customer_name = payload.customer_name
     if payload.customer_id:
         customer = get_customer(db, payload.customer_id)
         customer_name = customer_name or customer.name
+
+    preview_gross_total, preview_discount = _preview_sale_totals(
+        db,
+        sale.store_id,
+        payload.items,
+        sale_discount_percent=sale_discount_percent,
+        reserved_quantities=reserved_quantities,
+    )
+    preview_subtotal = (preview_gross_total - preview_discount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    tax_value = _to_decimal(None)
+    tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
+    preview_tax_amount = (preview_subtotal * tax_fraction).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    preview_total = (preview_subtotal + preview_tax_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    validation_customer = customer or previous_customer
+    if new_payment_method == models.PaymentMethod.CREDITO and validation_customer:
+        _validate_customer_credit(validation_customer, preview_total)
+
+    sale.discount_percent = sale_discount_percent.quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    sale.status = normalized_status
+    sale.notes = payload.notes
     sale.customer_id = customer.id if customer else None
     sale.customer_name = customer_name
 
@@ -6568,11 +6680,10 @@ def update_sale(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     sale.subtotal_amount = subtotal
-
-    tax_value = _to_decimal(None)
-    tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
-    sale.tax_amount = (subtotal * tax_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    sale.payment_method = models.PaymentMethod(payload.payment_method)
+    sale.tax_amount = (subtotal * tax_fraction).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    sale.payment_method = new_payment_method
     sale.total_amount = (subtotal + sale.tax_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
@@ -6582,7 +6693,6 @@ def update_sale(
     )
     if target_customer:
         if sale.payment_method == models.PaymentMethod.CREDITO:
-            _validate_customer_credit(target_customer, sale.total_amount)
             target_customer.outstanding_debt = (
                 _to_decimal(target_customer.outstanding_debt) + sale.total_amount
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

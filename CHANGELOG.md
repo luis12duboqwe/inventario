@@ -62,8 +62,9 @@
 - Se normalizan `status` y `customer_type`, se rechazan límites de crédito o saldos negativos y cada entrada del ledger se serializa mediante `_customer_ledger_payload` para sincronizarse en `sync_outbox`.
 - `frontend/src/modules/operations/components/Customers.tsx` permite registrar pagos, consultar un resumen financiero interactivo, añadir estados `moroso`/`vip` y gestionar notas dedicadas; el POS advierte cuando la venta agotará o excederá el crédito.
 - Se renombra el campo `metadata` a `details` en las respuestas del ledger y en los consumidores de frontend para prevenir fallos de serialización detectados en las pruebas al consumir `/customers/{id}/summary`.
-- Pruebas nuevas (`test_customer_credit_limit_blocks_sale`, `test_customer_payments_and_summary`) validan el bloqueo de ventas por sobreendeudamiento y la coherencia del resumen tras registrar abonos.
+- Pruebas nuevas (`test_customer_credit_limit_blocks_sale`, `test_customer_payments_and_summary`) validan el bloqueo de ventas por sobreendeudamiento y que el resumen exponga ventas, facturas, pagos y notas con saldos consistentes tras registrar abonos.
 - Corrección 22/10/2025 09:40 UTC: se serializa correctamente el campo `created_by` en las respuestas de pagos y se asocian las devoluciones POS a la persona que procesa cada asiento en el ledger, evitando errores `ResponseValidationError` en `/customers/{id}/payments`.
+- Ajuste 23/10/2025 10:05 UTC: las rutas `/sales` y `/pos/sale` devuelven `409 Conflict` cuando la venta a crédito excede el límite aprobado y la prueba `test_credit_sale_rejected_when_limit_exceeded` garantiza que el inventario permanezca intacto tras el bloqueo.
 
 ## Actualización Inventario - Roles y Permisos
 - `require_roles` ahora concede acceso automático a quienes poseen el rol `ADMIN`, garantizando control total sobre rutas protegidas sin necesidad de enlistar el rol explícitamente en cada dependencia.

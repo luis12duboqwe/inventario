@@ -5,7 +5,7 @@ import enum
 import json
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -655,6 +655,56 @@ class Customer(Base):
         "RepairOrder", back_populates="customer"
     )
     sales: Mapped[list["Sale"]] = relationship("Sale", back_populates="customer")
+    ledger_entries: Mapped[list["CustomerLedgerEntry"]] = relationship(
+        "CustomerLedgerEntry",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+    )
+
+
+class CustomerLedgerEntryType(str, enum.Enum):
+    """Tipos de movimientos registrados en la bitácora de clientes."""
+
+    SALE = "sale"
+    PAYMENT = "payment"
+    ADJUSTMENT = "adjustment"
+    NOTE = "note"
+
+
+class CustomerLedgerEntry(Base):
+    __tablename__ = "customer_ledger_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    customer_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("clientes.id_cliente", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entry_type: Mapped[CustomerLedgerEntryType] = mapped_column(
+        Enum(CustomerLedgerEntryType, name="customer_ledger_entry_type"),
+        nullable=False,
+    )
+    reference_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    balance_after: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    customer: Mapped["Customer"] = relationship(
+        "Customer", back_populates="ledger_entries"
+    )
+    created_by: Mapped[Optional["User"]] = relationship("User")
 
 
 class Supplier(Base):
