@@ -171,6 +171,16 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Acceso restringido para auditoría**: la prueba `test_system_logs_rejects_non_admin_access` confirma que las rutas `/logs/sistema` exigen autenticación y rol `ADMIN`, devolviendo `401/403` ante peticiones no autorizadas y asegurando que la bitácora se conserve en un canal seguro.【F:backend/tests/test_system_logs.py†L152-L187】【F:backend/app/routers/system_logs.py†L1-L67】
 - **Documentación sincronizada**: este README, `CHANGELOG.md` y `AGENTS.md` registran la actualización bajo «Actualización Sistema - Parte 1 (Logs y Auditoría General)» para mantener la trazabilidad operativa.
 
+## Actualización Sistema - Parte 2 (Respaldos y Recuperación)
+
+- **Respaldos manuales y automáticos**: el servicio `services/backups.generate_backup` construye snapshots PDF/JSON/SQL, empaqueta archivos críticos y registra metadatos, rutas y tamaño total en `backup_jobs`, diferenciando entre modos `manual` y `automatico` sin alterar integraciones existentes.【F:backend/app/services/backups.py†L205-L320】【F:backend/app/crud.py†L6575-L6624】
+- **Volcado SQL seguro**: `_dump_database_sql` reemplaza `iterdump()` por instrucciones `DELETE/INSERT` que respetan llaves foráneas, normalizan literales (enums, fechas, binarios) y omiten `backup_jobs` para evitar perder el historial de respaldos durante una restauración en caliente.【F:backend/app/services/backups.py†L72-L121】
+- **Restauraciones parciales o totales**: `restore_backup` permite elegir componentes (base de datos, configuración, archivos críticos), definir un destino personalizado y decidir si aplicar el SQL directamente sobre la base activa, registrando cada recuperación en `logs_sistema` sin invalidar el job original.【F:backend/app/services/backups.py†L324-L374】【F:backend/app/crud.py†L6629-L6645】
+- **API protegida para administradores**: el router `/backups` exige rol `ADMIN`, expone `/run` para ejecuciones manuales, `/history` para consultar el catálogo reciente y `/backups/{id}/restore` para restauraciones controladas con la bandera `aplicar_base_datos`.【F:backend/app/routers/backups.py†L1-L49】
+- **Esquemas consistentes**: `BackupRunRequest`, `BackupRestoreRequest` y `BackupRestoreResponse` describen notas, componentes y destino opcional, mientras que el enum `BackupComponent` queda registrado en el modelo `BackupJob` para mantener la trazabilidad de los archivos generados.【F:backend/app/schemas/__init__.py†L3103-L3159】【F:backend/app/models/__init__.py†L66-L111】【F:backend/app/models/__init__.py†L588-L613】
+- **Cobertura automatizada**: `backend/tests/test_backups.py` valida respaldos completos, restauraciones por componente, presencia de archivos críticos, registros en `logs_sistema` y la reautenticación posterior cuando se aplica el SQL sobre la base activa.【F:backend/tests/test_backups.py†L1-L205】
+- **Documentación sincronizada**: este README, `CHANGELOG.md` y `AGENTS.md` documentan la fase «Actualización Sistema - Parte 2 (Respaldos y Recuperación)» para preservar la trazabilidad operativa.
+
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
 - Se renombran las tablas operativas del módulo POS a `ventas` y `detalle_ventas`, alineando los identificadores físicos con los

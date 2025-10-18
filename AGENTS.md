@@ -331,6 +331,16 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Cobertura reforzada: `test_system_logs_rejects_non_admin_access` confirma que `/logs/sistema` devuelve `401` sin autenticación y `403` a usuarios sin rol `ADMIN`, manteniendo los registros protegidos frente a accesos no autorizados.
 - README, CHANGELOG y este AGENTS documentan la fase bajo «Actualización Sistema - Parte 1 (Logs y Auditoría General)» para asegurar trazabilidad.
 
+### Actualización Sistema - Parte 2 (Respaldos y Recuperación) (30/10/2025 11:20 UTC)
+
+- `services/backups.generate_backup` produce respaldos manuales y automáticos con snapshots PDF/JSON/SQL, metadatos de componentes y copias de archivos críticos dentro de un ZIP corporativo, almacenando rutas absolutas y tamaño total en `backup_jobs`.
+- `_dump_database_sql` sustituye `iterdump()` por secuencias `DELETE/INSERT` compatibles con SQLite y motores SQL corporativos, normalizando literales (enum, fechas, binarios) y excluyendo `backup_jobs` para conservar el historial de respaldos tras una restauración.
+- `restore_backup` permite restauraciones totales o parciales (base de datos, configuración, archivos críticos), copiar archivos a destinos personalizados y aplicar el SQL directamente cuando se requiera, registrando cada operación en `logs_sistema` mediante `crud.register_backup_restore` sin invalidar el job original.
+- El router `/backups` queda restringido a usuarios con rol ADMIN e incorpora `/run`, `/history` y `POST /backups/{id}/restore`, respetando los componentes solicitados y la bandera `aplicar_base_datos` para controlar restauraciones en caliente.
+- Los esquemas `BackupRunRequest`, `BackupRestoreRequest` y `BackupRestoreResponse` validan notas, componentes y destino opcional, mientras que el enum `BackupComponent` y el modelo `BackupJob` registran rutas JSON/SQL/configuración/archivos críticos junto al tamaño agregado.
+- `backend/tests/test_backups.py` asegura generación de archivos, restauraciones por componente, reautenticación tras aplicar SQL y el registro de eventos `backup_generated`/`backup_restored` en `logs_sistema`.
+- README y CHANGELOG documentan esta fase como «Actualización Sistema - Parte 2 (Respaldos y Recuperación)», preservando la trazabilidad con este AGENTS.
+
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
 - La migración `202503010005_clientes_estructura_relaciones.py` renombra la tabla `customers` a `clientes`, ajusta columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y marca el teléfono como obligatorio con valores de contingencia para datos históricos.
