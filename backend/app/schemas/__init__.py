@@ -14,6 +14,7 @@ from pydantic import (
     computed_field,
     field_serializer,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -1132,6 +1133,24 @@ class MovementResponse(BaseModel):
     store_inventory_value: Decimal
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @model_serializer(mode="wrap")
+    def _include_store_compatibility(self, handler: Any) -> dict[str, Any]:
+        serialized = handler(self)
+
+        compat_fields: dict[str, tuple[str, ...]] = {
+            "sucursal_origen_id": ("tienda_origen_id",),
+            "sucursal_origen": ("tienda_origen",),
+            "sucursal_destino_id": ("tienda_destino_id",),
+            "sucursal_destino": ("tienda_destino",),
+        }
+
+        for field_name, aliases in compat_fields.items():
+            value = serialized.get(field_name)
+            for alias in aliases:
+                serialized.setdefault(alias, value)
+
+        return serialized
 
     @field_serializer("unit_cost")
     @classmethod
