@@ -10,8 +10,9 @@ from collections.abc import Iterable, Sequence
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
+from typing import Literal
 
-from sqlalchemy import case, func, or_, select, tuple_
+from sqlalchemy import case, desc, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement
@@ -1213,6 +1214,7 @@ def list_customers(
     limit: int = 100,
     status: str | None = None,
     customer_type: str | None = None,
+    has_debt: bool | None = None,
 ) -> list[models.Customer]:
     statement = select(models.Customer).order_by(models.Customer.name.asc()).limit(limit)
     if status:
@@ -1234,6 +1236,16 @@ def list_customers(
                 func.lower(func.coalesce(models.Customer.notes, "")).like(normalized),
             )
         )
+    if status:
+        statement = statement.where(func.lower(models.Customer.status) == status.lower())
+    if customer_type:
+        statement = statement.where(
+            func.lower(models.Customer.customer_type) == customer_type.lower()
+        )
+    if has_debt is True:
+        statement = statement.where(models.Customer.outstanding_debt > 0)
+    elif has_debt is False:
+        statement = statement.where(models.Customer.outstanding_debt <= 0)
     return list(db.scalars(statement))
 
 
@@ -1743,6 +1755,219 @@ def get_customer_summary(
         invoices=invoices,
         payments=payments[:20],
         ledger=ledger_entries[:50],
+    )
+
+
+def _customer_sales_stats_subquery(
+    *, date_from: date | None = None, date_to: date | None = None
+):
+    statement = (
+        select(
+            models.Sale.customer_id.label("customer_id"),
+            func.count(models.Sale.id).label("sales_count"),
+            func.coalesce(func.sum(models.Sale.total_amount), Decimal("0")).label(
+                "sales_total"
+            ),
+            func.max(models.Sale.created_at).label("last_sale_at"),
+        )
+        .where(
+            models.Sale.customer_id.is_not(None),
+            models.Sale.status != "CANCELADA",
+        )
+    )
+    if date_from is not None:
+        statement = statement.where(func.date(models.Sale.created_at) >= date_from)
+    if date_to is not None:
+        statement = statement.where(func.date(models.Sale.created_at) <= date_to)
+    return statement.group_by(models.Sale.customer_id).subquery()
+
+
+def build_customer_portfolio(
+    db: Session,
+    *,
+    category: Literal["delinquent", "frequent"],
+    limit: int = 50,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> schemas.CustomerPortfolioReport:
+    sales_stats = _customer_sales_stats_subquery(date_from=date_from, date_to=date_to)
+    base_statement = select(
+        models.Customer,
+        sales_stats.c.sales_count,
+        sales_stats.c.sales_total,
+        sales_stats.c.last_sale_at,
+    )
+
+    if category == "frequent":
+        statement = (
+            base_statement.join(sales_stats, sales_stats.c.customer_id == models.Customer.id)
+            .order_by(desc(sales_stats.c.sales_total), models.Customer.name.asc())
+            .limit(limit)
+        )
+    else:
+        statement = (
+            base_statement.outerjoin(
+                sales_stats, sales_stats.c.customer_id == models.Customer.id
+            )
+            .where(
+                or_(
+                    models.Customer.status == "moroso",
+                    models.Customer.outstanding_debt > 0,
+                )
+            )
+            .order_by(models.Customer.outstanding_debt.desc(), models.Customer.name.asc())
+            .limit(limit)
+        )
+
+    rows = db.execute(statement).all()
+    items: list[schemas.CustomerPortfolioItem] = []
+    total_debt = Decimal("0")
+    total_sales = Decimal("0")
+
+    for row in rows:
+        customer: models.Customer = row[0]
+        sales_count = int(row[1] or 0)
+        sales_total = Decimal(row[2] or 0)
+        last_sale_at = row[3]
+        outstanding = Decimal(customer.outstanding_debt or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        credit_limit = Decimal(customer.credit_limit or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        available_credit = max(Decimal("0"), credit_limit - outstanding)
+
+        total_debt += outstanding
+        total_sales += sales_total
+
+        items.append(
+            schemas.CustomerPortfolioItem(
+                customer_id=customer.id,
+                name=customer.name,
+                status=customer.status,
+                customer_type=customer.customer_type,
+                credit_limit=float(credit_limit),
+                outstanding_debt=float(outstanding),
+                available_credit=float(available_credit),
+                sales_total=float(sales_total),
+                sales_count=sales_count,
+                last_sale_at=last_sale_at,
+                last_interaction_at=customer.last_interaction_at,
+            )
+        )
+
+    filters = schemas.CustomerPortfolioFilters(
+        category=category,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+    totals = schemas.CustomerPortfolioTotals(
+        customers=len(items),
+        moroso_flagged=sum(1 for item in items if item.status == "moroso"),
+        outstanding_debt=float(total_debt),
+        sales_total=float(total_sales),
+    )
+
+    return schemas.CustomerPortfolioReport(
+        generated_at=datetime.utcnow(),
+        category=category,
+        filters=filters,
+        items=items,
+        totals=totals,
+    )
+
+
+def get_customer_dashboard_metrics(
+    db: Session,
+    *,
+    months: int = 6,
+    top_limit: int = 5,
+) -> schemas.CustomerDashboardMetrics:
+    months = max(1, min(months, 24))
+    today = datetime.utcnow().date()
+    current_month = date(today.year, today.month, 1)
+    months_sequence: list[date] = []
+    for _ in range(months):
+        months_sequence.append(current_month)
+        if current_month.month == 1:
+            current_month = date(current_month.year - 1, 12, 1)
+        else:
+            current_month = date(current_month.year, current_month.month - 1, 1)
+    months_sequence.reverse()
+    cutoff_month = months_sequence[0]
+    cutoff_datetime = datetime.combine(cutoff_month, datetime.min.time())
+
+    creation_rows = db.execute(
+        select(models.Customer.created_at).where(
+            models.Customer.created_at >= cutoff_datetime
+        )
+    ).all()
+    month_totals: dict[date, int] = {month: 0 for month in months_sequence}
+    for (created_at,) in creation_rows:
+        if created_at is None:
+            continue
+        created_month = date(created_at.year, created_at.month, 1)
+        if created_month in month_totals:
+            month_totals[created_month] += 1
+
+    new_customers_chart = [
+        schemas.DashboardChartPoint(
+            label=month.strftime("%b %Y"),
+            value=float(month_totals.get(month, 0)),
+        )
+        for month in months_sequence
+    ]
+
+    portfolio = build_customer_portfolio(
+        db,
+        category="frequent",
+        limit=top_limit,
+    )
+    top_customers = [
+        schemas.CustomerLeaderboardEntry(
+            customer_id=item.customer_id,
+            name=item.name,
+            status=item.status,
+            customer_type=item.customer_type,
+            sales_total=item.sales_total,
+            sales_count=item.sales_count,
+            last_sale_at=item.last_sale_at,
+            outstanding_debt=item.outstanding_debt,
+        )
+        for item in portfolio.items
+    ]
+
+    delinquent_row = db.execute(
+        select(
+            func.count(models.Customer.id).label("customers_with_debt"),
+            func.coalesce(
+                func.sum(models.Customer.outstanding_debt), Decimal("0")
+            ).label("total_outstanding_debt"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (models.Customer.status == "moroso", 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("moroso_flagged"),
+        ).where(models.Customer.outstanding_debt > 0)
+    ).one()
+
+    delinquent_summary = schemas.CustomerDelinquentSummary(
+        customers_with_debt=int(delinquent_row.customers_with_debt or 0),
+        moroso_flagged=int(delinquent_row.moroso_flagged or 0),
+        total_outstanding_debt=float(delinquent_row.total_outstanding_debt or 0),
+    )
+
+    return schemas.CustomerDashboardMetrics(
+        generated_at=datetime.utcnow(),
+        months=months,
+        new_customers_per_month=new_customers_chart,
+        top_customers=top_customers,
+        delinquent_summary=delinquent_summary,
     )
 
 

@@ -649,6 +649,67 @@ class CustomerSummaryResponse(BaseModel):
     ledger: list[CustomerLedgerEntryResponse]
 
 
+class CustomerPortfolioFilters(BaseModel):
+    category: Literal["delinquent", "frequent"]
+    date_from: date | None = None
+    date_to: date | None = None
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class CustomerPortfolioTotals(BaseModel):
+    customers: int
+    moroso_flagged: int
+    outstanding_debt: float
+    sales_total: float
+
+
+class CustomerPortfolioItem(BaseModel):
+    customer_id: int
+    name: str
+    status: str
+    customer_type: str
+    credit_limit: float
+    outstanding_debt: float
+    available_credit: float
+    sales_total: float
+    sales_count: int
+    last_sale_at: datetime | None
+    last_interaction_at: datetime | None
+
+
+class CustomerPortfolioReport(BaseModel):
+    generated_at: datetime
+    category: Literal["delinquent", "frequent"]
+    filters: CustomerPortfolioFilters
+    items: list[CustomerPortfolioItem]
+    totals: CustomerPortfolioTotals
+
+
+class CustomerLeaderboardEntry(BaseModel):
+    customer_id: int
+    name: str
+    status: str
+    customer_type: str
+    sales_total: float
+    sales_count: int
+    last_sale_at: datetime | None
+    outstanding_debt: float
+
+
+class CustomerDelinquentSummary(BaseModel):
+    customers_with_debt: int
+    moroso_flagged: int
+    total_outstanding_debt: float
+
+
+class CustomerDashboardMetrics(BaseModel):
+    generated_at: datetime
+    months: int
+    new_customers_per_month: list[DashboardChartPoint]
+    top_customers: list[CustomerLeaderboardEntry]
+    delinquent_summary: CustomerDelinquentSummary
+
+
 class SupplierBase(BaseModel):
     contact_name: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=120)
