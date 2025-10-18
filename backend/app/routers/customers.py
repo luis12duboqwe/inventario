@@ -15,32 +15,31 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 def list_customers_endpoint(
     q: str | None = Query(default=None, description="Término de búsqueda"),
     limit: int = Query(default=100, ge=1, le=500),
-    status_filter: str | None = Query(default=None, alias="status", description="Estado corporativo"),
-    customer_type: str | None = Query(default=None, description="Tipo de cliente"),
+    status_alias: str | None = Query(default=None, alias="status", description="Estado corporativo"),
+    customer_type_alias: str | None = Query(default=None, alias="customer_type", description="Tipo de cliente"),
     has_debt: bool | None = Query(
         default=None, description="Filtra clientes con (true) o sin (false) saldo"
     ),
     export: str | None = Query(default=None, description="Formato de exportación"),
-    status_filter: str | None = Query(default=None, description="Filtrar por estado del cliente"),
-    customer_type_filter: str | None = Query(default=None, description="Filtrar por tipo de cliente"),
+    status_filter: str | None = Query(
+        default=None, alias="status_filter", description="Filtrar por estado del cliente"
+    ),
+    customer_type_filter: str | None = Query(
+        default=None, alias="customer_type_filter", description="Filtrar por tipo de cliente"
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
-    customers = crud.list_customers(
-        db,
-        query=q,
-        limit=limit,
-        status=status_filter,
-        customer_type=customer_type,
-        has_debt=has_debt,
-    )
+    status_value = status_filter or status_alias
+    customer_type_value = customer_type_filter or customer_type_alias
     try:
         customers = crud.list_customers(
             db,
             query=q,
             limit=limit,
-            status=status_filter,
-            customer_type=customer_type_filter,
+            status=status_value,
+            customer_type=customer_type_value,
+            has_debt=has_debt,
         )
     except ValueError as exc:
         detail = str(exc)
@@ -59,8 +58,8 @@ def list_customers_endpoint(
         csv_content = crud.export_customers_csv(
             db,
             query=q,
-            status=status_filter,
-            customer_type=customer_type_filter,
+            status=status_value,
+            customer_type=customer_type_value,
         )
         return Response(
             content=csv_content,

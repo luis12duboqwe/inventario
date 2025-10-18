@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  ContactHistoryEntry,
   Customer,
   CustomerDashboardMetrics,
   CustomerLedgerEntry,
+  CustomerPortfolioItem,
   CustomerPortfolioReport,
   CustomerSummary,
 } from "../../../api";
@@ -14,8 +16,8 @@ import {
   exportCustomerPortfolioPdf,
   exportCustomersCsv,
   getCustomerDashboardMetrics,
-  getCustomerSummary,
   getCustomerPortfolio,
+  getCustomerSummary,
   listCustomers,
   registerCustomerPayment,
   updateCustomer,
@@ -25,7 +27,7 @@ type Props = {
   token: string;
 };
 
-type CustomerForm = {
+type CustomerFormState = {
   name: string;
   contactName: string;
   email: string;
@@ -34,12 +36,64 @@ type CustomerForm = {
   customerType: string;
   status: string;
   creditLimit: number;
-  notes: string;
   outstandingDebt: number;
+  notes: string;
   historyNote: string;
 };
 
-const initialForm: CustomerForm = {
+type PortfolioFilters = {
+  category: "delinquent" | "frequent";
+  limit: number;
+  dateFrom: string;
+  dateTo: string;
+};
+
+type DashboardFilters = {
+  months: number;
+  topLimit: number;
+};
+
+type CustomerFilters = {
+  search: string;
+  status: string;
+  customerType: string;
+  debt: string;
+};
+
+type LedgerEntryWithDetails = CustomerLedgerEntry & {
+  detailsLabel?: string;
+  detailsValue?: string;
+};
+
+const CUSTOMER_TYPES: { value: string; label: string }[] = [
+  { value: "minorista", label: "Minorista" },
+  { value: "mayorista", label: "Mayorista" },
+  { value: "corporativo", label: "Corporativo" },
+  { value: "vip", label: "VIP" },
+];
+
+const CUSTOMER_STATUSES: { value: string; label: string }[] = [
+  { value: "activo", label: "Activo" },
+  { value: "inactivo", label: "Inactivo" },
+  { value: "moroso", label: "Moroso" },
+  { value: "bloqueado", label: "Bloqueado" },
+  { value: "vip", label: "VIP" },
+];
+
+const DEBT_FILTERS: { value: string; label: string }[] = [
+  { value: "todos", label: "Todos" },
+  { value: "con_deuda", label: "Con saldo pendiente" },
+  { value: "sin_deuda", label: "Sin saldo" },
+];
+
+const LEDGER_LABELS: Record<CustomerLedgerEntry["entry_type"], string> = {
+  sale: "Cargo por venta",
+  payment: "Pago registrado",
+  adjustment: "Ajuste manual",
+  note: "Nota",
+};
+
+const initialFormState: CustomerFormState = {
   name: "",
   contactName: "",
   email: "",
@@ -48,198 +102,269 @@ const initialForm: CustomerForm = {
   customerType: "minorista",
   status: "activo",
   creditLimit: 0,
-  notes: "",
   outstandingDebt: 0,
+  notes: "",
   historyNote: "",
 };
 
-const CUSTOMER_TYPES = [
-  { value: "minorista", label: "Minorista" },
-  { value: "mayorista", label: "Mayorista" },
-  { value: "corporativo", label: "Corporativo" },
-];
-
-const CUSTOMER_STATUSES = [
-  { value: "activo", label: "Activo" },
-  { value: "inactivo", label: "Inactivo" },
-  { value: "moroso", label: "Moroso" },
-  { value: "vip", label: "VIP" },
-  { value: "bloqueado", label: "Bloqueado" },
-];
-
-const LEDGER_LABELS: Record<CustomerLedgerEntry["entry_type"], string> = {
-  sale: "Cargo por venta",
-  payment: "Pago recibido",
-  adjustment: "Ajuste",
-  note: "Nota registrada",
+const initialPortfolioFilters: PortfolioFilters = {
+  category: "delinquent",
+  limit: 10,
+  dateFrom: "",
+  dateTo: "",
 };
 
-const DEBT_FILTERS = [
-  { value: "todos", label: "Todos" },
-  { value: "con_deuda", label: "Con saldo pendiente" },
-  { value: "sin_deuda", label: "Sin saldo" },
-];
+const initialDashboardFilters: DashboardFilters = {
+  months: 6,
+  topLimit: 5,
+};
+
+const initialCustomerFilters: CustomerFilters = {
+  search: "",
+  status: "todos",
+  customerType: "todos",
+  debt: "todos",
+};
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString("es-MX", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function resolveDetails(entry: CustomerLedgerEntry): LedgerEntryWithDetails {
+  if (!entry.details) {
+    return entry;
+  }
+  const detailEntries = Object.entries(entry.details);
+  if (detailEntries.length === 0) {
+    return entry;
+  }
+  const [label, raw] = detailEntries[0];
+  let value: string | undefined;
+  if (typeof raw === "string") {
+    value = raw;
+  } else if (typeof raw === "number") {
+    value = raw.toString();
+  }
+  return { ...entry, detailsLabel: label, detailsValue: value };
+}
 
 function Customers({ token }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [form, setForm] = useState<CustomerForm>({ ...initialForm });
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [customerFilters, setCustomerFilters] = useState<CustomerFilters>({
+    ...initialCustomerFilters,
+  });
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [savingCustomer, setSavingCustomer] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<CustomerSummary | null>(null);
-  const [summaryCustomerId, setSummaryCustomerId] = useState<number | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const [formState, setFormState] = useState<CustomerFormState>({
+    ...initialFormState,
+  });
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(
+    null,
+  );
+  const [customerSummary, setCustomerSummary] = useState<CustomerSummary | null>(
+    null,
+  );
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("todos");
-  const [typeFilter, setTypeFilter] = useState<string>("todos");
-  const [debtFilter, setDebtFilter] = useState<string>("todos");
-  const [portfolioCategory, setPortfolioCategory] = useState<"delinquent" | "frequent">(
-    "delinquent"
-  );
-  const [portfolioLimit, setPortfolioLimit] = useState<number>(10);
-  const [portfolioDateFrom, setPortfolioDateFrom] = useState<string>("");
-  const [portfolioDateTo, setPortfolioDateTo] = useState<string>("");
-  const [portfolioReport, setPortfolioReport] = useState<CustomerPortfolioReport | null>(null);
+
+  const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
+    ...initialPortfolioFilters,
+  });
+  const [portfolio, setPortfolio] =
+    useState<CustomerPortfolioReport | null>(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
-  const [exportingPortfolio, setExportingPortfolio] = useState<"pdf" | "xlsx" | null>(null);
-  const [dashboardMetrics, setDashboardMetrics] = useState<CustomerDashboardMetrics | null>(null);
+  const [exportingPortfolio, setExportingPortfolio] = useState<
+    "pdf" | "xlsx" | null
+  >(null);
+
+  const [dashboardFilters, setDashboardFilters] =
+    useState<DashboardFilters>(initialDashboardFilters);
+  const [dashboardMetrics, setDashboardMetrics] =
+    useState<CustomerDashboardMetrics | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
-  const [dashboardMonths, setDashboardMonths] = useState<number>(6);
-  const [dashboardTopLimit, setDashboardTopLimit] = useState<number>(5);
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [typeFilter, setTypeFilter] = useState<string>("");
 
-  const refreshCustomerSummary = useCallback(
+  const totalDebt = useMemo(
+    () =>
+      customers.reduce(
+        (accumulator, customer) =>
+          accumulator + (Number(customer.outstanding_debt) || 0),
+        0,
+      ),
+    [customers],
+  );
+
+  const selectedCustomer = useMemo(
+    () =>
+      selectedCustomerId
+        ? customers.find((customer) => customer.id === selectedCustomerId) ??
+          null
+        : null,
+    [customers, selectedCustomerId],
+  );
+
+  const handleCustomerFiltersChange = <K extends keyof CustomerFilters>(
+    key: K,
+    value: CustomerFilters[K],
+  ) => {
+    setCustomerFilters((current) => ({ ...current, [key]: value }));
+  };
+
+  const askReason = useCallback(
+    (promptMessage: string): string | null => {
+      const reason = window.prompt(promptMessage, "");
+      if (!reason || reason.trim().length < 5) {
+        setError(
+          "Debes indicar un motivo corporativo válido (mínimo 5 caracteres).",
+        );
+        return null;
+      }
+      return reason.trim();
+    },
+    [],
+  );
+
+  const refreshCustomers = useCallback(
+    async (queryOverride?: string) => {
+      try {
+        setLoadingCustomers(true);
+        setError(null);
+        const data = await listCustomers(token, {
+          query: queryOverride,
+          limit: 200,
+          status:
+            customerFilters.status !== "todos"
+              ? customerFilters.status
+              : undefined,
+          customerType:
+            customerFilters.customerType !== "todos"
+              ? customerFilters.customerType
+              : undefined,
+          hasDebt:
+            customerFilters.debt === "con_deuda"
+              ? true
+              : customerFilters.debt === "sin_deuda"
+              ? false
+              : undefined,
+          statusFilter:
+            customerFilters.status !== "todos"
+              ? customerFilters.status
+              : undefined,
+          customerTypeFilter:
+            customerFilters.customerType !== "todos"
+              ? customerFilters.customerType
+              : undefined,
+        });
+        setCustomers(data);
+        if (selectedCustomerId) {
+          const exists = data.some((customer) => customer.id === selectedCustomerId);
+          if (!exists) {
+            setSelectedCustomerId(null);
+            setCustomerSummary(null);
+          }
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "No fue posible cargar el listado de clientes.",
+        );
+      } finally {
+        setLoadingCustomers(false);
+      }
+    },
+    [
+      token,
+      customerFilters.customerType,
+      customerFilters.debt,
+      customerFilters.status,
+      selectedCustomerId,
+    ],
+  );
+
+  const refreshSummary = useCallback(
     async (customerId: number) => {
       try {
         setSummaryLoading(true);
         setSummaryError(null);
-        const overview = await getCustomerSummary(token, customerId);
-        setSummary(overview);
-        setSummaryCustomerId(customerId);
+        const summary = await getCustomerSummary(token, customerId);
+        setCustomerSummary(summary);
       } catch (err) {
         setSummaryError(
-          err instanceof Error ? err.message : "No fue posible cargar el resumen del cliente."
+          err instanceof Error
+            ? err.message
+            : "No fue posible obtener el perfil del cliente.",
         );
       } finally {
         setSummaryLoading(false);
       }
     },
-    [token]
-  );
-
-  const refreshCustomers = useCallback(
-    async (query?: string) => {
-      try {
-        setLoading(true);
-        const data = await listCustomers(token, {
-          query: query && query.length > 0 ? query : undefined,
-          limit: 200,
-          status: statusFilter !== "todos" ? statusFilter : undefined,
-          customerType: typeFilter !== "todos" ? typeFilter : undefined,
-          hasDebt:
-            debtFilter === "con_deuda"
-              ? true
-              : debtFilter === "sin_deuda"
-              ? false
-              : undefined,
-        });
-        const data = await listCustomers(
-          token,
-          query && query.length > 0 ? query : undefined,
-          200,
-          {
-            status: statusFilter || undefined,
-            customerType: typeFilter || undefined,
-          }
-        );
-        setCustomers(data);
-        if (summaryCustomerId) {
-          const exists = data.some((customer) => customer.id === summaryCustomerId);
-          if (exists) {
-            void refreshCustomerSummary(summaryCustomerId);
-          } else {
-            setSummary(null);
-            setSummaryCustomerId(null);
-          }
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "No fue posible cargar clientes.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      token,
-      summaryCustomerId,
-      refreshCustomerSummary,
-      statusFilter,
-      typeFilter,
-      debtFilter,
-    ]
-  );
-
-  const buildPortfolioParams = useCallback(
-    () => ({
-      category: portfolioCategory,
-      limit: portfolioLimit,
-      dateFrom: portfolioDateFrom || undefined,
-      dateTo: portfolioDateTo || undefined,
-    }),
-    [portfolioCategory, portfolioLimit, portfolioDateFrom, portfolioDateTo]
-    ]
+    [token],
   );
 
   const refreshPortfolio = useCallback(async () => {
     try {
       setPortfolioLoading(true);
       setPortfolioError(null);
-      const params = buildPortfolioParams();
+      const params = {
+        category: portfolioFilters.category,
+        limit: portfolioFilters.limit,
+        dateFrom: portfolioFilters.dateFrom || undefined,
+        dateTo: portfolioFilters.dateTo || undefined,
+      };
       const report = await getCustomerPortfolio(token, params);
-      setPortfolioReport(report);
+      setPortfolio(report);
     } catch (err) {
       setPortfolioError(
-        err instanceof Error ? err.message : "No fue posible obtener el portafolio."
+        err instanceof Error
+          ? err.message
+          : "No fue posible generar el portafolio de clientes.",
       );
     } finally {
       setPortfolioLoading(false);
     }
-  }, [token, buildPortfolioParams]);
+  }, [token, portfolioFilters]);
 
   const refreshDashboard = useCallback(async () => {
     try {
       setDashboardLoading(true);
       setDashboardError(null);
       const metrics = await getCustomerDashboardMetrics(token, {
-        months: dashboardMonths,
-        topLimit: dashboardTopLimit,
+        months: dashboardFilters.months,
+        topLimit: dashboardFilters.topLimit,
       });
       setDashboardMetrics(metrics);
     } catch (err) {
       setDashboardError(
-        err instanceof Error ? err.message : "No fue posible cargar el dashboard."
+        err instanceof Error
+          ? err.message
+          : "No fue posible cargar el dashboard de clientes.",
       );
     } finally {
       setDashboardLoading(false);
     }
-  }, [token, dashboardMonths, dashboardTopLimit]);
+  }, [token, dashboardFilters]);
 
   useEffect(() => {
     void refreshCustomers();
   }, [refreshCustomers]);
 
   useEffect(() => {
-    const trimmed = search.trim();
+    const trimmed = customerFilters.search.trim();
     const handler = window.setTimeout(() => {
       void refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
     }, 350);
     return () => window.clearTimeout(handler);
-  }, [search, refreshCustomers]);
+  }, [customerFilters.search, refreshCustomers]);
 
   useEffect(() => {
     void refreshPortfolio();
@@ -249,123 +374,94 @@ function Customers({ token }: Props) {
     void refreshDashboard();
   }, [refreshDashboard]);
 
-  const totalDebt = useMemo(
-    () => customers.reduce((acc, customer) => acc + (customer.outstanding_debt ?? 0), 0),
-    [customers]
-  );
-
-  const formatCurrency = (value: number) =>
-    value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  const resolveDetailsValue = useCallback(
-    (entry: CustomerLedgerEntry, key: string): string | undefined => {
-      const value = entry.details?.[key];
-      if (typeof value === "string") {
-        return value;
-      }
-      if (typeof value === "number") {
-        return value.toString();
-      }
-      return undefined;
-    },
-    []
-  );
-
-  const invoiceNumbers = useMemo(() => {
-    if (!summary) {
-      return new Map<number, string>();
-    }
-    return new Map(summary.invoices.map((invoice) => [invoice.sale_id, invoice.invoice_number]));
-  }, [summary]);
-
-  const maxMonthlyNew = useMemo(() => {
-    if (!dashboardMetrics || dashboardMetrics.new_customers_per_month.length === 0) {
-      return 1;
-    }
-    const values = dashboardMetrics.new_customers_per_month.map((point) => point.value);
-    const maxValue = Math.max(...values);
-    return maxValue <= 0 ? 1 : maxValue;
-  }, [dashboardMetrics]);
-
-  const updateForm = (updates: Partial<CustomerForm>) => {
-    setForm((current) => ({ ...current, ...updates }));
-  };
-
   const resetForm = () => {
-    setForm({ ...initialForm });
+    setFormState({ ...initialFormState });
     setEditingId(null);
   };
 
-  const askReason = (promptText: string): string | null => {
-    const reason = window.prompt(promptText, "");
-    if (!reason || reason.trim().length < 5) {
-      setError("Debes indicar un motivo corporativo válido (mínimo 5 caracteres).");
-      return null;
-    }
-    return reason.trim();
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!form.name.trim()) {
+    if (!formState.name.trim()) {
       setError("El nombre del cliente es obligatorio.");
       return;
     }
+    if (!formState.phone.trim()) {
+      setError("El teléfono del cliente es obligatorio.");
+      return;
+    }
     const reason = askReason(
-      editingId ? "Motivo corporativo para actualizar al cliente" : "Motivo corporativo para registrar al cliente"
+      editingId
+        ? "Motivo corporativo para actualizar al cliente"
+        : "Motivo corporativo para registrar al cliente",
     );
     if (!reason) {
       return;
     }
     const payload = {
-      name: form.name.trim(),
-      contact_name: form.contactName.trim() || undefined,
-      email: form.email.trim() || undefined,
-      phone: form.phone.trim(),
-      address: form.address.trim() || undefined,
-      customer_type: form.customerType,
-      status: form.status,
-      credit_limit: Number.isFinite(form.creditLimit)
-        ? Math.max(0, Number(form.creditLimit))
+      name: formState.name.trim(),
+      contact_name: formState.contactName.trim() || undefined,
+      email: formState.email.trim() || undefined,
+      phone: formState.phone.trim(),
+      address: formState.address.trim() || undefined,
+      customer_type: formState.customerType,
+      status: formState.status,
+      credit_limit: Number.isFinite(formState.creditLimit)
+        ? Math.max(0, Number(formState.creditLimit))
         : 0,
-      notes: form.notes.trim() || undefined,
-      outstanding_debt: Number.isFinite(form.outstandingDebt)
-        ? Math.max(0, Number(form.outstandingDebt))
+      notes: formState.notes.trim() || undefined,
+      outstanding_debt: Number.isFinite(formState.outstandingDebt)
+        ? Math.max(0, Number(formState.outstandingDebt))
         : undefined,
-    } as Record<string, unknown>;
+      history:
+        formState.historyNote.trim().length > 0
+          ? ([
+              {
+                timestamp: new Date().toISOString(),
+                note: formState.historyNote.trim(),
+              } satisfies ContactHistoryEntry,
+            ] as ContactHistoryEntry[])
+          : undefined,
+    };
 
     try {
+      setSavingCustomer(true);
       setError(null);
+      setMessage(null);
       if (editingId) {
-        const existing = customers.find((customer) => customer.id === editingId);
-        if (form.historyNote.trim() && existing) {
-          payload.history = [
-            ...existing.history,
-            { timestamp: new Date().toISOString(), note: form.historyNote.trim() },
-          ];
-        }
         await updateCustomer(token, editingId, payload, reason);
         setMessage("Cliente actualizado correctamente.");
       } else {
-        if (form.historyNote.trim()) {
-          payload.history = [
-            { timestamp: new Date().toISOString(), note: form.historyNote.trim() },
-          ];
-        }
         await createCustomer(token, payload, reason);
-        setMessage("Cliente registrado exitosamente.");
+        setMessage("Cliente registrado correctamente.");
       }
       resetForm();
-      const trimmed = search.trim();
+      const trimmed = customerFilters.search.trim();
       await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible guardar la información del cliente.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible guardar la información del cliente.",
+      );
+    } finally {
+      setSavingCustomer(false);
     }
   };
 
   const handleEdit = (customer: Customer) => {
     setEditingId(customer.id);
-    setForm({
+    setFormState({
       name: customer.name,
       contactName: customer.contact_name ?? "",
       email: customer.email ?? "",
@@ -374,8 +470,8 @@ function Customers({ token }: Props) {
       customerType: customer.customer_type ?? "minorista",
       status: customer.status ?? "activo",
       creditLimit: Number(customer.credit_limit ?? 0),
-      notes: customer.notes ?? "",
       outstandingDebt: Number(customer.outstanding_debt ?? 0),
+      notes: customer.notes ?? "",
       historyNote: "",
     });
   };
@@ -389,15 +485,20 @@ function Customers({ token }: Props) {
       return;
     }
     try {
+      setError(null);
       await deleteCustomer(token, customer.id, reason);
-      setMessage("Cliente eliminado.");
-      const trimmed = search.trim();
+      setMessage("Cliente eliminado correctamente.");
+      const trimmed = customerFilters.search.trim();
       await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
       if (editingId === customer.id) {
         resetForm();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible eliminar al cliente.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible eliminar al cliente seleccionado.",
+      );
     }
   };
 
@@ -412,28 +513,32 @@ function Customers({ token }: Props) {
     }
     try {
       await appendCustomerNote(token, customer.id, note.trim(), reason);
-      setMessage("Nota añadida correctamente.");
-      const trimmed = search.trim();
+      setMessage("Nota registrada correctamente.");
+      const trimmed = customerFilters.search.trim();
       await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
-      if (summaryCustomerId === customer.id) {
-        void refreshCustomerSummary(customer.id);
+      if (customer.id === selectedCustomerId) {
+        void refreshSummary(customer.id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible agregar la nota.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible agregar la nota al cliente.",
+      );
     }
   };
 
   const handleAdjustDebt = async (customer: Customer) => {
-    const amountRaw = window.prompt(
+    const nextAmountRaw = window.prompt(
       "Nuevo saldo pendiente",
-      String(Number(customer.outstanding_debt ?? 0).toFixed(2))
+      formatCurrency(Number(customer.outstanding_debt ?? 0)),
     );
-    if (amountRaw === null) {
+    if (nextAmountRaw === null) {
       return;
     }
-    const amount = Number(amountRaw);
-    if (!Number.isFinite(amount) || amount < 0) {
-      setError("Indica un monto válido para la deuda.");
+    const parsed = Number(nextAmountRaw.replace(/[^0-9.\-]/g, ""));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setError("Indica un monto válido (mayor o igual a cero).");
       return;
     }
     const reason = askReason("Motivo corporativo para ajustar la deuda");
@@ -441,12 +546,24 @@ function Customers({ token }: Props) {
       return;
     }
     try {
-      await updateCustomer(token, customer.id, { outstanding_debt: amount }, reason);
-      setMessage("Saldo actualizado correctamente.");
-      const trimmed = search.trim();
+      await updateCustomer(
+        token,
+        customer.id,
+        { outstanding_debt: Number(parsed.toFixed(2)) },
+        reason,
+      );
+      setMessage("Saldo pendiente actualizado.");
+      const trimmed = customerFilters.search.trim();
       await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
+      if (customer.id === selectedCustomerId) {
+        void refreshSummary(customer.id);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible ajustar la deuda.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible actualizar el saldo pendiente.",
+      );
     }
   };
 
@@ -457,821 +574,828 @@ function Customers({ token }: Props) {
     }
     const amount = Number(amountRaw);
     if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Indica un monto válido y mayor a cero para el pago.");
+      setError("Debes indicar un monto válido y mayor a cero.");
       return;
     }
-    const methodInput = window.prompt("Método de pago", "transferencia") ?? "";
-    const referenceInput = window.prompt("Referencia del pago (opcional)", "");
-    const noteInput = window.prompt("Nota interna del pago (opcional)", "");
-    const saleReference = window.prompt("ID de venta asociada (opcional)", "");
+    const method = window.prompt("Método de pago", "transferencia") ?? "manual";
+    const reference = window.prompt("Referencia del pago (opcional)", "") ??
+      undefined;
+    const note = window.prompt("Nota interna (opcional)", "") ?? undefined;
+    const saleIdRaw = window.prompt("ID de venta asociada (opcional)", "");
+    let saleId: number | undefined;
+    if (saleIdRaw && saleIdRaw.trim().length > 0) {
+      const parsed = Number(saleIdRaw);
+      if (!Number.isFinite(parsed)) {
+        setError("Indica un ID de venta válido.");
+        return;
+      }
+      saleId = parsed;
+    }
     const reason = askReason("Motivo corporativo para registrar el pago");
     if (!reason) {
       return;
     }
-    const payload = {
-      amount: Number(amount.toFixed(2)),
-      method: methodInput.trim() || "manual",
-      reference: referenceInput && referenceInput.trim() ? referenceInput.trim() : undefined,
-      note: noteInput && noteInput.trim() ? noteInput.trim() : undefined,
-      sale_id:
-        saleReference && saleReference.trim().length > 0
-          ? Number(saleReference.trim())
-          : undefined,
-    } as const;
-    if (payload.sale_id !== undefined && !Number.isFinite(payload.sale_id)) {
-      setError("Indica un ID de venta válido o deja el campo vacío.");
-      return;
-    }
     try {
-      await registerCustomerPayment(token, customer.id, payload, reason);
+      await registerCustomerPayment(
+        token,
+        customer.id,
+        {
+          amount: Number(amount.toFixed(2)),
+          method: method.trim() || "manual",
+          reference: reference?.trim() || undefined,
+          note: note?.trim() || undefined,
+          sale_id: saleId,
+        },
+        reason,
+      );
       setMessage("Pago registrado correctamente.");
-      const trimmed = search.trim();
+      const trimmed = customerFilters.search.trim();
       await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
-      if (summaryCustomerId === customer.id) {
-        void refreshCustomerSummary(customer.id);
+      if (customer.id === selectedCustomerId) {
+        void refreshSummary(customer.id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible registrar el pago.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible registrar el pago.",
+      );
     }
   };
 
-  const handleViewSummary = (customer: Customer) => {
+  const handleSelectCustomer = (customer: Customer) => {
+    setSelectedCustomerId(customer.id);
     setSummaryError(null);
-    void refreshCustomerSummary(customer.id);
+    setCustomerSummary(null);
+    void refreshSummary(customer.id);
   };
 
-  const handleCloseSummary = () => {
-    setSummary(null);
-    setSummaryCustomerId(null);
-    setSummaryError(null);
-  };
-
-  const handleExport = async () => {
+  const handleExportCsv = async () => {
     try {
-      setExporting(true);
-      const trimmed = search.trim();
-      const blob = await exportCustomersCsv(
-        token,
-        trimmed.length >= 2 ? trimmed : undefined,
-        {
-          status: statusFilter || undefined,
-          customerType: typeFilter || undefined,
-        }
-      );
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "clientes_softmobile.csv";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      setError(null);
+      const trimmed = customerFilters.search.trim();
+      const blob = await exportCustomersCsv(token, {
+        query: trimmed.length >= 2 ? trimmed : undefined,
+        status:
+          customerFilters.status !== "todos"
+            ? customerFilters.status
+            : undefined,
+        customerType:
+          customerFilters.customerType !== "todos"
+            ? customerFilters.customerType
+            : undefined,
+        hasDebt:
+          customerFilters.debt === "con_deuda"
+            ? true
+            : customerFilters.debt === "sin_deuda"
+            ? false
+            : undefined,
+        statusFilter:
+          customerFilters.status !== "todos"
+            ? customerFilters.status
+            : undefined,
+        customerTypeFilter:
+          customerFilters.customerType !== "todos"
+            ? customerFilters.customerType
+            : undefined,
+      });
+      downloadBlob(blob, "clientes.csv");
       setMessage("Exportación CSV generada correctamente.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible exportar el CSV de clientes.");
-    } finally {
-      setExporting(false);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible exportar el listado de clientes.",
+      );
     }
   };
 
   const handleExportPortfolio = async (format: "pdf" | "xlsx") => {
     const reason = askReason(
-      format === "pdf"
-        ? "Motivo corporativo para exportar el reporte PDF"
-        : "Motivo corporativo para exportar el reporte Excel"
+      `Motivo corporativo para descargar el portafolio (${format.toUpperCase()})`,
     );
     if (!reason) {
       return;
     }
     try {
-      setPortfolioError(null);
       setExportingPortfolio(format);
-      const params = buildPortfolioParams();
-      const blob =
-        format === "pdf"
-          ? await exportCustomerPortfolioPdf(token, params, reason)
-          : await exportCustomerPortfolioExcel(token, params, reason);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download =
-        format === "pdf"
-          ? `clientes_${params.category}.pdf`
-          : `clientes_${params.category}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      setMessage(
-        format === "pdf"
-          ? "Reporte PDF de clientes generado correctamente."
-          : "Reporte Excel de clientes generado correctamente."
+      const params = {
+        category: portfolioFilters.category,
+        limit: portfolioFilters.limit,
+        dateFrom: portfolioFilters.dateFrom || undefined,
+        dateTo: portfolioFilters.dateTo || undefined,
+      };
+      const exporter =
+        format === "pdf" ? exportCustomerPortfolioPdf : exportCustomerPortfolioExcel;
+      const blob = await exporter(token, params, reason);
+      downloadBlob(
+        blob,
+        `portafolio_clientes_${portfolioFilters.category}.${
+          format === "pdf" ? "pdf" : "xlsx"
+        }`,
       );
+      setMessage("Reporte de clientes generado correctamente.");
     } catch (err) {
-      setPortfolioError(
+      setError(
         err instanceof Error
           ? err.message
-          : "No fue posible exportar el reporte de clientes."
+          : "No fue posible descargar el portafolio de clientes.",
       );
     } finally {
       setExportingPortfolio(null);
     }
   };
 
+  const delinquentRatio = useMemo(() => {
+    if (!dashboardMetrics || !dashboardMetrics.delinquent_summary) {
+      return { percentage: 0, total: 0 };
+    }
+    const summary = dashboardMetrics.delinquent_summary;
+    const base = summary.customers_with_debt || 0;
+    if (base === 0) {
+      return { percentage: 0, total: summary.total_outstanding_debt };
+    }
+    const percentage = summary.moroso_flagged
+      ? Math.min(100, Math.round((summary.moroso_flagged / base) * 100))
+      : 0;
+    return { percentage, total: summary.total_outstanding_debt };
+  }, [dashboardMetrics]);
+
   return (
-    <section className="card wide">
-      <h2>Clientes corporativos</h2>
-      <p className="card-subtitle">
-        Administra perfiles de clientes, notas de contacto y saldos pendientes para el POS y reportes.
-      </p>
-      {message ? <div className="alert success">{message}</div> : null}
+    <section className="customers-module">
       {error ? <div className="alert error">{error}</div> : null}
-      <form className="form-grid" onSubmit={handleSubmit}>
-        <label>
-          Nombre del cliente
-          <input value={form.name} onChange={(event) => updateForm({ name: event.target.value })} required />
-        </label>
-        <label>
-          Contacto principal
-          <input value={form.contactName} onChange={(event) => updateForm({ contactName: event.target.value })} />
-        </label>
-        <label>
-          Correo electrónico
-          <input
-            type="email"
-            value={form.email}
-            onChange={(event) => updateForm({ email: event.target.value })}
-            placeholder="cliente@empresa.com"
-          />
-        </label>
-        <label>
-          Teléfono
-          <input
-            value={form.phone}
-            onChange={(event) => updateForm({ phone: event.target.value })}
-            required
-          />
-        </label>
-        <label>
-          Tipo de cliente
-          <select value={form.customerType} onChange={(event) => updateForm({ customerType: event.target.value })}>
-            {CUSTOMER_TYPES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Estado
-          <select value={form.status} onChange={(event) => updateForm({ status: event.target.value })}>
-            {CUSTOMER_STATUSES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="wide">
-          Dirección
-          <input value={form.address} onChange={(event) => updateForm({ address: event.target.value })} />
-        </label>
-        <label>
-          Límite de crédito
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={form.creditLimit}
-            onChange={(event) => updateForm({ creditLimit: Number(event.target.value) })}
-          />
-        </label>
-        <label>
-          Saldo pendiente
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={form.outstandingDebt}
-            onChange={(event) => updateForm({ outstandingDebt: Number(event.target.value) })}
-          />
-        </label>
-        <label className="wide">
-          Notas internas
-          <textarea
-            value={form.notes}
-            onChange={(event) => updateForm({ notes: event.target.value })}
-            rows={2}
-            placeholder="Observaciones generales del cliente"
-          />
-        </label>
-        <label className="wide">
-          Nota inicial para historial (opcional)
-          <textarea
-            value={form.historyNote}
-            onChange={(event) => updateForm({ historyNote: event.target.value })}
-            rows={2}
-            placeholder="Ej. Cliente recurrente de servicio premium"
-          />
-        </label>
-        <div className="actions-row wide">
-          <button type="submit" className="btn btn--primary">
-            {editingId ? "Actualizar cliente" : "Agregar cliente"}
-          </button>
-          {editingId ? (
-            <button type="button" className="btn btn--ghost" onClick={resetForm}>
-              Cancelar edición
-            </button>
-          ) : null}
-          <button type="button" className="btn btn--secondary" onClick={handleExport} disabled={exporting}>
-            {exporting ? "Exportando..." : "Exportar CSV"}
-          </button>
+      {message ? <div className="alert success">{message}</div> : null}
+
+      <div className="panel">
+        <div className="panel__header">
+          <h2>Registro y actualización de clientes</h2>
+          <p className="panel__subtitle">
+            Mantén al día la información corporativa, el saldo pendiente y las notas
+            de seguimiento de tus clientes.
+          </p>
         </div>
-      </form>
-      <div className="form-grid">
-        <label className="wide">
-          Buscar clientes
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Nombre, correo, nota o contacto"
-          />
-          <span className="muted-text">Se refresca automáticamente al escribir.</span>
-        </label>
-        <label>
-          Estado
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="todos">Todos</option>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="">Todos</option>
-            {CUSTOMER_STATUSES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Tipo
-          <select
-            value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value)}
-          >
-            <option value="todos">Todos</option>
-          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            <option value="">Todos</option>
-            {CUSTOMER_TYPES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Saldo pendiente
-          <select value={debtFilter} onChange={(event) => setDebtFilter(event.target.value)}>
-            {DEBT_FILTERS.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div>
-          <span className="muted-text">Clientes encontrados</span>
-          <strong>{customers.length}</strong>
-        </div>
-        <div>
-          <span className="muted-text">Deuda consolidada</span>
-          <strong>${totalDebt.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-        </div>
-      </div>
-      {loading ? (
-        <p className="muted-text">Cargando información de clientes...</p>
-      ) : customers.length === 0 ? (
-        <p className="muted-text">Aún no se registran clientes con los filtros actuales.</p>
-      ) : (
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Nombre</th>
-                <th>Tipo</th>
-                <th>Estado</th>
-                <th>Contacto</th>
-                <th>Correo</th>
-                <th>Teléfono</th>
-                <th>Límite crédito</th>
-                <th>Saldo</th>
-                <th>Última interacción</th>
-                <th>Última nota</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.map((customer) => {
-                const historyLength = customer.history.length;
-                const lastHistory = historyLength
-                  ? customer.history[historyLength - 1].note
-                  : "—";
-                const lastInteraction = customer.last_interaction_at
-                  ? new Date(customer.last_interaction_at).toLocaleString("es-MX")
-                  : "—";
-                const outstanding = Number(customer.outstanding_debt ?? 0);
-                const creditLimit = Number(customer.credit_limit ?? 0);
-                return (
-                  <tr key={customer.id}>
-                    <td>#{customer.id}</td>
-                    <td>{customer.name}</td>
-                    <td className="muted-text">{customer.customer_type ?? "—"}</td>
-                    <td>{customer.status ?? "—"}</td>
-                    <td>{customer.contact_name ?? "—"}</td>
-                    <td>{customer.email ?? "—"}</td>
-                    <td>{customer.phone}</td>
-                    <td>
-                      ${creditLimit.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td>
-                      ${outstanding.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td>{lastInteraction}</td>
-                    <td>{lastHistory}</td>
-                    <td>
-                      <div className="actions-row">
-                        <button type="button" className="btn btn--link" onClick={() => handleEdit(customer)}>
-                          Editar
-                        </button>
-                        <button type="button" className="btn btn--link" onClick={() => handleAddNote(customer)}>
-                          Nota
-                        </button>
-                        <button type="button" className="btn btn--link" onClick={() => handleRegisterPayment(customer)}>
-                          Pago
-                        </button>
-                        <button type="button" className="btn btn--link" onClick={() => handleAdjustDebt(customer)}>
-                          Ajustar deuda
-                        </button>
-                        <button type="button" className="btn btn--link" onClick={() => handleViewSummary(customer)}>
-                          Resumen
-                        </button>
-                        <button type="button" className="btn btn--link" onClick={() => handleDelete(customer)}>
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {summaryCustomerId ? (
-        <section className="card">
-          <div className="actions-row">
-            <h3>Resumen financiero y de control</h3>
-            <button type="button" className="btn btn--ghost" onClick={handleCloseSummary}>
-              Cerrar resumen
-            </button>
-          </div>
-          {summaryError ? <div className="alert error">{summaryError}</div> : null}
-          {summaryLoading ? (
-            <p className="muted-text">Consultando resumen del cliente seleccionado...</p>
-          ) : summary ? (
-            <>
-              <div className="form-grid">
-                <div>
-                  <span className="muted-text">Cliente</span>
-                  <strong>{summary.customer.name}</strong>
-                  <span className="muted-text">
-                    Estado: {summary.customer.status} · Tipo: {summary.customer.customer_type}
-                  </span>
-                </div>
-                <div>
-                  <span className="muted-text">Crédito autorizado</span>
-                  <strong>${formatCurrency(summary.totals.credit_limit)}</strong>
-                </div>
-                <div>
-                  <span className="muted-text">Saldo actual</span>
-                  <strong>${formatCurrency(summary.totals.outstanding_debt)}</strong>
-                </div>
-                <div>
-                  <span className="muted-text">Crédito disponible</span>
-                  <strong>${formatCurrency(summary.totals.available_credit)}</strong>
-                </div>
-                <div>
-                  <span className="muted-text">Cargos a crédito</span>
-                  <strong>${formatCurrency(summary.totals.total_sales_credit)}</strong>
-                </div>
-                <div>
-                  <span className="muted-text">Pagos aplicados</span>
-                  <strong>${formatCurrency(summary.totals.total_payments)}</strong>
-                </div>
-              </div>
-              <h4>Ventas recientes</h4>
-              {summary.sales.length === 0 ? (
-                <p className="muted-text">Sin ventas registradas para este cliente.</p>
-              ) : (
-                <div className="table-wrapper">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Venta</th>
-                        <th>Factura</th>
-                        <th>Total</th>
-                        <th>Estado</th>
-                        <th>Fecha</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summary.sales.slice(0, 5).map((sale) => (
-                        <tr key={sale.sale_id}>
-                          <td>#{sale.sale_id}</td>
-                          <td>{invoiceNumbers.get(sale.sale_id) ?? "—"}</td>
-                          <td>${formatCurrency(sale.total_amount)}</td>
-                          <td>{sale.status}</td>
-                          <td>{new Date(sale.created_at).toLocaleString("es-MX")}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <h4>Pagos registrados</h4>
-              {summary.payments.length === 0 ? (
-                <p className="muted-text">Sin pagos asociados en la bitácora reciente.</p>
-              ) : (
-                <div className="table-wrapper">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Monto</th>
-                        <th>Método</th>
-                        <th>Referencia</th>
-                        <th>Nota</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summary.payments.slice(0, 5).map((entry) => {
-                        const methodValue = resolveDetailsValue(entry, "method") ?? "manual";
-                        const referenceValue = resolveDetailsValue(entry, "reference");
-                        return (
-                          <tr key={entry.id}>
-                            <td>{new Date(entry.created_at).toLocaleString("es-MX")}</td>
-                            <td>${formatCurrency(Math.abs(entry.amount))}</td>
-                            <td>{methodValue.toUpperCase()}</td>
-                            <td>{referenceValue ?? "—"}</td>
-                            <td>{entry.note ?? "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <h4>Bitácora reciente</h4>
-              {summary.ledger.length === 0 ? (
-                <p className="muted-text">No hay movimientos registrados para este cliente.</p>
-              ) : (
-                <div className="table-wrapper">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Tipo</th>
-                        <th>Monto</th>
-                        <th>Saldo después</th>
-                        <th>Detalle</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summary.ledger.slice(0, 6).map((entry) => {
-                        const detailText = entry.note ?? resolveDetailsValue(entry, "event") ?? "—";
-                        return (
-                          <tr key={entry.id}>
-                            <td>{new Date(entry.created_at).toLocaleString("es-MX")}</td>
-                            <td>{LEDGER_LABELS[entry.entry_type]}</td>
-                            <td>${formatCurrency(entry.amount)}</td>
-                            <td>${formatCurrency(entry.balance_after)}</td>
-                            <td>{detailText}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          ) : null}
-        </section>
-      ) : null}
-      <section className="card">
-        <div className="actions-row">
-          <h3>Reportes de clientes corporativos</h3>
-          <div className="actions-row">
-            <button
-              type="button"
-              className="btn btn--secondary"
-              onClick={() => handleExportPortfolio("pdf")}
-              disabled={exportingPortfolio === "pdf" || portfolioLoading}
-            >
-              {exportingPortfolio === "pdf" ? "Exportando PDF..." : "Exportar PDF"}
-            </button>
-            <button
-              type="button"
-              className="btn btn--secondary"
-              onClick={() => handleExportPortfolio("xlsx")}
-              disabled={exportingPortfolio === "xlsx" || portfolioLoading}
-            >
-              {exportingPortfolio === "xlsx" ? "Exportando Excel..." : "Exportar Excel"}
-            </button>
-          </div>
-        </div>
-        <p className="card-subtitle">
-          Descarga reportes temáticos en PDF o Excel de clientes morosos o compradores frecuentes.
-        </p>
-        {portfolioError ? <div className="alert error">{portfolioError}</div> : null}
-        <div className="form-grid">
+        <form className="form-grid" onSubmit={handleSubmit}>
           <label>
-            Categoría
-            <select
-              value={portfolioCategory}
+            Nombre del cliente
+            <input
+              value={formState.name}
               onChange={(event) =>
-                setPortfolioCategory(event.target.value as "delinquent" | "frequent")
+                setFormState((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+              placeholder="Ej. SuperCell Distribuciones"
+              required
+            />
+          </label>
+          <label>
+            Contacto principal
+            <input
+              value={formState.contactName}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  contactName: event.target.value,
+                }))
+              }
+              placeholder="Nombre del contacto"
+            />
+          </label>
+          <label>
+            Teléfono
+            <input
+              value={formState.phone}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  phone: event.target.value,
+                }))
+              }
+              placeholder="10 dígitos"
+              required
+            />
+          </label>
+          <label>
+            Correo electrónico
+            <input
+              type="email"
+              value={formState.email}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  email: event.target.value,
+                }))
+              }
+              placeholder="contacto@empresa.com"
+            />
+          </label>
+          <label>
+            Dirección
+            <input
+              value={formState.address}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  address: event.target.value,
+                }))
+              }
+              placeholder="Calle, número y ciudad"
+            />
+          </label>
+          <label>
+            Tipo de cliente
+            <select
+              value={formState.customerType}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  customerType: event.target.value,
+                }))
               }
             >
-              <option value="delinquent">Clientes morosos</option>
-              <option value="frequent">Compradores frecuentes</option>
+              {CUSTOMER_TYPES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
             </select>
           </label>
           <label>
-            Límite de filas
+            Estado
+            <select
+              value={formState.status}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  status: event.target.value,
+                }))
+              }
+            >
+              {CUSTOMER_STATUSES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Límite de crédito (MXN)
             <input
               type="number"
-              min={1}
-              max={500}
-              value={portfolioLimit}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                if (Number.isNaN(value)) {
-                  setPortfolioLimit(1);
-                  return;
-                }
-                setPortfolioLimit(Math.min(500, Math.max(1, Math.trunc(value))));
-              }}
+              min={0}
+              step="0.01"
+              value={formState.creditLimit}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  creditLimit: Number(event.target.value),
+                }))
+              }
             />
           </label>
           <label>
-            Desde
+            Saldo inicial (MXN)
             <input
-              type="date"
-              value={portfolioDateFrom}
-              onChange={(event) => setPortfolioDateFrom(event.target.value)}
+              type="number"
+              min={0}
+              step="0.01"
+              value={formState.outstandingDebt}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  outstandingDebt: Number(event.target.value),
+                }))
+              }
             />
           </label>
-          <label>
-            Hasta
-            <input
-              type="date"
-              value={portfolioDateTo}
-              onChange={(event) => setPortfolioDateTo(event.target.value)}
+          <label className="span-2">
+            Notas internas
+            <textarea
+              rows={2}
+              value={formState.notes}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
+              }
+              placeholder="Instrucciones especiales, condiciones de crédito o preferencias"
             />
           </label>
-          <div className="actions-row wide">
+          <label className="span-2">
+            Nota para historial
+            <textarea
+              rows={2}
+              value={formState.historyNote}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  historyNote: event.target.value,
+                }))
+              }
+              placeholder="Se agregará al historial de contacto al guardar"
+            />
+          </label>
+          <div className="actions-row">
+            <button type="submit" className="btn btn--primary" disabled={savingCustomer}>
+              {savingCustomer
+                ? "Guardando..."
+                : editingId
+                ? "Actualizar cliente"
+                : "Registrar cliente"}
+            </button>
+            {editingId ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={resetForm}
+                disabled={savingCustomer}
+              >
+                Cancelar edición
+              </button>
+            ) : null}
             <button
               type="button"
-              className="btn btn--ghost"
-              onClick={refreshPortfolio}
-              disabled={portfolioLoading}
+              className="btn btn--secondary"
+              onClick={handleExportCsv}
+              disabled={loadingCustomers}
             >
-              {portfolioLoading ? "Actualizando..." : "Actualizar panel"}
+              Exportar CSV
             </button>
           </div>
-        </div>
-        {portfolioLoading ? (
-          <p className="muted-text">Generando resumen de portafolio...</p>
-        ) : portfolioReport ? (
-          <>
-            <div className="form-grid">
-              <div>
-                <span className="muted-text">Generado</span>
-                <strong>
-                  {new Date(portfolioReport.generated_at).toLocaleString("es-MX")}
-                </strong>
-              </div>
-              <div>
-                <span className="muted-text">Clientes incluidos</span>
-                <strong>{portfolioReport.totals.customers}</strong>
-              </div>
-              <div>
-                <span className="muted-text">Marcados morosos</span>
-                <strong>{portfolioReport.totals.moroso_flagged}</strong>
-              </div>
-              <div>
-                <span className="muted-text">Deuda consolidada</span>
-                <strong>${formatCurrency(portfolioReport.totals.outstanding_debt)}</strong>
-              </div>
-              <div>
-                <span className="muted-text">Ventas acumuladas</span>
-                <strong>${formatCurrency(portfolioReport.totals.sales_total)}</strong>
-              </div>
+        </form>
+      </div>
+
+      <div className="customers-columns">
+        <div className="panel">
+          <div className="panel__header">
+            <h3>Listado de clientes</h3>
+            <p className="panel__subtitle">
+              Usa filtros combinados para ubicar clientes morosos, VIP o corporativos en
+              segundos.
+            </p>
+          </div>
+          <div className="form-grid">
+            <label className="span-2">
+              Búsqueda rápida
+              <input
+                value={customerFilters.search}
+                onChange={(event) =>
+                  handleCustomerFiltersChange("search", event.target.value)
+                }
+                placeholder="Nombre, correo, contacto o nota"
+              />
+              <span className="muted-text">
+                Se actualiza automáticamente al escribir (mínimo 2 caracteres).
+              </span>
+            </label>
+            <label>
+              Estado
+              <select
+                value={customerFilters.status}
+                onChange={(event) =>
+                  handleCustomerFiltersChange("status", event.target.value)
+                }
+              >
+                <option value="todos">Todos</option>
+                {CUSTOMER_STATUSES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Tipo
+              <select
+                value={customerFilters.customerType}
+                onChange={(event) =>
+                  handleCustomerFiltersChange("customerType", event.target.value)
+                }
+              >
+                <option value="todos">Todos</option>
+                {CUSTOMER_TYPES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Saldo pendiente
+              <select
+                value={customerFilters.debt}
+                onChange={(event) =>
+                  handleCustomerFiltersChange("debt", event.target.value)
+                }
+              >
+                {DEBT_FILTERS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div>
+              <span className="muted-text">Clientes encontrados</span>
+              <strong>{customers.length}</strong>
             </div>
-            {portfolioReport.items.length === 0 ? (
-              <p className="muted-text">No hay clientes que coincidan con los filtros actuales.</p>
-            ) : (
-              <div className="table-wrapper">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Estado</th>
-                      <th>Tipo</th>
-                      <th>Crédito</th>
-                      <th>Saldo</th>
-                      <th>Disponible</th>
-                      <th>Ventas</th>
-                      <th>Operaciones</th>
-                      <th>Última venta</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {portfolioReport.items.map((item) => (
-                      <tr key={item.customer_id}>
-                        <td>{item.name}</td>
-                        <td>{item.status}</td>
-                        <td>{item.customer_type}</td>
-                        <td>${formatCurrency(item.credit_limit)}</td>
-                        <td>${formatCurrency(item.outstanding_debt)}</td>
-                        <td>${formatCurrency(item.available_credit)}</td>
-                        <td>${formatCurrency(item.sales_total)}</td>
-                        <td>{item.sales_count}</td>
+            <div>
+              <span className="muted-text">Deuda consolidada</span>
+              <strong>${formatCurrency(totalDebt)}</strong>
+            </div>
+          </div>
+
+          {loadingCustomers ? (
+            <p className="muted-text">Cargando clientes...</p>
+          ) : customers.length === 0 ? (
+            <p className="muted-text">
+              No hay clientes que coincidan con los filtros seleccionados.
+            </p>
+          ) : (
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                    <th>Contacto</th>
+                    <th>Correo</th>
+                    <th>Teléfono</th>
+                    <th>Límite crédito</th>
+                    <th>Saldo</th>
+                    <th>Última interacción</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customers.map((customer) => {
+                    const lastInteraction = customer.last_interaction_at
+                      ? new Date(customer.last_interaction_at).toLocaleString("es-MX")
+                      : "—";
+                    const creditLimit = Number(customer.credit_limit ?? 0);
+                    const debt = Number(customer.outstanding_debt ?? 0);
+                    const statusClass =
+                      customer.status === "moroso"
+                        ? "badge warning"
+                        : customer.status === "activo"
+                        ? "badge success"
+                        : "badge neutral";
+                    return (
+                      <tr key={customer.id}>
+                        <td>#{customer.id}</td>
                         <td>
-                          {item.last_sale_at
-                            ? new Date(item.last_sale_at).toLocaleString("es-MX")
-                            : "—"}
+                          <strong>{customer.name}</strong>
+                          <div className="muted-text small">
+                            Registrado el {" "}
+                            {new Date(customer.created_at).toLocaleDateString("es-MX")}
+                          </div>
                         </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="muted-text">
-            Configura los filtros y pulsa «Actualizar panel» para generar el portafolio.
-          </p>
-        )}
-      </section>
-      <section className="card">
-        <div className="actions-row">
-          <h3>Dashboard de comportamiento de clientes</h3>
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={refreshDashboard}
-            disabled={dashboardLoading}
-          >
-            {dashboardLoading ? "Actualizando..." : "Actualizar métricas"}
-          </button>
-        </div>
-        <p className="card-subtitle">
-          Visualiza altas mensuales, saldos y el top de compradores con el tema oscuro corporativo.
-        </p>
-        {dashboardError ? <div className="alert error">{dashboardError}</div> : null}
-        <div className="form-grid">
-          <label>
-            Meses a evaluar
-            <input
-              type="number"
-              min={1}
-              max={24}
-              value={dashboardMonths}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                if (Number.isNaN(value)) {
-                  setDashboardMonths(1);
-                  return;
-                }
-                setDashboardMonths(Math.min(24, Math.max(1, Math.trunc(value))));
-              }}
-            />
-          </label>
-          <label>
-            Top compradores
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={dashboardTopLimit}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                if (Number.isNaN(value)) {
-                  setDashboardTopLimit(1);
-                  return;
-                }
-                setDashboardTopLimit(Math.min(50, Math.max(1, Math.trunc(value))));
-              }}
-            />
-          </label>
-        </div>
-        {dashboardLoading ? (
-          <p className="muted-text">Consultando métricas de clientes...</p>
-        ) : dashboardMetrics ? (
-          <>
-            <div className="form-grid">
-              <div>
-                <span className="muted-text">Clientes con deuda</span>
-                <strong>{dashboardMetrics.delinquent_summary.customers_with_debt}</strong>
-              </div>
-              <div>
-                <span className="muted-text">Marcados como morosos</span>
-                <strong>{dashboardMetrics.delinquent_summary.moroso_flagged}</strong>
-              </div>
-              <div>
-                <span className="muted-text">Deuda total</span>
-                <strong>
-                  ${formatCurrency(dashboardMetrics.delinquent_summary.total_outstanding_debt)}
-                </strong>
-              </div>
-            </div>
-            <h4>Nuevos clientes por mes</h4>
-            {dashboardMetrics.new_customers_per_month.length === 0 ? (
-              <p className="muted-text">Sin registros de nuevos clientes en el periodo.</p>
-            ) : (
-              <div className="table-wrapper">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Mes</th>
-                      <th>Actividad</th>
-                      <th>Nuevos</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dashboardMetrics.new_customers_per_month.map((point) => {
-                      const percentage = Math.round((point.value / maxMonthlyNew) * 100);
-                      return (
-                        <tr key={point.label}>
-                          <td>{point.label}</td>
-                          <td>
-                            <div
-                              style={{
-                                background: "#1f2937",
-                                borderRadius: "6px",
-                                height: "8px",
-                                width: "100%",
-                              }}
+                        <td>{customer.customer_type ?? "—"}</td>
+                        <td>
+                          <span className={statusClass}>{customer.status ?? "—"}</span>
+                        </td>
+                        <td>{customer.contact_name ?? "—"}</td>
+                        <td>{customer.email ?? "—"}</td>
+                        <td>{customer.phone}</td>
+                        <td>${formatCurrency(creditLimit)}</td>
+                        <td>${formatCurrency(debt)}</td>
+                        <td>{lastInteraction}</td>
+                        <td>
+                          <div className="customer-actions">
+                            <button
+                              type="button"
+                              className="btn btn--link"
+                              onClick={() => handleSelectCustomer(customer)}
                             >
-                              <div
-                                style={{
-                                  width: `${percentage}%`,
-                                  background: "#38bdf8",
-                                  height: "8px",
-                                  borderRadius: "6px",
-                                }}
-                              />
-                            </div>
-                          </td>
-                          <td>{point.value}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                              Perfil
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--link"
+                              onClick={() => handleEdit(customer)}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--link"
+                              onClick={() => handleAddNote(customer)}
+                            >
+                              Nota
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--link"
+                              onClick={() => handleRegisterPayment(customer)}
+                            >
+                              Pago
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--link"
+                              onClick={() => handleAdjustDebt(customer)}
+                            >
+                              Ajustar saldo
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--link"
+                              onClick={() => handleDelete(customer)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="panel">
+          <div className="panel__header">
+            <h3>Perfil financiero del cliente</h3>
+            <p className="panel__subtitle">
+              Consulta ventas, pagos, notas y el saldo disponible para tomar decisiones en
+              el momento.
+            </p>
+          </div>
+
+          {summaryLoading ? (
+            <p className="muted-text">Cargando información del cliente...</p>
+          ) : summaryError ? (
+            <p className="error-text">{summaryError}</p>
+          ) : customerSummary && selectedCustomer ? (
+            <div className="customer-summary">
+              <div className="summary-header">
+                <div>
+                  <h4>{customerSummary.customer.name}</h4>
+                  <p className="muted-text">
+                    Tipo {customerSummary.customer.customer_type} · Estado {" "}
+                    {customerSummary.customer.status}
+                  </p>
+                </div>
+                <div className="summary-financial">
+                  <div>
+                    <span className="muted-text">Saldo pendiente</span>
+                    <strong>${formatCurrency(customerSummary.totals.outstanding_debt)}</strong>
+                  </div>
+                  <div>
+                    <span className="muted-text">Crédito disponible</span>
+                    <strong>${formatCurrency(customerSummary.totals.available_credit)}</strong>
+                  </div>
+                  <div>
+                    <span className="muted-text">Límite</span>
+                    <strong>${formatCurrency(customerSummary.totals.credit_limit)}</strong>
+                  </div>
+                </div>
               </div>
-            )}
-            <h4>Top compradores</h4>
-            {dashboardMetrics.top_customers.length === 0 ? (
-              <p className="muted-text">Aún no hay clientes destacados en ventas.</p>
-            ) : (
+
+              <div className="summary-columns">
+                <div>
+                  <h5>Ventas recientes</h5>
+                  {customerSummary.sales.length === 0 ? (
+                    <p className="muted-text">Sin ventas registradas.</p>
+                  ) : (
+                    <ul className="summary-list">
+                      {customerSummary.sales.slice(0, 5).map((sale) => (
+                        <li key={sale.sale_id}>
+                          <strong>Venta #{sale.sale_id}</strong>
+                          <span className="muted-text">
+                            {new Date(sale.created_at).toLocaleString("es-MX")} · {sale.status}
+                          </span>
+                          <span className="summary-amount">
+                            Total ${formatCurrency(sale.total_amount)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <h5>Pagos</h5>
+                  {customerSummary.payments.length === 0 ? (
+                    <p className="muted-text">Sin pagos recientes.</p>
+                  ) : (
+                    <ul className="summary-list">
+                      {customerSummary.payments.slice(0, 5).map((payment) => (
+                        <li key={payment.id}>
+                          <strong>{LEDGER_LABELS[payment.entry_type]}</strong>
+                          <span className="muted-text">
+                            {new Date(payment.created_at).toLocaleString("es-MX")}
+                          </span>
+                          <span className="summary-amount">
+                            ${formatCurrency(payment.amount)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h5>Bitácora reciente</h5>
+                {customerSummary.ledger.length === 0 ? (
+                  <p className="muted-text">Aún no hay movimientos registrados.</p>
+                ) : (
+                  <div className="table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Tipo</th>
+                          <th>Detalle</th>
+                          <th>Monto</th>
+                          <th>Saldo posterior</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {customerSummary.ledger.slice(0, 10).map((entry) => {
+                          const enriched = resolveDetails(entry);
+                          return (
+                            <tr key={entry.id}>
+                              <td>{new Date(entry.created_at).toLocaleString("es-MX")}</td>
+                              <td>{LEDGER_LABELS[entry.entry_type]}</td>
+                              <td>
+                                {entry.note ?? enriched.detailsLabel ?? "—"}
+                                {enriched.detailsValue ? (
+                                  <span className="muted-text"> · {enriched.detailsValue}</span>
+                                ) : null}
+                              </td>
+                              <td>${formatCurrency(entry.amount)}</td>
+                              <td>${formatCurrency(entry.balance_after)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="muted-text">
+              Selecciona un cliente en el listado para visualizar su perfil financiero.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="customers-dashboard">
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3>Portafolio de clientes</h3>
+              <p className="muted-text">
+                Identifica clientes morosos o compradores frecuentes y exporta el reporte
+                oficial con estilo oscuro.
+              </p>
+            </div>
+            <div className="report-actions">
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => handleExportPortfolio("pdf")}
+                disabled={exportingPortfolio === "pdf"}
+              >
+                {exportingPortfolio === "pdf" ? "Generando..." : "Exportar PDF"}
+              </button>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => handleExportPortfolio("xlsx")}
+                disabled={exportingPortfolio === "xlsx"}
+              >
+                {exportingPortfolio === "xlsx" ? "Generando..." : "Exportar Excel"}
+              </button>
+            </div>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              Categoría
+              <select
+                value={portfolioFilters.category}
+                onChange={(event) =>
+                  setPortfolioFilters((current) => ({
+                    ...current,
+                    category: event.target.value as PortfolioFilters["category"],
+                  }))
+                }
+              >
+                <option value="delinquent">Clientes morosos</option>
+                <option value="frequent">Compradores frecuentes</option>
+              </select>
+            </label>
+            <label>
+              Límite
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={portfolioFilters.limit}
+                onChange={(event) =>
+                  setPortfolioFilters((current) => ({
+                    ...current,
+                    limit: Math.max(1, Number(event.target.value)),
+                  }))
+                }
+              />
+            </label>
+            <label>
+              Desde
+              <input
+                type="date"
+                value={portfolioFilters.dateFrom}
+                onChange={(event) =>
+                  setPortfolioFilters((current) => ({
+                    ...current,
+                    dateFrom: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              Hasta
+              <input
+                type="date"
+                value={portfolioFilters.dateTo}
+                onChange={(event) =>
+                  setPortfolioFilters((current) => ({
+                    ...current,
+                    dateTo: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <div>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => void refreshPortfolio()}
+                disabled={portfolioLoading}
+              >
+                {portfolioLoading ? "Actualizando..." : "Actualizar vista"}
+              </button>
+            </div>
+          </div>
+
+          {portfolioLoading ? (
+            <p className="muted-text">Generando portafolio...</p>
+          ) : portfolioError ? (
+            <p className="error-text">{portfolioError}</p>
+          ) : portfolio ? (
+            <>
+              <div className="portfolio-summary">
+                <div>
+                  <span className="muted-text">Clientes listados</span>
+                  <strong>{portfolio.totals.customers}</strong>
+                </div>
+                <div>
+                  <span className="muted-text">Deuda total</span>
+                  <strong>${formatCurrency(portfolio.totals.outstanding_debt)}</strong>
+                </div>
+                <div>
+                  <span className="muted-text">Ventas acumuladas</span>
+                  <strong>${formatCurrency(portfolio.totals.sales_total)}</strong>
+                </div>
+              </div>
               <div className="table-wrapper">
                 <table>
                   <thead>
                     <tr>
                       <th>Cliente</th>
+                      <th>Tipo</th>
                       <th>Estado</th>
-                      <th>Ventas</th>
-                      <th>Operaciones</th>
                       <th>Saldo</th>
-                      <th>Última compra</th>
+                      <th>Ventas</th>
+                      <th>Compras recientes</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {dashboardMetrics.top_customers.map((item) => (
+                    {portfolio.items.map((item: CustomerPortfolioItem) => (
                       <tr key={item.customer_id}>
-                        <td>{item.name}</td>
+                        <td>
+                          <strong>{item.name}</strong>
+                          <div className="muted-text">#{item.customer_id}</div>
+                        </td>
+                        <td>{item.customer_type}</td>
                         <td>{item.status}</td>
-                        <td>${formatCurrency(item.sales_total)}</td>
-                        <td>{item.sales_count}</td>
                         <td>${formatCurrency(item.outstanding_debt)}</td>
                         <td>
+                          ${formatCurrency(item.sales_total)} ({item.sales_count} ventas)
+                        </td>
+                        <td>
                           {item.last_sale_at
-                            ? new Date(item.last_sale_at).toLocaleString("es-MX")
+                            ? new Date(item.last_sale_at).toLocaleDateString("es-MX")
                             : "—"}
                         </td>
                       </tr>
@@ -1279,14 +1403,146 @@ function Customers({ token }: Props) {
                   </tbody>
                 </table>
               </div>
-            )}
-          </>
-        ) : (
-          <p className="muted-text">
-            Ajusta los parámetros y pulsa «Actualizar métricas» para consultar el dashboard de clientes.
-          </p>
-        )}
-      </section>
+            </>
+          ) : (
+            <p className="muted-text">
+              Configura los filtros y presiona «Actualizar vista» para consultar el portafolio.
+            </p>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3>Dashboard de clientes</h3>
+              <p className="muted-text">
+                Visualiza las altas mensuales, el top de compradores y el porcentaje de morosos.
+              </p>
+            </div>
+            <div className="report-actions">
+              <label>
+                Meses
+                <input
+                  type="number"
+                  min={1}
+                  max={24}
+                  value={dashboardFilters.months}
+                  onChange={(event) =>
+                    setDashboardFilters((current) => ({
+                      ...current,
+                      months: Math.max(1, Number(event.target.value)),
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Top
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={dashboardFilters.topLimit}
+                  onChange={(event) =>
+                    setDashboardFilters((current) => ({
+                      ...current,
+                      topLimit: Math.max(1, Number(event.target.value)),
+                    }))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => void refreshDashboard()}
+                disabled={dashboardLoading}
+              >
+                {dashboardLoading ? "Actualizando..." : "Actualizar"}
+              </button>
+            </div>
+          </div>
+
+          {dashboardLoading ? (
+            <p className="muted-text">Cargando métricas...</p>
+          ) : dashboardError ? (
+            <p className="error-text">{dashboardError}</p>
+          ) : dashboardMetrics ? (
+            <div className="dashboard-grid">
+              <div className="dashboard-card">
+                <h4>Clientes nuevos por mes</h4>
+                {dashboardMetrics.new_customers_per_month.length === 0 ? (
+                  <p className="muted-text">Sin registros en el rango indicado.</p>
+                ) : (
+                  <ul className="bars-list">
+                    {dashboardMetrics.new_customers_per_month.map((point) => (
+                      <li key={point.label}>
+                        <span>{point.label}</span>
+                        <div className="bar">
+                          <div
+                            className="bar__fill"
+                            style={{ width: `${Math.min(100, point.value * 8)}%` }}
+                          />
+                          <span className="bar__value">{point.value}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="dashboard-card">
+                <h4>Top compradores</h4>
+                {dashboardMetrics.top_customers.length === 0 ? (
+                  <p className="muted-text">No hay ventas registradas.</p>
+                ) : (
+                  <ul className="summary-list">
+                    {dashboardMetrics.top_customers.map((customer) => (
+                      <li key={customer.customer_id}>
+                        <div>
+                          <strong>{customer.name}</strong>
+                          <span className="muted-text">
+                            {customer.sales_count} ventas · ${
+                              formatCurrency(customer.sales_total)
+                            }
+                          </span>
+                        </div>
+                        <span className="summary-amount">
+                          Deuda ${formatCurrency(customer.outstanding_debt)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="dashboard-card">
+                <h4>Morosidad</h4>
+                <div className="morosity-indicator">
+                  <div className="morosity-ring">
+                    <div
+                      className="morosity-ring__fill"
+                      style={{
+                        background: `conic-gradient(#38bdf8 ${delinquentRatio.percentage}%, rgba(56, 189, 248, 0.2) 0)`
+                      }}
+                    />
+                    <span>{delinquentRatio.percentage}%</span>
+                  </div>
+                  <div>
+                    <p className="muted-text">Clientes morosos identificados</p>
+                    <strong>${formatCurrency(delinquentRatio.total)}</strong>
+                    <p className="muted-text">Saldo vencido total</p>
+                  </div>
+                </div>
+                <p className="muted-text small">
+                  Datos generados el {" "}
+                  {new Date(dashboardMetrics.generated_at).toLocaleString("es-MX")}.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="muted-text">Configura los filtros y presiona actualizar para ver las métricas.</p>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

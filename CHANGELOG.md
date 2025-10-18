@@ -70,10 +70,11 @@
 - Refinamiento 26/10/2025 09:15 UTC: el listado de clientes acepta filtros explícitos por `status_filter` y `customer_type_filter`, sincronizados con la UI (`Customers.tsx`) para aislar rápidamente clientes morosos, VIP o corporativos; la prueba `test_customer_list_filters_by_status_and_type` respalda el comportamiento.
 
 ## Actualización Clientes - Parte 3 (Interfaz y Reportes) (26/10/2025 12:00 UTC)
-- `frontend/src/modules/operations/components/Customers.tsx` suma filtros combinados por estado/tipo/saldo, un panel de portafolios con exportación PDF/Excel y un dashboard oscuro con altas mensuales y ranking de compradores parametrizable.
+- `frontend/src/modules/operations/components/Customers.tsx` se reorganiza en paneles oscuros: formulario, listado con búsqueda diferida y filtros combinados, perfil financiero con ventas/pagos/ledger, portafolio exportable y dashboard con barras y anillo de morosidad.
 - `backend/app/routers/customers.py` incorpora `/customers/dashboard` para servir métricas consolidadas y extiende `/customers` con filtros `status`, `customer_type` y `has_debt` sin romper compatibilidad previa.
 - `backend/app/routers/reports.py` añade `/reports/customers/portfolio` con entregas JSON/PDF/Excel protegidas por motivo corporativo, apoyándose en `backend/app/services/customer_reports.py` para aplicar estilos oscuros y consistentes.
 - Nuevos modelos en `backend/app/schemas/__init__.py` describen portafolios, totales y rankings; `backend/app/crud.py` incorpora `build_customer_portfolio` y `get_customer_dashboard_metrics` para centralizar cálculos.
+- `frontend/src/api.ts` actualiza `listCustomers` y `exportCustomersCsv` para aceptar filtros extendidos (`status`, `customer_type`, `has_debt`, `status_filter`, `customer_type_filter`) utilizados por POS, reparaciones y el nuevo listado.
 - `backend/tests/test_customers.py` agrega escenarios de filtros, métricas y exportaciones (`test_customer_filters_and_reports`, `test_customer_portfolio_exports`) que validan cabeceras `X-Reason`, formatos PDF/Excel y coherencia del dashboard.
 
 ## Actualización Inventario - Roles y Permisos

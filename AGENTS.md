@@ -287,7 +287,8 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 
 ### Actualización Clientes - Parte 3 (Interfaz y Reportes) (26/10/2025 12:00 UTC)
 
-- `frontend/src/modules/operations/components/Customers.tsx` agrega filtros por estado/tipo/saldo, panel de portafolios PDF/Excel y dashboard oscuro de altas mensuales/top compradores; cualquier ajuste debe preservar los selectores, las barras proporcionales y los botones con motivo corporativo.
+- `frontend/src/modules/operations/components/Customers.tsx` se divide en paneles (formulario, listado, perfil, portafolio y dashboard). Mantén la búsqueda con *debounce*, los filtros combinados (estado/tipo/deuda), las acciones con motivo corporativo y la nueva disposición del perfil financiero (ventas, pagos y ledger) antes de enviar cambios.
+- Los estilos específicos del módulo viven al final de `frontend/src/styles.css` bajo el bloque «Clientes — Interfaz y reportes». Respeta la grilla `customers-columns`, los indicadores de barra (`bars-list`, `bar__fill`) y el anillo de morosidad para conservar el tema oscuro.
 - `backend/app/routers/customers.py` expone `/customers/dashboard` y soporta los nuevos filtros `status`, `customer_type`, `has_debt` en el listado general; mantener compatibilidad con la búsqueda y el límite original.
 - `backend/app/routers/reports.py` publica `/reports/customers/portfolio` con soporte JSON/PDF/Excel; toda exportación exige cabecera `X-Reason` y reutiliza `backend/app/services/customer_reports.py` para estilos oscuros.
 - `backend/app/services/customer_reports.py` genera PDF/Excel en tema oscuro para portafolios; no modificar colores corporativos (`#0f172a`, `#111827`, acento `#38bdf8`) sin actualizar esta bitácora.
