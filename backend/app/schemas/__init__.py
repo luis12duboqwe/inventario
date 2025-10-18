@@ -931,14 +931,46 @@ class RoleResponse(BaseModel):
 
 
 class UserBase(BaseModel):
-    username: str = Field(..., max_length=80)
-    full_name: str | None = Field(default=None, max_length=120)
+    username: str = Field(
+        ...,
+        max_length=120,
+        validation_alias=AliasChoices("username", "correo"),
+    )
+    full_name: str | None = Field(
+        default=None,
+        max_length=120,
+        validation_alias=AliasChoices("full_name", "nombre"),
+    )
+    telefono: str | None = Field(default=None, max_length=30)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @computed_field(alias="correo")
+    @property
+    def correo(self) -> str:
+        return self.username
+
+    @computed_field(alias="nombre")
+    @property
+    def nombre(self) -> str | None:
+        return self.full_name
+
+    @field_validator("username")
+    @classmethod
+    def _validate_username(cls, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("El correo del usuario es obligatorio")
+        return value.strip()
 
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=128)
     roles: list[str] = Field(default_factory=list)
-    store_id: int | None = Field(default=None, ge=1)
+    store_id: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("store_id", "sucursal_id"),
+    )
 
 
 class UserRolesUpdate(BaseModel):
@@ -952,11 +984,13 @@ class UserStatusUpdate(BaseModel):
 class UserResponse(UserBase):
     id: int
     is_active: bool
+    rol: str
+    estado: str
     created_at: datetime
     roles: list[RoleResponse]
     store: StoreResponse | None = Field(default=None, exclude=True)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     @field_validator("roles", mode="before")
     @classmethod
@@ -987,6 +1021,16 @@ class UserResponse(UserBase):
         if store_obj is None:
             return None
         return store_obj.name
+
+    @computed_field(alias="fecha_creacion")
+    @property
+    def fecha_creacion(self) -> datetime:
+        return self.created_at
+
+    @computed_field(alias="sucursal_id")
+    @property
+    def sucursal_id(self) -> int | None:
+        return self.store_id
 
 
 class TokenResponse(BaseModel):

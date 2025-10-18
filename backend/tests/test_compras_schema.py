@@ -71,8 +71,8 @@ def test_compras_y_detalles_relaciones(db_session) -> None:
         for fk in compras_fks
     )
     assert any(
-        fk["referred_table"] == "users"
-        and fk["referred_columns"] == ["id"]
+        fk["referred_table"] == "usuarios"
+        and fk["referred_columns"] == ["id_usuario"]
         and fk["constrained_columns"] == ["usuario_id"]
         for fk in compras_fks
     )

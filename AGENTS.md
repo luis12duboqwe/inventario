@@ -277,6 +277,13 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - **17/10/2025 08:30 UTC** — Se envolvió el flujo de captura en un único formulario para que "Guardar venta" active `handleSubmit`, además de añadir estilos oscuros/fluídos a `Sales.tsx` (`sales-form`, `table-responsive`, `totals-card`, `actions-card`).
 - **17/10/2025 09:15 UTC** — Se reforzó el dashboard con tarjetas de ticket promedio y columna de promedios diarios, reutilizando el cálculo del backend y nuevos estilos (`metric-secondary`, `metric-primary`) para remarcar totales, impuestos y estadísticas de ventas.
 
+### Actualización Usuarios - Parte 1 (Estructura y Roles Base) (27/10/2025 14:10 UTC)
+
+- La tabla `users` se renombró a `usuarios` incorporando los campos `id_usuario`, `correo`, `nombre`, `telefono`, `rol`, `sucursal_id`, `estado` y `fecha_creacion` manteniendo `password_hash` y relaciones vigentes. Los modelos ORM usan alias (`correo`, `nombre`) para conservar compatibilidad con código existente.
+- La migración `202503010008_usuarios_estructura_roles.py` actualiza índices (`ix_usuarios_*`), sincroniza `estado` con `is_active` y calcula el rol principal por prioridad ADMIN→GERENTE→OPERADOR→INVITADO.
+- Se añadió el rol `INVITADO` al catálogo base (`DEFAULT_ROLES`) y el CRUD de usuarios persiste el rol primario en la columna `rol`, además de exponer los nuevos metadatos (`telefono`, `estado`, `fecha_creacion`) en los esquemas Pydantic.
+- Documentación corporativa (README, CHANGELOG y este AGENTS) registra la fase bajo «Actualización Usuarios - Parte 1 (Estructura y Roles Base)» para sostener la trazabilidad del módulo de seguridad.
+
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
 - La migración `202503010005_clientes_estructura_relaciones.py` renombra la tabla `customers` a `clientes`, ajusta columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y marca el teléfono como obligatorio con valores de contingencia para datos históricos.

@@ -20,7 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from ..database import Base
 
@@ -279,14 +279,19 @@ class Role(Base):
 
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = "usuarios"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    username: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
-    full_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    id: Mapped[int] = mapped_column("id_usuario", Integer, primary_key=True, index=True)
+    username: Mapped[str] = mapped_column("correo", String(120), nullable=False, unique=True, index=True)
+    full_name: Mapped[str | None] = mapped_column("nombre", String(120), nullable=True)
+    telefono: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    rol: Mapped[str] = mapped_column(String(30), nullable=False, default="OPERADOR", server_default="OPERADOR")
+    estado: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVO", server_default="ACTIVO")
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        "fecha_creacion", DateTime(timezone=True), default=datetime.utcnow
+    )
     store_id: Mapped[int | None] = mapped_column(
         "sucursal_id",
         Integer,
@@ -294,6 +299,9 @@ class User(Base):
         nullable=True,
         index=True,
     )
+
+    correo = synonym("username")
+    nombre = synonym("full_name")
 
     roles: Mapped[list["UserRole"]] = relationship(
         "UserRole", back_populates="user", cascade="all, delete-orphan"
@@ -324,7 +332,7 @@ class UserRole(Base):
     __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_user_role"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("usuarios.id_usuario", ondelete="CASCADE"), index=True)
     role_id: Mapped[int] = mapped_column(Integer, ForeignKey("roles.id", ondelete="CASCADE"), index=True)
 
     user: Mapped[User] = relationship("User", back_populates="roles")
@@ -365,7 +373,7 @@ class InventoryMovement(Base):
     performed_by_id: Mapped[int | None] = mapped_column(
         "usuario_id",
         Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -437,7 +445,7 @@ class SyncSession(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     triggered_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
 
     store: Mapped[Store | None] = relationship("Store", back_populates="sync_sessions")
@@ -453,7 +461,7 @@ class AuditLog(Base):
     entity_id: Mapped[str] = mapped_column(String(80), nullable=False)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     performed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -475,7 +483,7 @@ class AuditAlertAcknowledgement(Base):
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     acknowledged_by_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -500,7 +508,7 @@ class BackupJob(Base):
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
     triggered_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
 
     triggered_by: Mapped[User | None] = relationship("User", back_populates="backup_jobs")
@@ -528,16 +536,16 @@ class TransferOrder(Base):
         default=TransferStatus.SOLICITADA,
     )
     requested_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     dispatched_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     received_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     cancelled_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -611,13 +619,13 @@ class RecurringOrder(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_by_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     last_used_by_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -646,7 +654,7 @@ class StoreMembership(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="CASCADE"), nullable=False, index=True
     )
     store_id: Mapped[int] = mapped_column(
         "sucursal_id",
@@ -747,7 +755,7 @@ class CustomerLedgerEntry(Base):
     )
     created_by_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -859,7 +867,7 @@ class Compra(Base):
     )
     usuario_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("users.id", ondelete="RESTRICT"),
+        ForeignKey("usuarios.id_usuario", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -935,7 +943,7 @@ class PurchaseOrder(Base):
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )
     created_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -983,7 +991,7 @@ class PurchaseReturn(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
     processed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -1039,7 +1047,7 @@ class Sale(Base):
     performed_by_id: Mapped[int | None] = mapped_column(
         "usuario_id",
         Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -1114,7 +1122,7 @@ class SaleReturn(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
     processed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -1226,10 +1234,10 @@ class CashRegisterSession(Base):
     payment_breakdown: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     opened_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     closed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1291,7 +1299,7 @@ class UserTOTPSecret(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="CASCADE"), nullable=False, unique=True
     )
     secret: Mapped[str] = mapped_column(String(64), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -1308,7 +1316,7 @@ class ActiveSession(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="CASCADE"), nullable=False, index=True
     )
     session_token: Mapped[str] = mapped_column(
         String(64), nullable=False, unique=True, index=True
@@ -1317,7 +1325,7 @@ class ActiveSession(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
     revoke_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
