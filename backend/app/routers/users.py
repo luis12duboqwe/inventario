@@ -175,6 +175,7 @@ def update_user_roles(
     user_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
+    reason: str = Depends(require_reason),
 ):
     try:
         user = crud.get_user(db, user_id)
@@ -186,7 +187,13 @@ def update_user_roles(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if not role_names:
         role_names = {GERENTE}
-    updated = crud.set_user_roles(db, user, sorted(role_names))
+    updated = crud.set_user_roles(
+        db,
+        user,
+        sorted(role_names),
+        performed_by_id=current_user.id,
+        reason=reason,
+    )
     return updated
 
 
@@ -241,9 +248,16 @@ def update_user_status(
     user_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
+    reason: str = Depends(require_reason),
 ):
     try:
         user = crud.get_user(db, user_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado") from exc
-    return crud.set_user_status(db, user, is_active=payload.is_active, performed_by_id=current_user.id)
+    return crud.set_user_status(
+        db,
+        user,
+        is_active=payload.is_active,
+        performed_by_id=current_user.id,
+        reason=reason,
+    )
