@@ -26,6 +26,7 @@
 - `frontend/src/modules/sync/pages/SyncPage.tsx` integra un dashboard central que expone estado actual, última ejecución, monitoreo de sucursales, inventario agregado, cola híbrida y transferencias activas con los logs más recientes de `/sync/sessions`.
 - Se enriquece la vista de transferencias con la tabla de detalle (origen, destino, productos y cantidades) alimentada por `/transfers/report`, junto con totales ejecutivos y exportaciones PDF/Excel.
 - El módulo conserva el panel de conflictos con exportaciones PDF/Excel y las acciones de sincronización manual, respaldos y reportes del `SyncPanel`, manteniendo la trazabilidad corporativa.
+- El helper `listTransfers` del SDK (`frontend/src/api.ts`) normaliza la ruta `/transfers` con parámetros `limit=25` y `store_id` para evitar redirecciones HTTP y entregar la data esperada por el panel híbrido de sucursales.
 - README, AGENTS y este CHANGELOG registran la fase bajo «Actualización Sucursales - Parte 3 (Interfaz y Control Central)» para preservar la línea de tiempo.
 
 ## Actualización Compras - Parte 1 (Estructura y Relaciones) (17/10/2025 10:15 UTC)
