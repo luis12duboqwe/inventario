@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearRequestCache, getStores, registerMovement, type MovementInput } from "./api";
+import { clearRequestCache, getStores, listUsers, registerMovement, type MovementInput } from "./api";
 
 describe("memoización de peticiones del SDK", () => {
   const originalFetch = global.fetch;
@@ -62,6 +62,68 @@ describe("memoización de peticiones del SDK", () => {
     expect(first).toEqual(payload);
     expect(second).toEqual(payload);
     expect(first).not.toBe(second);
+  });
+
+  it("permite abortar una solicitud sin cancelar otras con señales distintas", async () => {
+    const payload = [
+      {
+        id: 1,
+        username: "admin",
+        roles: ["admin"],
+        is_active: true,
+      },
+    ];
+
+    type Pending = { release: () => void };
+    const pendingResponses: Pending[] = [];
+
+    const fetchMock = vi.fn().mockImplementation((_: string, init?: RequestInit) => {
+      return new Promise<Response>((resolve, reject) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        if (signal) {
+          signal.addEventListener("abort", () => {
+            const abortError = new Error("La solicitud fue abortada");
+            abortError.name = "AbortError";
+            reject(abortError);
+          });
+        }
+
+        pendingResponses.push({
+          release: () =>
+            resolve({
+              ok: true,
+              status: 200,
+              headers: new Headers({ "content-type": "application/json" }),
+              json: vi.fn().mockResolvedValue(payload),
+              blob: vi.fn(),
+              text: vi.fn(),
+            } as unknown as Response),
+        });
+      });
+    });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const controllerA = new AbortController();
+    const controllerB = new AbortController();
+
+    const firstPromise = listUsers(token, {}, { signal: controllerA.signal });
+    const secondPromise = listUsers(token, {}, { signal: controllerB.signal });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    controllerA.abort();
+
+    await expect(firstPromise).rejects.toMatchObject({ name: "AbortError" });
+
+    if (pendingResponses.length < 2) {
+      throw new Error("Faltan respuestas simuladas para completar la prueba");
+    }
+
+    pendingResponses[1].release();
+
+    const second = await secondPromise;
+    expect(second).toEqual(payload);
   });
 
   it("reutiliza la respuesta cacheada para solicitudes GET equivalentes", async () => {
