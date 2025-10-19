@@ -25,6 +25,8 @@ import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
 import Button from "../../../components/ui/Button";
 import PageHeader from "../../../components/ui/PageHeader";
+import AdminControlPanel from "../components/AdminControlPanel";
+import ActionIndicatorBar from "../components/ActionIndicatorBar";
 
 type NavItem = SidebarNavItem & {
   description: string;
@@ -82,6 +84,10 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     globalSearchTerm,
     setGlobalSearchTerm,
     compactMode,
+    loading,
+    syncStatus,
+    lastInventoryRefresh,
+    outboxError,
   } = useDashboard();
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -115,6 +121,41 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
   };
 
   const isAdmin = currentUser?.roles.some((role) => role.name === "ADMIN") ?? false;
+  const isManager = currentUser?.roles.some((role) => role.name === "GERENTE") ?? false;
+  const isOperator = currentUser?.roles.some((role) => role.name === "OPERADOR") ?? false;
+
+  const roleVisual = useMemo(() => {
+    if (isAdmin) {
+      return {
+        label: "Perfil administrador",
+        description: "Acceso completo a módulos críticos, auditoría y control global.",
+        className: "role-admin",
+        variant: "admin" as const,
+      };
+    }
+    if (isManager) {
+      return {
+        label: "Perfil gerente",
+        description: "Monitoreo operativo y analítico con capacidades aprobatorias.",
+        className: "role-manager",
+        variant: "manager" as const,
+      };
+    }
+    if (isOperator) {
+      return {
+        label: "Perfil operador",
+        description: "Acceso guiado para registrar ventas, transferencias y seguimiento.",
+        className: "role-operator",
+        variant: "operator" as const,
+      };
+    }
+    return {
+      label: "Perfil invitado",
+      description: "Acceso restringido. Solicita permisos para operar módulos críticos.",
+      className: "role-guest",
+      variant: "guest" as const,
+    };
+  }, [isAdmin, isManager, isOperator]);
 
   const navItems: NavItem[] = useMemo(
     () => [
@@ -199,8 +240,20 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     });
   };
 
+  const notificationCount =
+    toasts.length + (message ? 1 : 0) + (error ? 1 : 0) + (networkAlert ? 1 : 0) + (syncStatus ? 1 : 0);
+  const notificationSummary =
+    notificationCount === 0
+      ? "No hay notificaciones activas en este momento."
+      : notificationCount === 1
+        ? "Tienes 1 notificación activa en el panel."
+        : `Tienes ${notificationCount} notificaciones activas en el panel.`;
+
   return (
-    <div className={`dashboard-shell${compactMode ? " compact-mode" : ""}`}>
+    <div
+      className={`dashboard-shell${compactMode ? " compact-mode" : ""} ${roleVisual.className}`}
+      data-role-variant={roleVisual.variant}
+    >
       <Sidebar
         items={sidebarItems}
         currentPath={location.pathname}
@@ -223,6 +276,10 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         ) : null}
       </AnimatePresence>
       <div className="dashboard-main">
+        <div className="dashboard-role-banner" role="complementary" aria-live="polite">
+          <span className="dashboard-role-badge">{roleVisual.label}</span>
+          <p>{roleVisual.description}</p>
+        </div>
         <div className="toast-container" aria-live="assertive" aria-atomic="true">
           <AnimatePresence>
             {toasts.map((toast) => (
@@ -251,6 +308,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
               </motion.div>
             ))}
           </AnimatePresence>
+          <span className="sr-only" aria-live="polite">{notificationSummary}</span>
         </div>
 
         <AnimatePresence>
@@ -337,7 +395,29 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
           }
         />
 
+        <ActionIndicatorBar
+          loading={loading}
+          hasSuccessMessage={Boolean(message)}
+          hasError={Boolean(error || outboxError)}
+          errorMessage={error ?? outboxError}
+          syncStatus={syncStatus}
+          networkAlert={networkAlert}
+          lastInventoryRefresh={lastInventoryRefresh}
+        />
+
         <main className="dashboard-content">
+          <AdminControlPanel
+            modules={availableNavItems.map((item) => ({
+              to: item.to,
+              label: item.label,
+              description: item.description,
+              icon: item.icon,
+              badge: item.label === moduleTitle ? "Abierto" : undefined,
+            }))}
+            roleVariant={roleVisual.variant}
+            notifications={notificationCount}
+          />
+
           <GlobalMetrics />
 
           <AnimatePresence>

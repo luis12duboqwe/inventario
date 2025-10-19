@@ -104,6 +104,13 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Inventario modular diferido**: `InventoryPage.tsx` aplica `React.lazy` y `Suspense` a la tabla, formularios, búsqueda avanzada y paneles de reportes, además de memoizar tarjetas/resúmenes con `useMemo`/`useCallback` y loaders accesibles para evitar renders innecesarios mientras llegan los fragmentos pesados.【F:frontend/src/modules/inventory/pages/InventoryPage.tsx†L1-L1208】
 - **Gráfica de categorías desacoplada**: el componente `InventoryCategoryChart.tsx` extrae las dependencias de Recharts en un chunk aislado, reutiliza la paleta corporativa y memoriza la lista para mantener estable la carga diferida del inventario.【F:frontend/src/modules/inventory/components/InventoryCategoryChart.tsx†L1-L71】
 
+## Actualización Interfaz - Parte 3 (Panel, Usabilidad y Accesibilidad)
+
+- **Panel central unificado**: se integra `AdminControlPanel` dentro del dashboard para ofrecer accesos rápidos a cada módulo habilitado, mostrar notificaciones activas y mantener una navegación consistente desde el panel principal.【F:frontend/src/modules/dashboard/components/AdminControlPanel.tsx†L1-L72】【F:frontend/src/modules/dashboard/layout/DashboardLayout.tsx†L33-L241】
+- **Indicadores operativos accesibles**: `ActionIndicatorBar` resume el estado de guardado, sincronización y alertas con roles `status` y soporte para lectores de pantalla, mejorando la respuesta a eventos críticos en tiempo real.【F:frontend/src/modules/dashboard/components/ActionIndicatorBar.tsx†L1-L118】【F:frontend/src/modules/dashboard/layout/DashboardLayout.tsx†L221-L241】
+- **Diferenciación visual por rol**: el layout aplica banners y variantes cromáticas específicas para perfiles `ADMIN`, `GERENTE`, `OPERADOR` e invitados, reforzando la orientación contextual sin salir del tema corporativo.【F:frontend/src/modules/dashboard/layout/DashboardLayout.tsx†L120-L182】【F:frontend/src/styles.css†L4604-L4703】
+- **Contraste y adaptabilidad reforzados**: la hoja de estilos amplía fondos, focos y gradientes para el panel central, asegurando contraste AA en indicadores, badges y tarjetas del centro de control en cualquier rol corporativo.【F:frontend/src/styles.css†L4705-L4956】
+
 ## Actualización Compras - Parte 1 (Estructura y Relaciones)
 
 - **Estructura base garantizada**: se añadieron los modelos ORM `Proveedor`, `Compra` y `DetalleCompra` (`backend/app/models/__init__.py`) alineados con las tablas `proveedores`, `compras` y `detalle_compras`. Cada entidad expone relaciones bidireccionales para navegar proveedores, usuarios y dispositivos sin romper compatibilidad con flujos existentes.

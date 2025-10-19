@@ -374,6 +374,14 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - `frontend/src/modules/inventory/components/InventoryCategoryChart.tsx` desacopla Recharts en un chunk independiente, reutiliza la paleta corporativa y memoriza los totales para mantener ligera la carga inicial del dashboard de inventario.【F:frontend/src/modules/inventory/components/InventoryCategoryChart.tsx†L1-L71】
 - README y CHANGELOG registran esta fase bajo «Actualización Interfaz - Parte 2 (Optimización de Rendimiento y Carga)», garantizando trazabilidad documental.
 
+### Actualización Interfaz - Parte 3 (Panel, Usabilidad y Accesibilidad) (02/11/2025 22:30 UTC)
+
+- `frontend/src/modules/dashboard/layout/DashboardLayout.tsx` integra un banner contextual por rol (`role-admin`, `role-manager`, `role-operator`, `role-guest`), el panel central `AdminControlPanel` y la barra `ActionIndicatorBar`, ofreciendo accesos rápidos, conteo de notificaciones y estados de operación accesibles desde el shell principal.【F:frontend/src/modules/dashboard/layout/DashboardLayout.tsx†L33-L241】
+- `frontend/src/modules/dashboard/components/AdminControlPanel.tsx` y `ActionIndicatorBar.tsx` gestionan accesos y estados con roles ARIA, badges de módulo abierto, indicadores de guardado/sincronización/alertas y compatibilidad con teclado/lectores de pantalla.【F:frontend/src/modules/dashboard/components/AdminControlPanel.tsx†L1-L72】【F:frontend/src/modules/dashboard/components/ActionIndicatorBar.tsx†L1-L118】
+- `frontend/src/styles.css` refuerza contrastes, focos visibles y gradientes por rol en el panel principal, asegurando cumplimiento AA en banners, tarjetas e indicadores sin romper el tema oscuro corporativo.【F:frontend/src/styles.css†L4604-L4956】
+- Se añaden pruebas Vitest (`AdminControlPanel.test.tsx`, `ActionIndicatorBar.test.tsx`) para validar accesos, mensajes y estados visibles del nuevo panel administrativo.【F:frontend/src/modules/dashboard/components/__tests__/AdminControlPanel.test.tsx†L1-L40】【F:frontend/src/modules/dashboard/components/__tests__/ActionIndicatorBar.test.tsx†L1-L40】
+- README y CHANGELOG documentan esta fase bajo «Actualización Interfaz - Parte 3 (Panel, Usabilidad y Accesibilidad)» para mantener la trazabilidad de la evolución visual.【F:README.md†L132-L139】【F:CHANGELOG.md†L46-L53】
+
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
 - La migración `202503010005_clientes_estructura_relaciones.py` renombra la tabla `customers` a `clientes`, ajusta columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y marca el teléfono como obligatorio con valores de contingencia para datos históricos.
