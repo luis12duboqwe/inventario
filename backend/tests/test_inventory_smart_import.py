@@ -201,3 +201,9 @@ def test_inventory_incomplete_devices_endpoint_returns_pending_records(client, d
     assert store is not None
     assert device["store_id"] == store.id
     assert device["modelo"] == "iPhone 14"
+
+
+def test_detect_column_type_boolean_column_detection():
+    samples = ["Sí", "No", "si", "no", "TRUE", "false"]
+    detected = inventory_smart_import._detect_column_type(samples)
+    assert detected == "booleano"

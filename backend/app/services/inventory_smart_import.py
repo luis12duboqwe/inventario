@@ -19,6 +19,29 @@ from .. import crud, models, schemas
 
 IMEI_PATTERN = re.compile(r"\b\d{15}\b")
 
+BOOLEAN_TRUE_VALUES = frozenset(
+    {
+        "si",
+        "sí",
+        "yes",
+        "true",
+        "verdadero",
+        "activo",
+        "habilitado",
+        "1",
+    }
+)
+BOOLEAN_FALSE_VALUES = frozenset(
+    {
+        "no",
+        "false",
+        "falso",
+        "inactivo",
+        "deshabilitado",
+        "0",
+    }
+)
+
 CANONICAL_FIELDS: dict[str, set[str]] = {
     "sku": {"sku", "codigo", "product_code", "code"},
     "name": {"nombre", "name", "descripcion", "description", "producto"},
@@ -508,6 +531,11 @@ def _detect_column_type(samples: list[str]) -> str | None:
         return None
     if all(IMEI_PATTERN.fullmatch(sample) for sample in samples[:5]):
         return "imei"
+    boolean_matches = sum(1 for sample in samples if _looks_boolean(sample))
+    if boolean_matches and boolean_matches == len(samples):
+        return "booleano"
+    if boolean_matches and len(samples) >= 5 and boolean_matches / len(samples) >= 0.8:
+        return "booleano"
     numeric = sum(1 for sample in samples if _looks_numeric(sample))
     if numeric == len(samples):
         return "numero"
@@ -533,6 +561,19 @@ def _looks_like_date(value: str) -> bool:
         except ValueError:
             continue
     return False
+
+
+def _normalize_boolean_token(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value or "")
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    return normalized.strip().lower()
+
+
+def _looks_boolean(value: str) -> bool:
+    token = _normalize_boolean_token(value)
+    if not token:
+        return False
+    return token in BOOLEAN_TRUE_VALUES or token in BOOLEAN_FALSE_VALUES
 
 
 def _normalize_header(value: str) -> str:
