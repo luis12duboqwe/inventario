@@ -6,20 +6,25 @@ type TextFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & {
   error?: string;
   leadingIcon?: ReactNode;
   trailingIcon?: ReactNode;
+  hideLabel?: boolean;
 };
 
 const TextField = forwardRef<HTMLInputElement, TextFieldProps>(
-  ({ id, label, helperText, error, leadingIcon, trailingIcon, className, ...rest }, ref) => {
+  (
+    { id, label, helperText, error, leadingIcon, trailingIcon, className, hideLabel = false, ...rest },
+    ref,
+  ) => {
     const generatedId = useId();
     const fieldId = id ?? generatedId;
     const descriptionId = helperText ? `${fieldId}-helper` : undefined;
     const errorId = error ? `${fieldId}-error` : undefined;
 
     const classes = ["ui-field", error ? "ui-field--error" : "", className ?? ""].filter(Boolean).join(" ");
+    const labelClassName = ["ui-field__label", hideLabel ? "sr-only" : ""].filter(Boolean).join(" ");
 
     return (
       <div className={classes}>
-        <label className="ui-field__label" htmlFor={fieldId}>
+        <label className={labelClassName} htmlFor={fieldId}>
           {label}
         </label>
         <div className="ui-field__control">

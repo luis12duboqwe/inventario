@@ -34,6 +34,8 @@ import InventoryTable from "../components/InventoryTable";
 import MovementForm from "../components/MovementForm";
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import Button from "../../../components/ui/Button";
+import TextField from "../../../components/ui/TextField";
 import Tabs, { type TabOption } from "../../../components/ui/Tabs/Tabs";
 import type {
   Device,
@@ -44,7 +46,7 @@ import type {
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
 import { promptCorporateReason } from "../../../utils/corporateReason";
-import { colors } from "../../../theme/designTokens";
+import { colorVar, colors, radiusVar, shadowVar } from "../../../theme/designTokens";
 
 type StatusBadge = {
   tone: "warning" | "success";
@@ -630,7 +632,7 @@ function InventoryPage() {
           <>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={categoryChartData} margin={{ top: 8, right: 12, left: 0, bottom: 12 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(56, 189, 248, 0.18)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={colorVar("accentSoft")} vertical={false} />
                 <XAxis
                   dataKey="label"
                   stroke="var(--text-secondary)"
@@ -646,14 +648,15 @@ function InventoryPage() {
                   allowDecimals={false}
                 />
                 <Tooltip
-                  cursor={{ fill: "rgba(34, 211, 238, 0.12)" }}
+                  cursor={{ fill: colorVar("accentSoft") }}
                   contentStyle={{
-                    backgroundColor: "rgba(15, 23, 42, 0.96)",
-                    border: "1px solid rgba(56, 189, 248, 0.35)",
-                    borderRadius: 12,
-                    color: "var(--text-primary)",
+                    backgroundColor: colorVar("surfaceTooltip"),
+                    border: `1px solid ${colorVar("accentBorder")}`,
+                    borderRadius: radiusVar("md"),
+                    color: colorVar("textPrimary"),
+                    boxShadow: shadowVar("sm"),
                   }}
-                  labelStyle={{ color: "var(--accent)" }}
+                  labelStyle={{ color: colorVar("accent") }}
                   formatter={(value: number) => [
                     `${Number(value).toLocaleString("es-MX")} unidades`,
                     "Existencias",
@@ -700,8 +703,9 @@ function InventoryPage() {
             </p>
           </div>
           <div className="card-actions">
-            <button
-              className="btn btn--ghost"
+            <Button
+              variant="ghost"
+              size="sm"
               type="button"
               onClick={() => {
                 void refreshSupplierBatchOverview();
@@ -709,7 +713,7 @@ function InventoryPage() {
               disabled={supplierBatchLoading}
             >
               {supplierBatchLoading ? "Actualizando…" : "Actualizar"}
-            </button>
+            </Button>
           </div>
         </header>
         {supplierBatchLoading ? (
@@ -751,17 +755,18 @@ function InventoryPage() {
             <h2>Últimos movimientos</h2>
             <p className="card-subtitle">Entradas, salidas y ajustes más recientes.</p>
           </div>
-          <button
+          <Button
             type="button"
-            className="btn btn--ghost"
+            variant="ghost"
+            size="sm"
             onClick={() => {
               void refreshRecentMovements();
             }}
             disabled={recentMovementsLoading}
+            leadingIcon={<RefreshCcw aria-hidden size={16} />}
           >
-            <RefreshCcw aria-hidden size={18} />
-            <span>{recentMovementsLoading ? "Actualizando…" : "Actualizar"}</span>
-          </button>
+            {recentMovementsLoading ? "Actualizando…" : "Actualizar"}
+          </Button>
         </header>
         {recentMovementsLoading ? (
           <p className="muted-text">Cargando movimientos recientes…</p>
@@ -822,21 +827,23 @@ function InventoryPage() {
           </div>
         </header>
         <div className="inventory-controls">
-          <label className="input-with-icon" aria-label="Buscar por IMEI, modelo o SKU">
-            <Search size={16} aria-hidden />
-            <input
-              type="search"
-              value={inventoryQuery}
-              onChange={(event) => {
-                const value = event.target.value;
-                setInventoryQuery(value);
-                if (location.pathname.startsWith("/dashboard/inventory")) {
-                  setGlobalSearchTerm(value);
-                }
-              }}
-              placeholder="Buscar por IMEI, modelo o SKU"
-            />
-          </label>
+          <TextField
+            className="inventory-controls__search"
+            type="search"
+            label="Buscar por IMEI, modelo o SKU"
+            hideLabel
+            value={inventoryQuery}
+            onChange={(event) => {
+              const value = event.target.value;
+              setInventoryQuery(value);
+              if (location.pathname.startsWith("/dashboard/inventory")) {
+                setGlobalSearchTerm(value);
+              }
+            }}
+            placeholder="Buscar por IMEI, modelo o SKU"
+            leadingIcon={<Search size={16} aria-hidden />}
+            autoComplete="off"
+          />
           <label className="select-inline">
             <span>Estado comercial</span>
             <select
@@ -876,29 +883,31 @@ function InventoryPage() {
             <p className="card-subtitle">Ajustes, entradas y salidas sincronizadas con inventario.</p>
           </div>
           <div className="card-actions">
-            <button className="btn btn--primary" type="button" onClick={() => void refreshSummary()}>
+            <Button variant="primary" size="sm" type="button" onClick={() => void refreshSummary()}>
               Actualizar métricas
-            </button>
-            <button
-              className="btn btn--ghost"
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               type="button"
               onClick={() => {
                 void handleDownloadReportClick();
               }}
+              leadingIcon={<FileSpreadsheet aria-hidden size={16} />}
             >
-              <FileSpreadsheet aria-hidden size={18} />
-              <span>Descargar PDF</span>
-            </button>
-            <button
-              className="btn btn--ghost"
+              Descargar PDF
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               type="button"
               onClick={() => {
                 void handleDownloadCsvClick();
               }}
+              leadingIcon={<FileSpreadsheet aria-hidden size={16} />}
             >
-              <FileSpreadsheet aria-hidden size={18} />
-              <span>Descargar CSV</span>
-            </button>
+              Descargar CSV
+            </Button>
           </div>
         </header>
         <MovementForm devices={devices} onSubmit={handleMovement} />
@@ -941,8 +950,9 @@ function InventoryPage() {
             onChange={(event) => updateThresholdDraftValue(Number(event.target.value))}
             disabled={!selectedStoreId || isSavingThreshold}
           />
-          <button
-            className="btn btn--secondary"
+          <Button
+            variant="secondary"
+            size="sm"
             type="button"
             onClick={() => {
               void handleSaveThreshold();
@@ -952,7 +962,7 @@ function InventoryPage() {
             }
           >
             {isSavingThreshold ? "Guardando…" : "Guardar umbral"}
-          </button>
+          </Button>
         </div>
       </div>
       {lowStockDevices.length === 0 ? (
@@ -1028,14 +1038,15 @@ function InventoryPage() {
         </header>
         <div className="catalog-tools">
           <div className="catalog-actions">
-            <button
+            <Button
               type="button"
-              className="btn btn--secondary"
+              variant="secondary"
+              size="sm"
               onClick={() => void handleExportCatalogClick()}
               disabled={exportingCatalog}
             >
               {exportingCatalog ? "Exportando…" : "Exportar catálogo CSV"}
-            </button>
+            </Button>
           </div>
           <div className="catalog-import">
             <label className="file-input">
@@ -1055,14 +1066,15 @@ function InventoryPage() {
                   : "Incluye encabezados sku, name, categoria, condicion, estado, costo_compra, precio_venta, ubicacion, fecha_ingreso, descripcion"}
               </small>
             </label>
-            <button
+            <Button
               type="button"
-              className="btn btn--primary"
+              variant="primary"
+              size="sm"
               onClick={() => void handleImportCatalogSubmit()}
               disabled={importingCatalog || !catalogFile}
             >
               {importingCatalog ? "Importando…" : "Importar catálogo"}
-            </button>
+            </Button>
           </div>
           {lastImportSummary ? (
             <div className="catalog-summary">
