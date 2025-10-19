@@ -241,6 +241,11 @@ class Device(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    validations: Mapped[list["ImportValidation"]] = relationship(
+        "ImportValidation",
+        back_populates="device",
+        cascade="all, delete-orphan",
+    )
 
     @property
     def costo_compra(self) -> Decimal:
@@ -607,6 +612,31 @@ class InventoryImportTemp(Base):
     )
     duracion_segundos: Mapped[Decimal | None] = mapped_column(
         Numeric(10, 2), nullable=True
+    )
+
+
+class ImportValidation(Base):
+    __tablename__ = "validaciones_importacion"
+
+    id: Mapped[int] = mapped_column(
+        "id_validacion", Integer, primary_key=True, index=True
+    )
+    producto_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    tipo: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    severidad: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    descripcion: Mapped[str] = mapped_column(Text, nullable=False)
+    fecha: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True
+    )
+    corregido: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    device: Mapped["Device | None"] = relationship(
+        "Device", back_populates="validations"
     )
 
 
@@ -1525,6 +1555,7 @@ __all__ = [
     "InventoryMovement",
     "MovementType",
     "InventoryImportTemp",
+    "ImportValidation",
     "PaymentMethod",
     "PurchaseOrder",
     "PurchaseOrderItem",
