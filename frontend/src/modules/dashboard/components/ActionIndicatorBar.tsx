@@ -112,7 +112,11 @@ function ActionIndicatorBar({
   ]);
 
   return (
-    <section className="action-indicator-bar" aria-label="Indicadores clave de operación">
+    <section
+      className="action-indicator-bar"
+      aria-label="Indicadores clave de operación"
+      aria-live="polite"
+    >
       {indicators.map((indicator) => (
         <div
           key={indicator.id}

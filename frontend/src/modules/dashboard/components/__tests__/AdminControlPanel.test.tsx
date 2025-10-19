@@ -10,12 +10,15 @@ describe("AdminControlPanel", () => {
       label: "Inventario",
       description: "Gestiona existencias y auditorías en vivo.",
       icon: <Boxes aria-hidden="true" />,
+      isActive: true,
+      srHint: "Módulo abierto actualmente.",
     },
     {
       to: "/dashboard/analytics",
       label: "Analítica",
       description: "Consulta indicadores estratégicos.",
       icon: <BarChart3 aria-hidden="true" />,
+      isActive: false,
     },
   ];
 
@@ -43,13 +46,17 @@ describe("AdminControlPanel", () => {
     expect(screen.getByText("Consulta indicadores estratégicos.")).toBeInTheDocument();
     expect(screen.getByText("2 notificaciones activas")).toBeInTheDocument();
     expect(screen.getByText("Se guardaron los cambios")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Inventario/ })).toHaveAttribute("aria-current", "page");
   });
 
   it("indica cuando no hay notificaciones pendientes", () => {
     render(
       <MemoryRouter>
         <AdminControlPanel
-          modules={modules}
+          modules={modules.map((module, index) => ({
+            ...module,
+            isActive: index === 0,
+          }))}
           roleVariant="operator"
           notifications={0}
           notificationItems={[]}
