@@ -3874,6 +3874,54 @@ button.ghost {
   color: var(--color-danger-soft-strong);
 }
 
+/* Correcciones pendientes */
+.summary-grid {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.summary-grid div {
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.08);
+}
+
+.summary-grid dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  margin-bottom: 0.35rem;
+}
+
+.summary-grid dd {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.pending-validations-table tr.is-selected {
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.pending-validations-table tr.is-selected td {
+  border-bottom-color: rgba(56, 189, 248, 0.4);
+}
+
+.validation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.validation-form .form-actions {
+  justify-content: flex-end;
+}
+
 .metrics-list li {
   background: rgba(13, 17, 23, 0.8);
   padding: 0.85rem 1rem;

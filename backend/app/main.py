@@ -20,6 +20,7 @@ from .routers import (
     backups,
     customers,
     health,
+    import_validation,
     inventory,
     monitoring,
     operations,
@@ -315,6 +316,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(stores.router)
     app.include_router(inventory.router)
+    app.include_router(import_validation.router)
     app.include_router(pos.router)
     app.include_router(purchases.router)
     app.include_router(customers.router)

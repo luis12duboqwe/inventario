@@ -379,11 +379,53 @@ class InventorySmartImportResult(BaseModel):
     tiendas_nuevas: list[str] = Field(default_factory=list)
     duracion_segundos: float | None = None
     resumen: str
+    validacion_resumen: "ImportValidationSummary | None" = None
 
 
 class InventorySmartImportResponse(BaseModel):
     preview: InventorySmartImportPreview
     resultado: InventorySmartImportResult | None = None
+
+
+class ImportValidationBase(BaseModel):
+    tipo: str
+    severidad: str
+    descripcion: str
+    fecha: datetime
+    corregido: bool
+
+
+class ImportValidation(ImportValidationBase):
+    id: int
+    producto_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImportValidationDevice(BaseModel):
+    id: int
+    store_id: int
+    store_name: str
+    sku: str
+    name: str
+    imei: str | None = None
+    serial: str | None = None
+    marca: str | None = None
+    modelo: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImportValidationDetail(ImportValidation):
+    device: ImportValidationDevice | None = None
+
+
+class ImportValidationSummary(BaseModel):
+    registros_revisados: int
+    advertencias: int
+    errores: int
+    campos_faltantes: list[str] = Field(default_factory=list)
+    tiempo_total: float | None = None
 
 
 class InventoryImportHistoryEntry(BaseModel):
@@ -3359,6 +3401,10 @@ __all__ = [
     "InventorySmartImportPreview",
     "InventorySmartImportResult",
     "InventorySmartImportResponse",
+    "ImportValidation",
+    "ImportValidationDevice",
+    "ImportValidationDetail",
+    "ImportValidationSummary",
     "InventoryImportHistoryEntry",
     "InventoryMetricsResponse",
     "InventorySummary",

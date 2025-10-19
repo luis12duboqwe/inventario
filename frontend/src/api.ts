@@ -132,9 +132,9 @@ export type DeviceIdentifierInput = {
 };
 
 export type Device = {
-  id: number;
-  sku: string;
-  name: string;
+    id: number;
+    sku: string;
+    name: string;
   quantity: number;
   store_id: number;
   unit_price: number;
@@ -167,6 +167,40 @@ export type Device = {
 };
 
 export type CatalogDevice = Device & { store_name: string };
+
+export type ImportValidation = {
+  id: number;
+  producto_id?: number | null;
+  tipo: string;
+  severidad: "advertencia" | "error" | string;
+  descripcion: string;
+  fecha: string;
+  corregido: boolean;
+};
+
+export type ImportValidationDevice = {
+  id: number;
+  store_id: number;
+  store_name: string;
+  sku: string;
+  name: string;
+  imei?: string | null;
+  serial?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+};
+
+export type ImportValidationDetail = ImportValidation & {
+  device?: ImportValidationDevice | null;
+};
+
+export type ImportValidationSummary = {
+  registros_revisados: number;
+  advertencias: number;
+  errores: number;
+  campos_faltantes: string[];
+  tiempo_total?: number | null;
+};
 
 export type DeviceUpdateInput = {
   name?: string | null;
@@ -2310,6 +2344,30 @@ export function updateDevice(
     `/inventory/stores/${storeId}/devices/${deviceId}`,
     { method: "PATCH", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
     token
+  );
+}
+
+export function getImportValidationReport(token: string): Promise<ImportValidationSummary> {
+  return request<ImportValidationSummary>("/validacion/reporte", { method: "GET" }, token);
+}
+
+export function getPendingImportValidations(
+  token: string,
+  limit = 200,
+): Promise<ImportValidationDetail[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request<ImportValidationDetail[]>(`/validacion/pendientes?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function markImportValidationCorrected(
+  token: string,
+  validationId: number,
+  reason: string,
+): Promise<ImportValidation> {
+  return request<ImportValidation>(
+    `/validacion/${validationId}/corregir`,
+    { method: "PATCH", headers: { "X-Reason": reason } },
+    token,
   );
 }
 

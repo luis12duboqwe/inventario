@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
+from . import import_validation
 
 IMEI_PATTERN = re.compile(r"\b\d{15}\b")
 
@@ -266,30 +267,56 @@ def _commit_import(
     registros_incompletos = 0
     warnings = list(preview.advertencias)
     new_stores: list[str] = []
+    processed_records: list[dict[str, Any]] = []
     for row_index, row in enumerate(canonical_rows, start=1):
         total_processed += 1
+        raw_quantity = row.get("cantidad")
+        parsed_quantity = _parse_int(raw_quantity)
+        quantity = (
+            parsed_quantity if parsed_quantity is not None and parsed_quantity >= 0 else 0
+        )
+        raw_costo = row.get("costo")
+        costo = _parse_decimal(raw_costo)
+        raw_precio = row.get("precio")
+        precio = _parse_decimal(raw_precio)
+        fecha_compra = _parse_date(row.get("fecha_compra"))
+        fecha_ingreso = _parse_date(row.get("fecha_ingreso"))
+        imei = _validate_imei(row.get("imei"))
+        serial = _normalize_optional(row.get("serial"))
         store_name = row.get("tienda")
+        record_kwargs: dict[str, Any] = {
+            "row_index": row_index,
+            "store_id": None,
+            "store_name": store_name,
+            "imei": imei,
+            "serial": serial,
+            "raw_cantidad": raw_quantity,
+            "parsed_cantidad": parsed_quantity,
+            "raw_precio": raw_precio,
+            "parsed_precio": precio,
+            "raw_costo": raw_costo,
+            "parsed_costo": costo,
+            "fecha_compra": fecha_compra,
+            "fecha_ingreso": fecha_ingreso,
+            "device_id": None,
+        }
         if not store_name:
             warnings.append(f"Fila {row_index}: no se especificó la tienda.")
             registros_incompletos += 1
+            processed_records.append(import_validation.build_record(**record_kwargs))
             continue
         store, was_created = crud.ensure_store_by_name(
             db,
             store_name,
             performed_by_id=performed_by_id,
         )
+        record_kwargs["store_id"] = store.id
+        record_kwargs["store_name"] = store.name
         if was_created:
             new_stores.append(store.name)
         sku = row.get("sku") or _generate_sku(store.code, row.get("modelo"), row_index)
         name = row.get("name") or _generate_name(row)
-        imei = _validate_imei(row.get("imei"))
-        serial = _normalize_optional(row.get("serial"))
-        quantity = _parse_int(row.get("cantidad")) or 0
-        costo = _parse_decimal(row.get("costo"))
-        precio = _parse_decimal(row.get("precio"))
         capacidad_gb = _parse_int(row.get("capacidad_gb"))
-        fecha_compra = _parse_date(row.get("fecha_compra"))
-        fecha_ingreso = _parse_date(row.get("fecha_ingreso"))
         estado = row.get("estado") or "pendiente"
         estado_comercial = _resolve_estado_comercial(row.get("estado_comercial"))
         completo = not _is_row_incomplete(row)
@@ -336,7 +363,10 @@ def _commit_import(
                 f"Fila {row_index}: el dispositivo con identificadores coincide con otra sucursal. Se omite la actualización."
             )
             registros_incompletos += 1
+            record_kwargs["device_id"] = existing.id
+            processed_records.append(import_validation.build_record(**record_kwargs))
             continue
+        device: models.Device | None = existing
         if existing is None:
             payload = schemas.DeviceCreate(**base_payload)
             try:
@@ -351,6 +381,7 @@ def _commit_import(
                     f"Fila {row_index}: no se pudo crear el dispositivo ({exc})."
                 )
                 registros_incompletos += 1
+                processed_records.append(import_validation.build_record(**record_kwargs))
                 continue
             created += 1
         else:
@@ -391,8 +422,10 @@ def _commit_import(
                     f"Fila {row_index}: no se pudo actualizar el dispositivo ({exc})."
                 )
                 registros_incompletos += 1
+                processed_records.append(import_validation.build_record(**record_kwargs))
                 continue
             updated += 1
+        record_kwargs["device_id"] = device.id if device else None
         if quantity is not None and quantity >= 0 and device is not None:
             movement_payload = schemas.MovementCreate(
                 producto_id=device.id,
@@ -414,6 +447,7 @@ def _commit_import(
                 warnings.append(
                     f"Fila {row_index}: no se pudo registrar el movimiento ({exc})."
                 )
+        processed_records.append(import_validation.build_record(**record_kwargs))
     duration = perf_counter() - start_time
     warnings = list(dict.fromkeys(warnings))
     resumen = (
@@ -437,6 +471,12 @@ def _commit_import(
         advertencias=warnings,
         patrones_columnas=preview.patrones_sugeridos,
         duration_seconds=duration,
+    )
+    resumen_validacion = import_validation.validar_importacion(
+        db,
+        registros=processed_records,
+        columnas_faltantes=preview.columnas_faltantes,
+        import_duration=duration,
     )
     crud._create_system_log(  # type: ignore[attr-defined]
         db,
@@ -471,6 +511,7 @@ def _commit_import(
         tiendas_nuevas=sorted(set(new_stores)),
         duracion_segundos=round(duration, 2),
         resumen=resumen,
+        validacion_resumen=resumen_validacion,
     )
 
 

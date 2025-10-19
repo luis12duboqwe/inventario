@@ -10189,3 +10189,99 @@ def get_known_import_column_patterns(db: Session) -> dict[str, str]:
             if key not in patterns:
                 patterns[key] = value
     return patterns
+
+
+def list_import_validations(
+    db: Session,
+    *,
+    corregido: bool | None = None,
+    limit: int | None = 500,
+) -> list[models.ImportValidation]:
+    statement = select(models.ImportValidation).order_by(
+        models.ImportValidation.fecha.desc()
+    )
+    if corregido is not None:
+        statement = statement.where(models.ImportValidation.corregido.is_(corregido))
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(db.scalars(statement))
+
+
+def list_import_validation_details(
+    db: Session,
+    *,
+    corregido: bool | None = None,
+    limit: int | None = 200,
+) -> list[models.ImportValidation]:
+    statement = (
+        select(models.ImportValidation)
+        .options(joinedload(models.ImportValidation.device).joinedload(models.Device.store))
+        .order_by(models.ImportValidation.fecha.desc())
+    )
+    if corregido is not None:
+        statement = statement.where(models.ImportValidation.corregido.is_(corregido))
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(db.scalars(statement))
+
+
+def mark_import_validation_corrected(
+    db: Session, validation_id: int, *, corrected: bool = True
+) -> models.ImportValidation:
+    validation = db.get(models.ImportValidation, validation_id)
+    if validation is None:
+        raise LookupError("validation_not_found")
+    validation.corregido = corrected
+    validation.fecha = datetime.utcnow()
+    db.add(validation)
+    db.commit()
+    db.refresh(validation)
+    return validation
+
+
+def get_import_validation_report(db: Session) -> schemas.ImportValidationSummary:
+    total_errors = db.scalar(
+        select(func.count()).where(
+            models.ImportValidation.severidad == "error",
+            models.ImportValidation.corregido.is_(False),
+        )
+    )
+    total_warnings = db.scalar(
+        select(func.count()).where(
+            models.ImportValidation.severidad == "advertencia",
+            models.ImportValidation.corregido.is_(False),
+        )
+    )
+    last_import = db.scalar(
+        select(models.InventoryImportTemp)
+        .order_by(models.InventoryImportTemp.fecha.desc())
+        .limit(1)
+    )
+    registros_revisados = last_import.total_registros if last_import else 0
+    duration = float(last_import.duracion_segundos) if last_import and last_import.duracion_segundos is not None else None
+    campos_faltantes: set[str] = set()
+    if last_import and last_import.columnas_detectadas:
+        for canonical, header in last_import.columnas_detectadas.items():
+            if header is None:
+                campos_faltantes.add(canonical)
+    structure_statements = db.scalars(
+        select(models.ImportValidation.descripcion).where(
+            models.ImportValidation.tipo == "estructura",
+            models.ImportValidation.descripcion.ilike("Columna faltante:%"),
+        )
+    )
+    for description in structure_statements:
+        try:
+            _, column_name = description.split(":", 1)
+            column = column_name.strip()
+            if column:
+                campos_faltantes.add(column)
+        except ValueError:
+            continue
+    return schemas.ImportValidationSummary(
+        registros_revisados=registros_revisados,
+        advertencias=int(total_warnings or 0),
+        errores=int(total_errors or 0),
+        campos_faltantes=sorted(campos_faltantes),
+        tiempo_total=duration,
+    )
