@@ -250,15 +250,6 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     });
   };
 
-  const notificationCount =
-    toasts.length + (message ? 1 : 0) + (error ? 1 : 0) + (networkAlert ? 1 : 0) + (syncStatus ? 1 : 0);
-  const notificationSummary =
-    notificationCount === 0
-      ? "No hay notificaciones activas en este momento."
-      : notificationCount === 1
-        ? "Tienes 1 notificación activa en el panel."
-        : `Tienes ${notificationCount} notificaciones activas en el panel.`;
-
   const panelNotificationItems = useMemo<NotificationCenterItem[]>(() => {
     const items: NotificationCenterItem[] = [];
 
@@ -339,6 +330,14 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     syncStatus,
     toasts,
   ]);
+
+  const notificationCount = panelNotificationItems.length;
+  const notificationSummary =
+    notificationCount === 0
+      ? "No hay notificaciones activas en este momento."
+      : notificationCount === 1
+        ? "Tienes 1 notificación activa en el panel."
+        : `Tienes ${notificationCount} notificaciones activas en el panel.`;
 
   const panelModules = useMemo<AdminControlPanelModule[]>(() => {
     return availableNavItems.map((item) => {
