@@ -359,6 +359,15 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se extendieron los tokens (`successBright`, `warningHighlight`, `dangerSoftText`, etc.) y se eliminaron hexadecimales sueltos en `styles.css`, normalizando badges, chips, timelines, transferencias, tablas, formularios de usuarios y recordatorios para que utilicen exclusivamente `var(--color-*)` en ambos temas.【F:frontend/src/theme/designTokens.ts†L16-L66】【F:frontend/src/styles.css†L200-L420】【F:frontend/src/styles.css†L1680-L4200】
 - README, CHANGELOG y este AGENTS documentan la fase bajo «Actualización Interfaz - Parte 1 (Coherencia Visual y Componentes Globales)», manteniendo la trazabilidad de la refactorización visual.
 
+### Actualización Interfaz - Parte 2 (Optimización de Rendimiento y Carga) (02/11/2025 16:40 UTC)
+
+- `frontend/src/modules/dashboard/routes.tsx` aplica `React.lazy` y límites de suspense reutilizables para cargar Inventario, Operaciones, Analítica, Reportes, Seguridad, Sincronización, Usuarios y Reparaciones en fragmentos independientes sin alterar la navegación corporativa.【F:frontend/src/modules/dashboard/routes.tsx†L1-L112】
+- `frontend/src/App.tsx` difiere la descarga de `Dashboard` hasta después del inicio de sesión y utiliza la superposición `loading-overlay` como fallback, evitando bloquear la pantalla de bienvenida mientras se prepara el módulo principal.【F:frontend/src/App.tsx†L1-L205】
+- `DashboardContext` consolida callbacks, selectores y valores derivados con `useCallback`/`useMemo`, reduciendo renders innecesarios al actualizar métricas, toasts o sincronizaciones locales del panel corporativo.【F:frontend/src/modules/dashboard/context/DashboardContext.tsx†L160-L720】
+- El helper `request` de `frontend/src/api.ts` agrega memoización con TTL de 60 segundos para peticiones GET, purga la caché tras operaciones mutables y expone `clearRequestCache` para escenarios de prueba y depuración.【F:frontend/src/api.ts†L1586-L1710】
+- La nueva suite `frontend/src/api.cache.test.ts` comprueba la reutilización de caché y su invalidación al ejecutar POST, certificando los controles de rendimiento exigidos para Softmobile 2025 v2.2.0.【F:frontend/src/api.cache.test.ts†L1-L109】
+- README y CHANGELOG registran esta fase bajo «Actualización Interfaz - Parte 2 (Optimización de Rendimiento y Carga)», garantizando trazabilidad documental.
+
 ### Actualización Clientes - Parte 1 (Estructura y Relaciones) (17/10/2025 13:45 UTC)
 
 - La migración `202503010005_clientes_estructura_relaciones.py` renombra la tabla `customers` a `clientes`, ajusta columnas (`id_cliente`, `nombre`, `telefono`, `correo`, `direccion`, `tipo`, `estado`, `limite_credito`, `saldo`, `notas`) y marca el teléfono como obligatorio con valores de contingencia para datos históricos.

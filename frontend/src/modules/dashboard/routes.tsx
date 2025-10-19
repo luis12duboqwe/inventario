@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { Suspense, lazy, memo, type ReactNode, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import DashboardLayout from "./layout/DashboardLayout";
-import InventoryPage from "../inventory/pages/InventoryPage";
-import OperationsPage from "../operations/pages/OperationsPage";
-import AnalyticsPage from "../analytics/pages/AnalyticsPage";
-import SecurityPage from "../security/pages/SecurityPage";
-import SyncPage from "../sync/pages/SyncPage";
-import UsersPage from "../users/pages/UsersPage";
-import RepairsPage from "../repairs/pages/RepairsPage";
-import GlobalReportsPage from "../reports/pages/GlobalReportsPage";
+
+const InventoryPage = lazy(() => import("../inventory/pages/InventoryPage"));
+const OperationsPage = lazy(() => import("../operations/pages/OperationsPage"));
+const AnalyticsPage = lazy(() => import("../analytics/pages/AnalyticsPage"));
+const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
+const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
+const UsersPage = lazy(() => import("../users/pages/UsersPage"));
+const RepairsPage = lazy(() => import("../repairs/pages/RepairsPage"));
+const GlobalReportsPage = lazy(() => import("../reports/pages/GlobalReportsPage"));
 
 type DashboardRoutesProps = {
   theme: "dark" | "light";
@@ -41,25 +42,94 @@ function resolveInitialModule(): string {
   return "inventory";
 }
 
-function DashboardRoutes({ theme, onToggleTheme, onLogout }: DashboardRoutesProps) {
+const ModuleLoader = memo(function ModuleLoader() {
+  return (
+    <div className="loading-overlay" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      <span>Cargando panel…</span>
+    </div>
+  );
+});
+
+const ModuleBoundary = memo(function ModuleBoundary({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<ModuleLoader />}>{children}</Suspense>;
+});
+
+const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, onLogout }: DashboardRoutesProps) {
   const [initialModule] = useState(resolveInitialModule);
 
   return (
     <Routes>
       <Route element={<DashboardLayout theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />}>
         <Route index element={<Navigate to={initialModule} replace />} />
-        <Route path="inventory" element={<InventoryPage />} />
-        <Route path="operations" element={<OperationsPage />} />
-        <Route path="analytics" element={<AnalyticsPage />} />
-        <Route path="reports" element={<GlobalReportsPage />} />
-        <Route path="security" element={<SecurityPage />} />
-        <Route path="sync" element={<SyncPage />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="repairs" element={<RepairsPage />} />
+        <Route
+          path="inventory"
+          element={
+            <ModuleBoundary>
+              <InventoryPage />
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="operations"
+          element={
+            <ModuleBoundary>
+              <OperationsPage />
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="analytics"
+          element={
+            <ModuleBoundary>
+              <AnalyticsPage />
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="reports"
+          element={
+            <ModuleBoundary>
+              <GlobalReportsPage />
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="security"
+          element={
+            <ModuleBoundary>
+              <SecurityPage />
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="sync"
+          element={
+            <ModuleBoundary>
+              <SyncPage />
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="users"
+          element={
+            <ModuleBoundary>
+              <UsersPage />
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="repairs"
+          element={
+            <ModuleBoundary>
+              <RepairsPage />
+            </ModuleBoundary>
+          }
+        />
         <Route path="*" element={<Navigate to="inventory" replace />} />
       </Route>
     </Routes>
   );
-}
+});
 
 export default DashboardRoutes;
