@@ -1,8 +1,19 @@
+import { Suspense, lazy } from "react";
 import { BarChart3 } from "lucide-react";
 
-import AnalyticsBoard from "../components/AnalyticsBoard";
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
 import { useAnalyticsModule } from "../hooks/useAnalyticsModule";
+
+const AnalyticsBoard = lazy(() => import("../components/AnalyticsBoard"));
+
+const BoardLoader = () => (
+  <section className="card" role="status" aria-live="polite">
+    <div className="loading-overlay compact">
+      <span className="spinner" aria-hidden />
+      <span>Cargando panel analítico…</span>
+    </div>
+  </section>
+);
 
 function AnalyticsPage() {
   const { token, enableAnalyticsAdv } = useAnalyticsModule();
@@ -22,7 +33,9 @@ function AnalyticsPage() {
         statusLabel={statusLabel}
       />
       {enableAnalyticsAdv ? (
-        <AnalyticsBoard token={token} />
+        <Suspense fallback={<BoardLoader />}>
+          <AnalyticsBoard token={token} />
+        </Suspense>
       ) : (
         <section className="card">
           <h2>Analítica avanzada</h2>
