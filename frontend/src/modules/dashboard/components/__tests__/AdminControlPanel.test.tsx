@@ -22,7 +22,19 @@ describe("AdminControlPanel", () => {
   it("muestra los módulos disponibles y notificaciones activas", () => {
     render(
       <MemoryRouter>
-        <AdminControlPanel modules={modules} roleVariant="admin" notifications={2} />
+        <AdminControlPanel
+          modules={modules}
+          roleVariant="admin"
+          notifications={2}
+          notificationItems={[
+            {
+              id: "notif-1",
+              title: "Operación",
+              description: "Se guardaron los cambios",
+              variant: "success",
+            },
+          ]}
+        />
       </MemoryRouter>,
     );
 
@@ -30,15 +42,22 @@ describe("AdminControlPanel", () => {
     expect(screen.getByText("Gestiona existencias y auditorías en vivo.")).toBeInTheDocument();
     expect(screen.getByText("Consulta indicadores estratégicos.")).toBeInTheDocument();
     expect(screen.getByText("2 notificaciones activas")).toBeInTheDocument();
+    expect(screen.getByText("Se guardaron los cambios")).toBeInTheDocument();
   });
 
   it("indica cuando no hay notificaciones pendientes", () => {
     render(
       <MemoryRouter>
-        <AdminControlPanel modules={modules} roleVariant="operator" notifications={0} />
+        <AdminControlPanel
+          modules={modules}
+          roleVariant="operator"
+          notifications={0}
+          notificationItems={[]}
+        />
       </MemoryRouter>,
     );
 
     expect(screen.getByText("Sin notificaciones pendientes")).toBeInTheDocument();
+    expect(screen.getByText("No hay notificaciones activas.")).toBeInTheDocument();
   });
 });

@@ -25,8 +25,18 @@ import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
 import Button from "../../../components/ui/Button";
 import PageHeader from "../../../components/ui/PageHeader";
-import AdminControlPanel from "../components/AdminControlPanel";
+import AdminControlPanel, {
+  type AdminControlPanelModule,
+} from "../components/AdminControlPanel";
 import ActionIndicatorBar from "../components/ActionIndicatorBar";
+import type { NotificationCenterItem } from "../components/NotificationCenter";
+
+function formatRelativeTime(date: Date) {
+  return new Intl.RelativeTimeFormat("es", { numeric: "auto" }).format(
+    Math.round((date.getTime() - Date.now()) / 60000),
+    "minute",
+  );
+}
 
 type NavItem = SidebarNavItem & {
   description: string;
@@ -249,6 +259,133 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         ? "Tienes 1 notificación activa en el panel."
         : `Tienes ${notificationCount} notificaciones activas en el panel.`;
 
+  const panelNotificationItems = useMemo<NotificationCenterItem[]>(() => {
+    const items: NotificationCenterItem[] = [];
+
+    if (message) {
+      items.push({
+        id: "panel-message",
+        title: "Operación completada",
+        description: message,
+        variant: "success",
+      });
+    }
+
+    if (error) {
+      items.push({
+        id: "panel-error",
+        title: "Error detectado",
+        description: error,
+        variant: "error",
+      });
+    }
+
+    if (outboxError) {
+      items.push({
+        id: "panel-outbox-error",
+        title: "Error de sincronización",
+        description: outboxError,
+        variant: "error",
+      });
+    }
+
+    if (networkAlert) {
+      items.push({
+        id: "panel-network",
+        title: "Alerta de red",
+        description: networkAlert,
+        variant: "warning",
+      });
+    }
+
+    if (syncStatus) {
+      const isSyncError = syncStatus.toLowerCase().includes("error");
+      items.push({
+        id: "panel-sync",
+        title: isSyncError ? "Sincronización con incidencias" : "Estado de sincronización",
+        description: syncStatus,
+        variant: isSyncError ? "error" : "info",
+      });
+    } else if (lastInventoryRefresh) {
+      items.push({
+        id: "panel-sync-last",
+        title: "Última sincronización de inventario",
+        description: formatRelativeTime(lastInventoryRefresh),
+        variant: "info",
+      });
+    }
+
+    toasts.forEach((toast) => {
+      items.push({
+        id: `panel-toast-${toast.id}`,
+        title:
+          toast.variant === "success"
+            ? "Notificación positiva"
+            : toast.variant === "error"
+              ? "Notificación de error"
+              : "Notificación informativa",
+        description: toast.message,
+        variant: toast.variant,
+      });
+    });
+
+    return items;
+  }, [
+    error,
+    lastInventoryRefresh,
+    message,
+    networkAlert,
+    outboxError,
+    syncStatus,
+    toasts,
+  ]);
+
+  const panelModules = useMemo<AdminControlPanelModule[]>(() => {
+    return availableNavItems.map((item) => {
+      const isActive = item.label === moduleTitle;
+      const badges: string[] = [];
+      let badgeVariant: AdminControlPanelModule["badgeVariant"] = "default";
+
+      if (isActive) {
+        badges.push("Abierto");
+      }
+
+      const syncNeedsAttention =
+        item.label === "Sincronización" && (networkAlert || outboxError || (syncStatus ?? "").toLowerCase().includes("error"));
+      const operationsNeedsAttention =
+        item.label === "Operaciones" && Boolean(error || outboxError);
+      const reportsHasMessage = item.label === "Reportes" && Boolean(message);
+
+      if (syncNeedsAttention) {
+        badgeVariant = networkAlert ? "warning" : "danger";
+        badges.push(networkAlert ? "Revisar conexión" : "Sincronización pendiente");
+      } else if (operationsNeedsAttention) {
+        badgeVariant = "danger";
+        badges.push("Revisar procesos");
+      } else if (reportsHasMessage) {
+        badgeVariant = "info";
+        badges.push("Nuevo aviso");
+      }
+
+      return {
+        to: item.to,
+        label: item.label,
+        description: item.description,
+        icon: item.icon,
+        badge: badges.length > 0 ? badges.join(" · ") : undefined,
+        badgeVariant,
+      };
+    });
+  }, [
+    availableNavItems,
+    error,
+    message,
+    moduleTitle,
+    networkAlert,
+    outboxError,
+    syncStatus,
+  ]);
+
   return (
     <div
       className={`dashboard-shell${compactMode ? " compact-mode" : ""} ${roleVisual.className}`}
@@ -275,6 +412,9 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
           />
         ) : null}
       </AnimatePresence>
+      <a href="#dashboard-main-content" className="skip-to-content-link">
+        Saltar al contenido principal
+      </a>
       <div className="dashboard-main">
         <div className="dashboard-role-banner" role="complementary" aria-live="polite">
           <span className="dashboard-role-badge">{roleVisual.label}</span>
@@ -405,17 +545,12 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
           lastInventoryRefresh={lastInventoryRefresh}
         />
 
-        <main className="dashboard-content">
+        <main className="dashboard-content" id="dashboard-main-content">
           <AdminControlPanel
-            modules={availableNavItems.map((item) => ({
-              to: item.to,
-              label: item.label,
-              description: item.description,
-              icon: item.icon,
-              badge: item.label === moduleTitle ? "Abierto" : undefined,
-            }))}
+            modules={panelModules}
             roleVariant={roleVisual.variant}
             notifications={notificationCount}
+            notificationItems={panelNotificationItems}
           />
 
           <GlobalMetrics />
