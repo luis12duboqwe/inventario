@@ -1695,6 +1695,8 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   }
 
   const method = (options.method ?? "GET").toUpperCase();
+  const { signal } = options as RequestInit & { signal?: AbortSignal | null };
+  const hasAbortSignal = signal !== undefined && signal !== null;
   const shouldUseCache = method === "GET" && options.cache !== "no-store";
   const cacheKey = shouldUseCache ? buildCacheKey(path, headers, token) : null;
 
@@ -1704,7 +1706,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
       return cloneData(cached.value as T);
     }
 
-    const pending = pendingRequests.get(cacheKey);
+    const pending = hasAbortSignal ? null : pendingRequests.get(cacheKey);
     if (pending) {
       const { value, isJson } = await pending;
       return isJson ? cloneData(value as T) : (value as T);
@@ -1772,7 +1774,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
 
   const networkPromise = executeNetworkRequest();
 
-  if (cacheKey) {
+  if (cacheKey && !hasAbortSignal) {
     pendingRequests.set(cacheKey, networkPromise);
   }
 
@@ -1780,7 +1782,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     const { value, isJson } = await networkPromise;
     return isJson ? cloneData(value as T) : (value as T);
   } finally {
-    if (cacheKey) {
+    if (cacheKey && !hasAbortSignal) {
       pendingRequests.delete(cacheKey);
     }
   }
