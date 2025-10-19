@@ -15,6 +15,7 @@ import {
   downloadTopProductsXlsx,
   exportStoreDevicesCsv,
   getDevices,
+  getIncompleteDevices,
   getInventoryCurrentReport,
   getInventoryMovementsReport,
   getInventoryValueReport,
@@ -22,13 +23,17 @@ import {
   getTopProductsReport,
   importStoreDevicesCsv,
   registerMovement,
+  smartInventoryImport,
+  getSmartImportHistory,
 } from "../../../api";
 import type {
   DeviceImportSummary,
   InventoryCurrentFilters,
+  InventoryImportHistoryEntry,
   InventoryCurrentReport,
   InventoryMovementsFilters,
   InventoryMovementsReport,
+  InventorySmartImportResponse,
   InventoryTopProductsFilters,
   InventoryValueFilters,
   InventoryValueReport,
@@ -61,6 +66,22 @@ export const inventoryService = {
     file: File,
     reason: string,
   ): Promise<DeviceImportSummary> => importStoreDevicesCsv(token, storeId, file, reason),
+  smartImportInventory: (
+    token: string,
+    file: File,
+    reason: string,
+    options: Parameters<typeof smartInventoryImport>[3] = {},
+  ): Promise<InventorySmartImportResponse> =>
+    smartInventoryImport(token, file, reason, options),
+  fetchSmartImportHistory: (
+    token: string,
+    limit = 10,
+  ): Promise<InventoryImportHistoryEntry[]> => getSmartImportHistory(token, limit),
+  fetchIncompleteDevices: (
+    token: string,
+    storeId?: number,
+    limit = 100,
+  ) => getIncompleteDevices(token, storeId, limit),
   fetchSupplierBatchOverview: (
     token: string,
     storeId: number,

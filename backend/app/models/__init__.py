@@ -227,6 +227,7 @@ class Device(Base):
     ubicacion: Mapped[str | None] = mapped_column(String(120), nullable=True)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     imagen_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    completo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     store: Mapped[Store] = relationship("Store", back_populates="devices")
     movements: Mapped[list["InventoryMovement"]] = relationship(
@@ -583,6 +584,30 @@ class SystemError(Base):
         DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True
     )
     usuario: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+
+
+class InventoryImportTemp(Base):
+    __tablename__ = "importaciones_temp"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    nombre_archivo: Mapped[str] = mapped_column(String(255), nullable=False)
+    fecha: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    columnas_detectadas: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    registros_incompletos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_registros: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    nuevos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    actualizados: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    advertencias: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    patrones_columnas: Mapped[dict[str, str]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    duracion_segundos: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
 
 
 class BackupJob(Base):
@@ -1499,6 +1524,7 @@ __all__ = [
     "Device",
     "InventoryMovement",
     "MovementType",
+    "InventoryImportTemp",
     "PaymentMethod",
     "PurchaseOrder",
     "PurchaseOrderItem",

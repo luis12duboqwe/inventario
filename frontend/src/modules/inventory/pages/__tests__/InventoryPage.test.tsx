@@ -10,8 +10,12 @@ import type {
   DeviceUpdateInput,
   InventoryCurrentFilters,
   InventoryCurrentReport,
+  InventoryImportHistoryEntry,
   InventoryMovementsFilters,
   InventoryMovementsReport,
+  InventorySmartImportPreview,
+  InventorySmartImportResponse,
+  InventorySmartImportResult,
   InventoryTopProductsFilters,
   InventoryValueFilters,
   InventoryValueReport,
@@ -87,6 +91,19 @@ const downloadTopProductsXlsxMock = vi.fn<
 >();
 const refreshSummaryMock = vi.fn<() => Promise<void> | void>();
 const refreshRecentMovementsMock = vi.fn<() => Promise<void>>();
+const smartImportInventoryMock = vi.fn<
+  (
+    file: File,
+    reason: string,
+    options: { commit?: boolean; overrides?: Record<string, string> },
+  ) => Promise<InventorySmartImportResponse>
+>();
+const fetchSmartImportHistoryMock = vi.fn<
+  (limit?: number) => Promise<InventoryImportHistoryEntry[]>
+>();
+const fetchIncompleteDevicesMock = vi.fn<
+  (storeId?: number, limit?: number) => Promise<Device[]>
+>();
 const promptCorporateReasonMock = vi.fn<(defaultReason: string) => string | null>();
 
 const inventoryTableMock = vi.hoisted(() =>
@@ -249,6 +266,7 @@ const buildDevice = (): Device => ({
   unit_price: 15000,
   precio_venta: 15000,
   inventory_value: 75000,
+  completo: true,
   imei: "490154203237518",
   serial: "SERIAL-001",
   marca: "Samsung",
@@ -391,6 +409,84 @@ const buildTopProductsReport = (): TopProductsReport => ({
   total_ingresos: 45000,
 });
 
+const buildSmartPreview = (): InventorySmartImportPreview => ({
+  columnas: [
+    {
+      campo: "marca",
+      encabezado_origen: "Marca",
+      estado: "ok",
+      tipo_dato: "texto",
+      ejemplos: ["Samsung"],
+    },
+    {
+      campo: "modelo",
+      encabezado_origen: "Modelo",
+      estado: "ok",
+      tipo_dato: "texto",
+      ejemplos: ["Galaxy S24"],
+    },
+    {
+      campo: "imei",
+      encabezado_origen: null,
+      estado: "falta",
+      tipo_dato: undefined,
+      ejemplos: [],
+    },
+    {
+      campo: "serial",
+      encabezado_origen: "Identificador",
+      estado: "pendiente",
+      tipo_dato: "texto",
+      ejemplos: ["990000000000001"],
+    },
+  ],
+  columnas_detectadas: {
+    marca: "Marca",
+    modelo: "Modelo",
+    imei: null,
+    serial: "Identificador",
+  },
+  columnas_faltantes: ["imei"],
+  total_filas: 2,
+  registros_incompletos_estimados: 1,
+  advertencias: ["Columnas faltantes: imei"],
+  patrones_sugeridos: {
+    marca: "marca",
+    modelo: "modelo",
+    identificador: "serial",
+  },
+});
+
+const buildSmartResult = (): InventorySmartImportResult => ({
+  total_procesados: 2,
+  nuevos: 1,
+  actualizados: 1,
+  registros_incompletos: 1,
+  columnas_faltantes: ["imei"],
+  advertencias: ["Fila 1: sin IMEI detectado"],
+  tiendas_nuevas: ["Sucursal Norte"],
+  duracion_segundos: 4.8,
+  resumen:
+    "📦 Resultado de importación:\n- Total procesados: 2\n- Nuevos productos: 1\n- Actualizados: 1\n- Columnas faltantes: imei\n- Registros incompletos: 1",
+});
+
+const buildImportHistoryEntry = (): InventoryImportHistoryEntry => ({
+  id: 1,
+  nombre_archivo: "inventario.xlsx",
+  fecha: new Date("2025-02-21T12:00:00Z").toISOString(),
+  columnas_detectadas: {
+    marca: "Marca",
+    modelo: "Modelo",
+    imei: "IMEI",
+  },
+  registros_incompletos: 1,
+  total_registros: 2,
+  nuevos: 1,
+  actualizados: 1,
+  advertencias: ["IMEI faltante en fila 1"],
+  duracion_segundos: 3.2,
+});
+
 const createModuleState = (): InventoryModuleState => ({
   token: "token-123",
   enableCatalogPro: true,
@@ -465,6 +561,9 @@ const createModuleState = (): InventoryModuleState => ({
   downloadTopProductsCsv: downloadTopProductsCsvMock,
   downloadTopProductsPdf: downloadTopProductsPdfMock,
   downloadTopProductsXlsx: downloadTopProductsXlsxMock,
+  smartImportInventory: smartImportInventoryMock,
+  fetchSmartImportHistory: fetchSmartImportHistoryMock,
+  fetchIncompleteDevices: fetchIncompleteDevicesMock,
 });
 
 const openTab = async (user: ReturnType<typeof userEvent.setup>, tabName: RegExp) => {
@@ -511,6 +610,9 @@ beforeEach(() => {
   downloadTopProductsXlsxMock.mockReset();
   refreshSummaryMock.mockReset();
   refreshRecentMovementsMock.mockReset();
+  smartImportInventoryMock.mockReset();
+  fetchSmartImportHistoryMock.mockReset();
+  fetchIncompleteDevicesMock.mockReset();
   promptCorporateReasonMock.mockReset();
 
   handleDeviceUpdateMock.mockResolvedValue();
@@ -532,6 +634,9 @@ beforeEach(() => {
   downloadTopProductsPdfMock.mockResolvedValue();
   downloadTopProductsXlsxMock.mockResolvedValue();
   refreshRecentMovementsMock.mockResolvedValue();
+  smartImportInventoryMock.mockResolvedValue({ preview: buildSmartPreview(), resultado: null });
+  fetchSmartImportHistoryMock.mockResolvedValue([]);
+  fetchIncompleteDevicesMock.mockResolvedValue([]);
 
   moduleState = createModuleState();
 });
@@ -570,6 +675,11 @@ describe("InventoryPage", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+
+    await waitFor(() => {
+      expect(fetchIncompleteDevicesMock).toHaveBeenCalledWith(1, 200);
+    });
+    expect(refreshSummaryMock).toHaveBeenCalled();
   });
 
   it("muestra el stock por categoría con totales visibles", async () => {
@@ -673,6 +783,156 @@ describe("InventoryPage", () => {
     expect(pushToastMock).toHaveBeenCalledWith(
       expect.objectContaining({ message: errorMessage, variant: "error" }),
     );
+  });
+
+  it("analiza y confirma la importación inteligente", async () => {
+    const preview = buildSmartPreview();
+    const previewWithOverrides: InventorySmartImportPreview = {
+      ...preview,
+      columnas: preview.columnas.map((column) =>
+        column.campo === "imei"
+          ? {
+              ...column,
+              encabezado_origen: "Identificador",
+              estado: "ok",
+              ejemplos: ["990000000000001"],
+            }
+          : column,
+      ),
+      columnas_detectadas: { ...preview.columnas_detectadas, imei: "Identificador" },
+      columnas_faltantes: [],
+      registros_incompletos_estimados: 0,
+      advertencias: [],
+    };
+    const result = buildSmartResult();
+
+    smartImportInventoryMock
+      .mockResolvedValueOnce({ preview, resultado: null })
+      .mockResolvedValueOnce({ preview: previewWithOverrides, resultado: null })
+      .mockResolvedValueOnce({ preview: previewWithOverrides, resultado: result });
+
+    const historyEntry = buildImportHistoryEntry();
+    fetchSmartImportHistoryMock.mockResolvedValue([historyEntry]);
+    promptCorporateReasonMock.mockReturnValue("Importación inventario inteligente");
+
+    const user = await renderInventoryPage();
+
+    await openTab(user, /búsqueda avanzada/i);
+
+    expect(await screen.findByText(/inventario\.xlsx/i)).toBeInTheDocument();
+
+    const fileInput = screen.getByLabelText(/Archivo Excel o CSV/i) as HTMLInputElement;
+    const file = new File([
+      "Sucursal,Dispositivo,Identificador,Color,Cantidad,Precio\n",
+      "Sucursal Norte,iPhone 14,990000000000001,Negro,2,18999\n",
+    ], "inventario.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    await user.upload(fileInput, file);
+
+    const analyzeButton = await screen.findByRole("button", { name: /Analizar estructura/i });
+    await user.click(analyzeButton);
+
+    await waitFor(() => {
+      expect(smartImportInventoryMock).toHaveBeenNthCalledWith(1, file, "Importación inventario inteligente", {
+        commit: false,
+        overrides: {},
+      });
+    });
+
+    expect(await screen.findByText(/Columnas faltantes: imei/i)).toBeInTheDocument();
+
+    const imeiCell = await screen.findByText(/^imei$/i);
+    const imeiRow = imeiCell.closest("tr") as HTMLElement;
+    const overrideSelect = within(imeiRow).getByRole("combobox");
+    await user.selectOptions(overrideSelect, "Identificador");
+
+    expect(screen.getByText(/Reanaliza el archivo/i)).toBeInTheDocument();
+
+    await user.click(analyzeButton);
+
+    await waitFor(() => {
+      expect(smartImportInventoryMock).toHaveBeenNthCalledWith(2, file, "Importación inventario inteligente", {
+        commit: false,
+        overrides: { imei: "Identificador" },
+      });
+    });
+
+    expect(
+      await screen.findByText(/Todas las columnas clave fueron identificadas./i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Reanaliza el archivo/i)).not.toBeInTheDocument();
+
+    const importButton = screen.getByRole("button", { name: /Importar desde Excel/i });
+    await user.click(importButton);
+
+    await waitFor(() => {
+      expect(smartImportInventoryMock).toHaveBeenNthCalledWith(3, file, "Importación inventario inteligente", {
+        commit: true,
+        overrides: { imei: "Identificador" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(fetchSmartImportHistoryMock).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(fetchIncompleteDevicesMock).toHaveBeenCalledWith(1, 200);
+    });
+    expect(refreshSummaryMock).toHaveBeenCalled();
+
+    expect(await screen.findByText(/Tiempo estimado: 4\.8 segundos/)).toBeInTheDocument();
+    expect(screen.getByText(/Tiendas creadas automáticamente/i)).toHaveTextContent("Sucursal Norte");
+    expect(pushToastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Importación inteligente completada.", variant: "success" }),
+    );
+  });
+
+  it("refresca las correcciones pendientes y permite editar un registro incompleto", async () => {
+    const pendingDevice: Device = {
+      ...buildDevice(),
+      id: 202,
+      sku: "SKU-002",
+      name: "iPhone 14",
+      marca: "",
+      capacidad: null,
+      capacidad_gb: null,
+      imei: "",
+      proveedor: null,
+      ubicacion: null,
+      completo: false,
+    };
+    fetchIncompleteDevicesMock.mockResolvedValue([pendingDevice]);
+
+    const user = await renderInventoryPage();
+
+    await openTab(user, /correcciones pendientes/i);
+
+    await waitFor(() => {
+      expect(fetchIncompleteDevicesMock).toHaveBeenCalledWith(1, 200);
+    });
+
+    const correctionsSection = screen.getByRole("heading", { name: /Correcciones pendientes/i }).closest("section");
+    expect(correctionsSection).not.toBeNull();
+    const correctionsScope = within(correctionsSection as HTMLElement);
+
+    expect(await correctionsScope.findByText(/iPhone 14/i)).toBeInTheDocument();
+    const deviceRow = correctionsScope.getByText(/iPhone 14/i).closest("tr") as HTMLElement;
+    const missingScope = within(deviceRow);
+    expect(missingScope.getByText(/Marca/)).toBeInTheDocument();
+    expect(missingScope.getByText(/IMEI/)).toBeInTheDocument();
+
+    const refreshButton = correctionsScope.getByRole("button", { name: "Actualizar" });
+    await user.click(refreshButton);
+    await waitFor(() => {
+      expect(fetchIncompleteDevicesMock).toHaveBeenCalledTimes(2);
+    });
+
+    const completeButton = correctionsScope.getByRole("button", { name: /Completar datos/i });
+    await user.click(completeButton);
+
+    const dialog = await screen.findByRole("dialog", { name: /Editar SKU-002/i });
+    expect(dialog).toBeInTheDocument();
   });
 
   it("muestra los reportes de inventario y habilita exportaciones", async () => {

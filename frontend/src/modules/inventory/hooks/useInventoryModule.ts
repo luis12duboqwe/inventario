@@ -259,6 +259,26 @@ export function useInventoryModule() {
     [dashboard.token],
   );
 
+  const smartImportInventory = useCallback(
+    (
+      file: File,
+      reason: string,
+      options: Parameters<typeof inventoryService.smartImportInventory>[3] = {},
+    ) => inventoryService.smartImportInventory(dashboard.token, file, reason, options),
+    [dashboard.token],
+  );
+
+  const fetchSmartImportHistory = useCallback(
+    (limit = 10) => inventoryService.fetchSmartImportHistory(dashboard.token, limit),
+    [dashboard.token],
+  );
+
+  const fetchIncompleteDevices = useCallback(
+    (storeId?: number, limit = 100) =>
+      inventoryService.fetchIncompleteDevices(dashboard.token, storeId, limit),
+    [dashboard.token],
+  );
+
   return {
     token: dashboard.token,
     enableCatalogPro: dashboard.enableCatalogPro,
@@ -310,5 +330,8 @@ export function useInventoryModule() {
     downloadTopProductsCsv,
     downloadTopProductsPdf,
     downloadTopProductsXlsx,
+    smartImportInventory,
+    fetchSmartImportHistory,
+    fetchIncompleteDevices,
   };
 }

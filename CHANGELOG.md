@@ -6,6 +6,13 @@
 - Se verificó la disponibilidad de dependencias críticas de reportes (`openpyxl`) previo a la ejecución de pruebas para evitar fallos de importación.
 - Recomendación: abordar las advertencias de `act(...)` en pruebas React en una iteración futura para mejorar la estabilidad de la suite de frontend.
 
+## [v2.2.0] Importación Inteligente desde Excel – v2.2.0 implementada y verificada (22/02/2025)
+- Se habilita `process_smart_import` con detección automática de encabezados, validación de IMEI, análisis de tipos de dato y registro de advertencias/patrones en la nueva tabla `importaciones_temp`, manteniendo compatibilidad retroactiva con catálogos previos.【F:backend/app/services/inventory_smart_import.py†L16-L449】【F:backend/app/models/__init__.py†L588-L640】
+- El lector acepta `.csv` renombrados como `.xlsx`, valida archivos con encabezados vacíos y evita rechazos cuando el contenedor ZIP es inválido, preservando la importación en escenarios comunes de proveedores.【F:backend/app/services/inventory_smart_import.py†L66-L158】
+- Nuevos endpoints `POST /inventory/import/smart`, `GET /inventory/import/smart/history` y `GET /inventory/devices/incomplete` permiten ejecutar importaciones inteligentes, consultar historial y obtener dispositivos pendientes, todos protegidos por motivo `X-Reason` y roles de gestión.【F:backend/app/routers/inventory.py†L22-L101】
+- La UI de Inventario incorpora el panel «Importar desde Excel (inteligente)» con mapa de columnas, reasignaciones manuales, descarga de reportes PDF/CSV y una pestaña «Correcciones pendientes» para completar fichas incompletas tras la importación.【F:frontend/src/modules/inventory/pages/InventoryPage.tsx†L135-L1675】【F:frontend/src/styles.css†L5814-L6068】
+- La suite se refuerza con pruebas de backend (overrides, tiendas nuevas, endpoints) y Vitest (análisis, commit y correcciones), garantizando flujos completos y sin regresiones en Softmobile 2025 v2.2.0.【F:backend/tests/test_inventory_smart_import.py†L1-L145】【F:frontend/src/modules/inventory/pages/__tests__/InventoryPage.test.tsx†L1-L840】
+
 ## Actualización Sucursales - Parte 1 (Estructura y Relaciones) (22/10/2025 16:00 UTC)
 - La migración `202503010007_sucursales_estructura_relaciones.py` renombra `stores` a `sucursales` y homologa las columnas corporativas (`id_sucursal`, `nombre`, `direccion`, `telefono`, `responsable`, `estado`, `codigo`, `fecha_creacion`), preservando `timezone` e `inventory_value` para compatibilidad histórica.
 - Se crean índices dedicados `ix_sucursales_nombre`, `ix_sucursales_estado` e `ix_sucursales_codigo` (único), además de poblar `estado="activa"` y códigos `SUC-###` para registros previos garantizando no nulidad y unicidad.
