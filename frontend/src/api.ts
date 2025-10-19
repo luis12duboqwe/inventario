@@ -1594,6 +1594,8 @@ type RequestCacheRecord = {
 };
 
 const requestCache = new Map<string, RequestCacheRecord>();
+type PendingRequestResult = { value: unknown; isJson: boolean };
+const pendingRequests = new Map<string, Promise<PendingRequestResult>>();
 
 function serializeHeaders(headers: Headers): Array<[string, string]> {
   return Array.from(headers.entries())
@@ -1631,6 +1633,7 @@ function setCacheEntry(key: string, value: unknown) {
 
 export function clearRequestCache(): void {
   requestCache.clear();
+  pendingRequests.clear();
 }
 
 function buildStoreQuery(storeIds?: number[]): string {
@@ -1700,64 +1703,87 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     if (cached && Date.now() - cached.timestamp <= REQUEST_CACHE_TTL_MS) {
       return cloneData(cached.value as T);
     }
-  }
 
-  let response: Response;
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      ...options,
-      headers,
-    });
-  } catch (error) {
-    emitNetworkEvent(
-      NETWORK_EVENT,
-      "No fue posible contactar la API de Softmobile. Verifica tu conexión o intenta nuevamente en unos segundos.",
-    );
-    if (error instanceof Error && error.name === "AbortError") {
-      throw error;
+    const pending = pendingRequests.get(cacheKey);
+    if (pending) {
+      const { value, isJson } = await pending;
+      return isJson ? cloneData(value as T) : (value as T);
     }
-    throw new Error("Error de red: la API no respondió");
   }
 
-  if (!response.ok) {
-    if (response.status >= 500 || response.status === 0) {
+  const executeNetworkRequest = async (): Promise<PendingRequestResult> => {
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers,
+      });
+    } catch (error) {
       emitNetworkEvent(
         NETWORK_EVENT,
-        `La API respondió con un estado ${response.status}. Reintenta una vez restablecida la conexión corporativa.`,
+        "No fue posible contactar la API de Softmobile. Verifica tu conexión o intenta nuevamente en unos segundos.",
       );
+      if (error instanceof Error && error.name === "AbortError") {
+        throw error;
+      }
+      throw new Error("Error de red: la API no respondió");
     }
-    const detail = await response.text();
-    throw new Error(detail || `Error ${response.status}`);
-  }
 
-  emitNetworkEvent(NETWORK_RECOVERY_EVENT);
+    if (!response.ok) {
+      if (response.status >= 500 || response.status === 0) {
+        emitNetworkEvent(
+          NETWORK_EVENT,
+          `La API respondió con un estado ${response.status}. Reintenta una vez restablecida la conexión corporativa.`,
+        );
+      }
+      const detail = await response.text();
+      throw new Error(detail || `Error ${response.status}`);
+    }
 
-  if (response.status === 204) {
+    emitNetworkEvent(NETWORK_RECOVERY_EVENT);
+
+    if (response.status === 204) {
+      if (method !== "GET") {
+        clearRequestCache();
+      }
+      return { value: undefined, isJson: false };
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    const isJson = contentType.includes("application/json");
+    let parsed: T;
+
+    if (isJson) {
+      parsed = (await response.json()) as T;
+    } else {
+      parsed = (await response.blob()) as unknown as T;
+    }
+
+    if (cacheKey && isJson) {
+      setCacheEntry(cacheKey, cloneData(parsed));
+    }
+
     if (method !== "GET") {
       clearRequestCache();
     }
-    return undefined as unknown as T;
+
+    return { value: parsed, isJson };
+  };
+
+  const networkPromise = executeNetworkRequest();
+
+  if (cacheKey) {
+    pendingRequests.set(cacheKey, networkPromise);
   }
 
-  const contentType = response.headers.get("content-type") ?? "";
-  const isJson = contentType.includes("application/json");
-  let parsed: T;
-
-  if (isJson) {
-    parsed = (await response.json()) as T;
-  } else {
-    parsed = (await response.blob()) as unknown as T;
+  try {
+    const { value, isJson } = await networkPromise;
+    return isJson ? cloneData(value as T) : (value as T);
+  } finally {
+    if (cacheKey) {
+      pendingRequests.delete(cacheKey);
+    }
   }
-
-  if (cacheKey && isJson) {
-    setCacheEntry(cacheKey, cloneData(parsed));
-  }
-
-  if (method !== "GET") {
-    clearRequestCache();
-  }
-
-  return parsed;
 }
 
 export async function login(credentials: Credentials): Promise<{ access_token: string }> {
