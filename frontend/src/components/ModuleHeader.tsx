@@ -1,6 +1,8 @@
 import { type ReactNode } from "react";
 import { motion } from "framer-motion";
 
+import PageHeader, { type PageHeaderStatus } from "./ui/PageHeader";
+
 export type ModuleStatus = "ok" | "warning" | "critical";
 
 type Props = {
@@ -18,31 +20,36 @@ const statusLabels: Record<ModuleStatus, string> = {
   critical: "Crítico",
 };
 
+const statusToneMap: Record<ModuleStatus, PageHeaderStatus["tone"]> = {
+  ok: "ok",
+  warning: "warning",
+  critical: "critical",
+};
+
 function ModuleHeader({ icon, title, subtitle, status, statusLabel, actions }: Props) {
-  const resolvedLabel = status ? statusLabel ?? statusLabels[status] : undefined;
+  const resolvedStatus: PageHeaderStatus | undefined = status
+    ? {
+        tone: statusToneMap[status],
+        label: statusLabel ?? statusLabels[status],
+      }
+    : undefined;
 
   return (
-    <motion.header
+    <motion.div
       className="module-header"
       initial={{ opacity: 0, y: -12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
     >
-      <div className="module-header__icon" aria-hidden="true">
-        {icon}
-      </div>
-      <div className="module-header__content">
-        <h1>{title}</h1>
-        <p>{subtitle}</p>
-      </div>
-      {status ? (
-        <div className={`status-indicator status-${status}`} role="status" aria-label={resolvedLabel}>
-          <span className="status-indicator__dot" aria-hidden="true" />
-          <span className="status-indicator__label">{resolvedLabel}</span>
-        </div>
-      ) : null}
-      {actions ? <div className="module-header__actions">{actions}</div> : null}
-    </motion.header>
+      <PageHeader
+        className="module-header__inner"
+        leadingIcon={icon}
+        title={title}
+        description={subtitle}
+        status={resolvedStatus}
+        actions={actions}
+      />
+    </motion.div>
   );
 }
 

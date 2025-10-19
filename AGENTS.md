@@ -354,6 +354,7 @@ Cumple estas directrices en todas las entregas hasta nuevo aviso.
 - Se añadieron componentes reutilizables `Button`, `TextField`, `PageHeader`, `Modal` y `SidebarMenu` en `frontend/src/components/ui/`, habilitando iconografía accesible, variantes (primario, ghost, peligro, enlace) y tamaños consistentes.
 - `DashboardLayout` adopta `PageHeader` y `SidebarMenu` para unificar encabezados, menú lateral, búsqueda global y acciones de sesión; `CompactModeToggle`, `LoginForm` y `WelcomeHero` reutilizan los nuevos botones/inputs.
 - `DeviceEditDialog` utiliza el nuevo `Modal` con cierre bloqueado al enviar y botones reutilizables; las vistas analíticas (`GlobalMetrics`, `GlobalReportsDashboard`, `InventoryPage`, `Customers`) dejan los hexadecimales en favor de los tokens corporativos de color.
+- `PageHeader` incorpora iconografía, estado operativo y metadatos reutilizables; `ModuleHeader` lo envuelve para preservar la animación y el layout corporativo. `InventoryPage` reemplaza filtros y acciones con `TextField`/`Button` y tooltips ligados a tokens, reforzando coherencia entre controles y gráficas.
 - Se homologaron botones legacy (`.btn`, `.button`), formularios heredados, badges, alerts y el botón flotante de retorno para consumir los nuevos tokens de color/bordes, asegurar foco accesible y mantener el tema oscuro consistente en módulos antiguos.
 - README, CHANGELOG y este AGENTS documentan la fase bajo «Actualización Interfaz - Parte 1 (Coherencia Visual y Componentes Globales)», manteniendo la trazabilidad de la refactorización visual.
 

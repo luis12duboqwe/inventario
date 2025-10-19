@@ -3,8 +3,11 @@ export const colors = {
   backgroundSecondary: "#111827",
   surfaceRaised: "#162132",
   surfaceMuted: "#1d2a3f",
+  surfaceOverlay: "rgba(9, 13, 23, 0.86)",
+  surfaceTooltip: "rgba(15, 23, 42, 0.94)",
   borderSubtle: "#1f2b3d",
   borderStrong: "#23334a",
+  accentBorder: "rgba(56, 189, 248, 0.35)",
   accent: "#38bdf8",
   accentSoft: "rgba(56, 189, 248, 0.18)",
   accentBright: "#22d3ee",
@@ -74,3 +77,42 @@ export type ColorToken = keyof typeof colors;
 export type SpacingToken = keyof typeof spacing;
 export type RadiusToken = keyof typeof radii;
 export type ShadowToken = keyof typeof shadows;
+
+const toCssVariableName = (prefix: string, token: string) =>
+  `--${prefix}-${token.replace(/([A-Z])/g, "-$1").toLowerCase()}`;
+
+const colorVariableNames = Object.fromEntries(
+  (Object.keys(colors) as ColorToken[]).map((token) => [token, toCssVariableName("color", token)]),
+) as Record<ColorToken, `--color-${string}`>;
+
+const spacingVariableNames: Record<SpacingToken, `--space-${1 | 2 | 3 | 4 | 5 | 6}`> = {
+  xs: "--space-1",
+  sm: "--space-2",
+  md: "--space-3",
+  lg: "--space-4",
+  xl: "--space-5",
+  xxl: "--space-6",
+};
+
+const radiusVariableNames: Record<RadiusToken, `--radius-${"sm" | "md" | "lg" | "pill"}`> = {
+  sm: "--radius-sm",
+  md: "--radius-md",
+  lg: "--radius-lg",
+  pill: "--radius-pill",
+};
+
+const shadowVariableNames: Record<ShadowToken, `--shadow-${"sm" | "md" | "lg"}`> = {
+  sm: "--shadow-sm",
+  md: "--shadow-md",
+  lg: "--shadow-lg",
+};
+
+export const colorVariables = colorVariableNames;
+export const spacingVariables = spacingVariableNames;
+export const radiusVariables = radiusVariableNames;
+export const shadowVariables = shadowVariableNames;
+
+export const colorVar = (token: ColorToken) => `var(${colorVariableNames[token]})`;
+export const spacingVar = (token: SpacingToken) => `var(${spacingVariableNames[token]})`;
+export const radiusVar = (token: RadiusToken) => `var(${radiusVariableNames[token]})`;
+export const shadowVar = (token: ShadowToken) => `var(${shadowVariableNames[token]})`;
