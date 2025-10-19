@@ -1,17 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import {
   AlertTriangle,
   BarChart3,
@@ -27,11 +17,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import AdvancedSearch from "../components/AdvancedSearch";
-import DeviceEditDialog from "../components/DeviceEditDialog";
-import InventoryReportsPanel from "../components/InventoryReportsPanel";
-import InventoryTable from "../components/InventoryTable";
-import MovementForm from "../components/MovementForm";
+const AdvancedSearch = lazy(() => import("../components/AdvancedSearch"));
+const DeviceEditDialog = lazy(() => import("../components/DeviceEditDialog"));
+const InventoryCategoryChart = lazy(() => import("../components/InventoryCategoryChart"));
+const InventoryReportsPanel = lazy(() => import("../components/InventoryReportsPanel"));
+const InventoryTable = lazy(() => import("../components/InventoryTable"));
+const MovementForm = lazy(() => import("../components/MovementForm"));
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 import Button from "../../../components/ui/Button";
@@ -46,7 +37,6 @@ import type {
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
 import { promptCorporateReason } from "../../../utils/corporateReason";
-import { colorVar, colors, radiusVar, shadowVar } from "../../../theme/designTokens";
 
 type StatusBadge = {
   tone: "warning" | "success";
@@ -67,15 +57,34 @@ type InventoryTabId = "overview" | "movements" | "alerts" | "reports" | "advance
 type TabContent = TabOption<InventoryTabId> & { content: ReactNode };
 
 const estadoOptions: Device["estado_comercial"][] = ["nuevo", "A", "B", "C"];
+const MAX_CATEGORY_SEGMENTS = 6;
 
-const CATEGORY_PALETTE = [
-  colors.accentBright,
-  colors.accent,
-  colors.chartSky,
-  colors.chartPurple,
-  colors.chartAmber,
-  colors.chartOrange,
-] as const;
+const CardFallback = memo(function CardFallback({
+  label,
+  className,
+}: {
+  label: string;
+  className?: string;
+}) {
+  const cardClassName = ["card", className].filter(Boolean).join(" ");
+  return (
+    <section className={cardClassName}>
+      <div className="loading-overlay compact" role="status" aria-live="polite">
+        <span className="spinner" aria-hidden="true" />
+        <span>Cargando {label}…</span>
+      </div>
+    </section>
+  );
+});
+
+const InlineFallback = memo(function InlineFallback({ label }: { label: string }) {
+  return (
+    <div className="loading-overlay compact" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      <span>Cargando {label}…</span>
+    </div>
+  );
+});
 
 const resolveLowStockSeverity = (quantity: number): "critical" | "warning" | "notice" => {
   if (quantity <= 1) {
@@ -233,7 +242,7 @@ function InventoryPage() {
 
   const categoryChartData = useMemo(
     () =>
-      stockByCategory.slice(0, CATEGORY_PALETTE.length).map((entry) => ({
+      stockByCategory.slice(0, MAX_CATEGORY_SEGMENTS).map((entry) => ({
         label: entry.label || "Sin categoría",
         value: entry.value,
       })),
@@ -245,55 +254,51 @@ function InventoryPage() {
     [categoryChartData],
   );
 
-  const refreshBadge: StatusBadge = lastInventoryRefresh
-    ? { tone: "success", text: "Auto" }
-    : { tone: "warning", text: "Sin datos" };
-
-  const closeEditDialog = () => {
+  const closeEditDialog = useCallback(() => {
     setIsEditDialogOpen(false);
     setEditingDevice(null);
-  };
+  }, []);
 
-  const requestSnapshotDownload = async (
-    downloader: (reason: string) => Promise<void>,
-    successMessage: string,
-  ) => {
-    const defaultReason = selectedStore
-      ? `Descarga inventario ${selectedStore.name}`
-      : "Descarga inventario corporativo";
-    const reason = promptCorporateReason(defaultReason);
-    if (reason === null) {
-      pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
-      return;
-    }
-    if (reason.length < 5) {
-      const message = "El motivo corporativo debe tener al menos 5 caracteres.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-      return;
-    }
-    try {
-      await downloader(reason);
-      pushToast({ message: successMessage, variant: "success" });
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "No fue posible descargar el reporte de inventario.";
-      setError(message);
-      pushToast({ message, variant: "error" });
-    }
-  };
+  const requestSnapshotDownload = useCallback(
+    async (downloader: (reason: string) => Promise<void>, successMessage: string) => {
+      const defaultReason = selectedStore
+        ? `Descarga inventario ${selectedStore.name}`
+        : "Descarga inventario corporativo";
+      const reason = promptCorporateReason(defaultReason);
+      if (reason === null) {
+        pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
+        return;
+      }
+      if (reason.length < 5) {
+        const message = "El motivo corporativo debe tener al menos 5 caracteres.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+        return;
+      }
+      try {
+        await downloader(reason);
+        pushToast({ message: successMessage, variant: "success" });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible descargar el reporte de inventario.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [pushToast, selectedStore, setError],
+  );
 
-  const handleDownloadReportClick = async () => {
+  const handleDownloadReportClick = useCallback(async () => {
     await requestSnapshotDownload(downloadInventoryReport, "PDF de inventario descargado");
-  };
+  }, [downloadInventoryReport, requestSnapshotDownload]);
 
-  const handleDownloadCsvClick = async () => {
+  const handleDownloadCsvClick = useCallback(async () => {
     await requestSnapshotDownload(downloadInventoryCsv, "CSV de inventario descargado");
-  };
+  }, [downloadInventoryCsv, requestSnapshotDownload]);
 
-  const handleExportCatalogClick = async () => {
+  const handleExportCatalogClick = useCallback(async () => {
     if (!selectedStoreId) {
       const message = "Selecciona una sucursal para exportar el catálogo.";
       setError(message);
@@ -309,9 +314,9 @@ function InventoryPage() {
     } finally {
       setExportingCatalog(false);
     }
-  };
+  }, [deviceFilters, exportCatalogCsv, pushToast, requestSnapshotDownload, selectedStoreId, setError]);
 
-  const handleImportCatalogSubmit = async () => {
+  const handleImportCatalogSubmit = useCallback(async () => {
     if (!catalogFile) {
       const message = "Selecciona un archivo CSV antes de importar.";
       setError(message);
@@ -355,17 +360,17 @@ function InventoryPage() {
     } finally {
       setImportingCatalog(false);
     }
-  };
+  }, [catalogFile, importCatalogCsv, pushToast, selectedStore, setError]);
 
-  const updateThresholdDraftValue = (value: number) => {
+  const updateThresholdDraftValue = useCallback((value: number) => {
     if (Number.isNaN(value)) {
       return;
     }
     const clamped = Math.max(0, Math.min(100, value));
     setThresholdDraft(clamped);
-  };
+  }, []);
 
-  const handleSaveThreshold = async () => {
+  const handleSaveThreshold = useCallback(async () => {
     if (!selectedStoreId) {
       const message = "Selecciona una sucursal para ajustar el umbral de alertas.";
       setError(message);
@@ -387,9 +392,16 @@ function InventoryPage() {
     } finally {
       setIsSavingThreshold(false);
     }
-  };
+  }, [
+    pushToast,
+    selectedStoreId,
+    setError,
+    thresholdDraft,
+    updateLowStockThreshold,
+    lowStockThreshold,
+  ]);
 
-  const handleSubmitDeviceUpdates = async (updates: DeviceUpdateInput, reason: string) => {
+  const handleSubmitDeviceUpdates = useCallback(async (updates: DeviceUpdateInput, reason: string) => {
     if (!editingDevice) {
       return;
     }
@@ -399,7 +411,35 @@ function InventoryPage() {
     } catch (error) {
       // La notificación de error ya se gestiona desde el contexto.
     }
-  };
+  }, [closeEditDialog, editingDevice, handleDeviceUpdate]);
+
+  const triggerDownloadReport = useCallback(() => {
+    void handleDownloadReportClick();
+  }, [handleDownloadReportClick]);
+
+  const triggerDownloadCsv = useCallback(() => {
+    void handleDownloadCsvClick();
+  }, [handleDownloadCsvClick]);
+
+  const triggerRefreshSummary = useCallback(() => {
+    void refreshSummary();
+  }, [refreshSummary]);
+
+  const triggerRefreshSupplierOverview = useCallback(() => {
+    void refreshSupplierBatchOverview();
+  }, [refreshSupplierBatchOverview]);
+
+  const triggerRefreshRecentMovements = useCallback(() => {
+    void refreshRecentMovements();
+  }, [refreshRecentMovements]);
+
+  const triggerExportCatalog = useCallback(() => {
+    void handleExportCatalogClick();
+  }, [handleExportCatalogClick]);
+
+  const triggerImportCatalog = useCallback(() => {
+    void handleImportCatalogSubmit();
+  }, [handleImportCatalogSubmit]);
 
   const lowStockStats = useMemo(() => {
     let critical = 0;
@@ -429,67 +469,85 @@ function InventoryPage() {
     moduleStatusLabel = `${lowStockStats.warning} dispositivos con stock bajo`;
   }
 
-  const statusCards: StatusCard[] = [
-    {
-      id: "stores",
-      icon: Building2,
-      title: "Sucursales",
-      value: `${stores.length}`,
-      caption: "Configuradas",
-    },
-    {
-      id: "devices",
-      icon: Smartphone,
-      title: "Dispositivos",
-      value: `${totalDevices}`,
-      caption: "Catalogados",
-    },
-    {
-      id: "units",
-      icon: Boxes,
-      title: "Unidades",
-      value: `${totalItems}`,
-      caption: "En stock",
-    },
-    {
-      id: "value",
-      icon: DollarSign,
-      title: "Valor total",
-      value: formatCurrency(totalValue),
-      caption: "Inventario consolidado",
-    },
-    {
-      id: "backup",
-      icon: ShieldCheck,
-      title: "Último respaldo",
-      value: lastBackup
-        ? new Date(lastBackup.executed_at).toLocaleString("es-MX")
-        : "Aún no se generan respaldos",
-      caption: lastBackup ? lastBackup.mode : "Programado cada 12 h",
-    },
-    {
-      id: "version",
-      icon: Cog,
-      title: "Versión",
-      value: updateStatus?.current_version ?? "Desconocida",
-      caption: updateStatus?.latest_version
-        ? `Última publicada: ${updateStatus.latest_version}`
-        : "Historial actualizado",
-      badge: updateStatus?.is_update_available
-        ? { tone: "warning", text: `Actualizar a ${updateStatus.latest_version}` }
-        : { tone: "success", text: "Sistema al día" },
-    },
-    {
-      id: "refresh",
-      icon: RefreshCcw,
-      title: "Actualización en vivo",
-      value: lastInventoryRefresh
-        ? lastInventoryRefresh.toLocaleTimeString("es-MX")
-        : "Sincronizando…",
-      caption: lastRefreshDisplay,
-      badge: refreshBadge,
-    },
-  ];
+  const statusCards = useMemo<StatusCard[]>(() => {
+    const refreshBadge: StatusBadge = lastInventoryRefresh
+      ? { tone: "success", text: "Auto" }
+      : { tone: "warning", text: "Sin datos" };
+
+    const versionBadge: StatusBadge | undefined = updateStatus?.is_update_available
+      ? { tone: "warning", text: `Actualizar a ${updateStatus.latest_version}` }
+      : { tone: "success", text: "Sistema al día" };
+
+    return [
+      {
+        id: "stores",
+        icon: Building2,
+        title: "Sucursales",
+        value: `${stores.length}`,
+        caption: "Configuradas",
+      },
+      {
+        id: "devices",
+        icon: Smartphone,
+        title: "Dispositivos",
+        value: `${totalDevices}`,
+        caption: "Catalogados",
+      },
+      {
+        id: "units",
+        icon: Boxes,
+        title: "Unidades",
+        value: `${totalItems}`,
+        caption: "En stock",
+      },
+      {
+        id: "value",
+        icon: DollarSign,
+        title: "Valor total",
+        value: formatCurrency(totalValue),
+        caption: "Inventario consolidado",
+      },
+      {
+        id: "backup",
+        icon: ShieldCheck,
+        title: "Último respaldo",
+        value: lastBackup
+          ? new Date(lastBackup.executed_at).toLocaleString("es-MX")
+          : "Aún no se generan respaldos",
+        caption: lastBackup ? lastBackup.mode : "Programado cada 12 h",
+      },
+      {
+        id: "version",
+        icon: Cog,
+        title: "Versión",
+        value: updateStatus?.current_version ?? "Desconocida",
+        caption: updateStatus?.latest_version
+          ? `Última publicada: ${updateStatus.latest_version}`
+          : "Historial actualizado",
+        badge: versionBadge,
+      },
+      {
+        id: "refresh",
+        icon: RefreshCcw,
+        title: "Actualización en vivo",
+        value: lastInventoryRefresh
+          ? lastInventoryRefresh.toLocaleTimeString("es-MX")
+          : "Sincronizando…",
+        caption: lastRefreshDisplay,
+        badge: refreshBadge,
+      },
+    ];
+  }, [
+    formatCurrency,
+    lastBackup,
+    lastInventoryRefresh,
+    lastRefreshDisplay,
+    stores,
+    totalDevices,
+    totalItems,
+    totalValue,
+    updateStatus,
+  ]);
 
   const overviewContent: ReactNode = (
     <div className="section-grid">
@@ -628,70 +686,9 @@ function InventoryPage() {
             {" "}uds
           </span>
         </header>
-        {categoryChartData.length > 0 ? (
-          <>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={categoryChartData} margin={{ top: 8, right: 12, left: 0, bottom: 12 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={colorVar("accentSoft")} vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  stroke="var(--text-secondary)"
-                  tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  stroke="var(--text-secondary)"
-                  tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                  allowDecimals={false}
-                />
-                <Tooltip
-                  cursor={{ fill: colorVar("accentSoft") }}
-                  contentStyle={{
-                    backgroundColor: colorVar("surfaceTooltip"),
-                    border: `1px solid ${colorVar("accentBorder")}`,
-                    borderRadius: radiusVar("md"),
-                    color: colorVar("textPrimary"),
-                    boxShadow: shadowVar("sm"),
-                  }}
-                  labelStyle={{ color: colorVar("accent") }}
-                  formatter={(value: number) => [
-                    `${Number(value).toLocaleString("es-MX")} unidades`,
-                    "Existencias",
-                  ]}
-                />
-                <Bar dataKey="value" radius={[12, 12, 0, 0]}>
-                  {categoryChartData.map((entry, index) => (
-                    <Cell
-                      key={`${entry.label}-${index}`}
-                      fill={CATEGORY_PALETTE[index % CATEGORY_PALETTE.length]}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <ul className="inventory-category-list">
-              {categoryChartData.map((entry) => {
-                const share =
-                  totalCategoryUnits === 0
-                    ? 0
-                    : Math.round((entry.value / totalCategoryUnits) * 100);
-                return (
-                  <li key={entry.label}>
-                    <span>{entry.label}</span>
-                    <span>
-                      {entry.value.toLocaleString("es-MX")} uds · {share}%
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </>
-        ) : (
-          <p className="muted-text">Aún no se registra inventario por categoría.</p>
-        )}
+        <Suspense fallback={<InlineFallback label="gráfica por categoría" />}>
+          <InventoryCategoryChart data={categoryChartData} totalUnits={totalCategoryUnits} />
+        </Suspense>
       </section>
 
       <section className="card wide">
@@ -707,9 +704,7 @@ function InventoryPage() {
               variant="ghost"
               size="sm"
               type="button"
-              onClick={() => {
-                void refreshSupplierBatchOverview();
-              }}
+              onClick={triggerRefreshSupplierOverview}
               disabled={supplierBatchLoading}
             >
               {supplierBatchLoading ? "Actualizando…" : "Actualizar"}
@@ -759,9 +754,7 @@ function InventoryPage() {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => {
-              void refreshRecentMovements();
-            }}
+            onClick={triggerRefreshRecentMovements}
             disabled={recentMovementsLoading}
             leadingIcon={<RefreshCcw aria-hidden size={16} />}
           >
@@ -861,19 +854,21 @@ function InventoryPage() {
             </select>
           </label>
         </div>
-        <InventoryTable
-          devices={filteredDevices}
-          highlightedDeviceIds={highlightedDevices}
-          emptyMessage={
-            inventoryQuery.trim() || estadoFilter !== "TODOS"
-              ? "No se encontraron dispositivos con los filtros actuales."
-              : undefined
-          }
-          onEditDevice={(device) => {
-            setEditingDevice(device);
-            setIsEditDialogOpen(true);
-          }}
-        />
+        <Suspense fallback={<InlineFallback label="tabla de inventario" />}>
+          <InventoryTable
+            devices={filteredDevices}
+            highlightedDeviceIds={highlightedDevices}
+            emptyMessage={
+              inventoryQuery.trim() || estadoFilter !== "TODOS"
+                ? "No se encontraron dispositivos con los filtros actuales."
+                : undefined
+            }
+            onEditDevice={(device) => {
+              setEditingDevice(device);
+              setIsEditDialogOpen(true);
+            }}
+          />
+        </Suspense>
       </section>
 
       <section className="card">
@@ -883,16 +878,14 @@ function InventoryPage() {
             <p className="card-subtitle">Ajustes, entradas y salidas sincronizadas con inventario.</p>
           </div>
           <div className="card-actions">
-            <Button variant="primary" size="sm" type="button" onClick={() => void refreshSummary()}>
+            <Button variant="primary" size="sm" type="button" onClick={triggerRefreshSummary}>
               Actualizar métricas
             </Button>
             <Button
               variant="ghost"
               size="sm"
               type="button"
-              onClick={() => {
-                void handleDownloadReportClick();
-              }}
+              onClick={triggerDownloadReport}
               leadingIcon={<FileSpreadsheet aria-hidden size={16} />}
             >
               Descargar PDF
@@ -901,16 +894,16 @@ function InventoryPage() {
               variant="ghost"
               size="sm"
               type="button"
-              onClick={() => {
-                void handleDownloadCsvClick();
-              }}
+              onClick={triggerDownloadCsv}
               leadingIcon={<FileSpreadsheet aria-hidden size={16} />}
             >
               Descargar CSV
             </Button>
           </div>
         </header>
-        <MovementForm devices={devices} onSubmit={handleMovement} />
+        <Suspense fallback={<InlineFallback label="formulario de movimientos" />}>
+          <MovementForm devices={devices} onSubmit={handleMovement} />
+        </Suspense>
       </section>
     </div>
   );
@@ -1000,33 +993,37 @@ function InventoryPage() {
   );
 
   const reportsContent: ReactNode = (
-    <InventoryReportsPanel
-      stores={stores}
-      selectedStoreId={selectedStoreId}
-      formatCurrency={formatCurrency}
-      fetchInventoryCurrentReport={fetchInventoryCurrentReport}
-      downloadInventoryCurrentCsv={downloadInventoryCurrentCsv}
-      downloadInventoryCurrentPdf={downloadInventoryCurrentPdf}
-      downloadInventoryCurrentXlsx={downloadInventoryCurrentXlsx}
-      fetchInventoryValueReport={fetchInventoryValueReport}
-      fetchInventoryMovementsReport={fetchInventoryMovementsReport}
-      fetchTopProductsReport={fetchTopProductsReport}
-      requestDownloadWithReason={requestSnapshotDownload}
-      downloadInventoryValueCsv={downloadInventoryValueCsv}
-      downloadInventoryValuePdf={downloadInventoryValuePdf}
-      downloadInventoryValueXlsx={downloadInventoryValueXlsx}
-      downloadInventoryMovementsCsv={downloadInventoryMovementsCsv}
-      downloadInventoryMovementsPdf={downloadInventoryMovementsPdf}
-      downloadInventoryMovementsXlsx={downloadInventoryMovementsXlsx}
-      downloadTopProductsCsv={downloadTopProductsCsv}
-      downloadTopProductsPdf={downloadTopProductsPdf}
-      downloadTopProductsXlsx={downloadTopProductsXlsx}
-    />
+    <Suspense fallback={<CardFallback label="panel de reportes" />}>
+      <InventoryReportsPanel
+        stores={stores}
+        selectedStoreId={selectedStoreId}
+        formatCurrency={formatCurrency}
+        fetchInventoryCurrentReport={fetchInventoryCurrentReport}
+        downloadInventoryCurrentCsv={downloadInventoryCurrentCsv}
+        downloadInventoryCurrentPdf={downloadInventoryCurrentPdf}
+        downloadInventoryCurrentXlsx={downloadInventoryCurrentXlsx}
+        fetchInventoryValueReport={fetchInventoryValueReport}
+        fetchInventoryMovementsReport={fetchInventoryMovementsReport}
+        fetchTopProductsReport={fetchTopProductsReport}
+        requestDownloadWithReason={requestSnapshotDownload}
+        downloadInventoryValueCsv={downloadInventoryValueCsv}
+        downloadInventoryValuePdf={downloadInventoryValuePdf}
+        downloadInventoryValueXlsx={downloadInventoryValueXlsx}
+        downloadInventoryMovementsCsv={downloadInventoryMovementsCsv}
+        downloadInventoryMovementsPdf={downloadInventoryMovementsPdf}
+        downloadInventoryMovementsXlsx={downloadInventoryMovementsXlsx}
+        downloadTopProductsCsv={downloadTopProductsCsv}
+        downloadTopProductsPdf={downloadTopProductsPdf}
+        downloadTopProductsXlsx={downloadTopProductsXlsx}
+      />
+    </Suspense>
   );
 
   const advancedContent: ReactNode = enableCatalogPro ? (
     <div className="section-grid">
-      <AdvancedSearch token={token} />
+      <Suspense fallback={<CardFallback label="búsqueda avanzada" className="catalog-card fade-in" />}>
+        <AdvancedSearch token={token} />
+      </Suspense>
       <section className="card">
         <header className="card-header">
           <div>
@@ -1042,7 +1039,7 @@ function InventoryPage() {
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => void handleExportCatalogClick()}
+              onClick={triggerExportCatalog}
               disabled={exportingCatalog}
             >
               {exportingCatalog ? "Exportando…" : "Exportar catálogo CSV"}
@@ -1070,7 +1067,7 @@ function InventoryPage() {
               type="button"
               variant="primary"
               size="sm"
-              onClick={() => void handleImportCatalogSubmit()}
+              onClick={triggerImportCatalog}
               disabled={importingCatalog || !catalogFile}
             >
               {importingCatalog ? "Importando…" : "Importar catálogo"}
@@ -1116,38 +1113,41 @@ function InventoryPage() {
     </section>
   );
 
-  const inventoryTabs: TabContent[] = [
-    {
-      id: "overview",
-      label: "Vista general",
-      icon: <Boxes size={16} aria-hidden />,
-      content: overviewContent,
-    },
-    {
-      id: "movements",
-      label: "Movimientos",
-      icon: <RefreshCcw size={16} aria-hidden />,
-      content: movementsContent,
-    },
-    {
-      id: "alerts",
-      label: "Alertas",
-      icon: <AlertTriangle size={16} aria-hidden />,
-      content: alertsContent,
-    },
-    {
-      id: "reports",
-      label: "Reportes",
-      icon: <BarChart3 size={16} aria-hidden />,
-      content: reportsContent,
-    },
-    {
-      id: "advanced",
-      label: "Búsqueda avanzada",
-      icon: <Search size={16} aria-hidden />,
-      content: advancedContent,
-    },
-  ];
+  const inventoryTabs = useMemo<TabContent[]>(
+    () => [
+      {
+        id: "overview",
+        label: "Vista general",
+        icon: <Boxes size={16} aria-hidden />,
+        content: overviewContent,
+      },
+      {
+        id: "movements",
+        label: "Movimientos",
+        icon: <RefreshCcw size={16} aria-hidden />,
+        content: movementsContent,
+      },
+      {
+        id: "alerts",
+        label: "Alertas",
+        icon: <AlertTriangle size={16} aria-hidden />,
+        content: alertsContent,
+      },
+      {
+        id: "reports",
+        label: "Reportes",
+        icon: <BarChart3 size={16} aria-hidden />,
+        content: reportsContent,
+      },
+      {
+        id: "advanced",
+        label: "Búsqueda avanzada",
+        icon: <Search size={16} aria-hidden />,
+        content: advancedContent,
+      },
+    ],
+    [advancedContent, alertsContent, movementsContent, overviewContent, reportsContent],
+  );
 
   return (
     <div className="module-content">
@@ -1160,12 +1160,14 @@ function InventoryPage() {
       />
       <LoadingOverlay visible={loading} label="Sincronizando inventario..." />
       <Tabs tabs={inventoryTabs} activeTab={activeTab} onTabChange={setActiveTab} />
-      <DeviceEditDialog
-        device={editingDevice}
-        open={isEditDialogOpen}
-        onClose={closeEditDialog}
-        onSubmit={handleSubmitDeviceUpdates}
-      />
+      <Suspense fallback={null}>
+        <DeviceEditDialog
+          device={editingDevice}
+          open={isEditDialogOpen}
+          onClose={closeEditDialog}
+          onSubmit={handleSubmitDeviceUpdates}
+        />
+      </Suspense>
     </div>
   );
 }
