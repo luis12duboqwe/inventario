@@ -172,16 +172,24 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     []
   );
 
-  const setCompactMode = useCallback((value: boolean) => {
-    setCompactModeState(value);
+  const persistCompactMode = (value: boolean) => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("softmobile_compact_mode", value ? "1" : "0");
     }
+  };
+
+  const setCompactMode = useCallback((value: boolean) => {
+    setCompactModeState(value);
+    persistCompactMode(value);
   }, []);
 
   const toggleCompactMode = useCallback(() => {
-    setCompactMode(!compactModeState);
-  }, [compactModeState, setCompactMode]);
+    setCompactModeState((current) => {
+      const next = !current;
+      persistCompactMode(next);
+      return next;
+    });
+  }, []);
 
   const friendlyErrorMessage = useCallback((message: string) => {
     if (!message) {
@@ -222,7 +230,11 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
   }, []);
 
-  const formatCurrency = (value: number) => currencyFormatter.format(value);
+  const dismissNetworkAlert = useCallback(() => {
+    setNetworkAlert(null);
+  }, []);
+
+  const formatCurrency = useCallback((value: number) => currencyFormatter.format(value), [currencyFormatter]);
 
   const getThresholdForStore = useCallback(
     (storeId: number | null | undefined) => {
@@ -349,7 +361,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
 
     loadDevices();
-  }, [selectedStoreId, token]);
+  }, [friendlyErrorMessage, selectedStoreId, token]);
 
   useEffect(() => {
     const loadOutbox = async () => {
@@ -374,7 +386,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
 
     loadOutbox();
-  }, [enableHybridPrep, token]);
+  }, [enableHybridPrep, friendlyErrorMessage, token]);
 
   const refreshSummary = useCallback(async () => {
     const threshold = getThresholdForStore(selectedStoreId);
@@ -407,7 +419,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }, 30000);
 
     return () => window.clearInterval(interval);
-  }, [refreshSummary, selectedStoreId, token]);
+  }, [friendlyErrorMessage, refreshSummary, selectedStoreId, token]);
 
   const handleMovement = async (payload: MovementInput) => {
     if (!selectedStoreId) {
@@ -472,16 +484,16 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }
   };
 
-  const refreshInventoryAfterTransfer = async () => {
+  const refreshInventoryAfterTransfer = useCallback(async () => {
     await refreshSummary();
     if (selectedStoreId) {
       const devicesData = await getDevices(token, selectedStoreId);
       setDevices(devicesData);
       setLastInventoryRefresh(new Date());
     }
-  };
+  }, [refreshSummary, selectedStoreId, token]);
 
-  const handleSync = async () => {
+  const handleSync = useCallback(async () => {
     try {
       setSyncStatus("Sincronizando…");
       await triggerSync(token, selectedStoreId ?? undefined);
@@ -493,9 +505,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncStatus(friendly);
       pushToast({ message: friendly, variant: "error" });
     }
-  };
+  }, [friendlyErrorMessage, pushToast, selectedStoreId, token]);
 
-  const handleBackup = async () => {
+  const handleBackup = useCallback(async () => {
     try {
       setError(null);
       const job = await runBackup(token, "Respaldo manual desde tienda");
@@ -508,7 +520,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setError(friendly);
       pushToast({ message: friendly, variant: "error" });
     }
-  };
+  }, [friendlyErrorMessage, pushToast, token]);
 
   const refreshOutboxStats = useCallback(async () => {
     if (!enableHybridPrep) {
@@ -523,7 +535,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         err instanceof Error ? err.message : "No se pudo consultar las estadísticas de la cola";
       setOutboxError(friendlyErrorMessage(message));
     }
-  }, [enableHybridPrep, token]);
+  }, [enableHybridPrep, friendlyErrorMessage, token]);
 
   const refreshSyncHistory = useCallback(async () => {
     try {
@@ -535,9 +547,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         err instanceof Error ? err.message : "No se pudo actualizar el historial de sincronización";
       setSyncHistoryError(friendlyErrorMessage(message));
     }
-  }, [token]);
+  }, [friendlyErrorMessage, token]);
 
-  const refreshOutbox = async () => {
+  const refreshOutbox = useCallback(async () => {
     if (!enableHybridPrep) {
       setOutbox([]);
       setOutboxStats([]);
@@ -557,9 +569,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setOutboxError(friendly);
       pushToast({ message: friendly, variant: "error" });
     }
-  };
+  }, [enableHybridPrep, friendlyErrorMessage, pushToast, token]);
 
-  const handleRetryOutbox = async () => {
+  const handleRetryOutbox = useCallback(async () => {
     if (!enableHybridPrep || outbox.length === 0) {
       return;
     }
@@ -580,7 +592,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setOutboxError(friendly);
       pushToast({ message: friendly, variant: "error" });
     }
-  };
+  }, [enableHybridPrep, friendlyErrorMessage, outbox, pushToast, refreshOutboxStats, token]);
 
   const updateLowStockThreshold = useCallback(
     async (storeId: number, threshold: number) => {
@@ -631,73 +643,140 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     return { totalDevices, totalItems, totalValue, lowStock, topStores };
   }, [metrics, selectedStoreId, summary]);
 
-  const downloadInventoryReport = async (reason: string) => {
-    await downloadInventoryPdf(token, reason);
-  };
+  const downloadInventoryReport = useCallback(
+    async (reason: string) => {
+      await downloadInventoryPdf(token, reason);
+    },
+    [token],
+  );
 
-  const value: DashboardContextValue = {
-    token,
-    enableCatalogPro,
-    enableTransfers,
-    enablePurchasesSales,
-    enableAnalyticsAdv,
-    enableTwoFactor,
-    enableHybridPrep,
-    compactMode: compactModeState,
-    setCompactMode,
-    toggleCompactMode,
-    globalSearchTerm,
-    setGlobalSearchTerm,
-    stores,
-    summary,
-    metrics,
-    devices,
-    backupHistory,
-    releaseHistory,
-    updateStatus,
-    lastInventoryRefresh,
-    selectedStoreId,
-    setSelectedStoreId,
-    selectedStore,
-    loading,
-    message,
-    setMessage,
-    error,
-    setError,
-    syncStatus,
-    outbox,
-    outboxError,
-    outboxStats,
-    currentUser,
-    syncHistory,
-    syncHistoryError,
-    formatCurrency,
-    totalDevices: totals.totalDevices,
-    totalItems: totals.totalItems,
-    totalValue: totals.totalValue,
-    lowStockDevices: totals.lowStock,
-    topStores: totals.topStores,
-    currentLowStockThreshold,
-    updateLowStockThreshold,
-    handleMovement,
-    handleDeviceUpdate,
-    refreshInventoryAfterTransfer,
-    refreshSummary,
-    handleSync,
-    handleBackup,
-    refreshOutbox,
-    handleRetryOutbox,
-    downloadInventoryReport,
-    refreshOutboxStats,
-    refreshSyncHistory,
-    toasts,
-    pushToast,
-    dismissToast,
-    networkAlert,
-    dismissNetworkAlert: () => setNetworkAlert(null),
-  };
+  const { totalDevices, totalItems, totalValue, lowStock, topStores } = totals;
 
-  return <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>;
+  const contextValue = useMemo<DashboardContextValue>(
+    () => ({
+      token,
+      enableCatalogPro,
+      enableTransfers,
+      enablePurchasesSales,
+      enableAnalyticsAdv,
+      enableTwoFactor,
+      enableHybridPrep,
+      compactMode: compactModeState,
+      setCompactMode,
+      toggleCompactMode,
+      globalSearchTerm,
+      setGlobalSearchTerm,
+      stores,
+      summary,
+      metrics,
+      devices,
+      backupHistory,
+      releaseHistory,
+      updateStatus,
+      lastInventoryRefresh,
+      selectedStoreId,
+      setSelectedStoreId,
+      selectedStore,
+      loading,
+      message,
+      setMessage,
+      error,
+      setError,
+      syncStatus,
+      outbox,
+      outboxError,
+      outboxStats,
+      currentUser,
+      syncHistory,
+      syncHistoryError,
+      formatCurrency,
+      totalDevices,
+      totalItems,
+      totalValue,
+      lowStockDevices: lowStock,
+      topStores,
+      currentLowStockThreshold,
+      updateLowStockThreshold,
+      handleMovement,
+      handleDeviceUpdate,
+      refreshInventoryAfterTransfer,
+      refreshSummary,
+      handleSync,
+      handleBackup,
+      refreshOutbox,
+      handleRetryOutbox,
+      downloadInventoryReport,
+      refreshOutboxStats,
+      refreshSyncHistory,
+      toasts,
+      pushToast,
+      dismissToast,
+      networkAlert,
+      dismissNetworkAlert,
+    }),
+    [
+      backupHistory,
+      compactModeState,
+      currentLowStockThreshold,
+      currentUser,
+      devices,
+      dismissNetworkAlert,
+      dismissToast,
+      downloadInventoryReport,
+      enableAnalyticsAdv,
+      enableCatalogPro,
+      enableHybridPrep,
+      enablePurchasesSales,
+      enableTransfers,
+      enableTwoFactor,
+      error,
+      formatCurrency,
+      globalSearchTerm,
+      handleBackup,
+      handleDeviceUpdate,
+      handleMovement,
+      handleRetryOutbox,
+      handleSync,
+      lastInventoryRefresh,
+      loading,
+      lowStock,
+      message,
+      metrics,
+      networkAlert,
+      outbox,
+      outboxError,
+      outboxStats,
+      pushToast,
+      refreshInventoryAfterTransfer,
+      refreshOutbox,
+      refreshOutboxStats,
+      refreshSummary,
+      refreshSyncHistory,
+      releaseHistory,
+      selectedStore,
+      selectedStoreId,
+      setError,
+      setGlobalSearchTerm,
+      setMessage,
+      setSelectedStoreId,
+      setCompactMode,
+      stores,
+      summary,
+      syncHistory,
+      syncHistoryError,
+      syncStatus,
+      toasts,
+      token,
+      topStores,
+      totalDevices,
+      totalItems,
+      totalValue,
+      updateLowStockThreshold,
+      updateStatus,
+    ],
+  );
+
+  return <DashboardContext.Provider value={contextValue}>{children}</DashboardContext.Provider>;
 }
 
 export function useDashboard(): DashboardContextValue {

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import Dashboard from "./components/Dashboard";
 import LoginForm from "./components/LoginForm";
 import { Credentials, login } from "./api";
 import WelcomeHero from "./components/WelcomeHero";
+
+const Dashboard = lazy(() => import("./components/Dashboard"));
 
 type ThemeMode = "dark" | "light";
 
@@ -36,11 +37,11 @@ function App() {
 
   const themeLabel = useMemo(() => (theme === "dark" ? "oscuro" : "claro"), [theme]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
-  };
+  }, []);
 
-  const handleLogin = async (credentials: Credentials) => {
+  const handleLogin = useCallback(async (credentials: Credentials) => {
     try {
       setLoading(true);
       setError(null);
@@ -52,12 +53,12 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.removeItem("softmobile_token");
     setToken(null);
-  };
+  }, []);
 
   return (
     <BrowserRouter>
@@ -88,7 +89,16 @@ type AppRouterProps = {
   onLogout: () => void;
 };
 
-function AppRouter({ token, loading, error, theme, themeLabel, onToggleTheme, onLogin, onLogout }: AppRouterProps) {
+const AppRouter = memo(function AppRouter({
+  token,
+  loading,
+  error,
+  theme,
+  themeLabel,
+  onToggleTheme,
+  onLogin,
+  onLogout,
+}: AppRouterProps) {
   const location = useLocation();
 
   return (
@@ -115,7 +125,9 @@ function AppRouter({ token, loading, error, theme, themeLabel, onToggleTheme, on
           <>
             <Route
               path="/dashboard/*"
-              element={<DashboardScene token={token} theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />}
+              element={
+                <DashboardScene token={token} theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />
+              }
             />
             <Route path="*" element={<Navigate to="/dashboard/inventory" replace />} />
           </>
@@ -123,7 +135,7 @@ function AppRouter({ token, loading, error, theme, themeLabel, onToggleTheme, on
       </Routes>
     </AnimatePresence>
   );
-}
+});
 
 type LoginSceneProps = {
   theme: ThemeMode;
@@ -134,7 +146,14 @@ type LoginSceneProps = {
   onLogin: (credentials: Credentials) => Promise<void>;
 };
 
-function LoginScene({ theme, themeLabel, onToggleTheme, loading, error, onLogin }: LoginSceneProps) {
+const LoginScene = memo(function LoginScene({
+  theme,
+  themeLabel,
+  onToggleTheme,
+  loading,
+  error,
+  onLogin,
+}: LoginSceneProps) {
   return (
     <motion.main
       key="login"
@@ -156,7 +175,7 @@ function LoginScene({ theme, themeLabel, onToggleTheme, loading, error, onLogin 
       </motion.section>
     </motion.main>
   );
-}
+});
 
 type DashboardSceneProps = {
   token: string;
@@ -165,7 +184,16 @@ type DashboardSceneProps = {
   onLogout: () => void;
 };
 
-function DashboardScene({ token, theme, onToggleTheme, onLogout }: DashboardSceneProps) {
+const ModuleFallback = memo(function ModuleFallback() {
+  return (
+    <div className="loading-overlay" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      <span>Cargando módulo…</span>
+    </div>
+  );
+});
+
+const DashboardScene = memo(function DashboardScene({ token, theme, onToggleTheme, onLogout }: DashboardSceneProps) {
   return (
     <motion.div
       key="dashboard"
@@ -181,10 +209,12 @@ function DashboardScene({ token, theme, onToggleTheme, onLogout }: DashboardScen
         exit={{ opacity: 0, y: -12 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
       >
-        <Dashboard token={token} theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />
+        <Suspense fallback={<ModuleFallback />}>
+          <Dashboard token={token} theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />
+        </Suspense>
       </motion.div>
     </motion.div>
   );
-}
+});
 
 export default App;

@@ -1585,6 +1585,54 @@ export type UpdateStatus = {
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 
+const REQUEST_CACHE_TTL_MS = 60_000;
+const REQUEST_CACHE_MAX_ENTRIES = 128;
+
+type RequestCacheRecord = {
+  timestamp: number;
+  value: unknown;
+};
+
+const requestCache = new Map<string, RequestCacheRecord>();
+
+function serializeHeaders(headers: Headers): Array<[string, string]> {
+  return Array.from(headers.entries())
+    .filter(([key]) => key.toLowerCase() !== "authorization")
+    .map(([key, value]) => [key.toLowerCase(), value])
+    .sort((a, b) => {
+      if (a[0] === b[0]) {
+        return a[1].localeCompare(b[1]);
+      }
+      return a[0].localeCompare(b[0]);
+    });
+}
+
+function buildCacheKey(path: string, headers: Headers, token?: string): string {
+  const tokenKey = token ? token.slice(-16) : "";
+  return `${tokenKey}|${path}|${JSON.stringify(serializeHeaders(headers))}`;
+}
+
+function cloneData<T>(value: T): T {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function setCacheEntry(key: string, value: unknown) {
+  if (requestCache.size >= REQUEST_CACHE_MAX_ENTRIES) {
+    const oldestEntry = requestCache.keys().next();
+    if (!oldestEntry.done) {
+      requestCache.delete(oldestEntry.value);
+    }
+  }
+  requestCache.set(key, { timestamp: Date.now(), value });
+}
+
+export function clearRequestCache(): void {
+  requestCache.clear();
+}
+
 function buildStoreQuery(storeIds?: number[]): string {
   if (!storeIds || storeIds.length === 0) {
     return "";
@@ -1643,6 +1691,17 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     headers.set("Authorization", `Bearer ${token}`);
   }
 
+  const method = (options.method ?? "GET").toUpperCase();
+  const shouldUseCache = method === "GET" && options.cache !== "no-store";
+  const cacheKey = shouldUseCache ? buildCacheKey(path, headers, token) : null;
+
+  if (cacheKey) {
+    const cached = requestCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp <= REQUEST_CACHE_TTL_MS) {
+      return cloneData(cached.value as T);
+    }
+  }
+
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
@@ -1674,15 +1733,31 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   emitNetworkEvent(NETWORK_RECOVERY_EVENT);
 
   if (response.status === 204) {
+    if (method !== "GET") {
+      clearRequestCache();
+    }
     return undefined as unknown as T;
   }
 
   const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
-    return (await response.json()) as T;
+  const isJson = contentType.includes("application/json");
+  let parsed: T;
+
+  if (isJson) {
+    parsed = (await response.json()) as T;
+  } else {
+    parsed = (await response.blob()) as unknown as T;
   }
 
-  return (await response.blob()) as unknown as T;
+  if (cacheKey && isJson) {
+    setCacheEntry(cacheKey, cloneData(parsed));
+  }
+
+  if (method !== "GET") {
+    clearRequestCache();
+  }
+
+  return parsed;
 }
 
 export async function login(credentials: Credentials): Promise<{ access_token: string }> {
