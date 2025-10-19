@@ -4782,6 +4782,12 @@ ol {
   outline-offset: 2px;
 }
 
+.admin-control-panel__card[data-state="active"] {
+  border-color: rgba(56, 189, 248, 0.65);
+  background: rgba(15, 27, 44, 0.98);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.32), var(--shadow-lg);
+}
+
 .admin-control-panel__card--manager {
   border-color: rgba(125, 211, 252, 0.26);
 }
@@ -4809,6 +4815,10 @@ ol {
   background: rgba(125, 211, 252, 0.2);
 }
 
+.admin-control-panel__card[data-state="active"] .admin-control-panel__icon {
+  background: rgba(56, 189, 248, 0.28);
+}
+
 .dashboard-shell.role-operator .admin-control-panel__icon {
   background: rgba(94, 234, 212, 0.2);
 }
@@ -4816,6 +4826,34 @@ ol {
 .dashboard-shell.role-guest .admin-control-panel__icon {
   background: rgba(148, 163, 184, 0.2);
   color: rgba(226, 232, 240, 0.92);
+}
+
+.dashboard-shell.role-manager .admin-control-panel__card[data-state="active"] {
+  border-color: rgba(125, 211, 252, 0.62);
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.28), var(--shadow-lg);
+}
+
+.dashboard-shell.role-operator .admin-control-panel__card[data-state="active"] {
+  border-color: rgba(94, 234, 212, 0.58);
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.26), var(--shadow-lg);
+}
+
+.dashboard-shell.role-guest .admin-control-panel__card[data-state="active"] {
+  border-color: rgba(148, 163, 184, 0.58);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.28), var(--shadow-lg);
+}
+
+.dashboard-shell.role-manager .admin-control-panel__card[data-state="active"] .admin-control-panel__icon {
+  background: rgba(125, 211, 252, 0.32);
+}
+
+.dashboard-shell.role-operator .admin-control-panel__card[data-state="active"] .admin-control-panel__icon {
+  background: rgba(94, 234, 212, 0.32);
+}
+
+.dashboard-shell.role-guest .admin-control-panel__card[data-state="active"] .admin-control-panel__icon {
+  background: rgba(148, 163, 184, 0.32);
+  color: rgba(241, 245, 249, 0.95);
 }
 
 .admin-control-panel__content h3 {
@@ -5063,6 +5101,31 @@ ol {
 
   100% {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-control-panel__card,
+  .notification-center summary,
+  .notification-center__panel,
+  .action-indicator,
+  .toast,
+  .dashboard-role-banner,
+  .dashboard-sidebar-backdrop,
+  .back-to-top-button,
+  .dashboard-shell .page-header__actions-row button {
+    transition: none !important;
+  }
+
+  .admin-control-panel__card,
+  .notification-center__panel,
+  .toast,
+  .back-to-top-button {
+    transform: none !important;
+  }
+
+  .spinning {
+    animation: none !important;
   }
 }
 

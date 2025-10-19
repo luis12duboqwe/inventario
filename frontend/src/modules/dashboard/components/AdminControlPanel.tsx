@@ -12,6 +12,8 @@ export type AdminControlPanelModule = {
   icon: JSX.Element;
   badge?: string;
   badgeVariant?: "default" | "warning" | "danger" | "info";
+  isActive: boolean;
+  srHint?: string;
 };
 
 export type AdminControlPanelProps = {
@@ -39,14 +41,22 @@ function AdminControlPanel({
     setIsNotificationsOpen(hasNotifications);
   }, [hasNotifications]);
 
-  const moduleCards = useMemo<(AdminControlPanelModule & { descriptionId: string })[]>(
+  const moduleCards = useMemo<
+    (AdminControlPanelModule & { descriptionId: string; ariaLabel: string; state: "active" | "inactive" })[]
+  >(
     () =>
       modules.map((module) => {
         const sanitizedId = module.to.replace(/[^a-zA-Z0-9]/g, "-");
         const descriptionId = `${sanitizedId}-description`;
+        const state = module.isActive ? "active" : "inactive";
+        const ariaLabel = module.srHint
+          ? `${module.label}. ${module.srHint}`
+          : module.label;
         return {
           ...module,
           descriptionId,
+          ariaLabel,
+          state,
         };
       }),
     [modules],
@@ -78,6 +88,9 @@ function AdminControlPanel({
             className={`admin-control-panel__card admin-control-panel__card--${roleVariant}`}
             role="listitem"
             aria-describedby={module.descriptionId}
+            aria-label={module.ariaLabel}
+            aria-current={module.isActive ? "page" : undefined}
+            data-state={module.state}
           >
             <span className="admin-control-panel__icon" aria-hidden="true">
               {module.icon}
@@ -93,6 +106,7 @@ function AdminControlPanel({
                   {module.badge}
                 </span>
               ) : null}
+              {module.srHint ? <span className="sr-only">{module.srHint}</span> : null}
             </div>
           </Link>
         ))}

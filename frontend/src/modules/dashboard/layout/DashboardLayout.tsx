@@ -345,9 +345,11 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
       const isActive = item.label === moduleTitle;
       const badges: string[] = [];
       let badgeVariant: AdminControlPanelModule["badgeVariant"] = "default";
+      const srNotices: string[] = [];
 
       if (isActive) {
         badges.push("Abierto");
+        srNotices.push("Módulo abierto actualmente.");
       }
 
       const syncNeedsAttention =
@@ -359,12 +361,19 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
       if (syncNeedsAttention) {
         badgeVariant = networkAlert ? "warning" : "danger";
         badges.push(networkAlert ? "Revisar conexión" : "Sincronización pendiente");
+        srNotices.push(
+          networkAlert
+            ? "Atención: revisar la conexión antes de continuar con este módulo."
+            : "Atención: la sincronización presenta incidencias que requieren revisión.",
+        );
       } else if (operationsNeedsAttention) {
         badgeVariant = "danger";
         badges.push("Revisar procesos");
+        srNotices.push("Atención: operaciones con errores pendientes.");
       } else if (reportsHasMessage) {
         badgeVariant = "info";
         badges.push("Nuevo aviso");
+        srNotices.push("Existe un aviso nuevo asociado a reportes.");
       }
 
       return {
@@ -374,6 +383,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         icon: item.icon,
         badge: badges.length > 0 ? badges.join(" · ") : undefined,
         badgeVariant,
+        isActive,
+        srHint: srNotices.length > 0 ? srNotices.join(" ") : undefined,
       };
     });
   }, [

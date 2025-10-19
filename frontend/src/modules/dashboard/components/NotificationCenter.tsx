@@ -46,7 +46,12 @@ function NotificationCenter({
       onToggle={handleToggle}
       aria-labelledby={summaryId}
     >
-      <summary id={summaryId} aria-live="polite">
+      <summary
+        id={summaryId}
+        aria-live="polite"
+        aria-controls={regionId}
+        aria-expanded={isOpen}
+      >
         <span className="notification-center__icon" aria-hidden="true">
           🔔
         </span>
