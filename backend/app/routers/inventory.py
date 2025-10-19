@@ -1,6 +1,7 @@
 """Operaciones sobre inventario, movimientos y reportes puntuales."""
 from __future__ import annotations
 
+import json
 from datetime import date
 from decimal import Decimal
 
@@ -8,6 +9,7 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
+    Form,
     HTTPException,
     Path,
     Query,
@@ -23,9 +25,89 @@ from ..core.roles import GESTION_ROLES, MOVEMENT_ROLES, REPORTE_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import inventory_import
+from ..services import inventory_import, inventory_smart_import
 
 router = APIRouter(prefix="/inventory", tags=["inventario"])
+
+
+@router.post(
+    "/import/smart",
+    response_model=schemas.InventorySmartImportResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def smart_import_inventory(
+    file: UploadFile = File(...),
+    commit: bool = Form(default=False),
+    overrides: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        parsed_overrides = json.loads(overrides) if overrides else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="overrides_invalid",
+        ) from exc
+    if not isinstance(parsed_overrides, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="overrides_invalid",
+        )
+    overrides_cast = {
+        str(key): str(value) for key, value in parsed_overrides.items()
+    }
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="archivo_vacio",
+        )
+    try:
+        response = inventory_smart_import.process_smart_import(
+            db,
+            file_bytes=contents,
+            filename=file.filename or "importacion.xlsx",
+            commit=commit,
+            overrides=overrides_cast,
+            performed_by_id=current_user.id if current_user else None,
+            username=getattr(current_user, "username", None),
+            reason=reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return response
+
+
+@router.get(
+    "/import/smart/history",
+    response_model=list[schemas.InventoryImportHistoryEntry],
+)
+def list_import_history(
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    records = crud.list_inventory_import_history(db, limit=limit)
+    return [schemas.InventoryImportHistoryEntry.model_validate(record) for record in records]
+
+
+@router.get(
+    "/devices/incomplete",
+    response_model=list[schemas.DeviceResponse],
+)
+def list_incomplete_inventory_devices(
+    store_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    devices = crud.list_incomplete_devices(db, store_id=store_id, limit=limit)
+    return [schemas.DeviceResponse.model_validate(device) for device in devices]
 
 
 @router.post(

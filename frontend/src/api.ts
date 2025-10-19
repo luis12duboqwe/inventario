@@ -139,6 +139,7 @@ export type Device = {
   store_id: number;
   unit_price: number;
   inventory_value: number;
+  completo: boolean;
   imei?: string | null;
   serial?: string | null;
   marca?: string | null;
@@ -194,6 +195,7 @@ export type DeviceUpdateInput = {
   descripcion?: string | null;
   imagen_url?: string | null;
   precio_venta?: number | null;
+  completo?: boolean;
 };
 
 export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
@@ -852,6 +854,54 @@ export type DeviceImportSummary = {
   updated: number;
   skipped: number;
   errors: Array<{ row: number; message: string }>;
+};
+
+export type SmartImportColumnMatch = {
+  campo: string;
+  encabezado_origen: string | null;
+  estado: "ok" | "pendiente" | "falta";
+  tipo_dato?: string | null;
+  ejemplos: string[];
+};
+
+export type InventorySmartImportPreview = {
+  columnas: SmartImportColumnMatch[];
+  columnas_detectadas: Record<string, string | null>;
+  columnas_faltantes: string[];
+  total_filas: number;
+  registros_incompletos_estimados: number;
+  advertencias: string[];
+  patrones_sugeridos: Record<string, string>;
+};
+
+export type InventorySmartImportResult = {
+  total_procesados: number;
+  nuevos: number;
+  actualizados: number;
+  registros_incompletos: number;
+  columnas_faltantes: string[];
+  advertencias: string[];
+  tiendas_nuevas: string[];
+  duracion_segundos?: number | null;
+  resumen: string;
+};
+
+export type InventorySmartImportResponse = {
+  preview: InventorySmartImportPreview;
+  resultado?: InventorySmartImportResult | null;
+};
+
+export type InventoryImportHistoryEntry = {
+  id: number;
+  nombre_archivo: string;
+  fecha: string;
+  columnas_detectadas: Record<string, string | null>;
+  registros_incompletos: number;
+  total_registros: number;
+  nuevos: number;
+  actualizados: number;
+  advertencias: string[];
+  duracion_segundos?: number | null;
 };
 
 export type MovementInput = {
@@ -2200,6 +2250,53 @@ export function importStoreDevicesCsv(
     { method: "POST", body: formData, headers: { "X-Reason": reason } },
     token,
   );
+}
+
+export function smartInventoryImport(
+  token: string,
+  file: File,
+  reason: string,
+  options: { commit?: boolean; overrides?: Record<string, string> } = {},
+): Promise<InventorySmartImportResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("commit", options.commit ? "true" : "false");
+  if (options.overrides && Object.keys(options.overrides).length > 0) {
+    formData.append("overrides", JSON.stringify(options.overrides));
+  }
+  return request<InventorySmartImportResponse>(
+    "/inventory/import/smart",
+    { method: "POST", body: formData, headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function getSmartImportHistory(
+  token: string,
+  limit = 10,
+): Promise<InventoryImportHistoryEntry[]> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  return request<InventoryImportHistoryEntry[]>(
+    `/inventory/import/smart/history?${params.toString()}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function getIncompleteDevices(
+  token: string,
+  storeId?: number,
+  limit = 100,
+): Promise<Device[]> {
+  const params = new URLSearchParams();
+  if (storeId != null) {
+    params.set("store_id", String(storeId));
+  }
+  params.set("limit", String(limit));
+  const query = params.toString();
+  const url = query ? `/inventory/devices/incomplete?${query}` : "/inventory/devices/incomplete";
+  return request<Device[]>(url, { method: "GET" }, token);
 }
 
 export function updateDevice(

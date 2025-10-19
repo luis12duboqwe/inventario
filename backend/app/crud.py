@@ -4209,6 +4209,35 @@ def get_store(db: Session, store_id: int) -> models.Store:
         raise LookupError("store_not_found") from exc
 
 
+def get_store_by_name(db: Session, name: str) -> models.Store | None:
+    normalized = (name or "").strip()
+    if not normalized:
+        return None
+    statement = select(models.Store).where(
+        func.lower(models.Store.name) == normalized.lower()
+    )
+    return db.scalars(statement).first()
+
+
+def ensure_store_by_name(
+    db: Session, name: str, *, performed_by_id: int | None = None
+) -> tuple[models.Store, bool]:
+    existing = get_store_by_name(db, name)
+    if existing is not None:
+        return existing, False
+    payload = schemas.StoreCreate(
+        name=name.strip(),
+        location=None,
+        phone=None,
+        manager=None,
+        status="activa",
+        timezone="UTC",
+        code=None,
+    )
+    store = create_store(db, payload, performed_by_id=performed_by_id)
+    return store, True
+
+
 def create_device(
     db: Session,
     store_id: int,
@@ -4297,6 +4326,40 @@ def get_device_global(db: Session, device_id: int) -> models.Device:
     if device is None:
         raise LookupError("device_not_found")
     return device
+
+
+def find_device_for_import(
+    db: Session,
+    *,
+    store_id: int,
+    imei: str | None = None,
+    serial: str | None = None,
+    modelo: str | None = None,
+    color: str | None = None,
+) -> models.Device | None:
+    if imei:
+        statement = select(models.Device).where(
+            func.lower(models.Device.imei) == imei.lower()
+        )
+        device = db.scalars(statement).first()
+        if device is not None:
+            return device
+    if serial:
+        statement = select(models.Device).where(
+            func.lower(models.Device.serial) == serial.lower()
+        )
+        device = db.scalars(statement).first()
+        if device is not None:
+            return device
+    if modelo and color:
+        statement = (
+            select(models.Device)
+            .where(models.Device.store_id == store_id)
+            .where(func.lower(models.Device.modelo) == modelo.lower())
+            .where(func.lower(models.Device.color) == color.lower())
+        )
+        return db.scalars(statement).first()
+    return None
 
 
 def update_device(
@@ -4545,6 +4608,25 @@ def search_devices(db: Session, filters: schemas.DeviceSearchFilters) -> list[mo
             models.Device.fecha_ingreso >= start.date(), models.Device.fecha_ingreso <= end.date()
         )
     statement = statement.order_by(models.Device.store_id.asc(), models.Device.sku.asc())
+    return list(db.scalars(statement).unique())
+
+
+def list_incomplete_devices(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    limit: int | None = None,
+) -> list[models.Device]:
+    statement = (
+        select(models.Device)
+        .options(joinedload(models.Device.store))
+        .where(models.Device.completo.is_(False))
+        .order_by(models.Device.id.desc())
+    )
+    if store_id is not None:
+        statement = statement.where(models.Device.store_id == store_id)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
 
 
@@ -10053,3 +10135,57 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
         },
     }
     return snapshot
+
+
+def create_inventory_import_record(
+    db: Session,
+    *,
+    filename: str,
+    columnas_detectadas: dict[str, str | None],
+    registros_incompletos: int,
+    total_registros: int,
+    nuevos: int,
+    actualizados: int,
+    advertencias: list[str],
+    patrones_columnas: dict[str, str],
+    duration_seconds: float | None = None,
+) -> models.InventoryImportTemp:
+    duration_value = None
+    if duration_seconds is not None:
+        duration_value = Decimal(str(round(duration_seconds, 2)))
+    record = models.InventoryImportTemp(
+        nombre_archivo=filename,
+        columnas_detectadas=columnas_detectadas,
+        registros_incompletos=registros_incompletos,
+        total_registros=total_registros,
+        nuevos=nuevos,
+        actualizados=actualizados,
+        advertencias=advertencias,
+        patrones_columnas=patrones_columnas,
+        duracion_segundos=duration_value,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def list_inventory_import_history(db: Session, limit: int = 10) -> list[models.InventoryImportTemp]:
+    statement = (
+        select(models.InventoryImportTemp)
+        .order_by(models.InventoryImportTemp.fecha.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(statement))
+
+
+def get_known_import_column_patterns(db: Session) -> dict[str, str]:
+    patterns: dict[str, str] = {}
+    statement = select(models.InventoryImportTemp.patrones_columnas)
+    for mapping in db.scalars(statement):
+        if not mapping:
+            continue
+        for key, value in mapping.items():
+            if key not in patterns:
+                patterns[key] = value
+    return patterns

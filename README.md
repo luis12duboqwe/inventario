@@ -63,6 +63,37 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Experiencia UI responsiva** con toasts contextuales, animaciones suaves y selector de tema claro/oscuro que mantiene el modo oscuro como predeterminado.
 - **Interfaz animada Softmobile** con pantalla de bienvenida en movimiento, iconografía por módulo, toasts de sincronización modernizados y modo táctil optimizado para el POS, impulsados por `framer-motion`.
 
+## Importación Inteligente desde Excel – v2.2.0 implementada y verificada
+
+- **Servicio de análisis dinámico**: el backend procesa archivos `.xlsx` o `.csv`, normaliza encabezados (minúsculas, sin tildes ni espacios), detecta IMEI por patrón de 15 dígitos y clasifica tipos de datos (texto, número, fecha, booleano). Los resultados se registran en la nueva tabla `importaciones_temp` junto con advertencias y patrones aprendidos para futuras corridas.【F:backend/app/services/inventory_smart_import.py†L16-L449】【F:backend/app/models/__init__.py†L588-L640】
+- **Inserción adaptativa**: cada fila crea o actualiza productos y movimientos en inventario. Si faltan campos críticos, el registro se marca como `completo=False`, se insertan valores `NULL` o "pendiente" y se crean sucursales al vuelo cuando el archivo referencia tiendas inexistentes.【F:backend/app/services/inventory_smart_import.py†L234-L410】
+- **Resiliencia de formato**: la lectura soporta `.csv` renombrados como `.xlsx`, detecta encabezados vacíos y continúa la importación incluso cuando el archivo no es un ZIP válido, reduciendo rechazos por errores comunes de los proveedores.【F:backend/app/services/inventory_smart_import.py†L66-L158】
+- **API dedicada**: se exponen los endpoints `POST /inventory/import/smart`, `GET /inventory/import/smart/history` y `GET /inventory/devices/incomplete`, todos restringidos a roles de gestión y protegidos por el motivo corporativo `X-Reason` (≥5 caracteres).【F:backend/app/routers/inventory.py†L22-L101】
+- **Interfaz React optimizada**: la pestaña «Búsqueda avanzada» incorpora el panel **Importar desde Excel (inteligente)** con barra de progreso, tabla de mapeo de columnas (verde = detectada, ámbar = parcial, rojo = faltante), reasignación manual de encabezados y descarga del resumen en PDF/CSV. El historial muestra fecha, totales y advertencias recientes.【F:frontend/src/modules/inventory/pages/InventoryPage.tsx†L135-L1675】
+- **Correcciones pendientes centralizadas**: la nueva pestaña «Correcciones pendientes» lista los dispositivos incompletos por tienda, resalta los campos faltantes y permite abrir el diálogo de edición inmediatamente tras la importación.【F:frontend/src/modules/inventory/pages/InventoryPage.tsx†L1469-L1649】
+- **Estilos corporativos**: los bloques `.smart-import` y `.pending-corrections` mantienen el tema oscuro con bordes cian, notas diferenciadas por severidad y tablas responsivas para análisis desde escritorio o tablet.【F:frontend/src/styles.css†L5814-L6068】
+- **Cobertura automática**: nuevas pruebas `pytest` validan overrides, creación de sucursales y respuestas HTTP, mientras que Vitest ejercita el flujo completo (preview → overrides → commit) y la pestaña de correcciones.【F:backend/tests/test_inventory_smart_import.py†L1-L145】【F:frontend/src/modules/inventory/pages/__tests__/InventoryPage.test.tsx†L1-L840】
+
+**Estructura mínima compatible**
+
+| Sucursal | Dispositivo | Identificador | Color | Cantidad | Precio | Estado |
+| --- | --- | --- | --- | --- | --- | --- |
+| Sucursal Norte | Serie X | 990000000000001 | Negro | 3 | 18999 | Disponible |
+| CDMX Centro | Galaxy A35 | 356789012345678 | Azul | 2 | 8999 | Revisar |
+
+> La plataforma aprende nuevos encabezados («Dispositivo», «Identificador», «Revisar») y los asocia a los campos internos (`modelo`, `imei`, `estado`). Las columnas faltantes se marcan como pendientes sin detener la carga.
+
+**Flujo sugerido en el panel de Inventario**
+
+1. Ingresar a **Inventario → Búsqueda avanzada → Importar desde Excel (inteligente)** y seleccionar el archivo (`.xlsx`/`.csv`).
+2. Presionar **Analizar estructura**, revisar el mapa de columnas y reasignar manualmente encabezados no reconocidos (select «Automático» → encabezado origen).
+3. Resolver advertencias si es necesario; repetir el análisis hasta que todas las columnas clave estén en verde.
+4. Ejecutar **Importar desde Excel (inteligente)**. El resumen indica registros procesados, nuevos/actualizados, incompletos, columnas faltantes, tiendas creadas y duración.
+5. Consultar **Historial reciente** para validar cada corrida y descargar los reportes en PDF/CSV.
+6. Ir a **Correcciones pendientes** para completar fichas con datos incompletos y sincronizar con el inventario corporativo.
+
+El sistema soporta archivos de más de 1 000 filas, conserva compatibilidad con catálogos previos y registra logs `info`/`warning` por importación para auditoría corporativa.【F:backend/app/crud.py†L10135-L10168】
+
 ### Plan activo de finalización v2.2.0
 
 | Paso | Estado | Directrices |

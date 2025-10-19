@@ -157,6 +157,10 @@ class DeviceBase(BaseModel):
         max_length=255,
         description="URL de la imagen representativa del producto",
     )
+    completo: bool = Field(
+        default=True,
+        description="Indica si la ficha del producto cuenta con todos los datos obligatorios",
+    )
 
     @field_serializer("unit_price")
     @classmethod
@@ -280,6 +284,7 @@ class DeviceUpdate(BaseModel):
     ubicacion: str | None = Field(default=None, max_length=120)
     descripcion: str | None = Field(default=None, max_length=1024)
     imagen_url: str | None = Field(default=None, max_length=255)
+    completo: bool | None = Field(default=None)
 
     @model_validator(mode="before")
     @classmethod
@@ -344,6 +349,56 @@ class DeviceResponse(DeviceBase):
     @computed_field(return_type=float)  # type: ignore[misc]
     def inventory_value(self) -> float:
         return float(self.quantity * self.unit_price)
+
+
+class SmartImportColumnMatch(BaseModel):
+    campo: str
+    encabezado_origen: str | None = None
+    estado: Literal["ok", "pendiente", "falta"]
+    tipo_dato: str | None = None
+    ejemplos: list[str] = Field(default_factory=list)
+
+
+class InventorySmartImportPreview(BaseModel):
+    columnas: list[SmartImportColumnMatch]
+    columnas_detectadas: dict[str, str | None]
+    columnas_faltantes: list[str] = Field(default_factory=list)
+    total_filas: int
+    registros_incompletos_estimados: int
+    advertencias: list[str] = Field(default_factory=list)
+    patrones_sugeridos: dict[str, str] = Field(default_factory=dict)
+
+
+class InventorySmartImportResult(BaseModel):
+    total_procesados: int
+    nuevos: int
+    actualizados: int
+    registros_incompletos: int
+    columnas_faltantes: list[str] = Field(default_factory=list)
+    advertencias: list[str] = Field(default_factory=list)
+    tiendas_nuevas: list[str] = Field(default_factory=list)
+    duracion_segundos: float | None = None
+    resumen: str
+
+
+class InventorySmartImportResponse(BaseModel):
+    preview: InventorySmartImportPreview
+    resultado: InventorySmartImportResult | None = None
+
+
+class InventoryImportHistoryEntry(BaseModel):
+    id: int
+    nombre_archivo: str
+    fecha: datetime
+    columnas_detectadas: dict[str, str | None]
+    registros_incompletos: int
+    total_registros: int
+    nuevos: int
+    actualizados: int
+    advertencias: list[str]
+    duracion_segundos: float | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DeviceSearchFilters(BaseModel):
@@ -3300,6 +3355,11 @@ __all__ = [
     "DeviceIdentifierRequest",
     "DeviceIdentifierResponse",
     "DeviceUpdate",
+    "SmartImportColumnMatch",
+    "InventorySmartImportPreview",
+    "InventorySmartImportResult",
+    "InventorySmartImportResponse",
+    "InventoryImportHistoryEntry",
     "InventoryMetricsResponse",
     "InventorySummary",
     "DashboardChartPoint",

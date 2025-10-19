@@ -7,6 +7,7 @@ import {
   BarChart3,
   Boxes,
   Building2,
+  ClipboardCheck,
   Cog,
   DollarSign,
   FileSpreadsheet,
@@ -33,6 +34,9 @@ import type {
   DeviceImportSummary,
   DeviceListFilters,
   DeviceUpdateInput,
+  InventoryImportHistoryEntry,
+  InventorySmartImportPreview,
+  InventorySmartImportResult,
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
@@ -52,7 +56,13 @@ type StatusCard = {
   badge?: StatusBadge;
 };
 
-type InventoryTabId = "overview" | "movements" | "alerts" | "reports" | "advanced";
+type InventoryTabId =
+  | "overview"
+  | "movements"
+  | "alerts"
+  | "reports"
+  | "advanced"
+  | "corrections";
 
 type TabContent = TabOption<InventoryTabId> & { content: ReactNode };
 
@@ -150,6 +160,9 @@ function InventoryPage() {
     downloadTopProductsCsv,
     downloadTopProductsPdf,
     downloadTopProductsXlsx,
+    smartImportInventory,
+    fetchSmartImportHistory,
+    fetchIncompleteDevices,
   } = useInventoryModule();
 
   const [inventoryQuery, setInventoryQuery] = useState("");
@@ -163,7 +176,20 @@ function InventoryPage() {
   const [importingCatalog, setImportingCatalog] = useState(false);
   const [catalogFile, setCatalogFile] = useState<File | null>(null);
   const [lastImportSummary, setLastImportSummary] = useState<DeviceImportSummary | null>(null);
+  const [smartImportFile, setSmartImportFile] = useState<File | null>(null);
+  const [smartImportPreviewState, setSmartImportPreviewState] =
+    useState<InventorySmartImportPreview | null>(null);
+  const [smartImportResult, setSmartImportResult] = useState<InventorySmartImportResult | null>(null);
+  const [smartImportReason, setSmartImportReason] = useState<string | null>(null);
+  const [smartImportOverrides, setSmartImportOverrides] = useState<Record<string, string>>({});
+  const [smartImportLoading, setSmartImportLoading] = useState(false);
+  const [smartImportHistory, setSmartImportHistory] = useState<InventoryImportHistoryEntry[]>([]);
+  const [smartImportHistoryLoading, setSmartImportHistoryLoading] = useState(false);
+  const [pendingDevices, setPendingDevices] = useState<Device[]>([]);
+  const [pendingDevicesLoading, setPendingDevicesLoading] = useState(false);
+  const [smartPreviewDirty, setSmartPreviewDirty] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const smartFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setInventoryQuery("");
@@ -222,6 +248,116 @@ function InventoryPage() {
       });
     });
   }, [devices, estadoFilter, inventoryQuery]);
+
+  const storeNameById = useMemo(() => {
+    const mapping = new Map<number, string>();
+    stores.forEach((store) => mapping.set(store.id, store.name));
+    return mapping;
+  }, [stores]);
+
+  const smartImportHeaders = useMemo(() => {
+    if (!smartImportPreviewState) {
+      return [] as string[];
+    }
+    const headers = new Set<string>();
+    smartImportPreviewState.columnas.forEach((match) => {
+      if (match.encabezado_origen) {
+        headers.add(match.encabezado_origen);
+      }
+    });
+    return Array.from(headers).sort((a, b) => a.localeCompare(b));
+  }, [smartImportPreviewState]);
+
+  const buildSmartSummaryPdf = useCallback((summary: string) => {
+    const sanitizedLines = summary
+      .split("\n")
+      .map((line) => line.replace(/([()\\])/g, "\\$1"));
+    const streamLines = ["BT", "/F1 12 Tf", "50 800 Td"];
+    sanitizedLines.forEach((line, index) => {
+      if (index === 0) {
+        streamLines.push(`(${line}) Tj`);
+      } else {
+        streamLines.push("T*");
+        streamLines.push(`(${line}) Tj`);
+      }
+    });
+    streamLines.push("ET");
+    const streamContent = streamLines.join("\n");
+    const objects = [
+      "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+      "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+      "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n",
+      "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+      `5 0 obj << /Length ${streamContent.length} >>\nstream\n${streamContent}\nendstream\nendobj\n`,
+    ];
+    const header = "%PDF-1.4\n";
+    let offset = header.length;
+    const xrefEntries = ["0000000000 65535 f \n"];
+    const bodyParts: string[] = [];
+    objects.forEach((obj) => {
+      xrefEntries.push(`${String(offset).padStart(10, "0")} 00000 n \n`);
+      bodyParts.push(obj);
+      offset += obj.length;
+    });
+    const xrefPosition = offset;
+    const xref = `xref\n0 ${objects.length + 1}\n${xrefEntries.join("")}`;
+    const trailer = `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPosition}\n%%EOF`;
+    return new Blob([header, ...bodyParts, xref, trailer], { type: "application/pdf" });
+  }, []);
+
+  const downloadSmartResultCsv = useCallback(() => {
+    if (!smartImportResult) {
+      return;
+    }
+    const lines = [
+      "Campo,Valor",
+      `Total procesados,${smartImportResult.total_procesados}`,
+      `Nuevos,${smartImportResult.nuevos}`,
+      `Actualizados,${smartImportResult.actualizados}`,
+      `Registros incompletos,${smartImportResult.registros_incompletos}`,
+      `Tiendas nuevas,${smartImportResult.tiendas_nuevas.join(" | ") || "Ninguna"}`,
+    ];
+    if (smartImportResult.columnas_faltantes.length > 0) {
+      lines.push(
+        `Columnas faltantes,"${smartImportResult.columnas_faltantes.join(" | ").replace(/"/g, '""')}"`,
+      );
+    } else {
+      lines.push("Columnas faltantes,N/A");
+    }
+    if (smartImportResult.advertencias.length > 0) {
+      smartImportResult.advertencias.forEach((warning, index) => {
+        lines.push(
+          `Advertencia ${index + 1},"${warning.replace(/"/g, '""')}"`,
+        );
+      });
+    } else {
+      lines.push("Advertencias,Ninguna");
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "importacion_inteligente_resumen.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [smartImportResult]);
+
+  const downloadSmartResultPdf = useCallback(() => {
+    if (!smartImportResult) {
+      return;
+    }
+    const blob = buildSmartSummaryPdf(smartImportResult.resumen);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "importacion_inteligente_resumen.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [buildSmartSummaryPdf, smartImportResult]);
 
   const deviceFilters = useMemo<DeviceListFilters>(() => {
     const filters: DeviceListFilters = {};
@@ -362,6 +498,176 @@ function InventoryPage() {
     }
   }, [catalogFile, importCatalogCsv, pushToast, selectedStore, setError]);
 
+  const ensureSmartReason = useCallback((): string | null => {
+    const defaultReason = selectedStore
+      ? `Importación inteligente ${selectedStore.name}`
+      : "Importación inteligente de inventario";
+    if (smartImportReason && smartImportReason.length >= 5) {
+      return smartImportReason;
+    }
+    const reason = promptCorporateReason(defaultReason);
+    if (reason === null) {
+      pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
+      return null;
+    }
+    const normalized = reason.trim();
+    if (normalized.length < 5) {
+      const message = "Ingresa un motivo corporativo de al menos 5 caracteres.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return null;
+    }
+    setSmartImportReason(normalized);
+    return normalized;
+  }, [pushToast, selectedStore, setError, smartImportReason]);
+
+  const refreshSmartImportHistory = useCallback(async () => {
+    try {
+      setSmartImportHistoryLoading(true);
+      const history = await fetchSmartImportHistory(10);
+      setSmartImportHistory(history);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible obtener el historial de importaciones inteligentes.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+    } finally {
+      setSmartImportHistoryLoading(false);
+    }
+  }, [fetchSmartImportHistory, pushToast, setError]);
+
+  const refreshPendingDevices = useCallback(async () => {
+    try {
+      setPendingDevicesLoading(true);
+      const devicesResponse = await fetchIncompleteDevices(selectedStoreId ?? undefined, 200);
+      setPendingDevices(devicesResponse);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible obtener los dispositivos con información pendiente.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+    } finally {
+      setPendingDevicesLoading(false);
+    }
+  }, [fetchIncompleteDevices, pushToast, selectedStoreId, setError]);
+
+  useEffect(() => {
+    void refreshSmartImportHistory();
+  }, [refreshSmartImportHistory]);
+
+  useEffect(() => {
+    if (activeTab === "corrections") {
+      void refreshPendingDevices();
+    }
+  }, [activeTab, refreshPendingDevices]);
+
+  const handleSmartOverrideChange = useCallback((field: string, header: string) => {
+    setSmartImportOverrides((current) => {
+      const next = { ...current };
+      if (!header) {
+        delete next[field];
+      } else {
+        next[field] = header;
+      }
+      return next;
+    });
+    setSmartPreviewDirty(true);
+  }, []);
+
+  const handleSmartPreview = useCallback(async () => {
+    if (!smartImportFile) {
+      const message = "Selecciona un archivo Excel o CSV antes de analizar.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
+    const reason = ensureSmartReason();
+    if (!reason) {
+      return;
+    }
+    setSmartImportLoading(true);
+    try {
+      const response = await smartImportInventory(smartImportFile, reason, {
+        commit: false,
+        overrides: smartImportOverrides,
+      });
+      setSmartImportPreviewState(response.preview);
+      setSmartImportResult(response.resultado ?? null);
+      setSmartPreviewDirty(false);
+      if (response.preview.advertencias.length > 0) {
+        pushToast({ message: "Análisis completado con advertencias.", variant: "warning" });
+      } else {
+        pushToast({ message: "Análisis completado correctamente.", variant: "success" });
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "No fue posible analizar el archivo de inventario.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+    } finally {
+      setSmartImportLoading(false);
+    }
+  }, [
+    ensureSmartReason,
+    pushToast,
+    setError,
+    smartImportFile,
+    smartImportInventory,
+    smartImportOverrides,
+  ]);
+
+  const handleSmartCommit = useCallback(async () => {
+    if (!smartImportFile) {
+      const message = "Selecciona un archivo antes de importar.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+      return;
+    }
+    const reason = ensureSmartReason();
+    if (!reason) {
+      return;
+    }
+    setSmartImportLoading(true);
+    try {
+      const response = await smartImportInventory(smartImportFile, reason, {
+        commit: true,
+        overrides: smartImportOverrides,
+      });
+      setSmartImportPreviewState(response.preview);
+      setSmartImportResult(response.resultado ?? null);
+      setSmartPreviewDirty(false);
+      setSmartImportFile(null);
+      if (smartFileInputRef.current) {
+        smartFileInputRef.current.value = "";
+      }
+      pushToast({ message: "Importación inteligente completada.", variant: "success" });
+      await refreshSmartImportHistory();
+      await refreshPendingDevices();
+      void refreshSummary();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "No fue posible completar la importación inteligente.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+    } finally {
+      setSmartImportLoading(false);
+    }
+  }, [
+    ensureSmartReason,
+    pushToast,
+    refreshPendingDevices,
+    refreshSmartImportHistory,
+    refreshSummary,
+    setError,
+    smartImportFile,
+    smartImportInventory,
+    smartImportOverrides,
+  ]);
+
   const updateThresholdDraftValue = useCallback((value: number) => {
     if (Number.isNaN(value)) {
       return;
@@ -401,17 +707,55 @@ function InventoryPage() {
     lowStockThreshold,
   ]);
 
-  const handleSubmitDeviceUpdates = useCallback(async (updates: DeviceUpdateInput, reason: string) => {
-    if (!editingDevice) {
-      return;
-    }
-    try {
-      await handleDeviceUpdate(editingDevice.id, updates, reason);
-      closeEditDialog();
-    } catch (error) {
-      // La notificación de error ya se gestiona desde el contexto.
-    }
-  }, [closeEditDialog, editingDevice, handleDeviceUpdate]);
+  const handleSubmitDeviceUpdates = useCallback(
+    async (updates: DeviceUpdateInput, reason: string) => {
+      if (!editingDevice) {
+        return;
+      }
+      try {
+        await handleDeviceUpdate(editingDevice.id, updates, reason);
+        closeEditDialog();
+        await refreshPendingDevices();
+        void refreshSummary();
+      } catch (error) {
+        // La notificación de error ya se gestiona desde el contexto.
+      }
+    },
+    [closeEditDialog, editingDevice, handleDeviceUpdate, refreshPendingDevices, refreshSummary],
+  );
+
+  const resolvePendingFields = useCallback(
+    (device: Device): string[] => {
+      const missing: string[] = [];
+      const isEmpty = (value: string | null | undefined) => !value || value.trim().length === 0;
+      if (isEmpty(device.marca)) {
+        missing.push("Marca");
+      }
+      if (isEmpty(device.modelo)) {
+        missing.push("Modelo");
+      }
+      if (isEmpty(device.color)) {
+        missing.push("Color");
+      }
+      if (!device.capacidad && (device.capacidad_gb == null || device.capacidad_gb === 0)) {
+        missing.push("Capacidad");
+      }
+      if (isEmpty(device.ubicacion)) {
+        missing.push("Ubicación");
+      }
+      if (isEmpty(device.proveedor)) {
+        missing.push("Proveedor");
+      }
+      if (isEmpty(device.imei)) {
+        missing.push("IMEI");
+      }
+      if (!storeNameById.get(device.store_id)) {
+        missing.push("Sucursal");
+      }
+      return missing;
+    },
+    [storeNameById],
+  );
 
   const triggerDownloadReport = useCallback(() => {
     void handleDownloadReportClick();
@@ -1099,6 +1443,256 @@ function InventoryPage() {
               ubicación, fechas y descripción.
             </p>
           )}
+          <div className="smart-import">
+            <div className="smart-import__header">
+              <h3>Importar desde Excel (inteligente)</h3>
+              <p className="muted-text">
+                Analiza cualquier archivo Excel o CSV, detecta columnas clave y completa el inventario aunque falten campos.
+              </p>
+            </div>
+            <label className="file-input">
+              <span>Archivo Excel o CSV</span>
+              <input
+                ref={smartFileInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.csv,text/csv"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setSmartImportFile(file);
+                  setSmartImportPreviewState(null);
+                  setSmartImportResult(null);
+                  setSmartImportOverrides({});
+                  setSmartPreviewDirty(false);
+                }}
+              />
+              <small className="muted-text">
+                {smartImportFile
+                  ? `Seleccionado: ${smartImportFile.name}`
+                  : "Soporta encabezados libres como tienda, modelo, IMEI, precio, cantidad, estado o ubicación."}
+              </small>
+            </label>
+            <div className="smart-import__actions">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  void handleSmartPreview();
+                }}
+                disabled={!smartImportFile || smartImportLoading}
+              >
+                {smartImportLoading ? "Analizando…" : "Analizar estructura"}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  void handleSmartCommit();
+                }}
+                disabled={
+                  smartImportLoading ||
+                  !smartImportFile ||
+                  smartPreviewDirty ||
+                  (!smartImportPreviewState && !smartImportResult)
+                }
+              >
+                {smartImportLoading ? "Procesando…" : "Importar desde Excel (inteligente)"}
+              </Button>
+            </div>
+            {smartPreviewDirty ? (
+              <p className="smart-import__note smart-import__note--warning">
+                Reanaliza el archivo para aplicar las reasignaciones de columnas.
+              </p>
+            ) : null}
+            {smartImportLoading ? <InlineFallback label="importación inteligente" /> : null}
+            {smartImportPreviewState ? (
+              <div className="smart-import__preview">
+                <h4>Columnas detectadas</h4>
+                <p className="muted-text">
+                  Registros incompletos estimados: {smartImportPreviewState.registros_incompletos_estimados}
+                </p>
+                {smartImportPreviewState.columnas_faltantes.length > 0 ? (
+                  <p className="smart-import__note smart-import__note--warning">
+                    Columnas faltantes: {smartImportPreviewState.columnas_faltantes.join(", ")}
+                  </p>
+                ) : (
+                  <p className="smart-import__note smart-import__note--success">
+                    Todas las columnas clave fueron identificadas.
+                  </p>
+                )}
+                {smartImportPreviewState.advertencias.length > 0 ? (
+                  <ul className="smart-import__warnings">
+                    {smartImportPreviewState.advertencias.map((warning, index) => {
+                      const [title, ...rest] = warning.split(":");
+                      if (rest.length === 0) {
+                        return <li key={`preview-warning-${index}`}>{warning}</li>;
+                      }
+                      const detail = rest.join(":").trim();
+                      return (
+                        <li key={`preview-warning-${index}`}>
+                          <span className="smart-import__warning-title">{title}</span>
+                          {detail ? (
+                            <>
+                              <span className="smart-import__warning-separator">·</span>
+                              <span className="smart-import__warning-detail">«{detail}»</span>
+                            </>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+                <div className="smart-import__table-wrapper">
+                  <table className="smart-import__table">
+                    <thead>
+                      <tr>
+                        <th>Campo del sistema</th>
+                        <th>Estado</th>
+                        <th>Encabezado detectado / reasignación</th>
+                        <th>Tipo</th>
+                        <th>Ejemplos</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {smartImportPreviewState.columnas.map((match) => {
+                        const currentHeader = smartImportOverrides[match.campo] ?? match.encabezado_origen ?? "";
+                        return (
+                          <tr key={match.campo}>
+                            <td>{match.campo}</td>
+                            <td>
+                              <span className={`smart-import-status smart-import-status--${match.estado}`}>
+                                {match.estado === "ok" ? "Detectada" : match.estado === "pendiente" ? "Parcial" : "Faltante"}
+                              </span>
+                            </td>
+                            <td>
+                              <select
+                                value={currentHeader}
+                                onChange={(event) => handleSmartOverrideChange(match.campo, event.target.value)}
+                              >
+                                <option value="">Automático</option>
+                                {smartImportHeaders.map((header) => (
+                                  <option key={`${match.campo}-${header}`} value={header}>
+                                    {header}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>{match.tipo_dato ?? "—"}</td>
+                            <td>
+                              {match.ejemplos.length === 0 ? (
+                                <span className="muted-text">Sin datos de muestra</span>
+                              ) : (
+                                <ul className="smart-import__samples">
+                                  {match.ejemplos.map((sample) => (
+                                    <li key={`${match.campo}-${sample}`}>{sample}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <p className="muted-text">
+                Analiza un archivo para obtener el mapa de columnas y detectar advertencias antes de importar.
+              </p>
+            )}
+            {smartImportResult ? (
+              <div className="smart-import__result">
+                <h4>Resumen de importación</h4>
+                <pre className="smart-import__summary">{smartImportResult.resumen}</pre>
+                {smartImportResult.columnas_faltantes.length > 0 ? (
+                  <p className="smart-import__note smart-import__note--warning">
+                    Columnas sin datos definitivos: {smartImportResult.columnas_faltantes.join(", ")}
+                  </p>
+                ) : null}
+                {smartImportResult.tiendas_nuevas.length > 0 ? (
+                  <p className="smart-import__note smart-import__note--success">
+                    Tiendas creadas automáticamente: {smartImportResult.tiendas_nuevas.join(", ")}
+                  </p>
+                ) : null}
+                {typeof smartImportResult.duracion_segundos === "number" ? (
+                  <p className="muted-text">
+                    Tiempo estimado: {smartImportResult.duracion_segundos.toFixed(1)} segundos
+                  </p>
+                ) : null}
+                {smartImportResult.advertencias.length > 0 ? (
+                  <ul className="smart-import__warnings">
+                    {smartImportResult.advertencias.map((warning, index) => {
+                      const [title, ...rest] = warning.split(":");
+                      if (rest.length === 0) {
+                        return <li key={`resultado-${index}`}>{warning}</li>;
+                      }
+                      const detail = rest.join(":").trim();
+                      return (
+                        <li key={`resultado-${index}`}>
+                          <span className="smart-import__warning-title">{title}</span>
+                          {detail ? (
+                            <>
+                              <span className="smart-import__warning-separator">·</span>
+                              <span className="smart-import__warning-detail">«{detail}»</span>
+                            </>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+                <div className="smart-import__result-actions">
+                  <Button variant="ghost" size="sm" type="button" onClick={downloadSmartResultCsv}>
+                    Descargar resumen CSV
+                  </Button>
+                  <Button variant="ghost" size="sm" type="button" onClick={downloadSmartResultPdf}>
+                    Descargar resumen PDF
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            <div className="smart-import__history">
+              <div className="smart-import__history-header">
+                <h4>Historial reciente</h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  onClick={() => void refreshSmartImportHistory()}
+                  disabled={smartImportHistoryLoading}
+                >
+                  Actualizar
+                </Button>
+              </div>
+              {smartImportHistoryLoading ? (
+                <InlineFallback label="historial de importaciones" />
+              ) : smartImportHistory.length === 0 ? (
+                <p className="muted-text">Aún no se registran importaciones inteligentes.</p>
+              ) : (
+                <ul className="smart-import__history-list">
+                  {smartImportHistory.map((entry) => (
+                    <li key={entry.id}>
+                      <strong>{entry.nombre_archivo}</strong>
+                      <span>{new Date(entry.fecha).toLocaleString("es-MX")}</span>
+                      <span>
+                        Procesados: {entry.total_registros} · Nuevos: {entry.nuevos} · Actualizados: {entry.actualizados}
+                      </span>
+                      {typeof entry.duracion_segundos === "number" ? (
+                        <span>Duración: {entry.duracion_segundos.toFixed(1)} s</span>
+                      ) : null}
+                      {entry.registros_incompletos > 0 ? (
+                        <span className="smart-import__history-warning">
+                          Incompletos: {entry.registros_incompletos}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -1111,6 +1705,110 @@ function InventoryPage() {
         Activa el flag corporativo <code>SOFTMOBILE_ENABLE_CATALOG_PRO</code> para habilitar el catálogo profesional.
       </p>
     </section>
+  );
+
+  const correctionsContent: ReactNode = (
+    <div className="section-grid">
+      <section className="card wide">
+        <header className="card-header">
+          <div>
+            <h2>Correcciones pendientes</h2>
+            <p className="card-subtitle">
+              Completa la información faltante detectada durante las importaciones inteligentes.
+            </p>
+          </div>
+          <div className="card-actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={() => void refreshPendingDevices()}
+              disabled={pendingDevicesLoading}
+            >
+              Actualizar
+            </Button>
+          </div>
+        </header>
+        {pendingDevicesLoading ? (
+          <InlineFallback label="dispositivos pendientes" />
+        ) : pendingDevices.length === 0 ? (
+          <p className="muted-text">
+            No hay dispositivos con datos pendientes. Verifica las próximas importaciones para mantenerlos al día.
+          </p>
+        ) : (
+          <div className="pending-corrections">
+            <p className="muted-text">
+              Dispositivos detectados: {pendingDevices.length}. Selecciona “Completar datos” para abrir la ficha y resolver los
+              campos faltantes.
+            </p>
+            <div className="pending-corrections__table-wrapper">
+              <table className="pending-corrections__table">
+                <thead>
+                  <tr>
+                    <th>Dispositivo</th>
+                    <th>Sucursal</th>
+                    <th>Campos faltantes</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingDevices.map((device) => {
+                    const missingFields = resolvePendingFields(device);
+                    const storeName =
+                      storeNameById.get(device.store_id) ?? `Sucursal nueva (ID ${device.store_id})`;
+                    return (
+                      <tr key={device.id}>
+                        <td>
+                          <div className="pending-corrections__device">
+                            <strong>{device.name}</strong>
+                            <span className="muted-text">SKU {device.sku}</span>
+                          </div>
+                        </td>
+                        <td>{storeName}</td>
+                        <td>
+                          {missingFields.length === 0 ? (
+                            <span className="muted-text">Sin pendientes</span>
+                          ) : (
+                            <ul className="pending-corrections__missing">
+                              {missingFields.map((field) => (
+                                <li key={`${device.id}-${field}`}>{field}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                        <td>
+                          <span
+                            className={`smart-import-status smart-import-status--${
+                              device.completo ? "ok" : "falta"
+                            }`}
+                          >
+                            {device.completo ? "Completo" : "Pendiente"}
+                          </span>
+                        </td>
+                        <td>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setEditingDevice(device);
+                              setIsEditDialogOpen(true);
+                            }}
+                          >
+                            Completar datos
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
   );
 
   const inventoryTabs = useMemo<TabContent[]>(
@@ -1145,8 +1843,21 @@ function InventoryPage() {
         icon: <Search size={16} aria-hidden />,
         content: advancedContent,
       },
+      {
+        id: "corrections",
+        label: "Correcciones pendientes",
+        icon: <ClipboardCheck size={16} aria-hidden />,
+        content: correctionsContent,
+      },
     ],
-    [advancedContent, alertsContent, movementsContent, overviewContent, reportsContent],
+    [
+      advancedContent,
+      alertsContent,
+      correctionsContent,
+      movementsContent,
+      overviewContent,
+      reportsContent,
+    ],
   );
 
   return (
