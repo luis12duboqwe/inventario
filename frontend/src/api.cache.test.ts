@@ -16,6 +16,54 @@ describe("memoización de peticiones del SDK", () => {
     clearRequestCache();
   });
 
+  it("agrupa solicitudes GET simultáneas y evita duplicados", async () => {
+    const payload = [
+      {
+        id: 1,
+        name: "Central",
+        status: "activa",
+        code: "SUC-001",
+        timezone: "America/Mexico_City",
+        inventory_value: 1000,
+        created_at: "2025-10-25T10:00:00Z",
+      },
+    ];
+
+    let releaseResponse: (() => void) | null = null;
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          releaseResponse = () =>
+            resolve({
+              ok: true,
+              status: 200,
+              headers: new Headers({ "content-type": "application/json" }),
+              json: vi.fn().mockResolvedValue(payload),
+              blob: vi.fn(),
+              text: vi.fn(),
+            } as unknown as Response);
+        }),
+    );
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const firstPromise = getStores(token);
+    const secondPromise = getStores(token);
+
+    if (!releaseResponse) {
+      throw new Error("La promesa de fetch no fue inicializada");
+    }
+
+    releaseResponse();
+
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(first).toEqual(payload);
+    expect(second).toEqual(payload);
+    expect(first).not.toBe(second);
+  });
+
   it("reutiliza la respuesta cacheada para solicitudes GET equivalentes", async () => {
     const payload = [
       {
