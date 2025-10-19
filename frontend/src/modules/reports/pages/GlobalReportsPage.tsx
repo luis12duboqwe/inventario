@@ -1,7 +1,20 @@
+import { Suspense, lazy, memo } from "react";
 import { BellRing } from "lucide-react";
 
 import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
-import GlobalReportsDashboard from "../components/GlobalReportsDashboard";
+
+const GlobalReportsDashboard = lazy(() => import("../components/GlobalReportsDashboard"));
+
+const ReportsLoader = memo(function ReportsLoader() {
+  return (
+    <section className="card" role="status" aria-live="polite">
+      <div className="loading-overlay compact">
+        <span className="spinner" aria-hidden="true" />
+        <span>Cargando reportes corporativos…</span>
+      </div>
+    </section>
+  );
+});
 
 function GlobalReportsPage() {
   const status: ModuleStatus = "ok";
@@ -15,7 +28,9 @@ function GlobalReportsPage() {
         status={status}
         statusLabel="Monitoreo activo"
       />
-      <GlobalReportsDashboard />
+      <Suspense fallback={<ReportsLoader />}>
+        <GlobalReportsDashboard />
+      </Suspense>
     </div>
   );
 }
