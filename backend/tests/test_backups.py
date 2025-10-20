@@ -34,6 +34,10 @@ def _auth_headers(client) -> dict[str, str]:
     return _login_headers(client, payload["username"], payload["password"])
 
 
+def _with_reason(headers: dict[str, str], reason: str = "Motivo QA de respaldo") -> dict[str, str]:
+    return {**headers, "X-Reason": reason}
+
+
 def test_backup_generation_and_pdf(client, tmp_path) -> None:
     headers = _auth_headers(client)
     settings.backup_directory = str(tmp_path / "respaldos")
@@ -64,7 +68,11 @@ def test_backup_generation_and_pdf(client, tmp_path) -> None:
     device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
     assert device_response.status_code == status.HTTP_201_CREATED
 
-    backup_response = client.post("/backups/run", json={"nota": "Respaldo QA"}, headers=headers)
+    backup_response = client.post(
+        "/backups/run",
+        json={"nota": "Respaldo QA"},
+        headers=_with_reason(headers, "Generar respaldo QA"),
+    )
     assert backup_response.status_code == status.HTTP_201_CREATED
     backup_data = backup_response.json()
 
@@ -146,7 +154,11 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
     device_response = client.post(f"/stores/{store_id}/devices", json=device_payload, headers=headers)
     assert device_response.status_code == status.HTTP_201_CREATED
 
-    backup_response = client.post("/backups/run", json={}, headers=headers)
+    backup_response = client.post(
+        "/backups/run",
+        json={},
+        headers=_with_reason(headers, "Respaldo inicial"),
+    )
     assert backup_response.status_code == status.HTTP_201_CREATED
     backup_data = backup_response.json()
     backup_id = backup_data["id"]
@@ -162,7 +174,7 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
     restore_response = client.post(
         f"/backups/{backup_id}/restore",
         json={"componentes": ["database"], "aplicar_base_datos": True},
-        headers=headers,
+        headers=_with_reason(headers, "Restaurar base de datos QA"),
     )
     assert restore_response.status_code == status.HTTP_200_OK
     restore_data = restore_response.json()
@@ -181,7 +193,7 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
     restore_files_response = client.post(
         f"/backups/{backup_id}/restore",
         json={"componentes": ["configuration", "critical_files"], "destino": str(destino_personalizado)},
-        headers=headers,
+        headers=_with_reason(headers, "Restaurar archivos criticos"),
     )
     assert restore_files_response.status_code == status.HTTP_200_OK
     restore_files_data = restore_files_response.json()
@@ -193,7 +205,7 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
     restore_config_response = client.post(
         f"/backups/{backup_id}/restore",
         json={"componentes": ["configuration"]},
-        headers=headers,
+        headers=_with_reason(headers, "Restaurar configuracion QA"),
     )
     assert restore_config_response.status_code == status.HTTP_200_OK
     restore_config_data = restore_config_response.json()
@@ -203,7 +215,7 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
     invalid_restore = client.post(
         f"/backups/{backup_id}/restore",
         json={"componentes": ["unknown_component"]},
-        headers=headers,
+        headers=_with_reason(headers, "Intento restauracion invalido"),
     )
     assert invalid_restore.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     error_detail = invalid_restore.json()["detail"][0]["msg"]
@@ -219,7 +231,11 @@ def test_backup_download_formats(client, tmp_path) -> None:
     headers = _auth_headers(client)
     settings.backup_directory = str(tmp_path / "respaldos")
 
-    backup_response = client.post("/backups/run", json={}, headers=headers)
+    backup_response = client.post(
+        "/backups/run",
+        json={},
+        headers=_with_reason(headers, "Respaldo para descargas"),
+    )
     assert backup_response.status_code == status.HTTP_201_CREATED, backup_response.json()
     backup_data = backup_response.json()
     backup_id = backup_data["id"]
@@ -234,7 +250,7 @@ def test_backup_download_formats(client, tmp_path) -> None:
         response = client.get(
             f"/backups/{backup_id}/download",
             params={"formato": formato},
-            headers=headers,
+            headers=_with_reason(headers, f"Descargar respaldo {formato}"),
         )
         assert response.status_code == status.HTTP_200_OK
         assert response.headers["content-type"].startswith(media_type)
@@ -255,7 +271,7 @@ def test_backup_download_formats(client, tmp_path) -> None:
         forbidden = client.get(
             f"/backups/{backup_id}/download",
             params={"formato": "zip"},
-            headers=user_headers,
+            headers=_with_reason(user_headers, "Descarga no autorizada"),
         )
         assert forbidden.status_code == status.HTTP_403_FORBIDDEN
 

@@ -3438,10 +3438,13 @@ export function triggerSync(token: string, storeId?: number) {
   }, token);
 }
 
-export function runBackup(token: string, note?: string): Promise<BackupJob> {
+export function runBackup(token: string, reason: string, note?: string): Promise<BackupJob> {
   return request<BackupJob>("/backups/run", {
     method: "POST",
     body: JSON.stringify({ nota: note }),
+    headers: {
+      "X-Reason": reason,
+    },
   }, token);
 }
 
