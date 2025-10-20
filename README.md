@@ -100,8 +100,8 @@ El sistema soporta archivos de más de 1 000 filas, conserva compatibilidad co
 | --- | --- | --- |
 | Conectar recordatorios, snooze y acuses en Seguridad (`AuditLog.tsx`) | ✅ Listo | La UI consume los servicios corporativos con motivo obligatorio, badges en vivo y registro de notas. |
 | Actualizar el tablero global con métricas de pendientes/atendidas | ✅ Listo | `GlobalMetrics.tsx` muestra conteos, último acuse y acceso directo a Seguridad desde el dashboard. |
-| Automatizar pruebas de frontend (Vitest/RTL) para recordatorios, acuses y descargas | 🔄 En progreso | Configurar `npm run test` con mocks de `api.ts`, validar snooze, motivos y descargas con `Blob`. |
-| Registrar bitácora operativa de corridas (`pytest`, `npm --prefix frontend run build`) y validaciones multiusuario | 🔄 En progreso | Documentar cada corrida en `docs/bitacora_pruebas_*.md` y verificar escenarios simultáneos en Seguridad. |
+| Automatizar pruebas de frontend (Vitest/RTL) para recordatorios, acuses y descargas | ✅ Completo | Suite Vitest activa (`npm --prefix frontend run test`) validando snooze, motivos obligatorios y descargas con `Blob`. |
+| Registrar bitácora operativa de corridas (`pytest`, `npm --prefix frontend run build`) y validaciones multiusuario | ✅ Completo | Entradas actualizadas en `docs/bitacora_pruebas_*.md` con ejecuciones recientes de backend/frontend y escenarios simultáneos en Seguridad. |
 
 **Directrices rápidas:**
 
