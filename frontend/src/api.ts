@@ -2351,6 +2351,14 @@ export function getImportValidationReport(token: string): Promise<ImportValidati
   return request<ImportValidationSummary>("/validacion/reporte", { method: "GET" }, token);
 }
 
+export function exportImportValidations(
+  token: string,
+  format: "excel" | "pdf",
+): Promise<Blob> {
+  const params = new URLSearchParams({ formato: format });
+  return request<Blob>(`/validacion/exportar?${params.toString()}`, { method: "GET" }, token);
+}
+
 export function getPendingImportValidations(
   token: string,
   limit = 200,
