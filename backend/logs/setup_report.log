@@ -1,3 +1,8 @@
+# Creado por Codex el 2025-10-20
+Estructura base Softmobile 2025 v2.2.0 inicializada.
+- Backend preparado con main.py, .env y base de datos SQLite.
+- Directorios models, routes, database y logs verificados.
+- Configuración lista para montar frontend/dist si existe.
 Creado por Codex el 2025-10-20 — Resumen de preparación Softmobile 2025 v2.2.0.
 
 1. Se generó `backend/main.py` con FastAPI, CORS habilitado, ruta `/api` y montaje opcional de `frontend/dist`.
