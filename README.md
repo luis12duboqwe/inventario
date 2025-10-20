@@ -11,6 +11,17 @@ Softmobile 2025 se compone de dos módulos cooperantes:
 
 La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
 
+## Preparación rápida del entorno base — 20/10/2025
+
+- ✅ **Backend**: se añadió el archivo `backend/main.py` con FastAPI, CORS abierto para redes locales y montaje automático de `frontend/dist` cuando está disponible. La ruta `/api` devuelve el mensaje corporativo «API online ✅ - Softmobile 2025 v2.2.0». El arranque valida la carpeta `database/softmobile.db` y registra advertencias si faltan directorios de modelos o rutas.
+- ✅ **Variables de entorno**: se generó `.env` en `backend/` con `DB_PATH=database/softmobile.db`, `API_PORT=8000` y `DEBUG=True` para alinearse con los empaquetados Windows.
+- ✅ **Estructura base**: se normalizaron las carpetas `backend/models`, `backend/routes`, `backend/database` y `backend/logs`, cada una con su `__init__.py` para permitir importaciones explícitas en instaladores.
+- ✅ **Logs de instalación**: `backend/logs/setup_report.log` y `backend/logs/verification_status.log` documentan la creación de la estructura y el resultado de las verificaciones del 20/10/2025.
+- ✅ **Frontend**: el comando `npm run build` (ejecutado el 20/10/2025) genera `frontend/dist`, permitiendo que el backend sirva los activos compilados cuando está en modo de producción local.
+- ✅ **Instaladores Windows**: se agregó `build/start_softmobile.bat` para iniciar backend + frontend y la plantilla `build/SoftmobileInstaller.iss` para empaquetar ambos módulos con Inno Setup.
+
+> Todas las acciones mantienen la versión **Softmobile 2025 v2.2.0** sin cambios y respetan el flujo actual de despliegue híbrido.
+
 ## Verificación Global - Módulo de Inventario Softmobile 2025 v2.2.0
 
 - **Fecha y hora**: 17/10/2025 05:41 UTC.
