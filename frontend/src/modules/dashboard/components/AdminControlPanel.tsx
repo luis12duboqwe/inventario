@@ -80,37 +80,37 @@ function AdminControlPanel({
           items={notificationItems}
         />
       </header>
-      <div className="admin-control-panel__grid" role="list">
+      <ul className="admin-control-panel__grid" role="list">
         {moduleCards.map((module) => (
-          <Link
-            key={module.to}
-            to={module.to}
-            className={`admin-control-panel__card admin-control-panel__card--${roleVariant}`}
-            role="listitem"
-            aria-describedby={module.descriptionId}
-            aria-label={module.ariaLabel}
-            aria-current={module.isActive ? "page" : undefined}
-            data-state={module.state}
-          >
-            <span className="admin-control-panel__icon" aria-hidden="true">
-              {module.icon}
-            </span>
-            <div className="admin-control-panel__content">
-              <h3>{module.label}</h3>
-              <p id={module.descriptionId}>{module.description}</p>
-              {module.badge ? (
-                <span
-                  className={`admin-control-panel__badge admin-control-panel__badge--${module.badgeVariant ?? "default"}`}
-                  aria-label={module.badge}
-                >
-                  {module.badge}
-                </span>
-              ) : null}
-              {module.srHint ? <span className="sr-only">{module.srHint}</span> : null}
-            </div>
-          </Link>
+          <li key={module.to} className="admin-control-panel__grid-item">
+            <Link
+              to={module.to}
+              className={`admin-control-panel__card admin-control-panel__card--${roleVariant}`}
+              aria-describedby={module.descriptionId}
+              aria-label={module.ariaLabel}
+              aria-current={module.isActive ? "page" : undefined}
+              data-state={module.state}
+            >
+              <span className="admin-control-panel__icon" aria-hidden="true">
+                {module.icon}
+              </span>
+              <div className="admin-control-panel__content">
+                <h3>{module.label}</h3>
+                <p id={module.descriptionId}>{module.description}</p>
+                {module.badge ? (
+                  <span
+                    className={`admin-control-panel__badge admin-control-panel__badge--${module.badgeVariant ?? "default"}`}
+                    aria-label={module.badge}
+                  >
+                    {module.badge}
+                  </span>
+                ) : null}
+                {module.srHint ? <span className="sr-only">{module.srHint}</span> : null}
+              </div>
+            </Link>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   );
 }

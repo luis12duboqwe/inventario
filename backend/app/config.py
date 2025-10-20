@@ -61,19 +61,19 @@ class Settings(BaseModel):
         not in {"0", "false", "False"}
     )
     enable_catalog_pro: bool = Field(
-        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_CATALOG_PRO", "0")
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_CATALOG_PRO", "1")
         not in {"0", "false", "False"}
     )
     enable_transfers: bool = Field(
-        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_TRANSFERS", "0")
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_TRANSFERS", "1")
         not in {"0", "false", "False"}
     )
     enable_purchases_sales: bool = Field(
-        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_PURCHASES_SALES", "0")
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_PURCHASES_SALES", "1")
         not in {"0", "false", "False"}
     )
     enable_analytics_adv: bool = Field(
-        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_ANALYTICS_ADV", "0")
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_ANALYTICS_ADV", "1")
         not in {"0", "false", "False"}
     )
     enable_2fa: bool = Field(
@@ -81,7 +81,7 @@ class Settings(BaseModel):
         not in {"0", "false", "False"}
     )
     enable_hybrid_prep: bool = Field(
-        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_HYBRID_PREP", "0")
+        default_factory=lambda: os.getenv("SOFTMOBILE_ENABLE_HYBRID_PREP", "1")
         not in {"0", "false", "False"}
     )
     inventory_low_stock_threshold: int = Field(
