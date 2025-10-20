@@ -284,7 +284,8 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
     assert session_data["payment_breakdown"]["CREDITO"] == 200.0
 
     history_response = client.get(
-        f"/pos/cash/history?store_id={store_id}", headers=auth_headers
+        f"/pos/cash/history?store_id={store_id}",
+        headers={**auth_headers, "X-Reason": "Consultar historia"},
     )
     assert history_response.status_code == 200
     assert any(item["id"] == session_id for item in history_response.json())
@@ -412,5 +413,36 @@ def test_pos_config_requires_reason_and_audit(client, db_session):
         details = json.loads(audit_entry.details)
         assert details["store_id"] == store_id
         assert details["reason"] == "Auditar POS"
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
+def test_pos_cash_history_requires_reason(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "POS Historial", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        missing_reason_response = client.get(
+            f"/pos/cash/history?store_id={store_id}",
+            headers=auth_headers,
+        )
+        assert missing_reason_response.status_code == status.HTTP_400_BAD_REQUEST
+
+        valid_headers = {**auth_headers, "X-Reason": "Revisar historial"}
+        ok_response = client.get(
+            f"/pos/cash/history?store_id={store_id}",
+            headers=valid_headers,
+        )
+        assert ok_response.status_code == status.HTTP_200_OK
     finally:
         settings.enable_purchases_sales = original_flag
