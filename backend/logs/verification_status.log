@@ -1,0 +1,5 @@
+# Creado por Codex el 2025-10-20 (actualizado tras verificaciones)
+Verificación inicial completada.
+- Ruta /api respondida tras ejecutar `uvicorn main:app --reload --app-dir backend`.
+- `npm --prefix frontend run build` generó `frontend/dist` sin errores críticos.
+- `pytest` desde la raíz confirmó 120 pruebas exitosas (tiempo aproximado 2m35s).

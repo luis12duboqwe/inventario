@@ -1,0 +1,5 @@
+# Creado por Codex el 2025-10-20
+Estructura base Softmobile 2025 v2.2.0 inicializada.
+- Backend preparado con main.py, .env y base de datos SQLite.
+- Directorios models, routes, database y logs verificados.
+- Configuración lista para montar frontend/dist si existe.

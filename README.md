@@ -31,6 +31,17 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 - **Correcciones aplicadas**: no se requirió modificar código; se aseguraron dependencias de pruebas instaladas (por ejemplo, `openpyxl`) antes de la ejecución de la suite.
 - **Recomendaciones**: mantener la ejecución periódica de las suites de backend y frontend, y monitorear advertencias de React/Vitest para futuros refinamientos de pruebas.
 
+## Preparación base para despliegue local — 20/10/2025
+
+- **Backend minimalista de arranque**: se añadió `backend/main.py` con FastAPI, CORS, montaje automático de `frontend/dist` cuando esté disponible y conexión lista para SQLite en `backend/database/softmobile.db`.【F:backend/main.py†L1-L123】
+- **Variables corporativas**: `.env` centraliza `DB_PATH`, `API_PORT` y `DEBUG` para reproducir la configuración estándar sin exponer credenciales adicionales.【F:backend/.env†L1-L4】
+- **Estructura de módulos iniciales**: los directorios `backend/models`, `backend/routes`, `backend/database` y `backend/logs` incorporan `__init__.py` para facilitar futuras extensiones manteniendo compatibilidad con los paquetes existentes.【F:backend/models/__init__.py†L1-L3】【F:backend/routes/__init__.py†L1-L3】【F:backend/database/__init__.py†L1-L3】【F:backend/logs/__init__.py†L1-L3】
+- **Dependencias sincronizadas**: `backend/requirements.txt` conserva la lista oficial de librerías certificadas para Softmobile 2025 v2.2.0, listas para instalar en entornos Windows a través de `start_softmobile.bat`.【F:backend/requirements.txt†L1-L8】【F:build/start_softmobile.bat†L1-L13】
+- **Bitácoras de preparación**: `backend/logs/setup_report.log` y `backend/logs/verification_status.log` documentan la inicialización y los chequeos básicos de arranque para auditoría futura.【F:backend/logs/setup_report.log†L1-L5】【F:backend/logs/verification_status.log†L1-L5】
+- **Frontend alineado**: se añadió `frontend/src/main.jsx` junto a `vite.config.js` con proxy preconfigurado a `http://127.0.0.1:8000/api`, manteniendo la compilación TypeScript existente y asegurando compatibilidad con empaquetado Windows.【F:frontend/src/main.jsx†L1-L2】【F:frontend/vite.config.js†L1-L25】【F:frontend/vite.config.ts†L1-L23】
+- **Empaquetado corporativo**: la carpeta `build/` contiene `start_softmobile.bat` y `SoftmobileInstaller.iss` listos para generar instaladores Windows que integren backend y frontend compilado.【F:build/start_softmobile.bat†L1-L13】【F:build/SoftmobileInstaller.iss†L1-L15】
+- **Documentación actualizada**: esta sección resume la preparación para Softmobile 2025 v2.2.0 y debe revisarse antes de crear nuevos instaladores.
+
 ## Capacidades implementadas
 
 - **API empresarial FastAPI** con modelos SQLAlchemy para tiendas, dispositivos, movimientos, usuarios, roles, sesiones de sincronización, bitácoras y respaldos.
