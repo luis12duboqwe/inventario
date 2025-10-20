@@ -3,6 +3,18 @@ export type Credentials = {
   password: string;
 };
 
+export type BootstrapStatus = {
+  disponible: boolean;
+  usuarios_registrados: number;
+};
+
+export type BootstrapRequest = {
+  username: string;
+  password: string;
+  full_name?: string | null;
+  telefono?: string | null;
+};
+
 export type Store = {
   id: number;
   name: string;
@@ -1868,6 +1880,31 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
       pendingRequests.delete(cacheKey);
     }
   }
+}
+
+export function getBootstrapStatus(): Promise<BootstrapStatus> {
+  return request<BootstrapStatus>("/auth/bootstrap/status", { method: "GET" });
+}
+
+export function bootstrapAdmin(payload: BootstrapRequest): Promise<UserAccount> {
+  const bodyPayload: Record<string, unknown> = {
+    username: payload.username,
+    password: payload.password,
+    roles: [],
+  };
+
+  if (payload.full_name) {
+    bodyPayload.full_name = payload.full_name;
+  }
+
+  if (payload.telefono) {
+    bodyPayload.telefono = payload.telefono;
+  }
+
+  return request<UserAccount>("/auth/bootstrap", {
+    method: "POST",
+    body: JSON.stringify(bodyPayload),
+  });
 }
 
 export async function login(credentials: Credentials): Promise<{ access_token: string }> {

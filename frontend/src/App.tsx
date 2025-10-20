@@ -2,7 +2,9 @@ import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 
 import { AnimatePresence, motion } from "framer-motion";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import LoginForm from "./components/LoginForm";
-import { Credentials, login } from "./api";
+import BootstrapForm, { type BootstrapFormValues } from "./components/BootstrapForm";
+import Button from "./components/ui/Button";
+import { type BootstrapStatus, Credentials, bootstrapAdmin, getBootstrapStatus, login } from "./api";
 import WelcomeHero from "./components/WelcomeHero";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
@@ -154,6 +156,104 @@ const LoginScene = memo(function LoginScene({
   error,
   onLogin,
 }: LoginSceneProps) {
+  const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [bootstrapLoading, setBootstrapLoading] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [bootstrapSuccess, setBootstrapSuccess] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"login" | "bootstrap">("login");
+
+  useEffect(() => {
+    let cancelled = false;
+    getBootstrapStatus()
+      .then((status) => {
+        if (cancelled) {
+          return;
+        }
+        setBootstrapStatus(status);
+        setStatusError(null);
+      })
+      .catch((fetchError) => {
+        if (cancelled) {
+          return;
+        }
+        const message =
+          fetchError instanceof Error
+            ? fetchError.message
+            : "No fue posible verificar el estado del registro inicial.";
+        setStatusError(message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const disponible = bootstrapStatus?.disponible;
+    if (disponible === true) {
+      setActiveTab("bootstrap");
+    } else if (disponible === false) {
+      setActiveTab("login");
+    }
+  }, [bootstrapStatus?.disponible]);
+
+  const canDisplayBootstrap = bootstrapStatus?.disponible !== false;
+  const allowBootstrap = bootstrapStatus?.disponible === true;
+
+  const handleShowLogin = useCallback(() => {
+    setActiveTab("login");
+  }, []);
+
+  const handleShowBootstrap = useCallback(() => {
+    if (!canDisplayBootstrap) {
+      return;
+    }
+    setActiveTab("bootstrap");
+  }, [canDisplayBootstrap]);
+
+  const handleBootstrapSubmit = useCallback(
+    async (values: BootstrapFormValues) => {
+      try {
+        setBootstrapLoading(true);
+        setBootstrapError(null);
+        setBootstrapSuccess(null);
+        await bootstrapAdmin({
+          username: values.username,
+          password: values.password,
+          full_name: values.fullName,
+          telefono: values.telefono,
+        });
+        setBootstrapStatus((current) => ({
+          disponible: false,
+          usuarios_registrados: (current?.usuarios_registrados ?? 0) + 1,
+        }));
+        setBootstrapSuccess("Cuenta creada correctamente. Iniciando sesión…");
+        await onLogin({ username: values.username, password: values.password });
+      } catch (submitError) {
+        const message =
+          submitError instanceof Error
+            ? submitError.message
+            : "No fue posible registrar la cuenta inicial.";
+        setBootstrapError(message);
+        if (message.includes("usuarios registrados")) {
+          setBootstrapStatus((current) => ({
+            disponible: false,
+            usuarios_registrados: Math.max(current?.usuarios_registrados ?? 1, 1),
+          }));
+        }
+      } finally {
+        setBootstrapLoading(false);
+      }
+    },
+    [onLogin],
+  );
+
+  const description =
+    activeTab === "bootstrap"
+      ? "Registra la primera cuenta administradora para comenzar a usar Softmobile."
+      : "Ingresa con tus credenciales corporativas para continuar.";
+
   return (
     <motion.main
       key="login"
@@ -170,8 +270,49 @@ const LoginScene = memo(function LoginScene({
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
       >
-        <h2 className="accent-title">Ingreso seguro</h2>
-        <LoginForm loading={loading} error={error} onSubmit={onLogin} />
+        <div className="login-card__header">
+          <h2 className="accent-title">{activeTab === "bootstrap" ? "Registro inicial" : "Ingreso seguro"}</h2>
+          {canDisplayBootstrap ? (
+            <div className="login-card__switcher" role="tablist" aria-label="Modos de acceso">
+              <Button
+                type="button"
+                variant={activeTab === "login" ? "primary" : "ghost"}
+                size="sm"
+                onClick={handleShowLogin}
+                aria-pressed={activeTab === "login"}
+              >
+                Iniciar sesión
+              </Button>
+              <Button
+                type="button"
+                variant={activeTab === "bootstrap" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={handleShowBootstrap}
+                aria-pressed={activeTab === "bootstrap"}
+                disabled={!allowBootstrap && bootstrapStatus?.disponible === false}
+              >
+                Crear cuenta inicial
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        <p className="login-card__description">{description}</p>
+        {statusError ? <div className="alert warning">{statusError}</div> : null}
+        {activeTab === "bootstrap" && canDisplayBootstrap ? (
+          <BootstrapForm
+            loading={bootstrapLoading || loading}
+            error={bootstrapError}
+            successMessage={bootstrapSuccess}
+            onSubmit={handleBootstrapSubmit}
+          />
+        ) : (
+          <LoginForm loading={loading} error={error} onSubmit={onLogin} />
+        )}
+        {allowBootstrap ? (
+          <p className="login-card__hint" role="note">
+            La primera cuenta creada tendrá privilegios de administración completa.
+          </p>
+        ) : null}
       </motion.section>
     </motion.main>
   );
