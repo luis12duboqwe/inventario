@@ -4803,6 +4803,13 @@ ol {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.admin-control-panel__grid-item {
+  display: contents;
 }
 
 .admin-control-panel__card {
