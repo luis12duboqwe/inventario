@@ -6,7 +6,7 @@ Este documento consolida los hallazgos detectados al comparar el estado real del
 
 - **Referencia funcional**: el README anuncia exportaciones CSV/PDF con acuses, recordatorios automáticos y registro manual de notas en Seguridad.【F:README.md†L31-L33】 El mandato exige cabecera `X-Reason` en operaciones sensibles como el POS y auditoría.【F:AGENTS.md†L8-L14】
 - **Estado actual**:
-  - El backend ofrece `/audit/reminders`, `/audit/acknowledgements`, `/reports/audit/pdf` y métricas enriquecidas con estado de acuse; `pytest` valida recordatorios, acuses y descargas exitosas.【F:backend/app/routers/audit.py†L18-L120】【F:backend/app/routers/reports.py†L25-L120】【F:backend/tests/test_audit_logs.py†L1-L120】
+  - El backend ofrece `/audit/reminders`, `/audit/acknowledgements`, `/reports/audit/pdf` y métricas enriquecidas con estado de acuse; `pytest` valida recordatorios, acuses y descargas exitosas.【F:backend/app/routers/audit.py†L19-L140】【F:backend/app/routers/reports.py†L190-L248】【F:backend/tests/test_audit_logs.py†L1-L128】
   - `AuditLog.tsx` consume los servicios, muestra badges en vivo, snooze corporativo y descargas con motivo obligatorio; `frontend/src/modules/security/components/__tests__/AuditLog.test.tsx` cubre recordatorios, exportaciones y acuses con validaciones de `X-Reason`.
 
 ### Pasos de validación continua
@@ -17,6 +17,9 @@ Este documento consolida los hallazgos detectados al comparar el estado real del
 4. Consultar `/monitoring/metrics` con credenciales ADMIN tras cada iteración para validar que los contadores de acuses, fallos e hit/miss del cache coinciden con los eventos registrados en Seguridad.
 ### Estado consolidado
 
+- El backend publica `/audit/logs`, `/audit/logs/export.csv`, `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf`, manteniendo la cabecera `X-Reason` en mutaciones y descargas sensibles.【F:backend/app/routers/audit.py†L19-L140】【F:backend/app/routers/reports.py†L190-L248】
+- Las utilidades `audit.summarize_alerts` y `crud.compute_inventory_metrics` incluyen `entity_id`, estado de acuse y totales pendientes/atendidos para alimentar tableros ejecutivos y recordatorios.【F:backend/app/utils/audit.py†L54-L147】【F:backend/app/crud.py†L4789-L5034】
+- `AuditLog.tsx` unifica filtros, consume recordatorios/acuse desde el SDK y muestra controles de snooze y descargas CSV/PDF, con cobertura Vitest que valida motivos corporativos y actualizaciones de estado.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L210】【F:frontend/src/modules/security/components/AuditLog.tsx†L520-L706】【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L242】
 - El backend publica `/audit/logs`, `/audit/logs/export.csv`, `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf`, manteniendo la cabecera `X-Reason` en mutaciones y descargas sensibles.【F:backend/app/routers/audit.py†L15-L118】【F:backend/app/routers/reports.py†L190-L247】
 - Las utilidades `audit.summarize_alerts` y `crud.compute_inventory_metrics` incluyen `entity_id`, estado de acuse y totales pendientes/atendidos para alimentar tableros ejecutivos y recordatorios.【F:backend/app/utils/audit.py†L54-L137】【F:backend/app/crud.py†L1856-L1943】
 - `AuditLog.tsx` unifica filtros, consume recordatorios/acuse desde el SDK y muestra controles de snooze y descargas CSV/PDF, con cobertura Vitest que valida motivos corporativos y actualizaciones de estado.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L220】【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L160】
@@ -30,7 +33,7 @@ Este documento consolida los hallazgos detectados al comparar el estado real del
 
 - **Referencia funcional**: el README indica que `/reports/metrics` diferencia alertas pendientes vs. atendidas y que el tablero muestra destacados listos para responder.【F:README.md†L31-L39】
 - **Estado actual**:
-  - El backend entrega `pending_count`, `acknowledged_count`, metadatos de acuse y resúmenes consistentes; las pruebas de auditoría garantizan la integridad de los datos.【F:backend/app/crud.py†L1856-L1943】【F:backend/tests/test_audit_logs.py†L69-L118】
+  - El backend entrega `pending_count`, `acknowledged_count`, metadatos de acuse y resúmenes consistentes; las pruebas de auditoría garantizan la integridad de los datos.【F:backend/app/crud.py†L4789-L5034】【F:backend/tests/test_audit_logs.py†L55-L128】
   - `GlobalMetrics.tsx` refleja pendientes/atendidas, último acuse y acceso directo a Seguridad cuando existen pendientes; `frontend/src/modules/dashboard/components/__tests__/GlobalMetrics.test.tsx` asegura el comportamiento.
 
 ### Pasos de validación continua
@@ -40,6 +43,8 @@ Este documento consolida los hallazgos detectados al comparar el estado real del
 3. Documentar cualquier ajuste visual en README y capturar evidencia cuando se actualicen estilos o datasets.
 ### Estado consolidado
 
+- `compute_inventory_metrics` entrega resúmenes con conteo de pendientes, atendidas y destacados enriquecidos con `entity_id`, notas y responsable del acuse, alimentando reportes y tableros ejecutivos.【F:backend/app/crud.py†L4789-L5034】
+- `GlobalMetrics.tsx` muestra badges de pendientes/atendidas, accesos directos a Seguridad y resalta el último acuse registrado, optimizando renders con memorias derivadas.【F:frontend/src/modules/dashboard/components/GlobalMetrics.tsx†L1-L312】【F:frontend/src/modules/dashboard/components/__tests__/GlobalMetrics.test.tsx†L1-L117】
 - `compute_inventory_metrics` entrega resúmenes con conteo de pendientes, atendidas y destacados enriquecidos con `entity_id`, notas y responsable del acuse, alimentando reportes y tableros ejecutivos.【F:backend/app/crud.py†L1856-L1943】
 - `GlobalMetrics.tsx` muestra badges de pendientes/atendidas, accesos directos a Seguridad y resalta el último acuse registrado, optimizando renders con memorias derivadas.【F:frontend/src/modules/dashboard/components/GlobalMetrics.tsx†L34-L198】【F:frontend/src/modules/dashboard/components/__tests__/GlobalMetrics.test.tsx†L1-L120】
 

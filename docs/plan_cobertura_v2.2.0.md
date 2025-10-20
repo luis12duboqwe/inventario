@@ -1,6 +1,6 @@
 # Plan de cobertura funcional — Softmobile 2025 v2.2.0
 
-Este documento resume las brechas detectadas entre lo descrito en `README.md` y `AGENTS.md` y la implementación actual. Sirve como guía explícita para completar los faltantes sin modificar la versión v2.2.0.
+Este documento consolida la cobertura vigente descrita en `README.md` y `AGENTS.md` y lista las actividades de seguimiento necesarias para preservar la versión v2.2.0 sin introducir regresiones.
 
 ## 1. Auditoría y recordatorios de seguridad
 
@@ -8,9 +8,9 @@ Este documento resume las brechas detectadas entre lo descrito en `README.md` y 
 - El README indica que la bitácora permite exportar CSV/PDF con estado de acuse, generar recordatorios automáticos con snooze y registrar acuses manuales para alertas críticas.【F:README.md†L31-L33】
 
 **Situación actual**
-- El backend ya publica `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf`, con métricas que distinguen alertas pendientes vs. atendidas y pruebas `pytest` en verde.【F:backend/app/routers/audit.py†L18-L120】【F:backend/app/routers/reports.py†L25-L120】【F:backend/tests/test_audit_logs.py†L1-L120】
-- `frontend/src/api.ts` expone helpers para recordatorios, acuses y PDF con cabecera `X-Reason`, listos para reutilizarse en la UI.【F:frontend/src/api.ts†L1820-L1889】
-- `frontend/src/modules/security/components/AuditLog.tsx` ya consume recordatorios, acuses y descargas con motivo corporativo, mostrando badges en vivo, snooze de 10 minutos y prompts para `X-Reason`.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L820】
+- El backend ya publica `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf`, con métricas que distinguen alertas pendientes vs. atendidas y pruebas `pytest` en verde.【F:backend/app/routers/audit.py†L19-L140】【F:backend/app/routers/reports.py†L190-L248】【F:backend/tests/test_audit_logs.py†L1-L128】
+- `frontend/src/api.ts` expone helpers para recordatorios, acuses y PDF con cabecera `X-Reason`, listos para reutilizarse en la UI.【F:frontend/src/api.ts†L4323-L4350】
+- `frontend/src/modules/security/components/AuditLog.tsx` ya consume recordatorios, acuses y descargas con motivo corporativo, mostrando badges en vivo, snooze de 10 minutos y prompts para `X-Reason`.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L210】【F:frontend/src/modules/security/components/AuditLog.tsx†L520-L706】
 
 **Acciones requeridas**
 - **Monitoreo continuo**
@@ -18,6 +18,7 @@ Este documento resume las brechas detectadas entre lo descrito en `README.md` y 
   2. Registrar en `docs/bitacora_pruebas_2025-10-14.md` los hallazgos multiusuario y auditar trimestralmente los umbrales `threshold_minutes` y `min_occurrences` para confirmar que priorizan alertas críticas.
   3. Auditar los roles con acceso a auditoría y documentar la revisión junto con los resultados de `pytest`.
 - **Pruebas y calidad**
+  4. ✅ `frontend/src/modules/security/components/__tests__/AuditLog.test.tsx` cubre recordatorios, descargas con `X-Reason` y acuses simulando los servicios de `api.ts` vía Vitest/RTL; mantener los escenarios de snooze y acuses agregando datos sintéticos si surgen nuevas categorías.【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L242】
   4. ✅ `frontend/src/modules/security/components/__tests__/AuditLog.test.tsx` cubre recordatorios, descargas con `X-Reason` y acuses simulando los servicios de `api.ts` vía Vitest/RTL; mantener los escenarios de snooze y acuses agregando datos sintéticos si surgen nuevas categorías.
   5. ✅ `frontend/package.json` incorpora `npm run test` y la bitácora `docs/bitacora_pruebas_2025-10-14.md` registra las ejecuciones junto a `pytest`.
 - **Documentación y seguimiento**
@@ -35,7 +36,7 @@ Este documento resume las brechas detectadas entre lo descrito en `README.md` y 
 
 **Situación actual**
 - Se confirmó que la exportación CSV sigue siendo una operación sensible: las pruebas envían `X-Reason` y la respuesta 400 quedó resuelta.【F:backend/tests/test_audit_logs.py†L27-L67】
-- `AuditLog.tsx` solicita el motivo corporativo antes de exportar CSV/PDF y propaga el header a los servicios de reporte.【F:frontend/src/modules/security/components/AuditLog.tsx†L204-L360】
+- `AuditLog.tsx` solicita el motivo corporativo antes de exportar CSV/PDF y propaga el header a los servicios de reporte.【F:frontend/src/modules/security/components/AuditLog.tsx†L520-L706】
 
 **Acciones requeridas**
 - **Pruebas y calidad**
@@ -51,12 +52,12 @@ Este documento resume las brechas detectadas entre lo descrito en `README.md` y 
 - El tablero global debe distinguir alertas pendientes vs. atendidas en `/reports/metrics` y reflejar acuses en `GlobalMetrics.tsx`.【F:README.md†L31-L33】
 
 **Situación actual**
-- `crud.get_dashboard_metrics` ya devuelve `pending_count`, `acknowledged_count` y metadatos de acuse sin errores; las pruebas backend garantizan la coherencia de recordatorios y resúmenes.【F:backend/app/crud.py†L1856-L1943】【F:backend/tests/test_audit_logs.py†L69-L118】
-- `GlobalMetrics.tsx` ahora muestra pendientes/atendidas, último acuse registrado y un enlace directo hacia Seguridad cuando existen alertas por atender.【F:frontend/src/modules/dashboard/components/GlobalMetrics.tsx†L1-L360】
+- `compute_inventory_metrics` ya devuelve `pending_count`, `acknowledged_count` y metadatos de acuse sin errores; las pruebas backend garantizan la coherencia de recordatorios y resúmenes.【F:backend/app/crud.py†L4789-L5034】【F:backend/tests/test_audit_logs.py†L55-L128】
+- `GlobalMetrics.tsx` ahora muestra pendientes/atendidas, último acuse registrado y un enlace directo hacia Seguridad cuando existen alertas por atender.【F:frontend/src/modules/dashboard/components/GlobalMetrics.tsx†L1-L312】
 
 **Acciones requeridas**
 - **Pruebas y validación UX**
-  1. ✅ `frontend/src/modules/dashboard/components/__tests__/GlobalMetrics.test.tsx` valida badges de pendientes/atendidas, último acuse y el enlace a Seguridad condicionado por `pending_count`.
+  1. ✅ `frontend/src/modules/dashboard/components/__tests__/GlobalMetrics.test.tsx` valida badges de pendientes/atendidas, último acuse y el enlace a Seguridad condicionado por `pending_count`.【F:frontend/src/modules/dashboard/components/__tests__/GlobalMetrics.test.tsx†L1-L117】
 - **Documentación**
   2. Capturar evidencia visual actualizada del tablero y mantener README/bitácora alineados con la versión vigente.
 - **Optimización sugerida**

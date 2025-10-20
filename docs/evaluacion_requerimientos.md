@@ -12,6 +12,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 | --- | --- | --- |
 | Gestión centralizada de inventarios | ✅ Cumplido | CRUD de sucursales/dispositivos, movimientos y reportes de inventario listos. |
 | Sincronizaciones automáticas/manuales | ✅ Cumplido | Planificador configurable y endpoint manual con historial de sesiones. |
+| Seguridad y control de acceso | ✅ Cumplido | Auditoría corporativa con recordatorios, acuses manuales, exportaciones CSV/PDF y política `X-Reason` validadas por backend y frontend.【F:backend/app/routers/audit.py†L19-L140】【F:backend/app/routers/reports.py†L190-L248】【F:frontend/src/modules/security/components/AuditLog.tsx†L520-L706】 |
 | Seguridad y control de acceso | ✅ Cumplido | Auditoría corporativa con recordatorios, acuses manuales, exportaciones CSV/PDF y política `X-Reason` validadas por backend y frontend.【F:backend/app/routers/audit.py†L15-L104】【F:backend/app/routers/reports.py†L190-L247】【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L220】 |
 | Interfaz moderna con tema oscuro | ✅ Cumplido | Frontend React en `frontend/` con tema oscuro empresarial. |
 | Instalación local con opción futura en la nube | ✅ Cumplido | Plantillas PyInstaller e Inno Setup para Windows; documentación lista. |
@@ -34,6 +35,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 | --- | --- |
 | Inventario (gestión, búsqueda, reportes) | ✅ Implementado en la API central. |
 | Central (sincronización y control global) | ✅ Implementado con scheduler y sesiones de sincronización. |
+| Seguridad (usuarios, permisos, logs) | ✅ Cumplido | Auditoría con recordatorios, acuses y PDF conectados al panel de Seguridad y cubiertos por pruebas backend/frontend.【F:backend/app/routers/audit.py†L19-L140】【F:backend/app/routers/reports.py†L190-L248】【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L242】 |
 | Seguridad (usuarios, permisos, logs) | ✅ Cumplido | Auditoría con recordatorios, acuses y PDF conectados al panel de Seguridad y cubiertos por pruebas backend/frontend.【F:backend/app/routers/audit.py†L15-L120】【F:backend/app/routers/reports.py†L190-L247】【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L160】 |
 | Instalación (creación de carpetas, bases de datos, accesos directos) | ✅ Plantillas disponibles en `installers/`. |
 | Actualización (verificación de nuevas versiones) | ✅ Cumplido | Endpoint `/updates/*`, feed `docs/releases.json` y avisos en el frontend. |
