@@ -1,3 +1,5 @@
+import json
+
 from fastapi import status
 from sqlalchemy import select
 
@@ -101,7 +103,7 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
 
     config_response = client.get(
         f"/pos/config?store_id={store_id}",
-        headers=auth_headers,
+        headers={**auth_headers, "X-Reason": "Consultar POS"},
     )
     assert config_response.status_code == 200
     default_config = config_response.json()
@@ -363,5 +365,52 @@ def test_pos_requires_auth_reason_and_roles(client):
             headers=valid_headers,
         )
         assert success_response.status_code == status.HTTP_201_CREATED
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
+def test_pos_config_requires_reason_and_audit(client, db_session):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "POS Auditoria", "location": "GDL", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        missing_reason_response = client.get(
+            f"/pos/config?store_id={store_id}",
+            headers=auth_headers,
+        )
+        assert missing_reason_response.status_code == status.HTTP_400_BAD_REQUEST
+
+        valid_headers = {**auth_headers, "X-Reason": "Auditar POS"}
+        ok_response = client.get(
+            f"/pos/config?store_id={store_id}",
+            headers=valid_headers,
+        )
+        assert ok_response.status_code == status.HTTP_200_OK
+
+        audit_query = (
+            select(models.AuditLog)
+            .where(
+                models.AuditLog.action == "pos_config_viewed",
+                models.AuditLog.entity_type == "store",
+                models.AuditLog.entity_id == str(store_id),
+            )
+            .order_by(models.AuditLog.created_at.desc())
+        )
+        audit_entry = db_session.execute(audit_query).scalars().first()
+        assert audit_entry is not None
+        assert audit_entry.details is not None
+        details = json.loads(audit_entry.details)
+        assert details["store_id"] == store_id
+        assert details["reason"] == "Auditar POS"
     finally:
         settings.enable_purchases_sales = original_flag

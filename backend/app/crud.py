@@ -9787,7 +9787,7 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
         config = models.POSConfig(store_id=store_id, invoice_prefix=generated_prefix)
         db.add(config)
         db.commit()
-        db.refresh(config)
+    db.refresh(config)
     return config
 
 
@@ -9836,6 +9836,24 @@ def update_pos_config(
         payload=_pos_config_payload(config),
     )
     return config
+
+
+def register_pos_config_access(
+    db: Session,
+    *,
+    store_id: int,
+    performed_by_id: int | None,
+    reason: str,
+) -> None:
+    details = json.dumps({"store_id": store_id, "reason": reason.strip()})
+    _log_action(
+        db,
+        action="pos_config_viewed",
+        entity_type="store",
+        entity_id=str(store_id),
+        performed_by_id=performed_by_id,
+        details=details,
+    )
 
 
 def save_pos_draft(
