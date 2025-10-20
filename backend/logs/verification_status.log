@@ -1,0 +1,5 @@
+Creado por Codex el 2025-10-20 — Verificación operativa Softmobile 2025 v2.2.0.
+
+- `timeout 5s uvicorn main:app --reload --port 8000` arrancó correctamente y cerró sin errores.
+- `npm run build` en `frontend/` produjo `frontend/dist` para servir desde el backend.
+- `pytest` ejecutado en la raíz `/workspace/inventario` finalizó con **120 pruebas aprobadas** (5 advertencias conocidas de dependencias).
