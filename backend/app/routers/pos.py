@@ -297,7 +297,6 @@ def list_cash_sessions_endpoint(
     store_id: int = Query(..., ge=1),
     limit: int = Query(default=30, ge=1, le=200),
     db: Session = Depends(get_db),
-    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
