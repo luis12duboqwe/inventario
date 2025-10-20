@@ -417,7 +417,7 @@ def test_pos_config_requires_reason_and_audit(client, db_session):
         settings.enable_purchases_sales = original_flag
 
 
-def test_pos_cash_history_requires_reason(client):
+def test_pos_cash_history_does_not_require_reason(client):
     original_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     try:
@@ -432,17 +432,17 @@ def test_pos_cash_history_requires_reason(client):
         assert store_response.status_code == status.HTTP_201_CREATED
         store_id = store_response.json()["id"]
 
-        missing_reason_response = client.get(
+        response_without_reason = client.get(
             f"/pos/cash/history?store_id={store_id}",
             headers=auth_headers,
         )
-        assert missing_reason_response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response_without_reason.status_code == status.HTTP_200_OK
 
         valid_headers = {**auth_headers, "X-Reason": "Revisar historial"}
-        ok_response = client.get(
+        response_with_reason = client.get(
             f"/pos/cash/history?store_id={store_id}",
             headers=valid_headers,
         )
-        assert ok_response.status_code == status.HTTP_200_OK
+        assert response_with_reason.status_code == status.HTTP_200_OK
     finally:
         settings.enable_purchases_sales = original_flag
