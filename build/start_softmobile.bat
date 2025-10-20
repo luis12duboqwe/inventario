@@ -8,7 +8,7 @@ IF NOT EXIST backend\.venv (
 CALL backend\.venv\Scripts\activate.bat
 pip install --upgrade pip >NUL
 pip install -r backend\requirements.txt
-uvicorn main:app --app-dir backend --host 0.0.0.0 --port 8000
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 POPD
 ENDLOCAL
 :: Creado por Codex el 2025-10-20 para iniciar Softmobile 2025 v2.2.0 en Windows.
@@ -22,7 +22,7 @@ if exist "%BACKEND_DIR%\venv\Scripts\activate.bat" (
 )
 
 echo [Softmobile] Arrancando backend en uvicorn...
-start "Softmobile Backend" cmd /c "cd /d %BACKEND_DIR% && uvicorn main:app --host 127.0.0.1 --port 8000"
+start "Softmobile Backend" cmd /c "cd /d %BACKEND_DIR% && uvicorn backend.app.main:app --host 127.0.0.1 --port 8000"
 
 echo [Softmobile] Arrancando frontend (npm run dev)...
 start "Softmobile Frontend" cmd /c "cd /d %FRONTEND_DIR% && npm run dev"
