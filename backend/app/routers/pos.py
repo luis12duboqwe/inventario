@@ -204,6 +204,7 @@ def download_pos_receipt(
 def read_pos_config(
     store_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
@@ -211,6 +212,13 @@ def read_pos_config(
         config = crud.get_pos_config(db, store_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada") from exc
+    crud.register_pos_config_access(
+        db,
+        store_id=store_id,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+    )
+    db.commit()
     return config
 
 
