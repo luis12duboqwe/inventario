@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Button from "../../../components/ui/Button";
 import TextField from "../../../components/ui/TextField";
 import {
+  exportImportValidations,
   getImportValidationReport,
   getPendingImportValidations,
   markImportValidationCorrected,
@@ -37,6 +38,7 @@ function CorreccionesPendientesPage() {
   const [formState, setFormState] = useState(buildInitialFormState(null));
   const [reason, setReason] = useState(DEFAULT_REASON);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState<"excel" | "pdf" | null>(null);
 
   const pendingCount = useMemo(() => validations.length, [validations]);
 
@@ -76,6 +78,38 @@ function CorreccionesPendientesPage() {
   const handleSelect = useCallback((validation: ImportValidationDetail) => {
     setSelected(validation);
   }, []);
+
+  const handleDownload = useCallback(
+    async (format: "excel" | "pdf") => {
+      if (!token) {
+        return;
+      }
+      try {
+        setDownloading(format);
+        setError(null);
+        const blob = await exportImportValidations(token, format);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download =
+          format === "excel"
+            ? "validaciones_importacion.xlsx"
+            : "validaciones_importacion.pdf";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "No se pudo descargar el reporte";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      } finally {
+        setDownloading(null);
+      }
+    },
+    [pushToast, token],
+  );
 
   const handleInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -152,22 +186,24 @@ function CorreccionesPendientesPage() {
             <Button variant="ghost" size="sm" type="button" onClick={() => void refresh()} disabled={loading}>
               Actualizar
             </Button>
-            <a
-              className="ui-button ui-button--secondary ui-button--sm"
-              href="/validacion/exportar?formato=excel"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={() => void handleDownload("excel")}
+              disabled={loading || downloading !== null}
             >
-              Descargar Excel
-            </a>
-            <a
-              className="ui-button ui-button--ghost ui-button--sm"
-              href="/validacion/exportar?formato=pdf"
-              target="_blank"
-              rel="noopener noreferrer"
+              {downloading === "excel" ? "Descargando…" : "Descargar Excel"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={() => void handleDownload("pdf")}
+              disabled={loading || downloading !== null}
             >
-              Descargar PDF
-            </a>
+              {downloading === "pdf" ? "Descargando…" : "Descargar PDF"}
+            </Button>
           </div>
         </header>
         <div className="card-body">
