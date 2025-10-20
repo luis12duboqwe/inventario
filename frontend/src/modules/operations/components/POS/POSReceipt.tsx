@@ -12,6 +12,7 @@ function POSReceipt({ token, sale, receiptUrl }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [downloadReason, setDownloadReason] = useState<string>("Descarga recibo POS");
 
   if (!sale) {
     return (
@@ -25,10 +26,15 @@ function POSReceipt({ token, sale, receiptUrl }: Props) {
   const formatCurrency = (value: number) => value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const handlePrint = async () => {
+    const trimmedReason = downloadReason.trim();
+    if (!trimmedReason || trimmedReason.length < 5) {
+      setError("Debes indicar un motivo corporativo de al menos 5 caracteres para descargar el recibo.");
+      return;
+    }
     try {
       setError(null);
       setMessage(null);
-      const blob = await downloadPosReceipt(token, sale.id);
+      const blob = await downloadPosReceipt(token, sale.id, trimmedReason);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -153,6 +159,16 @@ function POSReceipt({ token, sale, receiptUrl }: Props) {
           </li>
         ))}
       </ul>
+      <div className="form-grid">
+        <label className="span-2">
+          Motivo corporativo para descargar recibo
+          <input
+            value={downloadReason}
+            onChange={(event) => setDownloadReason(event.target.value)}
+            placeholder="Ej. Descarga recibo POS"
+          />
+        </label>
+      </div>
       <div className="actions-row">
         <button type="button" className="btn btn--ghost" onClick={handlePrint}>
           Imprimir/Descargar PDF

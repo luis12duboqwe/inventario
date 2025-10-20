@@ -4422,10 +4422,14 @@ export function listCashSessions(
   return request<CashSession[]>(`/pos/cash/history?${params.toString()}`, { method: "GET" }, token);
 }
 
-export async function downloadPosReceipt(token: string, saleId: number): Promise<Blob> {
+export async function downloadPosReceipt(
+  token: string,
+  saleId: number,
+  reason: string
+): Promise<Blob> {
   const response = await fetch(`${API_URL}/pos/receipt/${saleId}`, {
     method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, "X-Reason": reason },
   });
   if (!response.ok) {
     throw new Error("No fue posible obtener el recibo del punto de venta");

@@ -88,6 +88,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
   const [isLoadingDevices, setIsLoadingDevices] = useState<boolean>(false);
   const [isLoadingSales, setIsLoadingSales] = useState<boolean>(false);
   const [exportReason, setExportReason] = useState<string>("Reporte ventas");
+  const [receiptReason, setReceiptReason] = useState<string>("Descarga recibo POS");
   const [lastSaleId, setLastSaleId] = useState<number | null>(null);
 
   const selectedCustomer = useMemo(
@@ -400,9 +401,13 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
       setError("Registra una venta antes de imprimir la factura.");
       return;
     }
+    if (!receiptReason.trim() || receiptReason.trim().length < 5) {
+      setError("El motivo corporativo para descargar el recibo debe tener al menos 5 caracteres.");
+      return;
+    }
     setIsPrinting(true);
     try {
-      const blob = await downloadPosReceipt(token, lastSaleId);
+      const blob = await downloadPosReceipt(token, lastSaleId, receiptReason.trim());
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -784,6 +789,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
               value={exportReason}
               onChange={(event) => setExportReason(event.target.value)}
               placeholder="Ej. Reporte diario ventas"
+            />
+          </label>
+          <label className="span-2">
+            Motivo corporativo para descargar recibo
+            <input
+              value={receiptReason}
+              onChange={(event) => setReceiptReason(event.target.value)}
+              placeholder="Ej. Descarga recibo POS"
             />
           </label>
           <div className="button-row">
