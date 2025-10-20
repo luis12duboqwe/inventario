@@ -1130,6 +1130,18 @@ class UserCreate(UserBase):
     )
 
 
+class BootstrapStatusResponse(BaseModel):
+    disponible: bool = Field(
+        ...,
+        description="Indica si el registro inicial de administrador está habilitado.",
+    )
+    usuarios_registrados: int = Field(
+        ...,
+        ge=0,
+        description="Cantidad total de cuentas existentes en el sistema.",
+    )
+
+
 class UserRolesUpdate(BaseModel):
     roles: list[str] = Field(default_factory=list)
 
