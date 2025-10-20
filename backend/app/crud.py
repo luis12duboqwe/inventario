@@ -7134,6 +7134,7 @@ def create_backup_job(
     total_size_bytes: int,
     notes: str | None,
     triggered_by_id: int | None,
+    reason: str | None = None,
 ) -> models.BackupJob:
     job = models.BackupJob(
         mode=mode,
@@ -7156,6 +7157,8 @@ def create_backup_job(
     detalles = (
         f"modo={mode.value}; tamaño={total_size_bytes}; componentes={componentes}; archivos={archive_path}"
     )
+    if reason:
+        detalles = f"{detalles}; motivo={reason}"
     _log_action(
         db,
         action="backup_generated",
@@ -7181,10 +7184,13 @@ def register_backup_restore(
     components: list[str],
     destination: str,
     applied_database: bool,
+    reason: str | None = None,
 ) -> None:
     detalles = (
         f"componentes={','.join(components)}; destino={destination}; aplicar_db={applied_database}"
     )
+    if reason:
+        detalles = f"{detalles}; motivo={reason}"
     _log_action(
         db,
         action="backup_restored",
@@ -9983,6 +9989,24 @@ def list_backup_jobs(db: Session, limit: int = 50) -> list[models.BackupJob]:
         .limit(limit)
     )
     return list(db.scalars(statement))
+
+
+def register_pos_receipt_download(
+    db: Session,
+    *,
+    sale_id: int,
+    performed_by_id: int | None,
+    reason: str,
+) -> None:
+    detalles = f"motivo={reason.strip()}"
+    _log_action(
+        db,
+        action="pos_receipt_downloaded",
+        entity_type="sale",
+        entity_id=str(sale_id),
+        performed_by_id=performed_by_id,
+        details=detalles,
+    )
 
 
 def build_inventory_snapshot(db: Session) -> dict[str, object]:

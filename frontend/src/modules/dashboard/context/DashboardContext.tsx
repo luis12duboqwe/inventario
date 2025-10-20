@@ -93,7 +93,7 @@ type DashboardContextValue = {
   refreshSummary: () => Promise<void>;
   lastInventoryRefresh: Date | null;
   handleSync: () => Promise<void>;
-  handleBackup: () => Promise<void>;
+  handleBackup: (reason: string, note?: string) => Promise<void>;
   refreshOutbox: () => Promise<void>;
   handleRetryOutbox: () => Promise<void>;
   downloadInventoryReport: (reason: string) => Promise<void>;
@@ -507,20 +507,33 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }
   }, [friendlyErrorMessage, pushToast, selectedStoreId, token]);
 
-  const handleBackup = useCallback(async () => {
-    try {
-      setError(null);
-      const job = await runBackup(token, "Respaldo manual desde tienda");
-      setBackupHistory((current) => [job, ...current].slice(0, 10));
-      setMessage("Respaldo generado y almacenado en el servidor central");
-      pushToast({ message: "Respaldo generado", variant: "success" });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo generar el respaldo";
-      const friendly = friendlyErrorMessage(message);
-      setError(friendly);
-      pushToast({ message: friendly, variant: "error" });
-    }
-  }, [friendlyErrorMessage, pushToast, token]);
+  const handleBackup = useCallback(
+    async (reason: string, note?: string) => {
+      const normalizedReason = reason.trim();
+      if (normalizedReason.length < 5) {
+        const message = "Indica un motivo corporativo de al menos 5 caracteres.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+        return;
+      }
+
+      const resolvedNote = (note ?? "Respaldo manual desde tienda").trim() || "Respaldo manual desde tienda";
+
+      try {
+        setError(null);
+        const job = await runBackup(token, normalizedReason, resolvedNote);
+        setBackupHistory((current) => [job, ...current].slice(0, 10));
+        setMessage("Respaldo generado y almacenado en el servidor central");
+        pushToast({ message: "Respaldo generado", variant: "success" });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No se pudo generar el respaldo";
+        const friendly = friendlyErrorMessage(message);
+        setError(friendly);
+        pushToast({ message: friendly, variant: "error" });
+      }
+    },
+    [friendlyErrorMessage, pushToast, setError, token],
+  );
 
   const refreshOutboxStats = useCallback(async () => {
     if (!enableHybridPrep) {

@@ -104,6 +104,7 @@ def register_pos_sale_endpoint(
 def download_pos_receipt(
     sale_id: int,
     db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
@@ -183,6 +184,15 @@ def download_pos_receipt(
     pdf.save()
     buffer.seek(0)
     filename = f"recibo_{config.invoice_prefix}_{sale.id}.pdf"
+
+    crud.register_pos_receipt_download(
+        db,
+        sale_id=sale.id,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+    )
+    db.commit()
+
     return Response(
         content=buffer.getvalue(),
         media_type="application/pdf",

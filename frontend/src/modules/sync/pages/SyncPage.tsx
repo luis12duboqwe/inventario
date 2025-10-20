@@ -78,7 +78,7 @@ function downloadBlob(blob: Blob, filename: string) {
 function SyncPage() {
   const {
     handleSync,
-    handleBackup,
+    handleBackup: performBackup,
     downloadInventoryReport,
     syncStatus,
     backupHistory,
@@ -258,6 +258,20 @@ function SyncPage() {
       pushToast({ message, variant: "error" });
     }
   };
+
+  const handleBackup = useCallback(async () => {
+    const defaultReason = selectedStore
+      ? `Respaldo corporativo ${selectedStore.name}`
+      : "Respaldo corporativo central";
+    const reason = requestReason(defaultReason);
+    if (!reason) {
+      return;
+    }
+    const note = selectedStore
+      ? `Respaldo manual ${selectedStore.name}`
+      : "Respaldo manual desde tienda";
+    await performBackup(reason, note);
+  }, [performBackup, requestReason, selectedStore]);
 
   const handleExportCsv = () => {
     const headers = ["id", "entidad", "operacion", "estado", "intentos", "actualizado"];

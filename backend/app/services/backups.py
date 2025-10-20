@@ -410,6 +410,7 @@ def generate_backup(
     triggered_by_id: int | None,
     notes: str | None = None,
     components: Iterable[models.BackupComponent] | None = None,
+    reason: str | None = None,
 ) -> models.BackupJob:
     """Genera los archivos de respaldo y persiste el registro en la base."""
 
@@ -483,6 +484,7 @@ def generate_backup(
         total_size_bytes=total_size,
         notes=notes,
         triggered_by_id=triggered_by_id,
+        reason=reason.strip() if reason else None,
     )
     return job
 
@@ -495,6 +497,7 @@ def restore_backup(
     target_directory: str | None,
     apply_database: bool,
     triggered_by_id: int | None,
+    reason: str | None = None,
 ) -> dict[str, Any]:
     if components:
         requested_components: set[models.BackupComponent] = set()
@@ -583,6 +586,7 @@ def restore_backup(
         components=selected_components,
         destination=str(restore_dir.resolve()),
         applied_database=apply_database,
+        reason=reason.strip() if reason else None,
     )
     db.commit()
 

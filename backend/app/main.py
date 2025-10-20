@@ -48,6 +48,7 @@ SENSITIVE_PREFIXES = (
     "/purchases",
     "/sales",
     "/pos",
+    "/backups",
     "/customers",
     "/suppliers",
     "/repairs",

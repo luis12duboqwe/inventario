@@ -176,7 +176,7 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
 
     receipt_response = client.get(
         f"/pos/receipt/{sale_info['id']}",
-        headers=auth_headers,
+        headers={**auth_headers, "X-Reason": "Descargar recibo POS"},
     )
     assert receipt_response.status_code == 200
     assert receipt_response.headers["content-type"].startswith("application/pdf")

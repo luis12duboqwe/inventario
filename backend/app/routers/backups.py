@@ -11,6 +11,7 @@ from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import ADMIN
 from ..database import get_db
+from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import backups as backup_services
 
@@ -22,14 +23,16 @@ def run_backup(
     payload: schemas.BackupRunRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
+    reason: str = Depends(require_reason),
 ):
-    notes = payload.nota or "Respaldo manual"
+    notes = (payload.nota or "Respaldo manual").strip() or "Respaldo manual"
     job = backup_services.generate_backup(
         db,
         base_dir=settings.backup_directory,
         mode=models.BackupMode.MANUAL,
         triggered_by_id=current_user.id if current_user else None,
         notes=notes,
+        reason=reason,
         components=payload.componentes,
     )
     return job
@@ -49,6 +52,7 @@ def restore_backup(
     payload: schemas.BackupRestoreRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
+    reason: str = Depends(require_reason),
 ):
     job = crud.get_backup_job(db, job_id)
     if job is None:
@@ -62,6 +66,7 @@ def restore_backup(
             target_directory=payload.destino,
             apply_database=payload.aplicar_base_datos,
             triggered_by_id=current_user.id if current_user else None,
+            reason=reason,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -73,6 +78,7 @@ def download_backup(
     formato: schemas.BackupExportFormat,
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
+    _reason: str = Depends(require_reason),
 ) -> FileResponse:
     job = crud.get_backup_job(db, job_id)
     if job is None:
