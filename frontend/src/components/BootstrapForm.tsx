@@ -68,6 +68,12 @@ function BootstrapForm({ loading, error, successMessage, onSubmit }: Props) {
     }
   }, [passwordMismatch]);
 
+  useEffect(() => {
+    if (validationError === "El correo corporativo es obligatorio." && formState.username.trim()) {
+      setValidationError(null);
+    }
+  }, [formState.username, validationError]);
+
   const handleChange = useCallback((field: keyof FormState, value: string) => {
     setFormState((current) => ({ ...current, [field]: value }));
   }, []);
@@ -75,6 +81,11 @@ function BootstrapForm({ loading, error, successMessage, onSubmit }: Props) {
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+      const trimmedUsername = formState.username.trim();
+      if (!trimmedUsername) {
+        setValidationError("El correo corporativo es obligatorio.");
+        return;
+      }
       if (formState.password.length < 8) {
         setValidationError("La contraseña debe tener al menos 8 caracteres.");
         return;

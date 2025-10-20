@@ -21,6 +21,25 @@ describe("BootstrapForm", () => {
     expect(screen.getAllByText("Las contraseñas no coinciden.").length).toBeGreaterThan(0);
   });
 
+  it("requiere capturar el correo corporativo antes de enviar", async () => {
+    const handleSubmit = vi.fn();
+    const user = userEvent.setup();
+
+    render(<BootstrapForm loading={false} error={null} successMessage={null} onSubmit={handleSubmit} />);
+
+    await user.type(screen.getByLabelText("Contraseña"), "Password123!");
+    await user.type(screen.getByLabelText("Confirmar contraseña"), "Password123!");
+
+    await user.click(screen.getByRole("button", { name: "Registrar cuenta" }));
+
+    expect(handleSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText("El correo corporativo es obligatorio.")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Correo corporativo"), "admin@example.com");
+
+    expect(screen.queryByText("El correo corporativo es obligatorio.")).not.toBeInTheDocument();
+  });
+
   it("normaliza los valores antes de enviarlos", async () => {
     const handleSubmit = vi.fn();
     const user = userEvent.setup();
