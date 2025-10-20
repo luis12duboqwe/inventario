@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import type { Sale } from "../../../../api";
 import { downloadPosReceipt, registerSaleReturn } from "../../../../api";
 
@@ -132,6 +132,11 @@ function POSReceipt({ token, sale, receiptUrl }: Props) {
     }, 600);
   };
 
+  const handleOpenInNewTab = async (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    await handlePrint();
+  };
+
   return (
     <section className="card">
       <h3>Última venta registrada</h3>
@@ -180,7 +185,13 @@ function POSReceipt({ token, sale, receiptUrl }: Props) {
           {sending ? "Enviando..." : "Enviar por correo"}
         </button>
         {receiptUrl ? (
-          <a className="btn btn--link" href={receiptUrl} target="_blank" rel="noreferrer">
+          <a
+            className="btn btn--link"
+            href={receiptUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={handleOpenInNewTab}
+          >
             Abrir en nueva pestaña
           </a>
         ) : null}
