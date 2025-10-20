@@ -79,6 +79,15 @@ def _authenticate_user(
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+@router.get("/bootstrap/status", response_model=schemas.BootstrapStatusResponse)
+def get_bootstrap_status(db: Session = Depends(get_db)):
+    total_users = crud.count_users(db)
+    return schemas.BootstrapStatusResponse(
+        disponible=total_users == 0,
+        usuarios_registrados=total_users,
+    )
+
+
 @router.post("/bootstrap", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def bootstrap_admin(payload: schemas.UserCreate, db: Session = Depends(get_db)):
     if crud.count_users(db) > 0:

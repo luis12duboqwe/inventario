@@ -1021,6 +1021,46 @@ button.link:hover:not(:disabled) {
   justify-content: center;
 }
 
+.login-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.login-card__switcher {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.login-card__switcher .ui-button {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-card__switcher .ui-button[aria-pressed="true"] {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(56, 189, 248, 0.25);
+}
+
+.login-card__switcher .ui-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.login-card__description {
+  margin-bottom: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+.login-card__hint {
+  margin-top: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
 .topbar {
   width: min(1200px, 92vw);
   margin: 0 auto;

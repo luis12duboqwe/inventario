@@ -18,6 +18,29 @@ def _bootstrap_admin(client):
     return payload
 
 
+def test_bootstrap_status_reports_availability(client):
+    initial_status = client.get("/auth/bootstrap/status")
+    assert initial_status.status_code == status.HTTP_200_OK
+    initial_payload = initial_status.json()
+    assert initial_payload["disponible"] is True
+    assert initial_payload["usuarios_registrados"] == 0
+
+    creation_payload = {
+        "username": "inicial@example.com",
+        "password": "Inicial123$",
+        "full_name": "Cuenta Inicial",
+        "roles": [],
+    }
+    created = client.post("/auth/bootstrap", json=creation_payload)
+    assert created.status_code == status.HTTP_201_CREATED
+
+    final_status = client.get("/auth/bootstrap/status")
+    assert final_status.status_code == status.HTTP_200_OK
+    final_payload = final_status.json()
+    assert final_payload["disponible"] is False
+    assert final_payload["usuarios_registrados"] == 1
+
+
 def test_totp_flow_and_session_revocation(client):
     settings.enable_2fa = True
     payload = _bootstrap_admin(client)
