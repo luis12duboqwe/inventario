@@ -187,3 +187,26 @@ def test_transfer_without_membership_forbidden(client, db_session):
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
     settings.enable_transfers = False
+
+
+def test_transfers_endpoints_return_404_when_feature_flag_disabled(client, db_session):
+    settings.enable_transfers = True
+    token, _ = _bootstrap_admin(client, db_session)
+    headers = {"Authorization": f"Bearer {token}", "X-Reason": "Verificar feature flag"}
+
+    try:
+        settings.enable_transfers = False
+
+        list_response = client.get("/transfers", headers=headers)
+        assert list_response.status_code == status.HTTP_404_NOT_FOUND
+
+        create_payload = {
+            "origin_store_id": 1,
+            "destination_store_id": 2,
+            "reason": "Motivo corporativo",
+            "items": [{"device_id": 1, "quantity": 1}],
+        }
+        create_response = client.post("/transfers", json=create_payload, headers=headers)
+        assert create_response.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_transfers = True

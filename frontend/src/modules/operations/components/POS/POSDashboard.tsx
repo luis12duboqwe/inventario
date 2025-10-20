@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CashSession,
   Customer,
@@ -25,6 +25,8 @@ import POSCart, { CartLine } from "./POSCart";
 import POSPayment from "./POSPayment";
 import POSReceipt from "./POSReceipt";
 import POSSettings from "./POSSettings";
+import Button from "../../../../components/ui/Button";
+import Modal from "../../../../components/ui/Modal";
 
 type Props = {
   token: string;
@@ -97,6 +99,12 @@ function POSDashboard({ token, stores, defaultStoreId = null, onInventoryRefresh
   const [cashSessions, setCashSessions] = useState<CashSession[]>([]);
   const [cashLoading, setCashLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [configReasonOpen, setConfigReasonOpen] = useState(false);
+  const [configReason, setConfigReason] = useState("Ajuste configuración POS");
+  const [configReasonError, setConfigReasonError] = useState<string | null>(null);
+  const [configReasonSubmitting, setConfigReasonSubmitting] = useState(false);
+  const [pendingConfigPayload, setPendingConfigPayload] = useState<PosConfigUpdateInput | null>(null);
+  const configRequestRef = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null);
 
   const refreshCustomers = useCallback(
     async (query?: string) => {
@@ -444,21 +452,64 @@ function POSDashboard({ token, stores, defaultStoreId = null, onInventoryRefresh
     }
   };
 
-  const handleSettingsSave = async (payload: PosConfigUpdateInput) => {
+  const handleSettingsSave = (payload: PosConfigUpdateInput) => {
+    return new Promise<void>((resolve, reject) => {
+      configRequestRef.current = { resolve, reject };
+      setPendingConfigPayload(payload);
+      setConfigReason("Ajuste configuración POS");
+      setConfigReasonError(null);
+      setConfigReasonOpen(true);
+    });
+  };
+
+  const closeConfigReasonDialog = () => {
+    if (configReasonSubmitting) {
+      return;
+    }
+    setConfigReasonOpen(false);
+    setConfigReason("Ajuste configuración POS");
+    setConfigReasonError(null);
+    setPendingConfigPayload(null);
+    const pendingRequest = configRequestRef.current;
+    if (pendingRequest) {
+      pendingRequest.reject(new Error("Actualización cancelada por el usuario."));
+      configRequestRef.current = null;
+    }
+  };
+
+  const submitConfigReason = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!pendingConfigPayload) {
+      return;
+    }
+    const normalizedReason = configReason.trim();
+    if (normalizedReason.length < 5) {
+      setConfigReasonError("Ingresa un motivo corporativo de al menos 5 caracteres.");
+      return;
+    }
+
     try {
+      setConfigReasonSubmitting(true);
+      setConfigReasonError(null);
       setSettingsSaving(true);
-      const reason = window.prompt(
-        "Motivo corporativo para actualizar la configuración POS",
-        "Ajuste configuración POS"
-      );
-      if (!reason || reason.trim().length < 5) {
-        throw new Error("Debes indicar un motivo válido para registrar la configuración.");
-      }
-      const updated = await updatePosConfig(token, payload, reason.trim());
+      setError(null);
+      const updated = await updatePosConfig(token, pendingConfigPayload, normalizedReason);
       setConfig(updated);
       setMessage("Configuración POS actualizada.");
+      if (configRequestRef.current) {
+        configRequestRef.current.resolve();
+        configRequestRef.current = null;
+      }
+      setConfigReasonOpen(false);
+      setPendingConfigPayload(null);
+      setConfigReason("Ajuste configuración POS");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No fue posible actualizar la configuración POS.";
+      setConfigReasonError(message);
     } finally {
       setSettingsSaving(false);
+      setConfigReasonSubmitting(false);
     }
   };
 
@@ -874,6 +925,46 @@ function POSDashboard({ token, stores, defaultStoreId = null, onInventoryRefresh
         }}
         loading={settingsSaving}
       />
+      <Modal
+        open={configReasonOpen}
+        title="Registrar motivo corporativo"
+        description="Antes de guardar los cambios del POS captura el motivo corporativo que respalda la actualización."
+        onClose={closeConfigReasonDialog}
+        dismissDisabled={configReasonSubmitting}
+        footer={
+          <>
+            <Button type="button" variant="ghost" onClick={closeConfigReasonDialog} disabled={configReasonSubmitting}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="pos-config-reason-form" disabled={configReasonSubmitting}>
+              {configReasonSubmitting ? "Guardando…" : "Confirmar motivo"}
+            </Button>
+          </>
+        }
+      >
+        <form id="pos-config-reason-form" className="form-grid" onSubmit={submitConfigReason}>
+          {pendingConfigPayload ? (
+            <p className="form-span muted-text">
+              Se actualizará la configuración de la sucursal #{pendingConfigPayload.store_id}.
+            </p>
+          ) : null}
+          <label className="form-span">
+            <span>Motivo corporativo</span>
+            <textarea
+              value={configReason}
+              onChange={(event) => setConfigReason(event.target.value)}
+              minLength={5}
+              required
+              rows={3}
+              placeholder="Describe la razón de negocio para este ajuste"
+            />
+          </label>
+          <p className="form-span muted-text">
+            El motivo se almacenará en la bitácora y en el historial corporativo del punto de venta.
+          </p>
+          {configReasonError ? <p className="form-span alert error">{configReasonError}</p> : null}
+        </form>
+      </Modal>
     </div>
   );
 }

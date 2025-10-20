@@ -7,6 +7,8 @@ import {
   listTransfers,
   receiveTransferOrder,
 } from "../../../api";
+import Button from "../../../components/ui/Button";
+import Modal from "../../../components/ui/Modal";
 
 const statusLabels: Record<TransferOrder["status"], string> = {
   SOLICITADA: "Solicitada",
@@ -44,6 +46,25 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
   const [form, setForm] = useState<TransferForm>({ ...initialForm, originStoreId: defaultOriginId });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [transitionDialog, setTransitionDialog] = useState<{
+    action: "dispatch" | "receive" | "cancel";
+    transfer: TransferOrder;
+  } | null>(null);
+  const [transitionReason, setTransitionReason] = useState("");
+  const [transitionError, setTransitionError] = useState<string | null>(null);
+  const [transitionSubmitting, setTransitionSubmitting] = useState(false);
+
+  const transitionTitles: Record<"dispatch" | "receive" | "cancel", string> = {
+    dispatch: "Despachar transferencia",
+    receive: "Recibir transferencia",
+    cancel: "Cancelar transferencia",
+  };
+
+  const transitionSuccessMessages: Record<"dispatch" | "receive" | "cancel", string> = {
+    dispatch: "La transferencia fue despachada correctamente.",
+    receive: "La transferencia fue recibida correctamente.",
+    cancel: "La transferencia fue cancelada correctamente.",
+  };
 
   const sortedTransfers = useMemo(() => {
     return [...transfers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -110,28 +131,59 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
     }
   };
 
-  const handleTransition = async (
+  const handleTransition = (
     action: "dispatch" | "receive" | "cancel",
     transfer: TransferOrder
   ) => {
-    const reason = window.prompt("Motivo de la operación", "")?.trim();
-    if (!reason || reason.length < 5) {
-      setError("Proporciona un motivo corporativo válido (mínimo 5 caracteres).");
+    setTransitionDialog({ action, transfer });
+    setTransitionReason("");
+    setTransitionError(null);
+  };
+
+  const closeTransitionDialog = () => {
+    if (transitionSubmitting) {
       return;
     }
+    setTransitionDialog(null);
+    setTransitionReason("");
+    setTransitionError(null);
+  };
+
+  const submitTransition = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!transitionDialog) {
+      return;
+    }
+    const normalizedReason = transitionReason.trim();
+    if (normalizedReason.length < 5) {
+      setTransitionError("Ingresa un motivo corporativo de al menos 5 caracteres.");
+      return;
+    }
+
     try {
+      setTransitionSubmitting(true);
+      setTransitionError(null);
       setError(null);
+
+      const { action, transfer } = transitionDialog;
       if (action === "dispatch") {
-        await dispatchTransferOrder(token, transfer.id, { reason }, reason);
+        await dispatchTransferOrder(token, transfer.id, { reason: normalizedReason }, normalizedReason);
       } else if (action === "receive") {
-        await receiveTransferOrder(token, transfer.id, { reason }, reason);
+        await receiveTransferOrder(token, transfer.id, { reason: normalizedReason }, normalizedReason);
       } else {
-        await cancelTransferOrder(token, transfer.id, { reason }, reason);
+        await cancelTransferOrder(token, transfer.id, { reason: normalizedReason }, normalizedReason);
       }
+
       await refreshTransfers(form.originStoreId);
       onRefreshInventory?.();
+      setMessage(transitionSuccessMessages[transitionDialog.action]);
+      closeTransitionDialog();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible actualizar la transferencia");
+      const message =
+        err instanceof Error ? err.message : "No fue posible actualizar la transferencia";
+      setTransitionError(message);
+    } finally {
+      setTransitionSubmitting(false);
     }
   };
 
@@ -279,6 +331,46 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
           )}
         </div>
       </div>
+      <Modal
+        open={transitionDialog != null}
+        title={transitionDialog ? transitionTitles[transitionDialog.action] : "Motivo corporativo"}
+        description="Describe el motivo corporativo que sustenta la operación." 
+        onClose={closeTransitionDialog}
+        dismissDisabled={transitionSubmitting}
+        footer={
+          <>
+            <Button type="button" variant="ghost" onClick={closeTransitionDialog} disabled={transitionSubmitting}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="transfer-transition-form" disabled={transitionSubmitting}>
+              {transitionSubmitting ? "Aplicando…" : "Confirmar"}
+            </Button>
+          </>
+        }
+      >
+        <form id="transfer-transition-form" className="form-grid" onSubmit={submitTransition}>
+          {transitionDialog ? (
+            <p className="form-span muted-text">
+              Transferencia #{transitionDialog.transfer.id} · {statusLabels[transitionDialog.transfer.status]}
+            </p>
+          ) : null}
+          <label className="form-span">
+            <span>Motivo corporativo</span>
+            <textarea
+              value={transitionReason}
+              onChange={(event) => setTransitionReason(event.target.value)}
+              placeholder="Detalla el motivo corporativo"
+              minLength={5}
+              required
+              rows={3}
+            />
+          </label>
+          <p className="form-span muted-text">
+            El motivo se registrará en la bitácora y quedará ligado a la transferencia.
+          </p>
+          {transitionError ? <p className="form-span alert error">{transitionError}</p> : null}
+        </form>
+      </Modal>
     </section>
   );
 }
