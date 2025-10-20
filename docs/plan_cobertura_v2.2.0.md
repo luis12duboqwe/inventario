@@ -19,6 +19,7 @@ Este documento consolida la cobertura vigente descrita en `README.md` y `AGENTS.
   3. Auditar los roles con acceso a auditoría y documentar la revisión junto con los resultados de `pytest`.
 - **Pruebas y calidad**
   4. ✅ `frontend/src/modules/security/components/__tests__/AuditLog.test.tsx` cubre recordatorios, descargas con `X-Reason` y acuses simulando los servicios de `api.ts` vía Vitest/RTL; mantener los escenarios de snooze y acuses agregando datos sintéticos si surgen nuevas categorías.【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L242】
+  4. ✅ `frontend/src/modules/security/components/__tests__/AuditLog.test.tsx` cubre recordatorios, descargas con `X-Reason` y acuses simulando los servicios de `api.ts` vía Vitest/RTL; mantener los escenarios de snooze y acuses agregando datos sintéticos si surgen nuevas categorías.
   5. ✅ `frontend/package.json` incorpora `npm run test` y la bitácora `docs/bitacora_pruebas_2025-10-14.md` registra las ejecuciones junto a `pytest`.
 - **Documentación y seguimiento**
   6. Mantener README, esta guía y `AGENTS.md` alineados con el estado real de Seguridad.

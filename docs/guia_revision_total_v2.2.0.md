@@ -20,6 +20,9 @@ Este documento consolida los hallazgos detectados al comparar el estado real del
 - El backend publica `/audit/logs`, `/audit/logs/export.csv`, `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf`, manteniendo la cabecera `X-Reason` en mutaciones y descargas sensibles.【F:backend/app/routers/audit.py†L19-L140】【F:backend/app/routers/reports.py†L190-L248】
 - Las utilidades `audit.summarize_alerts` y `crud.compute_inventory_metrics` incluyen `entity_id`, estado de acuse y totales pendientes/atendidos para alimentar tableros ejecutivos y recordatorios.【F:backend/app/utils/audit.py†L54-L147】【F:backend/app/crud.py†L4789-L5034】
 - `AuditLog.tsx` unifica filtros, consume recordatorios/acuse desde el SDK y muestra controles de snooze y descargas CSV/PDF, con cobertura Vitest que valida motivos corporativos y actualizaciones de estado.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L210】【F:frontend/src/modules/security/components/AuditLog.tsx†L520-L706】【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L242】
+- El backend publica `/audit/logs`, `/audit/logs/export.csv`, `/audit/reminders`, `/audit/acknowledgements` y `/reports/audit/pdf`, manteniendo la cabecera `X-Reason` en mutaciones y descargas sensibles.【F:backend/app/routers/audit.py†L15-L118】【F:backend/app/routers/reports.py†L190-L247】
+- Las utilidades `audit.summarize_alerts` y `crud.compute_inventory_metrics` incluyen `entity_id`, estado de acuse y totales pendientes/atendidos para alimentar tableros ejecutivos y recordatorios.【F:backend/app/utils/audit.py†L54-L137】【F:backend/app/crud.py†L1856-L1943】
+- `AuditLog.tsx` unifica filtros, consume recordatorios/acuse desde el SDK y muestra controles de snooze y descargas CSV/PDF, con cobertura Vitest que valida motivos corporativos y actualizaciones de estado.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L220】【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L160】
 
 ### Mejoras sugeridas
 
@@ -42,6 +45,8 @@ Este documento consolida los hallazgos detectados al comparar el estado real del
 
 - `compute_inventory_metrics` entrega resúmenes con conteo de pendientes, atendidas y destacados enriquecidos con `entity_id`, notas y responsable del acuse, alimentando reportes y tableros ejecutivos.【F:backend/app/crud.py†L4789-L5034】
 - `GlobalMetrics.tsx` muestra badges de pendientes/atendidas, accesos directos a Seguridad y resalta el último acuse registrado, optimizando renders con memorias derivadas.【F:frontend/src/modules/dashboard/components/GlobalMetrics.tsx†L1-L312】【F:frontend/src/modules/dashboard/components/__tests__/GlobalMetrics.test.tsx†L1-L117】
+- `compute_inventory_metrics` entrega resúmenes con conteo de pendientes, atendidas y destacados enriquecidos con `entity_id`, notas y responsable del acuse, alimentando reportes y tableros ejecutivos.【F:backend/app/crud.py†L1856-L1943】
+- `GlobalMetrics.tsx` muestra badges de pendientes/atendidas, accesos directos a Seguridad y resalta el último acuse registrado, optimizando renders con memorias derivadas.【F:frontend/src/modules/dashboard/components/GlobalMetrics.tsx†L34-L198】【F:frontend/src/modules/dashboard/components/__tests__/GlobalMetrics.test.tsx†L1-L120】
 
 ### Mejoras sugeridas
 
