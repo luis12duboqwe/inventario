@@ -297,7 +297,17 @@ def list_cash_sessions_endpoint(
     store_id: int = Query(..., ge=1),
     limit: int = Query(default=30, ge=1, le=200),
     db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
-    return crud.list_cash_sessions(db, store_id=store_id, limit=limit)
+    sessions = crud.list_cash_sessions(db, store_id=store_id, limit=limit)
+    crud.register_cash_history_access(
+        db,
+        store_id=store_id,
+        limit=limit,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+    )
+    db.commit()
+    return sessions
