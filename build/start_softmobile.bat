@@ -1,7 +1,7 @@
 @echo off
 :: Creado por Codex el 2025-10-20 para iniciar Softmobile 2025 v2.2.0 en Windows.
 setlocal enabledelayedexpansion
-set ROOT_DIR=%~dp0..
+set ROOT_DIR=%~dp0
 set BACKEND_DIR=%ROOT_DIR%\backend
 set FRONTEND_DIR=%ROOT_DIR%\frontend
 
