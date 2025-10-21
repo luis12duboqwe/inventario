@@ -9659,6 +9659,31 @@ def list_cash_sessions(
     return list(db.scalars(statement).unique())
 
 
+def register_cash_history_access(
+    db: Session,
+    *,
+    store_id: int,
+    limit: int,
+    performed_by_id: int | None,
+    reason: str,
+) -> None:
+    details = json.dumps(
+        {
+            "store_id": store_id,
+            "limit": limit,
+            "reason": reason.strip(),
+        }
+    )
+    _log_action(
+        db,
+        action="cash_session_history_viewed",
+        entity_type="store",
+        entity_id=str(store_id),
+        performed_by_id=performed_by_id,
+        details=details,
+    )
+
+
 def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession:
     statement = select(models.CashRegisterSession).where(models.CashRegisterSession.id == session_id)
     try:

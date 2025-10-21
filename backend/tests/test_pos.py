@@ -417,7 +417,7 @@ def test_pos_config_requires_reason_and_audit(client, db_session):
         settings.enable_purchases_sales = original_flag
 
 
-def test_pos_cash_history_does_not_require_reason(client):
+def test_pos_cash_history_requires_reason_and_audit(client, db_session):
     original_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     try:
@@ -436,7 +436,7 @@ def test_pos_cash_history_does_not_require_reason(client):
             f"/pos/cash/history?store_id={store_id}",
             headers=auth_headers,
         )
-        assert response_without_reason.status_code == status.HTTP_200_OK
+        assert response_without_reason.status_code == status.HTTP_400_BAD_REQUEST
 
         valid_headers = {**auth_headers, "X-Reason": "Revisar historial"}
         response_with_reason = client.get(
@@ -444,5 +444,22 @@ def test_pos_cash_history_does_not_require_reason(client):
             headers=valid_headers,
         )
         assert response_with_reason.status_code == status.HTTP_200_OK
+
+        audit_query = (
+            select(models.AuditLog)
+            .where(
+                models.AuditLog.action == "cash_session_history_viewed",
+                models.AuditLog.entity_type == "store",
+                models.AuditLog.entity_id == str(store_id),
+            )
+            .order_by(models.AuditLog.created_at.desc())
+        )
+        audit_entry = db_session.execute(audit_query).scalars().first()
+        assert audit_entry is not None
+        assert audit_entry.details is not None
+        details = json.loads(audit_entry.details)
+        assert details["store_id"] == store_id
+        assert details["reason"] == "Revisar historial"
+        assert details["limit"] == 30
     finally:
         settings.enable_purchases_sales = original_flag
