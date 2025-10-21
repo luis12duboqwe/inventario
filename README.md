@@ -22,6 +22,17 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 
 > Todas las acciones mantienen la versión **Softmobile 2025 v2.2.0** sin cambios y respetan el flujo actual de despliegue híbrido.
 
+## Ejecución en GitHub Codespaces
+
+La carpeta `.devcontainer/` incorpora una configuración lista para códigos universales de Codespaces con Python 3.11 y Node.js 20, además de un script de aprovisionamiento que instala automáticamente las dependencias de backend y frontend.
+
+1. Crea un Codespace desde la rama principal del repositorio y espera a que finalice la tarea `postCreate` (instala pip, dependencias de Python y ejecuta `npm ci` en `frontend/`).
+2. Activa el entorno virtual con `source .venv/bin/activate` antes de ejecutar comandos de backend.
+3. Inicia el backend con `uvicorn backend.main:app --reload --port 8000` y, en otra terminal, ejecuta `npm run dev -- --host --port 5173` dentro de `frontend/` para exponer la interfaz.
+4. El archivo `devcontainer.json` reenvía automáticamente los puertos 8000 (API FastAPI) y 5173 (Vite) para que se puedan previsualizar desde la interfaz de Codespaces.
+
+> Nota: si el Codespace se crea nuevamente, el script `.devcontainer/postCreate.sh` regenerará el entorno virtual `.venv` y reinstalará dependencias para garantizar una ejecución limpia.
+
 ## Verificación Global - Módulo de Inventario Softmobile 2025 v2.2.0
 
 - **Fecha y hora**: 17/10/2025 05:41 UTC.
