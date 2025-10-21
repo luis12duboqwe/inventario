@@ -34,6 +34,8 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 
 > El contenedor marca el repositorio como `safe.directory` de Git durante el *postCreate* para evitar advertencias al ejecutar comandos como `git status` dentro de Codespaces.
 
+> Nota: si el Codespace se crea nuevamente, el script `.devcontainer/postCreate.sh` regenerará el entorno virtual `.venv` y reinstalará dependencias para garantizar una ejecución limpia.
+
 ## Verificación Global - Módulo de Inventario Softmobile 2025 v2.2.0
 
 - **Fecha y hora**: 17/10/2025 05:41 UTC.
