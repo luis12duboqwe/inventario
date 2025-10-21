@@ -30,6 +30,9 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 2. Activa el entorno virtual con `source .venv/bin/activate` antes de ejecutar comandos de backend.
 3. Inicia el backend con `uvicorn backend.main:app --reload --port 8000` y, en otra terminal, ejecuta `npm run dev -- --host --port 5173` dentro de `frontend/` para exponer la interfaz.
 4. El archivo `devcontainer.json` reenvía automáticamente los puertos 8000 (API FastAPI) y 5173 (Vite) para que se puedan previsualizar desde la interfaz de Codespaces.
+5. Los *feature flags* corporativos (`SOFTMOBILE_ENABLE_*` y `VITE_SOFTMOBILE_ENABLE_*`) se cargan automáticamente en el contenedor, habilitando catálogo pro, transferencias, compras/ventas, analítica avanzada y modo híbrido sin configuraciones manuales.
+
+> El contenedor marca el repositorio como `safe.directory` de Git durante el *postCreate* para evitar advertencias al ejecutar comandos como `git status` dentro de Codespaces.
 
 > Nota: si el Codespace se crea nuevamente, el script `.devcontainer/postCreate.sh` regenerará el entorno virtual `.venv` y reinstalará dependencias para garantizar una ejecución limpia.
 

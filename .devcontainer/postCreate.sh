@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+git config --global --add safe.directory "$(pwd)" >/dev/null 2>&1 || true
+
 if [ ! -d ".venv" ]; then
   python -m venv .venv
 fi
