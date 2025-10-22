@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.core.security import (
@@ -41,6 +41,34 @@ class RegisterRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+            raise ValueError("Correo electrónico inválido.")
+        return normalized
+
+
+class BootstrapStatusResponse(BaseModel):
+    """Expone el estado del proceso de bootstrap del sistema."""
+
+    disponible: bool
+    usuarios_registrados: int
+
+
+class BootstrapRequest(BaseModel):
+    """Datos mínimos para crear la cuenta inicial del sistema."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=8, max_length=128)
+    email: str | None = Field(default=None, min_length=5, max_length=255)
+    full_name: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def validate_optional_email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         normalized = value.strip().lower()
         if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
             raise ValueError("Correo electrónico inválido.")
@@ -85,6 +113,54 @@ async def get_auth_status() -> AuthStatusResponse:
     """Indica si el módulo de autenticación se encuentra operativo."""
 
     return AuthStatusResponse(message="Autenticación lista y conectada a SQLite ✅")
+
+
+@router.get("/bootstrap/status", response_model=BootstrapStatusResponse)
+def read_bootstrap_status(db: Session = Depends(get_db)) -> BootstrapStatusResponse:
+    """Devuelve si aún es posible registrar la cuenta inicial del sistema."""
+
+    total_users = db.query(func.count(User.id)).scalar() or 0
+    return BootstrapStatusResponse(
+        disponible=total_users == 0,
+        usuarios_registrados=int(total_users),
+    )
+
+
+@router.post("/bootstrap", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> UserResponse:
+    """Crea el usuario inicial siempre que no existan registros previos."""
+
+    total_users = db.query(func.count(User.id)).scalar() or 0
+    if total_users > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El sistema ya cuenta con usuarios registrados.",
+        )
+
+    normalized_username = payload.username.strip()
+    email_value = payload.email or (
+        normalized_username if "@" in normalized_username else f"{normalized_username}@bootstrap.local"
+    )
+    existing_user = (
+        db.query(User)
+        .filter(or_(User.username == normalized_username, User.email == email_value))
+        .first()
+    )
+    if existing_user is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El usuario inicial ya fue configurado previamente.",
+        )
+
+    user = User(
+        username=normalized_username,
+        email=email_value,
+        hashed_password=get_password_hash(payload.password),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return UserResponse.model_validate(user)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
