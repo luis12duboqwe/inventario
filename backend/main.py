@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import logging
 import os
 import sys
@@ -23,7 +24,33 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from backend.database import init_db
+DATABASE_MODULE_NAME = "backend.database"
+
+_database_spec = importlib.util.find_spec(DATABASE_MODULE_NAME)
+if _database_spec is None:
+    _database_file = CURRENT_DIR / "database" / "__init__.py"
+    if not _database_file.exists():
+        msg = (
+            "No se encontró el módulo de base de datos esperado en "
+            f"{_database_file}."
+        )
+        raise ModuleNotFoundError(msg)
+
+    _database_spec = importlib.util.spec_from_file_location(
+        DATABASE_MODULE_NAME,
+        _database_file,
+    )
+    if _database_spec is None or _database_spec.loader is None:
+        msg = "No se pudo preparar el cargador para 'backend.database'."
+        raise ModuleNotFoundError(msg)
+
+    _database_module = importlib.util.module_from_spec(_database_spec)
+    sys.modules[DATABASE_MODULE_NAME] = _database_module
+    _database_spec.loader.exec_module(_database_module)
+else:
+    _database_module = importlib.import_module(DATABASE_MODULE_NAME)
+
+init_db = getattr(_database_module, "init_db")
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger("softmobile.bootstrap")
