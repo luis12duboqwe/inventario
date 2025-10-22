@@ -15,6 +15,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from backend.database import init_db
+
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger("softmobile.bootstrap")
 
@@ -142,6 +144,7 @@ async def bootstrap_environment() -> None:
 
     _ensure_database_file(DATABASE_FILE)
     _validate_database_connection(DATABASE_FILE)
+    init_db()
 
     for directory_name in ("models", "routes"):
         directory_path = BASE_DIR / directory_name
