@@ -9,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 from textwrap import dedent
-from typing import Final, Iterable
+from typing import Final, Iterable, Optional
 
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -94,6 +94,61 @@ FAVICON_FALLBACK_SVG: Final[str] = dedent(
     </svg>
     """
 ).strip()
+
+
+class FrontendStaticFiles(StaticFiles):
+    """Sirve la compilación del frontend con respaldo de favicon corporativo."""
+
+    _MEDIA_TYPE_MAP: Final[dict[str, str]] = {
+        ".ico": "image/x-icon",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+    }
+
+    def __init__(
+        self,
+        *,
+        directory: Path,
+        favicon_candidates: Iterable[Path],
+        favicon_fallback_svg: str,
+    ) -> None:
+        super().__init__(directory=directory, html=True)
+        self._favicon_fallback_svg: Final[str] = favicon_fallback_svg
+        self._compiled_favicon: Final[Optional[Path]] = next(
+            (path for path in favicon_candidates if path.exists()),
+            None,
+        )
+        self._compiled_favicon_media_type: Final[str] = self._resolve_media_type(
+            self._compiled_favicon
+        )
+
+    def _resolve_media_type(self, path: Optional[Path]) -> str:
+        if path is None:
+            return "image/svg+xml"
+        return self._MEDIA_TYPE_MAP.get(
+            path.suffix.lower(),
+            "application/octet-stream",
+        )
+
+    async def get_response(self, path: str, scope) -> Response:  # type: ignore[override]
+        normalized_path = path.lstrip("/")
+
+        if normalized_path == "favicon.ico" and self._compiled_favicon is not None:
+            return FileResponse(
+                self._compiled_favicon,
+                media_type=self._compiled_favicon_media_type,
+            )
+
+        response = await super().get_response(path, scope)
+
+        if normalized_path == "favicon.ico" and response.status_code == 404:
+            return Response(
+                content=self._favicon_fallback_svg,
+                media_type="image/svg+xml",
+                status_code=200,
+            )
+
+        return response
 
 FALLBACK_FRONTEND_HTML: Final[str] = dedent(
     """
@@ -252,47 +307,21 @@ def _mount_frontend(target_app: FastAPI) -> None:
     """Monta la compilación del frontend si está disponible."""
 
     if FRONTEND_DIST.exists():
-        target_app.mount(
-            "/",
-            StaticFiles(directory=FRONTEND_DIST, html=True),
-            name="frontend",
-        )
-        LOGGER.info("Frontend montado desde %s", FRONTEND_DIST)
-
         favicon_candidates = (
             FRONTEND_DIST / "favicon.ico",
             FRONTEND_DIST / "favicon.svg",
             FRONTEND_DIST / "favicon.png",
         )
-        favicon_path = next((path for path in favicon_candidates if path.exists()), None)
-
-        if favicon_path is not None:
-            media_type_map = {
-                ".ico": "image/x-icon",
-                ".svg": "image/svg+xml",
-                ".png": "image/png",
-            }
-            favicon_media_type = media_type_map.get(
-                favicon_path.suffix.lower(),
-                "application/octet-stream",
-            )
-
-            @target_app.get("/favicon.ico", include_in_schema=False)
-            async def read_frontend_favicon() -> FileResponse:
-                """Devuelve el favicon compilado del frontend."""
-
-                return FileResponse(favicon_path, media_type=favicon_media_type)
-        else:
-
-            @target_app.get("/favicon.ico", include_in_schema=False)
-            async def read_frontend_favicon_placeholder() -> Response:
-                """Evita respuestas 404 cuando el favicon no existe en la compilación."""
-
-                return Response(
-                    content=FAVICON_FALLBACK_SVG,
-                    media_type="image/svg+xml",
-                    status_code=200,
-                )
+        target_app.mount(
+            "/",
+            FrontendStaticFiles(
+                directory=FRONTEND_DIST,
+                favicon_candidates=favicon_candidates,
+                favicon_fallback_svg=FAVICON_FALLBACK_SVG,
+            ),
+            name="frontend",
+        )
+        LOGGER.info("Frontend montado desde %s", FRONTEND_DIST)
         return
 
     LOGGER.info(
