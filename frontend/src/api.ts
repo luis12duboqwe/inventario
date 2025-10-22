@@ -1,3 +1,5 @@
+import { getApiBaseUrl } from "./config/api";
+
 export type Credentials = {
   username: string;
   password: string;
@@ -1679,7 +1681,7 @@ export type UpdateStatus = {
   latest_release: ReleaseInfo | null;
 };
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+const API_URL = getApiBaseUrl();
 
 const REQUEST_CACHE_TTL_MS = 60_000;
 const REQUEST_CACHE_MAX_ENTRIES = 128;
