@@ -1,4 +1,6 @@
-"""Creado por Codex el 2025-10-20."""
-"""Creado por Codex el 2025-10-20 para la estructura base de modelos."""
+"""Modelos ORM simplificados para la capa ligera del backend."""
+from __future__ import annotations
 
-__all__: list[str] = []
+from .user import User
+
+__all__ = ["User"]
