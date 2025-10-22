@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -139,7 +140,16 @@ class FrontendStaticFiles(StaticFiles):
                 media_type=self._compiled_favicon_media_type,
             )
 
-        response = await super().get_response(path, scope)
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if normalized_path == "favicon.ico" and exc.status_code == 404:
+                return Response(
+                    content=self._favicon_fallback_svg,
+                    media_type="image/svg+xml",
+                    status_code=200,
+                )
+            raise
 
         if normalized_path == "favicon.ico" and response.status_code == 404:
             return Response(
