@@ -131,13 +131,15 @@ def read_bootstrap_status(db: Session = Depends(get_db)) -> BootstrapStatusRespo
 def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> UserResponse:
     """Crea el usuario inicial siempre que no existan registros previos."""
 
-    try:
-        db.execute(text("BEGIN IMMEDIATE"))
-    except OperationalError as exc:  # pragma: no cover - se mantiene por robustez
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No fue posible asegurar el bloqueo para el bootstrap inicial.",
-        ) from exc
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == "sqlite":
+        try:
+            db.execute(text("BEGIN IMMEDIATE"))
+        except OperationalError as exc:  # pragma: no cover - se mantiene por robustez
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="No fue posible asegurar el bloqueo para el bootstrap inicial.",
+            ) from exc
 
     try:
         total_users = db.query(func.count(User.id)).scalar() or 0
