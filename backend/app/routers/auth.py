@@ -14,6 +14,7 @@ from ..core.roles import ADMIN, GERENTE, normalize_roles
 from ..database import get_db
 from ..security import (
     create_access_token,
+    decode_token,
     hash_password,
     require_active_user,
     verify_password,
@@ -183,6 +184,39 @@ def login_with_session(
     return schemas.SessionLoginResponse(
         session_id=session.id,
         detail="Sesión iniciada correctamente.",
+    )
+
+
+@router.post("/verify", response_model=schemas.TokenVerificationResponse)
+def verify_access_token(
+    payload: schemas.TokenVerificationRequest, db: Session = Depends(get_db)
+):
+    try:
+        token_payload = decode_token(payload.token)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Token inválido."
+        return schemas.TokenVerificationResponse(is_valid=False, detail=detail)
+
+    session = crud.mark_session_used(db, token_payload.jti)
+    if session is None:
+        return schemas.TokenVerificationResponse(
+            is_valid=False,
+            detail="Sesión inválida, expirada o revocada.",
+        )
+
+    user = session.user or crud.get_user_by_username(db, token_payload.sub)
+    if user is None or not user.is_active:
+        return schemas.TokenVerificationResponse(
+            is_valid=False,
+            detail="Usuario inactivo o inexistente para este token.",
+        )
+
+    return schemas.TokenVerificationResponse(
+        is_valid=True,
+        detail="Token válido.",
+        session_id=session.id,
+        expires_at=session.expires_at,
+        user=user,
     )
 
 

@@ -181,6 +181,55 @@ def test_session_cookie_login_allows_me_endpoint(client):
     assert me_response.json()["username"] == payload["username"]
 
 
+def test_token_verification_endpoint_reports_status_changes(client):
+    payload = {
+        "username": "verificador@example.com",
+        "password": "Verifica123$",
+        "full_name": "Admin Verificador",
+        "roles": [ADMIN],
+    }
+    created = client.post("/auth/bootstrap", json=payload)
+    assert created.status_code == status.HTTP_201_CREATED
+
+    login_response = client.post(
+        "/auth/token",
+        data={"username": payload["username"], "password": payload["password"]},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert login_response.status_code == status.HTTP_200_OK
+    token_data = login_response.json()
+    access_token = token_data["access_token"]
+    session_id = token_data["session_id"]
+
+    verification = client.post("/auth/verify", json={"token": access_token})
+    assert verification.status_code == status.HTTP_200_OK
+    verification_payload = verification.json()
+    assert verification_payload["is_valid"] is True
+    assert verification_payload["session_id"] == session_id
+    assert verification_payload["user"]["username"] == payload["username"]
+
+    revoke_headers = {
+        "Authorization": f"Bearer {access_token}",
+        "X-Reason": "Cerrar sesion activa",
+    }
+    revoke_response = client.post(
+        f"/security/sessions/{session_id}/revoke",
+        json={"reason": "Revocacion solicitada"},
+        headers=revoke_headers,
+    )
+    assert revoke_response.status_code == status.HTTP_200_OK
+
+    revoked_verification = client.post("/auth/verify", json={"token": access_token})
+    assert revoked_verification.status_code == status.HTTP_200_OK
+    revoked_payload = revoked_verification.json()
+    assert revoked_payload["is_valid"] is False
+
+    tampered_token = access_token + "invalido"
+    invalid_verification = client.post("/auth/verify", json={"token": tampered_token})
+    assert invalid_verification.status_code == status.HTTP_200_OK
+    assert invalid_verification.json()["is_valid"] is False
+
+
 def test_module_permissions_block_operator_edit_without_permission(client, db_session):
     admin_payload = _bootstrap_admin(client)
     login_response = client.post(
