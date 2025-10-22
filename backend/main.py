@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -76,6 +76,24 @@ BASE_DIR: Final[Path] = Path(__file__).resolve().parent
 ROOT_DIR: Final[Path] = BASE_DIR.parent
 FRONTEND_DIST: Final[Path] = ROOT_DIR / "frontend" / "dist"
 DATABASE_FILE: Final[Path] = BASE_DIR / settings.db_path
+FAVICON_FALLBACK_SVG: Final[str] = dedent(
+    """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Softmobile">
+        <defs>
+            <linearGradient id="sm2025-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38bdf8" />
+                <stop offset="100%" stop-color="#0ea5e9" />
+            </linearGradient>
+        </defs>
+        <rect width="64" height="64" rx="14" fill="#0f172a" />
+        <path
+            d="M18 42c4.2-9.6 10.4-14.4 18.6-14.4 4.2 0 7.6 1 10.8 3.4l-4.4 4.6c-2-1.6-3.8-2.2-6.2-2.2-4.6 0-8 2.6-10.2 8h17.4l-2.2 6.6H17z"
+            fill="url(#sm2025-gradient)"
+        />
+        <circle cx="22" cy="20" r="6" fill="#38bdf8" />
+    </svg>
+    """
+).strip()
 
 FALLBACK_FRONTEND_HTML: Final[str] = dedent(
     """
@@ -240,6 +258,41 @@ def _mount_frontend(target_app: FastAPI) -> None:
             name="frontend",
         )
         LOGGER.info("Frontend montado desde %s", FRONTEND_DIST)
+
+        favicon_candidates = (
+            FRONTEND_DIST / "favicon.ico",
+            FRONTEND_DIST / "favicon.svg",
+            FRONTEND_DIST / "favicon.png",
+        )
+        favicon_path = next((path for path in favicon_candidates if path.exists()), None)
+
+        if favicon_path is not None:
+            media_type_map = {
+                ".ico": "image/x-icon",
+                ".svg": "image/svg+xml",
+                ".png": "image/png",
+            }
+            favicon_media_type = media_type_map.get(
+                favicon_path.suffix.lower(),
+                "application/octet-stream",
+            )
+
+            @target_app.get("/favicon.ico", include_in_schema=False)
+            async def read_frontend_favicon() -> FileResponse:
+                """Devuelve el favicon compilado del frontend."""
+
+                return FileResponse(favicon_path, media_type=favicon_media_type)
+        else:
+
+            @target_app.get("/favicon.ico", include_in_schema=False)
+            async def read_frontend_favicon_placeholder() -> Response:
+                """Evita respuestas 404 cuando el favicon no existe en la compilación."""
+
+                return Response(
+                    content=FAVICON_FALLBACK_SVG,
+                    media_type="image/svg+xml",
+                    status_code=200,
+                )
         return
 
     LOGGER.info(
@@ -254,9 +307,9 @@ def _mount_frontend(target_app: FastAPI) -> None:
 
     @target_app.get("/favicon.ico", include_in_schema=False)
     async def read_favicon_placeholder() -> Response:
-        """Evita respuestas 404 para el favicon por defecto."""
+        """Entrega un favicon mínimo cuando no existe compilación del frontend."""
 
-        return Response(status_code=204)
+        return Response(content=FAVICON_FALLBACK_SVG, media_type="image/svg+xml")
 
 
 @app.get("/api", tags=["estado"])
