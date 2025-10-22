@@ -103,7 +103,10 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("SOFTMOBILE_SESSION_COOKIE_SAMESITE", "lax")
     )
     allowed_origins: list[str] = Field(
-        default_factory=lambda: os.getenv("SOFTMOBILE_ALLOWED_ORIGINS", "http://127.0.0.1:5173")
+        default_factory=lambda: os.getenv(
+            "SOFTMOBILE_ALLOWED_ORIGINS",
+            "http://127.0.0.1:5173,http://localhost:5173",
+        )
     )
     testing_mode: bool = Field(
         default_factory=lambda: _is_truthy(os.getenv("SOFTMOBILE_TEST_MODE"))
