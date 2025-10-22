@@ -6,7 +6,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from backend.core.security import (
@@ -130,37 +131,58 @@ def read_bootstrap_status(db: Session = Depends(get_db)) -> BootstrapStatusRespo
 def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> UserResponse:
     """Crea el usuario inicial siempre que no existan registros previos."""
 
-    total_users = db.query(func.count(User.id)).scalar() or 0
-    if total_users > 0:
+    try:
+        db.execute(text("BEGIN IMMEDIATE"))
+    except OperationalError as exc:  # pragma: no cover - se mantiene por robustez
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El sistema ya cuenta con usuarios registrados.",
-        )
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No fue posible asegurar el bloqueo para el bootstrap inicial.",
+        ) from exc
 
-    normalized_username = payload.username.strip()
-    email_value = payload.email or (
-        normalized_username if "@" in normalized_username else f"{normalized_username}@bootstrap.local"
-    )
-    existing_user = (
-        db.query(User)
-        .filter(or_(User.username == normalized_username, User.email == email_value))
-        .first()
-    )
-    if existing_user is not None:
+    try:
+        total_users = db.query(func.count(User.id)).scalar() or 0
+        if total_users > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El sistema ya cuenta con usuarios registrados.",
+            )
+
+        normalized_username = payload.username.strip()
+        email_value = payload.email or (
+            normalized_username
+            if "@" in normalized_username
+            else f"{normalized_username}@bootstrap.local"
+        )
+        existing_user = (
+            db.query(User)
+            .filter(or_(User.username == normalized_username, User.email == email_value))
+            .first()
+        )
+        if existing_user is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El usuario inicial ya fue configurado previamente.",
+            )
+
+        user = User(
+            username=normalized_username,
+            email=email_value,
+            hashed_password=get_password_hash(payload.password),
+        )
+        db.add(user)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El usuario inicial ya fue configurado previamente.",
-        )
-
-    user = User(
-        username=normalized_username,
-        email=email_value,
-        hashed_password=get_password_hash(payload.password),
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return UserResponse.model_validate(user)
+        ) from exc
+    else:
+        db.refresh(user)
+        return UserResponse.model_validate(user)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
