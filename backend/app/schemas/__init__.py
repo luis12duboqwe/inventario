@@ -1328,6 +1328,29 @@ class TokenPayload(BaseModel):
     jti: str
 
 
+class TokenVerificationRequest(BaseModel):
+    token: str = Field(..., min_length=10, max_length=4096)
+
+
+class TokenVerificationResponse(BaseModel):
+    is_valid: bool = Field(..., description="Indica si el token sigue siendo válido.")
+    detail: str = Field(..., description="Mensaje descriptivo del estado del token.")
+    session_id: int | None = Field(
+        default=None,
+        description="Identificador interno de la sesión asociada al token.",
+    )
+    expires_at: datetime | None = Field(
+        default=None,
+        description="Fecha de expiración registrada para la sesión.",
+    )
+    user: UserResponse | None = Field(
+        default=None,
+        description="Información del usuario cuando el token es válido.",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TOTPSetupResponse(BaseModel):
     secret: str
     otpauth_url: str
@@ -3520,6 +3543,8 @@ __all__ = [
     "TransferReportItem",
     "TransferReportTotals",
     "TokenPayload",
+    "TokenVerificationRequest",
+    "TokenVerificationResponse",
     "TokenResponse",
     "SessionLoginResponse",
     "PasswordRecoveryRequest",
