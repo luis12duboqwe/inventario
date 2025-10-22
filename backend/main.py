@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from textwrap import dedent
 from typing import Final, Iterable
 
 
@@ -20,6 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, Response
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -74,6 +76,85 @@ BASE_DIR: Final[Path] = Path(__file__).resolve().parent
 ROOT_DIR: Final[Path] = BASE_DIR.parent
 FRONTEND_DIST: Final[Path] = ROOT_DIR / "frontend" / "dist"
 DATABASE_FILE: Final[Path] = BASE_DIR / settings.db_path
+
+FALLBACK_FRONTEND_HTML: Final[str] = dedent(
+    """
+    <!DOCTYPE html>
+    <html lang="es">
+        <head>
+            <meta charset="utf-8" />
+            <title>Softmobile 2025 v2.2.0</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <style>
+                :root {
+                    color-scheme: dark;
+                    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                    background: radial-gradient(circle at 20% 20%, #101926, #060a11);
+                    color: #e6f1ff;
+                }
+
+                body {
+                    margin: 0;
+                    min-height: 100vh;
+                    display: grid;
+                    place-items: center;
+                    padding: 2rem;
+                }
+
+                .card {
+                    background: rgba(12, 24, 38, 0.88);
+                    border: 1px solid rgba(0, 173, 238, 0.4);
+                    border-radius: 16px;
+                    box-shadow: 0 12px 45px rgba(0, 0, 0, 0.45);
+                    max-width: 520px;
+                    width: 100%;
+                    padding: 2.5rem 2rem;
+                }
+
+                h1 {
+                    margin: 0 0 1rem;
+                    font-size: 1.9rem;
+                    line-height: 1.2;
+                    color: #3dd9ff;
+                    text-shadow: 0 0 12px rgba(61, 217, 255, 0.65);
+                }
+
+                p {
+                    margin: 0 0 1.25rem;
+                    font-size: 1rem;
+                    line-height: 1.6;
+                    color: rgba(230, 241, 255, 0.92);
+                }
+
+                code {
+                    font-family: 'Fira Code', Consolas, 'Courier New', monospace;
+                    background: rgba(0, 173, 238, 0.08);
+                    border-radius: 6px;
+                    padding: 0.15rem 0.35rem;
+                    color: #7ee8ff;
+                }
+            </style>
+        </head>
+        <body>
+            <main class="card">
+                <h1>Softmobile 2025 v2.2.0</h1>
+                <p>
+                    La compilación del frontend aún no está disponible en esta instancia.
+                    Para acceder a la interfaz completa ejecuta
+                    <code>npm --prefix frontend run build</code> y vuelve a iniciar el
+                    servidor. Mientras tanto puedes interactuar con la API mediante la
+                    ruta <code>/api</code> o la documentación interactiva en
+                    <code>/docs</code>.
+                </p>
+                <p>
+                    Si este entorno es de desarrollo recuerda mantener compatibilidad
+                    total con Softmobile 2025 v2.2.0 sin modificar la versión declarada.
+                </p>
+            </main>
+        </body>
+    </html>
+    """
+).strip()
 
 app = FastAPI(title="Softmobile 2025 API", version="v2.2.0", debug=settings.debug)
 app.add_middleware(
@@ -159,11 +240,23 @@ def _mount_frontend(target_app: FastAPI) -> None:
             name="frontend",
         )
         LOGGER.info("Frontend montado desde %s", FRONTEND_DIST)
-    else:
-        LOGGER.warning(
-            "No se encontró la carpeta de compilación del frontend en %s",
-            FRONTEND_DIST,
-        )
+        return
+
+    LOGGER.info(
+        "No se encontró compilación del frontend; se habilitará una vista de respaldo"
+    )
+
+    @target_app.get("/", include_in_schema=False)
+    async def read_fallback_frontend() -> HTMLResponse:
+        """Devuelve un panel informativo cuando el frontend no está compilado."""
+
+        return HTMLResponse(content=FALLBACK_FRONTEND_HTML)
+
+    @target_app.get("/favicon.ico", include_in_schema=False)
+    async def read_favicon_placeholder() -> Response:
+        """Evita respuestas 404 para el favicon por defecto."""
+
+        return Response(status_code=204)
 
 
 @app.get("/api", tags=["estado"])
