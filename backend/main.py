@@ -54,6 +54,11 @@ else:
 
 init_db = getattr(_database_module, "init_db")
 
+# Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``users``.
+from backend import db as db_utils
+
+init_db = db_utils.init_db
+
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger("softmobile.bootstrap")
 
@@ -64,10 +69,13 @@ class Settings(BaseSettings):
     db_path: str = "database/softmobile.db"
     api_port: int = 8000
     debug: bool = True
+    secret_key: str | None = None
+    access_token_expire_minutes: int | None = None
 
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).resolve().parent / ".env"),
         env_file_encoding="utf-8",
+        extra="allow",
     )
 
 

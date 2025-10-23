@@ -33,6 +33,36 @@ Para continuar con la evolución ordenada del proyecto, utiliza las siguientes e
 
 > Todas las acciones mantienen la versión **Softmobile 2025 v2.2.0** sin cambios y respetan el flujo actual de despliegue híbrido.
 
+## Autenticación JWT con SQLite y bcrypt — 03/03/2026
+
+- ✅ **Dependencias nuevas**: el backend incorpora `passlib[bcrypt]` para el hash de contraseñas, `python-jose[cryptography]` para firmar y validar JWT y `python-multipart` para manejar formularios `application/x-www-form-urlencoded`. Todas se encuentran definidas en `backend/requirements.txt` y se instalan automáticamente al ejecutar `pip install -r backend/requirements.txt`.
+- ✅ **Variables de entorno**: añade `SECRET_KEY` y `ACCESS_TOKEN_EXPIRE_MINUTES` en `backend/.env`. Genera una clave segura con `python -c "import secrets; print(secrets.token_urlsafe(32))"` y asígnala a `SECRET_KEY` en tu entorno de ejecución (Codespaces/CI). **No** la publiques en commits: utiliza los parámetros de entorno del contenedor o del sistema de integración continua para inyectarla en tiempo de ejecución.
+- ✅ **Flujo de endpoints**:
+  1. `POST /auth/register` — JSON `{"email": "admin@softmobile", "password": "123456"}`. Responde 200 con el usuario creado y el mensaje «Usuario registrado correctamente.».
+  2. `POST /auth/login` — formulario `application/x-www-form-urlencoded` con `username=admin@softmobile&password=123456`. Devuelve `{"access_token": "<jwt>", "token_type": "bearer"}`.
+  3. `GET /auth/me` — incluye `Authorization: Bearer <jwt>` para recuperar los datos del usuario autenticado.
+- ✅ **Compatibilidad heredada**: se mantiene el soporte para `/auth/token` y `/auth/verify` para los clientes existentes, aprovechando el mismo backend de autenticación basado en JWT.
+
+### Ejemplos rápidos con `curl`
+
+```bash
+# Registro
+curl -X POST http://127.0.0.1:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@softmobile","password":"123456"}'
+
+# Login
+curl -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=admin@softmobile&password=123456"
+
+# Verificación del token
+curl -X GET http://127.0.0.1:8000/auth/me \
+  -H "Authorization: Bearer <token_recibido>"
+```
+
+> Al ejecutar en Codespaces o en CI agrega `SECRET_KEY` y `ACCESS_TOKEN_EXPIRE_MINUTES` como variables de entorno del contenedor para evitar exponer secretos en el repositorio.
+
 ## Ejecución en GitHub Codespaces
 
 La carpeta `.devcontainer/` incorpora una configuración lista para códigos universales de Codespaces con Python 3.11 y Node.js 20, además de un script de aprovisionamiento que instala automáticamente las dependencias de backend y frontend.

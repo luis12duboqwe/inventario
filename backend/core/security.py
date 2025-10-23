@@ -1,36 +1,60 @@
-"""Herramientas de seguridad para la autenticación basada en JWT."""
 from __future__ import annotations
 
-import os
+"""Herramientas de seguridad y autenticación basadas en JWT."""
+
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Final
 
-import jwt
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.orm import Session
 
-SECRET_KEY: Final[str] = os.getenv(
-    "SOFTMOBILE_SECRET_KEY",
-    "softmobile-dev-secret-key-please-change",
-)
-ALGORITHM: Final[str] = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES: Final[int] = int(
-    os.getenv("SOFTMOBILE_ACCESS_TOKEN_EXPIRE", "60")
-)
+from backend.db import get_db, get_user_by_id
+
+
+class _SecuritySettings(BaseSettings):
+    """Carga parámetros criptográficos definidos en ``backend/.env``."""
+
+    secret_key: str = Field(
+        default="cambia-este-valor",
+        description="Clave secreta usada para firmar los tokens JWT",
+    )
+    access_token_expire_minutes: int = Field(
+        default=60, description="Minutos de vigencia para cada token de acceso"
+    )
+    algorithm: str = Field(default="HS256", description="Algoritmo JWT a emplear")
+
+    model_config = SettingsConfigDict(
+        env_file=str(Path(__file__).resolve().parent.parent / ".env"),
+        env_file_encoding="utf-8",
+        extra="allow",
+    )
+
+
+_settings = _SecuritySettings()
+
+SECRET_KEY: Final[str] = _settings.secret_key
+ALGORITHM: Final[str] = _settings.algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES: Final[int] = _settings.access_token_expire_minutes
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 class TokenPayload(BaseModel):
     """Representa la carga útil de un token JWT emitido por el backend."""
 
     sub: str = Field(..., description="Identificador único del usuario autenticado")
-    exp: int = Field(..., description="Marca de tiempo de expiración en segundos desde epoch")
+    exp: int = Field(..., description="Marca de expiración expresada como timestamp")
 
     @property
     def expires_at(self) -> datetime:
-        """Convierte el timestamp de expiración en un objeto ``datetime``."""
+        """Devuelve el momento exacto de expiración como ``datetime`` UTC."""
 
         return datetime.fromtimestamp(self.exp, tz=timezone.utc)
 
@@ -63,18 +87,30 @@ def decode_access_token(token: str) -> TokenPayload:
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except jwt.ExpiredSignatureError as exc:  # pragma: no cover - error específico
+    except JWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="El token ha expirado.",
-        ) from exc
-    except jwt.PyJWTError as exc:  # pragma: no cover - error específico
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido.",
+            detail="Token inválido o expirado.",
+            headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
     return TokenPayload.model_validate(payload)
+
+
+def get_current_user(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+):
+    """Obtiene al usuario autenticado a partir del token JWT recibido."""
+
+    payload = decode_access_token(token)
+    user = get_user_by_id(db, int(payload.sub))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token asociado a un usuario inexistente.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
 
 
 __all__ = [
@@ -84,6 +120,8 @@ __all__ = [
     "TokenPayload",
     "create_access_token",
     "decode_access_token",
+    "get_current_user",
     "get_password_hash",
+    "oauth2_scheme",
     "verify_password",
 ]
