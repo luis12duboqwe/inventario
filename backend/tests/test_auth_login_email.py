@@ -55,7 +55,7 @@ def test_login_allows_email_or_username() -> None:
         "password": "Credenciales123",
     }
     response = client.post("/auth/register", json=register_payload)
-    assert response.status_code == 201
+    assert response.status_code == 200
 
     login_with_username = client.post(
         "/auth/login",

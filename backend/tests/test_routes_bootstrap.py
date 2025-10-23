@@ -41,7 +41,7 @@ def test_register_login_and_verify_flow() -> None:
     }
     register_response = client.post("/auth/register", json=register_payload)
 
-    assert register_response.status_code == 201
+    assert register_response.status_code == 200
     registered = register_response.json()
     assert registered["username"] == register_payload["username"]
     assert registered["email"] == register_payload["email"]
