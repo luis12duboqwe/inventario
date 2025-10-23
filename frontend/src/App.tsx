@@ -4,7 +4,14 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import LoginForm from "./components/LoginForm";
 import BootstrapForm, { type BootstrapFormValues } from "./components/BootstrapForm";
 import Button from "./components/ui/Button";
-import { type BootstrapStatus, Credentials, bootstrapAdmin, getBootstrapStatus, login } from "./api";
+import {
+  type BootstrapStatus,
+  Credentials,
+  UNAUTHORIZED_EVENT,
+  bootstrapAdmin,
+  getBootstrapStatus,
+  login,
+} from "./api";
 import WelcomeHero from "./components/WelcomeHero";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
@@ -61,6 +68,23 @@ function App() {
     localStorage.removeItem("softmobile_token");
     setToken(null);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleUnauthorized = (event: Event) => {
+      const customEvent = event as CustomEvent<string | undefined>;
+      const message = customEvent.detail ?? "Tu sesión expiró. Inicia sesión nuevamente.";
+      setError(message);
+      setLoading(false);
+      handleLogout();
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => {
+      window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    };
+  }, [handleLogout]);
 
   return (
     <BrowserRouter>
