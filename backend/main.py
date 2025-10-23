@@ -26,39 +26,41 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-DATABASE_MODULE_NAME = "backend.database"
+def _import_module_with_fallback(module_name: str, candidate_path: Path) -> object:
+    """Importa ``module_name`` con una ruta alternativa si el paquete no existe."""
 
-_database_spec = importlib.util.find_spec(DATABASE_MODULE_NAME)
-if _database_spec is None:
-    _database_file = CURRENT_DIR / "database" / "__init__.py"
-    if not _database_file.exists():
-        msg = (
-            "No se encontró el módulo de base de datos esperado en "
-            f"{_database_file}."
-        )
-        raise ModuleNotFoundError(msg)
+    try:
+        return importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if not candidate_path.exists():
+            raise
 
-    _database_spec = importlib.util.spec_from_file_location(
-        DATABASE_MODULE_NAME,
-        _database_file,
-    )
-    if _database_spec is None or _database_spec.loader is None:
-        msg = "No se pudo preparar el cargador para 'backend.database'."
-        raise ModuleNotFoundError(msg)
+        spec = importlib.util.spec_from_file_location(module_name, candidate_path)
+        if spec is None or spec.loader is None:  # pragma: no cover - defensivo
+            raise ModuleNotFoundError(
+                f"No se pudo preparar el cargador para {module_name}."
+            ) from exc
 
-    _database_module = importlib.util.module_from_spec(_database_spec)
-    sys.modules[DATABASE_MODULE_NAME] = _database_module
-    _database_spec.loader.exec_module(_database_module)
-else:
-    _database_module = importlib.import_module(DATABASE_MODULE_NAME)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        return module
 
-init_db = getattr(_database_module, "init_db")
+
+_database_module = _import_module_with_fallback(
+    "backend.database", CURRENT_DIR / "database" / "__init__.py"
+)
 
 # Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``users``.
+db_utils = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
+core_main_module = _import_module_with_fallback(
+    "backend.app.main", CURRENT_DIR / "app" / "main.py"
+)
 from backend import db as db_utils
 from backend.app.main import create_app as create_core_app
 
-init_db = db_utils.init_db
+init_db = getattr(db_utils, "init_db")
+create_core_app = getattr(core_main_module, "create_app")
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger("softmobile.bootstrap")
