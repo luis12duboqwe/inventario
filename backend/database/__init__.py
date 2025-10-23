@@ -33,7 +33,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=_engine)
 
-    with _engine.connect() as connection:
+    with _engine.begin() as connection:
         columns = connection.execute(text("PRAGMA table_info(users)")).fetchall()
         has_verified = any(column[1] == "is_verified" for column in columns)
         if not has_verified:
