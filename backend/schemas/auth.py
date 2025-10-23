@@ -22,7 +22,11 @@ class RegisterRequest(BaseModel):
     """Carga útil necesaria para registrar un nuevo usuario."""
 
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(
+        min_length=6,
+        max_length=128,
+        description="Contraseña en texto plano que será hasheada con bcrypt.",
+    )
     username: str | None = Field(
         default=None,
         min_length=3,

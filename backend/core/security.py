@@ -15,6 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.orm import Session
 
 from backend.db import get_db, get_user_by_id
+from backend.models.user import User
 
 
 class _SecuritySettings(BaseSettings):
@@ -99,11 +100,20 @@ def decode_access_token(token: str) -> TokenPayload:
 
 def get_current_user(
     db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
-):
+) -> User:
     """Obtiene al usuario autenticado a partir del token JWT recibido."""
 
     payload = decode_access_token(token)
-    user = get_user_by_id(db, int(payload.sub))
+    try:
+        user_id = int(payload.sub)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    user = get_user_by_id(db, user_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -25,6 +25,8 @@ from backend.schemas.auth import (
     UserRead,
 )
 
+REGISTER_SUCCESS_MESSAGE = "Usuario registrado correctamente."
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 _auth_scheme = HTTPBearer(auto_error=False)
 
@@ -182,7 +184,7 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Re
     )
     user_read = UserRead.model_validate(user)
     return RegisterResponse(
-        message="Usuario registrado correctamente.",
+        message=REGISTER_SUCCESS_MESSAGE,
         **user_read.model_dump(),
     )
 
