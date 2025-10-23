@@ -1767,6 +1767,7 @@ function buildAnalyticsQuery(filters?: AnalyticsFilters): string {
 
 export const NETWORK_EVENT = "softmobile:network-error";
 export const NETWORK_RECOVERY_EVENT = "softmobile:network-recovered";
+export const UNAUTHORIZED_EVENT = "softmobile:unauthorized";
 
 function emitNetworkEvent(type: typeof NETWORK_EVENT | typeof NETWORK_RECOVERY_EVENT, message?: string) {
   if (typeof window === "undefined") {
@@ -1774,6 +1775,17 @@ function emitNetworkEvent(type: typeof NETWORK_EVENT | typeof NETWORK_RECOVERY_E
   }
   window.dispatchEvent(
     new CustomEvent(type, {
+      detail: message,
+    }),
+  );
+}
+
+function emitUnauthorizedEvent(message?: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent(UNAUTHORIZED_EVENT, {
       detail: message,
     }),
   );
@@ -1834,8 +1846,28 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
           `La API respondió con un estado ${response.status}. Reintenta una vez restablecida la conexión corporativa.`,
         );
       }
-      const detail = await response.text();
-      throw new Error(detail || `Error ${response.status}`);
+      let detailText: string | null = null;
+      let parsedDetail: unknown = null;
+      try {
+        detailText = await response.text();
+        parsedDetail = detailText ? JSON.parse(detailText) : null;
+      } catch (parseError) {
+        if (!(parseError instanceof SyntaxError)) {
+          throw parseError;
+        }
+      }
+
+      const detailMessage =
+        parsedDetail && typeof parsedDetail === "object" && "detail" in parsedDetail
+          ? String((parsedDetail as { detail: unknown }).detail)
+          : detailText || `Error ${response.status}`;
+
+      if (response.status === 401) {
+        emitUnauthorizedEvent(detailMessage);
+        clearRequestCache();
+      }
+
+      throw new Error(detailMessage);
     }
 
     emitNetworkEvent(NETWORK_RECOVERY_EVENT);
