@@ -12,6 +12,7 @@
 - `backend/routes/auth.py` expone nuevos endpoints `POST /auth/refresh`, `POST /auth/forgot`, `POST /auth/reset` y `POST /auth/verify`, devuelve pares de tokens en login/token, limita `/auth/token` a 5 solicitudes por minuto con `fastapi-limiter` y marca a los usuarios como verificados (`is_verified`).
 - Los esquemas de `backend/schemas/auth.py` se amplían con `TokenPairResponse`, peticiones/respuestas de restablecimiento y verificación, además del campo `is_verified` en `UserRead` y `RegisterResponse`.
 - Se agregan las dependencias `fastapi-limiter==0.1.6` y `fakeredis==2.32.0` en los archivos `requirements.txt` y `backend/requirements.txt` para soportar el rate limiting en memoria.
+- La suite `backend/tests/test_routes_bootstrap.py` incorpora escenarios para `/auth/refresh`, `/auth/forgot`, `/auth/reset` y `POST /auth/verify`, garantizando que los tokens se renueven, que la contraseña cambie y que las cuentas queden marcadas como verificadas.
 
 ## Verificación Global - Módulo de Inventario Softmobile 2025 v2.2.0 (17/10/2025 05:41 UTC)
 - Validación corporativa sin incidencias que abarca catálogo avanzado, movimientos y alertas, gestión de IMEI y series, valuaciones financieras, reportes multiformato, roles RBAC e interfaz visual del inventario.

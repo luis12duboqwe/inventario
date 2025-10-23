@@ -73,6 +73,7 @@ curl -X GET http://127.0.0.1:8000/auth/me \
 - **Recuperación de contraseña**: `POST /auth/forgot` genera un token temporal `password_reset`, lo envía por correo si existe configuración SMTP y, en entornos de prueba, lo expone en la respuesta. `POST /auth/reset` consume dicho token y actualiza la contraseña con hash bcrypt.
 - **Verificación de correo**: `POST /auth/verify` marca `is_verified=True` para el usuario asociado al token `email_verification`. Cada registro (`/auth/register` y `/auth/bootstrap`) devuelve el token de verificación inicial para integraciones automatizadas.
 - **Esquemas ampliados**: `backend/schemas/auth.py` incorpora `TokenPairResponse`, `RefreshTokenRequest`, `ForgotPasswordRequest`, `ForgotPasswordResponse`, `ResetPasswordRequest` y `VerifyEmailRequest`, además del nuevo campo `is_verified` dentro de `UserRead` y `RegisterResponse`.
+- **Cobertura automatizada**: `backend/tests/test_routes_bootstrap.py` valida el ciclo completo (login, refresh, forgot/reset y verificación) asegurando que los tokens cambien al refrescar, que la contraseña se actualice y que `is_verified` quede en `True` tras consumir `POST /auth/verify`.
 - **Dependencias nuevas**: agrega `fastapi-limiter==0.1.6` y `fakeredis==2.32.0` en `requirements.txt` y `backend/requirements.txt`. Si se despliega en producción, reemplaza `fakeredis` por un clúster Redis y ajusta las variables SMTP para notificar a los usuarios.
 
 ## API de sucursales con membresías — 23/10/2025
