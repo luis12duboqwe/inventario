@@ -2,18 +2,28 @@
 
 from .auth import (
     AuthMessage,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
+    RefreshTokenRequest,
     RegisterRequest,
     RegisterResponse,
-    TokenResponse,
+    ResetPasswordRequest,
+    TokenPairResponse,
     UserRead,
+    VerifyEmailRequest,
 )
 
 __all__ = [
     "AuthMessage",
+    "ForgotPasswordRequest",
+    "ForgotPasswordResponse",
     "LoginRequest",
+    "RefreshTokenRequest",
     "RegisterRequest",
     "RegisterResponse",
-    "TokenResponse",
+    "ResetPasswordRequest",
+    "TokenPairResponse",
     "UserRead",
+    "VerifyEmailRequest",
 ]

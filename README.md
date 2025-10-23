@@ -64,6 +64,17 @@ curl -X GET http://127.0.0.1:8000/auth/me \
 
 > Al ejecutar en Codespaces o en CI agrega `SECRET_KEY` y `ACCESS_TOKEN_EXPIRE_MINUTES` como variables de entorno del contenedor para evitar exponer secretos en el repositorio.
 
+## Autenticación avanzada — 23/10/2025
+
+- **Configuración centralizada**: `backend/core/settings.py` define la clase `Settings` con lectura desde `.env`, incorporando `SECRET_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` y los parámetros SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) para habilitar notificaciones por correo cuando se configure un servidor corporativo.
+- **Tokens tipados**: `backend/core/security.py` emite JWT con el campo `token_type`, permitiendo diferenciar accesos, refrescos, restablecimientos y verificaciones. Los helpers `create_refresh_token`, `decode_token` y `verify_token_expiry` simplifican la validación de cada flujo.
+- **Par de tokens y limitación de ritmo**: `/auth/login` y `/auth/token` devuelven ahora `TokenPairResponse` con `access_token` y `refresh_token`. La ruta heredada `/auth/token` queda protegida por `fastapi-limiter` (5 solicitudes por minuto e IP) usando `fakeredis` como almacenamiento embebido.
+- **Renovación de sesiones**: el endpoint `POST /auth/refresh` acepta `refresh_token` vigentes, valida que el usuario siga activo y entrega un nuevo par de tokens sin requerir credenciales.
+- **Recuperación de contraseña**: `POST /auth/forgot` genera un token temporal `password_reset`, lo envía por correo si existe configuración SMTP y, en entornos de prueba, lo expone en la respuesta. `POST /auth/reset` consume dicho token y actualiza la contraseña con hash bcrypt.
+- **Verificación de correo**: `POST /auth/verify` marca `is_verified=True` para el usuario asociado al token `email_verification`. Cada registro (`/auth/register` y `/auth/bootstrap`) devuelve el token de verificación inicial para integraciones automatizadas.
+- **Esquemas ampliados**: `backend/schemas/auth.py` incorpora `TokenPairResponse`, `RefreshTokenRequest`, `ForgotPasswordRequest`, `ForgotPasswordResponse`, `ResetPasswordRequest` y `VerifyEmailRequest`, además del nuevo campo `is_verified` dentro de `UserRead` y `RegisterResponse`.
+- **Dependencias nuevas**: agrega `fastapi-limiter==0.1.6` y `fakeredis==2.32.0` en `requirements.txt` y `backend/requirements.txt`. Si se despliega en producción, reemplaza `fakeredis` por un clúster Redis y ajusta las variables SMTP para notificar a los usuarios.
+
 ## Ejecución en GitHub Codespaces
 
 La carpeta `.devcontainer/` incorpora una configuración lista para códigos universales de Codespaces con Python 3.11 y Node.js 20, además de un script de aprovisionamiento que instala automáticamente las dependencias de backend y frontend.

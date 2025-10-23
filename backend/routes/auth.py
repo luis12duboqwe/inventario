@@ -2,36 +2,81 @@ from __future__ import annotations
 
 """Rutas de autenticación para Softmobile 2025."""
 
+import logging
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordRequestForm
+from fastapi_limiter import FastAPILimiter
+from fastapi_limiter.depends import RateLimiter
+from fakeredis.aioredis import FakeRedis
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.core.security import (
     create_access_token,
+    create_refresh_token,
     decode_access_token,
+    decode_token,
     get_current_user,
     get_password_hash,
     verify_password,
+    verify_token_expiry,
 )
+from backend.core.settings import settings
 from backend.db import create_user, get_db, get_user_by_email, get_user_by_id, init_db
 from backend.models import User
 from backend.schemas.auth import (
     AuthMessage,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
+    RefreshTokenRequest,
     RegisterRequest,
     RegisterResponse,
-    TokenResponse,
+    ResetPasswordRequest,
+    TokenPairResponse,
     UserRead,
+    VerifyEmailRequest,
 )
 
 REGISTER_SUCCESS_MESSAGE = "Usuario registrado correctamente."
+
+LOGGER = logging.getLogger("backend.routes.auth")
+
+PASSWORD_RESET_TOKEN_MINUTES = 30
+EMAIL_VERIFICATION_TOKEN_MINUTES = 60 * 24
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _auth_scheme = HTTPBearer(auto_error=False)
 
 # Garantizamos que las tablas estén listas al cargar el módulo.
 init_db()
+
+
+@router.on_event("startup")
+async def _configure_rate_limiter() -> None:
+    """Inicializa el limitador de peticiones usando Redis en memoria."""
+
+    if getattr(FastAPILimiter, "redis", None) is not None:
+        return
+    redis = FakeRedis()
+    await FastAPILimiter.init(redis)
+
+
+def _generate_subject(user_id: int) -> str:
+    return f"{user_id}:{secrets.token_urlsafe(24)}"
+
+
+def _extract_user_id(raw_subject: str) -> int:
+    candidate = str(raw_subject).split(":", 1)[0]
+    try:
+        return int(candidate)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido.",
+        ) from exc
 
 
 class BootstrapStatusResponse(AuthMessage):
@@ -97,9 +142,26 @@ def _get_user_by_identifier(db: Session, identifier: str) -> User | None:
     )
 
 
-def _issue_token(user: User) -> TokenResponse:
-    token = create_access_token(subject=str(user.id))
-    return TokenResponse(access_token=token)
+def _issue_tokens(user: User) -> TokenPairResponse:
+    access_token = create_access_token(subject=str(user.id))
+    refresh_token = create_refresh_token(subject=_generate_subject(user.id))
+    return TokenPairResponse(access_token=access_token, refresh_token=refresh_token)
+
+
+def _build_password_reset_token(user: User) -> str:
+    return create_access_token(
+        subject=_generate_subject(user.id),
+        expires_minutes=PASSWORD_RESET_TOKEN_MINUTES,
+        token_type="password_reset",
+    )
+
+
+def _build_verification_token(user: User) -> str:
+    return create_access_token(
+        subject=_generate_subject(user.id),
+        expires_minutes=EMAIL_VERIFICATION_TOKEN_MINUTES,
+        token_type="email_verification",
+    )
 
 
 @router.get("/status", response_model=AuthMessage)
@@ -144,9 +206,22 @@ def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> 
 
     hashed = get_password_hash(payload.password)
     user = create_user(db, email=email_value, hashed_password=hashed, username=username)
+    verification_token = _build_verification_token(user)
     user_read = UserRead.model_validate(user)
+    if settings.SMTP_HOST:
+        LOGGER.info(
+            "Token de verificación para bootstrap preparado para envío SMTP a %s",
+            user.email,
+        )
+    else:
+        LOGGER.info(
+            "Token de verificación para bootstrap de %s: %s",
+            user.email,
+            verification_token,
+        )
     return RegisterResponse(
         message="Usuario inicial creado correctamente.",
+        verification_token=verification_token,
         **user_read.model_dump(),
     )
 
@@ -183,18 +258,31 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Re
         hashed_password=hashed,
         username=normalized_username,
     )
+    verification_token = _build_verification_token(user)
     user_read = UserRead.model_validate(user)
+    if settings.SMTP_HOST:
+        LOGGER.info(
+            "Token de verificación preparado para envío SMTP a %s",
+            user.email,
+        )
+    else:
+        LOGGER.info(
+            "Token de verificación generado para %s: %s",
+            user.email,
+            verification_token,
+        )
     return RegisterResponse(
         message=REGISTER_SUCCESS_MESSAGE,
+        verification_token=verification_token,
         **user_read.model_dump(),
     )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenPairResponse)
 async def login(
     credentials: LoginRequest = Depends(_login_form_or_json),
     db: Session = Depends(get_db),
-) -> TokenResponse:
+) -> TokenPairResponse:
     """Valida las credenciales del usuario y emite un token JWT."""
 
     user = _get_user_by_identifier(db, credentials.username)
@@ -209,17 +297,120 @@ async def login(
             detail="Usuario inactivo.",
         )
 
-    return _issue_token(user)
+    return _issue_tokens(user)
 
 
-@router.post("/token", response_model=TokenResponse)
+@router.post(
+    "/token",
+    response_model=TokenPairResponse,
+    dependencies=[Depends(RateLimiter(times=5, minutes=1))],
+)
 async def login_legacy(
     credentials: LoginRequest = Depends(_login_form_or_json),
     db: Session = Depends(get_db),
-) -> TokenResponse:
+) -> TokenPairResponse:
     """Alias de compatibilidad para clientes que aún usan ``/auth/token``."""
 
     return await login(credentials, db)
+
+
+@router.post("/refresh", response_model=TokenPairResponse)
+async def refresh_tokens(
+    payload: RefreshTokenRequest, db: Session = Depends(get_db)
+) -> TokenPairResponse:
+    """Renueva el par de tokens utilizando un refresh válido."""
+
+    token_payload = decode_token(payload.refresh_token, expected_type="refresh")
+    verify_token_expiry(token_payload)
+    user = get_user_by_id(db, _extract_user_id(token_payload.sub))
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de refresco inválido.",
+        )
+    return _issue_tokens(user)
+
+
+@router.post(
+    "/forgot",
+    response_model=ForgotPasswordResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def forgot_password(
+    payload: ForgotPasswordRequest, db: Session = Depends(get_db)
+) -> ForgotPasswordResponse:
+    """Genera un token temporal para restablecer la contraseña."""
+
+    normalized_email = _normalize_identifier(payload.email)
+    user = get_user_by_email(db, normalized_email)
+    if user is None:
+        return ForgotPasswordResponse(
+            message="Si el correo existe, recibirás instrucciones en breves.",
+            reset_token=None,
+        )
+
+    token = _build_password_reset_token(user)
+    if settings.SMTP_HOST:
+        LOGGER.info(
+            "Solicitud de restablecimiento lista para envío SMTP a %s",
+            user.email,
+        )
+    else:
+        LOGGER.info(
+            "Token de restablecimiento para %s: %s",
+            user.email,
+            token,
+        )
+    return ForgotPasswordResponse(
+        message="Se enviaron las instrucciones de restablecimiento.",
+        reset_token=token,
+    )
+
+
+@router.post("/reset", response_model=AuthMessage)
+def reset_password(
+    payload: ResetPasswordRequest, db: Session = Depends(get_db)
+) -> AuthMessage:
+    """Aplica una nueva contraseña usando un token válido."""
+
+    token_payload = decode_token(payload.token, expected_type="password_reset")
+    verify_token_expiry(token_payload)
+    user = get_user_by_id(db, _extract_user_id(token_payload.sub))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado para el token proporcionado.",
+        )
+
+    user.hashed_password = get_password_hash(payload.new_password)
+    db.add(user)
+    db.commit()
+    LOGGER.info("Contraseña restablecida para el usuario %s", user.email)
+    return AuthMessage(message="Contraseña actualizada correctamente.")
+
+
+@router.post("/verify", response_model=AuthMessage)
+def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> AuthMessage:
+    """Marca una cuenta como verificada a partir del token enviado por correo."""
+
+    token_payload = decode_token(payload.token, expected_type="email_verification")
+    verify_token_expiry(token_payload)
+    user = get_user_by_id(db, _extract_user_id(token_payload.sub))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado para la verificación.",
+        )
+
+    if not user.is_verified:
+        user.is_verified = True
+        db.add(user)
+        db.commit()
+        LOGGER.info("Correo verificado para %s", user.email)
+    else:
+        LOGGER.info("Correo ya verificado para %s", user.email)
+
+    return AuthMessage(message="Correo verificado correctamente.")
 
 
 @router.get("/me", response_model=UserRead)
@@ -243,6 +434,7 @@ def verify_token(
         )
 
     payload = decode_access_token(credentials.credentials)
+    verify_token_expiry(payload)
     user = get_user_by_id(db, int(payload.sub))
     if user is None:
         raise HTTPException(
