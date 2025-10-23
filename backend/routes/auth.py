@@ -193,7 +193,17 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Us
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     """Valida las credenciales del usuario y emite un token JWT."""
 
-    user = db.query(User).filter(User.username == payload.username).first()
+    normalized_username = payload.username.strip()
+    user = (
+        db.query(User)
+        .filter(
+            or_(
+                User.username == normalized_username,
+                User.email == normalized_username,
+            )
+        )
+        .first()
+    )
     if user is None or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
