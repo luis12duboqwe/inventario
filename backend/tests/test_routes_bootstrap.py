@@ -69,6 +69,21 @@ def test_register_login_and_verify_flow() -> None:
     assert verification["user"]["username"] == register_payload["username"]
 
 
+def test_register_without_explicit_email_reuses_username() -> None:
+    """Si no se envía el correo, el nombre de usuario debe emplearse como email."""
+
+    payload = {
+        "username": "softmobile1@gmail.com",
+        "password": "clave_segura",
+    }
+    response = client.post("/auth/register", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["username"] == payload["username"]
+    assert data["email"] == payload["username"]
+
+
 def test_register_repeated_user_is_rejected() -> None:
     """Registrar dos veces el mismo usuario debe devolver un error 400."""
 
@@ -87,5 +102,6 @@ def test_register_repeated_user_is_rejected() -> None:
 __all__ = [
     "test_auth_status_route_returns_success",
     "test_register_login_and_verify_flow",
+    "test_register_without_explicit_email_reuses_username",
     "test_register_repeated_user_is_rejected",
 ]
