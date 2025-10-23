@@ -41,9 +41,10 @@ def create_user(
     """Crea un nuevo usuario persistiendo el hash proporcionado."""
 
     normalized_email = email.strip().lower()
+    normalized_username = (username or normalized_email).strip().lower()
     user = User(
         email=normalized_email,
-        username=(username or normalized_email).strip().lower(),
+        username=normalized_username,
         hashed_password=hashed_password,
     )
     db.add(user)
