@@ -19,45 +19,46 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.routing import APIRoute
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-DATABASE_MODULE_NAME = "backend.database"
+def _import_module_with_fallback(module_name: str, candidate_path: Path) -> object:
+    """Importa ``module_name`` con una ruta alternativa si el paquete no existe."""
 
-_database_spec = importlib.util.find_spec(DATABASE_MODULE_NAME)
-if _database_spec is None:
-    _database_file = CURRENT_DIR / "database" / "__init__.py"
-    if not _database_file.exists():
-        msg = (
-            "No se encontró el módulo de base de datos esperado en "
-            f"{_database_file}."
-        )
-        raise ModuleNotFoundError(msg)
+    try:
+        return importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if not candidate_path.exists():
+            raise
 
-    _database_spec = importlib.util.spec_from_file_location(
-        DATABASE_MODULE_NAME,
-        _database_file,
-    )
-    if _database_spec is None or _database_spec.loader is None:
-        msg = "No se pudo preparar el cargador para 'backend.database'."
-        raise ModuleNotFoundError(msg)
+        spec = importlib.util.spec_from_file_location(module_name, candidate_path)
+        if spec is None or spec.loader is None:  # pragma: no cover - defensivo
+            raise ModuleNotFoundError(
+                f"No se pudo preparar el cargador para {module_name}."
+            ) from exc
 
-    _database_module = importlib.util.module_from_spec(_database_spec)
-    sys.modules[DATABASE_MODULE_NAME] = _database_module
-    _database_spec.loader.exec_module(_database_module)
-else:
-    _database_module = importlib.import_module(DATABASE_MODULE_NAME)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        return module
 
-init_db = getattr(_database_module, "init_db")
+
+_database_module = _import_module_with_fallback(
+    "backend.database", CURRENT_DIR / "database" / "__init__.py"
+)
 
 # Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``users``.
-from backend import db as db_utils
+db_utils = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
+core_main_module = _import_module_with_fallback(
+    "backend.app.main", CURRENT_DIR / "app" / "main.py"
+)
 
-init_db = db_utils.init_db
+init_db = getattr(db_utils, "init_db")
+create_core_app = getattr(core_main_module, "create_app")
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger("softmobile.bootstrap")
@@ -182,14 +183,15 @@ FALLBACK_FRONTEND_HTML: Final[str] = dedent(
     """
 ).strip()
 
-app = FastAPI(title="Softmobile 2025 API", version="v2.2.0", debug=settings.debug)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+os.environ.setdefault("SOFTMOBILE_DATABASE_URL", f"sqlite:///{DATABASE_FILE}")
+if settings.secret_key:
+    os.environ.setdefault("SOFTMOBILE_SECRET_KEY", settings.secret_key)
+if settings.access_token_expire_minutes is not None:
+    os.environ.setdefault(
+        "SOFTMOBILE_TOKEN_MINUTES", str(settings.access_token_expire_minutes)
+    )
+
+app = create_core_app()
 
 
 def _discover_modules(package: str, directory: Path) -> Iterable[str]:
@@ -201,6 +203,19 @@ def _discover_modules(package: str, directory: Path) -> Iterable[str]:
         yield f"{package}.{module_path.stem}"
 
 
+def _collect_existing_signatures(target_app: FastAPI) -> set[tuple[str, str]]:
+    """Obtiene las firmas (ruta, método) ya registradas en la aplicación."""
+
+    signatures: set[tuple[str, str]] = set()
+    for route in target_app.router.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        methods = route.methods or {"GET"}
+        for method in methods:
+            signatures.add((route.path, method.upper()))
+    return signatures
+
+
 def _include_routers(target_app: FastAPI) -> None:
     """Importa dinámicamente los routers definidos en ``backend.routes``."""
 
@@ -210,6 +225,7 @@ def _include_routers(target_app: FastAPI) -> None:
         return
 
     imported = 0
+    existing_signatures = _collect_existing_signatures(target_app)
     for module in _discover_modules("backend.routes", routes_dir):
         try:
             router_module = importlib.import_module(module)
@@ -222,7 +238,40 @@ def _include_routers(target_app: FastAPI) -> None:
             LOGGER.warning("El módulo %s no define un objeto 'router'", module)
             continue
 
+        router_signatures: set[tuple[str, str]] = set()
+        filtered_routes = []
+        for route in list(router.routes):
+            if not isinstance(route, APIRoute):
+                filtered_routes.append(route)
+                continue
+            methods = route.methods or {"GET"}
+            signature_conflict = False
+            for method in methods:
+                signature = (route.path, method.upper())
+                if signature in existing_signatures:
+                    LOGGER.info(
+                        "Ruta %s %s ya registrada; se omitirá al montar %s.",
+                        method,
+                        route.path,
+                        module,
+                    )
+                    signature_conflict = True
+                    break
+            if signature_conflict:
+                continue
+            for method in methods:
+                router_signatures.add((route.path, method.upper()))
+            filtered_routes.append(route)
+
+        if not router_signatures:
+            LOGGER.info(
+                "Se omitió el router %s porque todas sus rutas ya existían.", module
+            )
+            continue
+
+        router.routes[:] = filtered_routes
         target_app.include_router(router)
+        existing_signatures.update(router_signatures)
         imported += 1
 
     if imported == 0:
