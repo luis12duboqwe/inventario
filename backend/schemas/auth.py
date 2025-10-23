@@ -26,6 +26,7 @@ class UserRead(BaseModel):
     email: EmailStr
     username: str
     is_active: bool
+    is_verified: bool
     created_at: datetime
 
 
@@ -79,13 +80,24 @@ class RegisterResponse(UserRead):
     """Respuesta devuelta tras registrar un nuevo usuario."""
 
     message: str
+    verification_token: str | None = Field(
+        default=None,
+        description="Token temporal para verificar el correo electrónico.",
+    )
 
 
-class TokenResponse(BaseModel):
-    """Representa el token generado tras un inicio de sesión correcto."""
+class TokenPairResponse(BaseModel):
+    """Devuelve el par de tokens emitidos tras autenticar o refrescar."""
 
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+
+
+class RefreshTokenRequest(BaseModel):
+    """Solicitud para obtener un nuevo par de tokens usando el refresh."""
+
+    refresh_token: str
 
 
 class LoginRequest(BaseModel):
@@ -101,11 +113,46 @@ class AuthMessage(BaseModel):
     message: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Modelo para solicitar el restablecimiento de contraseña."""
+
+    email: EmailStr
+
+
+class ForgotPasswordResponse(AuthMessage):
+    """Confirma la solicitud de restablecimiento e incluye el token generado."""
+
+    reset_token: str | None = Field(
+        default=None,
+        description="Token temporal retornado para entornos de prueba.",
+    )
+
+
+class ResetPasswordRequest(BaseModel):
+    """Datos necesarios para definir una nueva contraseña."""
+
+    token: str = Field(..., description="Token temporal de restablecimiento")
+    new_password: str = Field(
+        ..., min_length=6, max_length=128, description="Nueva contraseña segura"
+    )
+
+
+class VerifyEmailRequest(BaseModel):
+    """Carga útil para confirmar la verificación de correo."""
+
+    token: str = Field(..., description="Token temporal de verificación de correo")
+
+
 __all__ = [
     "AuthMessage",
+    "ForgotPasswordRequest",
+    "ForgotPasswordResponse",
     "LoginRequest",
+    "RefreshTokenRequest",
     "RegisterRequest",
     "RegisterResponse",
-    "TokenResponse",
+    "ResetPasswordRequest",
+    "TokenPairResponse",
     "UserRead",
+    "VerifyEmailRequest",
 ]

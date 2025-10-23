@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from importlib import import_module
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 DATABASE_PATH = Path(__file__).resolve().parent / "softmobile.db"
@@ -32,6 +32,16 @@ def init_db() -> None:
     import_module("backend.models.user")
 
     Base.metadata.create_all(bind=_engine)
+
+    with _engine.connect() as connection:
+        columns = connection.execute(text("PRAGMA table_info(users)")).fetchall()
+        has_verified = any(column[1] == "is_verified" for column in columns)
+        if not has_verified:
+            connection.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT 0"
+                )
+            )
 
 
 def get_db() -> Iterator[Session]:

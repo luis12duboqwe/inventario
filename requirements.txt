@@ -1,4 +1,5 @@
 fastapi==0.115.0
+fastapi-limiter==0.1.6
 uvicorn[standard]==0.30.6
 sqlalchemy==2.0.34
 pydantic==2.6.4
@@ -8,6 +9,7 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 pyjwt==2.9.0
 python-multipart==0.0.9
+fakeredis==2.32.0
 reportlab==4.1.0
 openpyxl==3.1.5
 apscheduler==3.10.4

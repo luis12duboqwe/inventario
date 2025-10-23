@@ -1,5 +1,12 @@
 # Bitácora de cambios
 
+## Autenticación avanzada (23/10/2025)
+- Se crea `backend/core/settings.py` para centralizar parámetros sensibles (`SECRET_KEY`, expiraciones de access/refresh tokens y credenciales SMTP), cargándolos desde `.env` mediante Pydantic.
+- `backend/core/security.py` añade `create_refresh_token`, `decode_token` y `verify_token_expiry`, incorpora el campo `token_type` dentro del payload JWT y reutiliza el helper para generar tokens tipados.
+- `backend/routes/auth.py` expone nuevos endpoints `POST /auth/refresh`, `POST /auth/forgot`, `POST /auth/reset` y `POST /auth/verify`, devuelve pares de tokens en login/token, limita `/auth/token` a 5 solicitudes por minuto con `fastapi-limiter` y marca a los usuarios como verificados (`is_verified`).
+- Los esquemas de `backend/schemas/auth.py` se amplían con `TokenPairResponse`, peticiones/respuestas de restablecimiento y verificación, además del campo `is_verified` en `UserRead` y `RegisterResponse`.
+- Se agregan las dependencias `fastapi-limiter==0.1.6` y `fakeredis==2.32.0` en los archivos `requirements.txt` y `backend/requirements.txt` para soportar el rate limiting en memoria.
+
 ## Verificación Global - Módulo de Inventario Softmobile 2025 v2.2.0 (17/10/2025 05:41 UTC)
 - Validación corporativa sin incidencias que abarca catálogo avanzado, movimientos y alertas, gestión de IMEI y series, valuaciones financieras, reportes multiformato, roles RBAC e interfaz visual del inventario.
 - Se confirmaron integraciones entre movimientos → productos → reportes → alertas mediante la suite `pytest` y las pruebas de frontend (Vitest), garantizando cálculos y referencias coherentes.
