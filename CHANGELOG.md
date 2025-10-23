@@ -1,5 +1,11 @@
 # Bitácora de cambios
 
+## Wrapper de sucursales y actualización corporativa (23/10/2025)
+- `backend/routes/stores.py` incorpora un wrapper que expone respuestas paginadas (`Page[StoreRead]`), delega altas/consultas al núcleo y mantiene compatibilidad con el resto de rutas avanzadas al incluir el router corporativo.
+- Se añaden los esquemas ligeros `backend/schemas/store.py` para normalizar payloads (`StoreCreate`, `StoreUpdate`, `StoreMembershipUpdate`) y convertir los modelos del núcleo a respuestas amigables para el backend reducido.
+- El núcleo (`backend/app/routers/stores.py` y `backend/app/crud.py`) suma `PUT /stores/{id}` con auditoría de cambios, validaciones de unicidad y bitácora `store_updated`.
+- Se documenta el flujo en `README.md` (sección «API de sucursales con membresías») y se agrega una prueba `test_store_update_changes_core_fields` que valida la actualización de nombre, código, ubicación, estado y zona horaria.
+
 ## Autenticación avanzada (23/10/2025)
 - Se crea `backend/core/settings.py` para centralizar parámetros sensibles (`SECRET_KEY`, expiraciones de access/refresh tokens y credenciales SMTP), cargándolos desde `.env` mediante Pydantic.
 - `backend/core/security.py` añade `create_refresh_token`, `decode_token` y `verify_token_expiry`, incorpora el campo `token_type` dentro del payload JWT y reutiliza el helper para generar tokens tipados.

@@ -2806,6 +2806,76 @@ def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: 
     return store
 
 
+def update_store(
+    db: Session,
+    store_id: int,
+    payload: schemas.StoreUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Store:
+    store = get_store(db, store_id)
+
+    changes: list[str] = []
+    if payload.name is not None:
+        normalized_name = payload.name.strip()
+        if normalized_name and normalized_name != store.name:
+            changes.append(f"name:{store.name}->{normalized_name}")
+            store.name = normalized_name
+
+    if payload.location is not None:
+        normalized_location = payload.location.strip() if payload.location else None
+        if normalized_location != store.location:
+            previous = store.location or ""
+            new_value = normalized_location or ""
+            changes.append(f"location:{previous}->{new_value}")
+            store.location = normalized_location
+
+    if payload.status is not None:
+        normalized_status = _normalize_store_status(payload.status)
+        if normalized_status != store.status:
+            changes.append(f"status:{store.status}->{normalized_status}")
+            store.status = normalized_status
+
+    if payload.code is not None:
+        normalized_code = _normalize_store_code(payload.code)
+        if normalized_code != store.code and normalized_code is not None:
+            changes.append(f"code:{store.code}->{normalized_code}")
+            store.code = normalized_code
+
+    if payload.timezone is not None:
+        normalized_timezone = (payload.timezone or "UTC").strip() or "UTC"
+        if normalized_timezone != store.timezone:
+            changes.append(f"timezone:{store.timezone}->{normalized_timezone}")
+            store.timezone = normalized_timezone
+
+    if not changes:
+        return store
+
+    db.add(store)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        message = str(getattr(exc, "orig", exc)).lower()
+        if "codigo" in message or "uq_sucursales_codigo" in message:
+            raise ValueError("store_code_already_exists") from exc
+        raise ValueError("store_already_exists") from exc
+    db.refresh(store)
+
+    details = ", ".join(changes)
+    _log_action(
+        db,
+        action="store_updated",
+        entity_type="store",
+        entity_id=str(store.id),
+        performed_by_id=performed_by_id,
+        details=details or None,
+    )
+    db.commit()
+    db.refresh(store)
+    return store
+
+
 def list_stores(db: Session) -> list[models.Store]:
     statement = select(models.Store).order_by(models.Store.name.asc())
     return list(db.scalars(statement))
