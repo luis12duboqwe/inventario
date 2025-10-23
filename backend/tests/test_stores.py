@@ -477,3 +477,42 @@ def test_sale_updates_inventory_value(client) -> None:
     store_detail = client.get(f"/stores/{store_id}", headers=headers)
     assert store_detail.status_code == status.HTTP_200_OK
     assert store_detail.json()["inventory_value"] == pytest.approx(8000.0)
+
+
+def test_store_update_changes_core_fields(client) -> None:
+    headers = _auth_headers(client)
+
+    create_payload = {
+        "name": "Sucursal Centro",
+        "location": "CDMX",
+        "timezone": "America/Mexico_City",
+        "code": "SUC-010",
+    }
+    store_response = client.post("/stores", json=create_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    update_payload = {
+        "name": "Sucursal Centro Renovada",
+        "location": "Av. Reforma 123",
+        "status": "inactiva",
+        "code": "SUC-011",
+        "timezone": "America/Bogota",
+    }
+    update_response = client.put(
+        f"/stores/{store_id}", json=update_payload, headers=headers
+    )
+    assert update_response.status_code == status.HTTP_200_OK
+    data = update_response.json()
+    assert data["name"] == update_payload["name"]
+    assert data["location"] == update_payload["location"]
+    assert data["status"] == "inactiva"
+    assert data["code"] == update_payload["code"]
+    assert data["timezone"] == update_payload["timezone"]
+
+    detail_response = client.get(f"/stores/{store_id}", headers=headers)
+    assert detail_response.status_code == status.HTTP_200_OK
+    detail = detail_response.json()
+    assert detail["status"] == "inactiva"
+    assert detail["code"] == update_payload["code"]
+    assert detail["location"] == update_payload["location"]

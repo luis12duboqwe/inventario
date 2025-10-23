@@ -75,6 +75,15 @@ curl -X GET http://127.0.0.1:8000/auth/me \
 - **Esquemas ampliados**: `backend/schemas/auth.py` incorpora `TokenPairResponse`, `RefreshTokenRequest`, `ForgotPasswordRequest`, `ForgotPasswordResponse`, `ResetPasswordRequest` y `VerifyEmailRequest`, además del nuevo campo `is_verified` dentro de `UserRead` y `RegisterResponse`.
 - **Dependencias nuevas**: agrega `fastapi-limiter==0.1.6` y `fakeredis==2.32.0` en `requirements.txt` y `backend/requirements.txt`. Si se despliega en producción, reemplaza `fakeredis` por un clúster Redis y ajusta las variables SMTP para notificar a los usuarios.
 
+## API de sucursales con membresías — 23/10/2025
+
+- **Respuesta paginada**: la ruta `GET /stores` ahora entrega `Page[StoreRead]` con parámetros `page` y `size` (máximo 100 registros por página). Cada elemento expone `id`, `name`, `code`, `address`, `status`, `is_active`, `timezone`, `created_at` e `inventory_value`. El backend ligero convierte automáticamente los modelos del núcleo para mantener compatibilidad con Softmobile 2025 v2.2.0.
+- **Altas controladas**: `POST /stores` acepta el esquema `StoreCreate` (`name`, `code`, `address`, `is_active`, `timezone`) y delega en `backend/app/routers/stores.py` para preservar validaciones de unicidad (`name`, `code`), generación de códigos `SUC-###` y registro en bitácora corporativa.
+- **Edición segura**: `PUT /stores/{id}` consume `StoreUpdate` (campos opcionales) y utiliza `crud.update_store` para auditar cambios y evitar duplicidades de nombre/código. La respuesta incluye los datos unificados del núcleo y el wrapper ligero.
+- **Detalle puntual**: `GET /stores/{id}` mantiene la compatibilidad total con el núcleo retornando `StoreRead` ya normalizado, de forma que el backend ligero y los clientes externos obtienen la misma representación.
+- **Membresías por sucursal**: `GET /stores/{id}/memberships` entrega `Page[StoreMembershipRead]` con controles de paginación (`page`, `size<=200`). `PUT /stores/{id}/memberships/{user_id}` admite el cuerpo `StoreMembershipUpdate`, valida que los identificadores del cuerpo y la ruta coincidan y delega la persistencia en el núcleo, registrando permisos `can_create_transfer` y `can_receive_transfer`.
+- **Compatibilidad extendida**: el wrapper de `backend/routes/stores.py` incluye el router principal (`backend/app/routers/stores`) para conservar rutas avanzadas (`/devices`, transferencias, reportes). Los nuevos esquemas (`backend/schemas/store.py`) encapsulan la conversión y normalización de datos hacia y desde el núcleo.
+
 ## Ejecución en GitHub Codespaces
 
 La carpeta `.devcontainer/` incorpora una configuración lista para códigos universales de Codespaces con Python 3.11 y Node.js 20, además de un script de aprovisionamiento que instala automáticamente las dependencias de backend y frontend.

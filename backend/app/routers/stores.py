@@ -71,6 +71,45 @@ def retrieve_store(
         ) from exc
 
 
+@router.put("/{store_id}", response_model=schemas.StoreResponse)
+def update_store(
+    payload: schemas.StoreUpdate,
+    store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.update_store(
+            db,
+            store_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "store_not_found", "message": "La sucursal solicitada no existe."},
+        ) from exc
+    except ValueError as exc:
+        if str(exc) == "store_already_exists":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "store_already_exists",
+                    "message": "Ya existe una sucursal con ese nombre.",
+                },
+            ) from exc
+        if str(exc) == "store_code_already_exists":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "store_code_already_exists",
+                    "message": "Ya existe una sucursal con ese código.",
+                },
+            ) from exc
+        raise
+
+
 @router.post(
     "/{store_id}/devices",
     response_model=schemas.DeviceResponse,
