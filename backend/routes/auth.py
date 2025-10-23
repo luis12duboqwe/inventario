@@ -132,8 +132,8 @@ def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> 
             detail="El sistema ya cuenta con usuarios registrados.",
         )
 
-    username = payload.username or payload.email
     email_value = str(payload.email)
+    username = payload.username or email_value
 
     existing_user = _get_user_by_identifier(db, username) or get_user_by_email(db, email_value)
     if existing_user is not None:
@@ -155,9 +155,10 @@ def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> 
 def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     """Crea un nuevo usuario siempre que el correo o usuario no existan."""
 
-    username = payload.username or payload.email
-    normalized_username = _normalize_identifier(username)
-    normalized_email = _normalize_identifier(payload.email)
+    email_value = str(payload.email)
+    username_value = payload.username or email_value
+    normalized_username = _normalize_identifier(username_value)
+    normalized_email = _normalize_identifier(email_value)
 
     existing_user = (
         db.query(User)
