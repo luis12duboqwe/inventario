@@ -10,7 +10,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.orm import Session
 
@@ -23,9 +23,14 @@ class _SecuritySettings(BaseSettings):
     secret_key: str = Field(
         default="cambia-este-valor",
         description="Clave secreta usada para firmar los tokens JWT",
+        validation_alias=AliasChoices("SECRET_KEY", "SOFTMOBILE_SECRET_KEY"),
     )
     access_token_expire_minutes: int = Field(
-        default=60, description="Minutos de vigencia para cada token de acceso"
+        default=60,
+        description="Minutos de vigencia para cada token de acceso",
+        validation_alias=AliasChoices(
+            "ACCESS_TOKEN_EXPIRE_MINUTES", "SOFTMOBILE_ACCESS_TOKEN_EXPIRE"
+        ),
     )
     algorithm: str = Field(default="HS256", description="Algoritmo JWT a emplear")
 
