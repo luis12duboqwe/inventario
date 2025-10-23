@@ -943,6 +943,8 @@ class SupplierBatchUpdate(BaseModel):
     store_id: int | None = Field(default=None, ge=1)
     device_id: int | None = Field(default=None, ge=1)
 
+    model_config = ConfigDict(protected_namespaces=())
+
     @field_validator("model_name", "batch_code", "notes", mode="before")
     @classmethod
     def _normalize_optional_batch_text(cls, value: str | None) -> str | None:
