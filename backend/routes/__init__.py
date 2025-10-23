@@ -1,4 +1,16 @@
-"""Creado por Codex el 2025-10-20."""
-"""Creado por Codex el 2025-10-20 para la estructura base de rutas."""
+"""Paquete de rutas de compatibilidad para Softmobile 2025 v2.2.0."""
 
-__all__: list[str] = []
+from __future__ import annotations
+
+__all__ = [
+    "auth",
+    "backups",
+    "customers",
+    "inventory",
+    "reports",
+    "stores",
+    "updates",
+    "purchases",
+    "sync",
+    "ejemplo",
+]

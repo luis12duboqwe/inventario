@@ -36,6 +36,7 @@ Para continuar con la evolución ordenada del proyecto, utiliza las siguientes e
 ## Autenticación JWT con SQLite y bcrypt — 03/03/2026
 
 - ✅ **Dependencias nuevas**: el backend incorpora `passlib[bcrypt]` para el hash de contraseñas, `python-jose[cryptography]` para firmar y validar JWT y `python-multipart` para manejar formularios `application/x-www-form-urlencoded`. Todas se encuentran definidas en `backend/requirements.txt` y se instalan automáticamente al ejecutar `pip install -r backend/requirements.txt`.
+- ✅ **Configuración declarativa**: añade `pydantic-settings` para que `backend/main.py` y `backend/app/config.py` carguen variables de entorno de forma tipada y consistente, evitando errores de arranque por configuraciones faltantes. La dependencia ya está listada en `requirements.txt` para instalaciones locales y empaquetados.
 - ✅ **Variables de entorno**: añade `SECRET_KEY` y `ACCESS_TOKEN_EXPIRE_MINUTES` en `backend/.env`. Genera una clave segura con `python -c "import secrets; print(secrets.token_urlsafe(32))"` y asígnala a `SECRET_KEY` en tu entorno de ejecución (Codespaces/CI). **No** la publiques en commits: utiliza los parámetros de entorno del contenedor o del sistema de integración continua para inyectarla en tiempo de ejecución.
 - ✅ **Flujo de endpoints**:
   1. `POST /auth/register` — JSON `{"email": "admin@softmobile", "password": "123456"}`. Responde 200 con el usuario creado y el mensaje «Usuario registrado correctamente.».
