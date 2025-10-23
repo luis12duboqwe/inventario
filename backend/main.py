@@ -7,9 +7,11 @@ import importlib.util
 import logging
 import os
 import sys
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from textwrap import dedent
-from typing import Final, Iterable
+from typing import Any, Final, Iterable
 
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -21,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, Response
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, Mount
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -64,6 +66,9 @@ create_core_app = getattr(core_main_module, "create_app")
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger("softmobile.bootstrap")
+
+
+_ENVIRONMENT_READY = False
 
 
 class Settings(BaseSettings):
@@ -242,6 +247,7 @@ def _include_routers(target_app: FastAPI) -> None:
 
         router_signatures: set[tuple[str, str]] = set()
         filtered_routes = []
+        conflicts: list[tuple[str, str]] = []
         for route in list(router.routes):
             if not isinstance(route, APIRoute):
                 filtered_routes.append(route)
@@ -251,12 +257,7 @@ def _include_routers(target_app: FastAPI) -> None:
             for method in methods:
                 signature = (route.path, method.upper())
                 if signature in existing_signatures:
-                    LOGGER.info(
-                        "Ruta %s %s ya registrada; se omitirá al montar %s.",
-                        method,
-                        route.path,
-                        module,
-                    )
+                    conflicts.append((method, route.path))
                     signature_conflict = True
                     break
             if signature_conflict:
@@ -266,9 +267,20 @@ def _include_routers(target_app: FastAPI) -> None:
             filtered_routes.append(route)
 
         if not router_signatures:
-            LOGGER.info(
-                "Se omitió el router %s porque todas sus rutas ya existían.", module
-            )
+            if conflicts:
+                formatted = ", ".join(
+                    f"{method.upper()} {path}" for method, path in conflicts
+                )
+                LOGGER.info(
+                    "Se omitió el router %s porque sus rutas ya existían (%s).",
+                    module,
+                    formatted,
+                )
+            else:
+                LOGGER.info(
+                    "Se omitió el router %s porque todas sus rutas ya existían.",
+                    module,
+                )
             continue
 
         router.routes[:] = filtered_routes
@@ -307,10 +319,30 @@ def _validate_database_connection(database_path: Path) -> None:
         )
 
 
+def _has_route(target_app: FastAPI, path: str) -> bool:
+    """Indica si existe una ruta con ``path`` en la aplicación."""
+
+    for route in target_app.router.routes:
+        if isinstance(route, APIRoute) and route.path == path:
+            return True
+    return False
+
+
+def _has_mount(target_app: FastAPI, path: str) -> bool:
+    """Verifica si ``path`` ya fue montado en la aplicación."""
+
+    for route in target_app.routes:
+        if isinstance(route, Mount) and route.path == path:
+            return True
+    return False
+
+
 def _mount_frontend(target_app: FastAPI) -> None:
     """Monta la compilación del frontend si está disponible."""
 
     if FRONTEND_DIST.exists():
+        if _has_mount(target_app, "/"):
+            return
         target_app.mount(
             "/",
             StaticFiles(directory=FRONTEND_DIST, html=True),
@@ -358,17 +390,45 @@ def _mount_frontend(target_app: FastAPI) -> None:
         "No se encontró compilación del frontend; se habilitará una vista de respaldo"
     )
 
-    @target_app.get("/", include_in_schema=False)
-    async def read_fallback_frontend() -> HTMLResponse:
-        """Devuelve un panel informativo cuando el frontend no está compilado."""
+    if not _has_route(target_app, "/"):
 
-        return HTMLResponse(content=FALLBACK_FRONTEND_HTML)
+        @target_app.get("/", include_in_schema=False)
+        async def read_fallback_frontend() -> HTMLResponse:
+            """Devuelve un panel informativo cuando el frontend no está compilado."""
 
-    @target_app.get("/favicon.ico", include_in_schema=False)
-    async def read_favicon_placeholder() -> Response:
-        """Entrega un favicon mínimo cuando no existe compilación del frontend."""
+            return HTMLResponse(content=FALLBACK_FRONTEND_HTML)
 
-        return Response(content=FAVICON_FALLBACK_SVG, media_type="image/svg+xml")
+    if not _has_route(target_app, "/favicon.ico"):
+
+        @target_app.get("/favicon.ico", include_in_schema=False)
+        async def read_favicon_placeholder() -> Response:
+            """Entrega un favicon mínimo cuando no existe compilación del frontend."""
+
+            return Response(content=FAVICON_FALLBACK_SVG, media_type="image/svg+xml")
+
+
+def _prepare_environment(target_app: FastAPI) -> None:
+    """Garantiza dependencias de base de datos y módulos dinámicos."""
+
+    global _ENVIRONMENT_READY
+
+    if not _ENVIRONMENT_READY:
+        _ensure_database_file(DATABASE_FILE)
+        _validate_database_connection(DATABASE_FILE)
+        init_db()
+        LOGGER.info("Tablas de autenticación verificadas/creadas en %s", DATABASE_FILE)
+
+        for directory_name in ("models", "routes"):
+            directory_path = BASE_DIR / directory_name
+            if not directory_path.exists():
+                LOGGER.warning(
+                    "Directorio %s no encontrado; verifica la configuración de %s.",
+                    directory_path,
+                    directory_name,
+                )
+        _ENVIRONMENT_READY = True
+
+    _mount_frontend(target_app)
 
 
 @app.get("/api", tags=["estado"])
@@ -378,31 +438,33 @@ async def read_status() -> dict[str, str]:
     return {"message": "API online ✅ - Softmobile 2025 v2.2.0"}
 
 
-@app.on_event("startup")
-async def bootstrap_environment() -> None:
-    """Prepara el entorno mínimo requerido para ejecutar el backend."""
-
-    _ensure_database_file(DATABASE_FILE)
-    _validate_database_connection(DATABASE_FILE)
-    init_db()
-    LOGGER.info("Tablas de autenticación verificadas/creadas en %s", DATABASE_FILE)
-
-    for directory_name in ("models", "routes"):
-        directory_path = BASE_DIR / directory_name
-        if not directory_path.exists():
-            LOGGER.warning(
-                "Directorio %s no encontrado; verifica la configuración de %s.",
-                directory_path,
-                directory_name,
-            )
-
-    _mount_frontend(app)
-
-
 def get_application() -> FastAPI:
     """Permite obtener la instancia principal de FastAPI."""
 
     return app
+
+
+ORIGINAL_LIFESPAN: Callable[[FastAPI], AsyncIterator[Any]] | None = (
+    app.router.lifespan_context
+)
+
+
+@asynccontextmanager
+async def bootstrap_lifespan(target_app: FastAPI) -> AsyncIterator[Any]:
+    """Encadena el ciclo de vida original con la preparación local."""
+
+    _prepare_environment(target_app)
+    if ORIGINAL_LIFESPAN is None:
+        yield
+    else:
+        async with ORIGINAL_LIFESPAN(target_app) as state:
+            yield state
+
+
+app.router.lifespan_context = bootstrap_lifespan
+
+
+_prepare_environment(app)
 
 
 _include_routers(app)

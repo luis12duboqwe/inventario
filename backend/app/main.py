@@ -8,7 +8,7 @@ import traceback
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from . import crud, security as security_core
 from .config import settings
@@ -198,6 +198,19 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def enforce_route_permissions(request: Request, call_next):
+        if request.method.upper() == "OPTIONS":
+            response = Response(status_code=200)
+            origin = request.headers.get("origin")
+            if origin:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Vary"] = "Origin"
+            allow_headers = request.headers.get("access-control-request-headers")
+            if allow_headers:
+                response.headers["Access-Control-Allow-Headers"] = allow_headers
+            allow_method = request.headers.get("access-control-request-method")
+            if allow_method:
+                response.headers["Access-Control-Allow-Methods"] = allow_method
+            return response
         module = _resolve_module(request.url.path)
         required_roles: set[str] = set()
         for prefix, roles in ROLE_PROTECTED_PREFIXES.items():
