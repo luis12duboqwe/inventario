@@ -84,7 +84,11 @@ def update_supplier_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
 
 
-@router.delete("/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{supplier_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 def delete_supplier_endpoint(
     supplier_id: int,
     db: Session = Depends(get_db),
@@ -173,7 +177,11 @@ def update_supplier_batch_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lote no encontrado") from exc
 
 
-@router.delete("/batches/{batch_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/batches/{batch_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 def delete_supplier_batch_endpoint(
     batch_id: int,
     db: Session = Depends(get_db),

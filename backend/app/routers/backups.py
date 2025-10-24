@@ -72,7 +72,7 @@ def restore_backup(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.get("/{job_id}/download")
+@router.get("/{job_id}/download", response_model=schemas.BinaryFileResponse)
 def download_backup(
     job_id: int,
     formato: schemas.BackupExportFormat,
@@ -95,4 +95,12 @@ def download_backup(
     if not file_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no disponible")
 
-    return FileResponse(file_path, media_type=media_type, filename=file_path.name)
+    metadata = schemas.BinaryFileResponse(
+        filename=file_path.name,
+        media_type=media_type,
+    )
+    return FileResponse(
+        file_path,
+        media_type=metadata.media_type,
+        filename=metadata.filename,
+    )

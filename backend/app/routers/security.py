@@ -79,7 +79,11 @@ def totp_activate(
     )
 
 
-@router.post("/2fa/disable", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/2fa/disable",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 def totp_disable(
     current_user=Depends(require_roles(ADMIN, GERENTE)),
     db: Session = Depends(get_db),

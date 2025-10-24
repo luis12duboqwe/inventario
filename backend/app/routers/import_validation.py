@@ -91,6 +91,7 @@ def retrieve_validation_report(
 @router.get(
     "/exportar",
     status_code=status.HTTP_200_OK,
+    response_model=schemas.BinaryFileResponse,
 )
 def export_validation_report(
     formato: Literal["excel", "pdf"] = Query(default="excel"),
@@ -107,11 +108,14 @@ def export_validation_report(
     summary = crud.get_import_validation_report(db)
     if formato == "pdf":
         buffer = import_validation_service.export_validations_to_pdf(validations, summary)
-        filename = "validaciones_importacion.pdf"
-        media_type = "application/pdf"
+        metadata = schemas.BinaryFileResponse(
+            filename="validaciones_importacion.pdf",
+            media_type="application/pdf",
+        )
     else:
         buffer = import_validation_service.export_validations_to_excel(validations, summary)
-        filename = "validaciones_importacion.xlsx"
-        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    headers = {"Content-Disposition": f"attachment; filename={filename}"}
-    return StreamingResponse(buffer, media_type=media_type, headers=headers)
+        metadata = schemas.BinaryFileResponse(
+            filename="validaciones_importacion.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    return StreamingResponse(buffer, media_type=metadata.media_type, headers=metadata.content_disposition())

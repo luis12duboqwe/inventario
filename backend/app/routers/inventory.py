@@ -390,6 +390,7 @@ def inventory_summary(
 @router.get(
     "/stores/{store_id}/devices/export",
     response_class=Response,
+    response_model=schemas.BinaryFileResponse,
 )
 def export_devices(
     store_id: int = Path(..., ge=1),
@@ -432,9 +433,15 @@ def export_devices(
         fecha_ingreso_desde=fecha_ingreso_desde,
         fecha_ingreso_hasta=fecha_ingreso_hasta,
     )
-    filename = f"softmobile_catalogo_{store_id}.csv"
-    headers = {"Content-Disposition": f"attachment; filename={filename}"}
-    return Response(content=csv_data, media_type="text/csv", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename=f"softmobile_catalogo_{store_id}.csv",
+        media_type="text/csv",
+    )
+    return Response(
+        content=csv_data,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
 @router.post(

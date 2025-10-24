@@ -104,7 +104,7 @@ def transfer_report(
     )
 
 
-@router.get("/export/pdf")
+@router.get("/export/pdf", response_model=schemas.BinaryFileResponse)
 def export_transfer_report_pdf(
     store_id: int | None = Query(default=None, ge=1),
     origin_store_id: int | None = Query(default=None, ge=1),
@@ -127,15 +127,18 @@ def export_transfer_report_pdf(
         date_to=date_to,
     )
     pdf_bytes = transfer_reports.render_transfer_report_pdf(report)
-    filename = f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        media_type="application/pdf",
+    )
     return StreamingResponse(
         BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
-@router.get("/export/xlsx")
+@router.get("/export/xlsx", response_model=schemas.BinaryFileResponse)
 def export_transfer_report_excel(
     store_id: int | None = Query(default=None, ge=1),
     origin_store_id: int | None = Query(default=None, ge=1),
@@ -158,11 +161,14 @@ def export_transfer_report_excel(
         date_to=date_to,
     )
     excel_bytes = transfer_reports.render_transfer_report_excel(report)
-    filename = f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"transferencias_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     return StreamingResponse(
         BytesIO(excel_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 

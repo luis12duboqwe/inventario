@@ -38,7 +38,7 @@ def list_audit_logs_endpoint(
     )
 
 
-@router.get("/logs/export.csv")
+@router.get("/logs/export.csv", response_model=schemas.BinaryFileResponse)
 def export_audit_logs(
     limit: int = Query(default=1000, ge=1, le=5000),
     action: str | None = Query(default=None, max_length=120),
@@ -59,11 +59,14 @@ def export_audit_logs(
         date_from=date_from,
         date_to=date_to,
     )
-    filename = "bitacora_auditoria.csv"
+    metadata = schemas.BinaryFileResponse(
+        filename="bitacora_auditoria.csv",
+        media_type="text/csv; charset=utf-8",
+    )
     return PlainTextResponse(
         csv_data,
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 

@@ -81,7 +81,7 @@ def list_sales_endpoint(
     )
 
 
-@router.get("/export/pdf")
+@router.get("/export/pdf", response_model=schemas.BinaryFileResponse)
 def export_sales_pdf(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
@@ -105,15 +105,18 @@ def export_sales_pdf(
         query=search,
     )
     pdf_bytes = sales_reports.render_sales_report_pdf(report)
-    filename = f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        media_type="application/pdf",
+    )
     return StreamingResponse(
         BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
-@router.get("/export/xlsx")
+@router.get("/export/xlsx", response_model=schemas.BinaryFileResponse)
 def export_sales_excel(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
@@ -137,11 +140,14 @@ def export_sales_excel(
         query=search,
     )
     excel_bytes = sales_reports.render_sales_report_excel(report)
-    filename = f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"ventas_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     return StreamingResponse(
         BytesIO(excel_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
