@@ -20,6 +20,7 @@ from sqlalchemy.sql import ColumnElement
 
 from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
+from .core.transactions import commit_session
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
@@ -1573,7 +1574,7 @@ def acknowledge_audit_alert(
         )
     )
 
-    db.commit()
+    commit_session(db)
     invalidate_persistent_audit_alerts_cache()
     db.refresh(acknowledgement)
     telemetry.record_audit_acknowledgement(normalized_type, event)
@@ -1845,7 +1846,7 @@ def create_user(
         performed_by_id=None,
     )
 
-    db.commit()
+    commit_session(db)
     db.refresh(user)
     return user
 
@@ -1920,7 +1921,7 @@ def set_user_roles(
         db.add(models.UserRole(user=user, role=role))
 
     user.rol = _select_primary_role(role_names)
-    db.commit()
+    commit_session(db)
     db.refresh(user)
 
     log_payload: dict[str, object] = {"roles": sorted(role_names)}
@@ -1934,7 +1935,7 @@ def set_user_roles(
         performed_by_id=performed_by_id,
         details=json.dumps(log_payload, ensure_ascii=False),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(user)
     return user
 
@@ -1949,7 +1950,7 @@ def set_user_status(
 ) -> models.User:
     user.is_active = is_active
     user.estado = "ACTIVO" if is_active else "INACTIVO"
-    db.commit()
+    commit_session(db)
     db.refresh(user)
     log_payload: dict[str, object] = {
         "is_active": is_active,
@@ -1965,7 +1966,7 @@ def set_user_status(
         performed_by_id=performed_by_id,
         details=json.dumps(log_payload, ensure_ascii=False),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(user)
     return user
 
@@ -2037,7 +2038,7 @@ def update_user(
     if not changes:
         return user
 
-    db.commit()
+    commit_session(db)
     db.refresh(user)
 
     log_payload: dict[str, object] = {"changes": changes}
@@ -2051,7 +2052,7 @@ def update_user(
         performed_by_id=performed_by_id,
         details=json.dumps(log_payload, ensure_ascii=False),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(user)
     return user
 
@@ -2073,7 +2074,7 @@ def list_role_permissions(
 
     for name in role_names:
         ensure_role_permissions(db, name)
-    db.commit()
+    commit_session(db)
 
     statement = (
         select(models.Permission)
@@ -2136,7 +2137,7 @@ def update_role_permissions(
             }
         )
 
-    db.commit()
+    commit_session(db)
 
     log_payload: dict[str, object] = {"permissions": updated_modules}
     if reason:
@@ -2149,7 +2150,7 @@ def update_role_permissions(
         performed_by_id=performed_by_id,
         details=json.dumps(log_payload, ensure_ascii=False),
     )
-    db.commit()
+    commit_session(db)
 
     return list_role_permissions(db, role_name=role.name)[0]
 
@@ -2423,7 +2424,7 @@ def provision_totp_secret(
         record.is_active = False
         record.activated_at = None
         record.last_verified_at = None
-    db.commit()
+    commit_session(db)
     db.refresh(record)
 
     details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
@@ -2435,7 +2436,7 @@ def provision_totp_secret(
         performed_by_id=performed_by_id,
         details=details,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(record)
     return record
 
@@ -2454,7 +2455,7 @@ def activate_totp_secret(
     now = datetime.utcnow()
     record.activated_at = now
     record.last_verified_at = now
-    db.commit()
+    commit_session(db)
     db.refresh(record)
 
     details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
@@ -2466,7 +2467,7 @@ def activate_totp_secret(
         performed_by_id=performed_by_id,
         details=details,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(record)
     return record
 
@@ -2482,7 +2483,7 @@ def deactivate_totp_secret(
     if record is None:
         return
     record.is_active = False
-    db.commit()
+    commit_session(db)
 
     details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
     _log_action(
@@ -2493,7 +2494,7 @@ def deactivate_totp_secret(
         performed_by_id=performed_by_id,
         details=details,
     )
-    db.commit()
+    commit_session(db)
 
 
 def update_totp_last_verified(db: Session, user_id: int) -> None:
@@ -2501,14 +2502,14 @@ def update_totp_last_verified(db: Session, user_id: int) -> None:
     if record is None:
         return
     record.last_verified_at = datetime.utcnow()
-    db.commit()
+    commit_session(db)
 
 
 def clear_login_lock(db: Session, user: models.User) -> models.User:
     if user.locked_until and user.locked_until <= datetime.utcnow():
         user.locked_until = None
         user.failed_login_attempts = 0
-        db.commit()
+        commit_session(db)
         db.refresh(user)
     return user
 
@@ -2523,7 +2524,7 @@ def register_failed_login(
     if user.failed_login_attempts >= settings.max_failed_login_attempts:
         locked_until = now + timedelta(minutes=settings.account_lock_minutes)
         user.locked_until = locked_until
-    db.commit()
+    commit_session(db)
     db.refresh(user)
 
     details_payload: dict[str, object] = {
@@ -2541,7 +2542,7 @@ def register_failed_login(
         performed_by_id=user.id,
         details=details,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(user)
     return user
 
@@ -2552,7 +2553,7 @@ def register_successful_login(
     user.failed_login_attempts = 0
     user.locked_until = None
     user.last_login_attempt_at = datetime.utcnow()
-    db.commit()
+    commit_session(db)
     db.refresh(user)
 
     details_payload = (
@@ -2571,7 +2572,7 @@ def register_successful_login(
         performed_by_id=user.id,
         details=details,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(user)
     return user
 
@@ -2584,7 +2585,7 @@ def log_unknown_login_attempt(db: Session, username: str) -> None:
         entity_id=username,
         performed_by_id=None,
     )
-    db.commit()
+    commit_session(db)
 
 
 def create_password_reset_token(
@@ -2598,7 +2599,7 @@ def create_password_reset_token(
         expires_at=expires_at,
     )
     db.add(record)
-    db.commit()
+    commit_session(db)
     db.refresh(record)
 
     details = json.dumps(
@@ -2612,7 +2613,7 @@ def create_password_reset_token(
         performed_by_id=None,
         details=details,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(record)
     return record
 
@@ -2630,7 +2631,7 @@ def mark_password_reset_token_used(
     db: Session, token_record: models.PasswordResetToken
 ) -> models.PasswordResetToken:
     token_record.used_at = datetime.utcnow()
-    db.commit()
+    commit_session(db)
     db.refresh(token_record)
     return token_record
 
@@ -2646,7 +2647,7 @@ def reset_user_password(
     user.failed_login_attempts = 0
     user.locked_until = None
     user.last_login_attempt_at = datetime.utcnow()
-    db.commit()
+    commit_session(db)
     db.refresh(user)
 
     _log_action(
@@ -2656,7 +2657,7 @@ def reset_user_password(
         entity_id=str(user.id),
         performed_by_id=performed_by_id,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(user)
     return user
 
@@ -2680,7 +2681,7 @@ def create_active_session(
         user_id=user_id, session_token=session_token, expires_at=expires_at
     )
     db.add(session)
-    db.commit()
+    commit_session(db)
     db.refresh(session)
     return session
 
@@ -2706,11 +2707,11 @@ def mark_session_used(db: Session, session_token: str) -> models.ActiveSession |
         if session.revoked_at is None:
             session.revoked_at = datetime.now(timezone.utc)
             session.revoke_reason = session.revoke_reason or "expired"
-            db.commit()
+            commit_session(db)
             db.refresh(session)
         return None
     session.last_used_at = datetime.utcnow()
-    db.commit()
+    commit_session(db)
     db.refresh(session)
     return session
 
@@ -2738,7 +2739,7 @@ def revoke_session(
     session.revoked_at = datetime.utcnow()
     session.revoked_by_id = revoked_by_id
     session.revoke_reason = reason
-    db.commit()
+    commit_session(db)
     db.refresh(session)
     return session
 
@@ -2785,7 +2786,7 @@ def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: 
     )
     db.add(store)
     try:
-        db.commit()
+        commit_session(db)
     except IntegrityError as exc:
         db.rollback()
         message = str(getattr(exc, "orig", exc)).lower()
@@ -2801,7 +2802,7 @@ def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: 
         entity_id=str(store.id),
         performed_by_id=performed_by_id,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(store)
     return store
 
@@ -2853,7 +2854,7 @@ def update_store(
 
     db.add(store)
     try:
-        db.commit()
+        commit_session(db)
     except IntegrityError as exc:
         db.rollback()
         message = str(getattr(exc, "orig", exc)).lower()
@@ -2871,7 +2872,7 @@ def update_store(
         performed_by_id=performed_by_id,
         details=details or None,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(store)
     return store
 
@@ -2963,7 +2964,7 @@ def create_customer(
     )
     db.add(customer)
     try:
-        db.commit()
+        commit_session(db)
     except IntegrityError as exc:
         db.rollback()
         raise ValueError("customer_already_exists") from exc
@@ -2977,7 +2978,7 @@ def create_customer(
         performed_by_id=performed_by_id,
         details=json.dumps({"name": customer.name}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(customer)
     enqueue_sync_outbox(
         db,
@@ -3084,7 +3085,7 @@ def update_customer(
             **pending_ledger_entry_kwargs,
         )
     db.add(customer)
-    db.commit()
+    commit_session(db)
     db.refresh(customer)
 
     if ledger_entry is not None:
@@ -3099,7 +3100,7 @@ def update_customer(
             performed_by_id=performed_by_id,
             details=json.dumps(updated_fields),
         )
-        db.commit()
+        commit_session(db)
         db.refresh(customer)
     enqueue_sync_outbox(
         db,
@@ -3119,7 +3120,7 @@ def delete_customer(
 ) -> None:
     customer = get_customer(db, customer_id)
     db.delete(customer)
-    db.commit()
+    commit_session(db)
     _log_action(
         db,
         action="customer_deleted",
@@ -3127,7 +3128,7 @@ def delete_customer(
         entity_id=str(customer_id),
         performed_by_id=performed_by_id,
     )
-    db.commit()
+    commit_session(db)
     enqueue_sync_outbox(
         db,
         entity_type="customer",
@@ -3221,7 +3222,7 @@ def append_customer_note(
         details=json.dumps({"note": payload.note}),
     )
 
-    db.commit()
+    commit_session(db)
     db.refresh(customer)
     db.refresh(ledger_entry)
 
@@ -3316,7 +3317,7 @@ def register_customer_payment(
         ),
     )
 
-    db.commit()
+    commit_session(db)
     db.refresh(customer)
     db.refresh(ledger_entry)
 
@@ -3691,7 +3692,7 @@ def create_supplier(
     )
     db.add(supplier)
     try:
-        db.commit()
+        commit_session(db)
     except IntegrityError as exc:
         db.rollback()
         raise ValueError("supplier_already_exists") from exc
@@ -3705,7 +3706,7 @@ def create_supplier(
         performed_by_id=performed_by_id,
         details=json.dumps({"name": supplier.name}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(supplier)
     return supplier
 
@@ -3745,7 +3746,7 @@ def update_supplier(
         supplier.history = history
         updated_fields["history"] = history
     db.add(supplier)
-    db.commit()
+    commit_session(db)
     db.refresh(supplier)
 
     if updated_fields:
@@ -3757,7 +3758,7 @@ def update_supplier(
             performed_by_id=performed_by_id,
             details=json.dumps(updated_fields),
         )
-        db.commit()
+        commit_session(db)
         db.refresh(supplier)
     return supplier
 
@@ -3770,7 +3771,7 @@ def delete_supplier(
 ) -> None:
     supplier = get_supplier(db, supplier_id)
     db.delete(supplier)
-    db.commit()
+    commit_session(db)
     _log_action(
         db,
         action="supplier_deleted",
@@ -3778,7 +3779,7 @@ def delete_supplier(
         entity_id=str(supplier_id),
         performed_by_id=performed_by_id,
     )
-    db.commit()
+    commit_session(db)
 
 
 def get_purchase_vendor(db: Session, vendor_id: int) -> models.Proveedor:
@@ -3856,7 +3857,7 @@ def create_purchase_vendor(
     )
     db.add(vendor)
     try:
-        db.commit()
+        commit_session(db)
     except IntegrityError as exc:
         db.rollback()
         raise ValueError("purchase_vendor_duplicate") from exc
@@ -3870,7 +3871,7 @@ def create_purchase_vendor(
         performed_by_id=performed_by_id,
         details=json.dumps({"nombre": vendor.nombre, "estado": vendor.estado}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(vendor)
     return vendor
 
@@ -3907,7 +3908,7 @@ def update_purchase_vendor(
         updated_fields["estado"] = payload.estado
 
     db.add(vendor)
-    db.commit()
+    commit_session(db)
     db.refresh(vendor)
 
     if updated_fields:
@@ -3919,7 +3920,7 @@ def update_purchase_vendor(
             performed_by_id=performed_by_id,
             details=json.dumps(updated_fields),
         )
-        db.commit()
+        commit_session(db)
         db.refresh(vendor)
     return vendor
 
@@ -3934,7 +3935,7 @@ def set_purchase_vendor_status(
     vendor = get_purchase_vendor(db, vendor_id)
     vendor.estado = estado
     db.add(vendor)
-    db.commit()
+    commit_session(db)
     db.refresh(vendor)
 
     _log_action(
@@ -3945,7 +3946,7 @@ def set_purchase_vendor_status(
         performed_by_id=performed_by_id,
         details=json.dumps({"estado": estado}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(vendor)
     return vendor
 
@@ -4128,7 +4129,7 @@ def create_supplier_batch(
         _recalculate_sale_price(device)
         db.add(device)
 
-    db.commit()
+    commit_session(db)
     db.refresh(batch)
 
     if device is not None:
@@ -4142,7 +4143,7 @@ def create_supplier_batch(
         performed_by_id=performed_by_id,
         details=json.dumps({"supplier_id": supplier.id, "batch_code": batch.batch_code}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(batch)
     return batch
 
@@ -4197,7 +4198,7 @@ def update_supplier_batch(
     batch.updated_at = datetime.utcnow()
 
     db.add(batch)
-    db.commit()
+    commit_session(db)
     db.refresh(batch)
 
     if updated_fields:
@@ -4209,7 +4210,7 @@ def update_supplier_batch(
             performed_by_id=performed_by_id,
             details=json.dumps(updated_fields),
         )
-        db.commit()
+        commit_session(db)
         db.refresh(batch)
     return batch
 
@@ -4226,7 +4227,7 @@ def delete_supplier_batch(
         raise LookupError("supplier_batch_not_found")
     store_id = batch.store_id
     db.delete(batch)
-    db.commit()
+    commit_session(db)
     if store_id:
         _recalculate_store_inventory_value(db, store_id)
     _log_action(
@@ -4236,7 +4237,7 @@ def delete_supplier_batch(
         entity_id=str(batch_id),
         performed_by_id=performed_by_id,
     )
-    db.commit()
+    commit_session(db)
 
 
 def export_suppliers_csv(
@@ -4353,7 +4354,7 @@ def create_device(
         device.precio_venta = unit_price
     db.add(device)
     try:
-        db.commit()
+        commit_session(db)
     except IntegrityError as exc:
         db.rollback()
         raise ValueError("device_already_exists") from exc
@@ -4367,7 +4368,7 @@ def create_device(
         performed_by_id=performed_by_id,
         details=f"SKU={device.sku}",
     )
-    db.commit()
+    commit_session(db)
     db.refresh(device)
     _recalculate_store_inventory_value(db, store_id)
     enqueue_sync_outbox(
@@ -4469,7 +4470,7 @@ def update_device(
         device.precio_venta = manual_price
     elif {"costo_unitario", "margen_porcentaje"}.intersection(updated_fields):
         _recalculate_sale_price(device)
-    db.commit()
+    commit_session(db)
     db.refresh(device)
 
     fields_changed = list(updated_fields.keys())
@@ -4494,7 +4495,7 @@ def update_device(
             performed_by_id=performed_by_id,
             details=json.dumps({"fields": fields_changed, "sensitive": sensitive_changes}),
         )
-        db.commit()
+        commit_session(db)
         db.refresh(device)
     _recalculate_store_inventory_value(db, store_id)
     enqueue_sync_outbox(
@@ -4543,7 +4544,7 @@ def upsert_device_identifier(
     identifier.observaciones = payload_data.get("observaciones")
 
     db.add(identifier)
-    db.commit()
+    commit_session(db)
     db.refresh(identifier)
 
     action = "device_identifier_created" if created else "device_identifier_updated"
@@ -4566,7 +4567,7 @@ def upsert_device_identifier(
         performed_by_id=performed_by_id,
         details=details,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(identifier)
     return identifier
 
@@ -4773,7 +4774,7 @@ def create_inventory_movement(
         performed_by_id=performed_by_id,
     )
     db.add(movement)
-    db.commit()
+    commit_session(db)
     db.refresh(device)
     db.refresh(movement)
     # Aseguramos que las relaciones necesarias estén disponibles para la respuesta serializada.
@@ -4829,7 +4830,7 @@ def create_inventory_movement(
             ),
         )
 
-    db.commit()
+    commit_session(db)
     db.refresh(movement)
     total_value = _recalculate_store_inventory_value(db, store_id)
     setattr(movement, "store_inventory_value", total_value)
@@ -6241,7 +6242,7 @@ def record_sync_session(
         triggered_by_id=triggered_by_id,
     )
     db.add(session)
-    db.commit()
+    commit_session(db)
     db.refresh(session)
 
     _log_action(
@@ -6260,7 +6261,7 @@ def record_sync_session(
             ensure_ascii=False,
         ),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(session)
     return session
 
@@ -6286,7 +6287,7 @@ def log_sync_discrepancies(
             performed_by_id=performed_by_id,
             details=json.dumps(discrepancy, ensure_ascii=False, default=str),
         )
-    db.commit()
+    commit_session(db)
 
 
 def mark_outbox_entries_sent(
@@ -6313,7 +6314,7 @@ def mark_outbox_entries_sent(
         entry.attempt_count = (entry.attempt_count or 0) + 1
         entry.error_message = None
         entry.updated_at = now
-    db.commit()
+    commit_session(db)
 
     for entry in entries:
         db.refresh(entry)
@@ -6328,7 +6329,7 @@ def mark_outbox_entries_sent(
                 ensure_ascii=False,
             ),
         )
-    db.commit()
+    commit_session(db)
     for entry in entries:
         db.refresh(entry)
     return entries
@@ -6424,7 +6425,7 @@ def enqueue_sync_outbox(
         entry.last_attempt_at = None
         if _priority_weight(resolved_priority) < _priority_weight(entry.priority):
             entry.priority = resolved_priority
-    db.commit()
+    commit_session(db)
     db.refresh(entry)
     return entry
 
@@ -6476,7 +6477,7 @@ def reset_outbox_entries(
         entry.last_attempt_at = None
         entry.error_message = None
         entry.updated_at = now
-    db.commit()
+    commit_session(db)
     for entry in entries:
         db.refresh(entry)
         details_payload = {"operation": entry.operation}
@@ -6490,7 +6491,7 @@ def reset_outbox_entries(
             performed_by_id=performed_by_id,
             details=json.dumps(details_payload, ensure_ascii=False),
         )
-    db.commit()
+    commit_session(db)
     refreshed = list(db.scalars(statement))
     return refreshed
 
@@ -6835,7 +6836,7 @@ def upsert_store_membership(
     else:
         membership.can_create_transfer = can_create_transfer
         membership.can_receive_transfer = can_receive_transfer
-    db.commit()
+    commit_session(db)
     db.refresh(membership)
     return membership
 
@@ -6932,7 +6933,7 @@ def create_transfer_order(
         )
         db.add(order_item)
 
-    db.commit()
+    commit_session(db)
     db.refresh(order)
 
     _log_action(
@@ -6947,7 +6948,7 @@ def create_transfer_order(
             "reason": payload.reason,
         }),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     return order
 
@@ -6991,7 +6992,7 @@ def dispatch_transfer_order(
     order.dispatched_at = datetime.utcnow()
     order.reason = reason or order.reason
 
-    db.commit()
+    commit_session(db)
     db.refresh(order)
 
     _log_action(
@@ -7002,7 +7003,7 @@ def dispatch_transfer_order(
         performed_by_id=performed_by_id,
         details=json.dumps({"status": order.status.value, "reason": reason}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     return order
 
@@ -7086,7 +7087,7 @@ def receive_transfer_order(
     order.received_at = datetime.utcnow()
     order.reason = reason or order.reason
 
-    db.commit()
+    commit_session(db)
     db.refresh(order)
 
     _log_action(
@@ -7097,7 +7098,7 @@ def receive_transfer_order(
         performed_by_id=performed_by_id,
         details=json.dumps({"status": order.status.value, "reason": reason}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     return order
 
@@ -7125,7 +7126,7 @@ def cancel_transfer_order(
     order.cancelled_at = datetime.utcnow()
     order.reason = reason or order.reason
 
-    db.commit()
+    commit_session(db)
     db.refresh(order)
 
     _log_action(
@@ -7136,7 +7137,7 @@ def cancel_transfer_order(
         performed_by_id=performed_by_id,
         details=json.dumps({"status": order.status.value, "reason": reason}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     return order
 
@@ -7237,7 +7238,7 @@ def create_backup_job(
         performed_by_id=triggered_by_id,
         details=detalles,
     )
-    db.commit()
+    commit_session(db)
     db.refresh(job)
     return job
 
@@ -7466,7 +7467,7 @@ def create_purchase_record(
     purchase.total = total
     purchase.impuesto = impuesto
 
-    db.commit()
+    commit_session(db)
 
     _log_action(
         db,
@@ -7483,7 +7484,7 @@ def create_purchase_record(
             }
         ),
     )
-    db.commit()
+    commit_session(db)
 
     return get_purchase_record(db, purchase.id_compra)
 
@@ -7749,7 +7750,7 @@ def create_purchase_order(
         )
         db.add(order_item)
 
-    db.commit()
+    commit_session(db)
     db.refresh(order)
 
     _log_action(
@@ -7760,7 +7761,7 @@ def create_purchase_order(
         performed_by_id=created_by_id,
         details=json.dumps({"store_id": order.store_id, "supplier": order.supplier}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     enqueue_sync_outbox(
         db,
@@ -7857,7 +7858,7 @@ def receive_purchase_order(
     else:
         order.status = models.PurchaseStatus.PARCIAL
 
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     _recalculate_store_inventory_value(db, order.store_id)
 
@@ -7869,7 +7870,7 @@ def receive_purchase_order(
         performed_by_id=received_by_id,
         details=json.dumps({"items": reception_details, "status": order.status.value}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     enqueue_sync_outbox(
         db,
@@ -7971,7 +7972,7 @@ def cancel_purchase_order(
     if reason:
         order.notes = (order.notes or "") + f" | Cancelación: {reason}" if order.notes else reason
 
-    db.commit()
+    commit_session(db)
     db.refresh(order)
 
     _log_action(
@@ -7988,7 +7989,7 @@ def cancel_purchase_order(
             }
         ),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     enqueue_sync_outbox(
         db,
@@ -8068,7 +8069,7 @@ def register_purchase_return(
         processed_by_id=processed_by_id,
     )
     db.add(purchase_return)
-    db.commit()
+    commit_session(db)
     db.refresh(purchase_return)
 
     _log_action(
@@ -8079,7 +8080,7 @@ def register_purchase_return(
         performed_by_id=processed_by_id,
         details=json.dumps({"device_id": payload.device_id, "quantity": payload.quantity}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     enqueue_sync_outbox(
         db,
@@ -8223,7 +8224,7 @@ def import_purchase_orders_from_csv(
             performed_by_id=created_by_id,
             details=json.dumps({"imported": len(orders), "errors": len(errors)}),
         )
-        db.commit()
+        commit_session(db)
 
     return orders, errors
 
@@ -8308,7 +8309,7 @@ def create_recurring_order(
             }
         ),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(template)
     return template
 
@@ -8370,7 +8371,7 @@ def execute_recurring_order(
             }
         ),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(template)
 
     return schemas.RecurringOrderExecutionResult(
@@ -8564,13 +8565,13 @@ def create_repair_order(
         )
     order.total_cost = (labor_cost + parts_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     db.add(order)
-    db.commit()
+    commit_session(db)
     db.refresh(order)
 
     if customer:
         _append_customer_history(customer, f"Orden de reparación #{order.id} creada")
         db.add(customer)
-        db.commit()
+        commit_session(db)
         db.refresh(customer)
 
     _log_action(
@@ -8581,7 +8582,7 @@ def create_repair_order(
         performed_by_id=performed_by_id,
         details=json.dumps({"store_id": order.store_id, "status": order.status.value}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(order)
     enqueue_sync_outbox(
         db,
@@ -8652,7 +8653,7 @@ def update_repair_order(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
     db.add(order)
-    db.commit()
+    commit_session(db)
     db.refresh(order)
 
     if updated_fields:
@@ -8664,7 +8665,7 @@ def update_repair_order(
             performed_by_id=performed_by_id,
             details=json.dumps(updated_fields),
         )
-        db.commit()
+        commit_session(db)
         db.refresh(order)
     enqueue_sync_outbox(
         db,
@@ -8700,7 +8701,7 @@ def delete_repair_order(
         )
     _recalculate_store_inventory_value(db, order.store_id)
     db.delete(order)
-    db.commit()
+    commit_session(db)
     _log_action(
         db,
         action="repair_order_deleted",
@@ -8708,7 +8709,7 @@ def delete_repair_order(
         entity_id=str(order_id),
         performed_by_id=performed_by_id,
     )
-    db.commit()
+    commit_session(db)
     enqueue_sync_outbox(
         db,
         entity_type="repair_order",
@@ -9051,7 +9052,7 @@ def create_sale(
         )
         db.add(customer)
 
-    db.commit()
+    commit_session(db)
     db.refresh(sale)
 
     if customer and sale.payment_method == models.PaymentMethod.CREDITO:
@@ -9073,7 +9074,7 @@ def create_sale(
         performed_by_id=performed_by_id,
         details=json.dumps({"store_id": sale.store_id, "total_amount": float(sale.total_amount)}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(sale)
     sale_payload = {
         "sale_id": sale.id,
@@ -9277,7 +9278,7 @@ def update_sale(
 
     _recalculate_store_inventory_value(db, sale.store_id)
 
-    db.commit()
+    commit_session(db)
     db.refresh(sale)
 
     for customer_to_sync in customers_to_sync.values():
@@ -9301,7 +9302,7 @@ def update_sale(
         performed_by_id=performed_by_id,
         details=json.dumps({"store_id": sale.store_id, "reason": reason}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(sale)
 
     sale_payload = {
@@ -9395,7 +9396,7 @@ def cancel_sale(
     sale.status = "CANCELADA"
     _recalculate_store_inventory_value(db, sale.store_id)
 
-    db.commit()
+    commit_session(db)
     db.refresh(sale)
 
     if customer_to_sync:
@@ -9417,7 +9418,7 @@ def cancel_sale(
         performed_by_id=performed_by_id,
         details=json.dumps({"reason": cancel_reason}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(sale)
 
     sale_payload = {
@@ -9501,7 +9502,7 @@ def register_sale_return(
 
     _recalculate_store_inventory_value(db, sale.store_id)
 
-    db.commit()
+    commit_session(db)
     for sale_return in returns:
         db.refresh(sale_return)
 
@@ -9513,7 +9514,7 @@ def register_sale_return(
         performed_by_id=processed_by_id,
         details=json.dumps({"items": [item.model_dump() for item in payload.items]}),
     )
-    db.commit()
+    commit_session(db)
 
     if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and refund_total > 0:
         sale.customer.outstanding_debt = (
@@ -9526,7 +9527,7 @@ def register_sale_return(
             f"Devolución aplicada a venta #{sale.id} por ${float(refund_total):.2f}",
         )
         db.add(sale.customer)
-        db.commit()
+        commit_session(db)
         ledger_entry = _create_customer_ledger_entry(
             db,
             customer=sale.customer,
@@ -9767,7 +9768,7 @@ def open_cash_session(
         opened_by_id=opened_by_id,
     )
     db.add(session)
-    db.commit()
+    commit_session(db)
     db.refresh(session)
 
     _log_action(
@@ -9778,7 +9779,7 @@ def open_cash_session(
         performed_by_id=opened_by_id,
         details=json.dumps({"store_id": session.store_id, "reason": reason}),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(session)
     return session
 
@@ -9826,7 +9827,7 @@ def close_cash_session(
         session.notes = (session.notes or "") + f"\n{payload.notes}" if session.notes else payload.notes
 
     db.add(session)
-    db.commit()
+    commit_session(db)
     db.refresh(session)
 
     _log_action(
@@ -9842,7 +9843,7 @@ def close_cash_session(
             }
         ),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(session)
     return session
 
@@ -9856,7 +9857,7 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
         generated_prefix = f"{prefix}-{store_id:03d}"[:12]
         config = models.POSConfig(store_id=store_id, invoice_prefix=generated_prefix)
         db.add(config)
-        db.commit()
+        commit_session(db)
     db.refresh(config)
     return config
 
@@ -9879,7 +9880,7 @@ def update_pos_config(
     )
     config.quick_product_ids = payload.quick_product_ids
     db.add(config)
-    db.commit()
+    commit_session(db)
     db.refresh(config)
 
     _log_action(
@@ -9896,7 +9897,7 @@ def update_pos_config(
             }
         ),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(config)
     enqueue_sync_outbox(
         db,
@@ -9952,7 +9953,7 @@ def save_pos_draft(
     )
     draft.payload = serialized
     db.add(draft)
-    db.commit()
+    commit_session(db)
     db.refresh(draft)
 
     details = {"store_id": payload.store_id}
@@ -9966,7 +9967,7 @@ def save_pos_draft(
         performed_by_id=saved_by_id,
         details=json.dumps(details),
     )
-    db.commit()
+    commit_session(db)
     db.refresh(draft)
     enqueue_sync_outbox(
         db,
@@ -9985,7 +9986,7 @@ def delete_pos_draft(db: Session, draft_id: int, *, removed_by_id: int | None = 
         raise LookupError("pos_draft_not_found")
     store_id = draft.store_id
     db.delete(draft)
-    db.commit()
+    commit_session(db)
     _log_action(
         db,
         action="pos_draft_removed",
@@ -9994,7 +9995,7 @@ def delete_pos_draft(db: Session, draft_id: int, *, removed_by_id: int | None = 
         performed_by_id=removed_by_id,
         details=json.dumps({"store_id": store_id}),
     )
-    db.commit()
+    commit_session(db)
     enqueue_sync_outbox(
         db,
         entity_type="pos_draft",
@@ -10064,7 +10065,7 @@ def register_pos_sale(
             raise ValueError("cash_session_not_open")
         sale.cash_session_id = session.id
         db.add(sale)
-        db.commit()
+        commit_session(db)
         db.refresh(sale)
 
     db.refresh(sale)
@@ -10277,7 +10278,7 @@ def create_inventory_import_record(
         duracion_segundos=duration_value,
     )
     db.add(record)
-    db.commit()
+    commit_session(db)
     db.refresh(record)
     return record
 
@@ -10346,7 +10347,7 @@ def mark_import_validation_corrected(
     validation.corregido = corrected
     validation.fecha = datetime.utcnow()
     db.add(validation)
-    db.commit()
+    commit_session(db)
     db.refresh(validation)
     return validation
 
