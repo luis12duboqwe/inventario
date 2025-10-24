@@ -54,6 +54,8 @@ Para continuar con la evolución ordenada del proyecto, utiliza las siguientes e
 ## Ajuste de mantenimiento — 06/11/2025
 
 - 🧹 **Limpieza de artefactos generados**: se retira del repositorio el archivo `backend/database/softmobile.db`, que es recreado automáticamente en tiempo de ejecución. Esto evita adjuntar binarios en los PR y mantiene el flujo de empaquetado descrito en la sección «Preparación rápida del entorno base».
+- 🔧 **Refuerzos de utilidades compartidas**: `backend/schemas/common.py` normaliza el cálculo de páginas con `ceil` y `backend/core/logging.py` declara explícitamente los contextos (`ContextVar`, `Token`) utilizados por Loguru para garantizar trazabilidad consistente incluso en entornos mínimos.
+- 📄 **Compatibilidad de recibos POS**: `backend/routes/pos.py` prioriza los recibos PDF del núcleo, aplica un desfase en los identificadores del módulo ligero (`+1,000,000`) y sólo entrega respuestas JSON cuando la venta no existe en el POS tradicional, evitando colisiones y manteniendo el PDF histórico disponible.
 ## Reorganización técnica del frontend — 23/10/2025
 
 - Se normaliza la estructura de `frontend/src/` creando las carpetas `app/`, `shared/`, `services/api/`, `features/`, `pages/` y `widgets/`, manteniendo los módulos existentes dentro de `modules/` y sin alterar el aspecto visual.

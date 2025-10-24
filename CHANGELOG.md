@@ -1,5 +1,10 @@
 # Bitácora de cambios
 
+## fix: stabilize shared helpers (06/11/2025)
+- `backend/schemas/common.py` importa `ceil` y asegura que `Page.pages` calcule correctamente el total de páginas disponible para los listados unificados.
+- `backend/core/logging.py` declara los contextos (`ContextVar`, `Token`) requeridos por Loguru para mantener los campos `user_id`, `path` y `latency` incluso en escenarios sin dependencias adicionales.
+- `backend/routes/pos.py` prioriza la descarga de recibos PDF del núcleo, aplica un desplazamiento de `+1,000,000` a los folios del módulo ligero y sólo responde con el recibo JSON cuando la venta no existe en el POS clásico, evitando conflictos por identificadores persistentes.
+
 ## fix: remove sqlite artifact from repo (06/11/2025)
 - Se elimina el archivo generado `backend/database/softmobile.db` del control de versiones para evitar adjuntar binarios en los PR y permitir que la base SQLite se cree dinámicamente al iniciar la aplicación.
 

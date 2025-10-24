@@ -3,12 +3,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Iterable
+from typing import Final, Iterable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from backend.models.pos import PaymentMethod, SaleStatus
+
+
+POS_SALE_OFFSET: Final[int] = 1_000_000
 
 
 class SaleItemCreate(BaseModel):
@@ -161,6 +164,10 @@ class SaleResponse(BaseModel):
     )
     def _serialize_decimal(self, value: Decimal) -> float:
         return float(value)
+
+    @field_serializer("id")
+    def _serialize_id(self, value: int) -> int:
+        return value + POS_SALE_OFFSET
 
 
 class CheckoutResponse(SaleResponse):

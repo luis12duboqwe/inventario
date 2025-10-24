@@ -15,6 +15,8 @@
 - El router `backend/routes/pos.py` publica `POST /pos/sales`, `POST /pos/sales/{id}/items`, `POST /pos/sales/{id}/checkout`, `POST /pos/sales/{id}/hold`, `POST /pos/sales/{id}/resume`, `POST /pos/sales/{id}/void` y `GET /pos/receipt/{id}`, manteniendo la compatibilidad con `/pos/sale` (núcleo) para recibos PDF.
 - El esquema `backend/schemas/pos.py` describe solicitudes y respuestas; la prueba `backend/tests/test_pos_module.py` valida flujos de hold/resume, multipago y anulaciones.
 - Los listados corporativos consumidos por POS (inventario, sucursales, reportes) entregan `Page[...]` según `backend/schemas/common.py`; ajusta clientes o SDK para leer `items`, `total`, `page`, `size`.
+- 06/11/2025 — Se refuerza `backend/schemas/common.Page` importando `ceil` para el cálculo de páginas y `backend/core/logging.py` declara explícitamente los contextos utilizados por Loguru, evitando fallos de importación cuando se ejecuta el POS ligero en entornos mínimos.
+- 06/11/2025 — Se refuerza `backend/schemas/common.Page` importando `ceil` para el cálculo de páginas y `backend/core/logging.py` declara explícitamente los contextos utilizados por Loguru, evitando fallos de importación cuando se ejecuta el POS ligero en entornos mínimos. `backend/routes/pos.py` desfasó los folios del módulo ligero en `+1,000,000`, consulta primero el recibo PDF del núcleo y sólo devuelve el JSON ligero cuando la venta no existe en la base corporativa, de modo que las pruebas históricas continúan recibiendo `application/pdf`.
 
 ## Agentes funcionales — 23/10/2025
 

@@ -28,23 +28,30 @@ extended_router = APIRouter(prefix="/pos", tags=["pos"])
 
 _DECIMAL_ZERO = Decimal("0")
 _DECIMAL_CENT = Decimal("0.01")
+_POS_ID_OFFSET = schemas.POS_SALE_OFFSET
 
 
 def _quantize(value: Decimal) -> Decimal:
     return value.quantize(_DECIMAL_CENT)
 
 
-def _load_sale(db: Session, sale_id: int) -> Sale | None:
+def _load_sale(db: Session, sale_id: int, *, allow_internal: bool = False) -> Sale | None:
+    if sale_id >= _POS_ID_OFFSET:
+        internal_id = sale_id - _POS_ID_OFFSET
+    elif allow_internal:
+        internal_id = sale_id
+    else:
+        return None
     statement = (
         select(Sale)
-        .where(Sale.id == sale_id)
+        .where(Sale.id == internal_id)
         .options(selectinload(Sale.items), selectinload(Sale.payments))
     )
     return db.execute(statement).scalar_one_or_none()
 
 
 def _ensure_sale(db: Session, sale_id: int) -> Sale:
-    sale = _load_sale(db, sale_id)
+    sale = _load_sale(db, sale_id, allow_internal=True)
     if sale is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -305,9 +312,15 @@ def read_receipt(
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
-    sale = _load_sale(db, sale_id)
-    if sale and sale.status == SaleStatus.COMPLETED:
-        return schemas.ReceiptResponse.model_validate(sale)
+    if sale_id >= _POS_ID_OFFSET:
+        sale = _load_sale(db, sale_id)
+        if sale and sale.status == SaleStatus.COMPLETED:
+            return schemas.ReceiptResponse.model_validate(sale)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "sale_not_found", "message": "Venta no encontrada."},
+        )
+
     try:
         return core_pos.download_pos_receipt(
             sale_id=sale_id,
@@ -315,6 +328,8 @@ def read_receipt(
             reason=reason,
             current_user=current_user,
         )
+    except HTTPException:
+        raise
     except OperationalError:
         buffer = BytesIO()
         pdf = canvas.Canvas(buffer)
