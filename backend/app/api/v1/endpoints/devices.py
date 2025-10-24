@@ -3,7 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from .... import schemas
+from ....core.roles import GESTION_ROLES, REPORTE_ROLES
 from ....models.store import Store
+from ....security import require_roles
 from ....services.inventory import create_device, list_devices
 from ...deps import get_db
 
@@ -14,6 +16,7 @@ router = APIRouter()
 def get_devices(
     store_id: int = Path(..., description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*REPORTE_ROLES)),
 ) -> list[schemas.Device]:
     """Return every device belonging to the requested store."""
 
@@ -34,6 +37,7 @@ def add_device(
     store_id: int = Path(..., description="Identificador de la sucursal"),
     device_in: schemas.DeviceCreate,
     db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> schemas.Device:
     """Create a new device for the selected store."""
 

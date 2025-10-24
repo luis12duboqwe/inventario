@@ -135,6 +135,7 @@ def upsert_membership(
 
 @router.get(
     "/stores/{store_id}/devices",
+    response_model=Page[schemas.StoreDeviceRead],
     include_in_schema=False,
 )
 def proxy_list_devices(
@@ -153,7 +154,7 @@ def proxy_list_devices(
 ):
     """Delegado para no romper compatibilidad al incluir el router del núcleo."""
 
-    return core_stores.list_devices(
+    core_page = core_stores.list_devices(
         store_id=store_id,
         search=search,
         estado=estado,
@@ -166,6 +167,13 @@ def proxy_list_devices(
         fecha_ingreso_hasta=fecha_ingreso_hasta,
         db=db,
         current_user=current_user,
+    )
+    items = [schemas.StoreDeviceRead.from_core(item) for item in core_page.items]
+    return Page.from_items(
+        items,
+        page=core_page.page,
+        size=core_page.size,
+        total=core_page.total,
     )
 
 

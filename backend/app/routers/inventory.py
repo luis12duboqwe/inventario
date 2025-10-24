@@ -447,6 +447,7 @@ def export_devices(
 @router.post(
     "/stores/{store_id}/devices/import",
     status_code=status.HTTP_201_CREATED,
+    response_model=schemas.InventoryImportSummary,
 )
 async def import_devices(
     store_id: int = Path(..., ge=1),
@@ -489,4 +490,4 @@ async def import_devices(
                 "message": "El archivo contiene datos inválidos.",
             }
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
-    return summary
+    return schemas.InventoryImportSummary(**summary)

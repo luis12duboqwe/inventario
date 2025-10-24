@@ -69,3 +69,16 @@ class ErrorResponse(BaseModel):
     message: str = Field(..., min_length=3, max_length=1024)
 
     model_config = ConfigDict(extra="forbid")
+
+
+class APIStatusResponse(BaseModel):
+    """Respuesta resumida para el estado general de la API."""
+
+    message: str = Field(
+        ...,
+        min_length=3,
+        max_length=200,
+        description="Mensaje corporativo que confirma la disponibilidad del servicio.",
+    )
+
+    model_config = ConfigDict(extra="forbid")
