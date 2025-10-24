@@ -1,8 +1,9 @@
 """Esquemas ligeros para exponer información de sucursales."""
 from __future__ import annotations
+from datetime import date, datetime
+from decimal import Decimal
 
-from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from backend.app import schemas as core_schemas
 from backend.schemas.common import Page
@@ -178,6 +179,93 @@ class StoreMembershipRead(StoreMembershipBase):
         )
 
 
+class StoreDeviceRead(BaseModel):
+    """Representación ligera de los dispositivos expuestos por sucursal."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    store_id: int
+    sku: str
+    name: str
+    quantity: int
+    unit_price: Decimal
+    precio_venta: Decimal
+    imei: str | None = None
+    serial: str | None = None
+    marca: str | None = None
+    modelo: str | None = None
+    categoria: str | None = None
+    condicion: str | None = None
+    color: str | None = None
+    capacidad_gb: int | None = None
+    capacidad: str | None = None
+    estado_comercial: core_schemas.CommercialState
+    estado: str
+    proveedor: str | None = None
+    costo_unitario: Decimal
+    costo_compra: Decimal
+    margen_porcentaje: Decimal
+    garantia_meses: int
+    lote: str | None = None
+    fecha_compra: date | None = None
+    fecha_ingreso: date | None = None
+    ubicacion: str | None = None
+    descripcion: str | None = None
+    imagen_url: str | None = None
+    completo: bool | None = None
+    identifier: core_schemas.DeviceIdentifierResponse | None = None
+    inventory_value: float
+
+    @field_serializer(
+        "unit_price",
+        "precio_venta",
+        "costo_unitario",
+        "costo_compra",
+        "margen_porcentaje",
+    )
+    @classmethod
+    def _serialize_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+    @classmethod
+    def from_core(cls, device: core_schemas.DeviceResponse) -> "StoreDeviceRead":
+        return cls(
+            id=device.id,
+            store_id=device.store_id,
+            sku=device.sku,
+            name=device.name,
+            quantity=device.quantity,
+            unit_price=device.unit_price,
+            precio_venta=device.precio_venta,
+            imei=device.imei,
+            serial=device.serial,
+            marca=device.marca,
+            modelo=device.modelo,
+            categoria=device.categoria,
+            condicion=device.condicion,
+            color=device.color,
+            capacidad_gb=device.capacidad_gb,
+            capacidad=device.capacidad,
+            estado_comercial=device.estado_comercial,
+            estado=device.estado,
+            proveedor=device.proveedor,
+            costo_unitario=device.costo_unitario,
+            costo_compra=device.costo_compra,
+            margen_porcentaje=device.margen_porcentaje,
+            garantia_meses=device.garantia_meses,
+            lote=device.lote,
+            fecha_compra=device.fecha_compra,
+            fecha_ingreso=device.fecha_ingreso,
+            ubicacion=device.ubicacion,
+            descripcion=device.descripcion,
+            imagen_url=device.imagen_url,
+            completo=device.completo,
+            identifier=device.identifier,
+            inventory_value=device.inventory_value,
+        )
+
+
 __all__ = [
     "Page",
     "StoreBase",
@@ -186,4 +274,5 @@ __all__ = [
     "StoreUpdate",
     "StoreMembershipRead",
     "StoreMembershipUpdate",
+    "StoreDeviceRead",
 ]
