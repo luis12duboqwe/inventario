@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.core.roles import GESTION_ROLES
 from backend.app.routers import pos as core_pos
 from backend.app.routers.dependencies import require_reason
+from backend.app.schemas import BinaryFileResponse
 from backend.app.security import require_roles
 from backend.core.logging import logger
 from backend.db import get_db
@@ -305,7 +306,10 @@ def void_sale(
     return schemas.SaleResponse.model_validate(persisted)
 
 
-@extended_router.get("/receipt/{sale_id}")
+@extended_router.get(
+    "/receipt/{sale_id}",
+    response_model=schemas.ReceiptResponse | BinaryFileResponse,
+)
 def read_receipt(
     sale_id: int,
     db: Session = Depends(get_db),
