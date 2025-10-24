@@ -18,6 +18,14 @@
 - `backend/main.py` agrega middleware `X-Request-ID`, medición de latencia y manejador global de excepciones que responde con `{ "code": "INTERNAL_ERROR", "message": "..." }`.
 - Se suma `backend/routes/jobs.py` con `POST /jobs/export`, que encola exportaciones vía `BackgroundTasks` o integra Redis cuando `REDIS_URL` está disponible; `backend/schemas/jobs.py` describe las cargas y respuestas.
 - Las pruebas se actualizan para consumir las nuevas respuestas paginadas y se documentan los formatos en README (sección «API Responses unificadas» y «Jobs & Monitoring»).
+## [v2.2.1] - 2025-10-23
+- Added advanced auth (refresh/reset/verify)
+- Added complete stores CRUD
+- Enhanced POS system
+- Standardized API responses
+- Added observability + background tasks
+- Reorganized frontend (no visual changes)
+- Documentado el traslado de componentes compartidos a `frontend/src/shared/components/` y la adopción de React Query para bootstrap/login.
 
 ## Wrapper de sucursales y actualización corporativa (23/10/2025)
 - `backend/routes/stores.py` incorpora un wrapper que expone respuestas paginadas (`Page[StoreRead]`), delega altas/consultas al núcleo y mantiene compatibilidad con el resto de rutas avanzadas al incluir el router corporativo.

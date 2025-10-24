@@ -1,8 +1,8 @@
 import { Suspense, lazy, memo, useMemo } from "react";
 import { Cog } from "lucide-react";
 
-import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
-import Accordion, { type AccordionItem } from "../../../components/ui/Accordion/Accordion";
+import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
+import Accordion, { type AccordionItem } from "../../../shared/components/ui/Accordion/Accordion";
 import { useOperationsModule } from "../hooks/useOperationsModule";
 
 const CustomersPanel = lazy(() => import("../components/Customers"));

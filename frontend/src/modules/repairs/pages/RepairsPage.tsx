@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Wrench } from "lucide-react";
 
 import RepairOrders from "../components/RepairOrders";
-import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
+import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 import { useRepairsModule } from "../hooks/useRepairsModule";
 
 function RepairsPage() {

@@ -160,7 +160,7 @@ vi.mock("../../../../utils/corporateReason.ts", () => ({
   promptCorporateReason: promptCorporateReasonMock,
 }));
 const moduleHeaderModuleId = vi.hoisted(() =>
-  new URL("../../../components/ModuleHeader.tsx", import.meta.url).pathname
+  new URL("../../../shared/components/ModuleHeader.tsx", import.meta.url).pathname
 );
 
 const mockModuleHeader = vi.hoisted(
@@ -175,10 +175,10 @@ const mockModuleHeader = vi.hoisted(
     })
 );
 
-vi.mock("../../../components/ModuleHeader", mockModuleHeader);
-vi.mock("../../components/ModuleHeader", mockModuleHeader);
-vi.mock("../../../components/ModuleHeader.tsx", mockModuleHeader);
-vi.mock("../../components/ModuleHeader.tsx", mockModuleHeader);
+vi.mock("../../../shared/components/ModuleHeader", mockModuleHeader);
+vi.mock("../../shared/components/ModuleHeader", mockModuleHeader);
+vi.mock("../../../shared/components/ModuleHeader.tsx", mockModuleHeader);
+vi.mock("../../shared/components/ModuleHeader.tsx", mockModuleHeader);
 vi.mock(moduleHeaderModuleId, mockModuleHeader);
 
 const dashboardContextModuleId = vi.hoisted(() =>

@@ -54,6 +54,14 @@ Para continuar con la evolución ordenada del proyecto, utiliza las siguientes e
 ## Ajuste de mantenimiento — 06/11/2025
 
 - 🧹 **Limpieza de artefactos generados**: se retira del repositorio el archivo `backend/database/softmobile.db`, que es recreado automáticamente en tiempo de ejecución. Esto evita adjuntar binarios en los PR y mantiene el flujo de empaquetado descrito en la sección «Preparación rápida del entorno base».
+## Reorganización técnica del frontend — 23/10/2025
+
+- Se normaliza la estructura de `frontend/src/` creando las carpetas `app/`, `shared/`, `services/api/`, `features/`, `pages/` y `widgets/`, manteniendo los módulos existentes dentro de `modules/` y sin alterar el aspecto visual.
+- Los componentes reutilizables se concentran en `frontend/src/shared/components/` y se actualizaron las importaciones heredadas para preservar compatibilidad con los módulos existentes.
+- `services/api/http.ts` introduce un cliente Axios con interceptores que adjuntan el token corporativo, reintentan `401` mediante `/auth/refresh` y disparan el evento `softmobile:unauthorized` cuando la sesión expira.
+- `services/api/auth.ts` centraliza bootstrap, login y cierre de sesión; `services/api/{stores,inventory,pos}.ts` agrupan las llamadas de cada dominio para facilitar mantenibilidad.
+- `main.tsx` incorpora `QueryClientProvider` y `App.tsx` adopta `useQuery`/`useMutation` para el flujo de autenticación y bootstrap sin modificar los estilos ni las rutas existentes.
+- Se documenta la nueva estructura en `frontend/README.md` para guiar futuras iteraciones manteniendo la versión Softmobile 2025 v2.2.0.
 
 ## Preparación rápida del entorno base — 20/10/2025
 

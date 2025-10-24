@@ -25,8 +25,8 @@ import POSCart, { CartLine } from "./POSCart";
 import POSPayment from "./POSPayment";
 import POSReceipt from "./POSReceipt";
 import POSSettings from "./POSSettings";
-import Button from "../../../../components/ui/Button";
-import Modal from "../../../../components/ui/Modal";
+import Button from "../../../../shared/components/ui/Button";
+import Modal from "../../../../shared/components/ui/Modal";
 
 type Props = {
   token: string;

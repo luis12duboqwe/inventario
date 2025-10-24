@@ -2,7 +2,7 @@ import { ShieldCheck } from "lucide-react";
 
 import AuditLog from "../components/AuditLog";
 import TwoFactorSetup from "../components/TwoFactorSetup";
-import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
+import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 import { useSecurityModule } from "../hooks/useSecurityModule";
 
 function SecurityPage() {

@@ -15,3 +15,26 @@
 - El router `backend/routes/pos.py` publica `POST /pos/sales`, `POST /pos/sales/{id}/items`, `POST /pos/sales/{id}/checkout`, `POST /pos/sales/{id}/hold`, `POST /pos/sales/{id}/resume`, `POST /pos/sales/{id}/void` y `GET /pos/receipt/{id}`, manteniendo la compatibilidad con `/pos/sale` (núcleo) para recibos PDF.
 - El esquema `backend/schemas/pos.py` describe solicitudes y respuestas; la prueba `backend/tests/test_pos_module.py` valida flujos de hold/resume, multipago y anulaciones.
 - Los listados corporativos consumidos por POS (inventario, sucursales, reportes) entregan `Page[...]` según `backend/schemas/common.py`; ajusta clientes o SDK para leer `items`, `total`, `page`, `size`.
+
+## Agentes funcionales — 23/10/2025
+
+### Auth Agent
+- Orquesta el flujo de autenticación en el frontend mediante `services/api/http.ts` y `services/api/auth.ts`, usando Axios con refresco automático de tokens y propagando el evento `softmobile:unauthorized` para cerrar sesión de forma segura.
+- `App.tsx` consume `useQuery`/`useMutation` para bootstrap/login manteniendo la compatibilidad con la UI existente y reduciendo código duplicado.
+
+### Store Agent
+- Expone accesos tipados a `/stores` y dispositivos por sucursal desde `services/api/stores.ts`, reutilizando el cliente HTTP con cabecera `Bearer` automática.
+- Permite que módulos como usuarios y operaciones migren gradualmente a la nueva capa sin reescribir lógica heredada.
+
+### POS Agent
+- Reexporta la capa POS desde `services/api/pos.ts`, centralizando ventas, sesiones de caja y descargas de recibos en un único módulo especializado.
+- Facilita la adopción de interceptores Axios y mantiene los requerimientos de motivo corporativo (`X-Reason`).
+
+### Export Agent
+- `services/api/inventory.ts` concentra las funciones de exportación (CSV/PDF/Excel) y movimientos de inventario, evitando duplicidad de rutas y asegurando la estandarización de respuestas.
+- Sirve como punto de extensión para incorporar nuevos reportes sin tocar `frontend/src/api.ts` legado.
+
+### Frontend Agent
+- Documenta la reorganización de `frontend/src/` (carpetas `app/`, `shared/`, `services/api/`, `features/`, `pages/`, `widgets/`) y preserva el diseño actual sin cambios visuales.
+- `frontend/README.md` actúa como guía operativa para el equipo, describiendo la capa de servicios y el uso de React Query.
+- Registro: «frontend agent restructured» deja constancia de la reubicación de componentes en `frontend/src/shared/components/` y de la adopción de React Query para autenticación.

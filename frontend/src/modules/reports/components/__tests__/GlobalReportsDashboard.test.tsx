@@ -36,7 +36,7 @@ vi.mock("../../../../api", async (original) => {
   };
 });
 
-vi.mock("../../../../components/ScrollableTable", () => ({
+vi.mock("../../../../shared/components/ScrollableTable", () => ({
   __esModule: true,
   default: ({ children }: { children: ReactNode }) => <div data-testid="scrollable-table">{children}</div>,
 }));

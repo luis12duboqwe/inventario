@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import Button from "../../../components/ui/Button";
-import TextField from "../../../components/ui/TextField";
+import Button from "../../../shared/components/ui/Button";
+import TextField from "../../../shared/components/ui/TextField";
 import {
   getImportValidationReport,
   getPendingImportValidations,

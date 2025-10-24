@@ -1,7 +1,7 @@
 import { Suspense, lazy } from "react";
 import { BarChart3 } from "lucide-react";
 
-import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
+import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 import { useAnalyticsModule } from "../hooks/useAnalyticsModule";
 
 const AnalyticsBoard = lazy(() => import("../components/AnalyticsBoard"));

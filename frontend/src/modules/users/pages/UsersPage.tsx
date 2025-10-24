@@ -1,7 +1,7 @@
 import { UserCog } from "lucide-react";
 
 import UserManagement from "../components/UserManagement";
-import ModuleHeader from "../../../components/ModuleHeader";
+import ModuleHeader from "../../../shared/components/ModuleHeader";
 import { useUsersModule } from "../hooks/useUsersModule";
 
 function UsersPage() {

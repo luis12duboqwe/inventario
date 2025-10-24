@@ -1,7 +1,7 @@
 import { ChangeEvent, useCallback, useMemo, useState } from "react";
 import QRCode from "qrcode";
 
-import ScrollableTable from "../../../components/ScrollableTable";
+import ScrollableTable from "../../../shared/components/ScrollableTable";
 import { Device } from "../../../api";
 import { colors } from "../../../theme/designTokens";
 
