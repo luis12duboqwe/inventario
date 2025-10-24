@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .. import crud, schemas
 from ..config import settings
 from ..core.roles import GESTION_ROLES
+from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -185,13 +186,13 @@ def download_pos_receipt(
     buffer.seek(0)
     filename = f"recibo_{config.invoice_prefix}_{sale.id}.pdf"
 
-    crud.register_pos_receipt_download(
-        db,
-        sale_id=sale.id,
-        performed_by_id=current_user.id if current_user else None,
-        reason=reason,
-    )
-    db.commit()
+    with transactional_session(db):
+        crud.register_pos_receipt_download(
+            db,
+            sale_id=sale.id,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
 
     metadata = schemas.BinaryFileResponse(
         filename=filename,
@@ -216,13 +217,13 @@ def read_pos_config(
         config = crud.get_pos_config(db, store_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada") from exc
-    crud.register_pos_config_access(
-        db,
-        store_id=store_id,
-        performed_by_id=current_user.id if current_user else None,
-        reason=reason,
-    )
-    db.commit()
+    with transactional_session(db):
+        crud.register_pos_config_access(
+            db,
+            store_id=store_id,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
     return config
 
 

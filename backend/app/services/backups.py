@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models
 from ..config import settings as app_settings
+from ..core.transactions import transactional_session
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -579,16 +580,16 @@ def restore_backup(
                 shutil.copy2(file_path, destination)
         results["critical_files"] = str(critical_dest)
 
-    crud.register_backup_restore(
-        db,
-        backup_id=job_id,
-        triggered_by_id=triggered_by_id,
-        components=selected_components,
-        destination=str(restore_dir.resolve()),
-        applied_database=apply_database,
-        reason=reason.strip() if reason else None,
-    )
-    db.commit()
+    with transactional_session(db):
+        crud.register_backup_restore(
+            db,
+            backup_id=job_id,
+            triggered_by_id=triggered_by_id,
+            components=selected_components,
+            destination=str(restore_dir.resolve()),
+            applied_database=apply_database,
+            reason=reason.strip() if reason else None,
+        )
 
     return {
         "job_id": job_id,

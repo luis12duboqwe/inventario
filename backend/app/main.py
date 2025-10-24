@@ -14,6 +14,7 @@ from fastapi.routing import APIRoute
 from . import crud, security as security_core
 from .config import settings
 from .core.roles import DEFAULT_ROLES
+from .core.transactions import transactional_session
 from .database import Base, SessionLocal, engine, get_db
 from .routers import (
     audit,
@@ -130,9 +131,9 @@ def _resolve_action(method: str) -> str:
 
 def _bootstrap_defaults() -> None:
     with SessionLocal() as session:
-        for role in DEFAULT_ROLES:
-            crud.ensure_role(session, role)
-        session.commit()
+        with transactional_session(session):
+            for role in DEFAULT_ROLES:
+                crud.ensure_role(session, role)
 
 
 @asynccontextmanager
@@ -172,27 +173,27 @@ def create_app() -> FastAPI:
         client_host = request.client.host if request.client else None
         try:
             with SessionLocal() as session:
-                username: str | None = None
-                auth_header = request.headers.get("Authorization") or ""
-                token_parts = auth_header.split(" ", 1)
-                if len(token_parts) == 2 and token_parts[0].lower() == "bearer":
-                    token = token_parts[1].strip()
-                    try:
-                        payload = security_core.decode_token(token)
-                        user = crud.get_user_by_username(session, payload.sub)
-                        if user is not None:
-                            username = user.username
-                    except HTTPException:
-                        username = None
-                crud.register_system_error(
-                    session,
-                    mensaje=message,
-                    stack_trace=stack_trace,
-                    modulo=module,
-                    usuario=username,
-                    ip_origen=client_host,
-                )
-                session.commit()
+                with transactional_session(session):
+                    username: str | None = None
+                    auth_header = request.headers.get("Authorization") or ""
+                    token_parts = auth_header.split(" ", 1)
+                    if len(token_parts) == 2 and token_parts[0].lower() == "bearer":
+                        token = token_parts[1].strip()
+                        try:
+                            payload = security_core.decode_token(token)
+                            user = crud.get_user_by_username(session, payload.sub)
+                            if user is not None:
+                                username = user.username
+                        except HTTPException:
+                            username = None
+                    crud.register_system_error(
+                        session,
+                        mensaje=message,
+                        stack_trace=stack_trace,
+                        modulo=module,
+                        usuario=username,
+                        ip_origen=client_host,
+                    )
         except Exception:  # pragma: no cover - evitamos fallos en el logger
             pass
 

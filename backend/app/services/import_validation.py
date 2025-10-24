@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..core.transactions import transactional_session
 
 REQUIRED_COLUMNS: tuple[str, ...] = ("tienda", "marca", "modelo", "sku", "cantidad")
 NUMERIC_FIELDS: tuple[str, ...] = ("cantidad", "precio", "costo")
@@ -211,8 +212,8 @@ def validar_importacion(
                     )
 
     if validations:
-        db.add_all(validations)
-        db.commit()
+        with transactional_session(db):
+            db.add_all(validations)
 
     validation_duration = perf_counter() - start_time
     return schemas.ImportValidationSummary(
