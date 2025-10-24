@@ -11,6 +11,18 @@ Softmobile 2025 se compone de dos módulos cooperantes:
 
 La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para empaquetarse en instaladores Windows y evolucionar a despliegues híbridos.
 
+### Capas del frontend reorganizado
+
+La fase de endurecimiento técnico consolidó la estructura del cliente React en carpetas claramente delimitadas para aislar responsabilidades y facilitar pruebas automatizadas:
+
+- `frontend/src/app/`: arranque de la aplicación, routing y proveedores globales (React Query, theming corporativo).
+- `frontend/src/shared/`: componentes reutilizables y utilidades UI compartidas entre módulos, sin alterar el estilo existente.
+- `frontend/src/services/api/`: SDK interno basado en Axios con interceptores de autenticación, flujos `/auth/refresh` y módulos por dominio (`auth`, `stores`, `inventory`, `pos`).
+- `frontend/src/features/`: espacio reservado para casos de uso compuestos, documentado con *placeholders* `.gitkeep` para mantener la estructura.
+- `frontend/src/pages/`: contenedores por ruta que coordinan widgets y módulos especializados.
+- `frontend/src/widgets/`: bloques ligeros reutilizables en dashboards, también preservados mediante `.gitkeep` hasta que se agreguen nuevas implementaciones.
+- `frontend/src/modules/`: funcionalidad heredada (Inventario, Operaciones, Analítica, Seguridad, etc.) que se beneficia de la nueva capa de servicios sin modificar el layout visual.
+
 ## Hoja de ruta inmediata (Softmobile 2025 v2.2.0)
 
 Para continuar con la evolución ordenada del proyecto, utiliza las siguientes etapas como guía de implementación y verificación. Cada fase consolida capacidades ya previstas en el backend y facilita su validación en el frontend corporativo:
