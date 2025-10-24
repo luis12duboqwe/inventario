@@ -438,6 +438,31 @@ class InventorySmartImportResponse(BaseModel):
     resultado: InventorySmartImportResult | None = None
 
 
+class InventoryImportError(BaseModel):
+    row: int = Field(
+        ..., ge=1, description="Número de fila del archivo que provocó la incidencia."
+    )
+    message: str = Field(
+        ..., min_length=1, description="Código interno o descripción del error detectado."
+    )
+
+
+class InventoryImportSummary(BaseModel):
+    created: int = Field(
+        ..., ge=0, description="Cantidad de productos creados durante la importación."
+    )
+    updated: int = Field(
+        ..., ge=0, description="Cantidad de productos actualizados durante la importación."
+    )
+    skipped: int = Field(
+        ..., ge=0, description="Registros omitidos por datos insuficientes o inconsistencias."
+    )
+    errors: list[InventoryImportError] = Field(
+        default_factory=list,
+        description="Listado de errores asociados a filas específicas del archivo.",
+    )
+
+
 class ImportValidationBase(BaseModel):
     tipo: str
     severidad: str
@@ -3490,6 +3515,8 @@ __all__ = [
     "InventorySmartImportPreview",
     "InventorySmartImportResult",
     "InventorySmartImportResponse",
+    "InventoryImportError",
+    "InventoryImportSummary",
     "ImportValidation",
     "ImportValidationDevice",
     "ImportValidationDetail",
