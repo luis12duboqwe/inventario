@@ -46,6 +46,57 @@ class BackupExportFormat(str, enum.Enum):
     JSON = "json"
 
 
+class BinaryFileResponse(BaseModel):
+    filename: str = Field(
+        ...,
+        description="Nombre sugerido del archivo generado.",
+    )
+    media_type: str = Field(
+        ...,
+        description="Tipo MIME del recurso entregado como archivo.",
+    )
+    description: str = Field(
+        default="El archivo se entrega como contenido binario en el cuerpo de la respuesta.",
+        description="Descripción general del archivo exportado.",
+    )
+
+    model_config = ConfigDict(json_schema_extra={"example": {
+        "filename": "reporte.pdf",
+        "media_type": "application/pdf",
+        "description": "El archivo se entrega como contenido binario en el cuerpo de la respuesta.",
+    }})
+
+    def content_disposition(self, disposition: str = "attachment") -> dict[str, str]:
+        """Construye el encabezado Content-Disposition para descargas."""
+
+        sanitized = self.filename.replace("\n", " ").replace("\r", " ")
+        return {"Content-Disposition": f"{disposition}; filename={sanitized}"}
+
+
+class HealthStatusResponse(BaseModel):
+    status: str = Field(
+        ...,
+        description="Estado operativo general del servicio (por ejemplo: ok, degradado).",
+        min_length=2,
+        max_length=40,
+    )
+
+
+class RootWelcomeResponse(BaseModel):
+    message: str = Field(
+        ...,
+        description="Mensaje de bienvenida mostrado en la raíz del servicio.",
+        min_length=3,
+        max_length=120,
+    )
+    service: str = Field(
+        ...,
+        description="Nombre visible del servicio o módulo que responde.",
+        min_length=3,
+        max_length=120,
+    )
+
+
 class StoreBase(BaseModel):
     name: str = Field(..., max_length=120, description="Nombre visible de la sucursal")
     location: str | None = Field(
@@ -3427,6 +3478,7 @@ __all__ = [
     "BackupRunRequest",
     "BackupRestoreRequest",
     "BackupRestoreResponse",
+    "BinaryFileResponse",
     "BackupExportFormat",
     "DeviceBase",
     "DeviceCreate",
@@ -3508,6 +3560,7 @@ __all__ = [
     "POSConfigResponse",
     "POSConfigUpdate",
     "ReleaseInfo",
+    "RootWelcomeResponse",
     "RoleResponse",
     "StoreBase",
     "StoreCreate",
@@ -3573,4 +3626,5 @@ __all__ = [
     "RotationMetric",
     "SalesProjectionMetric",
     "StockoutForecastMetric",
+    "HealthStatusResponse",
 ]

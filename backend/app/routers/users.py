@@ -114,7 +114,7 @@ def user_dashboard(
     return crud.get_user_dashboard_metrics(db)
 
 
-@router.get("/export")
+@router.get("/export", response_model=schemas.BinaryFileResponse)
 def export_users(
     format: Literal["pdf", "xlsx"] = Query(default="pdf"),
     search: str | None = Query(default=None, min_length=1, max_length=120),
@@ -138,17 +138,25 @@ def export_users(
     if format == "pdf":
         pdf_bytes = user_reports.render_user_directory_pdf(report)
         buffer = BytesIO(pdf_bytes)
-        headers = {"Content-Disposition": "attachment; filename=usuarios_softmobile.pdf"}
-        return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+        metadata = schemas.BinaryFileResponse(
+            filename="usuarios_softmobile.pdf",
+            media_type="application/pdf",
+        )
+        return StreamingResponse(
+            buffer,
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
+        )
     if format == "xlsx":
         workbook = user_reports.render_user_directory_xlsx(report)
-        headers = {
-            "Content-Disposition": "attachment; filename=usuarios_softmobile.xlsx"
-        }
+        metadata = schemas.BinaryFileResponse(
+            filename="usuarios_softmobile.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         return StreamingResponse(
             workbook,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers=headers,
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
         )
 
     raise HTTPException(

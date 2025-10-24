@@ -140,7 +140,7 @@ def list_conflicts(
     )
 
 
-@router.get("/conflicts/export/pdf")
+@router.get("/conflicts/export/pdf", response_model=schemas.BinaryFileResponse)
 def export_conflicts_pdf(
     store_id: int | None = Query(default=None, ge=1),
     date_from: datetime | None = Query(default=None),
@@ -158,15 +158,18 @@ def export_conflicts_pdf(
         severity=severity,
     )
     pdf_bytes = sync_conflict_reports.render_conflict_report_pdf(report)
-    filename = f"conflictos_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"conflictos_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        media_type="application/pdf",
+    )
     return StreamingResponse(
         BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
-@router.get("/conflicts/export/xlsx")
+@router.get("/conflicts/export/xlsx", response_model=schemas.BinaryFileResponse)
 def export_conflicts_excel(
     store_id: int | None = Query(default=None, ge=1),
     date_from: datetime | None = Query(default=None),
@@ -184,11 +187,14 @@ def export_conflicts_excel(
         severity=severity,
     )
     excel_bytes = sync_conflict_reports.render_conflict_report_excel(report)
-    filename = f"conflictos_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"conflictos_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     return StreamingResponse(
         BytesIO(excel_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 

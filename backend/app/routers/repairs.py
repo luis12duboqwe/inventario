@@ -114,7 +114,11 @@ def update_repair_order_endpoint(
         raise
 
 
-@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{order_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 def delete_repair_order_endpoint(
     order_id: int,
     db: Session = Depends(get_db),
@@ -133,7 +137,7 @@ def delete_repair_order_endpoint(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/{order_id}/pdf")
+@router.get("/{order_id}/pdf", response_model=schemas.BinaryFileResponse)
 def download_repair_order_pdf(
     order_id: int,
     db: Session = Depends(get_db),
@@ -225,9 +229,12 @@ def download_repair_order_pdf(
     pdf.showPage()
     pdf.save()
     buffer.seek(0)
-    filename = f"orden_reparacion_{order.id}.pdf"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"orden_reparacion_{order.id}.pdf",
+        media_type="application/pdf",
+    )
     return Response(
         content=buffer.getvalue(),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(disposition="inline"),
     )

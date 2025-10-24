@@ -176,7 +176,7 @@ def update_purchase_vendor_status_endpoint(
     return summary[0]
 
 
-@router.get("/vendors/export/csv")
+@router.get("/vendors/export/csv", response_model=schemas.BinaryFileResponse)
 def export_purchase_vendors_csv_endpoint(
     q: str | None = Query(default=None, min_length=1, max_length=120),
     estado: str | None = Query(default=None, min_length=3, max_length=40),
@@ -192,13 +192,16 @@ def export_purchase_vendors_csv_endpoint(
         query=query,
         estado=estado_value,
     )
-    filename = f"proveedores_compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"proveedores_compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv",
+        media_type="text/csv",
+    )
     response = Response(
         content=csv_content.encode("utf-8"),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
-    response.headers["Content-Type"] = "text/csv"
+    response.headers["Content-Type"] = metadata.media_type
     return response
 
 
@@ -300,7 +303,7 @@ def create_purchase_record_endpoint(
         raise
 
 
-@router.get("/records/export/pdf")
+@router.get("/records/export/pdf", response_model=schemas.BinaryFileResponse)
 def export_purchase_records_pdf_endpoint(
     proveedor_id: int | None = Query(default=None, ge=1),
     usuario_id: int | None = Query(default=None, ge=1),
@@ -325,15 +328,18 @@ def export_purchase_records_pdf_endpoint(
         query=query,
     )
     pdf_bytes = purchase_reports.render_purchase_report_pdf(report)
-    filename = f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf",
+        media_type="application/pdf",
+    )
     return StreamingResponse(
         BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
-@router.get("/records/export/xlsx")
+@router.get("/records/export/xlsx", response_model=schemas.BinaryFileResponse)
 def export_purchase_records_excel_endpoint(
     proveedor_id: int | None = Query(default=None, ge=1),
     usuario_id: int | None = Query(default=None, ge=1),
@@ -358,11 +364,14 @@ def export_purchase_records_excel_endpoint(
         query=query,
     )
     excel_bytes = purchase_reports.render_purchase_report_excel(report)
-    filename = f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    metadata = schemas.BinaryFileResponse(
+        filename=f"compras_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     return StreamingResponse(
         BytesIO(excel_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 

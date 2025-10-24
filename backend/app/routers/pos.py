@@ -100,7 +100,7 @@ def register_pos_sale_endpoint(
         raise
 
 
-@router.get("/receipt/{sale_id}")
+@router.get("/receipt/{sale_id}", response_model=schemas.BinaryFileResponse)
 def download_pos_receipt(
     sale_id: int,
     db: Session = Depends(get_db),
@@ -193,10 +193,14 @@ def download_pos_receipt(
     )
     db.commit()
 
+    metadata = schemas.BinaryFileResponse(
+        filename=filename,
+        media_type="application/pdf",
+    )
     return Response(
         content=buffer.getvalue(),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename={filename}"},
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(disposition="inline"),
     )
 
 

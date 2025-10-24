@@ -81,7 +81,7 @@ def global_report_dashboard(
     )
 
 
-@router.get("/global/export")
+@router.get("/global/export", response_model=schemas.BinaryFileResponse)
 def export_global_report(
     format: Literal["pdf", "xlsx", "csv"] = Query(default="pdf"),
     date_from: datetime | date | None = Query(default=None),
@@ -112,22 +112,37 @@ def export_global_report(
     if format == "pdf":
         pdf_bytes = global_reports_service.render_global_report_pdf(overview, dashboard)
         buffer = BytesIO(pdf_bytes)
-        headers = {"Content-Disposition": "attachment; filename=softmobile_reporte_global.pdf"}
-        return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+        metadata = schemas.BinaryFileResponse(
+            filename="softmobile_reporte_global.pdf",
+            media_type="application/pdf",
+        )
+        return StreamingResponse(
+            buffer,
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
+        )
     if format == "xlsx":
         workbook = global_reports_service.render_global_report_xlsx(overview, dashboard)
-        headers = {
-            "Content-Disposition": "attachment; filename=softmobile_reporte_global.xlsx"
-        }
+        metadata = schemas.BinaryFileResponse(
+            filename="softmobile_reporte_global.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         return StreamingResponse(
             workbook,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers=headers,
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
         )
     if format == "csv":
         csv_buffer = global_reports_service.render_global_report_csv(overview, dashboard)
-        headers = {"Content-Disposition": "attachment; filename=softmobile_reporte_global.csv"}
-        return StreamingResponse(iter([csv_buffer.getvalue()]), media_type="text/csv", headers=headers)
+        metadata = schemas.BinaryFileResponse(
+            filename="softmobile_reporte_global.csv",
+            media_type="text/csv",
+        )
+        return StreamingResponse(
+            iter([csv_buffer.getvalue()]),
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
+        )
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de exportación no soportado"
@@ -216,7 +231,7 @@ def audit_logs(
     return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(logs))
 
 
-@router.get("/audit/pdf")
+@router.get("/audit/pdf", response_model=schemas.BinaryFileResponse)
 def audit_logs_pdf(
     limit: int = Query(default=200, ge=1, le=1000),
     action: str | None = Query(default=None, max_length=120),
@@ -251,8 +266,15 @@ def audit_logs_pdf(
         filters["Hasta"] = str(date_to)
     pdf_bytes = audit_service.render_audit_pdf(logs, filters=filters, alerts=summary)
     buffer = BytesIO(pdf_bytes)
-    headers = {"Content-Disposition": "attachment; filename=auditoria_softmobile.pdf"}
-    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="auditoria_softmobile.pdf",
+        media_type="application/pdf",
+    )
+    return StreamingResponse(
+        buffer,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
 @router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse)
@@ -431,7 +453,7 @@ def analytics_realtime(
     )
 
 
-@router.get("/analytics/pdf")
+@router.get("/analytics/pdf", response_model=schemas.BinaryFileResponse)
 def analytics_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -493,11 +515,18 @@ def analytics_pdf(
         projection=projection,
     )
     buffer = BytesIO(pdf_bytes)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_analytics.pdf"}
-    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_analytics.pdf",
+        media_type="application/pdf",
+    )
+    return StreamingResponse(
+        buffer,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/analytics/export.csv")
+@router.get("/analytics/export.csv", response_model=schemas.BinaryFileResponse)
 def analytics_export_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -594,8 +623,15 @@ def analytics_export_csv(
         )
 
     buffer.seek(0)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_analytics.csv"}
-    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_analytics.csv",
+        media_type="text/csv",
+    )
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
 @router.get("/inventory/current", response_model=schemas.InventoryCurrentReport)
@@ -607,7 +643,7 @@ def inventory_current(
     return crud.get_inventory_current_report(db, store_ids=store_ids)
 
 
-@router.get("/inventory/current/csv")
+@router.get("/inventory/current/csv", response_model=schemas.BinaryFileResponse)
 def inventory_current_csv(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -636,11 +672,18 @@ def inventory_current_csv(
         )
 
     buffer.seek(0)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_existencias.csv"}
-    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_existencias.csv",
+        media_type="text/csv",
+    )
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/inventory/current/pdf")
+@router.get("/inventory/current/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_current_pdf(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -650,11 +693,18 @@ def inventory_current_pdf(
     report = crud.get_inventory_current_report(db, store_ids=store_ids)
     pdf_bytes = inventory_reports_service.render_inventory_current_pdf(report)
     buffer = BytesIO(pdf_bytes)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_existencias.pdf"}
-    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_existencias.pdf",
+        media_type="application/pdf",
+    )
+    return StreamingResponse(
+        buffer,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/inventory/current/xlsx")
+@router.get("/inventory/current/xlsx", response_model=schemas.BinaryFileResponse)
 def inventory_current_excel(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -663,13 +713,14 @@ def inventory_current_excel(
 ):
     report = crud.get_inventory_current_report(db, store_ids=store_ids)
     workbook_buffer = inventory_reports_service.build_inventory_current_excel(report)
-    headers = {
-        "Content-Disposition": "attachment; filename=softmobile_existencias.xlsx"
-    }
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_existencias.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     return StreamingResponse(
         iter([workbook_buffer.getvalue()]),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers=headers,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
@@ -739,7 +790,7 @@ def inventory_top_products(
     )
 
 
-@router.get("/inventory/pdf")
+@router.get("/inventory/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_pdf(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
@@ -748,13 +799,18 @@ def inventory_pdf(
     snapshot = backup_services.build_inventory_snapshot(db)
     pdf_bytes = backup_services.render_snapshot_pdf(snapshot)
     buffer = BytesIO(pdf_bytes)
-    headers = {
-        "Content-Disposition": "attachment; filename=softmobile_inventario.pdf",
-    }
-    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_inventario.pdf",
+        media_type="application/pdf",
+    )
+    return StreamingResponse(
+        buffer,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/inventory/csv")
+@router.get("/inventory/csv", response_model=schemas.BinaryFileResponse)
 def inventory_csv(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
@@ -874,11 +930,18 @@ def inventory_csv(
         writer.writerow(["Inventario consolidado calculado (MXN)", f"{consolidated_total:.2f}"])
 
     buffer.seek(0)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_inventario.csv"}
-    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_inventario.csv",
+        media_type="text/csv",
+    )
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/inventory/value/csv")
+@router.get("/inventory/value/csv", response_model=schemas.BinaryFileResponse)
 def inventory_value_csv(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
@@ -918,11 +981,18 @@ def inventory_value_csv(
     ])
 
     buffer.seek(0)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_valor_inventario.csv"}
-    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_valor_inventario.csv",
+        media_type="text/csv",
+    )
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/inventory/value/pdf")
+@router.get("/inventory/value/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_value_pdf(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
@@ -938,11 +1008,18 @@ def inventory_value_pdf(
     )
     pdf_bytes = inventory_reports_service.render_inventory_value_pdf(report)
     buffer = BytesIO(pdf_bytes)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_valor_inventario.pdf"}
-    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_valor_inventario.pdf",
+        media_type="application/pdf",
+    )
+    return StreamingResponse(
+        buffer,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/inventory/value/xlsx")
+@router.get("/inventory/value/xlsx", response_model=schemas.BinaryFileResponse)
 def inventory_value_excel(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
@@ -957,17 +1034,18 @@ def inventory_value_excel(
         categories=normalized_categories if normalized_categories else None,
     )
     workbook_buffer = inventory_reports_service.build_inventory_value_excel(report)
-    headers = {
-        "Content-Disposition": "attachment; filename=softmobile_valor_inventario.xlsx"
-    }
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_valor_inventario.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     return StreamingResponse(
         iter([workbook_buffer.getvalue()]),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers=headers,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
-@router.get("/inventory/movements/csv")
+@router.get("/inventory/movements/csv", response_model=schemas.BinaryFileResponse)
 def inventory_movements_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1057,11 +1135,18 @@ def inventory_movements_csv(
         )
 
     buffer.seek(0)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_movimientos.csv"}
-    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_movimientos.csv",
+        media_type="text/csv",
+    )
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/inventory/movements/pdf")
+@router.get("/inventory/movements/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_movements_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1090,11 +1175,18 @@ def inventory_movements_pdf(
     )
     pdf_bytes = inventory_reports_service.render_inventory_movements_pdf(report)
     buffer = BytesIO(pdf_bytes)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_movimientos.pdf"}
-    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_movimientos.pdf",
+        media_type="application/pdf",
+    )
+    return StreamingResponse(
+        buffer,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/inventory/movements/xlsx")
+@router.get("/inventory/movements/xlsx", response_model=schemas.BinaryFileResponse)
 def inventory_movements_excel(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1122,17 +1214,18 @@ def inventory_movements_excel(
         movement_type=movement_enum,
     )
     workbook_buffer = inventory_reports_service.build_inventory_movements_excel(report)
-    headers = {
-        "Content-Disposition": "attachment; filename=softmobile_movimientos.xlsx"
-    }
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_movimientos.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     return StreamingResponse(
         iter([workbook_buffer.getvalue()]),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers=headers,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
-@router.get("/inventory/top-products/pdf")
+@router.get("/inventory/top-products/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_top_products_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1151,11 +1244,18 @@ def inventory_top_products_pdf(
     )
     pdf_bytes = inventory_reports_service.render_top_products_pdf(report)
     buffer = BytesIO(pdf_bytes)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_top_productos.pdf"}
-    return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_top_productos.pdf",
+        media_type="application/pdf",
+    )
+    return StreamingResponse(
+        buffer,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
-@router.get("/inventory/top-products/xlsx")
+@router.get("/inventory/top-products/xlsx", response_model=schemas.BinaryFileResponse)
 def inventory_top_products_excel(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1173,17 +1273,18 @@ def inventory_top_products_excel(
         limit=limit,
     )
     workbook_buffer = inventory_reports_service.build_top_products_excel(report)
-    headers = {
-        "Content-Disposition": "attachment; filename=softmobile_top_productos.xlsx"
-    }
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_top_productos.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     return StreamingResponse(
         iter([workbook_buffer.getvalue()]),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers=headers,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
-@router.get("/inventory/top-products/csv")
+@router.get("/inventory/top-products/csv", response_model=schemas.BinaryFileResponse)
 def inventory_top_products_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1230,8 +1331,15 @@ def inventory_top_products_csv(
         )
 
     buffer.seek(0)
-    headers = {"Content-Disposition": "attachment; filename=softmobile_top_productos.csv"}
-    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers=headers)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_top_productos.csv",
+        media_type="text/csv",
+    )
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
 
 
 @router.get(
