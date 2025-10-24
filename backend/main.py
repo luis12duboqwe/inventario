@@ -22,7 +22,7 @@ PROJECT_ROOT = CURRENT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.routing import APIRoute, Mount
@@ -30,6 +30,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from backend.app.security import get_current_user
 from backend.core.logging import (
     bind_context,
     logger as app_logger,
@@ -37,6 +38,7 @@ from backend.core.logging import (
     setup_logging,
     update_context,
 )
+from backend.schemas.common import APIStatusResponse
 
 def _import_module_with_fallback(module_name: str, candidate_path: Path) -> object:
     """Importa ``module_name`` con una ruta alternativa si el paquete no existe."""
@@ -485,11 +487,17 @@ def _prepare_environment(target_app: FastAPI) -> None:
     _mount_frontend(target_app)
 
 
-@app.get("/api", tags=["estado"])
-async def read_status() -> dict[str, str]:
+@app.get(
+    "/api",
+    tags=["estado"],
+    summary="Consultar el estado base de la API",
+    response_model=APIStatusResponse,
+)
+async def read_status(current_user=Depends(get_current_user)) -> APIStatusResponse:  # noqa: ANN001
     """Devuelve el estado base de la API para verificaciones rápidas."""
 
-    return {"message": "API online ✅ - Softmobile 2025 v2.2.0"}
+    del current_user
+    return APIStatusResponse(message="API online ✅ - Softmobile 2025 v2.2.0")
 
 
 def get_application() -> FastAPI:
