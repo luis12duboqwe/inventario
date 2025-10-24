@@ -1,11 +1,9 @@
 """Modelos SQLAlchemy simplificados para el módulo POS ligero."""
 from __future__ import annotations
 
-from datetime import datetime
-from decimal import Decimal
-from datetime import datetime
-from decimal import Decimal
 import enum
+from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,

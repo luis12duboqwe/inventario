@@ -1,8 +1,6 @@
 """Configuración centralizada de Loguru con contexto JSON."""
 from __future__ import annotations
 
-from __future__ import annotations
-
 from contextvars import ContextVar, Token
 from datetime import datetime
 from typing import Any, Final

@@ -42,8 +42,6 @@ class Page(GenericModel, Generic[T]):
     @computed_field
     @property
     def pages(self) -> int:
-        if self.size == 0:
-            return 0
         return ceil(self.total / self.size)
 
     @computed_field
