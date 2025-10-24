@@ -33,7 +33,7 @@ def load_real_module(module_name: str) -> Optional[ModuleType]:
         return None
 
     spec = importlib.util.spec_from_file_location(
-        f"_fastapi_limiter_real_{module_name.replace('.', '_')}",
+        module_name,
         module_path,
         submodule_search_locations=search_locations,
     )
@@ -42,9 +42,23 @@ def load_real_module(module_name: str) -> Optional[ModuleType]:
 
     module = importlib.util.module_from_spec(spec)
     loader = spec.loader
-    if isinstance(loader, importlib.abc.Loader):
-        loader.exec_module(module)
-    else:  # pragma: no cover - compatibilidad con tipos sin ABC
-        loader.exec_module(module)  # type: ignore[attr-defined]
+    # ``SourceFileLoader`` espera que el módulo esté registrado en ``sys.modules``
+    # bajo su nombre real para que las importaciones relativas funcionen. Sin
+    # embargo, en este proyecto ya existe un stub con el mismo nombre, por lo que
+    # reemplazamos el registro de forma temporal.
+    import sys
+
+    previous_module = sys.modules.get(module_name)
+    sys.modules[module_name] = module
+    try:
+        if isinstance(loader, importlib.abc.Loader):
+            loader.exec_module(module)
+        else:  # pragma: no cover - compatibilidad con tipos sin ABC
+            loader.exec_module(module)  # type: ignore[attr-defined]
+    finally:
+        if previous_module is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = previous_module
     return module
 
