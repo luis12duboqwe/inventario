@@ -1,9 +1,16 @@
 from sqlalchemy import select
+from typing import Any, Iterable
 from starlette import status
 
 from backend.app import models
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
+
+
+def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(payload, list):
+        return payload
+    return payload["items"]
 
 
 def _bootstrap_admin(client, db_session):
@@ -131,12 +138,18 @@ def test_full_transfer_flow(client, db_session):
 
     origen_devices = client.get(f"/stores/{store_norte_id}/devices", headers=headers)
     assert origen_devices.status_code == status.HTTP_200_OK
-    origen_qty = next(item for item in origen_devices.json() if item["id"] == device_id)["quantity"]
+    origen_qty = next(
+        item for item in _extract_items(origen_devices.json()) if item["id"] == device_id
+    )["quantity"]
     assert origen_qty == 3
 
     destino_devices = client.get(f"/stores/{store_sur_id}/devices", headers=headers)
     assert destino_devices.status_code == status.HTTP_200_OK
-    transferred = next(item for item in destino_devices.json() if item["sku"] == "SKU-TR-001")
+    transferred = next(
+        item
+        for item in _extract_items(destino_devices.json())
+        if item["sku"] == "SKU-TR-001"
+    )
     assert transferred["quantity"] == 2
 
     settings.enable_transfers = False

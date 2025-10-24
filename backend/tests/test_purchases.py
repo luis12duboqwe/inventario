@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Any, Iterable
 
 from decimal import Decimal
 
@@ -8,6 +9,12 @@ from sqlalchemy import select, text
 from backend.app import models
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
+
+
+def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(payload, list):
+        return payload
+    return payload["items"]
 
 
 def _bootstrap_admin(client, db_session):
@@ -83,9 +90,15 @@ def test_purchase_receipt_and_return_flow(client, db_session):
     partial_data = partial_receive.json()
     assert partial_data["status"] == "PARCIAL"
 
-    devices_after_partial = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
+    devices_after_partial = client.get(
+        f"/stores/{store_id}/devices", headers=auth_headers
+    )
     assert devices_after_partial.status_code == status.HTTP_200_OK
-    stored_device = next(item for item in devices_after_partial.json() if item["id"] == device_id)
+    stored_device = next(
+        item
+        for item in _extract_items(devices_after_partial.json())
+        if item["id"] == device_id
+    )
     assert stored_device["quantity"] == 15
     assert Decimal(str(stored_device["costo_unitario"])) == Decimal("950.00")
 
@@ -104,9 +117,15 @@ def test_purchase_receipt_and_return_flow(client, db_session):
     )
     assert return_response.status_code == status.HTTP_200_OK
 
-    inventory_after_return = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
+    inventory_after_return = client.get(
+        f"/stores/{store_id}/devices", headers=auth_headers
+    )
     assert inventory_after_return.status_code == status.HTTP_200_OK
-    device_post_return = next(item for item in inventory_after_return.json() if item["id"] == device_id)
+    device_post_return = next(
+        item
+        for item in _extract_items(inventory_after_return.json())
+        if item["id"] == device_id
+    )
     assert device_post_return["quantity"] == 18
 
     movements = list(
@@ -301,8 +320,8 @@ def test_purchase_records_and_vendor_statistics(client, db_session):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert list_response.status_code == status.HTTP_200_OK
-    listed = list_response.json()
-    assert any(entry["id_compra"] == record["id_compra"] for entry in listed)
+    listed_payload = _extract_items(list_response.json())
+    assert any(entry["id_compra"] == record["id_compra"] for entry in listed_payload)
 
     history_response = client.get(
         f"/purchases/vendors/{vendor_id}/history",

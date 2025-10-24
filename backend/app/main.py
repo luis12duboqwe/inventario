@@ -9,6 +9,7 @@ import traceback
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from fastapi.routing import APIRoute
 
 from . import crud, security as security_core
 from .config import settings
@@ -57,6 +58,33 @@ SENSITIVE_PREFIXES = (
     "/sync/outbox",
     "/operations",
 )
+
+
+
+
+def _remove_route(target_app: FastAPI, path: str, method: str) -> None:
+    """Elimina de la aplicación la ruta que coincida con el path y método."""
+
+    method_upper = method.upper()
+    routes = target_app.router.routes
+    target_app.router.routes[:] = [
+        route
+        for route in routes
+        if not (
+            isinstance(route, APIRoute)
+            and route.path == path
+            and method_upper in (route.methods or {"GET"})
+        )
+    ]
+
+
+def _mount_pos_extensions(target_app: FastAPI) -> None:
+    """Registra los endpoints POS extendidos sobre la app principal."""
+
+    from backend.routes.pos import extended_router
+
+    _remove_route(target_app, "/pos/receipt/{sale_id}", "GET")
+    target_app.include_router(extended_router)
 
 ROLE_PROTECTED_PREFIXES: dict[str, set[str]] = {
     "/users": {"ADMIN"},
@@ -332,6 +360,7 @@ def create_app() -> FastAPI:
     app.include_router(inventory.router)
     app.include_router(import_validation.router)
     app.include_router(pos.router)
+    _mount_pos_extensions(app)
     app.include_router(purchases.router)
     app.include_router(customers.router)
     app.include_router(suppliers.router)

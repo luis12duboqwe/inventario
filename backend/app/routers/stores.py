@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from datetime import date
 
+from backend.schemas.common import Page, PageParams
+
 from .. import crud, schemas
 from ..core.roles import GESTION_ROLES, REPORTE_ROLES
 from ..database import get_db
@@ -48,12 +50,17 @@ def create_store(
     return store
 
 
-@router.get("", response_model=list[schemas.StoreResponse])
+@router.get("", response_model=Page[schemas.StoreResponse])
 def list_stores(
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
-):
-    return crud.list_stores(db)
+) -> Page[schemas.StoreResponse]:
+    stores = crud.list_stores(db)
+    start = pagination.offset
+    end = start + pagination.size
+    page_items = stores[start:end]
+    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(stores))
 
 
 @router.get("/{store_id}", response_model=schemas.StoreResponse)
@@ -154,7 +161,7 @@ def create_device(
     return device
 
 
-@router.get("/{store_id}/devices", response_model=list[schemas.DeviceResponse])
+@router.get("/{store_id}/devices", response_model=Page[schemas.DeviceResponse])
 def list_devices(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
     search: str | None = Query(default=None, min_length=1, max_length=120),
@@ -166,9 +173,10 @@ def list_devices(
     proveedor: str | None = Query(default=None, max_length=120),
     fecha_ingreso_desde: date | None = Query(default=None),
     fecha_ingreso_hasta: date | None = Query(default=None),
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
-):
+) -> Page[schemas.DeviceResponse]:
     estado_enum: CommercialState | None = None
     if estado:
         normalized = estado.strip()
@@ -189,7 +197,7 @@ def list_devices(
                         },
                     ) from exc
     try:
-        return crud.list_devices(
+        devices = crud.list_devices(
             db,
             store_id,
             search=search,
@@ -202,6 +210,10 @@ def list_devices(
             fecha_ingreso_desde=fecha_ingreso_desde,
             fecha_ingreso_hasta=fecha_ingreso_hasta,
         )
+        start = pagination.offset
+        end = start + pagination.size
+        page_items = devices[start:end]
+        return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(devices))
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -211,18 +223,23 @@ def list_devices(
 
 @router.get(
     "/{store_id}/memberships",
-    response_model=list[schemas.StoreMembershipResponse],
+    response_model=Page[schemas.StoreMembershipResponse],
 )
 def list_store_memberships(
     store_id: int = Path(..., ge=1),
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
-):
+) -> Page[schemas.StoreMembershipResponse]:
     try:
         crud.get_store(db, store_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La sucursal solicitada no existe.") from exc
-    return crud.list_store_memberships(db, store_id)
+    memberships = crud.list_store_memberships(db, store_id)
+    start = pagination.offset
+    end = start + pagination.size
+    page_items = memberships[start:end]
+    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(memberships))
 
 
 @router.put(

@@ -2,23 +2,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Generic, TypeVar
-
 from pydantic import BaseModel, Field, field_validator
-from pydantic.generics import GenericModel
 
 from backend.app import schemas as core_schemas
-
-StoreItem = TypeVar("StoreItem", bound=BaseModel)
-
-
-class Page(GenericModel, Generic[StoreItem]):
-    """Respuesta paginada genérica."""
-
-    items: list[StoreItem]
-    total: int = Field(..., ge=0)
-    page: int = Field(..., ge=1)
-    size: int = Field(..., ge=1)
+from backend.schemas.common import Page
 
 
 class StoreBase(BaseModel):

@@ -1,5 +1,23 @@
 # Bitácora de cambios
 
+## fix: remove sqlite artifact from repo (06/11/2025)
+- Se elimina el archivo generado `backend/database/softmobile.db` del control de versiones para evitar adjuntar binarios en los PR y permitir que la base SQLite se cree dinámicamente al iniciar la aplicación.
+
+## fix: logging fallback without loguru (05/11/2025)
+- `backend/core/logging.py` detecta la ausencia de `loguru` y activa un adaptador basado en `logging` que conserva el formato JSON con contexto (`user_id`, `path`, `latency`, `request_id`) para evitar fallos de importación en entornos mínimos.
+- `backend/routes/auth.py` desactiva automáticamente `fastapi-limiter` cuando la dependencia o `fakeredis` no están instalados, manteniendo operativos los endpoints `/auth/*` sin bloquear el arranque.
+
+## feat: POS module upgraded with multi-pay support (05/11/2025)
+- Se crean los modelos ligeros `backend/models/pos.py` (`Sale`, `SaleItem`, `Payment`) con estados `OPEN/HELD/COMPLETED/VOID`, totales calculados y soporte de pagos `CASH`, `CARD`, `TRANSFER`.
+- `backend/routes/pos.py` publica el flujo completo `POST /pos/sales`, `/items`, `/checkout`, `/hold`, `/resume`, `/void` y `GET /pos/receipt/{id}`, preservando la compatibilidad con `/pos/sale` y delegando recibos PDF al núcleo cuando corresponda.
+- Los esquemas `backend/schemas/pos.py` describen cargas y respuestas del POS comercial, mientras que `backend/tests/test_pos_module.py` valida ventas multipago, holds y cancelaciones.
+- `backend/schemas/common.py` introduce `Page[T]`, `PageParams` y `ErrorResponse`; los listados de inventario, sucursales, compras y reportes devuelven ahora `Page[...]` con paginación consistente.
+
+## feat: observability and async jobs (05/11/2025)
+- `backend/core/logging.py` adopta Loguru en formato JSON y expone helpers de contexto (`bind_context`, `update_context`, `reset_context`).
+- `backend/main.py` agrega middleware `X-Request-ID`, medición de latencia y manejador global de excepciones que responde con `{ "code": "INTERNAL_ERROR", "message": "..." }`.
+- Se suma `backend/routes/jobs.py` con `POST /jobs/export`, que encola exportaciones vía `BackgroundTasks` o integra Redis cuando `REDIS_URL` está disponible; `backend/schemas/jobs.py` describe las cargas y respuestas.
+- Las pruebas se actualizan para consumir las nuevas respuestas paginadas y se documentan los formatos en README (sección «API Responses unificadas» y «Jobs & Monitoring»).
 ## [v2.2.1] - 2025-10-23
 - Added advanced auth (refresh/reset/verify)
 - Added complete stores CRUD

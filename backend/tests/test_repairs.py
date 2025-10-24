@@ -1,7 +1,13 @@
 from fastapi import status
-from fastapi import status
+from typing import Any, Iterable
 
 from backend.app.core.roles import ADMIN, OPERADOR
+
+
+def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(payload, list):
+        return payload
+    return payload["items"]
 
 
 def _bootstrap_admin(client):
@@ -102,7 +108,9 @@ def test_repair_order_flow(client):
     assert repair_data["status"] == "PENDIENTE"
 
     devices_after = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
-    part_record = next(item for item in devices_after.json() if item["id"] == device_id)
+    part_record = next(
+        item for item in _extract_items(devices_after.json()) if item["id"] == device_id
+    )
     assert part_record["quantity"] == 8
 
     update_payload = {"status": "LISTO", "labor_cost": 210.0}
@@ -119,7 +127,8 @@ def test_repair_order_flow(client):
         headers=auth_headers,
     )
     assert list_response.status_code == status.HTTP_200_OK
-    assert any(item["id"] == repair_data["id"] for item in list_response.json())
+    list_items = _extract_items(list_response.json())
+    assert any(item["id"] == repair_data["id"] for item in list_items)
 
     pdf_response = client.get(
         f"/repairs/{repair_data['id']}/pdf", headers=auth_headers
@@ -133,7 +142,9 @@ def test_repair_order_flow(client):
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
 
     devices_final = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
-    part_final = next(item for item in devices_final.json() if item["id"] == device_id)
+    part_final = next(
+        item for item in _extract_items(devices_final.json()) if item["id"] == device_id
+    )
     assert part_final["quantity"] == 10
 
 

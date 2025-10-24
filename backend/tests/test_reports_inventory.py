@@ -4,11 +4,19 @@ import csv
 from datetime import datetime
 from io import StringIO
 
+from typing import Any, Iterable
+
 import pytest
 from fastapi import status
 
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
+
+
+def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(payload, list):
+        return payload
+    return payload["items"]
 
 
 def _auth_headers(client) -> dict[str, str]:
@@ -383,10 +391,11 @@ def test_inventory_supplier_batches_overview(client) -> None:
         headers=headers,
     )
     assert overview_response.status_code == status.HTTP_200_OK
-    overview = overview_response.json()
-    assert len(overview) == 1
+    overview_payload = overview_response.json()
+    overview_items = _extract_items(overview_payload)
+    assert len(overview_items) == 1
 
-    supplier_entry = overview[0]
+    supplier_entry = overview_items[0]
     assert supplier_entry["supplier_id"] == supplier_id
     assert supplier_entry["supplier_name"] == "Componentes del Norte"
     assert supplier_entry["batch_count"] == 2

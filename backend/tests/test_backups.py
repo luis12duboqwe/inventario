@@ -186,7 +186,7 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
     stores_after_restore = client.get("/stores", headers=headers)
     assert stores_after_restore.status_code == status.HTTP_200_OK
     stores_payload = stores_after_restore.json()
-    store_names = {store["name"] for store in stores_payload}
+    store_names = {store["name"] for store in stores_payload["items"]}
     assert "Sucursal Temporal" not in store_names
 
     destino_personalizado = tmp_path / "restaurados"

@@ -1,7 +1,7 @@
 """Pruebas del módulo Operaciones para plantillas, importaciones e historial."""
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Tuple, Any, Iterable
 
 from fastapi import status
 from sqlalchemy import select
@@ -9,6 +9,12 @@ from sqlalchemy import select
 from backend.app import models
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
+
+
+def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(payload, list):
+        return payload
+    return payload["items"]
 
 
 def _bootstrap_admin(client, db_session) -> Tuple[str, int]:
@@ -147,7 +153,8 @@ def test_recurring_order_flow_creates_purchase(client, db_session):
             headers=headers,
         )
         assert list_response.status_code == status.HTTP_200_OK
-        template_ids = {item["id"] for item in list_response.json()}
+        template_payload = _extract_items(list_response.json())
+        template_ids = {item["id"] for item in template_payload}
         assert template_id in template_ids
 
         execute_response = client.post(
@@ -166,7 +173,8 @@ def test_recurring_order_flow_creates_purchase(client, db_session):
             headers=headers,
         )
         assert purchases_response.status_code == status.HTTP_200_OK
-        purchase_ids = {order["id"] for order in purchases_response.json()}
+        purchase_payload = _extract_items(purchases_response.json())
+        purchase_ids = {order["id"] for order in purchase_payload}
         assert execution["reference_id"] in purchase_ids
     finally:
         settings.enable_purchases_sales = previous_flag

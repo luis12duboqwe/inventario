@@ -1,4 +1,5 @@
 import json
+from typing import Any, Iterable
 
 from fastapi import status
 from sqlalchemy import select
@@ -7,6 +8,12 @@ from backend.app import models
 
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN, OPERADOR
+
+
+def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(payload, list):
+        return payload
+    return payload["items"]
 
 
 def _bootstrap_admin(client):
@@ -186,7 +193,9 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
 
     devices_after = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
     assert devices_after.status_code == 200
-    remaining = next(item for item in devices_after.json() if item["id"] == device_id)
+    remaining = next(
+        item for item in _extract_items(devices_after.json()) if item["id"] == device_id
+    )
     assert remaining["quantity"] == 1
 
     settings.enable_purchases_sales = False
@@ -288,7 +297,8 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
         headers={**auth_headers, "X-Reason": "Consultar historia"},
     )
     assert history_response.status_code == 200
-    assert any(item["id"] == session_id for item in history_response.json())
+    history_items = _extract_items(history_response.json())
+    assert any(item["id"] == session_id for item in history_items)
 
     settings.enable_purchases_sales = False
 

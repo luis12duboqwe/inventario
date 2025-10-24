@@ -16,6 +16,7 @@ from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import purchase_reports
+from backend.schemas.common import Page, PageParams
 
 router = APIRouter(prefix="/purchases", tags=["compras"])
 
@@ -58,24 +59,30 @@ def _prepare_purchase_report(
     return purchase_reports.build_purchase_report(purchases, filters)
 
 
-@router.get("/vendors", response_model=list[schemas.PurchaseVendorResponse])
+@router.get("/vendors", response_model=Page[schemas.PurchaseVendorResponse])
 def list_purchase_vendors_endpoint(
     q: str | None = Query(default=None, min_length=1, max_length=120),
     estado: str | None = Query(default=None, min_length=3, max_length=40),
     limit: int = Query(default=100, ge=1, le=500),
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
-):
+) -> Page[schemas.PurchaseVendorResponse]:
     _ensure_feature_enabled()
     query = q.strip() if q else None
     estado_value = estado.strip() if estado else None
-    return crud.list_purchase_vendors(
+    effective_limit = max(limit, pagination.size * pagination.page)
+    vendors = crud.list_purchase_vendors(
         db,
         vendor_id=None,
         query=query,
         estado=estado_value,
-        limit=limit,
+        limit=effective_limit,
     )
+    start = pagination.offset
+    end = start + pagination.size
+    page_items = vendors[start:end]
+    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(vendors))
 
 
 @router.post("/vendors", response_model=schemas.PurchaseVendorResponse, status_code=status.HTTP_201_CREATED)
@@ -217,7 +224,7 @@ def purchase_vendor_history_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
 
 
-@router.get("/records", response_model=list[schemas.PurchaseRecordResponse])
+@router.get("/records", response_model=Page[schemas.PurchaseRecordResponse])
 def list_purchase_records_endpoint(
     proveedor_id: int | None = Query(default=None, ge=1),
     usuario_id: int | None = Query(default=None, ge=1),
@@ -227,13 +234,16 @@ def list_purchase_records_endpoint(
     q: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
-):
+) -> Page[schemas.PurchaseRecordResponse]:
     _ensure_feature_enabled()
     query = q.strip() if q else None
     estado_value = estado.strip() if estado else None
-    return crud.list_purchase_records(
+    page_offset = offset if offset else pagination.offset
+    page_limit = min(limit, pagination.size)
+    records = crud.list_purchase_records(
         db,
         proveedor_id=proveedor_id,
         usuario_id=usuario_id,
@@ -241,9 +251,11 @@ def list_purchase_records_endpoint(
         date_to=date_to,
         estado=estado_value,
         query=query,
-        limit=limit,
-        offset=offset,
+        limit=page_limit,
+        offset=page_offset,
     )
+    total = page_offset + len(records)
+    return Page.from_items(records, page=pagination.page, size=page_limit, total=total)
 
 
 @router.post("/records", response_model=schemas.PurchaseRecordResponse, status_code=status.HTTP_201_CREATED)
@@ -371,16 +383,19 @@ def get_purchase_statistics_endpoint(
     )
 
 
-@router.get("/", response_model=list[schemas.PurchaseOrderResponse])
+@router.get("/", response_model=Page[schemas.PurchaseOrderResponse])
 def list_purchase_orders_endpoint(
     limit: int = 50,
     store_id: int | None = None,
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
-):
+) -> Page[schemas.PurchaseOrderResponse]:
     _ensure_feature_enabled()
-    orders = crud.list_purchase_orders(db, store_id=store_id, limit=limit)
-    return orders
+    page_limit = min(limit, pagination.size)
+    orders = crud.list_purchase_orders(db, store_id=store_id, limit=page_limit)
+    total = len(orders)
+    return Page.from_items(orders, page=pagination.page, size=page_limit, total=total)
 
 
 @router.post("/", response_model=schemas.PurchaseOrderResponse, status_code=status.HTTP_201_CREATED)

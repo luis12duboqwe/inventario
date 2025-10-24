@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import Any, Iterable
 
 from fastapi import status
 from sqlalchemy import select
@@ -6,6 +7,12 @@ from sqlalchemy import select
 from backend.app import models
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
+
+
+def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
+    if isinstance(payload, list):
+        return payload
+    return payload["items"]
 
 
 def _bootstrap_admin(client, db_session):
@@ -79,7 +86,11 @@ def test_sale_and_return_flow(client, db_session):
 
     devices_after_sale = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
     assert devices_after_sale.status_code == status.HTTP_200_OK
-    device_after_sale = next(item for item in devices_after_sale.json() if item["id"] == device_id)
+    device_after_sale = next(
+        item
+        for item in _extract_items(devices_after_sale.json())
+        if item["id"] == device_id
+    )
     assert device_after_sale["quantity"] == 3
 
     return_payload = {
@@ -95,7 +106,11 @@ def test_sale_and_return_flow(client, db_session):
     assert len(return_response.json()) == 1
 
     devices_post_return = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
-    device_post_return = next(item for item in devices_post_return.json() if item["id"] == device_id)
+    device_post_return = next(
+        item
+        for item in _extract_items(devices_post_return.json())
+        if item["id"] == device_id
+    )
     assert device_post_return["quantity"] == 4
 
     invalid_return = client.post(
@@ -379,33 +394,38 @@ def test_sales_filters_and_exports(client, db_session):
 
     list_all = client.get(f"/sales?store_id={store_id}", headers=auth_headers)
     assert list_all.status_code == status.HTTP_200_OK
-    assert {sale["id"] for sale in list_all.json()} == {sale_one_id, sale_two_id}
+    list_all_items = _extract_items(list_all.json())
+    assert {sale["id"] for sale in list_all_items} == {sale_one_id, sale_two_id}
 
     list_by_customer = client.get(
         f"/sales?customer_id={customer_id}", headers=auth_headers
     )
     assert list_by_customer.status_code == status.HTTP_200_OK
-    assert len(list_by_customer.json()) == 1
-    assert list_by_customer.json()[0]["customer_id"] == customer_id
+    list_by_customer_items = _extract_items(list_by_customer.json())
+    assert len(list_by_customer_items) == 1
+    assert list_by_customer_items[0]["customer_id"] == customer_id
 
     today_iso = datetime.utcnow().date().isoformat()
     list_recent = client.get(
         f"/sales?date_from={today_iso}", headers=auth_headers
     )
     assert list_recent.status_code == status.HTTP_200_OK
-    assert len(list_recent.json()) == 1
-    assert list_recent.json()[0]["id"] == sale_one_id
+    list_recent_items = _extract_items(list_recent.json())
+    assert len(list_recent_items) == 1
+    assert list_recent_items[0]["id"] == sale_one_id
 
     list_by_user = client.get(
         f"/sales?performed_by_id={user_id}", headers=auth_headers
     )
     assert list_by_user.status_code == status.HTTP_200_OK
-    assert len(list_by_user.json()) == 2
+    list_by_user_items = _extract_items(list_by_user.json())
+    assert len(list_by_user_items) == 2
 
     list_by_query = client.get("/sales", params={"q": "FILTRO-1001"}, headers=auth_headers)
     assert list_by_query.status_code == status.HTTP_200_OK
-    assert len(list_by_query.json()) == 1
-    assert list_by_query.json()[0]["id"] == sale_one_id
+    list_by_query_items = _extract_items(list_by_query.json())
+    assert len(list_by_query_items) == 1
+    assert list_by_query_items[0]["id"] == sale_one_id
 
     export_without_reason = client.get("/sales/export/pdf", headers=auth_headers)
     assert export_without_reason.status_code == status.HTTP_400_BAD_REQUEST
@@ -511,7 +531,9 @@ def test_credit_sale_rejected_when_limit_exceeded(client, db_session):
 
     devices_response = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
     assert devices_response.status_code == status.HTTP_200_OK
-    device_record = next(item for item in devices_response.json() if item["id"] == device_id)
+    device_record = next(
+        item for item in _extract_items(devices_response.json()) if item["id"] == device_id
+    )
     assert device_record["quantity"] == 2
 
     settings.enable_purchases_sales = False
