@@ -1,11 +1,17 @@
 """Health check endpoints."""
 from fastapi import APIRouter
 
+from .... import schemas
+
 router = APIRouter()
 
 
-@router.get("/health", summary="Confirmar estado del servicio")
-async def health() -> dict[str, str]:
+@router.get(
+    "/health",
+    summary="Confirmar estado del servicio",
+    response_model=schemas.HealthStatusResponse,
+)
+async def health() -> schemas.HealthStatusResponse:
     """Return basic service status."""
 
-    return {"status": "ok"}
+    return schemas.HealthStatusResponse(status="ok")
