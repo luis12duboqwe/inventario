@@ -21,22 +21,28 @@
 ## Agentes funcionales — 23/10/2025
 
 ### Auth Agent
-- Orquesta el flujo de autenticación en el frontend mediante `services/api/http.ts` y `services/api/auth.ts`, usando Axios con refresco automático de tokens y propagando el evento `softmobile:unauthorized` para cerrar sesión de forma segura.
-- `App.tsx` consume `useQuery`/`useMutation` para bootstrap/login manteniendo la compatibilidad con la UI existente y reduciendo código duplicado.
+
+- **Responsabilidad**: mantener la sesión corporativa usando `services/api/http.ts` (interceptores Axios) y `services/api/auth.ts`.
+- **Flujos cubiertos**: bootstrap, login, refresco automático vía `/auth/refresh` y notificación `softmobile:unauthorized` para cerrar sesión en todos los módulos.
+- **Integraciones**: `frontend/src/app/App.tsx` opera con `useQuery` y `useMutation` de React Query para sincronizar estado y reducir duplicidad de lógica.
 
 ### Store Agent
-- Expone accesos tipados a `/stores` y dispositivos por sucursal desde `services/api/stores.ts`, reutilizando el cliente HTTP con cabecera `Bearer` automática.
-- Permite que módulos como usuarios y operaciones migren gradualmente a la nueva capa sin reescribir lógica heredada.
+
+- **Responsabilidad**: encapsular las llamadas a `/stores` dentro de `services/api/stores.ts`, garantizando tipado consistente y cabecera `Bearer` automática.
+- **Integraciones**: módulos de Operaciones, Seguridad y Configuración pueden migrar gradualmente consumiendo los helpers sin tocar la lógica heredada.
 
 ### POS Agent
-- Reexporta la capa POS desde `services/api/pos.ts`, centralizando ventas, sesiones de caja y descargas de recibos en un único módulo especializado.
-- Facilita la adopción de interceptores Axios y mantiene los requerimientos de motivo corporativo (`X-Reason`).
+
+- **Responsabilidad**: centralizar ventas, sesiones de caja y recibos (`/pos/sale`, `/pos/sales/*`) desde `services/api/pos.ts`.
+- **Integraciones**: respeta la cabecera `X-Reason`, descarga recibos PDF del núcleo cuando existen y normaliza las respuestas para React Query.
 
 ### Export Agent
-- `services/api/inventory.ts` concentra las funciones de exportación (CSV/PDF/Excel) y movimientos de inventario, evitando duplicidad de rutas y asegurando la estandarización de respuestas.
-- Sirve como punto de extensión para incorporar nuevos reportes sin tocar `frontend/src/api.ts` legado.
+
+- **Responsabilidad**: agrupar en `services/api/inventory.ts` las exportaciones CSV/PDF/Excel y los movimientos de inventario.
+- **Integraciones**: ofrece un punto único de extensión para nuevos reportes, manteniendo compatibilidad con el SDK legado (`frontend/src/api.ts`).
 
 ### Frontend Agent
-- Documenta la reorganización de `frontend/src/` (carpetas `app/`, `shared/`, `services/api/`, `features/`, `pages/`, `widgets/`) y preserva el diseño actual sin cambios visuales.
-- `frontend/README.md` actúa como guía operativa para el equipo, describiendo la capa de servicios y el uso de React Query.
-- Registro: «frontend agent restructured» deja constancia de la reubicación de componentes en `frontend/src/shared/components/` y de la adopción de React Query para autenticación.
+
+- **Responsabilidad**: documentar y monitorear la reorganización técnica del cliente React.
+- **Alcance**: estructura oficial `frontend/src/{app,shared,services/api,features,pages,widgets,modules}` con componentes reutilizables bajo `shared/components/`.
+- **Documentación**: `frontend/README.md` describe el uso de React Query y los interceptores Axios; el registro «frontend agent restructured» deja constancia del mantenimiento sin cambios visuales.

@@ -30,7 +30,6 @@
 - Standardized API responses
 - Added observability + background tasks
 - Reorganized frontend (no visual changes)
-- Documentado el traslado de componentes compartidos a `frontend/src/shared/components/` y la adopción de React Query para bootstrap/login.
 
 ## Wrapper de sucursales y actualización corporativa (23/10/2025)
 - `backend/routes/stores.py` incorpora un wrapper que expone respuestas paginadas (`Page[StoreRead]`), delega altas/consultas al núcleo y mantiene compatibilidad con el resto de rutas avanzadas al incluir el router corporativo.
