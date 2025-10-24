@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from backend.app.core.roles import GESTION_ROLES, REPORTE_ROLES
+from backend.app import schemas as core_schemas
 from backend.app.routers import stores as core_stores
 from backend.app.security import require_roles
 from backend.db import get_db
@@ -168,7 +169,11 @@ def proxy_list_devices(
         db=db,
         current_user=current_user,
     )
-    items = [schemas.StoreDeviceRead.from_core(item) for item in core_page.items]
+    core_items = [
+        core_schemas.DeviceResponse.model_validate(item)
+        for item in core_page.items
+    ]
+    items = [schemas.StoreDeviceRead.from_core(item) for item in core_items]
     return Page.from_items(
         items,
         page=core_page.page,
