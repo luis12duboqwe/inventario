@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Repeat } from "lucide-react";
 
 import SyncPanel from "../components/SyncPanel";
-import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
+import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 import { useSyncModule } from "../hooks/useSyncModule";
 import {
   exportSyncConflictsExcel,

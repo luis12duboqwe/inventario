@@ -27,8 +27,8 @@ import {
   type GlobalReportOverview,
   type SystemLogLevel,
 } from "../../../api";
-import LoadingOverlay from "../../../components/LoadingOverlay";
-import ScrollableTable from "../../../components/ScrollableTable";
+import LoadingOverlay from "../../../shared/components/LoadingOverlay";
+import ScrollableTable from "../../../shared/components/ScrollableTable";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import { useReportsModule } from "../hooks/useReportsModule";
 import { colors } from "../../../theme/designTokens";

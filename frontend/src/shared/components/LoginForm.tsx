@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { Credentials } from "../api";
+import type { Credentials } from "../../services/api/auth";
 import Button from "./ui/Button";
 import TextField from "./ui/TextField";
 

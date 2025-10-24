@@ -17,14 +17,14 @@ import {
   Wrench,
 } from "lucide-react";
 
-import BackToTopButton from "../../../components/BackToTopButton";
-import CompactModeToggle from "../../../components/CompactModeToggle";
+import BackToTopButton from "../../../shared/components/BackToTopButton";
+import CompactModeToggle from "../../../shared/components/CompactModeToggle";
 import GlobalMetrics from "../components/GlobalMetrics";
 import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
 import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
-import Button from "../../../components/ui/Button";
-import PageHeader from "../../../components/ui/PageHeader";
+import Button from "../../../shared/components/ui/Button";
+import PageHeader from "../../../shared/components/ui/PageHeader";
 import AdminControlPanel, {
   type AdminControlPanelModule,
 } from "../components/AdminControlPanel";

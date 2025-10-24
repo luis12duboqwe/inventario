@@ -7,8 +7,8 @@ import {
   listTransfers,
   receiveTransferOrder,
 } from "../../../api";
-import Button from "../../../components/ui/Button";
-import Modal from "../../../components/ui/Modal";
+import Button from "../../../shared/components/ui/Button";
+import Modal from "../../../shared/components/ui/Modal";
 
 const statusLabels: Record<TransferOrder["status"], string> = {
   SOLICITADA: "Solicitada",
