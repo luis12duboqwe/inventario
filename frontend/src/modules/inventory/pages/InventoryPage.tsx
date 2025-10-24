@@ -24,11 +24,11 @@ const InventoryCategoryChart = lazy(() => import("../components/InventoryCategor
 const InventoryReportsPanel = lazy(() => import("../components/InventoryReportsPanel"));
 const InventoryTable = lazy(() => import("../components/InventoryTable"));
 const MovementForm = lazy(() => import("../components/MovementForm"));
-import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
-import LoadingOverlay from "../../../components/LoadingOverlay";
-import Button from "../../../components/ui/Button";
-import TextField from "../../../components/ui/TextField";
-import Tabs, { type TabOption } from "../../../components/ui/Tabs/Tabs";
+import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
+import LoadingOverlay from "../../../shared/components/LoadingOverlay";
+import Button from "../../../shared/components/ui/Button";
+import TextField from "../../../shared/components/ui/TextField";
+import Tabs, { type TabOption } from "../../../shared/components/ui/Tabs/Tabs";
 import type {
   Device,
   DeviceImportSummary,

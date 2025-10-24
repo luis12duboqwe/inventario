@@ -1,7 +1,7 @@
 import { Suspense, lazy, memo } from "react";
 import { BellRing } from "lucide-react";
 
-import ModuleHeader, { type ModuleStatus } from "../../../components/ModuleHeader";
+import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 
 const GlobalReportsDashboard = lazy(() => import("../components/GlobalReportsDashboard"));
 

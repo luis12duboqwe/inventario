@@ -9,9 +9,9 @@ import {
   listRepairOrders,
   updateRepairOrder,
 } from "../../../api";
-import LoadingOverlay from "../../../components/LoadingOverlay";
-import ScrollableTable from "../../../components/ScrollableTable";
-import type { ModuleStatus } from "../../../components/ModuleHeader";
+import LoadingOverlay from "../../../shared/components/LoadingOverlay";
+import ScrollableTable from "../../../shared/components/ScrollableTable";
+import type { ModuleStatus } from "../../../shared/components/ModuleHeader";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 type Props = {

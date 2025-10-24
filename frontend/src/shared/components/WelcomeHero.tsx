@@ -2,7 +2,7 @@ import { memo } from "react";
 import { motion } from "framer-motion";
 
 import Button from "./ui/Button";
-import { colors } from "../theme/designTokens";
+import { colors } from "../../theme/designTokens";
 
 type Props = {
   themeLabel: string;

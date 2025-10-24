@@ -26,11 +26,11 @@ import {
 } from "../../../api";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
-import LoadingOverlay from "../../../components/LoadingOverlay";
-import ScrollableTable from "../../../components/ScrollableTable";
+import LoadingOverlay from "../../../shared/components/LoadingOverlay";
+import ScrollableTable from "../../../shared/components/ScrollableTable";
 import AnalyticsGrid, {
   type AnalyticsGridItem,
-} from "../../../components/ui/AnalyticsGrid/AnalyticsGrid";
+} from "../../../shared/components/ui/AnalyticsGrid/AnalyticsGrid";
 
 type Props = {
   token: string;

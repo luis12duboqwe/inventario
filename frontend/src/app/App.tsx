@@ -1,20 +1,23 @@
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import LoginForm from "./components/LoginForm";
-import BootstrapForm, { type BootstrapFormValues } from "./components/BootstrapForm";
-import Button from "./components/ui/Button";
+import LoginForm from "../shared/components/LoginForm";
+import BootstrapForm, { type BootstrapFormValues } from "../shared/components/BootstrapForm";
+import Button from "../shared/components/ui/Button";
 import {
-  type BootstrapStatus,
-  Credentials,
-  UNAUTHORIZED_EVENT,
   bootstrapAdmin,
   getBootstrapStatus,
   login,
-} from "./api";
-import WelcomeHero from "./components/WelcomeHero";
+  logout,
+  type BootstrapStatus,
+  type Credentials,
+  UNAUTHORIZED_EVENT,
+} from "../services/api/auth";
+import { getAuthToken } from "../services/api/http";
+import WelcomeHero from "../shared/components/WelcomeHero";
 
-const Dashboard = lazy(() => import("./components/Dashboard"));
+const Dashboard = lazy(() => import("../shared/components/Dashboard"));
 
 type ThemeMode = "dark" | "light";
 
@@ -34,10 +37,27 @@ function resolveInitialTheme(): ThemeMode {
 }
 
 function App() {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("softmobile_token"));
-  const [loading, setLoading] = useState(false);
+  const [token, setToken] = useState<string | null>(() => getAuthToken());
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<ThemeMode>(() => resolveInitialTheme());
+
+  const loginMutation = useMutation({
+    mutationFn: login,
+    onMutate: () => {
+      setError(null);
+    },
+    onSuccess: (response) => {
+      setToken(response.access_token);
+    },
+    onError: (mutationError: unknown) => {
+      const message =
+        mutationError instanceof Error ? mutationError.message : "Error desconocido";
+      setError(message);
+    },
+  });
+
+  const loading = loginMutation.isPending;
+  const resetLoginMutation = loginMutation.reset;
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -50,22 +70,15 @@ function App() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }, []);
 
-  const handleLogin = useCallback(async (credentials: Credentials) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await login(credentials);
-      localStorage.setItem("softmobile_token", response.access_token);
-      setToken(response.access_token);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error desconocido");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const handleLogin = useCallback(
+    async (credentials: Credentials) => {
+      await loginMutation.mutateAsync(credentials);
+    },
+    [loginMutation],
+  );
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem("softmobile_token");
+    logout();
     setToken(null);
   }, []);
 
@@ -77,14 +90,14 @@ function App() {
       const customEvent = event as CustomEvent<string | undefined>;
       const message = customEvent.detail ?? "Tu sesión expiró. Inicia sesión nuevamente.";
       setError(message);
-      setLoading(false);
+      resetLoginMutation();
       handleLogout();
     };
     window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
     return () => {
       window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
     };
-  }, [handleLogout]);
+  }, [handleLogout, resetLoginMutation]);
 
   return (
     <BrowserRouter>
@@ -180,38 +193,18 @@ const LoginScene = memo(function LoginScene({
   error,
   onLogin,
 }: LoginSceneProps) {
-  const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
-  const [bootstrapLoading, setBootstrapLoading] = useState(false);
-  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [bootstrapSuccess, setBootstrapSuccess] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"login" | "bootstrap">("login");
 
-  useEffect(() => {
-    let cancelled = false;
-    getBootstrapStatus()
-      .then((status) => {
-        if (cancelled) {
-          return;
-        }
-        setBootstrapStatus(status);
-        setStatusError(null);
-      })
-      .catch((fetchError) => {
-        if (cancelled) {
-          return;
-        }
-        const message =
-          fetchError instanceof Error
-            ? fetchError.message
-            : "No fue posible verificar el estado del registro inicial.";
-        setStatusError(message);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const {
+    data: bootstrapStatus,
+    error: bootstrapStatusError,
+    refetch: refetchBootstrapStatus,
+  } = useQuery<BootstrapStatus>({
+    queryKey: ["auth", "bootstrap-status"],
+    queryFn: getBootstrapStatus,
+    staleTime: 5 * 60 * 1000,
+  });
 
   useEffect(() => {
     const disponible = bootstrapStatus?.disponible;
@@ -222,8 +215,38 @@ const LoginScene = memo(function LoginScene({
     }
   }, [bootstrapStatus?.disponible]);
 
+  useEffect(() => {
+    if (activeTab !== "bootstrap") {
+      setBootstrapSuccess(null);
+    }
+  }, [activeTab]);
+
+  const bootstrapMutation = useMutation({
+    mutationFn: async (values: BootstrapFormValues) => {
+      await bootstrapAdmin({
+        username: values.username,
+        password: values.password,
+        full_name: values.fullName,
+        telefono: values.telefono,
+      });
+    },
+  });
+
   const canDisplayBootstrap = bootstrapStatus?.disponible !== false;
   const allowBootstrap = bootstrapStatus?.disponible === true;
+  const bootstrapLoading = bootstrapMutation.isPending;
+
+  const statusErrorMessage = bootstrapStatusError
+    ? bootstrapStatusError instanceof Error
+      ? bootstrapStatusError.message
+      : "No fue posible verificar el estado del registro inicial."
+    : null;
+
+  const bootstrapErrorMessage = bootstrapMutation.error
+    ? bootstrapMutation.error instanceof Error
+      ? bootstrapMutation.error.message
+      : "No fue posible registrar la cuenta inicial."
+    : null;
 
   const handleShowLogin = useCallback(() => {
     setActiveTab("login");
@@ -238,39 +261,17 @@ const LoginScene = memo(function LoginScene({
 
   const handleBootstrapSubmit = useCallback(
     async (values: BootstrapFormValues) => {
+      setBootstrapSuccess(null);
       try {
-        setBootstrapLoading(true);
-        setBootstrapError(null);
-        setBootstrapSuccess(null);
-        await bootstrapAdmin({
-          username: values.username,
-          password: values.password,
-          full_name: values.fullName,
-          telefono: values.telefono,
-        });
-        setBootstrapStatus((current) => ({
-          disponible: false,
-          usuarios_registrados: (current?.usuarios_registrados ?? 0) + 1,
-        }));
+        await bootstrapMutation.mutateAsync(values);
         setBootstrapSuccess("Cuenta creada correctamente. Iniciando sesión…");
+        await refetchBootstrapStatus();
         await onLogin({ username: values.username, password: values.password });
       } catch (submitError) {
-        const message =
-          submitError instanceof Error
-            ? submitError.message
-            : "No fue posible registrar la cuenta inicial.";
-        setBootstrapError(message);
-        if (message.includes("usuarios registrados")) {
-          setBootstrapStatus((current) => ({
-            disponible: false,
-            usuarios_registrados: Math.max(current?.usuarios_registrados ?? 1, 1),
-          }));
-        }
-      } finally {
-        setBootstrapLoading(false);
+        console.warn("No fue posible completar el registro inicial", submitError);
       }
     },
-    [onLogin],
+    [bootstrapMutation, onLogin, refetchBootstrapStatus],
   );
 
   const description =
@@ -321,11 +322,11 @@ const LoginScene = memo(function LoginScene({
           ) : null}
         </div>
         <p className="login-card__description">{description}</p>
-        {statusError ? <div className="alert warning">{statusError}</div> : null}
+        {statusErrorMessage ? <div className="alert warning">{statusErrorMessage}</div> : null}
         {activeTab === "bootstrap" && canDisplayBootstrap ? (
           <BootstrapForm
             loading={bootstrapLoading || loading}
-            error={bootstrapError}
+            error={bootstrapErrorMessage}
             successMessage={bootstrapSuccess}
             onSubmit={handleBootstrapSubmit}
           />

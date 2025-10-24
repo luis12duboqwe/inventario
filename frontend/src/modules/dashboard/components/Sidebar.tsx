@@ -1,7 +1,7 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, PanelsTopLeft } from "lucide-react";
 
-import SidebarMenu, { type SidebarMenuItem } from "../../../components/ui/SidebarMenu";
+import SidebarMenu, { type SidebarMenuItem } from "../../../shared/components/ui/SidebarMenu";
 
 export type SidebarNavItem = {
   to: string;

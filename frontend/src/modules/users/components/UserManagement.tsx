@@ -17,7 +17,7 @@ import type {
   UserDashboardMetrics,
 } from "../../../api";
 import { getStores, listRoles } from "../../../api";
-import LoadingOverlay from "../../../components/LoadingOverlay";
+import LoadingOverlay from "../../../shared/components/LoadingOverlay";
 import { useUsersModule } from "../hooks/useUsersModule";
 import { usersService } from "../services/usersService";
 
