@@ -22,6 +22,39 @@ Para continuar con la evolución ordenada del proyecto, utiliza las siguientes e
 
 > Mantén la versión corporativa **v2.2.0**, respeta los *feature flags* activos (`SOFTMOBILE_ENABLE_*`) y documenta cualquier ajuste significativo en esta sección para conservar la trazabilidad del roadmap.
 
+## Actualización funcional — POS multipago y observabilidad (05/11/2025)
+
+- 🔁 **Ventas multipago en el POS corporativo**: `backend/models/pos.py` incorpora las entidades `Sale`, `SaleItem` y `Payment` con estados `OPEN/HELD/COMPLETED/VOID` y totales calculados automáticamente. El router `backend/routes/pos.py` publica `POST /pos/sales`, `POST /pos/sales/{id}/items`, `POST /pos/sales/{id}/checkout`, `POST /pos/sales/{id}/hold`, `POST /pos/sales/{id}/resume`, `POST /pos/sales/{id}/void` y `GET /pos/receipt/{id}`, habilitando combinaciones de pago `CASH`, `CARD` y `TRANSFER` sin perder compatibilidad con `/pos/sale` ni con los recibos PDF históricos.
+- 📦 **Respuestas API unificadas**: el nuevo módulo `backend/schemas/common.py` define `Page[T]`, `PageParams` y `ErrorResponse`. Los listados de inventario, sucursales, compras y reportes devuelven ahora `Page[...]` con metadatos `total`, `page`, `size`, `pages` y `has_next`, simplificando la paginación en backend, SDK y frontend.
+- 🛰️ **Observabilidad con Loguru y jobs asincrónicos**: `backend/core/logging.py` configura Loguru en formato JSON agregando `user_id`, `path`, `latency` y `request_id`. El middleware global en `backend/main.py` asigna `X-Request-ID`, mide latencias y centraliza excepciones con el manejador `INTERNAL_ERROR`. Se suma `backend/routes/jobs.py` con `POST /jobs/export`, que encola exportaciones mediante `BackgroundTasks` o delega en Redis si está disponible.
+
+### API Responses unificadas
+
+- Las rutas de lectura (`/inventory/summary`, `/inventory/devices/incomplete`, `/inventory/devices/search`, `/stores`, `/stores/{id}/devices`, `/stores/{id}/memberships`, `/purchases/vendors`, `/purchases/records`, `/purchases`, `/reports/audit`, `/reports/inventory/supplier-batches`) entregan `Page[...]` con la siguiente estructura:
+  ```json
+  {
+    "items": [...],
+    "total": 42,
+    "page": 1,
+    "size": 20,
+    "pages": 3,
+    "has_next": true
+  }
+  ```
+- Los errores inesperados responden con `{"code": "INTERNAL_ERROR", "message": "<detalle>"}` gracias al manejador global registrado en `backend/main.py`.
+- Para construir respuestas homogéneas desde nuevas rutas reutiliza `Page.from_items(...)` y `ErrorResponse` desde `backend/schemas/common.py`.
+
+### Jobs & Monitoring
+
+- Loguru reemplaza `logging.basicConfig` como logger central. Cada solicitud queda registrada en JSON con `request_id`, `user_id`, `path` y `latency`, lo que facilita la ingestión en soluciones de observabilidad.
+- En entornos donde `loguru` no esté disponible, `backend/core/logging.py` activa automáticamente un formateador JSON basado en `logging` para conservar la misma estructura de eventos sin bloquear el arranque.
+- El middleware HTTP añade (o reutiliza) el encabezado `X-Request-ID` en todas las respuestas y vincula el contexto de logging por petición.
+- Se incorpora el endpoint `POST /jobs/export` que retorna `202 Accepted` y registra el job con el backend `local` (BackgroundTasks) o `redis` si `REDIS_URL` está presente. El archivo `backend/schemas/jobs.py` documenta `ExportJobRequest` y `ExportJobResponse` para futuras extensiones de cola.
+
+## Ajuste de mantenimiento — 06/11/2025
+
+- 🧹 **Limpieza de artefactos generados**: se retira del repositorio el archivo `backend/database/softmobile.db`, que es recreado automáticamente en tiempo de ejecución. Esto evita adjuntar binarios en los PR y mantiene el flujo de empaquetado descrito en la sección «Preparación rápida del entorno base».
+
 ## Preparación rápida del entorno base — 20/10/2025
 
 - ✅ **Backend**: se añadió el archivo `backend/main.py` con FastAPI, CORS abierto para redes locales y montaje automático de `frontend/dist` cuando está disponible. La ruta `/api` devuelve el mensaje corporativo «API online ✅ - Softmobile 2025 v2.2.0». El arranque valida la carpeta `database/softmobile.db` y registra advertencias si faltan directorios de modelos o rutas.
@@ -69,6 +102,7 @@ curl -X GET http://127.0.0.1:8000/auth/me \
 - **Configuración centralizada**: `backend/core/settings.py` define la clase `Settings` con lectura desde `.env`, incorporando `SECRET_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` y los parámetros SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) para habilitar notificaciones por correo cuando se configure un servidor corporativo.
 - **Tokens tipados**: `backend/core/security.py` emite JWT con el campo `token_type`, permitiendo diferenciar accesos, refrescos, restablecimientos y verificaciones. Los helpers `create_refresh_token`, `decode_token` y `verify_token_expiry` simplifican la validación de cada flujo.
 - **Par de tokens y limitación de ritmo**: `/auth/login` y `/auth/token` devuelven ahora `TokenPairResponse` con `access_token` y `refresh_token`. La ruta heredada `/auth/token` queda protegida por `fastapi-limiter` (5 solicitudes por minuto e IP) usando `fakeredis` como almacenamiento embebido.
+- En entornos donde `fastapi-limiter` o `fakeredis` no estén disponibles, el backend continúa activo y registra una advertencia, deshabilitando la limitación de ritmo de forma automática.
 - **Renovación de sesiones**: el endpoint `POST /auth/refresh` acepta `refresh_token` vigentes, valida que el usuario siga activo y entrega un nuevo par de tokens sin requerir credenciales.
 - **Recuperación de contraseña**: `POST /auth/forgot` genera un token temporal `password_reset`, lo envía por correo si existe configuración SMTP y, en entornos de prueba, lo expone en la respuesta. `POST /auth/reset` consume dicho token y actualiza la contraseña con hash bcrypt.
 - **Verificación de correo**: `POST /auth/verify` marca `is_verified=True` para el usuario asociado al token `email_verification`. Cada registro (`/auth/register` y `/auth/bootstrap`) devuelve el token de verificación inicial para integraciones automatizadas.

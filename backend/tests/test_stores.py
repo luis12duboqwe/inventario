@@ -88,24 +88,26 @@ def test_inventory_flow(client) -> None:
 
     summary_response = client.get("/inventory/summary", headers=headers)
     assert summary_response.status_code == status.HTTP_200_OK
-    summary = summary_response.json()
-    assert summary[0]["total_items"] == 17
-    assert summary[0]["total_value"] == 15 * 15000.0 + 2 * 4500.0
-    assert any(device["unit_price"] == 15000.0 for device in summary[0]["devices"])
-    assert any(device["inventory_value"] == 2 * 4500.0 for device in summary[0]["devices"])
+    summary_payload = summary_response.json()
+    summary_items = summary_payload["items"]
+    assert summary_items[0]["total_items"] == 17
+    assert summary_items[0]["total_value"] == 15 * 15000.0 + 2 * 4500.0
+    assert any(device["unit_price"] == 15000.0 for device in summary_items[0]["devices"])
+    assert any(device["inventory_value"] == 2 * 4500.0 for device in summary_items[0]["devices"])
 
     sync_response = client.post("/sync/run", json={"store_id": store_id}, headers=headers)
     assert sync_response.status_code == status.HTTP_200_OK
 
     logs_response = client.get("/reports/audit", headers=headers)
     assert logs_response.status_code == status.HTTP_200_OK
-    assert any(log["action"] == "inventory_movement" for log in logs_response.json())
+    logs_items = logs_response.json()["items"]
+    assert any(log["action"] == "inventory_movement" for log in logs_items)
 
     metrics_response = client.get("/reports/metrics", headers=headers)
     assert metrics_response.status_code == status.HTTP_200_OK
     metrics = metrics_response.json()
     assert metrics["totals"]["total_units"] == 17
-    assert metrics["totals"]["total_value"] == summary[0]["total_value"]
+    assert metrics["totals"]["total_value"] == summary_items[0]["total_value"]
     assert metrics["top_stores"][0]["store_id"] == store_id
     low_stock_devices = metrics["low_stock_devices"]
     assert any(device["device_id"] == low_stock_id for device in low_stock_devices)
@@ -163,7 +165,8 @@ def test_device_filters_by_search_and_state(client) -> None:
         params={"search": "iphone"},
     )
     assert search_response.status_code == status.HTTP_200_OK
-    search_results = search_response.json()
+    search_payload = search_response.json()
+    search_results = search_payload["items"]
     assert len(search_results) == 1
     assert search_results[0]["sku"] == "SKU-IPHONE"
 
@@ -173,7 +176,8 @@ def test_device_filters_by_search_and_state(client) -> None:
         params={"estado": "B"},
     )
     assert estado_response.status_code == status.HTTP_200_OK
-    estado_results = estado_response.json()
+    estado_payload = estado_response.json()
+    estado_results = estado_payload["items"]
     assert len(estado_results) == 1
     assert all(device["estado_comercial"] == "B" for device in estado_results)
 
@@ -183,7 +187,8 @@ def test_device_filters_by_search_and_state(client) -> None:
         params={"search": "galaxy", "estado": "nuevo"},
     )
     assert mixed_response.status_code == status.HTTP_200_OK
-    mixed_results = mixed_response.json()
+    mixed_payload = mixed_response.json()
+    mixed_results = mixed_payload["items"]
     assert len(mixed_results) == 1
     assert mixed_results[0]["sku"] == "SKU-GALAXY"
 
@@ -323,13 +328,13 @@ def test_manual_adjustment_triggers_alerts(client) -> None:
 
     devices_response = client.get(f"/stores/{store_id}/devices", headers=headers)
     assert devices_response.status_code == status.HTTP_200_OK
-    devices = devices_response.json()
+    devices = devices_response.json()["items"]
     adjusted = next(device for device in devices if device["id"] == device_id)
     assert adjusted["quantity"] == adjustment_payload["cantidad"]
 
     logs_response = client.get("/reports/audit", headers=headers)
     assert logs_response.status_code == status.HTTP_200_OK
-    logs = logs_response.json()
+    logs = logs_response.json()["items"]
     device_logs = {
         log["action"]: log
         for log in logs
@@ -471,7 +476,7 @@ def test_sale_updates_inventory_value(client) -> None:
 
     device_list = client.get(f"/stores/{store_id}/devices", headers=headers)
     assert device_list.status_code == status.HTTP_200_OK
-    devices = device_list.json()
+    devices = device_list.json()["items"]
     assert any(device["id"] == device_id and device["quantity"] == 8 for device in devices)
 
     store_detail = client.get(f"/stores/{store_id}", headers=headers)

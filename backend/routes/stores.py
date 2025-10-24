@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from backend.app.core.roles import GESTION_ROLES, REPORTE_ROLES
@@ -12,32 +12,28 @@ from backend.app.routers import stores as core_stores
 from backend.app.security import require_roles
 from backend.db import get_db
 from backend.schemas import store as schemas
+from backend.schemas.common import Page, PageParams
 
 from ._core_bridge import mount_core_router
 
 router = APIRouter(tags=["stores"])
 
 
-@router.get("/stores", response_model=schemas.Page[schemas.StoreRead])
+@router.get("/stores", response_model=Page[schemas.StoreRead])
 def list_stores(
-    page: int = Query(1, ge=1, description="Número de página solicitada"),
-    size: int = Query(20, ge=1, le=100, description="Cantidad de elementos por página"),
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user: Any = Depends(require_roles(*GESTION_ROLES)),
-) -> schemas.Page[schemas.StoreRead]:
+) -> Page[schemas.StoreRead]:
     """Devuelve las sucursales del núcleo en un formato paginado."""
 
     stores = core_stores.list_stores(db, current_user)
     total = len(stores)
-    start = (page - 1) * size
-    end = start + size
+    start = pagination.offset
+    end = start + pagination.size
     page_items = stores[start:end]
-    return schemas.Page(
-        items=[schemas.StoreRead.from_core(item) for item in page_items],
-        total=total,
-        page=page,
-        size=size,
-    )
+    items = [schemas.StoreRead.from_core(item) for item in page_items]
+    return Page.from_items(items, page=pagination.page, size=pagination.size, total=total)
 
 
 @router.post("/stores", response_model=schemas.StoreRead, status_code=status.HTTP_201_CREATED)
@@ -89,28 +85,23 @@ def update_store(
 
 @router.get(
     "/stores/{store_id}/memberships",
-    response_model=schemas.Page[schemas.StoreMembershipRead],
+    response_model=Page[schemas.StoreMembershipRead],
 )
 def list_memberships(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
-    page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=200),
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user: Any = Depends(require_roles(*GESTION_ROLES)),
-) -> schemas.Page[schemas.StoreMembershipRead]:
+) -> Page[schemas.StoreMembershipRead]:
     """Lista las membresías activas de la sucursal en formato paginado."""
 
     memberships = core_stores.list_store_memberships(store_id, db, current_user)
     total = len(memberships)
-    start = (page - 1) * size
-    end = start + size
+    start = pagination.offset
+    end = start + pagination.size
     page_items = memberships[start:end]
-    return schemas.Page(
-        items=[schemas.StoreMembershipRead.from_core(item) for item in page_items],
-        total=total,
-        page=page,
-        size=size,
-    )
+    items = [schemas.StoreMembershipRead.from_core(item) for item in page_items]
+    return Page.from_items(items, page=pagination.page, size=pagination.size, total=total)
 
 
 @router.put(

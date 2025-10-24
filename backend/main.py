@@ -11,7 +11,9 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from textwrap import dedent
+from time import perf_counter
 from typing import Any, Final, Iterable
+from uuid import uuid4
 
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -20,13 +22,21 @@ PROJECT_ROOT = CURRENT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.routing import APIRoute, Mount
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
+
+from backend.core.logging import (
+    bind_context,
+    logger as app_logger,
+    reset_context,
+    setup_logging,
+    update_context,
+)
 
 def _import_module_with_fallback(module_name: str, candidate_path: Path) -> object:
     """Importa ``module_name`` con una ruta alternativa si el paquete no existe."""
@@ -198,7 +208,51 @@ if settings.access_token_expire_minutes is not None:
         "SOFTMOBILE_TOKEN_MINUTES", str(settings.access_token_expire_minutes)
     )
 
+setup_logging()
 app = create_core_app()
+
+
+@app.middleware("http")
+async def request_context_middleware(request: Request, call_next):
+    """Gestiona X-Request-ID y métricas básicas de latencia para los logs."""
+
+    request_id = request.headers.get("X-Request-ID") or uuid4().hex
+    start = perf_counter()
+    token = bind_context(request_id=request_id, path=str(request.url.path))
+    response: Response | None = None
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as exc:
+        update_context(error=str(exc))
+        app_logger.exception("Excepción no controlada durante la solicitud")
+        raise
+    finally:
+        latency = perf_counter() - start
+        user = getattr(request.state, "user", None)
+        user_id = getattr(user, "id", None)
+        update_context(
+            latency=latency,
+            user_id=user_id,
+            request_id=request_id,
+            path=str(request.url.path),
+        )
+        app_logger.info("request.completed")
+        if response is not None:
+            response.headers["X-Request-ID"] = request_id
+        reset_context(token)
+
+
+@app.exception_handler(Exception)
+async def global_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Devuelve un error estándar cuando ocurre una excepción inesperada."""
+
+    request_id = request.headers.get("X-Request-ID") or uuid4().hex
+    return JSONResponse(
+        status_code=500,
+        content={"code": "INTERNAL_ERROR", "message": str(exc)},
+        headers={"X-Request-ID": request_id},
+    )
 
 
 def _discover_modules(package: str, directory: Path) -> Iterable[str]:

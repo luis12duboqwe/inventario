@@ -23,6 +23,7 @@ from ..services import global_reports as global_reports_service
 from ..services import customer_reports
 from ..services import inventory_reports as inventory_reports_service
 from ..utils import audit as audit_utils
+from backend.schemas.common import Page, PageParams
 
 router = APIRouter(prefix="/reports", tags=["reportes"])
 
@@ -187,7 +188,7 @@ def customer_portfolio_report(
     )
 
 
-@router.get("/audit", response_model=list[schemas.AuditLogResponse])
+@router.get("/audit", response_model=Page[schemas.AuditLogResponse])
 def audit_logs(
     limit: int = Query(default=100, ge=1, le=500),
     action: str | None = Query(default=None, max_length=120),
@@ -195,18 +196,24 @@ def audit_logs(
     performed_by_id: int | None = Query(default=None, ge=1),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*AUDITORIA_ROLES)),
-):
-    return crud.list_audit_logs(
+) -> Page[schemas.AuditLogResponse]:
+    effective_limit = max(limit, pagination.size * pagination.page)
+    logs = crud.list_audit_logs(
         db,
-        limit=limit,
+        limit=effective_limit,
         action=action,
         entity_type=entity_type,
         performed_by_id=performed_by_id,
         date_from=date_from,
         date_to=date_to,
     )
+    start = pagination.offset
+    end = start + pagination.size
+    page_items = logs[start:end]
+    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(logs))
 
 
 @router.get("/audit/pdf")
@@ -1229,15 +1236,21 @@ def inventory_top_products_csv(
 
 @router.get(
     "/inventory/supplier-batches",
-    response_model=list[schemas.SupplierBatchOverviewItem],
+    response_model=Page[schemas.SupplierBatchOverviewItem],
 )
 def inventory_supplier_batches(
     store_id: int = Query(..., ge=1),
     limit: int = Query(default=5, ge=1, le=25),
+    pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
-):
-    return crud.get_supplier_batch_overview(db, store_id=store_id, limit=limit)
+) -> Page[schemas.SupplierBatchOverviewItem]:
+    effective_limit = max(limit, pagination.size * pagination.page)
+    overview = crud.get_supplier_batch_overview(db, store_id=store_id, limit=effective_limit)
+    start = pagination.offset
+    end = start + pagination.size
+    page_items = overview[start:end]
+    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(overview))
 
 
 @router.get("/metrics", response_model=schemas.InventoryMetricsResponse)

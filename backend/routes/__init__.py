@@ -7,6 +7,8 @@ __all__ = [
     "backups",
     "customers",
     "inventory",
+    "jobs",
+    "pos",
     "reports",
     "stores",
     "updates",

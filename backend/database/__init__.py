@@ -30,6 +30,7 @@ def init_db() -> None:
 
     # Importamos explícitamente los modelos para registrar sus metadatos.
     import_module("backend.models.user")
+    import_module("backend.models.pos")
 
     Base.metadata.create_all(bind=_engine)
 

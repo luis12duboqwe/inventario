@@ -119,7 +119,8 @@ def test_advanced_catalog_search_and_audit(client) -> None:
         headers=headers,
     )
     assert search_response.status_code == status.HTTP_200_OK
-    results = search_response.json()
+    results_payload = search_response.json()
+    results = results_payload["items"]
     assert len(results) == 1
     assert results[0]["store_name"] == "Tienda Norte"
     assert results[0]["imei"] == device_payload["imei"]
@@ -127,9 +128,10 @@ def test_advanced_catalog_search_and_audit(client) -> None:
 
     audit_response = client.get("/reports/audit", headers=headers)
     assert audit_response.status_code == status.HTTP_200_OK
+    audit_items = audit_response.json()["items"]
     assert any(
         log["entity_id"] == str(device_id) and "costo_unitario" in (log.get("details") or "")
-        for log in audit_response.json()
+        for log in audit_items
     )
 
     settings.enable_catalog_pro = False
@@ -180,7 +182,8 @@ def test_inventory_import_export_roundtrip(client) -> None:
         headers=headers,
     )
     assert list_response.status_code == status.HTTP_200_OK
-    devices = list_response.json()
+    devices_payload = list_response.json()
+    devices = devices_payload["items"]
     assert len(devices) == 1
     assert devices[0]["estado"] == "apartado"
     assert devices[0]["categoria"] == "Smartphones"

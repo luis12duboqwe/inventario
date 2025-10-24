@@ -77,7 +77,7 @@ def test_audit_filters_and_csv_export(client):
         headers=auth_headers,
     )
     assert reports_response.status_code == status.HTTP_200_OK
-    report_logs = reports_response.json()
+    report_logs = reports_response.json()["items"]
     assert report_logs
     for log in report_logs:
         assert log["performed_by_id"] == admin["id"]

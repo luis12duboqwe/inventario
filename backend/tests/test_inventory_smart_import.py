@@ -192,9 +192,9 @@ def test_inventory_incomplete_devices_endpoint_returns_pending_records(client, d
     response = client.get("/inventory/devices/incomplete", headers=headers)
     assert response.status_code == status.HTTP_200_OK
     payload = response.json()
-    assert isinstance(payload, list)
-    assert payload
-    device = payload[0]
+    assert isinstance(payload, dict)
+    assert payload["items"]
+    device = payload["items"][0]
     assert device["completo"] is False
     assert device["name"]
     store = crud.get_store_by_name(db_session, "Sucursal Centro")

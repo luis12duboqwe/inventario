@@ -7,9 +7,29 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordRequestForm
-from fastapi_limiter import FastAPILimiter
-from fastapi_limiter.depends import RateLimiter
-from fakeredis.aioredis import FakeRedis
+
+try:  # pragma: no cover - validado mediante pruebas cuando la dependencia existe
+    from fastapi_limiter import FastAPILimiter  # type: ignore
+    from fastapi_limiter.depends import RateLimiter as _RateLimiter
+except ModuleNotFoundError:  # pragma: no cover - se activa en entornos mínimos
+    FastAPILimiter = None  # type: ignore[assignment]
+
+    class _RateLimiterStub:  # pragma: no cover - comportamiento trivial
+        async def __call__(self, request: object) -> None:  # noqa: D401 - interfaz FastAPI
+            return None
+
+    def RateLimiter(*args, **kwargs):  # type: ignore
+        return _RateLimiterStub()
+
+    FakeRedis = None  # type: ignore[assignment]
+    _HAS_RATE_LIMITER = False
+else:
+    try:
+        from fakeredis.aioredis import FakeRedis  # type: ignore
+    except ModuleNotFoundError:  # pragma: no cover - redis opcional
+        FakeRedis = None  # type: ignore[assignment]
+    RateLimiter = _RateLimiter  # type: ignore
+    _HAS_RATE_LIMITER = True
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -57,6 +77,12 @@ init_db()
 @router.on_event("startup")
 async def _configure_rate_limiter() -> None:
     """Inicializa el limitador de peticiones usando Redis en memoria."""
+
+    if not _HAS_RATE_LIMITER or FastAPILimiter is None or FakeRedis is None:
+        LOGGER.warning(
+            "fastapi-limiter no disponible; las rutas funcionarán sin limitación de ritmo",
+        )
+        return
 
     if getattr(FastAPILimiter, "redis", None) is not None:
         return
