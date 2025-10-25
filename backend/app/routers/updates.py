@@ -20,10 +20,11 @@ def read_update_status(current_user=Depends(require_roles(*REPORTE_ROLES))):
 
 @router.get("/history", response_model=list[schemas.ReleaseInfo])
 def read_release_history(
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     """Lista las versiones publicadas del producto ordenadas de la más reciente a la más antigua."""
 
-    return update_services.get_release_history(limit=limit)
+    return update_services.get_release_history(limit=limit, offset=offset)
 

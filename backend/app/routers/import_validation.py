@@ -50,11 +50,14 @@ def _map_validation(validation: models.ImportValidation) -> schemas.ImportValida
     status_code=status.HTTP_200_OK,
 )
 def list_pending_validations(
-    limit: int = Query(default=200, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> list[schemas.ImportValidationDetail]:
-    validations = crud.list_import_validation_details(db, corregido=False, limit=limit)
+    validations = crud.list_import_validation_details(
+        db, corregido=False, limit=limit, offset=offset
+    )
     return [_map_validation(validation) for validation in validations]
 
 

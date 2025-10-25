@@ -16,7 +16,7 @@ from typing import Literal
 from sqlalchemy import case, desc, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy.sql import ColumnElement
+from sqlalchemy.sql import ColumnElement, Select
 
 from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
@@ -493,8 +493,15 @@ def list_system_logs(
     nivel: models.SystemLogLevel | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[models.SystemLog]:
-    statement = select(models.SystemLog).order_by(models.SystemLog.fecha.desc())
+    statement = (
+        select(models.SystemLog)
+        .order_by(models.SystemLog.fecha.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     if usuario:
         statement = statement.where(models.SystemLog.usuario == usuario)
     if modulo:
@@ -505,7 +512,7 @@ def list_system_logs(
         statement = statement.where(models.SystemLog.fecha >= date_from)
     if date_to:
         statement = statement.where(models.SystemLog.fecha <= date_to)
-    return list(db.scalars(statement).all())
+    return list(db.scalars(statement))
 
 
 def list_system_errors(
@@ -515,8 +522,15 @@ def list_system_errors(
     modulo: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[models.SystemError]:
-    statement = select(models.SystemError).order_by(models.SystemError.fecha.desc())
+    statement = (
+        select(models.SystemError)
+        .order_by(models.SystemError.fecha.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     if usuario:
         statement = statement.where(models.SystemError.usuario == usuario)
     if modulo:
@@ -525,7 +539,7 @@ def list_system_errors(
         statement = statement.where(models.SystemError.fecha >= date_from)
     if date_to:
         statement = statement.where(models.SystemError.fecha <= date_to)
-    return list(db.scalars(statement).all())
+    return list(db.scalars(statement))
 
 
 def _apply_system_log_filters(
@@ -1352,7 +1366,8 @@ def _resolve_part_unit_cost(device: models.Device, provided: Decimal | float | i
 def list_audit_logs(
     db: Session,
     *,
-    limit: int = 100,
+    limit: int = 50,
+    offset: int = 0,
     action: str | None = None,
     entity_type: str | None = None,
     performed_by_id: int | None = None,
@@ -1362,6 +1377,7 @@ def list_audit_logs(
     statement = (
         select(models.AuditLog)
         .order_by(models.AuditLog.created_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     if action:
@@ -1731,8 +1747,15 @@ def ensure_role(db: Session, name: str) -> models.Role:
     return role
 
 
-def list_roles(db: Session) -> list[models.Role]:
-    statement = select(models.Role).order_by(models.Role.name.asc())
+def list_roles(
+    db: Session, *, limit: int = 50, offset: int = 0
+) -> list[models.Role]:
+    statement = (
+        select(models.Role)
+        .order_by(models.Role.name.asc())
+        .offset(offset)
+        .limit(limit)
+    )
     return list(db.scalars(statement).unique())
 
 
@@ -1865,6 +1888,8 @@ def list_users(
     role: str | None = None,
     status: Literal["all", "active", "inactive", "locked"] = "all",
     store_id: int | None = None,
+    limit: int | None = 50,
+    offset: int = 0,
 ) -> list[models.User]:
     statement = (
         select(models.User)
@@ -1906,10 +1931,17 @@ def list_users(
     if store_id is not None:
         statement = statement.where(models.User.store_id == store_id)
 
-    users = list(db.scalars(statement).unique())
     if status_normalized == "locked":
-        return [user for user in users if _user_is_locked(user)]
-    return users
+        users = list(db.scalars(statement).unique())
+        locked_users = [user for user in users if _user_is_locked(user)]
+        end = offset + limit if limit is not None else None
+        return locked_users[offset:end]
+
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(db.scalars(statement).unique())
 
 
 def set_user_roles(
@@ -2073,13 +2105,15 @@ def list_role_permissions(
     db: Session,
     *,
     role_name: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[schemas.RolePermissionMatrix]:
     role_names: list[str]
     if role_name:
         role = get_role(db, role_name)
         role_names = [role.name]
     else:
-        role_names = [role.name for role in list_roles(db)]
+        role_names = [role.name for role in list_roles(db, limit=limit, offset=offset)]
 
     if not role_names:
         return []
@@ -2194,6 +2228,8 @@ def build_user_directory(
         role=role,
         status=status,
         store_id=store_id,
+        limit=None,
+        offset=0,
     )
 
     active_count = sum(1 for user in users if user.is_active)
@@ -2724,8 +2760,19 @@ def mark_session_used(db: Session, session_token: str) -> models.ActiveSession |
     return session
 
 
-def list_active_sessions(db: Session, *, user_id: int | None = None) -> list[models.ActiveSession]:
-    statement = select(models.ActiveSession).order_by(models.ActiveSession.created_at.desc())
+def list_active_sessions(
+    db: Session,
+    *,
+    user_id: int | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.ActiveSession]:
+    statement = (
+        select(models.ActiveSession)
+        .order_by(models.ActiveSession.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     if user_id is not None:
         statement = statement.where(models.ActiveSession.user_id == user_id)
     return list(db.scalars(statement))
@@ -2886,21 +2933,41 @@ def update_store(
     return store
 
 
-def list_stores(db: Session) -> list[models.Store]:
+def list_stores(
+    db: Session,
+    *,
+    limit: int | None = 50,
+    offset: int = 0,
+) -> list[models.Store]:
     statement = select(models.Store).order_by(models.Store.name.asc())
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement))
+
+
+def count_stores(db: Session) -> int:
+    statement = select(func.count()).select_from(models.Store)
+    return int(db.scalar(statement) or 0)
 
 
 def list_customers(
     db: Session,
     *,
     query: str | None = None,
-    limit: int = 100,
+    limit: int = 50,
+    offset: int = 0,
     status: str | None = None,
     customer_type: str | None = None,
     has_debt: bool | None = None,
 ) -> list[models.Customer]:
-    statement = select(models.Customer).order_by(models.Customer.name.asc()).limit(limit)
+    statement = (
+        select(models.Customer)
+        .order_by(models.Customer.name.asc())
+        .offset(offset)
+        .limit(limit)
+    )
     if status:
         normalized_status = _normalize_customer_status(status)
         statement = statement.where(models.Customer.status == normalized_status)
@@ -3160,6 +3227,7 @@ def export_customers_csv(
         db,
         query=query,
         limit=5000,
+        offset=0,
         status=status,
         customer_type=customer_type,
     )
@@ -3661,9 +3729,15 @@ def list_suppliers(
     db: Session,
     *,
     query: str | None = None,
-    limit: int = 100,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[models.Supplier]:
-    statement = select(models.Supplier).order_by(models.Supplier.name.asc()).limit(limit)
+    statement = (
+        select(models.Supplier)
+        .order_by(models.Supplier.name.asc())
+        .offset(offset)
+        .limit(limit)
+    )
     if query:
         normalized = f"%{query.lower()}%"
         statement = statement.where(
@@ -3805,7 +3879,8 @@ def list_purchase_vendors(
     vendor_id: int | None = None,
     query: str | None = None,
     estado: str | None = None,
-    limit: int = 100,
+    limit: int | None = 50,
+    offset: int = 0,
 ) -> list[schemas.PurchaseVendorResponse]:
     statement = (
         select(
@@ -3818,7 +3893,6 @@ def list_purchase_vendors(
         .outerjoin(models.Compra, models.Compra.proveedor_id == models.Proveedor.id_proveedor)
         .group_by(models.Proveedor.id_proveedor)
         .order_by(models.Proveedor.nombre.asc())
-        .limit(limit)
     )
     if vendor_id is not None:
         statement = statement.where(models.Proveedor.id_proveedor == vendor_id)
@@ -3827,6 +3901,10 @@ def list_purchase_vendors(
         statement = statement.where(func.lower(models.Proveedor.nombre).like(normalized))
     if estado:
         statement = statement.where(func.lower(models.Proveedor.estado) == estado.lower())
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
 
     rows = db.execute(statement).all()
     vendors: list[schemas.PurchaseVendorResponse] = []
@@ -3848,6 +3926,24 @@ def list_purchase_vendors(
             )
         )
     return vendors
+
+
+def count_purchase_vendors(
+    db: Session,
+    *,
+    vendor_id: int | None = None,
+    query: str | None = None,
+    estado: str | None = None,
+) -> int:
+    statement = select(func.count()).select_from(models.Proveedor)
+    if vendor_id is not None:
+        statement = statement.where(models.Proveedor.id_proveedor == vendor_id)
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.where(func.lower(models.Proveedor.nombre).like(normalized))
+    if estado:
+        statement = statement.where(func.lower(models.Proveedor.estado) == estado.lower())
+    return int(db.scalar(statement) or 0)
 
 
 def create_purchase_vendor(
@@ -4000,13 +4096,14 @@ def export_purchase_vendors_csv(
 
 
 def list_supplier_batches(
-    db: Session, supplier_id: int, *, limit: int = 50
+    db: Session, supplier_id: int, *, limit: int = 50, offset: int = 0
 ) -> list[models.SupplierBatch]:
     supplier = get_supplier(db, supplier_id)
     statement = (
         select(models.SupplierBatch)
         .where(models.SupplierBatch.supplier_id == supplier.id)
         .order_by(models.SupplierBatch.purchase_date.desc(), models.SupplierBatch.created_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     return list(db.scalars(statement).unique())
@@ -4606,6 +4703,8 @@ def list_devices(
     proveedor: str | None = None,
     fecha_ingreso_desde: date | None = None,
     fecha_ingreso_hasta: date | None = None,
+    limit: int | None = 50,
+    offset: int = 0,
 ) -> list[models.Device]:
     get_store(db, store_id)
     statement = (
@@ -4651,18 +4750,73 @@ def list_devices(
             )
         )
     statement = statement.order_by(models.Device.sku.asc())
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement))
 
 
-def search_devices(db: Session, filters: schemas.DeviceSearchFilters) -> list[models.Device]:
-    statement = (
-        select(models.Device)
-        .options(
-            joinedload(models.Device.store),
-            joinedload(models.Device.identifier),
+def count_store_devices(
+    db: Session,
+    store_id: int,
+    *,
+    search: str | None = None,
+    estado: models.CommercialState | None = None,
+    categoria: str | None = None,
+    condicion: str | None = None,
+    estado_inventario: str | None = None,
+    ubicacion: str | None = None,
+    proveedor: str | None = None,
+    fecha_ingreso_desde: date | None = None,
+    fecha_ingreso_hasta: date | None = None,
+) -> int:
+    get_store(db, store_id)
+    statement = select(func.count()).select_from(models.Device)
+    statement = statement.where(models.Device.store_id == store_id)
+    if estado is not None:
+        statement = statement.where(models.Device.estado_comercial == estado)
+    if categoria:
+        statement = statement.where(models.Device.categoria.ilike(f"%{categoria}%"))
+    if condicion:
+        statement = statement.where(models.Device.condicion.ilike(f"%{condicion}%"))
+    if estado_inventario:
+        statement = statement.where(models.Device.estado.ilike(f"%{estado_inventario}%"))
+    if ubicacion:
+        statement = statement.where(models.Device.ubicacion.ilike(f"%{ubicacion}%"))
+    if proveedor:
+        statement = statement.where(models.Device.proveedor.ilike(f"%{proveedor}%"))
+    if fecha_ingreso_desde or fecha_ingreso_hasta:
+        start, end = _normalize_date_range(fecha_ingreso_desde, fecha_ingreso_hasta)
+        statement = statement.where(
+            models.Device.fecha_ingreso >= start.date(), models.Device.fecha_ingreso <= end.date()
         )
-        .join(models.Store)
-    )
+    if search:
+        normalized = f"%{search.lower()}%"
+        statement = statement.where(
+            or_(
+                func.lower(models.Device.sku).like(normalized),
+                func.lower(models.Device.name).like(normalized),
+                func.lower(models.Device.modelo).like(normalized),
+                func.lower(models.Device.marca).like(normalized),
+                func.lower(models.Device.color).like(normalized),
+                func.lower(models.Device.categoria).like(normalized),
+                func.lower(models.Device.condicion).like(normalized),
+                func.lower(models.Device.capacidad).like(normalized),
+                func.lower(models.Device.serial).like(normalized),
+                func.lower(models.Device.imei).like(normalized),
+                func.lower(models.Device.estado_comercial).like(normalized),
+                func.lower(models.Device.estado).like(normalized),
+                func.lower(models.Device.descripcion).like(normalized),
+                func.lower(models.Device.ubicacion).like(normalized),
+            )
+        )
+    return int(db.scalar(statement) or 0)
+
+
+def _apply_device_search_filters(
+    statement: Select[tuple[models.Device]], filters: schemas.DeviceSearchFilters
+) -> Select[tuple[models.Device]]:
     if filters.imei:
         statement = statement.where(models.Device.imei == filters.imei)
     if filters.serial:
@@ -4686,12 +4840,48 @@ def search_devices(db: Session, filters: schemas.DeviceSearchFilters) -> list[mo
     if filters.proveedor:
         statement = statement.where(models.Device.proveedor.ilike(f"%{filters.proveedor}%"))
     if filters.fecha_ingreso_desde or filters.fecha_ingreso_hasta:
-        start, end = _normalize_date_range(filters.fecha_ingreso_desde, filters.fecha_ingreso_hasta)
-        statement = statement.where(
-            models.Device.fecha_ingreso >= start.date(), models.Device.fecha_ingreso <= end.date()
+        start, end = _normalize_date_range(
+            filters.fecha_ingreso_desde, filters.fecha_ingreso_hasta
         )
+        statement = statement.where(
+            models.Device.fecha_ingreso >= start.date(),
+            models.Device.fecha_ingreso <= end.date(),
+        )
+    return statement
+
+
+def search_devices(
+    db: Session,
+    filters: schemas.DeviceSearchFilters,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[models.Device]:
+    statement: Select[tuple[models.Device]] = (
+        select(models.Device)
+        .options(
+            joinedload(models.Device.store),
+            joinedload(models.Device.identifier),
+        )
+        .join(models.Store)
+    )
+    statement = _apply_device_search_filters(statement, filters)
     statement = statement.order_by(models.Device.store_id.asc(), models.Device.sku.asc())
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
+
+
+def count_devices_matching_filters(
+    db: Session, filters: schemas.DeviceSearchFilters
+) -> int:
+    statement: Select[tuple[int]] = select(func.count()).select_from(models.Device).join(
+        models.Store
+    )
+    statement = _apply_device_search_filters(statement, filters)
+    return int(db.scalar(statement) or 0)
 
 
 def list_incomplete_devices(
@@ -4699,6 +4889,7 @@ def list_incomplete_devices(
     *,
     store_id: int | None = None,
     limit: int | None = None,
+    offset: int = 0,
 ) -> list[models.Device]:
     statement = (
         select(models.Device)
@@ -4708,9 +4899,22 @@ def list_incomplete_devices(
     )
     if store_id is not None:
         statement = statement.where(models.Device.store_id == store_id)
+    if offset:
+        statement = statement.offset(offset)
     if limit is not None:
         statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
+
+
+def count_incomplete_devices(
+    db: Session, *, store_id: int | None = None
+) -> int:
+    statement: Select[tuple[int]] = select(func.count()).select_from(models.Device).where(
+        models.Device.completo.is_(False)
+    )
+    if store_id is not None:
+        statement = statement.where(models.Device.store_id == store_id)
+    return int(db.scalar(statement) or 0)
 
 
 def create_inventory_movement(
@@ -4865,8 +5069,16 @@ def create_inventory_movement(
     return movement
 
 
-def list_inventory_summary(db: Session) -> list[models.Store]:
-    statement = select(models.Store).options(joinedload(models.Store.devices)).order_by(models.Store.name.asc())
+def list_inventory_summary(
+    db: Session, *, limit: int | None = None, offset: int = 0
+) -> list[models.Store]:
+    statement = select(models.Store).options(joinedload(models.Store.devices)).order_by(
+        models.Store.name.asc()
+    )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
 
 
@@ -5432,10 +5644,38 @@ def calculate_rotation_analytics(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = _normalize_date_range(date_from, date_to)
     category_expr = _device_category_expr()
+
+    device_stmt = (
+        select(
+            models.Device.id,
+            models.Device.sku,
+            models.Device.name,
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+        )
+        .join(models.Store, models.Store.id == models.Device.store_id)
+        .order_by(models.Store.name.asc(), models.Device.name.asc())
+    )
+    if store_filter:
+        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
+    if category:
+        device_stmt = device_stmt.where(category_expr == category)
+    if offset:
+        device_stmt = device_stmt.offset(offset)
+    if limit is not None:
+        device_stmt = device_stmt.limit(limit)
+
+    device_rows = list(db.execute(device_stmt))
+    if not device_rows:
+        return []
+
+    device_ids = [row.id for row in device_rows]
 
     sale_stats = (
         select(
@@ -5449,6 +5689,8 @@ def calculate_rotation_analytics(
     )
     if store_filter:
         sale_stats = sale_stats.where(models.Sale.store_id.in_(store_filter))
+    if device_ids:
+        sale_stats = sale_stats.where(models.SaleItem.device_id.in_(device_ids))
     if start_dt:
         sale_stats = sale_stats.where(models.Sale.created_at >= start_dt)
     if end_dt:
@@ -5468,6 +5710,10 @@ def calculate_rotation_analytics(
     )
     if store_filter:
         purchase_stats = purchase_stats.where(models.PurchaseOrder.store_id.in_(store_filter))
+    if device_ids:
+        purchase_stats = purchase_stats.where(
+            models.PurchaseOrderItem.device_id.in_(device_ids)
+        )
     if start_dt:
         purchase_stats = purchase_stats.where(models.PurchaseOrder.created_at >= start_dt)
     if end_dt:
@@ -5475,27 +5721,16 @@ def calculate_rotation_analytics(
     if category:
         purchase_stats = purchase_stats.where(category_expr == category)
 
-    sold_map = {row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)}
-    received_map = {row.device_id: int(row.received_units or 0) for row in db.execute(purchase_stats)}
-
-    device_stmt = (
-        select(
-            models.Device.id,
-            models.Device.sku,
-            models.Device.name,
-            models.Store.id.label("store_id"),
-            models.Store.name.label("store_name"),
-        )
-        .join(models.Store, models.Store.id == models.Device.store_id)
-        .order_by(models.Store.name.asc(), models.Device.name.asc())
-    )
-    if store_filter:
-        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
-    if category:
-        device_stmt = device_stmt.where(category_expr == category)
+    sold_map = {
+        row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)
+    }
+    received_map = {
+        row.device_id: int(row.received_units or 0)
+        for row in db.execute(purchase_stats)
+    }
 
     results: list[dict[str, object]] = []
-    for row in db.execute(device_stmt):
+    for row in device_rows:
         sold_units = sold_map.get(row.id, 0)
         received_units = received_map.get(row.id, 0)
         denominator = received_units if received_units > 0 else max(sold_units, 1)
@@ -5522,6 +5757,8 @@ def calculate_aging_analytics(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     now_date = datetime.utcnow().date()
@@ -5537,6 +5774,10 @@ def calculate_aging_analytics(
             models.Store.name.label("store_name"),
         )
         .join(models.Store, models.Store.id == models.Device.store_id)
+        .order_by(
+            models.Device.fecha_compra.is_(None),
+            models.Device.fecha_compra.asc(),
+        )
     )
     if store_filter:
         device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
@@ -5547,8 +5788,17 @@ def calculate_aging_analytics(
     if category:
         device_stmt = device_stmt.where(category_expr == category)
 
+    if offset:
+        device_stmt = device_stmt.offset(offset)
+    if limit is not None:
+        device_stmt = device_stmt.limit(limit)
+
+    device_rows = list(db.execute(device_stmt))
+    if not device_rows:
+        return []
+
     metrics: list[dict[str, object]] = []
-    for row in db.execute(device_stmt):
+    for row in device_rows:
         purchase_date = row.fecha_compra
         days_in_stock = (now_date - purchase_date).days if purchase_date else 0
         metrics.append(
@@ -5573,10 +5823,39 @@ def calculate_stockout_forecast(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = _normalize_date_range(date_from, date_to)
     category_expr = _device_category_expr()
+
+    device_stmt = (
+        select(
+            models.Device.id,
+            models.Device.sku,
+            models.Device.name,
+            models.Device.quantity,
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+        )
+        .join(models.Store, models.Store.id == models.Device.store_id)
+        .order_by(models.Store.name.asc(), models.Device.name.asc())
+    )
+    if store_filter:
+        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
+    if category:
+        device_stmt = device_stmt.where(category_expr == category)
+    if offset:
+        device_stmt = device_stmt.offset(offset)
+    if limit is not None:
+        device_stmt = device_stmt.limit(limit)
+
+    device_rows = list(db.execute(device_stmt))
+    if not device_rows:
+        return []
+
+    device_ids = [row.id for row in device_rows]
 
     sales_summary_stmt = (
         select(
@@ -5592,6 +5871,10 @@ def calculate_stockout_forecast(
     )
     if store_filter:
         sales_summary_stmt = sales_summary_stmt.where(models.Sale.store_id.in_(store_filter))
+    if device_ids:
+        sales_summary_stmt = sales_summary_stmt.where(
+            models.SaleItem.device_id.in_(device_ids)
+        )
     if start_dt:
         sales_summary_stmt = sales_summary_stmt.where(models.Sale.created_at >= start_dt)
     if end_dt:
@@ -5612,6 +5895,10 @@ def calculate_stockout_forecast(
     )
     if store_filter:
         daily_sales_stmt = daily_sales_stmt.where(models.Sale.store_id.in_(store_filter))
+    if device_ids:
+        daily_sales_stmt = daily_sales_stmt.where(
+            models.SaleItem.device_id.in_(device_ids)
+        )
     if start_dt:
         daily_sales_stmt = daily_sales_stmt.where(models.Sale.created_at >= start_dt)
     if end_dt:
@@ -5635,24 +5922,8 @@ def calculate_stockout_forecast(
             continue
         daily_sales_map[row.device_id].append((day, float(row.sold_units or 0)))
 
-    device_stmt = (
-        select(
-            models.Device.id,
-            models.Device.sku,
-            models.Device.name,
-            models.Device.quantity,
-            models.Store.id.label("store_id"),
-            models.Store.name.label("store_name"),
-        )
-        .join(models.Store, models.Store.id == models.Device.store_id)
-    )
-    if store_filter:
-        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
-    if category:
-        device_stmt = device_stmt.where(category_expr == category)
-
     metrics: list[dict[str, object]] = []
-    for row in db.execute(device_stmt):
+    for row in device_rows:
         stats = sales_map.get(row.id)
         quantity = int(row.quantity or 0)
         daily_points_raw = sorted(
@@ -5724,24 +5995,62 @@ def calculate_store_comparatives(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+
+    inventory_stmt = (
+        select(
+            models.Store.id,
+            models.Store.name,
+            func.coalesce(func.count(models.Device.id), 0).label("device_count"),
+            func.coalesce(func.sum(models.Device.quantity), 0).label("total_units"),
+            func.coalesce(
+                func.sum(models.Device.quantity * models.Device.unit_price),
+                0,
+            ).label("inventory_value"),
+        )
+        .outerjoin(models.Device, models.Device.store_id == models.Store.id)
+        .group_by(models.Store.id)
+        .order_by(models.Store.name.asc())
+    )
+    if store_filter:
+        inventory_stmt = inventory_stmt.where(models.Store.id.in_(store_filter))
+    if category:
+        inventory_stmt = inventory_stmt.where(category_expr == category)
+    if offset:
+        inventory_stmt = inventory_stmt.offset(offset)
+    if limit is not None:
+        inventory_stmt = inventory_stmt.limit(limit)
+
+    inventory_rows = list(db.execute(inventory_stmt))
+    if not inventory_rows:
+        return []
+
+    store_ids_window = [int(row.id) for row in inventory_rows]
+
     rotation = calculate_rotation_analytics(
         db,
-        store_ids=store_filter,
+        store_ids=store_ids_window,
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=None,
+        offset=0,
     )
     aging = calculate_aging_analytics(
         db,
-        store_ids=store_filter,
+        store_ids=store_ids_window,
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=None,
+        offset=0,
     )
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
-    category_expr = _device_category_expr()
+
     rotation_totals: dict[int, tuple[float, int]] = {}
     aging_totals: dict[int, tuple[float, int]] = {}
 
@@ -5767,25 +6076,6 @@ def calculate_store_comparatives(
         for store_id, (total, count) in aging_totals.items()
     }
 
-    inventory_stmt = (
-        select(
-            models.Store.id,
-            models.Store.name,
-            func.coalesce(func.count(models.Device.id), 0).label("device_count"),
-            func.coalesce(func.sum(models.Device.quantity), 0).label("total_units"),
-            func.coalesce(
-                func.sum(models.Device.quantity * models.Device.unit_price),
-                0,
-            ).label("inventory_value"),
-        )
-        .outerjoin(models.Device, models.Device.store_id == models.Store.id)
-        .group_by(models.Store.id)
-        .order_by(models.Store.name.asc())
-    )
-    if store_filter:
-        inventory_stmt = inventory_stmt.where(models.Store.id.in_(store_filter))
-    if category:
-        inventory_stmt = inventory_stmt.where(category_expr == category)
     window_start = start_dt or (datetime.utcnow() - timedelta(days=30))
     sales_stmt = (
         select(
@@ -5798,12 +6088,13 @@ def calculate_store_comparatives(
         .where(models.Sale.created_at >= window_start)
         .group_by(models.Sale.store_id)
     )
-    if store_filter:
-        sales_stmt = sales_stmt.where(models.Sale.store_id.in_(store_filter))
+    if store_ids_window:
+        sales_stmt = sales_stmt.where(models.Sale.store_id.in_(store_ids_window))
     if end_dt:
         sales_stmt = sales_stmt.where(models.Sale.created_at <= end_dt)
     if category:
         sales_stmt = sales_stmt.where(category_expr == category)
+
     sales_map: dict[int, dict[str, Decimal]] = {}
     for row in db.execute(sales_stmt):
         sales_map[int(row.store_id)] = {
@@ -5812,7 +6103,7 @@ def calculate_store_comparatives(
         }
 
     comparatives: list[dict[str, object]] = []
-    for row in db.execute(inventory_stmt):
+    for row in inventory_rows:
         store_id = int(row.id)
         sales = sales_map.get(store_id, {"orders": Decimal(0), "revenue": Decimal(0)})
         comparatives.append(
@@ -5840,25 +6131,31 @@ def calculate_profit_margin(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = _normalize_date_range(date_from, date_to)
     category_expr = _device_category_expr()
+    revenue_expr = func.coalesce(func.sum(models.SaleItem.total_line), 0)
+    cost_expr = func.coalesce(
+        func.sum(models.SaleItem.quantity * models.Device.costo_unitario),
+        0,
+    )
+    profit_expr = revenue_expr - cost_expr
     stmt = (
         select(
             models.Store.id.label("store_id"),
             models.Store.name.label("store_name"),
-            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
-            func.coalesce(
-                func.sum(models.SaleItem.quantity * models.Device.costo_unitario),
-                0,
-            ).label("cost"),
+            revenue_expr.label("revenue"),
+            cost_expr.label("cost"),
+            profit_expr.label("profit"),
         )
         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
         .join(models.Store, models.Store.id == models.Sale.store_id)
         .join(models.Device, models.Device.id == models.SaleItem.device_id)
-        .group_by(models.Store.id)
-        .order_by(models.Store.name.asc())
+        .group_by(models.Store.id, models.Store.name)
+        .order_by(profit_expr.desc())
     )
     if store_filter:
         stmt = stmt.where(models.Store.id.in_(store_filter))
@@ -5868,12 +6165,16 @@ def calculate_profit_margin(
         stmt = stmt.where(models.Sale.created_at <= end_dt)
     if category:
         stmt = stmt.where(category_expr == category)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
 
     metrics: list[dict[str, object]] = []
     for row in db.execute(stmt):
         revenue = Decimal(row.revenue or 0)
         cost = Decimal(row.cost or 0)
-        profit = revenue - cost
+        profit = Decimal(row.profit or 0)
         margin_percent = float((profit / revenue * 100) if revenue else 0)
         metrics.append(
             {
@@ -5886,7 +6187,6 @@ def calculate_profit_margin(
             }
         )
 
-    metrics.sort(key=lambda item: item["profit"], reverse=True)
     return metrics
 
 
@@ -5898,12 +6198,28 @@ def calculate_sales_projection(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = _normalize_date_range(date_from, date_to)
     category_expr = _device_category_expr()
     lookback_days = max(horizon_days, 30)
     since = start_dt or (datetime.utcnow() - timedelta(days=lookback_days))
+
+    store_stmt = select(models.Store.id, models.Store.name).order_by(models.Store.name.asc())
+    if store_filter:
+        store_stmt = store_stmt.where(models.Store.id.in_(store_filter))
+    if offset:
+        store_stmt = store_stmt.offset(offset)
+    if limit is not None:
+        store_stmt = store_stmt.limit(limit)
+
+    store_rows = list(db.execute(store_stmt))
+    if not store_rows:
+        return []
+
+    store_ids_window = [int(row.id) for row in store_rows]
 
     day_bucket = func.date(models.Sale.created_at)
     daily_stmt = (
@@ -5926,8 +6242,7 @@ def calculate_sales_projection(
         )
         .order_by(models.Store.name.asc())
     )
-    if store_filter:
-        daily_stmt = daily_stmt.where(models.Store.id.in_(store_filter))
+    daily_stmt = daily_stmt.where(models.Store.id.in_(store_ids_window))
     if end_dt:
         daily_stmt = daily_stmt.where(models.Sale.created_at <= end_dt)
     if category:
@@ -6035,13 +6350,19 @@ def calculate_sales_projection(
     return projections
 
 
-def list_analytics_categories(db: Session) -> list[str]:
+def list_analytics_categories(
+    db: Session, *, limit: int | None = None, offset: int = 0
+) -> list[str]:
     category_expr = _device_category_expr()
     stmt = (
         select(func.distinct(category_expr).label("category"))
         .where(category_expr.is_not(None))
         .order_by(category_expr.asc())
     )
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return [row.category for row in db.execute(stmt) if row.category]
 
 
@@ -6052,14 +6373,19 @@ def generate_analytics_alerts(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     alerts: list[dict[str, object]] = []
+    window = None if limit is None else max(limit + offset, 0)
     forecast = calculate_stockout_forecast(
         db,
         store_ids=store_ids,
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=window,
+        offset=0,
     )
     for item in forecast:
         level = item.get("alert_level")
@@ -6091,6 +6417,8 @@ def generate_analytics_alerts(
         date_to=date_to,
         category=category,
         horizon_days=14,
+        limit=window,
+        offset=0,
     )
     for item in projections:
         trend = item.get("trend")
@@ -6113,7 +6441,9 @@ def generate_analytics_alerts(
             )
 
     alerts.sort(key=lambda alert: (alert["level"] != "critical", alert["level"] != "warning"))
-    return alerts
+    if limit is None:
+        return alerts[offset:]
+    return alerts[offset : offset + limit]
 
 
 def calculate_realtime_store_widget(
@@ -6122,6 +6452,8 @@ def calculate_realtime_store_widget(
     store_ids: Iterable[int] | None = None,
     category: str | None = None,
     low_stock_threshold: int = 5,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     category_expr = _device_category_expr()
@@ -6131,14 +6463,26 @@ def calculate_realtime_store_widget(
     if store_filter:
         stores_stmt = stores_stmt.where(models.Store.id.in_(store_filter))
     stores_stmt = stores_stmt.order_by(models.Store.name.asc())
+    if offset:
+        stores_stmt = stores_stmt.offset(offset)
+    if limit is not None:
+        stores_stmt = stores_stmt.limit(limit)
+
+    store_rows = list(db.execute(stores_stmt))
+    if not store_rows:
+        return []
+
+    store_ids_window = [int(row.id) for row in store_rows]
 
     low_stock_stmt = (
         select(models.Device.store_id, func.count(models.Device.id).label("low_stock"))
         .where(models.Device.quantity <= low_stock_threshold)
         .group_by(models.Device.store_id)
     )
-    if store_filter:
-        low_stock_stmt = low_stock_stmt.where(models.Device.store_id.in_(store_filter))
+    if store_ids_window:
+        low_stock_stmt = low_stock_stmt.where(
+            models.Device.store_id.in_(store_ids_window)
+        )
     if category:
         low_stock_stmt = low_stock_stmt.where(category_expr == category)
 
@@ -6154,8 +6498,8 @@ def calculate_realtime_store_widget(
         .where(models.Sale.created_at >= today_start)
         .group_by(models.Store.id)
     )
-    if store_filter:
-        sales_today_stmt = sales_today_stmt.where(models.Store.id.in_(store_filter))
+    if store_ids_window:
+        sales_today_stmt = sales_today_stmt.where(models.Store.id.in_(store_ids_window))
     if category:
         sales_today_stmt = sales_today_stmt.where(category_expr == category)
 
@@ -6167,8 +6511,10 @@ def calculate_realtime_store_widget(
         .where(models.RepairOrder.status != models.RepairStatus.ENTREGADO)
         .group_by(models.RepairOrder.store_id)
     )
-    if store_filter:
-        repairs_stmt = repairs_stmt.where(models.RepairOrder.store_id.in_(store_filter))
+    if store_ids_window:
+        repairs_stmt = repairs_stmt.where(
+            models.RepairOrder.store_id.in_(store_ids_window)
+        )
 
     sync_stmt = (
         select(
@@ -6177,8 +6523,11 @@ def calculate_realtime_store_widget(
         )
         .group_by(models.SyncSession.store_id)
     )
-    if store_filter:
-        sync_stmt = sync_stmt.where(models.SyncSession.store_id.in_(store_filter))
+    if store_ids_window:
+        sync_stmt = sync_stmt.where(
+            (models.SyncSession.store_id.is_(None))
+            | (models.SyncSession.store_id.in_(store_ids_window))
+        )
 
     low_stock_map = {
         int(row.store_id): int(row.low_stock or 0)
@@ -6204,14 +6553,16 @@ def calculate_realtime_store_widget(
         item["store_id"]: item
         for item in calculate_sales_projection(
             db,
-            store_ids=store_ids,
+            store_ids=store_ids_window,
             category=category,
             horizon_days=7,
+            limit=None,
+            offset=0,
         )
     }
 
     widgets: list[dict[str, object]] = []
-    for row in db.execute(stores_stmt):
+    for row in store_rows:
         store_id = int(row.id)
         sales_info = sales_today_map.get(store_id, {"revenue": 0.0, "last_sale_at": None})
         projection = projection_map.get(store_id, {})
@@ -6347,10 +6698,16 @@ def mark_outbox_entries_sent(
     return entries
 
 
-def list_sync_sessions(db: Session, limit: int = 50) -> list[models.SyncSession]:
+def list_sync_sessions(
+    db: Session,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.SyncSession]:
     statement = (
         select(models.SyncSession)
         .order_by(models.SyncSession.started_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     return list(db.scalars(statement))
@@ -6360,6 +6717,8 @@ def list_sync_history_by_store(
     db: Session,
     *,
     limit_per_store: int = 5,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     statement = (
         select(models.SyncSession)
@@ -6399,7 +6758,7 @@ def list_sync_history_by_store(
         )
 
     history.sort(key=lambda item: (item["store_name"].lower(), item["store_id"] or 0))
-    return history
+    return history[offset : offset + limit]
 
 
 def enqueue_sync_outbox(
@@ -6447,7 +6806,8 @@ def list_sync_outbox(
     db: Session,
     *,
     statuses: Iterable[models.SyncOutboxStatus] | None = None,
-    limit: int = 100,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[models.SyncOutbox]:
     priority_order = case(
         (models.SyncOutbox.priority == models.SyncOutboxPriority.HIGH, 0),
@@ -6458,6 +6818,7 @@ def list_sync_outbox(
     statement = (
         select(models.SyncOutbox)
         .order_by(priority_order, models.SyncOutbox.updated_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     if statuses is not None:
@@ -6510,7 +6871,10 @@ def reset_outbox_entries(
     return refreshed
 
 
-def get_sync_outbox_statistics(db: Session) -> list[dict[str, object]]:
+def get_sync_outbox_statistics(
+    db: Session, *, limit: int | None = None, offset: int = 0
+) -> list[dict[str, object]]:
+    query_limit = None if limit is None else max(limit + offset, 0)
     statement = (
         select(
             models.SyncOutbox.entity_type,
@@ -6541,6 +6905,8 @@ def get_sync_outbox_statistics(db: Session) -> list[dict[str, object]]:
         )
         .group_by(models.SyncOutbox.entity_type, models.SyncOutbox.priority)
     )
+    if query_limit is not None:
+        statement = statement.limit(query_limit)
     results: list[dict[str, object]] = []
     for row in db.execute(statement):
         priority = row.priority or models.SyncOutboxPriority.NORMAL
@@ -6556,13 +6922,17 @@ def get_sync_outbox_statistics(db: Session) -> list[dict[str, object]]:
             }
         )
     results.sort(key=lambda item: (_priority_weight(item["priority"]), item["entity_type"]))
-    return results
+    if limit is None:
+        return results[offset:]
+    return results[offset : offset + limit]
 
 
 def get_store_sync_overview(
     db: Session,
     *,
     store_id: int | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     stores_stmt = (
         select(
@@ -6576,15 +6946,31 @@ def get_store_sync_overview(
     )
     if store_id is not None:
         stores_stmt = stores_stmt.where(models.Store.id == store_id)
+    if offset and store_id is None:
+        stores_stmt = stores_stmt.offset(offset)
+    if limit is not None and store_id is None:
+        stores_stmt = stores_stmt.limit(limit)
 
     store_rows = list(db.execute(stores_stmt))
     if not store_rows:
         return []
 
+    store_ids_window = [int(row.id) for row in store_rows]
+
     session_stmt = select(models.SyncSession).order_by(
         models.SyncSession.finished_at.desc(),
         models.SyncSession.started_at.desc(),
     )
+    if store_id is not None:
+        session_stmt = session_stmt.where(
+            (models.SyncSession.store_id.is_(None))
+            | (models.SyncSession.store_id == store_id)
+        )
+    elif store_ids_window:
+        session_stmt = session_stmt.where(
+            (models.SyncSession.store_id.is_(None))
+            | (models.SyncSession.store_id.in_(store_ids_window))
+        )
     sessions = list(db.scalars(session_stmt))
     latest_by_store: dict[int, models.SyncSession] = {}
     latest_global: models.SyncSession | None = None
@@ -6612,6 +6998,11 @@ def get_store_sync_overview(
         pending_stmt = pending_stmt.where(
             (models.TransferOrder.origin_store_id == store_id)
             | (models.TransferOrder.destination_store_id == store_id)
+        )
+    elif store_ids_window:
+        pending_stmt = pending_stmt.where(
+            (models.TransferOrder.origin_store_id.in_(store_ids_window))
+            | (models.TransferOrder.destination_store_id.in_(store_ids_window))
         )
     for row in db.execute(pending_stmt):
         if row.origin_store_id is not None:
@@ -6714,7 +7105,8 @@ def list_sync_conflicts(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     severity: schemas.SyncBranchHealth | None = None,
-    limit: int = 100,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[schemas.SyncConflictLog]:
     statement = (
         select(models.AuditLog)
@@ -6726,7 +7118,10 @@ def list_sync_conflicts(
     if date_to is not None:
         statement = statement.where(models.AuditLog.created_at <= date_to)
 
-    raw_logs = list(db.scalars(statement.limit(max(limit * 3, 200))))
+    if offset:
+        statement = statement.offset(offset)
+    fetch_limit = max(limit * 3, 200)
+    raw_logs = list(db.scalars(statement.limit(fetch_limit)))
     results: list[schemas.SyncConflictLog] = []
 
     def _build_store_detail(data: dict[str, object]) -> tuple[schemas.SyncBranchStoreDetail, int | None]:
@@ -6888,14 +7283,30 @@ def _user_can_override_transfer(
     return False
 
 
-def list_store_memberships(db: Session, store_id: int) -> list[models.StoreMembership]:
+def list_store_memberships(
+    db: Session,
+    store_id: int,
+    *,
+    limit: int | None = 50,
+    offset: int = 0,
+) -> list[models.StoreMembership]:
     statement = (
         select(models.StoreMembership)
         .options(joinedload(models.StoreMembership.user))
         .where(models.StoreMembership.store_id == store_id)
         .order_by(models.StoreMembership.user_id.asc())
     )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement))
+
+
+def count_store_memberships(db: Session, store_id: int) -> int:
+    statement = select(func.count()).select_from(models.StoreMembership)
+    statement = statement.where(models.StoreMembership.store_id == store_id)
+    return int(db.scalar(statement) or 0)
 
 
 def create_transfer_order(
@@ -7165,6 +7576,7 @@ def list_transfer_orders(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     limit: int | None = 50,
+    offset: int = 0,
 ) -> list[models.TransferOrder]:
     statement = (
         select(models.TransferOrder)
@@ -7194,6 +7606,8 @@ def list_transfer_orders(
         statement = statement.where(models.TransferOrder.created_at >= date_from)
     if date_to is not None:
         statement = statement.where(models.TransferOrder.created_at <= date_to)
+    if offset:
+        statement = statement.offset(offset)
     if limit is not None:
         statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
@@ -7334,7 +7748,7 @@ def _fetch_purchase_records(
     date_to: datetime | None = None,
     estado: str | None = None,
     query: str | None = None,
-    limit: int | None = 100,
+    limit: int | None = 50,
     offset: int = 0,
 ) -> list[models.Compra]:
     statement = _purchase_record_statement()
@@ -7402,7 +7816,7 @@ def list_purchase_records(
     date_to: datetime | None = None,
     estado: str | None = None,
     query: str | None = None,
-    limit: int = 100,
+    limit: int | None = 50,
     offset: int = 0,
 ) -> list[schemas.PurchaseRecordResponse]:
     purchases = _fetch_purchase_records(
@@ -7417,6 +7831,35 @@ def list_purchase_records(
         offset=offset,
     )
     return [_build_purchase_record_response(purchase) for purchase in purchases]
+
+
+def count_purchase_records(
+    db: Session,
+    *,
+    proveedor_id: int | None = None,
+    usuario_id: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    estado: str | None = None,
+    query: str | None = None,
+) -> int:
+    statement = select(func.count()).select_from(models.Compra)
+    if proveedor_id is not None:
+        statement = statement.where(models.Compra.proveedor_id == proveedor_id)
+    if usuario_id is not None:
+        statement = statement.where(models.Compra.usuario_id == usuario_id)
+    if date_from is not None:
+        statement = statement.where(models.Compra.fecha >= date_from)
+    if date_to is not None:
+        statement = statement.where(models.Compra.fecha <= date_to)
+    if estado is not None:
+        statement = statement.where(func.lower(models.Compra.estado) == estado.lower())
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.join(models.Proveedor).where(
+            func.lower(models.Proveedor.nombre).like(normalized)
+        )
+    return int(db.scalar(statement) or 0)
 
 
 def get_purchase_record(db: Session, record_id: int) -> schemas.PurchaseRecordResponse:
@@ -7695,7 +8138,11 @@ def get_purchase_statistics(
 
 
 def list_purchase_orders(
-    db: Session, *, store_id: int | None = None, limit: int = 50
+    db: Session,
+    *,
+    store_id: int | None = None,
+    limit: int | None = 50,
+    offset: int = 0,
 ) -> list[models.PurchaseOrder]:
     statement = (
         select(models.PurchaseOrder)
@@ -7704,11 +8151,21 @@ def list_purchase_orders(
             joinedload(models.PurchaseOrder.returns),
         )
         .order_by(models.PurchaseOrder.created_at.desc())
-        .limit(limit)
     )
     if store_id is not None:
         statement = statement.where(models.PurchaseOrder.store_id == store_id)
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
+
+
+def count_purchase_orders(db: Session, *, store_id: int | None = None) -> int:
+    statement = select(func.count()).select_from(models.PurchaseOrder)
+    if store_id is not None:
+        statement = statement.where(models.PurchaseOrder.store_id == store_id)
+    return int(db.scalar(statement) or 0)
 
 
 def get_purchase_order(db: Session, order_id: int) -> models.PurchaseOrder:
@@ -8242,6 +8699,8 @@ def list_recurring_orders(
     db: Session,
     *,
     order_type: models.RecurringOrderType | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[models.RecurringOrder]:
     statement = (
         select(models.RecurringOrder)
@@ -8254,6 +8713,9 @@ def list_recurring_orders(
     )
     if order_type is not None:
         statement = statement.where(models.RecurringOrder.order_type == order_type)
+    if offset:
+        statement = statement.offset(offset)
+    statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
 
 
@@ -8399,12 +8861,14 @@ def list_repair_orders(
     store_id: int | None = None,
     status: models.RepairStatus | None = None,
     query: str | None = None,
-    limit: int = 100,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[models.RepairOrder]:
     statement = (
         select(models.RepairOrder)
         .options(joinedload(models.RepairOrder.parts))
         .order_by(models.RepairOrder.opened_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     if store_id is not None:
@@ -8735,6 +9199,7 @@ def list_sales(
     *,
     store_id: int | None = None,
     limit: int | None = 50,
+    offset: int = 0,
     date_from: date | datetime | None = None,
     date_to: date | datetime | None = None,
     customer_id: int | None = None,
@@ -8776,10 +9241,11 @@ def list_sales(
                 func.lower(models.Device.serial).like(normalized),
             )
         )
-    results = list(db.scalars(statement).unique())
+    if offset:
+        statement = statement.offset(offset)
     if limit is not None:
-        return results[:limit]
-    return results
+        statement = statement.limit(limit)
+    return list(db.scalars(statement).unique())
 
 
 def get_sale(db: Session, sale_id: int) -> models.Sale:
@@ -9736,12 +10202,14 @@ def list_cash_sessions(
     db: Session,
     *,
     store_id: int,
-    limit: int = 30,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[models.CashRegisterSession]:
     statement = (
         select(models.CashRegisterSession)
         .where(models.CashRegisterSession.store_id == store_id)
         .order_by(models.CashRegisterSession.opened_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     return list(db.scalars(statement).unique())
@@ -10095,10 +10563,13 @@ def register_pos_sale(
         db.refresh(sale)
     return sale, warnings
 
-def list_backup_jobs(db: Session, limit: int = 50) -> list[models.BackupJob]:
+def list_backup_jobs(
+    db: Session, *, limit: int = 50, offset: int = 0
+) -> list[models.BackupJob]:
     statement = (
         select(models.BackupJob)
         .order_by(models.BackupJob.executed_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     return list(db.scalars(statement))
@@ -10308,13 +10779,22 @@ def create_inventory_import_record(
     return record
 
 
-def list_inventory_import_history(db: Session, limit: int = 10) -> list[models.InventoryImportTemp]:
-    statement = (
-        select(models.InventoryImportTemp)
-        .order_by(models.InventoryImportTemp.fecha.desc())
-        .limit(limit)
+def list_inventory_import_history(
+    db: Session, *, limit: int | None = 10, offset: int = 0
+) -> list[models.InventoryImportTemp]:
+    statement = select(models.InventoryImportTemp).order_by(
+        models.InventoryImportTemp.fecha.desc()
     )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement))
+
+
+def count_inventory_import_history(db: Session) -> int:
+    statement = select(func.count()).select_from(models.InventoryImportTemp)
+    return int(db.scalar(statement) or 0)
 
 
 def get_known_import_column_patterns(db: Session) -> dict[str, str]:
@@ -10349,7 +10829,8 @@ def list_import_validation_details(
     db: Session,
     *,
     corregido: bool | None = None,
-    limit: int | None = 200,
+    limit: int | None = 50,
+    offset: int = 0,
 ) -> list[models.ImportValidation]:
     statement = (
         select(models.ImportValidation)
@@ -10358,6 +10839,8 @@ def list_import_validation_details(
     )
     if corregido is not None:
         statement = statement.where(models.ImportValidation.corregido.is_(corregido))
+    if offset:
+        statement = statement.offset(offset)
     if limit is not None:
         statement = statement.limit(limit)
     return list(db.scalars(statement))

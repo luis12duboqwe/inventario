@@ -53,14 +53,16 @@ def create_store(
 @router.get("", response_model=Page[schemas.StoreResponse])
 def list_stores(
     pagination: PageParams = Depends(),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> Page[schemas.StoreResponse]:
-    stores = crud.list_stores(db)
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = stores[start:end]
-    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(stores))
+    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_size = min(pagination.size, limit)
+    total = crud.count_stores(db)
+    stores = crud.list_stores(db, limit=page_size, offset=page_offset)
+    return Page.from_items(stores, page=pagination.page, size=page_size, total=total)
 
 
 @router.get("/{store_id}", response_model=schemas.StoreResponse)
@@ -173,6 +175,8 @@ def list_devices(
     proveedor: str | None = Query(default=None, max_length=120),
     fecha_ingreso_desde: date | None = Query(default=None),
     fecha_ingreso_hasta: date | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
@@ -197,7 +201,9 @@ def list_devices(
                         },
                     ) from exc
     try:
-        devices = crud.list_devices(
+        page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+        page_size = min(pagination.size, limit)
+        total = crud.count_store_devices(
             db,
             store_id,
             search=search,
@@ -210,10 +216,22 @@ def list_devices(
             fecha_ingreso_desde=fecha_ingreso_desde,
             fecha_ingreso_hasta=fecha_ingreso_hasta,
         )
-        start = pagination.offset
-        end = start + pagination.size
-        page_items = devices[start:end]
-        return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(devices))
+        devices = crud.list_devices(
+            db,
+            store_id,
+            search=search,
+            estado=estado_enum,
+            categoria=categoria,
+            condicion=condicion,
+            estado_inventario=estado_inventario,
+            ubicacion=ubicacion,
+            proveedor=proveedor,
+            fecha_ingreso_desde=fecha_ingreso_desde,
+            fecha_ingreso_hasta=fecha_ingreso_hasta,
+            limit=page_size,
+            offset=page_offset,
+        )
+        return Page.from_items(devices, page=pagination.page, size=page_size, total=total)
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -227,6 +245,8 @@ def list_devices(
 )
 def list_store_memberships(
     store_id: int = Path(..., ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
@@ -235,11 +255,16 @@ def list_store_memberships(
         crud.get_store(db, store_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La sucursal solicitada no existe.") from exc
-    memberships = crud.list_store_memberships(db, store_id)
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = memberships[start:end]
-    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(memberships))
+    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_size = min(pagination.size, limit)
+    total = crud.count_store_memberships(db, store_id)
+    memberships = crud.list_store_memberships(
+        db,
+        store_id,
+        limit=page_size,
+        offset=page_offset,
+    )
+    return Page.from_items(memberships, page=pagination.page, size=page_size, total=total)
 
 
 @router.put(

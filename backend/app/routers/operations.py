@@ -43,10 +43,14 @@ def _serialize_template(template: models.RecurringOrder) -> schemas.RecurringOrd
 @router.get("/recurring-orders", response_model=list[schemas.RecurringOrderResponse])
 def list_recurring_orders_endpoint(
     order_type: models.RecurringOrderType | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> list[schemas.RecurringOrderResponse]:
-    templates = crud.list_recurring_orders(db, order_type=order_type)
+    templates = crud.list_recurring_orders(
+        db, order_type=order_type, limit=limit, offset=offset
+    )
     return [_serialize_template(template) for template in templates]
 
 

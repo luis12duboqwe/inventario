@@ -14,12 +14,13 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 @router.get("/", response_model=list[schemas.SupplierResponse])
 def list_suppliers_endpoint(
     q: str | None = Query(default=None, description="Término de búsqueda"),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     export: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
-    suppliers = crud.list_suppliers(db, query=q, limit=limit)
+    suppliers = crud.list_suppliers(db, query=q, limit=limit, offset=offset)
     if export == "csv":
         csv_content = crud.export_suppliers_csv(db, query=q)
         return Response(
@@ -113,11 +114,14 @@ def delete_supplier_endpoint(
 def list_supplier_batches_endpoint(
     supplier_id: int,
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
-        return crud.list_supplier_batches(db, supplier_id, limit=limit)
+        return crud.list_supplier_batches(
+            db, supplier_id, limit=limit, offset=offset
+        )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
 

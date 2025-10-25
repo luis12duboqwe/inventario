@@ -89,21 +89,25 @@ async def smart_import_inventory(
     response_model=Page[schemas.InventoryImportHistoryEntry],
 )
 def list_import_history(
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> Page[schemas.InventoryImportHistoryEntry]:
-    effective_limit = max(limit, pagination.size * pagination.page)
-    records = crud.list_inventory_import_history(db, limit=effective_limit)
-    entries = [
+    page_offset = (
+        pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    )
+    page_size = min(pagination.size, limit)
+    total = crud.count_inventory_import_history(db)
+    records = crud.list_inventory_import_history(
+        db, limit=page_size, offset=page_offset
+    )
+    items = [
         schemas.InventoryImportHistoryEntry.model_validate(record)
         for record in records
     ]
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = entries[start:end]
-    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(entries))
+    return Page.from_items(items, page=pagination.page, size=page_size, total=total)
 
 
 @router.get(
@@ -112,20 +116,22 @@ def list_import_history(
 )
 def list_incomplete_inventory_devices(
     store_id: int | None = Query(default=None, ge=1),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> Page[schemas.DeviceResponse]:
-    effective_limit = max(limit, pagination.size * pagination.page)
-    devices = crud.list_incomplete_devices(
-        db, store_id=store_id, limit=effective_limit
+    page_offset = (
+        pagination.offset if (pagination.page > 1 and offset == 0) else offset
     )
-    entries = [schemas.DeviceResponse.model_validate(device) for device in devices]
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = entries[start:end]
-    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(entries))
+    page_size = min(pagination.size, limit)
+    total = crud.count_incomplete_devices(db, store_id=store_id)
+    devices = crud.list_incomplete_devices(
+        db, store_id=store_id, limit=page_size, offset=page_offset
+    )
+    items = [schemas.DeviceResponse.model_validate(device) for device in devices]
+    return Page.from_items(items, page=pagination.page, size=page_size, total=total)
 
 
 @router.post(
@@ -293,6 +299,8 @@ def advanced_device_search(
     proveedor: str | None = Query(default=None, max_length=120),
     fecha_ingreso_desde: date | None = Query(default=None),
     fecha_ingreso_hasta: date | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
@@ -338,7 +346,14 @@ def advanced_device_search(
                 "message": "Proporciona al menos un criterio para buscar en el catálogo.",
             },
         )
-    devices = crud.search_devices(db, filters)
+    page_offset = (
+        pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    )
+    page_size = min(pagination.size, limit)
+    total = crud.count_devices_matching_filters(db, filters)
+    devices = crud.search_devices(
+        db, filters, limit=page_size, offset=page_offset
+    )
     results: list[schemas.CatalogProDeviceResponse] = []
     for device in devices:
         base = schemas.DeviceResponse.model_validate(device, from_attributes=True)
@@ -348,19 +363,23 @@ def advanced_device_search(
                 store_name=device.store.name if device.store else "",
             )
         )
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = results[start:end]
-    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(results))
+    return Page.from_items(results, page=pagination.page, size=page_size, total=total)
 
 
 @router.get("/summary", response_model=Page[schemas.InventorySummary])
 def inventory_summary(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ) -> Page[schemas.InventorySummary]:
-    stores = crud.list_inventory_summary(db)
+    page_offset = (
+        pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    )
+    page_size = min(pagination.size, limit)
+    total = crud.count_stores(db)
+    stores = crud.list_inventory_summary(db, limit=page_size, offset=page_offset)
     summaries: list[schemas.InventorySummary] = []
     for store in stores:
         devices = [
@@ -381,10 +400,7 @@ def inventory_summary(
                 devices=devices,
             )
         )
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = summaries[start:end]
-    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(summaries))
+    return Page.from_items(summaries, page=pagination.page, size=page_size, total=total)
 
 
 @router.get(

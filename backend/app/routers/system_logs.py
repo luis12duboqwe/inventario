@@ -35,6 +35,8 @@ def get_system_logs(
     ),
     fecha_desde: str | None = Query(default=None, description="Fecha mínima en formato ISO 8601"),
     fecha_hasta: str | None = Query(default=None, description="Fecha máxima en formato ISO 8601"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),  # noqa: ANN001
 ):
@@ -47,6 +49,8 @@ def get_system_logs(
         nivel=nivel,
         date_from=start,
         date_to=end,
+        limit=limit,
+        offset=offset,
     )
     return [schemas.SystemLogEntry.model_validate(item) for item in logs]
 
@@ -57,6 +61,8 @@ def get_system_errors(
     modulo: str | None = Query(default=None, max_length=80, description="Módulo donde ocurrió"),
     fecha_desde: str | None = Query(default=None, description="Fecha mínima en formato ISO 8601"),
     fecha_hasta: str | None = Query(default=None, description="Fecha máxima en formato ISO 8601"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),  # noqa: ANN001
 ):
@@ -68,6 +74,8 @@ def get_system_errors(
         modulo=modulo,
         date_from=start,
         date_to=end,
+        limit=limit,
+        offset=offset,
     )
     return [schemas.SystemErrorEntry.model_validate(item) for item in errors]
 

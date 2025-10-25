@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -40,10 +40,12 @@ def run_backup(
 
 @router.get("/history", response_model=list[schemas.BackupJobResponse])
 def backup_history(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
-    return crud.list_backup_jobs(db, limit=100)
+    return crud.list_backup_jobs(db, limit=limit, offset=offset)
 
 
 @router.post("/{job_id}/restore", response_model=schemas.BackupRestoreResponse)

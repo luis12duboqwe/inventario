@@ -1,5 +1,5 @@
 """Endpoints for store management."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .... import schemas
@@ -14,12 +14,14 @@ router = APIRouter()
 
 @router.get("/", response_model=list[schemas.Store], summary="Listar sucursales")
 def get_stores(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     _current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> list[schemas.Store]:
     """Return every registered store."""
 
-    return list_stores(db)
+    return list_stores(db, limit=limit, offset=offset)
 
 
 @router.post(

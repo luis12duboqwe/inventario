@@ -21,7 +21,8 @@ def list_repairs_endpoint(
     store_id: int | None = Query(default=None, ge=1),
     status_filter: str | None = Query(default=None, alias="status"),
     q: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
@@ -37,6 +38,7 @@ def list_repairs_endpoint(
         status=status_enum,
         query=q,
         limit=limit,
+        offset=offset,
     )
 
 

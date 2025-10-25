@@ -14,7 +14,8 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 @router.get("/", response_model=list[schemas.CustomerResponse])
 def list_customers_endpoint(
     q: str | None = Query(default=None, description="Término de búsqueda"),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     status_alias: str | None = Query(default=None, alias="status", description="Estado corporativo"),
     customer_type_alias: str | None = Query(default=None, alias="customer_type", description="Tipo de cliente"),
     has_debt: bool | None = Query(
@@ -37,6 +38,7 @@ def list_customers_endpoint(
             db,
             query=q,
             limit=limit,
+            offset=offset,
             status=status_value,
             customer_type=customer_type_value,
             has_debt=has_debt,

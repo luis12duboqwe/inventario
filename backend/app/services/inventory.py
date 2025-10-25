@@ -9,10 +9,15 @@ from sqlalchemy.orm import Session
 from .. import crud, schemas
 
 
-def list_stores(db: Session) -> list[schemas.StoreResponse]:
-    """Devuelve todas las sucursales disponibles ordenadas alfabéticamente."""
+def list_stores(
+    db: Session,
+    *,
+    limit: int | None = 50,
+    offset: int = 0,
+) -> list[schemas.StoreResponse]:
+    """Devuelve las sucursales disponibles respetando límites seguros."""
 
-    stores = crud.list_stores(db)
+    stores = crud.list_stores(db, limit=limit, offset=offset)
     return [schemas.StoreResponse.model_validate(store, from_attributes=True) for store in stores]
 
 
@@ -23,10 +28,16 @@ def create_store(db: Session, store_in: schemas.StoreCreate) -> schemas.StoreRes
     return schemas.StoreResponse.model_validate(store, from_attributes=True)
 
 
-def list_devices(db: Session, store_id: int) -> list[schemas.DeviceResponse]:
-    """Devuelve los dispositivos pertenecientes a una sucursal."""
+def list_devices(
+    db: Session,
+    store_id: int,
+    *,
+    limit: int | None = 50,
+    offset: int = 0,
+) -> list[schemas.DeviceResponse]:
+    """Devuelve los dispositivos pertenecientes a una sucursal con paginación controlada."""
 
-    devices = crud.list_devices(db, store_id)
+    devices = crud.list_devices(db, store_id, limit=limit, offset=offset)
     return [schemas.DeviceResponse.model_validate(device, from_attributes=True) for device in devices]
 
 

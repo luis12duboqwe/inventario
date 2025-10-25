@@ -43,12 +43,15 @@ def _release_sort_key(release: ReleaseInfo) -> Version:
         return Version("0")
 
 
-def get_release_history(*, limit: int | None = None, path: str | Path | None = None) -> list[ReleaseInfo]:
+def get_release_history(
+    *, limit: int | None = None, offset: int = 0, path: str | Path | None = None
+) -> list[ReleaseInfo]:
     feed = _read_feed(path)
     releases = _parse_releases(feed.get("releases", []))
+    sliced = releases[offset:]
     if limit is None:
-        return releases
-    return releases[:limit]
+        return sliced
+    return sliced[:limit]
 
 
 def get_update_status(*, path: str | Path | None = None) -> UpdateStatus:
