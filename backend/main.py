@@ -66,14 +66,8 @@ _database_module = _import_module_with_fallback(
 
 # Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``users``.
 db_utils = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
-core_main_module = _import_module_with_fallback(
-    "backend.app.main", CURRENT_DIR / "app" / "main.py"
-)
-from backend import db as db_utils
-from backend.app.main import create_app as create_core_app
 
 init_db = getattr(db_utils, "init_db")
-create_core_app = getattr(core_main_module, "create_app")
 
 LOGGER = app_logger.bind(component="backend.main.bootstrap")
 
@@ -209,6 +203,11 @@ if settings.access_token_expire_minutes is not None:
     )
 
 setup_logging()
+
+core_main_module = _import_module_with_fallback(
+    "backend.app.main", CURRENT_DIR / "app" / "main.py"
+)
+create_core_app = getattr(core_main_module, "create_app")
 app = create_core_app()
 
 
