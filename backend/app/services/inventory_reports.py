@@ -26,6 +26,16 @@ def _format_units(value: int) -> str:
     return f"{value:,}".replace(",", ".")
 
 
+def _format_reference(reference_type: str | None, reference_id: str | None) -> str:
+    if reference_type and reference_id:
+        return f"{reference_type}:{reference_id}"
+    if reference_id:
+        return reference_id
+    if reference_type:
+        return reference_type
+    return "-"
+
+
 def _build_table(table_data: list[list[str]]) -> Table:
     table = Table(table_data, hAlign="LEFT")
     table.setStyle(
@@ -218,6 +228,7 @@ def render_inventory_movements_pdf(report: schemas.InventoryMovementsReport) -> 
             "Destino",
             "Origen",
             "Usuario",
+            "Referencia",
             "Comentario",
         ]
     ]
@@ -232,6 +243,7 @@ def render_inventory_movements_pdf(report: schemas.InventoryMovementsReport) -> 
                 movement.sucursal_destino or "-",
                 movement.sucursal_origen or "-",
                 movement.usuario or "-",
+                _format_reference(movement.referencia_tipo, movement.referencia_id),
                 movement.comentario or "-",
             ]
         )
@@ -421,6 +433,7 @@ def build_inventory_movements_excel(report: schemas.InventoryMovementsReport) ->
             "Destino",
             "Origen",
             "Usuario",
+            "Referencia",
             "Comentario",
         ]
     )
@@ -437,6 +450,7 @@ def build_inventory_movements_excel(report: schemas.InventoryMovementsReport) ->
                 movement.sucursal_destino or "-",
                 movement.sucursal_origen or "-",
                 movement.usuario or "-",
+                _format_reference(movement.referencia_tipo, movement.referencia_id),
                 movement.comentario or "-",
             ]
         )

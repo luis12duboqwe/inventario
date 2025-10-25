@@ -163,6 +163,11 @@ def register_movement(
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado") from exc
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo gerentes o administradores pueden registrar ajustes de inventario.",
+        ) from exc
     except ValueError as exc:
         if str(exc) == "insufficient_stock":
             raise HTTPException(

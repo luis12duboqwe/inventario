@@ -1553,6 +1553,16 @@ class MovementResponse(BaseModel):
         validation_alias=AliasChoices("usuario"),
         serialization_alias="usuario",
     )
+    referencia_tipo: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("referencia_tipo", "reference_type"),
+        serialization_alias="referencia_tipo",
+    )
+    referencia_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("referencia_id", "reference_id"),
+        serialization_alias="referencia_id",
+    )
     fecha: datetime = Field(
         validation_alias=AliasChoices("fecha", "created_at"),
         serialization_alias="fecha",
@@ -1604,6 +1614,41 @@ class InventoryCurrentStore(BaseModel):
 class InventoryCurrentReport(BaseModel):
     stores: list[InventoryCurrentStore]
     totals: InventoryTotals
+
+
+class InventoryIntegrityDeviceStatus(BaseModel):
+    store_id: int
+    store_name: str | None
+    device_id: int
+    sku: str | None
+    quantity_actual: int
+    quantity_calculada: int
+    costo_actual: Decimal
+    costo_calculado: Decimal
+    last_movement_id: int | None
+    last_movement_fecha: datetime | None
+    issues: list[str] = Field(default_factory=list)
+
+    @field_serializer("costo_actual")
+    @classmethod
+    def _serialize_costo_actual(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("costo_calculado")
+    @classmethod
+    def _serialize_costo_calculado(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InventoryIntegritySummary(BaseModel):
+    dispositivos_evaluados: int
+    dispositivos_inconsistentes: int
+    discrepancias_totales: int
+
+
+class InventoryIntegrityReport(BaseModel):
+    resumen: InventoryIntegritySummary
+    dispositivos: list[InventoryIntegrityDeviceStatus]
 
 
 class StoreValueMetric(BaseModel):
@@ -1708,6 +1753,8 @@ class MovementReportEntry(BaseModel):
     sucursal_origen: str | None
     comentario: str | None
     usuario: str | None
+    referencia_tipo: str | None = None
+    referencia_id: str | None = None
     fecha: datetime
 
     @field_serializer("valor_total")

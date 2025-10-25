@@ -1163,10 +1163,19 @@ def inventory_movements_csv(
             "Sucursal destino",
             "Sucursal origen",
             "Usuario",
+            "Referencia",
             "Comentario",
         ]
     )
     for movement in report.movimientos:
+        if movement.referencia_tipo and movement.referencia_id:
+            reference_value = f"{movement.referencia_tipo}:{movement.referencia_id}"
+        elif movement.referencia_id:
+            reference_value = movement.referencia_id
+        elif movement.referencia_tipo:
+            reference_value = movement.referencia_tipo
+        else:
+            reference_value = "-"
         writer.writerow(
             [
                 movement.id,
@@ -1177,6 +1186,7 @@ def inventory_movements_csv(
                 movement.sucursal_destino or "-",
                 movement.sucursal_origen or "-",
                 movement.usuario or "-",
+                reference_value,
                 movement.comentario or "-",
             ]
         )
