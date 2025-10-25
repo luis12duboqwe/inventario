@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import GESTION_ROLES, REPORTE_ROLES
+from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -35,6 +36,7 @@ def trigger_sync(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
+    _ensure_hybrid_enabled()
     store_id = payload.store_id
     if store_id is not None:
         try:
@@ -47,16 +49,23 @@ def trigger_sync(
     processed_events = 0
     differences_count = 0
     try:
-        result = sync_service.run_sync_cycle(
-            db,
-            store_id=store_id,
-            performed_by_id=current_user.id if current_user else None,
-        )
-        processed_events = int(result.get("processed", 0))
-        discrepancies = result.get("discrepancies", [])
-        differences_count = len(discrepancies) if isinstance(discrepancies, list) else 0
+        with transactional_session(db):
+            requeued = sync_service.requeue_failed_outbox_entries(db)
+            if requeued:
+                logger.info(
+                    "Cola híbrida: %s eventos listos para reintentar", len(requeued)
+                )
+            result = sync_service.run_sync_cycle(
+                db,
+                store_id=store_id,
+                performed_by_id=current_user.id if current_user else None,
+            )
+            processed_events = int(result.get("processed", 0))
+            discrepancies = result.get("discrepancies", [])
+            differences_count = (
+                len(discrepancies) if isinstance(discrepancies, list) else 0
+            )
     except Exception as exc:
-        db.rollback()
         status = models.SyncStatus.FAILED
         error_message = str(exc)
         logger.exception("No fue posible completar la sincronización manual: %s", exc)

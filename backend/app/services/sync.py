@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from .. import crud, models
 from ..config import settings
 from ..database import SessionLocal
+from ..core.transactions import transactional_session
 
 logger = logging.getLogger(__name__)
 
@@ -212,13 +213,18 @@ class SyncScheduler:
             differences_count = 0
             error_message: str | None = None
             try:
-                requeued = requeue_failed_outbox_entries(session)
-                if requeued:
-                    logger.info("Cola híbrida: %s eventos listos para reintentar", len(requeued))
-                result = run_sync_cycle(session, performed_by_id=None)
-                processed_events = int(result.get("processed", 0))
-                differences = result.get("discrepancies", [])
-                differences_count = len(differences) if isinstance(differences, list) else 0
+                with transactional_session(session):
+                    requeued = requeue_failed_outbox_entries(session)
+                    if requeued:
+                        logger.info(
+                            "Cola híbrida: %s eventos listos para reintentar", len(requeued)
+                        )
+                    result = run_sync_cycle(session, performed_by_id=None)
+                    processed_events = int(result.get("processed", 0))
+                    differences = result.get("discrepancies", [])
+                    differences_count = (
+                        len(differences) if isinstance(differences, list) else 0
+                    )
             except Exception as exc:  # pragma: no cover - logged error path
                 status = models.SyncStatus.FAILED
                 error_message = str(exc)

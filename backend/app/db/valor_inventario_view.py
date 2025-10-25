@@ -85,11 +85,13 @@ DROP_VALOR_INVENTARIO_VIEW_SQL = "DROP VIEW IF EXISTS valor_inventario"
 def create_valor_inventario_view(connection: Connection) -> None:
     """Crea o reemplaza la vista de valoración de inventario."""
 
-    connection.execute(text(DROP_VALOR_INVENTARIO_VIEW_SQL))
-    connection.execute(text(CREATE_VALOR_INVENTARIO_VIEW_SQL))
+    with connection.begin():
+        connection.execute(text(DROP_VALOR_INVENTARIO_VIEW_SQL))
+        connection.execute(text(CREATE_VALOR_INVENTARIO_VIEW_SQL))
 
 
 def drop_valor_inventario_view(connection: Connection) -> None:
     """Elimina la vista de valoración de inventario si existe."""
 
-    connection.execute(text(DROP_VALOR_INVENTARIO_VIEW_SQL))
+    with connection.begin():
+        connection.execute(text(DROP_VALOR_INVENTARIO_VIEW_SQL))

@@ -389,13 +389,20 @@ def _restore_database(db: Session, sql_path: Path) -> None:
         raw_connection = engine.raw_connection()
         try:
             cursor = raw_connection.cursor()
-            cursor.executescript(sql_script)
-            raw_connection.commit()
+            try:
+                cursor.executescript(sql_script)
+            except Exception:
+                raw_connection.rollback()
+                raise
+            else:
+                raw_connection.commit()
+            finally:
+                cursor.close()
         finally:
             raw_connection.close()
     else:
         statements = [segment.strip() for segment in sql_script.split(";") if segment.strip()]
-        with db.begin():
+        with transactional_session(db):
             for statement in statements:
                 upper = statement.upper()
                 if upper in {"BEGIN TRANSACTION", "COMMIT"}:

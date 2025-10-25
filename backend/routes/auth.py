@@ -33,6 +33,7 @@ else:
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from backend.app.core.transactions import flush_session, transactional_session
 from backend.core.security import (
     create_access_token,
     create_refresh_token,
@@ -408,9 +409,10 @@ def reset_password(
             detail="Usuario no encontrado para el token proporcionado.",
         )
 
-    user.hashed_password = get_password_hash(payload.new_password)
-    db.add(user)
-    db.commit()
+    with transactional_session(db):
+        user.hashed_password = get_password_hash(payload.new_password)
+        db.add(user)
+        flush_session(db)
     LOGGER.info("Contraseña restablecida para el usuario %s", user.email)
     return AuthMessage(message="Contraseña actualizada correctamente.")
 
@@ -429,9 +431,10 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
         )
 
     if not user.is_verified:
-        user.is_verified = True
-        db.add(user)
-        db.commit()
+        with transactional_session(db):
+            user.is_verified = True
+            db.add(user)
+            flush_session(db)
         LOGGER.info("Correo verificado para %s", user.email)
     else:
         LOGGER.info("Correo ya verificado para %s", user.email)

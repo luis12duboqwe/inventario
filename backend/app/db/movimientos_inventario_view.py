@@ -33,11 +33,13 @@ DROP_MOVIMIENTOS_INVENTARIO_VIEW_SQL = "DROP VIEW IF EXISTS movimientos_inventar
 def create_movimientos_inventario_view(connection: Connection) -> None:
     """Crea o reemplaza la vista con alias en español para movimientos."""
 
-    connection.execute(text(DROP_MOVIMIENTOS_INVENTARIO_VIEW_SQL))
-    connection.execute(text(CREATE_MOVIMIENTOS_INVENTARIO_VIEW_SQL))
+    with connection.begin():
+        connection.execute(text(DROP_MOVIMIENTOS_INVENTARIO_VIEW_SQL))
+        connection.execute(text(CREATE_MOVIMIENTOS_INVENTARIO_VIEW_SQL))
 
 
 def drop_movimientos_inventario_view(connection: Connection) -> None:
     """Elimina la vista movimientos_inventario si existe."""
 
-    connection.execute(text(DROP_MOVIMIENTOS_INVENTARIO_VIEW_SQL))
+    with connection.begin():
+        connection.execute(text(DROP_MOVIMIENTOS_INVENTARIO_VIEW_SQL))
