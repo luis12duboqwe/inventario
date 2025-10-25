@@ -10,6 +10,8 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..core.transactions import transactional_session
+
 from .. import crud, models, schemas
 
 EXPORT_HEADERS = [
@@ -128,108 +130,109 @@ def import_devices_from_csv(
         raise ValueError(f"csv_missing_columns:{','.join(sorted(missing))}")
 
     result = {"created": 0, "updated": 0, "skipped": 0, "errors": []}
-    for index, raw_row in enumerate(reader, start=2):
-        row = {key.lower(): value for key, value in raw_row.items()}
-        sku = (row.get("sku") or "").strip()
-        name = (row.get("name") or "").strip()
-        if not sku or not name:
-            result["skipped"] += 1
-            result["errors"].append({"row": index, "message": "sku_name_required"})
-            continue
+    with transactional_session(db):
+        for index, raw_row in enumerate(reader, start=2):
+            row = {key.lower(): value for key, value in raw_row.items()}
+            sku = (row.get("sku") or "").strip()
+            name = (row.get("name") or "").strip()
+            if not sku or not name:
+                result["skipped"] += 1
+                result["errors"].append({"row": index, "message": "sku_name_required"})
+                continue
 
-        quantity = _parse_int(row.get("quantity"))
-        garantia = _parse_int(row.get("garantia_meses"))
-        capacidad_gb = _parse_int(row.get("capacidad_gb"))
-        costo_unitario = _parse_decimal(row.get("costo_compra"))
-        precio_venta = _parse_decimal(row.get("precio_venta"))
-        fecha_compra = _parse_date(row.get("fecha_compra"))
-        fecha_ingreso = _parse_date(row.get("fecha_ingreso"))
+            quantity = _parse_int(row.get("quantity"))
+            garantia = _parse_int(row.get("garantia_meses"))
+            capacidad_gb = _parse_int(row.get("capacidad_gb"))
+            costo_unitario = _parse_decimal(row.get("costo_compra"))
+            precio_venta = _parse_decimal(row.get("precio_venta"))
+            fecha_compra = _parse_date(row.get("fecha_compra"))
+            fecha_ingreso = _parse_date(row.get("fecha_ingreso"))
 
-        payload_common: dict[str, Any] = {
-            "sku": sku,
-            "name": name,
-            "marca": _normalize_string(row.get("marca")),
-            "modelo": _normalize_string(row.get("modelo")),
-            "categoria": _normalize_string(row.get("categoria")),
-            "condicion": _normalize_string(row.get("condicion")),
-            "color": _normalize_string(row.get("color")),
-            "capacidad": _normalize_string(row.get("capacidad")),
-            "capacidad_gb": capacidad_gb,
-            "estado": _normalize_string(row.get("estado")) or "disponible",
-            "estado_comercial": _normalize_string(row.get("estado_comercial")) or None,
-            "proveedor": _normalize_string(row.get("proveedor")),
-            "ubicacion": _normalize_string(row.get("ubicacion")),
-            "descripcion": _normalize_string(row.get("descripcion")),
-            "imagen_url": _normalize_string(row.get("imagen_url")),
-            "imei": _normalize_string(row.get("imei")),
-            "serial": _normalize_string(row.get("serial")),
-            "lote": _normalize_string(row.get("lote")),
-            "costo_unitario": costo_unitario,
-            "costo_compra": costo_unitario,
-            "unit_price": precio_venta,
-            "precio_venta": precio_venta,
-            "fecha_compra": fecha_compra,
-            "fecha_ingreso": fecha_ingreso,
-        }
-        if garantia is not None:
-            payload_common["garantia_meses"] = garantia
-        if quantity is not None:
-            payload_common["quantity"] = quantity
+            payload_common: dict[str, Any] = {
+                "sku": sku,
+                "name": name,
+                "marca": _normalize_string(row.get("marca")),
+                "modelo": _normalize_string(row.get("modelo")),
+                "categoria": _normalize_string(row.get("categoria")),
+                "condicion": _normalize_string(row.get("condicion")),
+                "color": _normalize_string(row.get("color")),
+                "capacidad": _normalize_string(row.get("capacidad")),
+                "capacidad_gb": capacidad_gb,
+                "estado": _normalize_string(row.get("estado")) or "disponible",
+                "estado_comercial": _normalize_string(row.get("estado_comercial")) or None,
+                "proveedor": _normalize_string(row.get("proveedor")),
+                "ubicacion": _normalize_string(row.get("ubicacion")),
+                "descripcion": _normalize_string(row.get("descripcion")),
+                "imagen_url": _normalize_string(row.get("imagen_url")),
+                "imei": _normalize_string(row.get("imei")),
+                "serial": _normalize_string(row.get("serial")),
+                "lote": _normalize_string(row.get("lote")),
+                "costo_unitario": costo_unitario,
+                "costo_compra": costo_unitario,
+                "unit_price": precio_venta,
+                "precio_venta": precio_venta,
+                "fecha_compra": fecha_compra,
+                "fecha_ingreso": fecha_ingreso,
+            }
+            if garantia is not None:
+                payload_common["garantia_meses"] = garantia
+            if quantity is not None:
+                payload_common["quantity"] = quantity
 
-        existing_statement = select(models.Device).where(
-            models.Device.store_id == store_id, func.lower(models.Device.sku) == sku.lower()
-        )
-        existing = db.scalars(existing_statement).first()
+            existing_statement = select(models.Device).where(
+                models.Device.store_id == store_id, func.lower(models.Device.sku) == sku.lower()
+            )
+            existing = db.scalars(existing_statement).first()
 
-        try:
-            if existing is None:
-                create_payload = schemas.DeviceCreate(**payload_common)
-                crud.create_device(db, store_id, create_payload, performed_by_id=performed_by_id)
-                result["created"] += 1
-            else:
-                base_updates = {
-                    key: value
-                    for key, value in payload_common.items()
-                    if key
-                    not in {
-                        "sku",
-                        "quantity",
-                        "costo_unitario",
-                        "unit_price",
-                        "garantia_meses",
-                        "capacidad_gb",
-                    }
-                    and value is not None
-                }
-                # Campos numéricos que admiten actualización explícita
-                numeric_updates: dict[str, Any] = {}
-                if quantity is not None:
-                    numeric_updates["quantity"] = quantity
-                if costo_unitario is not None:
-                    numeric_updates["costo_unitario"] = costo_unitario
-                    numeric_updates["costo_compra"] = costo_unitario
-                if precio_venta is not None:
-                    numeric_updates["unit_price"] = precio_venta
-                    numeric_updates["precio_venta"] = precio_venta
-                if garantia is not None:
-                    numeric_updates["garantia_meses"] = garantia
-                if capacidad_gb is not None:
-                    numeric_updates["capacidad_gb"] = capacidad_gb
-                combined_updates = {**base_updates, **numeric_updates}
-                if combined_updates:
-                    crud.update_device(
-                        db,
-                        store_id,
-                        existing.id,
-                        schemas.DeviceUpdate(**combined_updates),
-                        performed_by_id=performed_by_id,
-                    )
-                    result["updated"] += 1
+            try:
+                if existing is None:
+                    create_payload = schemas.DeviceCreate(**payload_common)
+                    crud.create_device(db, store_id, create_payload, performed_by_id=performed_by_id)
+                    result["created"] += 1
                 else:
-                    result["skipped"] += 1
-        except ValueError as exc:
-            result["skipped"] += 1
-            result["errors"].append({"row": index, "message": str(exc)})
+                    base_updates = {
+                        key: value
+                        for key, value in payload_common.items()
+                        if key
+                        not in {
+                            "sku",
+                            "quantity",
+                            "costo_unitario",
+                            "unit_price",
+                            "garantia_meses",
+                            "capacidad_gb",
+                        }
+                        and value is not None
+                    }
+                    # Campos numéricos que admiten actualización explícita
+                    numeric_updates: dict[str, Any] = {}
+                    if quantity is not None:
+                        numeric_updates["quantity"] = quantity
+                    if costo_unitario is not None:
+                        numeric_updates["costo_unitario"] = costo_unitario
+                        numeric_updates["costo_compra"] = costo_unitario
+                    if precio_venta is not None:
+                        numeric_updates["unit_price"] = precio_venta
+                        numeric_updates["precio_venta"] = precio_venta
+                    if garantia is not None:
+                        numeric_updates["garantia_meses"] = garantia
+                    if capacidad_gb is not None:
+                        numeric_updates["capacidad_gb"] = capacidad_gb
+                    combined_updates = {**base_updates, **numeric_updates}
+                    if combined_updates:
+                        crud.update_device(
+                            db,
+                            store_id,
+                            existing.id,
+                            schemas.DeviceUpdate(**combined_updates),
+                            performed_by_id=performed_by_id,
+                        )
+                        result["updated"] += 1
+                    else:
+                        result["skipped"] += 1
+            except ValueError as exc:
+                result["skipped"] += 1
+                result["errors"].append({"row": index, "message": str(exc)})
 
     return result
 

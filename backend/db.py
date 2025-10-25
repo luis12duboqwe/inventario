@@ -5,6 +5,7 @@ from collections.abc import Iterator
 
 from sqlalchemy.orm import Session
 
+from backend.app.core.transactions import flush_session, transactional_session
 from backend.database import Base, SessionLocal, get_db, init_db
 from backend.models.user import User
 
@@ -47,9 +48,10 @@ def create_user(
         username=normalized_username,
         hashed_password=hashed_password,
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    with transactional_session(db):
+        db.add(user)
+        flush_session(db)
+        db.refresh(user)
     return user
 
 

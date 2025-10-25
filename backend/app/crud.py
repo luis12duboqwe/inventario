@@ -20,7 +20,7 @@ from sqlalchemy.sql import ColumnElement
 
 from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
-from .core.transactions import commit_session
+from .core.transactions import flush_session, transactional_session
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
@@ -379,19 +379,20 @@ def _create_system_log(
     level: models.SystemLogLevel,
     ip_address: str | None = None,
 ) -> models.SystemLog:
-    normalized_module = (module or "general").lower()
-    entry = models.SystemLog(
-        usuario=usuario,
-        modulo=normalized_module,
-        accion=action,
-        descripcion=description,
-        fecha=datetime.utcnow(),
-        nivel=level,
-        ip_origen=ip_address,
-        audit_log=audit_log,
-    )
-    db.add(entry)
-    db.flush()
+    with transactional_session(db):
+        normalized_module = (module or "general").lower()
+        entry = models.SystemLog(
+            usuario=usuario,
+            modulo=normalized_module,
+            accion=action,
+            descripcion=description,
+            fecha=datetime.utcnow(),
+            nivel=level,
+            ip_origen=ip_address,
+            audit_log=audit_log,
+        )
+        db.add(entry)
+        flush_session(db)
     return entry
 
 
@@ -420,33 +421,34 @@ def _log_action(
     performed_by_id: int | None,
     details: str | None = None,
 ) -> models.AuditLog:
-    log = models.AuditLog(
-        action=action,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        performed_by_id=performed_by_id,
-        details=details,
-    )
-    db.add(log)
-    db.flush()
-    usuario = None
-    if performed_by_id is not None:
-        user = db.get(models.User, performed_by_id)
-        if user is not None:
-            usuario = user.username
-    module = _resolve_system_module(entity_type)
-    description = details or f"{action} sobre {entity_type} {entity_id}"
-    level = _map_system_level(action, details)
-    _create_system_log(
-        db,
-        audit_log=log,
-        usuario=usuario,
-        module=module,
-        action=action,
-        description=description,
-        level=level,
-    )
-    invalidate_persistent_audit_alerts_cache()
+    with transactional_session(db):
+        log = models.AuditLog(
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            performed_by_id=performed_by_id,
+            details=details,
+        )
+        db.add(log)
+        flush_session(db)
+        usuario = None
+        if performed_by_id is not None:
+            user = db.get(models.User, performed_by_id)
+            if user is not None:
+                usuario = user.username
+        module = _resolve_system_module(entity_type)
+        description = details or f"{action} sobre {entity_type} {entity_id}"
+        level = _map_system_level(action, details)
+        _create_system_log(
+            db,
+            audit_log=log,
+            usuario=usuario,
+            module=module,
+            action=action,
+            description=description,
+            level=level,
+        )
+        invalidate_persistent_audit_alerts_cache()
     return log
 
 
@@ -459,26 +461,27 @@ def register_system_error(
     usuario: str | None,
     ip_origen: str | None = None,
 ) -> models.SystemError:
-    normalized_module = (modulo or "general").lower()
-    error = models.SystemError(
-        mensaje=mensaje,
-        stack_trace=stack_trace,
-        modulo=normalized_module,
-        fecha=datetime.utcnow(),
-        usuario=usuario,
-    )
-    db.add(error)
-    db.flush()
-    _create_system_log(
-        db,
-        audit_log=None,
-        usuario=usuario,
-        module=normalized_module,
-        action="system_error",
-        description=mensaje,
-        level=models.SystemLogLevel.ERROR,
-        ip_address=ip_origen,
-    )
+    with transactional_session(db):
+        normalized_module = (modulo or "general").lower()
+        error = models.SystemError(
+            mensaje=mensaje,
+            stack_trace=stack_trace,
+            modulo=normalized_module,
+            fecha=datetime.utcnow(),
+            usuario=usuario,
+        )
+        db.add(error)
+        flush_session(db)
+        _create_system_log(
+            db,
+            audit_log=None,
+            usuario=usuario,
+            module=normalized_module,
+            action="system_error",
+            description=mensaje,
+            level=models.SystemLogLevel.ERROR,
+            ip_address=ip_origen,
+        )
     return error
 
 
@@ -1014,7 +1017,7 @@ def _recalculate_store_inventory_value(
         store_obj = store
     else:
         store_obj = get_store(db, int(store))
-    db.flush()
+    flush_session(db)
     total_value = db.scalar(
         select(func.coalesce(func.sum(models.Device.quantity * models.Device.unit_price), 0))
         .where(models.Device.store_id == store_obj.id)
@@ -1024,7 +1027,7 @@ def _recalculate_store_inventory_value(
     )
     store_obj.inventory_value = normalized_total
     db.add(store_obj)
-    db.flush()
+    flush_session(db)
     return normalized_total
 
 
@@ -1319,20 +1322,21 @@ def _create_customer_ledger_entry(
         created_by_id=created_by_id,
     )
     db.add(entry)
-    db.flush()
+    flush_session(db)
     return entry
 
 
 def _sync_customer_ledger_entry(db: Session, entry: models.CustomerLedgerEntry) -> None:
-    db.refresh(entry)
-    db.refresh(entry, attribute_names=["created_by"])
-    enqueue_sync_outbox(
-        db,
-        entity_type="customer_ledger_entry",
-        entity_id=str(entry.id),
-        operation="UPSERT",
-        payload=_customer_ledger_payload(entry),
-    )
+    with transactional_session(db):
+        db.refresh(entry)
+        db.refresh(entry, attribute_names=["created_by"])
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer_ledger_entry",
+            entity_id=str(entry.id),
+            operation="UPSERT",
+            payload=_customer_ledger_payload(entry),
+        )
 
 
 def _resolve_part_unit_cost(device: models.Device, provided: Decimal | float | int | None) -> Decimal:
@@ -1547,36 +1551,38 @@ def acknowledge_audit_alert(
         )
 
     event = "created"
-    if acknowledgement is None:
-        acknowledgement = models.AuditAlertAcknowledgement(
-            entity_type=normalized_type,
-            entity_id=normalized_id,
-            acknowledged_by_id=acknowledged_by_id,
-            acknowledged_at=now,
-            note=note,
-        )
-        db.add(acknowledgement)
-    else:
-        event = "updated"
-        acknowledgement.acknowledged_at = now
-        acknowledgement.acknowledged_by_id = acknowledged_by_id
-        acknowledgement.note = note
+    with transactional_session(db):
+        if acknowledgement is None:
+            acknowledgement = models.AuditAlertAcknowledgement(
+                entity_type=normalized_type,
+                entity_id=normalized_id,
+                acknowledged_by_id=acknowledged_by_id,
+                acknowledged_at=now,
+                note=note,
+            )
+            db.add(acknowledgement)
+        else:
+            event = "updated"
+            acknowledgement.acknowledged_at = now
+            acknowledgement.acknowledged_by_id = acknowledged_by_id
+            acknowledgement.note = note
 
-    db.add(
-        models.AuditLog(
-            action="audit_alert_acknowledged",
-            entity_type=normalized_type,
-            entity_id=normalized_id,
-            details=(
-                f"Resolución manual registrada: {note}" if note else "Resolución manual registrada"
-            ),
-            performed_by_id=acknowledged_by_id,
+        db.add(
+            models.AuditLog(
+                action="audit_alert_acknowledged",
+                entity_type=normalized_type,
+                entity_id=normalized_id,
+                details=(
+                    f"Resolución manual registrada: {note}" if note else "Resolución manual registrada"
+                ),
+                performed_by_id=acknowledged_by_id,
+            )
         )
-    )
 
-    commit_session(db)
+        flush_session(db)
+        db.refresh(acknowledgement)
+
     invalidate_persistent_audit_alerts_cache()
-    db.refresh(acknowledgement)
     telemetry.record_audit_acknowledgement(normalized_type, event)
     return acknowledgement
 
@@ -1690,27 +1696,28 @@ def ensure_role_permissions(db: Session, role_name: str) -> None:
     defaults = ROLE_MODULE_PERMISSION_MATRIX.get(role_name)
     if not defaults:
         return
-    for module, flags in defaults.items():
-        statement = (
-            select(models.Permission)
-            .where(models.Permission.role_name == role_name)
-            .where(models.Permission.module == module)
-        )
-        permission = db.scalars(statement).first()
-        if permission is None:
-            permission = models.Permission(role_name=role_name, module=module)
-            permission.can_view = bool(flags.get("can_view", False))
-            permission.can_edit = bool(flags.get("can_edit", False))
-            permission.can_delete = bool(flags.get("can_delete", False))
-            db.add(permission)
-        else:
-            if permission.can_view is None:
+    with transactional_session(db):
+        for module, flags in defaults.items():
+            statement = (
+                select(models.Permission)
+                .where(models.Permission.role_name == role_name)
+                .where(models.Permission.module == module)
+            )
+            permission = db.scalars(statement).first()
+            if permission is None:
+                permission = models.Permission(role_name=role_name, module=module)
                 permission.can_view = bool(flags.get("can_view", False))
-            if permission.can_edit is None:
                 permission.can_edit = bool(flags.get("can_edit", False))
-            if permission.can_delete is None:
                 permission.can_delete = bool(flags.get("can_delete", False))
-    db.flush()
+                db.add(permission)
+            else:
+                if permission.can_view is None:
+                    permission.can_view = bool(flags.get("can_view", False))
+                if permission.can_edit is None:
+                    permission.can_edit = bool(flags.get("can_edit", False))
+                if permission.can_delete is None:
+                    permission.can_delete = bool(flags.get("can_delete", False))
+        flush_session(db)
 
 
 def ensure_role(db: Session, name: str) -> models.Role:
@@ -1719,7 +1726,7 @@ def ensure_role(db: Session, name: str) -> models.Role:
     if role is None:
         role = models.Role(name=name)
         db.add(role)
-        db.flush()
+        flush_session(db)
     ensure_role_permissions(db, name)
     return role
 
@@ -1824,30 +1831,30 @@ def create_user(
         password_hash=password_hash,
         store_id=store_id,
     )
-    db.add(user)
-    try:
-        db.flush()
-    except IntegrityError as exc:
-        db.rollback()
-        raise ValueError("user_already_exists") from exc
+    with transactional_session(db):
+        db.add(user)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("user_already_exists") from exc
 
-    assigned_roles: list[models.UserRole] = []
-    for role_name in role_names:
-        role = ensure_role(db, role_name)
-        assigned_roles.append(models.UserRole(user=user, role=role))
-    if assigned_roles:
-        db.add_all(assigned_roles)
+        assigned_roles: list[models.UserRole] = []
+        for role_name in role_names:
+            role = ensure_role(db, role_name)
+            assigned_roles.append(models.UserRole(user=user, role=role))
+        if assigned_roles:
+            db.add_all(assigned_roles)
 
-    _log_action(
-        db,
-        action="user_created",
-        entity_type="user",
-        entity_id=str(user.id),
-        performed_by_id=None,
-    )
+        _log_action(
+            db,
+            action="user_created",
+            entity_type="user",
+            entity_id=str(user.id),
+            performed_by_id=None,
+        )
 
-    commit_session(db)
-    db.refresh(user)
+        flush_session(db)
+        db.refresh(user)
     return user
 
 
@@ -1914,29 +1921,30 @@ def set_user_roles(
     reason: str | None = None,
 ) -> models.User:
     role_names = list(role_names)
-    user.roles.clear()
-    db.flush()
-    for role_name in role_names:
-        role = ensure_role(db, role_name)
-        db.add(models.UserRole(user=user, role=role))
-
-    user.rol = _select_primary_role(role_names)
-    commit_session(db)
-    db.refresh(user)
-
     log_payload: dict[str, object] = {"roles": sorted(role_names)}
     if reason:
         log_payload["reason"] = reason
-    _log_action(
-        db,
-        action="user_roles_updated",
-        entity_type="user",
-        entity_id=str(user.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps(log_payload, ensure_ascii=False),
-    )
-    commit_session(db)
-    db.refresh(user)
+
+    with transactional_session(db):
+        user.roles.clear()
+        flush_session(db)
+        for role_name in role_names:
+            role = ensure_role(db, role_name)
+            db.add(models.UserRole(user=user, role=role))
+
+        user.rol = _select_primary_role(role_names)
+
+        _log_action(
+            db,
+            action="user_roles_updated",
+            entity_type="user",
+            entity_id=str(user.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(log_payload, ensure_ascii=False),
+        )
+
+        flush_session(db)
+        db.refresh(user)
     return user
 
 
@@ -1948,26 +1956,28 @@ def set_user_status(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.User:
-    user.is_active = is_active
-    user.estado = "ACTIVO" if is_active else "INACTIVO"
-    commit_session(db)
-    db.refresh(user)
     log_payload: dict[str, object] = {
         "is_active": is_active,
-        "estado": user.estado,
+        "estado": "ACTIVO" if is_active else "INACTIVO",
     }
     if reason:
         log_payload["reason"] = reason
-    _log_action(
-        db,
-        action="user_status_changed",
-        entity_type="user",
-        entity_id=str(user.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps(log_payload, ensure_ascii=False),
-    )
-    commit_session(db)
-    db.refresh(user)
+
+    with transactional_session(db):
+        user.is_active = is_active
+        user.estado = log_payload["estado"]
+
+        _log_action(
+            db,
+            action="user_status_changed",
+            entity_type="user",
+            entity_id=str(user.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(log_payload, ensure_ascii=False),
+        )
+
+        flush_session(db)
+        db.refresh(user)
     return user
 
 
@@ -2038,22 +2048,24 @@ def update_user(
     if not changes:
         return user
 
-    commit_session(db)
-    db.refresh(user)
-
     log_payload: dict[str, object] = {"changes": changes}
     if reason:
         log_payload["reason"] = reason
-    _log_action(
-        db,
-        action="user_updated",
-        entity_type="user",
-        entity_id=str(user.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps(log_payload, ensure_ascii=False),
-    )
-    commit_session(db)
-    db.refresh(user)
+
+    with transactional_session(db):
+        flush_session(db)
+
+        _log_action(
+            db,
+            action="user_updated",
+            entity_type="user",
+            entity_id=str(user.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(log_payload, ensure_ascii=False),
+        )
+
+        flush_session(db)
+        db.refresh(user)
     return user
 
 
@@ -2072,16 +2084,18 @@ def list_role_permissions(
     if not role_names:
         return []
 
-    for name in role_names:
-        ensure_role_permissions(db, name)
-    commit_session(db)
+    with transactional_session(db):
+        for name in role_names:
+            ensure_role_permissions(db, name)
 
-    statement = (
-        select(models.Permission)
-        .where(models.Permission.role_name.in_(role_names))
-        .order_by(models.Permission.role_name.asc(), models.Permission.module.asc())
-    )
-    records = list(db.scalars(statement))
+        flush_session(db)
+
+        statement = (
+            select(models.Permission)
+            .where(models.Permission.role_name.in_(role_names))
+            .order_by(models.Permission.role_name.asc(), models.Permission.module.asc())
+        )
+        records = list(db.scalars(statement))
 
     grouped: dict[str, list[schemas.RoleModulePermission]] = {name: [] for name in role_names}
     for permission in records:
@@ -2110,47 +2124,49 @@ def update_role_permissions(
     reason: str | None = None,
 ) -> schemas.RolePermissionMatrix:
     role = get_role(db, role_name)
-    ensure_role_permissions(db, role.name)
-    db.flush()
+    with transactional_session(db):
+        ensure_role_permissions(db, role.name)
+        flush_session(db)
 
-    updated_modules: list[dict[str, object]] = []
-    for entry in permissions:
-        module_key = entry.module.strip().lower()
-        statement = (
-            select(models.Permission)
-            .where(models.Permission.role_name == role.name)
-            .where(models.Permission.module == module_key)
+        updated_modules: list[dict[str, object]] = []
+        for entry in permissions:
+            module_key = entry.module.strip().lower()
+            statement = (
+                select(models.Permission)
+                .where(models.Permission.role_name == role.name)
+                .where(models.Permission.module == module_key)
+            )
+            permission = db.scalars(statement).first()
+            if permission is None:
+                permission = models.Permission(role_name=role.name, module=module_key)
+                db.add(permission)
+            permission.can_view = bool(entry.can_view)
+            permission.can_edit = bool(entry.can_edit)
+            permission.can_delete = bool(entry.can_delete)
+            updated_modules.append(
+                {
+                    "module": module_key,
+                    "can_view": permission.can_view,
+                    "can_edit": permission.can_edit,
+                    "can_delete": permission.can_delete,
+                }
+            )
+
+        flush_session(db)
+
+        log_payload: dict[str, object] = {"permissions": updated_modules}
+        if reason:
+            log_payload["reason"] = reason
+        _log_action(
+            db,
+            action="role_permissions_updated",
+            entity_type="role",
+            entity_id=role.name,
+            performed_by_id=performed_by_id,
+            details=json.dumps(log_payload, ensure_ascii=False),
         )
-        permission = db.scalars(statement).first()
-        if permission is None:
-            permission = models.Permission(role_name=role.name, module=module_key)
-            db.add(permission)
-        permission.can_view = bool(entry.can_view)
-        permission.can_edit = bool(entry.can_edit)
-        permission.can_delete = bool(entry.can_delete)
-        updated_modules.append(
-            {
-                "module": module_key,
-                "can_view": permission.can_view,
-                "can_edit": permission.can_edit,
-                "can_delete": permission.can_delete,
-            }
-        )
 
-    commit_session(db)
-
-    log_payload: dict[str, object] = {"permissions": updated_modules}
-    if reason:
-        log_payload["reason"] = reason
-    _log_action(
-        db,
-        action="role_permissions_updated",
-        entity_type="role",
-        entity_id=role.name,
-        performed_by_id=performed_by_id,
-        details=json.dumps(log_payload, ensure_ascii=False),
-    )
-    commit_session(db)
+        flush_session(db)
 
     return list_role_permissions(db, role_name=role.name)[0]
 
@@ -2415,28 +2431,26 @@ def provision_totp_secret(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.UserTOTPSecret:
-    record = get_totp_secret(db, user_id)
-    if record is None:
-        record = models.UserTOTPSecret(user_id=user_id, secret=secret, is_active=False)
-        db.add(record)
-    else:
-        record.secret = secret
-        record.is_active = False
-        record.activated_at = None
-        record.last_verified_at = None
-    commit_session(db)
-    db.refresh(record)
-
     details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
-    _log_action(
-        db,
-        action="totp_provisioned",
-        entity_type="user",
-        entity_id=str(user_id),
-        performed_by_id=performed_by_id,
-        details=details,
-    )
-    commit_session(db)
+    with transactional_session(db):
+        record = get_totp_secret(db, user_id)
+        if record is None:
+            record = models.UserTOTPSecret(user_id=user_id, secret=secret, is_active=False)
+            db.add(record)
+        else:
+            record.secret = secret
+            record.is_active = False
+            record.activated_at = None
+            record.last_verified_at = None
+        flush_session(db)
+        _log_action(
+            db,
+            action="totp_provisioned",
+            entity_type="user",
+            entity_id=str(user_id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
     db.refresh(record)
     return record
 
@@ -2448,26 +2462,24 @@ def activate_totp_secret(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.UserTOTPSecret:
-    record = get_totp_secret(db, user_id)
-    if record is None:
-        raise LookupError("totp_not_provisioned")
-    record.is_active = True
-    now = datetime.utcnow()
-    record.activated_at = now
-    record.last_verified_at = now
-    commit_session(db)
-    db.refresh(record)
-
     details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
-    _log_action(
-        db,
-        action="totp_activated",
-        entity_type="user",
-        entity_id=str(user_id),
-        performed_by_id=performed_by_id,
-        details=details,
-    )
-    commit_session(db)
+    with transactional_session(db):
+        record = get_totp_secret(db, user_id)
+        if record is None:
+            raise LookupError("totp_not_provisioned")
+        record.is_active = True
+        now = datetime.utcnow()
+        record.activated_at = now
+        record.last_verified_at = now
+        flush_session(db)
+        _log_action(
+            db,
+            action="totp_activated",
+            entity_type="user",
+            entity_id=str(user_id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
     db.refresh(record)
     return record
 
@@ -2479,37 +2491,38 @@ def deactivate_totp_secret(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> None:
-    record = get_totp_secret(db, user_id)
-    if record is None:
-        return
-    record.is_active = False
-    commit_session(db)
-
     details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
-    _log_action(
-        db,
-        action="totp_deactivated",
-        entity_type="user",
-        entity_id=str(user_id),
-        performed_by_id=performed_by_id,
-        details=details,
-    )
-    commit_session(db)
+    with transactional_session(db):
+        record = get_totp_secret(db, user_id)
+        if record is None:
+            return
+        record.is_active = False
+        flush_session(db)
+        _log_action(
+            db,
+            action="totp_deactivated",
+            entity_type="user",
+            entity_id=str(user_id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
 
 
 def update_totp_last_verified(db: Session, user_id: int) -> None:
-    record = get_totp_secret(db, user_id)
-    if record is None:
-        return
-    record.last_verified_at = datetime.utcnow()
-    commit_session(db)
+    with transactional_session(db):
+        record = get_totp_secret(db, user_id)
+        if record is None:
+            return
+        record.last_verified_at = datetime.utcnow()
+        flush_session(db)
 
 
 def clear_login_lock(db: Session, user: models.User) -> models.User:
     if user.locked_until and user.locked_until <= datetime.utcnow():
-        user.locked_until = None
-        user.failed_login_attempts = 0
-        commit_session(db)
+        with transactional_session(db):
+            user.locked_until = None
+            user.failed_login_attempts = 0
+            flush_session(db)
         db.refresh(user)
     return user
 
@@ -2517,32 +2530,30 @@ def clear_login_lock(db: Session, user: models.User) -> models.User:
 def register_failed_login(
     db: Session, user: models.User, *, reason: str | None = None
 ) -> models.User:
-    now = datetime.utcnow()
-    user.failed_login_attempts += 1
-    user.last_login_attempt_at = now
     locked_until: datetime | None = None
-    if user.failed_login_attempts >= settings.max_failed_login_attempts:
-        locked_until = now + timedelta(minutes=settings.account_lock_minutes)
-        user.locked_until = locked_until
-    commit_session(db)
-    db.refresh(user)
-
-    details_payload: dict[str, object] = {
-        "attempts": user.failed_login_attempts,
-        "locked_until": locked_until.isoformat() if locked_until else None,
-    }
-    if reason:
-        details_payload["reason"] = reason
-    details = json.dumps(details_payload, ensure_ascii=False)
-    _log_action(
-        db,
-        action="auth_login_failed",
-        entity_type="user",
-        entity_id=str(user.id),
-        performed_by_id=user.id,
-        details=details,
-    )
-    commit_session(db)
+    with transactional_session(db):
+        now = datetime.utcnow()
+        user.failed_login_attempts += 1
+        user.last_login_attempt_at = now
+        if user.failed_login_attempts >= settings.max_failed_login_attempts:
+            locked_until = now + timedelta(minutes=settings.account_lock_minutes)
+            user.locked_until = locked_until
+        details_payload: dict[str, object] = {
+            "attempts": user.failed_login_attempts,
+            "locked_until": locked_until.isoformat() if locked_until else None,
+        }
+        if reason:
+            details_payload["reason"] = reason
+        details = json.dumps(details_payload, ensure_ascii=False)
+        flush_session(db)
+        _log_action(
+            db,
+            action="auth_login_failed",
+            entity_type="user",
+            entity_id=str(user.id),
+            performed_by_id=user.id,
+            details=details,
+        )
     db.refresh(user)
     return user
 
@@ -2550,29 +2561,27 @@ def register_failed_login(
 def register_successful_login(
     db: Session, user: models.User, *, session_token: str | None = None
 ) -> models.User:
-    user.failed_login_attempts = 0
-    user.locked_until = None
-    user.last_login_attempt_at = datetime.utcnow()
-    commit_session(db)
-    db.refresh(user)
-
-    details_payload = (
-        {"session_hint": session_token[-6:]} if session_token else None
-    )
-    details = (
-        json.dumps(details_payload, ensure_ascii=False)
-        if details_payload is not None
-        else None
-    )
-    _log_action(
-        db,
-        action="auth_login_success",
-        entity_type="user",
-        entity_id=str(user.id),
-        performed_by_id=user.id,
-        details=details,
-    )
-    commit_session(db)
+    with transactional_session(db):
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        user.last_login_attempt_at = datetime.utcnow()
+        details_payload = (
+            {"session_hint": session_token[-6:]} if session_token else None
+        )
+        details = (
+            json.dumps(details_payload, ensure_ascii=False)
+            if details_payload is not None
+            else None
+        )
+        flush_session(db)
+        _log_action(
+            db,
+            action="auth_login_success",
+            entity_type="user",
+            entity_id=str(user.id),
+            performed_by_id=user.id,
+            details=details,
+        )
     db.refresh(user)
     return user
 
@@ -2585,7 +2594,6 @@ def log_unknown_login_attempt(db: Session, username: str) -> None:
         entity_id=username,
         performed_by_id=None,
     )
-    commit_session(db)
 
 
 def create_password_reset_token(
@@ -2598,22 +2606,20 @@ def create_password_reset_token(
         token=token,
         expires_at=expires_at,
     )
-    db.add(record)
-    commit_session(db)
-    db.refresh(record)
-
     details = json.dumps(
         {"expires_at": record.expires_at.isoformat()}, ensure_ascii=False
     )
-    _log_action(
-        db,
-        action="password_reset_requested",
-        entity_type="user",
-        entity_id=str(user_id),
-        performed_by_id=None,
-        details=details,
-    )
-    commit_session(db)
+    with transactional_session(db):
+        db.add(record)
+        flush_session(db)
+        _log_action(
+            db,
+            action="password_reset_requested",
+            entity_type="user",
+            entity_id=str(user_id),
+            performed_by_id=None,
+            details=details,
+        )
     db.refresh(record)
     return record
 
@@ -2630,8 +2636,9 @@ def get_password_reset_token(
 def mark_password_reset_token_used(
     db: Session, token_record: models.PasswordResetToken
 ) -> models.PasswordResetToken:
-    token_record.used_at = datetime.utcnow()
-    commit_session(db)
+    with transactional_session(db):
+        token_record.used_at = datetime.utcnow()
+        flush_session(db)
     db.refresh(token_record)
     return token_record
 
@@ -2643,21 +2650,19 @@ def reset_user_password(
     password_hash: str,
     performed_by_id: int | None = None,
 ) -> models.User:
-    user.password_hash = password_hash
-    user.failed_login_attempts = 0
-    user.locked_until = None
-    user.last_login_attempt_at = datetime.utcnow()
-    commit_session(db)
-    db.refresh(user)
-
-    _log_action(
-        db,
-        action="password_reset_completed",
-        entity_type="user",
-        entity_id=str(user.id),
-        performed_by_id=performed_by_id,
-    )
-    commit_session(db)
+    with transactional_session(db):
+        user.password_hash = password_hash
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        user.last_login_attempt_at = datetime.utcnow()
+        flush_session(db)
+        _log_action(
+            db,
+            action="password_reset_completed",
+            entity_type="user",
+            entity_id=str(user.id),
+            performed_by_id=performed_by_id,
+        )
     db.refresh(user)
     return user
 
@@ -2680,8 +2685,9 @@ def create_active_session(
     session = models.ActiveSession(
         user_id=user_id, session_token=session_token, expires_at=expires_at
     )
-    db.add(session)
-    commit_session(db)
+    with transactional_session(db):
+        db.add(session)
+        flush_session(db)
     db.refresh(session)
     return session
 
@@ -2705,13 +2711,15 @@ def mark_session_used(db: Session, session_token: str) -> models.ActiveSession |
         return None
     if is_session_expired(session.expires_at):
         if session.revoked_at is None:
-            session.revoked_at = datetime.now(timezone.utc)
-            session.revoke_reason = session.revoke_reason or "expired"
-            commit_session(db)
+            with transactional_session(db):
+                session.revoked_at = datetime.now(timezone.utc)
+                session.revoke_reason = session.revoke_reason or "expired"
+                flush_session(db)
             db.refresh(session)
         return None
-    session.last_used_at = datetime.utcnow()
-    commit_session(db)
+    with transactional_session(db):
+        session.last_used_at = datetime.utcnow()
+        flush_session(db)
     db.refresh(session)
     return session
 
@@ -2736,10 +2744,11 @@ def revoke_session(
         raise LookupError("session_not_found")
     if session.revoked_at is not None:
         return session
-    session.revoked_at = datetime.utcnow()
-    session.revoked_by_id = revoked_by_id
-    session.revoke_reason = reason
-    commit_session(db)
+    with transactional_session(db):
+        session.revoked_at = datetime.utcnow()
+        session.revoked_by_id = revoked_by_id
+        session.revoke_reason = reason
+        flush_session(db)
     db.refresh(session)
     return session
 
@@ -2772,38 +2781,38 @@ def _generate_store_code(db: Session) -> str:
 
 
 def create_store(db: Session, payload: schemas.StoreCreate, *, performed_by_id: int | None = None) -> models.Store:
-    status = _normalize_store_status(payload.status)
-    code = _normalize_store_code(payload.code)
-    timezone = (payload.timezone or "UTC").strip()
-    store = models.Store(
-        name=payload.name.strip(),
-        location=payload.location.strip() if payload.location else None,
-        phone=payload.phone.strip() if payload.phone else None,
-        manager=payload.manager.strip() if payload.manager else None,
-        status=status,
-        code=code or _generate_store_code(db),
-        timezone=timezone or "UTC",
-    )
-    db.add(store)
-    try:
-        commit_session(db)
-    except IntegrityError as exc:
-        db.rollback()
-        message = str(getattr(exc, "orig", exc)).lower()
-        if "codigo" in message or "uq_sucursales_codigo" in message:
-            raise ValueError("store_code_already_exists") from exc
-        raise ValueError("store_already_exists") from exc
-    db.refresh(store)
+    with transactional_session(db):
+        status = _normalize_store_status(payload.status)
+        code = _normalize_store_code(payload.code)
+        timezone = (payload.timezone or "UTC").strip()
+        store = models.Store(
+            name=payload.name.strip(),
+            location=payload.location.strip() if payload.location else None,
+            phone=payload.phone.strip() if payload.phone else None,
+            manager=payload.manager.strip() if payload.manager else None,
+            status=status,
+            code=code or _generate_store_code(db),
+            timezone=timezone or "UTC",
+        )
+        db.add(store)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            message = str(getattr(exc, "orig", exc)).lower()
+            if "codigo" in message or "uq_sucursales_codigo" in message:
+                raise ValueError("store_code_already_exists") from exc
+            raise ValueError("store_already_exists") from exc
+        db.refresh(store)
 
-    _log_action(
-        db,
-        action="store_created",
-        entity_type="store",
-        entity_id=str(store.id),
-        performed_by_id=performed_by_id,
-    )
-    commit_session(db)
-    db.refresh(store)
+        _log_action(
+            db,
+            action="store_created",
+            entity_type="store",
+            entity_id=str(store.id),
+            performed_by_id=performed_by_id,
+        )
+        flush_session(db)
+        db.refresh(store)
     return store
 
 
@@ -2852,28 +2861,28 @@ def update_store(
     if not changes:
         return store
 
-    db.add(store)
-    try:
-        commit_session(db)
-    except IntegrityError as exc:
-        db.rollback()
-        message = str(getattr(exc, "orig", exc)).lower()
-        if "codigo" in message or "uq_sucursales_codigo" in message:
-            raise ValueError("store_code_already_exists") from exc
-        raise ValueError("store_already_exists") from exc
-    db.refresh(store)
+    with transactional_session(db):
+        db.add(store)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            message = str(getattr(exc, "orig", exc)).lower()
+            if "codigo" in message or "uq_sucursales_codigo" in message:
+                raise ValueError("store_code_already_exists") from exc
+            raise ValueError("store_already_exists") from exc
+        db.refresh(store)
 
-    details = ", ".join(changes)
-    _log_action(
-        db,
-        action="store_updated",
-        entity_type="store",
-        entity_id=str(store.id),
-        performed_by_id=performed_by_id,
-        details=details or None,
-    )
-    commit_session(db)
-    db.refresh(store)
+        details = ", ".join(changes)
+        _log_action(
+            db,
+            action="store_updated",
+            entity_type="store",
+            entity_id=str(store.id),
+            performed_by_id=performed_by_id,
+            details=details or None,
+        )
+        flush_session(db)
+        db.refresh(store)
     return store
 
 
@@ -2938,55 +2947,55 @@ def create_customer(
     *,
     performed_by_id: int | None = None,
 ) -> models.Customer:
-    history = _history_to_json(payload.history)
-    customer_type = _normalize_customer_type(payload.customer_type)
-    status = _normalize_customer_status(payload.status)
-    credit_limit = _ensure_non_negative_decimal(
-        payload.credit_limit, "customer_credit_limit_negative"
-    )
-    outstanding_debt = _ensure_non_negative_decimal(
-        payload.outstanding_debt, "customer_outstanding_debt_negative"
-    )
-    _ensure_debt_respects_limit(credit_limit, outstanding_debt)
-    customer = models.Customer(
-        name=payload.name,
-        contact_name=payload.contact_name,
-        email=payload.email,
-        phone=payload.phone,
-        address=payload.address,
-        customer_type=customer_type,
-        status=status,
-        credit_limit=credit_limit,
-        notes=payload.notes,
-        history=history,
-        outstanding_debt=outstanding_debt,
-        last_interaction_at=_last_history_timestamp(history),
-    )
-    db.add(customer)
-    try:
-        commit_session(db)
-    except IntegrityError as exc:
-        db.rollback()
-        raise ValueError("customer_already_exists") from exc
-    db.refresh(customer)
+    with transactional_session(db):
+        history = _history_to_json(payload.history)
+        customer_type = _normalize_customer_type(payload.customer_type)
+        status = _normalize_customer_status(payload.status)
+        credit_limit = _ensure_non_negative_decimal(
+            payload.credit_limit, "customer_credit_limit_negative"
+        )
+        outstanding_debt = _ensure_non_negative_decimal(
+            payload.outstanding_debt, "customer_outstanding_debt_negative"
+        )
+        _ensure_debt_respects_limit(credit_limit, outstanding_debt)
+        customer = models.Customer(
+            name=payload.name,
+            contact_name=payload.contact_name,
+            email=payload.email,
+            phone=payload.phone,
+            address=payload.address,
+            customer_type=customer_type,
+            status=status,
+            credit_limit=credit_limit,
+            notes=payload.notes,
+            history=history,
+            outstanding_debt=outstanding_debt,
+            last_interaction_at=_last_history_timestamp(history),
+        )
+        db.add(customer)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("customer_already_exists") from exc
+        db.refresh(customer)
 
-    _log_action(
-        db,
-        action="customer_created",
-        entity_type="customer",
-        entity_id=str(customer.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"name": customer.name}),
-    )
-    commit_session(db)
-    db.refresh(customer)
-    enqueue_sync_outbox(
-        db,
-        entity_type="customer",
-        entity_id=str(customer.id),
-        operation="UPSERT",
-        payload=_customer_payload(customer),
-    )
+        _log_action(
+            db,
+            action="customer_created",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"name": customer.name}),
+        )
+        flush_session(db)
+        db.refresh(customer)
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
+        )
     return customer
 
 
@@ -2998,117 +3007,118 @@ def update_customer(
     performed_by_id: int | None = None,
 ) -> models.Customer:
     customer = get_customer(db, customer_id)
-    previous_outstanding = _to_decimal(customer.outstanding_debt).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    updated_fields: dict[str, object] = {}
-    outstanding_delta: Decimal | None = None
-    ledger_entry: models.CustomerLedgerEntry | None = None
-    ledger_details: dict[str, object] | None = None
-    pending_history_note: str | None = None
-    pending_ledger_entry_kwargs: dict[str, object] | None = None
-    if payload.name is not None:
-        customer.name = payload.name
-        updated_fields["name"] = payload.name
-    if payload.contact_name is not None:
-        customer.contact_name = payload.contact_name
-        updated_fields["contact_name"] = payload.contact_name
-    if payload.email is not None:
-        customer.email = payload.email
-        updated_fields["email"] = payload.email
-    if payload.phone is not None:
-        customer.phone = payload.phone
-        updated_fields["phone"] = payload.phone
-    if payload.address is not None:
-        customer.address = payload.address
-        updated_fields["address"] = payload.address
-    if payload.customer_type is not None:
-        normalized_type = _normalize_customer_type(payload.customer_type)
-        customer.customer_type = normalized_type
-        updated_fields["customer_type"] = normalized_type
-    if payload.status is not None:
-        normalized_status = _normalize_customer_status(payload.status)
-        customer.status = normalized_status
-        updated_fields["status"] = normalized_status
-    if payload.credit_limit is not None:
-        customer.credit_limit = _ensure_non_negative_decimal(
-            payload.credit_limit, "customer_credit_limit_negative"
-        )
-        updated_fields["credit_limit"] = float(customer.credit_limit)
-    if payload.notes is not None:
-        customer.notes = payload.notes
-        updated_fields["notes"] = payload.notes
-    if payload.outstanding_debt is not None:
-        new_outstanding = _ensure_non_negative_decimal(
-            payload.outstanding_debt, "customer_outstanding_debt_negative"
-        )
-        difference = (new_outstanding - previous_outstanding).quantize(
+    with transactional_session(db):
+        previous_outstanding = _to_decimal(customer.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
-        customer.outstanding_debt = new_outstanding
-        updated_fields["outstanding_debt"] = float(new_outstanding)
-        if difference != Decimal("0"):
-            outstanding_delta = difference
-            pending_history_note = (
-                "Ajuste manual de saldo: antes $"
-                f"{float(previous_outstanding):.2f}, ahora ${float(new_outstanding):.2f}"
+        updated_fields: dict[str, object] = {}
+        outstanding_delta: Decimal | None = None
+        ledger_entry: models.CustomerLedgerEntry | None = None
+        ledger_details: dict[str, object] | None = None
+        pending_history_note: str | None = None
+        pending_ledger_entry_kwargs: dict[str, object] | None = None
+        if payload.name is not None:
+            customer.name = payload.name
+            updated_fields["name"] = payload.name
+        if payload.contact_name is not None:
+            customer.contact_name = payload.contact_name
+            updated_fields["contact_name"] = payload.contact_name
+        if payload.email is not None:
+            customer.email = payload.email
+            updated_fields["email"] = payload.email
+        if payload.phone is not None:
+            customer.phone = payload.phone
+            updated_fields["phone"] = payload.phone
+        if payload.address is not None:
+            customer.address = payload.address
+            updated_fields["address"] = payload.address
+        if payload.customer_type is not None:
+            normalized_type = _normalize_customer_type(payload.customer_type)
+            customer.customer_type = normalized_type
+            updated_fields["customer_type"] = normalized_type
+        if payload.status is not None:
+            normalized_status = _normalize_customer_status(payload.status)
+            customer.status = normalized_status
+            updated_fields["status"] = normalized_status
+        if payload.credit_limit is not None:
+            customer.credit_limit = _ensure_non_negative_decimal(
+                payload.credit_limit, "customer_credit_limit_negative"
             )
-            ledger_details = {
-                "previous_balance": float(previous_outstanding),
-                "new_balance": float(new_outstanding),
-                "difference": float(difference),
-            }
-            updated_fields["outstanding_debt_delta"] = float(difference)
-            pending_ledger_entry_kwargs = {
-                "entry_type": models.CustomerLedgerEntryType.ADJUSTMENT,
-                "amount": outstanding_delta,
-                "note": pending_history_note,
-                "reference_type": "adjustment",
-                "reference_id": None,
-                "details": ledger_details,
-                "created_by_id": performed_by_id,
-            }
-        previous_outstanding = new_outstanding
-    if payload.history is not None:
-        history = _history_to_json(payload.history)
-        customer.history = history
-        customer.last_interaction_at = _last_history_timestamp(history)
-        updated_fields["history"] = history
-    _ensure_debt_respects_limit(customer.credit_limit, customer.outstanding_debt)
-    if pending_history_note:
-        _append_customer_history(customer, pending_history_note)
-        updated_fields.setdefault("history_note", pending_history_note)
-    if pending_ledger_entry_kwargs is not None:
-        ledger_entry = _create_customer_ledger_entry(
-            db,
-            customer=customer,
-            **pending_ledger_entry_kwargs,
-        )
-    db.add(customer)
-    commit_session(db)
-    db.refresh(customer)
+            updated_fields["credit_limit"] = float(customer.credit_limit)
+        if payload.notes is not None:
+            customer.notes = payload.notes
+            updated_fields["notes"] = payload.notes
+        if payload.outstanding_debt is not None:
+            new_outstanding = _ensure_non_negative_decimal(
+                payload.outstanding_debt, "customer_outstanding_debt_negative"
+            )
+            difference = (new_outstanding - previous_outstanding).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            customer.outstanding_debt = new_outstanding
+            updated_fields["outstanding_debt"] = float(new_outstanding)
+            if difference != Decimal("0"):
+                outstanding_delta = difference
+                pending_history_note = (
+                    "Ajuste manual de saldo: antes $"
+                    f"{float(previous_outstanding):.2f}, ahora ${float(new_outstanding):.2f}"
+                )
+                ledger_details = {
+                    "previous_balance": float(previous_outstanding),
+                    "new_balance": float(new_outstanding),
+                    "difference": float(difference),
+                }
+                updated_fields["outstanding_debt_delta"] = float(difference)
+                pending_ledger_entry_kwargs = {
+                    "entry_type": models.CustomerLedgerEntryType.ADJUSTMENT,
+                    "amount": outstanding_delta,
+                    "note": pending_history_note,
+                    "reference_type": "adjustment",
+                    "reference_id": None,
+                    "details": ledger_details,
+                    "created_by_id": performed_by_id,
+                }
+            previous_outstanding = new_outstanding
+        if payload.history is not None:
+            history = _history_to_json(payload.history)
+            customer.history = history
+            customer.last_interaction_at = _last_history_timestamp(history)
+            updated_fields["history"] = history
+        _ensure_debt_respects_limit(customer.credit_limit, customer.outstanding_debt)
+        if pending_history_note:
+            _append_customer_history(customer, pending_history_note)
+            updated_fields.setdefault("history_note", pending_history_note)
+        if pending_ledger_entry_kwargs is not None:
+            ledger_entry = _create_customer_ledger_entry(
+                db,
+                customer=customer,
+                **pending_ledger_entry_kwargs,
+            )
+        db.add(customer)
+        flush_session(db)
+        db.refresh(customer)
 
-    if ledger_entry is not None:
-        _sync_customer_ledger_entry(db, ledger_entry)
+        if ledger_entry is not None:
+            _sync_customer_ledger_entry(db, ledger_entry)
 
-    if updated_fields:
-        _log_action(
+        if updated_fields:
+            _log_action(
+                db,
+                action="customer_updated",
+                entity_type="customer",
+                entity_id=str(customer.id),
+                performed_by_id=performed_by_id,
+                details=json.dumps(updated_fields),
+            )
+            flush_session(db)
+            db.refresh(customer)
+        enqueue_sync_outbox(
             db,
-            action="customer_updated",
             entity_type="customer",
             entity_id=str(customer.id),
-            performed_by_id=performed_by_id,
-            details=json.dumps(updated_fields),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
         )
-        commit_session(db)
-        db.refresh(customer)
-    enqueue_sync_outbox(
-        db,
-        entity_type="customer",
-        entity_id=str(customer.id),
-        operation="UPSERT",
-        payload=_customer_payload(customer),
-    )
     return customer
 
 
@@ -3119,23 +3129,24 @@ def delete_customer(
     performed_by_id: int | None = None,
 ) -> None:
     customer = get_customer(db, customer_id)
-    db.delete(customer)
-    commit_session(db)
-    _log_action(
-        db,
-        action="customer_deleted",
-        entity_type="customer",
-        entity_id=str(customer_id),
-        performed_by_id=performed_by_id,
-    )
-    commit_session(db)
-    enqueue_sync_outbox(
-        db,
-        entity_type="customer",
-        entity_id=str(customer_id),
-        operation="DELETE",
-        payload={"id": customer_id},
-    )
+    with transactional_session(db):
+        db.delete(customer)
+        flush_session(db)
+        _log_action(
+            db,
+            action="customer_deleted",
+            entity_type="customer",
+            entity_id=str(customer_id),
+            performed_by_id=performed_by_id,
+        )
+        flush_session(db)
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer_id),
+            operation="DELETE",
+            payload={"id": customer_id},
+        )
 
 
 def export_customers_csv(
@@ -3198,42 +3209,42 @@ def append_customer_note(
     performed_by_id: int | None = None,
 ) -> models.Customer:
     customer = get_customer(db, customer_id)
-    _append_customer_history(customer, payload.note)
-    db.add(customer)
+    with transactional_session(db):
+        _append_customer_history(customer, payload.note)
+        db.add(customer)
 
-    ledger_entry = _create_customer_ledger_entry(
-        db,
-        customer=customer,
-        entry_type=models.CustomerLedgerEntryType.NOTE,
-        amount=Decimal("0"),
-        note=payload.note,
-        reference_type="note",
-        reference_id=None,
-        details={"event": "note_added", "note": payload.note},
-        created_by_id=performed_by_id,
-    )
+        ledger_entry = _create_customer_ledger_entry(
+            db,
+            customer=customer,
+            entry_type=models.CustomerLedgerEntryType.NOTE,
+            amount=Decimal("0"),
+            note=payload.note,
+            reference_type="note",
+            reference_id=None,
+            details={"event": "note_added", "note": payload.note},
+            created_by_id=performed_by_id,
+        )
 
-    _log_action(
-        db,
-        action="customer_note_added",
-        entity_type="customer",
-        entity_id=str(customer.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"note": payload.note}),
-    )
+        _log_action(
+            db,
+            action="customer_note_added",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"note": payload.note}),
+        )
 
-    commit_session(db)
-    db.refresh(customer)
-    db.refresh(ledger_entry)
+        db.refresh(customer)
+        db.refresh(ledger_entry)
 
-    enqueue_sync_outbox(
-        db,
-        entity_type="customer",
-        entity_id=str(customer.id),
-        operation="UPSERT",
-        payload=_customer_payload(customer),
-    )
-    _sync_customer_ledger_entry(db, ledger_entry)
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
+        )
+        _sync_customer_ledger_entry(db, ledger_entry)
     return customer
 
 
@@ -3289,46 +3300,46 @@ def register_customer_payment(
     if payload.note:
         payment_details["note"] = payload.note
 
-    ledger_entry = _create_customer_ledger_entry(
-        db,
-        customer=customer,
-        entry_type=models.CustomerLedgerEntryType.PAYMENT,
-        amount=-applied_amount,
-        note=payload.note,
-        reference_type="sale" if sale is not None else "payment",
-        reference_id=str(sale.id) if sale is not None else None,
-        details=payment_details,
-        created_by_id=performed_by_id,
-    )
+    with transactional_session(db):
+        ledger_entry = _create_customer_ledger_entry(
+            db,
+            customer=customer,
+            entry_type=models.CustomerLedgerEntryType.PAYMENT,
+            amount=-applied_amount,
+            note=payload.note,
+            reference_type="sale" if sale is not None else "payment",
+            reference_id=str(sale.id) if sale is not None else None,
+            details=payment_details,
+            created_by_id=performed_by_id,
+        )
 
-    _log_action(
-        db,
-        action="customer_payment_registered",
-        entity_type="customer",
-        entity_id=str(customer.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps(
-            {
-                "applied_amount": float(applied_amount),
-                "method": payload.method,
-                "reference": payload.reference,
-                "sale_id": sale.id if sale is not None else None,
-            }
-        ),
-    )
+        _log_action(
+            db,
+            action="customer_payment_registered",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "applied_amount": float(applied_amount),
+                    "method": payload.method,
+                    "reference": payload.reference,
+                    "sale_id": sale.id if sale is not None else None,
+                }
+            ),
+        )
 
-    commit_session(db)
-    db.refresh(customer)
-    db.refresh(ledger_entry)
+        db.refresh(customer)
+        db.refresh(ledger_entry)
 
-    enqueue_sync_outbox(
-        db,
-        entity_type="customer",
-        entity_id=str(customer.id),
-        operation="UPSERT",
-        payload=_customer_payload(customer),
-    )
-    _sync_customer_ledger_entry(db, ledger_entry)
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
+        )
+        _sync_customer_ledger_entry(db, ledger_entry)
     return ledger_entry
 
 
@@ -3690,24 +3701,23 @@ def create_supplier(
         history=history,
         outstanding_debt=_to_decimal(payload.outstanding_debt),
     )
-    db.add(supplier)
     try:
-        commit_session(db)
-    except IntegrityError as exc:
-        db.rollback()
-        raise ValueError("supplier_already_exists") from exc
-    db.refresh(supplier)
+        with transactional_session(db):
+            db.add(supplier)
+            flush_session(db)
 
-    _log_action(
-        db,
-        action="supplier_created",
-        entity_type="supplier",
-        entity_id=str(supplier.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"name": supplier.name}),
-    )
-    commit_session(db)
-    db.refresh(supplier)
+            _log_action(
+                db,
+                action="supplier_created",
+                entity_type="supplier",
+                entity_id=str(supplier.id),
+                performed_by_id=performed_by_id,
+                details=json.dumps({"name": supplier.name}),
+            )
+
+            db.refresh(supplier)
+    except IntegrityError as exc:
+        raise ValueError("supplier_already_exists") from exc
     return supplier
 
 
@@ -3745,20 +3755,20 @@ def update_supplier(
         history = _history_to_json(payload.history)
         supplier.history = history
         updated_fields["history"] = history
-    db.add(supplier)
-    commit_session(db)
-    db.refresh(supplier)
+    with transactional_session(db):
+        db.add(supplier)
+        flush_session(db)
 
-    if updated_fields:
-        _log_action(
-            db,
-            action="supplier_updated",
-            entity_type="supplier",
-            entity_id=str(supplier.id),
-            performed_by_id=performed_by_id,
-            details=json.dumps(updated_fields),
-        )
-        commit_session(db)
+        if updated_fields:
+            _log_action(
+                db,
+                action="supplier_updated",
+                entity_type="supplier",
+                entity_id=str(supplier.id),
+                performed_by_id=performed_by_id,
+                details=json.dumps(updated_fields),
+            )
+
         db.refresh(supplier)
     return supplier
 
@@ -3770,16 +3780,16 @@ def delete_supplier(
     performed_by_id: int | None = None,
 ) -> None:
     supplier = get_supplier(db, supplier_id)
-    db.delete(supplier)
-    commit_session(db)
-    _log_action(
-        db,
-        action="supplier_deleted",
-        entity_type="supplier",
-        entity_id=str(supplier_id),
-        performed_by_id=performed_by_id,
-    )
-    commit_session(db)
+    with transactional_session(db):
+        db.delete(supplier)
+
+        _log_action(
+            db,
+            action="supplier_deleted",
+            entity_type="supplier",
+            entity_id=str(supplier_id),
+            performed_by_id=performed_by_id,
+        )
 
 
 def get_purchase_vendor(db: Session, vendor_id: int) -> models.Proveedor:
@@ -3855,24 +3865,23 @@ def create_purchase_vendor(
         estado=payload.estado or "activo",
         notas=payload.notas,
     )
-    db.add(vendor)
-    try:
-        commit_session(db)
-    except IntegrityError as exc:
-        db.rollback()
-        raise ValueError("purchase_vendor_duplicate") from exc
-    db.refresh(vendor)
+    with transactional_session(db):
+        db.add(vendor)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("purchase_vendor_duplicate") from exc
 
-    _log_action(
-        db,
-        action="purchase_vendor_created",
-        entity_type="purchase_vendor",
-        entity_id=str(vendor.id_proveedor),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"nombre": vendor.nombre, "estado": vendor.estado}),
-    )
-    commit_session(db)
-    db.refresh(vendor)
+        _log_action(
+            db,
+            action="purchase_vendor_created",
+            entity_type="purchase_vendor",
+            entity_id=str(vendor.id_proveedor),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"nombre": vendor.nombre, "estado": vendor.estado}),
+        )
+        flush_session(db)
+        db.refresh(vendor)
     return vendor
 
 
@@ -3885,42 +3894,41 @@ def update_purchase_vendor(
 ) -> models.Proveedor:
     vendor = get_purchase_vendor(db, vendor_id)
     updated_fields: dict[str, object] = {}
-    if payload.nombre is not None:
-        vendor.nombre = payload.nombre
-        updated_fields["nombre"] = payload.nombre
-    if payload.telefono is not None:
-        vendor.telefono = payload.telefono
-        updated_fields["telefono"] = payload.telefono
-    if payload.correo is not None:
-        vendor.correo = payload.correo
-        updated_fields["correo"] = payload.correo
-    if payload.direccion is not None:
-        vendor.direccion = payload.direccion
-        updated_fields["direccion"] = payload.direccion
-    if payload.tipo is not None:
-        vendor.tipo = payload.tipo
-        updated_fields["tipo"] = payload.tipo
-    if payload.notas is not None:
-        vendor.notas = payload.notas
-        updated_fields["notas"] = payload.notas
-    if payload.estado is not None:
-        vendor.estado = payload.estado
-        updated_fields["estado"] = payload.estado
+    with transactional_session(db):
+        if payload.nombre is not None:
+            vendor.nombre = payload.nombre
+            updated_fields["nombre"] = payload.nombre
+        if payload.telefono is not None:
+            vendor.telefono = payload.telefono
+            updated_fields["telefono"] = payload.telefono
+        if payload.correo is not None:
+            vendor.correo = payload.correo
+            updated_fields["correo"] = payload.correo
+        if payload.direccion is not None:
+            vendor.direccion = payload.direccion
+            updated_fields["direccion"] = payload.direccion
+        if payload.tipo is not None:
+            vendor.tipo = payload.tipo
+            updated_fields["tipo"] = payload.tipo
+        if payload.notas is not None:
+            vendor.notas = payload.notas
+            updated_fields["notas"] = payload.notas
+        if payload.estado is not None:
+            vendor.estado = payload.estado
+            updated_fields["estado"] = payload.estado
 
-    db.add(vendor)
-    commit_session(db)
-    db.refresh(vendor)
+        db.add(vendor)
 
-    if updated_fields:
-        _log_action(
-            db,
-            action="purchase_vendor_updated",
-            entity_type="purchase_vendor",
-            entity_id=str(vendor.id_proveedor),
-            performed_by_id=performed_by_id,
-            details=json.dumps(updated_fields),
-        )
-        commit_session(db)
+        if updated_fields:
+            _log_action(
+                db,
+                action="purchase_vendor_updated",
+                entity_type="purchase_vendor",
+                entity_id=str(vendor.id_proveedor),
+                performed_by_id=performed_by_id,
+                details=json.dumps(updated_fields),
+            )
+        flush_session(db)
         db.refresh(vendor)
     return vendor
 
@@ -3933,21 +3941,20 @@ def set_purchase_vendor_status(
     performed_by_id: int | None = None,
 ) -> models.Proveedor:
     vendor = get_purchase_vendor(db, vendor_id)
-    vendor.estado = estado
-    db.add(vendor)
-    commit_session(db)
-    db.refresh(vendor)
+    with transactional_session(db):
+        vendor.estado = estado
+        db.add(vendor)
 
-    _log_action(
-        db,
-        action="purchase_vendor_status_updated",
-        entity_type="purchase_vendor",
-        entity_id=str(vendor.id_proveedor),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"estado": estado}),
-    )
-    commit_session(db)
-    db.refresh(vendor)
+        _log_action(
+            db,
+            action="purchase_vendor_status_updated",
+            entity_type="purchase_vendor",
+            entity_id=str(vendor.id_proveedor),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"estado": estado}),
+        )
+        flush_session(db)
+        db.refresh(vendor)
     return vendor
 
 
@@ -4105,46 +4112,47 @@ def create_supplier_batch(
         if store is None:
             store = device.store
 
-    batch = models.SupplierBatch(
-        supplier_id=supplier.id,
-        store_id=store.id if store else None,
-        device_id=device.id if device else None,
-        model_name=payload.model_name or (device.name if device else ""),
-        batch_code=payload.batch_code,
-        unit_cost=_to_decimal(payload.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-        quantity=payload.quantity,
-        purchase_date=payload.purchase_date,
-        notes=payload.notes,
-    )
-    now = datetime.utcnow()
-    batch.created_at = now
-    batch.updated_at = now
-    db.add(batch)
+    with transactional_session(db):
+        batch = models.SupplierBatch(
+            supplier_id=supplier.id,
+            store_id=store.id if store else None,
+            device_id=device.id if device else None,
+            model_name=payload.model_name or (device.name if device else ""),
+            batch_code=payload.batch_code,
+            unit_cost=_to_decimal(payload.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            quantity=payload.quantity,
+            purchase_date=payload.purchase_date,
+            notes=payload.notes,
+        )
+        now = datetime.utcnow()
+        batch.created_at = now
+        batch.updated_at = now
+        db.add(batch)
 
-    if device is not None:
-        device.proveedor = supplier.name
-        device.lote = payload.batch_code or device.lote
-        device.fecha_compra = payload.purchase_date
-        device.costo_unitario = batch.unit_cost
-        _recalculate_sale_price(device)
-        db.add(device)
+        if device is not None:
+            device.proveedor = supplier.name
+            device.lote = payload.batch_code or device.lote
+            device.fecha_compra = payload.purchase_date
+            device.costo_unitario = batch.unit_cost
+            _recalculate_sale_price(device)
+            db.add(device)
 
-    commit_session(db)
-    db.refresh(batch)
+        flush_session(db)
+        db.refresh(batch)
 
-    if device is not None:
-        _recalculate_store_inventory_value(db, device.store_id)
+        if device is not None:
+            _recalculate_store_inventory_value(db, device.store_id)
 
-    _log_action(
-        db,
-        action="supplier_batch_created",
-        entity_type="supplier_batch",
-        entity_id=str(batch.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"supplier_id": supplier.id, "batch_code": batch.batch_code}),
-    )
-    commit_session(db)
-    db.refresh(batch)
+        _log_action(
+            db,
+            action="supplier_batch_created",
+            entity_type="supplier_batch",
+            entity_id=str(batch.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"supplier_id": supplier.id, "batch_code": batch.batch_code}),
+        )
+        flush_session(db)
+        db.refresh(batch)
     return batch
 
 
@@ -4162,56 +4170,57 @@ def update_supplier_batch(
 
     updated_fields: dict[str, object] = {}
 
-    if payload.model_name is not None:
-        batch.model_name = payload.model_name
-        updated_fields["model_name"] = payload.model_name
-    if payload.batch_code is not None:
-        batch.batch_code = payload.batch_code
-        updated_fields["batch_code"] = payload.batch_code
-    if payload.unit_cost is not None:
-        batch.unit_cost = _to_decimal(payload.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        updated_fields["unit_cost"] = float(batch.unit_cost)
-    if payload.quantity is not None:
-        batch.quantity = payload.quantity
-        updated_fields["quantity"] = payload.quantity
-    if payload.purchase_date is not None:
-        batch.purchase_date = payload.purchase_date
-        updated_fields["purchase_date"] = batch.purchase_date.isoformat()
-    if payload.notes is not None:
-        batch.notes = payload.notes
-        updated_fields["notes"] = payload.notes
-    if payload.store_id is not None:
-        store = get_store(db, payload.store_id)
-        batch.store_id = store.id
-        updated_fields["store_id"] = store.id
-    if payload.device_id is not None:
-        if payload.device_id:
-            device = db.get(models.Device, payload.device_id)
-            if device is None:
-                raise LookupError("device_not_found")
-            batch.device_id = device.id
-            updated_fields["device_id"] = device.id
-        else:
-            batch.device_id = None
-            updated_fields["device_id"] = None
+    with transactional_session(db):
+        if payload.model_name is not None:
+            batch.model_name = payload.model_name
+            updated_fields["model_name"] = payload.model_name
+        if payload.batch_code is not None:
+            batch.batch_code = payload.batch_code
+            updated_fields["batch_code"] = payload.batch_code
+        if payload.unit_cost is not None:
+            batch.unit_cost = _to_decimal(payload.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            updated_fields["unit_cost"] = float(batch.unit_cost)
+        if payload.quantity is not None:
+            batch.quantity = payload.quantity
+            updated_fields["quantity"] = payload.quantity
+        if payload.purchase_date is not None:
+            batch.purchase_date = payload.purchase_date
+            updated_fields["purchase_date"] = batch.purchase_date.isoformat()
+        if payload.notes is not None:
+            batch.notes = payload.notes
+            updated_fields["notes"] = payload.notes
+        if payload.store_id is not None:
+            store = get_store(db, payload.store_id)
+            batch.store_id = store.id
+            updated_fields["store_id"] = store.id
+        if payload.device_id is not None:
+            if payload.device_id:
+                device = db.get(models.Device, payload.device_id)
+                if device is None:
+                    raise LookupError("device_not_found")
+                batch.device_id = device.id
+                updated_fields["device_id"] = device.id
+            else:
+                batch.device_id = None
+                updated_fields["device_id"] = None
 
-    batch.updated_at = datetime.utcnow()
+        batch.updated_at = datetime.utcnow()
 
-    db.add(batch)
-    commit_session(db)
-    db.refresh(batch)
-
-    if updated_fields:
-        _log_action(
-            db,
-            action="supplier_batch_updated",
-            entity_type="supplier_batch",
-            entity_id=str(batch.id),
-            performed_by_id=performed_by_id,
-            details=json.dumps(updated_fields),
-        )
-        commit_session(db)
+        db.add(batch)
+        flush_session(db)
         db.refresh(batch)
+
+        if updated_fields:
+            _log_action(
+                db,
+                action="supplier_batch_updated",
+                entity_type="supplier_batch",
+                entity_id=str(batch.id),
+                performed_by_id=performed_by_id,
+                details=json.dumps(updated_fields),
+            )
+            flush_session(db)
+            db.refresh(batch)
     return batch
 
 
@@ -4226,18 +4235,19 @@ def delete_supplier_batch(
     if batch is None:
         raise LookupError("supplier_batch_not_found")
     store_id = batch.store_id
-    db.delete(batch)
-    commit_session(db)
-    if store_id:
-        _recalculate_store_inventory_value(db, store_id)
-    _log_action(
-        db,
-        action="supplier_batch_deleted",
-        entity_type="supplier_batch",
-        entity_id=str(batch_id),
-        performed_by_id=performed_by_id,
-    )
-    commit_session(db)
+    with transactional_session(db):
+        db.delete(batch)
+        flush_session(db)
+        if store_id:
+            _recalculate_store_inventory_value(db, store_id)
+        _log_action(
+            db,
+            action="supplier_batch_deleted",
+            entity_type="supplier_batch",
+            entity_id=str(batch_id),
+            performed_by_id=performed_by_id,
+        )
+        flush_session(db)
 
 
 def export_suppliers_csv(
@@ -4346,38 +4356,38 @@ def create_device(
         payload_data["estado"] = "disponible"
     if payload_data.get("fecha_ingreso") is None:
         payload_data["fecha_ingreso"] = payload_data.get("fecha_compra") or date.today()
-    device = models.Device(store_id=store_id, **payload_data)
-    if unit_price is None:
-        _recalculate_sale_price(device)
-    else:
-        device.unit_price = unit_price
-        device.precio_venta = unit_price
-    db.add(device)
-    try:
-        commit_session(db)
-    except IntegrityError as exc:
-        db.rollback()
-        raise ValueError("device_already_exists") from exc
-    db.refresh(device)
+    with transactional_session(db):
+        device = models.Device(store_id=store_id, **payload_data)
+        if unit_price is None:
+            _recalculate_sale_price(device)
+        else:
+            device.unit_price = unit_price
+            device.precio_venta = unit_price
+        db.add(device)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("device_already_exists") from exc
+        db.refresh(device)
 
-    _log_action(
-        db,
-        action="device_created",
-        entity_type="device",
-        entity_id=str(device.id),
-        performed_by_id=performed_by_id,
-        details=f"SKU={device.sku}",
-    )
-    commit_session(db)
-    db.refresh(device)
-    _recalculate_store_inventory_value(db, store_id)
-    enqueue_sync_outbox(
-        db,
-        entity_type="device",
-        entity_id=str(device.id),
-        operation="UPSERT",
-        payload=_device_sync_payload(device),
-    )
+        _log_action(
+            db,
+            action="device_created",
+            entity_type="device",
+            entity_id=str(device.id),
+            performed_by_id=performed_by_id,
+            details=f"SKU={device.sku}",
+        )
+        flush_session(db)
+        db.refresh(device)
+        _recalculate_store_inventory_value(db, store_id)
+        enqueue_sync_outbox(
+            db,
+            entity_type="device",
+            entity_id=str(device.id),
+            operation="UPSERT",
+            payload=_device_sync_payload(device),
+        )
     return device
 
 
@@ -4463,48 +4473,49 @@ def update_device(
         "proveedor": device.proveedor,
     }
 
-    for key, value in updated_fields.items():
-        setattr(device, key, value)
-    if manual_price is not None:
-        device.unit_price = manual_price
-        device.precio_venta = manual_price
-    elif {"costo_unitario", "margen_porcentaje"}.intersection(updated_fields):
-        _recalculate_sale_price(device)
-    commit_session(db)
-    db.refresh(device)
+    with transactional_session(db):
+        for key, value in updated_fields.items():
+            setattr(device, key, value)
+        if manual_price is not None:
+            device.unit_price = manual_price
+            device.precio_venta = manual_price
+        elif {"costo_unitario", "margen_porcentaje"}.intersection(updated_fields):
+            _recalculate_sale_price(device)
+        flush_session(db)
+        db.refresh(device)
 
-    fields_changed = list(updated_fields.keys())
-    if manual_price is not None:
-        fields_changed.extend(["unit_price", "precio_venta"])
-    if fields_changed:
-        sensitive_after = {
-            "costo_unitario": device.costo_unitario,
-            "estado_comercial": device.estado_comercial,
-            "proveedor": device.proveedor,
-        }
-        sensitive_changes = {
-            key: {"before": str(sensitive_before[key]), "after": str(value)}
-            for key, value in sensitive_after.items()
-            if sensitive_before.get(key) != value
-        }
-        _log_action(
+        fields_changed = list(updated_fields.keys())
+        if manual_price is not None:
+            fields_changed.extend(["unit_price", "precio_venta"])
+        if fields_changed:
+            sensitive_after = {
+                "costo_unitario": device.costo_unitario,
+                "estado_comercial": device.estado_comercial,
+                "proveedor": device.proveedor,
+            }
+            sensitive_changes = {
+                key: {"before": str(sensitive_before[key]), "after": str(value)}
+                for key, value in sensitive_after.items()
+                if sensitive_before.get(key) != value
+            }
+            _log_action(
+                db,
+                action="device_updated",
+                entity_type="device",
+                entity_id=str(device.id),
+                performed_by_id=performed_by_id,
+                details=json.dumps({"fields": fields_changed, "sensitive": sensitive_changes}),
+            )
+            flush_session(db)
+            db.refresh(device)
+        _recalculate_store_inventory_value(db, store_id)
+        enqueue_sync_outbox(
             db,
-            action="device_updated",
             entity_type="device",
             entity_id=str(device.id),
-            performed_by_id=performed_by_id,
-            details=json.dumps({"fields": fields_changed, "sensitive": sensitive_changes}),
+            operation="UPSERT",
+            payload=_device_sync_payload(device),
         )
-        commit_session(db)
-        db.refresh(device)
-    _recalculate_store_inventory_value(db, store_id)
-    enqueue_sync_outbox(
-        db,
-        entity_type="device",
-        entity_id=str(device.id),
-        operation="UPSERT",
-        payload=_device_sync_payload(device),
-    )
     return device
 
 
@@ -4537,38 +4548,39 @@ def upsert_device_identifier(
         identifier = models.DeviceIdentifier(producto_id=device.id)
         created = True
 
-    identifier.imei_1 = imei_1
-    identifier.imei_2 = imei_2
-    identifier.numero_serie = numero_serie
-    identifier.estado_tecnico = payload_data.get("estado_tecnico")
-    identifier.observaciones = payload_data.get("observaciones")
+    with transactional_session(db):
+        identifier.imei_1 = imei_1
+        identifier.imei_2 = imei_2
+        identifier.numero_serie = numero_serie
+        identifier.estado_tecnico = payload_data.get("estado_tecnico")
+        identifier.observaciones = payload_data.get("observaciones")
 
-    db.add(identifier)
-    commit_session(db)
-    db.refresh(identifier)
+        db.add(identifier)
+        flush_session(db)
+        db.refresh(identifier)
 
-    action = "device_identifier_created" if created else "device_identifier_updated"
-    details_parts: list[str] = []
-    if imei_1:
-        details_parts.append(f"IMEI1={imei_1}")
-    if imei_2:
-        details_parts.append(f"IMEI2={imei_2}")
-    if numero_serie:
-        details_parts.append(f"SERIE={numero_serie}")
-    if reason:
-        details_parts.append(f"MOTIVO={reason}")
-    details = ", ".join(details_parts) if details_parts else None
+        action = "device_identifier_created" if created else "device_identifier_updated"
+        details_parts: list[str] = []
+        if imei_1:
+            details_parts.append(f"IMEI1={imei_1}")
+        if imei_2:
+            details_parts.append(f"IMEI2={imei_2}")
+        if numero_serie:
+            details_parts.append(f"SERIE={numero_serie}")
+        if reason:
+            details_parts.append(f"MOTIVO={reason}")
+        details = ", ".join(details_parts) if details_parts else None
 
-    _log_action(
-        db,
-        action=action,
-        entity_type="device",
-        entity_id=str(device.id),
-        performed_by_id=performed_by_id,
-        details=details,
-    )
-    commit_session(db)
-    db.refresh(identifier)
+        _log_action(
+            db,
+            action=action,
+            entity_type="device",
+            entity_id=str(device.id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
+        flush_session(db)
+        db.refresh(identifier)
     return identifier
 
 
@@ -4729,126 +4741,127 @@ def create_inventory_movement(
     ):
         raise ValueError("insufficient_stock")
 
-    if payload.tipo_movimiento == models.MovementType.IN:
-        device.quantity += payload.cantidad
-        if payload.unit_cost is not None:
-            current_total_cost = _to_decimal(device.costo_unitario) * _to_decimal(
-                device.quantity - payload.cantidad
-            )
-            incoming_cost_total = _to_decimal(payload.unit_cost) * _to_decimal(
-                payload.cantidad
-            )
-            divisor = _to_decimal(device.quantity or 1)
-            average_cost = (current_total_cost + incoming_cost_total) / divisor
-            device.costo_unitario = average_cost.quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-            _recalculate_sale_price(device)
-    elif payload.tipo_movimiento == models.MovementType.OUT:
-        device.quantity -= payload.cantidad
-        if source_store_id is None:
-            source_store_id = store_id
-    elif payload.tipo_movimiento == models.MovementType.ADJUST:
-        device.quantity = payload.cantidad
-        if source_store_id is None:
-            source_store_id = store_id
+    with transactional_session(db):
+        if payload.tipo_movimiento == models.MovementType.IN:
+            device.quantity += payload.cantidad
+            if payload.unit_cost is not None:
+                current_total_cost = _to_decimal(device.costo_unitario) * _to_decimal(
+                    device.quantity - payload.cantidad
+                )
+                incoming_cost_total = _to_decimal(payload.unit_cost) * _to_decimal(
+                    payload.cantidad
+                )
+                divisor = _to_decimal(device.quantity or 1)
+                average_cost = (current_total_cost + incoming_cost_total) / divisor
+                device.costo_unitario = average_cost.quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                _recalculate_sale_price(device)
+        elif payload.tipo_movimiento == models.MovementType.OUT:
+            device.quantity -= payload.cantidad
+            if source_store_id is None:
+                source_store_id = store_id
+        elif payload.tipo_movimiento == models.MovementType.ADJUST:
+            device.quantity = payload.cantidad
+            if source_store_id is None:
+                source_store_id = store_id
 
-    new_quantity = device.quantity
-    quantity_delta = new_quantity - previous_quantity
-    reason_segment = f", motivo={payload.comentario}" if payload.comentario else ""
-    movement_details = (
-        "tipo="
-        f"{payload.tipo_movimiento.value}, cantidad={payload.cantidad}, "
-        f"stock_previo={previous_quantity}, stock_actual={new_quantity}{reason_segment}"
-    )
-
-    movement = models.InventoryMovement(
-        store=store,
-        source_store_id=source_store_id,
-        device=device,
-        movement_type=payload.tipo_movimiento,
-        quantity=payload.cantidad,
-        comment=payload.comentario,
-        unit_cost=
-            _to_decimal(payload.unit_cost) if payload.unit_cost is not None else None,
-        performed_by_id=performed_by_id,
-    )
-    db.add(movement)
-    commit_session(db)
-    db.refresh(device)
-    db.refresh(movement)
-    # Aseguramos que las relaciones necesarias estén disponibles para la respuesta serializada.
-    if movement.store is not None:
-        _ = movement.store.name
-    if movement.source_store is not None:
-        _ = movement.source_store.name
-    if movement.performed_by is not None:
-        _ = movement.performed_by.username
-
-    _log_action(
-        db,
-        action="inventory_movement",
-        entity_type="device",
-        entity_id=str(device.id),
-        performed_by_id=performed_by_id,
-        details=movement_details,
-    )
-
-    if (
-        payload.tipo_movimiento == models.MovementType.ADJUST
-        and quantity_delta != 0
-        and abs(quantity_delta) >= settings.inventory_adjustment_variance_threshold
-    ):
-        adjustment_reason = (
-            f", motivo={payload.comentario}" if payload.comentario else ""
+        new_quantity = device.quantity
+        quantity_delta = new_quantity - previous_quantity
+        reason_segment = f", motivo={payload.comentario}" if payload.comentario else ""
+        movement_details = (
+            "tipo="
+            f"{payload.tipo_movimiento.value}, cantidad={payload.cantidad}, "
+            f"stock_previo={previous_quantity}, stock_actual={new_quantity}{reason_segment}"
         )
+
+        movement = models.InventoryMovement(
+            store=store,
+            source_store_id=source_store_id,
+            device=device,
+            movement_type=payload.tipo_movimiento,
+            quantity=payload.cantidad,
+            comment=payload.comentario,
+            unit_cost=
+                _to_decimal(payload.unit_cost) if payload.unit_cost is not None else None,
+            performed_by_id=performed_by_id,
+        )
+        db.add(movement)
+        flush_session(db)
+        db.refresh(device)
+        db.refresh(movement)
+        # Aseguramos que las relaciones necesarias estén disponibles para la respuesta serializada.
+        if movement.store is not None:
+            _ = movement.store.name
+        if movement.source_store is not None:
+            _ = movement.source_store.name
+        if movement.performed_by is not None:
+            _ = movement.performed_by.username
+
         _log_action(
             db,
-            action="inventory_adjustment_alert",
+            action="inventory_movement",
             entity_type="device",
             entity_id=str(device.id),
             performed_by_id=performed_by_id,
-            details=(
-                "Ajuste manual registrado; inconsistencia detectada"
-                f" en la sucursal {store.name}. stock_previo={previous_quantity}, "
-                f"stock_actual={new_quantity}, variacion={quantity_delta:+d}"
-                f", umbral={settings.inventory_adjustment_variance_threshold}{adjustment_reason}"
-            ),
+            details=movement_details,
         )
 
-    if new_quantity <= settings.inventory_low_stock_threshold:
-        _log_action(
-            db,
-            action="inventory_low_stock_alert",
-            entity_type="device",
-            entity_id=str(device.id),
-            performed_by_id=performed_by_id,
-            details=(
-                "Stock bajo detectado"
-                f" en la sucursal {store.name}. dispositivo={device.sku}, "
-                f"stock_actual={new_quantity}, umbral={settings.inventory_low_stock_threshold}"
-            ),
-        )
+        if (
+            payload.tipo_movimiento == models.MovementType.ADJUST
+            and quantity_delta != 0
+            and abs(quantity_delta) >= settings.inventory_adjustment_variance_threshold
+        ):
+            adjustment_reason = (
+                f", motivo={payload.comentario}" if payload.comentario else ""
+            )
+            _log_action(
+                db,
+                action="inventory_adjustment_alert",
+                entity_type="device",
+                entity_id=str(device.id),
+                performed_by_id=performed_by_id,
+                details=(
+                    "Ajuste manual registrado; inconsistencia detectada"
+                    f" en la sucursal {store.name}. stock_previo={previous_quantity}, "
+                    f"stock_actual={new_quantity}, variacion={quantity_delta:+d}"
+                    f", umbral={settings.inventory_adjustment_variance_threshold}{adjustment_reason}"
+                ),
+            )
 
-    commit_session(db)
-    db.refresh(movement)
-    total_value = _recalculate_store_inventory_value(db, store_id)
-    setattr(movement, "store_inventory_value", total_value)
-    enqueue_sync_outbox(
-        db,
-        entity_type="inventory",
-        entity_id=str(movement.id),
-        operation="UPSERT",
-        payload=_inventory_movement_payload(movement),
-    )
-    if movement.device is not None:
+        if new_quantity <= settings.inventory_low_stock_threshold:
+            _log_action(
+                db,
+                action="inventory_low_stock_alert",
+                entity_type="device",
+                entity_id=str(device.id),
+                performed_by_id=performed_by_id,
+                details=(
+                    "Stock bajo detectado"
+                    f" en la sucursal {store.name}. dispositivo={device.sku}, "
+                    f"stock_actual={new_quantity}, umbral={settings.inventory_low_stock_threshold}"
+                ),
+            )
+
+        flush_session(db)
+        db.refresh(movement)
+        total_value = _recalculate_store_inventory_value(db, store_id)
+        setattr(movement, "store_inventory_value", total_value)
         enqueue_sync_outbox(
             db,
-            entity_type="device",
-            entity_id=str(movement.device.id),
+            entity_type="inventory",
+            entity_id=str(movement.id),
             operation="UPSERT",
-            payload=_device_sync_payload(movement.device),
+            payload=_inventory_movement_payload(movement),
         )
+        if movement.device is not None:
+            enqueue_sync_outbox(
+                db,
+                entity_type="device",
+                entity_id=str(movement.device.id),
+                operation="UPSERT",
+                payload=_device_sync_payload(movement.device),
+            )
     return movement
 
 
@@ -6241,28 +6254,28 @@ def record_sync_session(
         error_message=error_message,
         triggered_by_id=triggered_by_id,
     )
-    db.add(session)
-    commit_session(db)
-    db.refresh(session)
+    with transactional_session(db):
+        db.add(session)
+        flush_session(db)
+        db.refresh(session)
 
-    _log_action(
-        db,
-        action="sync_session",
-        entity_type="store" if store_id else "global",
-        entity_id=str(store_id or 0),
-        performed_by_id=triggered_by_id,
-        details=json.dumps(
-            {
-                "estado": status.value,
-                "modo": mode.value,
-                "eventos_procesados": processed_events,
-                "diferencias_detectadas": differences_detected,
-            },
-            ensure_ascii=False,
-        ),
-    )
-    commit_session(db)
-    db.refresh(session)
+        _log_action(
+            db,
+            action="sync_session",
+            entity_type="store" if store_id else "global",
+            entity_id=str(store_id or 0),
+            performed_by_id=triggered_by_id,
+            details=json.dumps(
+                {
+                    "estado": status.value,
+                    "modo": mode.value,
+                    "eventos_procesados": processed_events,
+                    "diferencias_detectadas": differences_detected,
+                },
+                ensure_ascii=False,
+            ),
+        )
+        db.refresh(session)
     return session
 
 
@@ -6277,17 +6290,17 @@ def log_sync_discrepancies(
     if not discrepancies:
         return
 
-    for discrepancy in discrepancies:
-        entity_id = str(discrepancy.get("sku") or discrepancy.get("entity", "global"))
-        _log_action(
-            db,
-            action="sync_discrepancy",
-            entity_type="inventory",
-            entity_id=entity_id,
-            performed_by_id=performed_by_id,
-            details=json.dumps(discrepancy, ensure_ascii=False, default=str),
-        )
-    commit_session(db)
+    with transactional_session(db):
+        for discrepancy in discrepancies:
+            entity_id = str(discrepancy.get("sku") or discrepancy.get("entity", "global"))
+            _log_action(
+                db,
+                action="sync_discrepancy",
+                entity_type="inventory",
+                entity_id=entity_id,
+                performed_by_id=performed_by_id,
+                details=json.dumps(discrepancy, ensure_ascii=False, default=str),
+            )
 
 
 def mark_outbox_entries_sent(
@@ -6308,30 +6321,29 @@ def mark_outbox_entries_sent(
         return []
 
     now = datetime.utcnow()
-    for entry in entries:
-        entry.status = models.SyncOutboxStatus.SENT
-        entry.last_attempt_at = now
-        entry.attempt_count = (entry.attempt_count or 0) + 1
-        entry.error_message = None
-        entry.updated_at = now
-    commit_session(db)
+    with transactional_session(db):
+        for entry in entries:
+            entry.status = models.SyncOutboxStatus.SENT
+            entry.last_attempt_at = now
+            entry.attempt_count = (entry.attempt_count or 0) + 1
+            entry.error_message = None
+            entry.updated_at = now
+        flush_session(db)
 
-    for entry in entries:
-        db.refresh(entry)
-        _log_action(
-            db,
-            action="sync_outbox_sent",
-            entity_type=entry.entity_type,
-            entity_id=entry.entity_id,
-            performed_by_id=performed_by_id,
-            details=json.dumps(
-                {"operation": entry.operation, "status": entry.status.value},
-                ensure_ascii=False,
-            ),
-        )
-    commit_session(db)
-    for entry in entries:
-        db.refresh(entry)
+        for entry in entries:
+            db.refresh(entry)
+            _log_action(
+                db,
+                action="sync_outbox_sent",
+                entity_type=entry.entity_type,
+                entity_id=entry.entity_id,
+                performed_by_id=performed_by_id,
+                details=json.dumps(
+                    {"operation": entry.operation, "status": entry.status.value},
+                    ensure_ascii=False,
+                ),
+            )
+            db.refresh(entry)
     return entries
 
 
@@ -6399,34 +6411,35 @@ def enqueue_sync_outbox(
     payload: dict[str, object],
     priority: models.SyncOutboxPriority | None = None,
 ) -> models.SyncOutbox:
-    serialized = json.dumps(payload, ensure_ascii=False, default=str)
-    resolved_priority = _resolve_outbox_priority(entity_type, priority)
-    statement = select(models.SyncOutbox).where(
-        models.SyncOutbox.entity_type == entity_type,
-        models.SyncOutbox.entity_id == entity_id,
-    )
-    entry = db.scalars(statement).first()
-    if entry is None:
-        entry = models.SyncOutbox(
-            entity_type=entity_type,
-            entity_id=entity_id,
-            operation=operation,
-            payload=serialized,
-            status=models.SyncOutboxStatus.PENDING,
-            priority=resolved_priority,
+    with transactional_session(db):
+        serialized = json.dumps(payload, ensure_ascii=False, default=str)
+        resolved_priority = _resolve_outbox_priority(entity_type, priority)
+        statement = select(models.SyncOutbox).where(
+            models.SyncOutbox.entity_type == entity_type,
+            models.SyncOutbox.entity_id == entity_id,
         )
-        db.add(entry)
-    else:
-        entry.operation = operation
-        entry.payload = serialized
-        entry.status = models.SyncOutboxStatus.PENDING
-        entry.attempt_count = 0
-        entry.error_message = None
-        entry.last_attempt_at = None
-        if _priority_weight(resolved_priority) < _priority_weight(entry.priority):
-            entry.priority = resolved_priority
-    commit_session(db)
-    db.refresh(entry)
+        entry = db.scalars(statement).first()
+        if entry is None:
+            entry = models.SyncOutbox(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                operation=operation,
+                payload=serialized,
+                status=models.SyncOutboxStatus.PENDING,
+                priority=resolved_priority,
+            )
+            db.add(entry)
+        else:
+            entry.operation = operation
+            entry.payload = serialized
+            entry.status = models.SyncOutboxStatus.PENDING
+            entry.attempt_count = 0
+            entry.error_message = None
+            entry.last_attempt_at = None
+            if _priority_weight(resolved_priority) < _priority_weight(entry.priority):
+                entry.priority = resolved_priority
+        flush_session(db)
+        db.refresh(entry)
     return entry
 
 
@@ -6471,27 +6484,28 @@ def reset_outbox_entries(
         return []
 
     now = datetime.utcnow()
-    for entry in entries:
-        entry.status = models.SyncOutboxStatus.PENDING
-        entry.attempt_count = 0
-        entry.last_attempt_at = None
-        entry.error_message = None
-        entry.updated_at = now
-    commit_session(db)
-    for entry in entries:
-        db.refresh(entry)
-        details_payload = {"operation": entry.operation}
-        if reason:
-            details_payload["reason"] = reason
-        _log_action(
-            db,
-            action="sync_outbox_reset",
-            entity_type=entry.entity_type,
-            entity_id=str(entry.id),
-            performed_by_id=performed_by_id,
-            details=json.dumps(details_payload, ensure_ascii=False),
-        )
-    commit_session(db)
+    with transactional_session(db):
+        for entry in entries:
+            entry.status = models.SyncOutboxStatus.PENDING
+            entry.attempt_count = 0
+            entry.last_attempt_at = None
+            entry.error_message = None
+            entry.updated_at = now
+        flush_session(db)
+
+        for entry in entries:
+            db.refresh(entry)
+            details_payload = {"operation": entry.operation}
+            if reason:
+                details_payload["reason"] = reason
+            _log_action(
+                db,
+                action="sync_outbox_reset",
+                entity_type=entry.entity_type,
+                entity_id=str(entry.id),
+                performed_by_id=performed_by_id,
+                details=json.dumps(details_payload, ensure_ascii=False),
+            )
     refreshed = list(db.scalars(statement))
     return refreshed
 
@@ -6825,19 +6839,20 @@ def upsert_store_membership(
     can_receive_transfer: bool,
 ) -> models.StoreMembership:
     membership = get_store_membership(db, user_id=user_id, store_id=store_id)
-    if membership is None:
-        membership = models.StoreMembership(
-            user_id=user_id,
-            store_id=store_id,
-            can_create_transfer=can_create_transfer,
-            can_receive_transfer=can_receive_transfer,
-        )
-        db.add(membership)
-    else:
-        membership.can_create_transfer = can_create_transfer
-        membership.can_receive_transfer = can_receive_transfer
-    commit_session(db)
-    db.refresh(membership)
+    with transactional_session(db):
+        if membership is None:
+            membership = models.StoreMembership(
+                user_id=user_id,
+                store_id=store_id,
+                can_create_transfer=can_create_transfer,
+                can_receive_transfer=can_receive_transfer,
+            )
+            db.add(membership)
+        else:
+            membership.can_create_transfer = can_create_transfer
+            membership.can_receive_transfer = can_receive_transfer
+        flush_session(db)
+        db.refresh(membership)
     return membership
 
 
@@ -6919,36 +6934,34 @@ def create_transfer_order(
         requested_by_id=requested_by_id,
         reason=payload.reason,
     )
-    db.add(order)
-    db.flush()
+    with transactional_session(db):
+        db.add(order)
+        flush_session(db)
 
-    for item in payload.items:
-        device = get_device(db, origin_store.id, item.device_id)
-        if item.quantity <= 0:
-            raise ValueError("transfer_invalid_quantity")
-        order_item = models.TransferOrderItem(
-            transfer_order=order,
-            device=device,
-            quantity=item.quantity,
+        for item in payload.items:
+            device = get_device(db, origin_store.id, item.device_id)
+            if item.quantity <= 0:
+                raise ValueError("transfer_invalid_quantity")
+            order_item = models.TransferOrderItem(
+                transfer_order=order,
+                device=device,
+                quantity=item.quantity,
+            )
+            db.add(order_item)
+
+        flush_session(db)
+        _log_action(
+            db,
+            action="transfer_created",
+            entity_type="transfer_order",
+            entity_id=str(order.id),
+            performed_by_id=requested_by_id,
+            details=json.dumps({
+                "origin": origin_store.id,
+                "destination": destination_store.id,
+                "reason": payload.reason,
+            }),
         )
-        db.add(order_item)
-
-    commit_session(db)
-    db.refresh(order)
-
-    _log_action(
-        db,
-        action="transfer_created",
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        performed_by_id=requested_by_id,
-        details=json.dumps({
-            "origin": origin_store.id,
-            "destination": destination_store.id,
-            "reason": payload.reason,
-        }),
-    )
-    commit_session(db)
     db.refresh(order)
     return order
 
@@ -6987,24 +7000,24 @@ def dispatch_transfer_order(
         permission="create",
     )
 
-    order.status = models.TransferStatus.EN_TRANSITO
-    order.dispatched_by_id = performed_by_id
-    order.dispatched_at = datetime.utcnow()
-    order.reason = reason or order.reason
+    with transactional_session(db):
+        order.status = models.TransferStatus.EN_TRANSITO
+        order.dispatched_by_id = performed_by_id
+        order.dispatched_at = datetime.utcnow()
+        order.reason = reason or order.reason
 
-    commit_session(db)
-    db.refresh(order)
+        flush_session(db)
 
-    _log_action(
-        db,
-        action="transfer_dispatched",
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"status": order.status.value, "reason": reason}),
-    )
-    commit_session(db)
-    db.refresh(order)
+        _log_action(
+            db,
+            action="transfer_dispatched",
+            entity_type="transfer_order",
+            entity_id=str(order.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"status": order.status.value, "reason": reason}),
+        )
+
+        db.refresh(order)
     return order
 
 
@@ -7080,26 +7093,26 @@ def receive_transfer_order(
         permission="receive",
     )
 
-    _apply_transfer_reception(db, order, performed_by_id=performed_by_id)
+    with transactional_session(db):
+        _apply_transfer_reception(db, order, performed_by_id=performed_by_id)
 
-    order.status = models.TransferStatus.RECIBIDA
-    order.received_by_id = performed_by_id
-    order.received_at = datetime.utcnow()
-    order.reason = reason or order.reason
+        order.status = models.TransferStatus.RECIBIDA
+        order.received_by_id = performed_by_id
+        order.received_at = datetime.utcnow()
+        order.reason = reason or order.reason
 
-    commit_session(db)
-    db.refresh(order)
+        flush_session(db)
 
-    _log_action(
-        db,
-        action="transfer_received",
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"status": order.status.value, "reason": reason}),
-    )
-    commit_session(db)
-    db.refresh(order)
+        _log_action(
+            db,
+            action="transfer_received",
+            entity_type="transfer_order",
+            entity_id=str(order.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"status": order.status.value, "reason": reason}),
+        )
+
+        db.refresh(order)
     return order
 
 
@@ -7121,24 +7134,24 @@ def cancel_transfer_order(
         permission="create",
     )
 
-    order.status = models.TransferStatus.CANCELADA
-    order.cancelled_by_id = performed_by_id
-    order.cancelled_at = datetime.utcnow()
-    order.reason = reason or order.reason
+    with transactional_session(db):
+        order.status = models.TransferStatus.CANCELADA
+        order.cancelled_by_id = performed_by_id
+        order.cancelled_at = datetime.utcnow()
+        order.reason = reason or order.reason
 
-    commit_session(db)
-    db.refresh(order)
+        flush_session(db)
 
-    _log_action(
-        db,
-        action="transfer_cancelled",
-        entity_type="transfer_order",
-        entity_id=str(order.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"status": order.status.value, "reason": reason}),
-    )
-    commit_session(db)
-    db.refresh(order)
+        _log_action(
+            db,
+            action="transfer_cancelled",
+            entity_type="transfer_order",
+            entity_id=str(order.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"status": order.status.value, "reason": reason}),
+        )
+
+        db.refresh(order)
     return order
 
 
@@ -7221,25 +7234,25 @@ def create_backup_job(
         notes=notes,
         triggered_by_id=triggered_by_id,
     )
-    db.add(job)
-    db.flush()
+    with transactional_session(db):
+        db.add(job)
+        flush_session(db)
 
-    componentes = ",".join(components)
-    detalles = (
-        f"modo={mode.value}; tamaño={total_size_bytes}; componentes={componentes}; archivos={archive_path}"
-    )
-    if reason:
-        detalles = f"{detalles}; motivo={reason}"
-    _log_action(
-        db,
-        action="backup_generated",
-        entity_type="backup",
-        entity_id=str(job.id),
-        performed_by_id=triggered_by_id,
-        details=detalles,
-    )
-    commit_session(db)
-    db.refresh(job)
+        componentes = ",".join(components)
+        detalles = (
+            f"modo={mode.value}; tamaño={total_size_bytes}; componentes={componentes}; archivos={archive_path}"
+        )
+        if reason:
+            detalles = f"{detalles}; motivo={reason}"
+        _log_action(
+            db,
+            action="backup_generated",
+            entity_type="backup",
+            entity_id=str(job.id),
+            performed_by_id=triggered_by_id,
+            details=detalles,
+        )
+        db.refresh(job)
     return job
 
 
@@ -7435,57 +7448,55 @@ def create_purchase_record(
         forma_pago=payload.forma_pago,
         estado=payload.estado or "REGISTRADA",
     )
-    db.add(purchase)
-    db.flush()
+    with transactional_session(db):
+        db.add(purchase)
+        flush_session(db)
 
-    for item in payload.items:
-        if item.cantidad <= 0:
-            raise ValueError("purchase_record_invalid_quantity")
-        if item.costo_unitario < 0:
-            raise ValueError("purchase_record_invalid_cost")
+        for item in payload.items:
+            if item.cantidad <= 0:
+                raise ValueError("purchase_record_invalid_quantity")
+            if item.costo_unitario < 0:
+                raise ValueError("purchase_record_invalid_cost")
 
-        device = get_device_global(db, item.producto_id)
-        unit_cost = _to_decimal(item.costo_unitario).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        subtotal = (
-            unit_cost * _to_decimal(item.cantidad)
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            device = get_device_global(db, item.producto_id)
+            unit_cost = _to_decimal(item.costo_unitario).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            subtotal = (
+                unit_cost * _to_decimal(item.cantidad)
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-        db.add(
-            models.DetalleCompra(
-                compra_id=purchase.id_compra,
-                producto_id=device.id,
-                cantidad=item.cantidad,
-                costo_unitario=unit_cost,
-                subtotal=subtotal,
+            db.add(
+                models.DetalleCompra(
+                    compra_id=purchase.id_compra,
+                    producto_id=device.id,
+                    cantidad=item.cantidad,
+                    costo_unitario=unit_cost,
+                    subtotal=subtotal,
+                )
             )
+            subtotal_total += subtotal
+
+        tax_rate = _to_decimal(payload.impuesto_tasa)
+        impuesto = (subtotal_total * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total = (subtotal_total + impuesto).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        purchase.total = total
+        purchase.impuesto = impuesto
+
+        _log_action(
+            db,
+            action="purchase_record_created",
+            entity_type="purchase_record",
+            entity_id=str(purchase.id_compra),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "proveedor_id": vendor.id_proveedor,
+                    "total": float(total),
+                    "impuesto": float(impuesto),
+                    "motivo": reason,
+                }
+            ),
         )
-        subtotal_total += subtotal
-
-    tax_rate = _to_decimal(payload.impuesto_tasa)
-    impuesto = (subtotal_total * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    total = (subtotal_total + impuesto).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    purchase.total = total
-    purchase.impuesto = impuesto
-
-    commit_session(db)
-
-    _log_action(
-        db,
-        action="purchase_record_created",
-        entity_type="purchase_record",
-        entity_id=str(purchase.id_compra),
-        performed_by_id=performed_by_id,
-        details=json.dumps(
-            {
-                "proveedor_id": vendor.id_proveedor,
-                "total": float(total),
-                "impuesto": float(impuesto),
-                "motivo": reason,
-            }
-        ),
-    )
-    commit_session(db)
-
+    
     return get_purchase_record(db, purchase.id_compra)
 
 
@@ -7732,44 +7743,43 @@ def create_purchase_order(
         notes=payload.notes,
         created_by_id=created_by_id,
     )
-    db.add(order)
-    db.flush()
+    with transactional_session(db):
+        db.add(order)
+        flush_session(db)
 
-    for item in payload.items:
-        if item.quantity_ordered <= 0:
-            raise ValueError("purchase_invalid_quantity")
-        if item.unit_cost < 0:
-            raise ValueError("purchase_invalid_quantity")
+        for item in payload.items:
+            if item.quantity_ordered <= 0:
+                raise ValueError("purchase_invalid_quantity")
+            if item.unit_cost < 0:
+                raise ValueError("purchase_invalid_quantity")
 
-        device = get_device(db, payload.store_id, item.device_id)
-        order_item = models.PurchaseOrderItem(
-            purchase_order_id=order.id,
-            device_id=device.id,
-            quantity_ordered=item.quantity_ordered,
-            unit_cost=_to_decimal(item.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            device = get_device(db, payload.store_id, item.device_id)
+            order_item = models.PurchaseOrderItem(
+                purchase_order_id=order.id,
+                device_id=device.id,
+                quantity_ordered=item.quantity_ordered,
+                unit_cost=_to_decimal(item.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            )
+            db.add(order_item)
+
+        db.refresh(order)
+
+        _log_action(
+            db,
+            action="purchase_order_created",
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            performed_by_id=created_by_id,
+            details=json.dumps({"store_id": order.store_id, "supplier": order.supplier}),
         )
-        db.add(order_item)
-
-    commit_session(db)
-    db.refresh(order)
-
-    _log_action(
-        db,
-        action="purchase_order_created",
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        performed_by_id=created_by_id,
-        details=json.dumps({"store_id": order.store_id, "supplier": order.supplier}),
-    )
-    commit_session(db)
-    db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload=_purchase_order_payload(order),
-    )
+        db.refresh(order)
+        enqueue_sync_outbox(
+            db,
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            operation="UPSERT",
+            payload=_purchase_order_payload(order),
+        )
     return order
 
 
@@ -7852,33 +7862,33 @@ def receive_purchase_order(
         )
         reception_details[str(device.id)] = receive_item.quantity
 
-    if all(item.quantity_received == item.quantity_ordered for item in order.items):
-        order.status = models.PurchaseStatus.COMPLETADA
-        order.closed_at = datetime.utcnow()
-    else:
-        order.status = models.PurchaseStatus.PARCIAL
+    with transactional_session(db):
+        if all(item.quantity_received == item.quantity_ordered for item in order.items):
+            order.status = models.PurchaseStatus.COMPLETADA
+            order.closed_at = datetime.utcnow()
+        else:
+            order.status = models.PurchaseStatus.PARCIAL
 
-    commit_session(db)
-    db.refresh(order)
-    _recalculate_store_inventory_value(db, order.store_id)
+        flush_session(db)
+        db.refresh(order)
+        _recalculate_store_inventory_value(db, order.store_id)
 
-    _log_action(
-        db,
-        action="purchase_order_received",
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        performed_by_id=received_by_id,
-        details=json.dumps({"items": reception_details, "status": order.status.value}),
-    )
-    commit_session(db)
-    db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload=_purchase_order_payload(order),
-    )
+        _log_action(
+            db,
+            action="purchase_order_received",
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            performed_by_id=received_by_id,
+            details=json.dumps({"items": reception_details, "status": order.status.value}),
+        )
+        db.refresh(order)
+        enqueue_sync_outbox(
+            db,
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            operation="UPSERT",
+            payload=_purchase_order_payload(order),
+        )
     return order
 
 
@@ -7960,44 +7970,44 @@ def cancel_purchase_order(
     if order.status == models.PurchaseStatus.CANCELADA:
         raise ValueError("purchase_not_cancellable")
 
-    reversal_details = _revert_purchase_inventory(
-        db,
-        order,
-        cancelled_by_id=cancelled_by_id,
-        reason=reason,
-    )
+    with transactional_session(db):
+        reversal_details = _revert_purchase_inventory(
+            db,
+            order,
+            cancelled_by_id=cancelled_by_id,
+            reason=reason,
+        )
 
-    order.status = models.PurchaseStatus.CANCELADA
-    order.closed_at = datetime.utcnow()
-    if reason:
-        order.notes = (order.notes or "") + f" | Cancelación: {reason}" if order.notes else reason
+        order.status = models.PurchaseStatus.CANCELADA
+        order.closed_at = datetime.utcnow()
+        if reason:
+            order.notes = (order.notes or "") + f" | Cancelación: {reason}" if order.notes else reason
 
-    commit_session(db)
-    db.refresh(order)
+        flush_session(db)
+        db.refresh(order)
 
-    _log_action(
-        db,
-        action="purchase_order_cancelled",
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        performed_by_id=cancelled_by_id,
-        details=json.dumps(
-            {
-                "status": order.status.value,
-                "reason": reason,
-                "reversed_items": reversal_details,
-            }
-        ),
-    )
-    commit_session(db)
-    db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload=_purchase_order_payload(order),
-    )
+        _log_action(
+            db,
+            action="purchase_order_cancelled",
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            performed_by_id=cancelled_by_id,
+            details=json.dumps(
+                {
+                    "status": order.status.value,
+                    "reason": reason,
+                    "reversed_items": reversal_details,
+                }
+            ),
+        )
+        db.refresh(order)
+        enqueue_sync_outbox(
+            db,
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            operation="UPSERT",
+            payload=_purchase_order_payload(order),
+        )
     return order
 
 
@@ -8024,71 +8034,71 @@ def register_purchase_return(
     device = get_device(db, order.store_id, payload.device_id)
     if device.quantity < payload.quantity:
         raise ValueError("purchase_return_insufficient_stock")
-    device.quantity -= payload.quantity
+    with transactional_session(db):
+        device.quantity -= payload.quantity
 
-    order_cost = _to_decimal(order_item.unit_cost)
-    current_quantity = device.quantity + payload.quantity
-    current_cost_total = _to_decimal(device.costo_unitario) * _to_decimal(current_quantity)
-    remaining_cost_total = current_cost_total - (order_cost * _to_decimal(payload.quantity))
-    if remaining_cost_total < Decimal("0.00"):
-        remaining_cost_total = Decimal("0.00")
-    if device.quantity > 0:
-        device.costo_unitario = (
-            remaining_cost_total / _to_decimal(device.quantity)
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    else:
-        device.costo_unitario = Decimal("0.00")
+        order_cost = _to_decimal(order_item.unit_cost)
+        current_quantity = device.quantity + payload.quantity
+        current_cost_total = _to_decimal(device.costo_unitario) * _to_decimal(current_quantity)
+        remaining_cost_total = current_cost_total - (order_cost * _to_decimal(payload.quantity))
+        if remaining_cost_total < Decimal("0.00"):
+            remaining_cost_total = Decimal("0.00")
+        if device.quantity > 0:
+            device.costo_unitario = (
+                remaining_cost_total / _to_decimal(device.quantity)
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        else:
+            device.costo_unitario = Decimal("0.00")
 
-    _recalculate_sale_price(device)
+        _recalculate_sale_price(device)
 
-    db.add(
-        models.InventoryMovement(
-            store_id=order.store_id,
-            source_store_id=order.store_id,
-            device_id=device.id,
-            movement_type=models.MovementType.OUT,
-            quantity=payload.quantity,
-            comment=_build_purchase_movement_comment(
-                "Devolución proveedor",
-                order,
-                device,
-                payload.reason or reason,
-            ),
-            unit_cost=order_item.unit_cost,
-            performed_by_id=processed_by_id,
+        db.add(
+            models.InventoryMovement(
+                store_id=order.store_id,
+                source_store_id=order.store_id,
+                device_id=device.id,
+                movement_type=models.MovementType.OUT,
+                quantity=payload.quantity,
+                comment=_build_purchase_movement_comment(
+                    "Devolución proveedor",
+                    order,
+                    device,
+                    payload.reason or reason,
+                ),
+                unit_cost=order_item.unit_cost,
+                performed_by_id=processed_by_id,
+            )
         )
-    )
 
-    _recalculate_store_inventory_value(db, order.store_id)
+        _recalculate_store_inventory_value(db, order.store_id)
 
-    purchase_return = models.PurchaseReturn(
-        purchase_order_id=order.id,
-        device_id=device.id,
-        quantity=payload.quantity,
-        reason=payload.reason,
-        processed_by_id=processed_by_id,
-    )
-    db.add(purchase_return)
-    commit_session(db)
-    db.refresh(purchase_return)
+        purchase_return = models.PurchaseReturn(
+            purchase_order_id=order.id,
+            device_id=device.id,
+            quantity=payload.quantity,
+            reason=payload.reason,
+            processed_by_id=processed_by_id,
+        )
+        db.add(purchase_return)
+        flush_session(db)
+        db.refresh(purchase_return)
 
-    _log_action(
-        db,
-        action="purchase_return_registered",
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        performed_by_id=processed_by_id,
-        details=json.dumps({"device_id": payload.device_id, "quantity": payload.quantity}),
-    )
-    commit_session(db)
-    db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="purchase_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload=_purchase_order_payload(order),
-    )
+        _log_action(
+            db,
+            action="purchase_return_registered",
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            performed_by_id=processed_by_id,
+            details=json.dumps({"device_id": payload.device_id, "quantity": payload.quantity}),
+        )
+        db.refresh(order)
+        enqueue_sync_outbox(
+            db,
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            operation="UPSERT",
+            payload=_purchase_order_payload(order),
+        )
     return purchase_return
 
 
@@ -8210,21 +8220,20 @@ def import_purchase_orders_from_csv(
                 created_by_id=created_by_id,
             )
         except (LookupError, ValueError) as exc:
-            db.rollback()
             errors.append(f"Orden {reference}: {exc}")
             continue
         orders.append(order)
 
     if orders:
-        _log_action(
-            db,
-            action="purchase_orders_imported",
-            entity_type="purchase_order",
-            entity_id="bulk",
-            performed_by_id=created_by_id,
-            details=json.dumps({"imported": len(orders), "errors": len(errors)}),
-        )
-        commit_session(db)
+        with transactional_session(db):
+            _log_action(
+                db,
+                action="purchase_orders_imported",
+                entity_type="purchase_order",
+                entity_id="bulk",
+                performed_by_id=created_by_id,
+                details=json.dumps({"imported": len(orders), "errors": len(errors)}),
+            )
 
     return orders, errors
 
@@ -8293,24 +8302,24 @@ def create_recurring_order(
         payload=payload_data,
         created_by_id=created_by_id,
     )
-    db.add(template)
-    db.flush()
-    _log_action(
-        db,
-        action="recurring_order_created",
-        entity_type="recurring_order",
-        entity_id=str(template.id),
-        performed_by_id=created_by_id,
-        details=json.dumps(
-            {
-                "name": payload.name,
-                "order_type": payload.order_type.value,
-                "reason": reason,
-            }
-        ),
-    )
-    commit_session(db)
-    db.refresh(template)
+    with transactional_session(db):
+        db.add(template)
+        flush_session(db)
+        _log_action(
+            db,
+            action="recurring_order_created",
+            entity_type="recurring_order",
+            entity_id=str(template.id),
+            performed_by_id=created_by_id,
+            details=json.dumps(
+                {
+                    "name": payload.name,
+                    "order_type": payload.order_type.value,
+                    "reason": reason,
+                }
+            ),
+        )
+        db.refresh(template)
     return template
 
 
@@ -8355,24 +8364,24 @@ def execute_recurring_order(
     else:  # pragma: no cover - enum exhaustivo
         raise ValueError("Tipo de orden recurrente no soportado")
 
-    template.last_used_at = now
-    template.last_used_by_id = performed_by_id
+    with transactional_session(db):
+        template.last_used_at = now
+        template.last_used_by_id = performed_by_id
 
-    _log_action(
-        db,
-        action="recurring_order_executed",
-        entity_type="recurring_order",
-        entity_id=str(template.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps(
-            {
-                "order_type": template.order_type.value,
-                "reference_id": reference_id,
-            }
-        ),
-    )
-    commit_session(db)
-    db.refresh(template)
+        _log_action(
+            db,
+            action="recurring_order_executed",
+            entity_type="recurring_order",
+            entity_id=str(template.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "order_type": template.order_type.value,
+                    "reference_id": reference_id,
+                }
+            ),
+        )
+        db.refresh(template)
 
     return schemas.RecurringOrderExecutionResult(
         template_id=template.id,
@@ -8551,46 +8560,47 @@ def create_repair_order(
         notes=payload.notes,
         labor_cost=labor_cost,
     )
-    db.add(order)
-    db.flush()
+    with transactional_session(db):
+        db.add(order)
+        flush_session(db)
 
-    parts_cost = Decimal("0")
-    if payload.parts:
-        parts_cost = _apply_repair_parts(
+        parts_cost = Decimal("0")
+        if payload.parts:
+            parts_cost = _apply_repair_parts(
+                db,
+                order,
+                payload.parts,
+                performed_by_id=performed_by_id,
+                reason=reason,
+            )
+        order.total_cost = (labor_cost + parts_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        db.add(order)
+
+        if customer:
+            _append_customer_history(customer, f"Orden de reparación #{order.id} creada")
+            db.add(customer)
+
+        flush_session(db)
+        db.refresh(order)
+        if customer:
+            db.refresh(customer)
+
+        _log_action(
             db,
-            order,
-            payload.parts,
+            action="repair_order_created",
+            entity_type="repair_order",
+            entity_id=str(order.id),
             performed_by_id=performed_by_id,
-            reason=reason,
+            details=json.dumps({"store_id": order.store_id, "status": order.status.value}),
         )
-    order.total_cost = (labor_cost + parts_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    db.add(order)
-    commit_session(db)
-    db.refresh(order)
-
-    if customer:
-        _append_customer_history(customer, f"Orden de reparación #{order.id} creada")
-        db.add(customer)
-        commit_session(db)
-        db.refresh(customer)
-
-    _log_action(
-        db,
-        action="repair_order_created",
-        entity_type="repair_order",
-        entity_id=str(order.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"store_id": order.store_id, "status": order.status.value}),
-    )
-    commit_session(db)
-    db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="repair_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload=_repair_payload(order),
-    )
+        db.refresh(order)
+        enqueue_sync_outbox(
+            db,
+            entity_type="repair_order",
+            entity_id=str(order.id),
+            operation="UPSERT",
+            payload=_repair_payload(order),
+        )
     return order
 
 
@@ -8649,31 +8659,31 @@ def update_repair_order(
             reason=reason,
         )
         updated_fields["parts_cost"] = float(parts_cost)
-    order.total_cost = (order.labor_cost + order.parts_cost).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    db.add(order)
-    commit_session(db)
-    db.refresh(order)
+    with transactional_session(db):
+        order.total_cost = (order.labor_cost + order.parts_cost).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        db.add(order)
+        flush_session(db)
+        db.refresh(order)
 
-    if updated_fields:
-        _log_action(
+        if updated_fields:
+            _log_action(
+                db,
+                action="repair_order_updated",
+                entity_type="repair_order",
+                entity_id=str(order.id),
+                performed_by_id=performed_by_id,
+                details=json.dumps(updated_fields),
+            )
+            db.refresh(order)
+        enqueue_sync_outbox(
             db,
-            action="repair_order_updated",
             entity_type="repair_order",
             entity_id=str(order.id),
-            performed_by_id=performed_by_id,
-            details=json.dumps(updated_fields),
+            operation="UPSERT",
+            payload=_repair_payload(order),
         )
-        commit_session(db)
-        db.refresh(order)
-    enqueue_sync_outbox(
-        db,
-        entity_type="repair_order",
-        entity_id=str(order.id),
-        operation="UPSERT",
-        payload=_repair_payload(order),
-    )
     return order
 
 
@@ -8685,38 +8695,39 @@ def delete_repair_order(
     reason: str | None = None,
 ) -> None:
     order = get_repair_order(db, order_id)
-    for part in list(order.parts):
-        device = get_device(db, order.store_id, part.device_id)
-        device.quantity += part.quantity
-        db.add(
-            models.InventoryMovement(
-                store_id=order.store_id,
-                source_store_id=None,
-                device_id=device.id,
-                movement_type=models.MovementType.IN,
-                quantity=part.quantity,
-                comment=reason or f"Cancelación reparación #{order.id}",
-                performed_by_id=performed_by_id,
+    with transactional_session(db):
+        for part in list(order.parts):
+            device = get_device(db, order.store_id, part.device_id)
+            device.quantity += part.quantity
+            db.add(
+                models.InventoryMovement(
+                    store_id=order.store_id,
+                    source_store_id=None,
+                    device_id=device.id,
+                    movement_type=models.MovementType.IN,
+                    quantity=part.quantity,
+                    comment=reason or f"Cancelación reparación #{order.id}",
+                    performed_by_id=performed_by_id,
+                )
             )
+        _recalculate_store_inventory_value(db, order.store_id)
+        db.delete(order)
+        flush_session(db)
+
+        _log_action(
+            db,
+            action="repair_order_deleted",
+            entity_type="repair_order",
+            entity_id=str(order_id),
+            performed_by_id=performed_by_id,
         )
-    _recalculate_store_inventory_value(db, order.store_id)
-    db.delete(order)
-    commit_session(db)
-    _log_action(
-        db,
-        action="repair_order_deleted",
-        entity_type="repair_order",
-        entity_id=str(order_id),
-        performed_by_id=performed_by_id,
-    )
-    commit_session(db)
-    enqueue_sync_outbox(
-        db,
-        entity_type="repair_order",
-        entity_id=str(order_id),
-        operation="DELETE",
-        payload={"id": order_id},
-    )
+        enqueue_sync_outbox(
+            db,
+            entity_type="repair_order",
+            entity_id=str(order_id),
+            operation="DELETE",
+            payload={"id": order_id},
+        )
 
 
 def list_sales(
@@ -8971,140 +8982,143 @@ def create_sale(
         notes=payload.notes,
         performed_by_id=performed_by_id,
     )
-    db.add(sale)
+    with transactional_session(db):
+        db.add(sale)
 
-    tax_value = _to_decimal(tax_rate)
-    if tax_value < Decimal("0"):
-        tax_value = Decimal("0")
-    tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
+        tax_value = _to_decimal(tax_rate)
+        if tax_value < Decimal("0"):
+            tax_value = Decimal("0")
+        tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
 
-    try:
-        preview_gross_total, preview_discount = _preview_sale_totals(
+        try:
+            preview_gross_total, preview_discount = _preview_sale_totals(
+                db,
+                sale.store_id,
+                payload.items,
+                sale_discount_percent=sale_discount_percent,
+            )
+            preview_subtotal = (preview_gross_total - preview_discount).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            preview_tax_amount = (preview_subtotal * tax_fraction).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            preview_total = (preview_subtotal + preview_tax_amount).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if customer and sale.payment_method == models.PaymentMethod.CREDITO:
+                _validate_customer_credit(customer, preview_total)
+        except ValueError:
+            db.expunge(sale)
+            raise
+
+        flush_session(db)
+
+        ledger_entry: models.CustomerLedgerEntry | None = None
+        customer_to_sync: models.Customer | None = None
+
+        gross_total, total_discount = _apply_sale_items(
             db,
-            sale.store_id,
+            sale,
             payload.items,
             sale_discount_percent=sale_discount_percent,
+            performed_by_id=performed_by_id,
+            reason=reason,
         )
-        preview_subtotal = (preview_gross_total - preview_discount).quantize(
+
+        subtotal = (gross_total - total_discount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
-        preview_tax_amount = (preview_subtotal * tax_fraction).quantize(
+        sale.subtotal_amount = subtotal
+        tax_amount = (subtotal * tax_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        sale.tax_amount = tax_amount
+        sale.total_amount = (subtotal + tax_amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
-        preview_total = (preview_subtotal + preview_tax_amount).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        if customer and sale.payment_method == models.PaymentMethod.CREDITO:
-            _validate_customer_credit(customer, preview_total)
-    except ValueError:
-        db.expunge(sale)
-        raise
 
-    db.flush()
+        _recalculate_store_inventory_value(db, sale.store_id)
 
-    ledger_entry: models.CustomerLedgerEntry | None = None
-    customer_to_sync: models.Customer | None = None
-
-    gross_total, total_discount = _apply_sale_items(
-        db,
-        sale,
-        payload.items,
-        sale_discount_percent=sale_discount_percent,
-        performed_by_id=performed_by_id,
-        reason=reason,
-    )
-
-    subtotal = (gross_total - total_discount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    sale.subtotal_amount = subtotal
-    tax_amount = (subtotal * tax_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    sale.tax_amount = tax_amount
-    sale.total_amount = (subtotal + tax_amount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-
-    _recalculate_store_inventory_value(db, sale.store_id)
-
-    if customer:
-        if sale.payment_method == models.PaymentMethod.CREDITO:
-            customer.outstanding_debt = (
-                _to_decimal(customer.outstanding_debt) + sale.total_amount
-            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            ledger_entry = _create_customer_ledger_entry(
-                db,
-                customer=customer,
-                entry_type=models.CustomerLedgerEntryType.SALE,
-                amount=sale.total_amount,
-                note=f"Venta #{sale.id} registrada ({sale.payment_method.value})",
-                reference_type="sale",
-                reference_id=str(sale.id),
-                details={
-                    "store_id": sale.store_id,
-                    "payment_method": sale.payment_method.value,
-                    "status": sale.status,
-                },
-                created_by_id=performed_by_id,
+        if customer:
+            if sale.payment_method == models.PaymentMethod.CREDITO:
+                customer.outstanding_debt = (
+                    _to_decimal(customer.outstanding_debt) + sale.total_amount
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                ledger_entry = _create_customer_ledger_entry(
+                    db,
+                    customer=customer,
+                    entry_type=models.CustomerLedgerEntryType.SALE,
+                    amount=sale.total_amount,
+                    note=f"Venta #{sale.id} registrada ({sale.payment_method.value})",
+                    reference_type="sale",
+                    reference_id=str(sale.id),
+                    details={
+                        "store_id": sale.store_id,
+                        "payment_method": sale.payment_method.value,
+                        "status": sale.status,
+                    },
+                    created_by_id=performed_by_id,
+                )
+            _append_customer_history(
+                customer,
+                f"Venta #{sale.id} registrada ({sale.payment_method.value})",
             )
-        _append_customer_history(
-            customer,
-            f"Venta #{sale.id} registrada ({sale.payment_method.value})",
+            db.add(customer)
+            customer_to_sync = customer
+
+        flush_session(db)
+        db.refresh(sale)
+        if customer_to_sync:
+            db.refresh(customer_to_sync)
+
+        if customer_to_sync and sale.payment_method == models.PaymentMethod.CREDITO:
+            enqueue_sync_outbox(
+                db,
+                entity_type="customer",
+                entity_id=str(customer_to_sync.id),
+                operation="UPSERT",
+                payload=_customer_payload(customer_to_sync),
+            )
+        if ledger_entry:
+            _sync_customer_ledger_entry(db, ledger_entry)
+
+        _log_action(
+            db,
+            action="sale_registered",
+            entity_type="sale",
+            entity_id=str(sale.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"store_id": sale.store_id, "total_amount": float(sale.total_amount)}),
         )
-        db.add(customer)
-
-    commit_session(db)
-    db.refresh(sale)
-
-    if customer and sale.payment_method == models.PaymentMethod.CREDITO:
+        db.refresh(sale)
+        sale_payload = {
+            "sale_id": sale.id,
+            "store_id": sale.store_id,
+            "customer_id": sale.customer_id,
+            "customer_name": sale.customer_name,
+            "payment_method": sale.payment_method.value,
+            "discount_percent": float(sale.discount_percent),
+            "subtotal_amount": float(sale.subtotal_amount),
+            "tax_amount": float(sale.tax_amount),
+            "total_amount": float(sale.total_amount),
+            "created_at": sale.created_at.isoformat(),
+            "items": [
+                {
+                    "device_id": item.device_id,
+                    "quantity": item.quantity,
+                    "unit_price": float(item.unit_price),
+                    "discount_amount": float(item.discount_amount),
+                    "total_line": float(item.total_line),
+                }
+                for item in sale.items
+            ],
+        }
         enqueue_sync_outbox(
             db,
-            entity_type="customer",
-            entity_id=str(customer.id),
+            entity_type="sale",
+            entity_id=str(sale.id),
             operation="UPSERT",
-            payload=_customer_payload(customer),
+            payload=sale_payload,
         )
-    if ledger_entry:
-        _sync_customer_ledger_entry(db, ledger_entry)
-
-    _log_action(
-        db,
-        action="sale_registered",
-        entity_type="sale",
-        entity_id=str(sale.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"store_id": sale.store_id, "total_amount": float(sale.total_amount)}),
-    )
-    commit_session(db)
-    db.refresh(sale)
-    sale_payload = {
-        "sale_id": sale.id,
-        "store_id": sale.store_id,
-        "customer_id": sale.customer_id,
-        "customer_name": sale.customer_name,
-        "payment_method": sale.payment_method.value,
-        "discount_percent": float(sale.discount_percent),
-        "subtotal_amount": float(sale.subtotal_amount),
-        "tax_amount": float(sale.tax_amount),
-        "total_amount": float(sale.total_amount),
-        "created_at": sale.created_at.isoformat(),
-        "items": [
-            {
-                "device_id": item.device_id,
-                "quantity": item.quantity,
-                "unit_price": float(item.unit_price),
-                "discount_amount": float(item.discount_amount),
-                "total_line": float(item.total_line),
-            }
-            for item in sale.items
-        ],
-    }
-    enqueue_sync_outbox(
-        db,
-        entity_type="sale",
-        entity_id=str(sale.id),
-        operation="UPSERT",
-        payload=sale_payload,
-    )
     return sale
 
 
@@ -9136,204 +9150,205 @@ def update_sale(
     ledger_new: models.CustomerLedgerEntry | None = None
     customers_to_sync: dict[int, models.Customer] = {}
 
-    sale_discount_percent = _to_decimal(payload.discount_percent or 0)
-    new_payment_method = models.PaymentMethod(payload.payment_method)
-    sale_status = (payload.status or sale.status or "COMPLETADA").strip() or "COMPLETADA"
-    normalized_status = sale_status.upper()
+    with transactional_session(db):
+        sale_discount_percent = _to_decimal(payload.discount_percent or 0)
+        new_payment_method = models.PaymentMethod(payload.payment_method)
+        sale_status = (payload.status or sale.status or "COMPLETADA").strip() or "COMPLETADA"
+        normalized_status = sale_status.upper()
 
-    customer = None
-    customer_name = payload.customer_name
-    if payload.customer_id:
-        customer = get_customer(db, payload.customer_id)
-        customer_name = customer_name or customer.name
+        customer = None
+        customer_name = payload.customer_name
+        if payload.customer_id:
+            customer = get_customer(db, payload.customer_id)
+            customer_name = customer_name or customer.name
 
-    preview_gross_total, preview_discount = _preview_sale_totals(
-        db,
-        sale.store_id,
-        payload.items,
-        sale_discount_percent=sale_discount_percent,
-        reserved_quantities=reserved_quantities,
-    )
-    preview_subtotal = (preview_gross_total - preview_discount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    tax_value = _to_decimal(None)
-    tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
-    preview_tax_amount = (preview_subtotal * tax_fraction).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    preview_total = (preview_subtotal + preview_tax_amount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-
-    validation_customer = customer or previous_customer
-    if new_payment_method == models.PaymentMethod.CREDITO and validation_customer:
-        _validate_customer_credit(validation_customer, preview_total)
-
-    sale.discount_percent = sale_discount_percent.quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    sale.status = normalized_status
-    sale.notes = payload.notes
-    sale.customer_id = customer.id if customer else None
-    sale.customer_name = customer_name
-
-    reversal_comment = reason or f"Edición venta #{sale.id}"
-    for existing_item in list(sale.items):
-        device = get_device(db, sale.store_id, existing_item.device_id)
-        device.quantity += existing_item.quantity
-        _restore_device_availability(device)
-        db.add(
-            models.InventoryMovement(
-                store_id=sale.store_id,
-                source_store_id=None,
-                device_id=device.id,
-                movement_type=models.MovementType.IN,
-                quantity=existing_item.quantity,
-                comment=reversal_comment,
-                performed_by_id=performed_by_id,
-            )
-        )
-    sale.items.clear()
-    db.flush()
-
-    if (
-        previous_customer
-        and previous_payment_method == models.PaymentMethod.CREDITO
-        and previous_total_amount > Decimal("0")
-    ):
-        updated_debt = (
-            _to_decimal(previous_customer.outstanding_debt) - previous_total_amount
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if updated_debt < Decimal("0"):
-            updated_debt = Decimal("0")
-        previous_customer.outstanding_debt = updated_debt
-        db.add(previous_customer)
-        customers_to_sync[previous_customer.id] = previous_customer
-        ledger_reversal = _create_customer_ledger_entry(
+        preview_gross_total, preview_discount = _preview_sale_totals(
             db,
-            customer=previous_customer,
-            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
-            amount=-previous_total_amount,
-            note=f"Ajuste por edición de venta #{sale.id}",
-            reference_type="sale",
-            reference_id=str(sale.id),
-            details={
-                "event": "sale_edit_reversal",
-                "previous_amount": float(previous_total_amount),
-            },
-            created_by_id=performed_by_id,
+            sale.store_id,
+            payload.items,
+            sale_discount_percent=sale_discount_percent,
+            reserved_quantities=reserved_quantities,
+        )
+        preview_subtotal = (preview_gross_total - preview_discount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        tax_value = _to_decimal(None)
+        tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
+        preview_tax_amount = (preview_subtotal * tax_fraction).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        preview_total = (preview_subtotal + preview_tax_amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
         )
 
-    gross_total, total_discount = _apply_sale_items(
-        db,
-        sale,
-        payload.items,
-        sale_discount_percent=sale_discount_percent,
-        performed_by_id=performed_by_id,
-        reason=reason,
-    )
+        validation_customer = customer or previous_customer
+        if new_payment_method == models.PaymentMethod.CREDITO and validation_customer:
+            _validate_customer_credit(validation_customer, preview_total)
 
-    subtotal = (gross_total - total_discount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    sale.subtotal_amount = subtotal
-    sale.tax_amount = (subtotal * tax_fraction).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    sale.payment_method = new_payment_method
-    sale.total_amount = (subtotal + sale.tax_amount).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
+        sale.discount_percent = sale_discount_percent.quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        sale.status = normalized_status
+        sale.notes = payload.notes
+        sale.customer_id = customer.id if customer else None
+        sale.customer_name = customer_name
 
-    target_customer = customer or (
-        previous_customer if previous_customer and previous_customer.id == sale.customer_id else None
-    )
-    if target_customer:
-        if sale.payment_method == models.PaymentMethod.CREDITO:
-            target_customer.outstanding_debt = (
-                _to_decimal(target_customer.outstanding_debt) + sale.total_amount
+        reversal_comment = reason or f"Edición venta #{sale.id}"
+        for existing_item in list(sale.items):
+            device = get_device(db, sale.store_id, existing_item.device_id)
+            device.quantity += existing_item.quantity
+            _restore_device_availability(device)
+            db.add(
+                models.InventoryMovement(
+                    store_id=sale.store_id,
+                    source_store_id=None,
+                    device_id=device.id,
+                    movement_type=models.MovementType.IN,
+                    quantity=existing_item.quantity,
+                    comment=reversal_comment,
+                    performed_by_id=performed_by_id,
+                )
+            )
+        sale.items.clear()
+        flush_session(db)
+
+        if (
+            previous_customer
+            and previous_payment_method == models.PaymentMethod.CREDITO
+            and previous_total_amount > Decimal("0")
+        ):
+            updated_debt = (
+                _to_decimal(previous_customer.outstanding_debt) - previous_total_amount
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            customers_to_sync[target_customer.id] = target_customer
-            ledger_new = _create_customer_ledger_entry(
+            if updated_debt < Decimal("0"):
+                updated_debt = Decimal("0")
+            previous_customer.outstanding_debt = updated_debt
+            db.add(previous_customer)
+            customers_to_sync[previous_customer.id] = previous_customer
+            ledger_reversal = _create_customer_ledger_entry(
                 db,
-                customer=target_customer,
-                entry_type=models.CustomerLedgerEntryType.SALE,
-                amount=sale.total_amount,
-                note=f"Venta #{sale.id} actualizada ({sale.payment_method.value})",
+                customer=previous_customer,
+                entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
+                amount=-previous_total_amount,
+                note=f"Ajuste por edición de venta #{sale.id}",
                 reference_type="sale",
                 reference_id=str(sale.id),
                 details={
-                    "event": "sale_updated",
-                    "payment_method": sale.payment_method.value,
-                    "status": sale.status,
+                    "event": "sale_edit_reversal",
+                    "previous_amount": float(previous_total_amount),
                 },
                 created_by_id=performed_by_id,
             )
-        _append_customer_history(
-            target_customer,
-            f"Venta #{sale.id} actualizada ({sale.payment_method.value})",
+
+        gross_total, total_discount = _apply_sale_items(
+            db,
+            sale,
+            payload.items,
+            sale_discount_percent=sale_discount_percent,
+            performed_by_id=performed_by_id,
+            reason=reason,
         )
-        db.add(target_customer)
 
-    _recalculate_store_inventory_value(db, sale.store_id)
+        subtotal = (gross_total - total_discount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        sale.subtotal_amount = subtotal
+        sale.tax_amount = (subtotal * tax_fraction).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        sale.payment_method = new_payment_method
+        sale.total_amount = (subtotal + sale.tax_amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
 
-    commit_session(db)
-    db.refresh(sale)
+        target_customer = customer or (
+            previous_customer if previous_customer and previous_customer.id == sale.customer_id else None
+        )
+        if target_customer:
+            if sale.payment_method == models.PaymentMethod.CREDITO:
+                target_customer.outstanding_debt = (
+                    _to_decimal(target_customer.outstanding_debt) + sale.total_amount
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                customers_to_sync[target_customer.id] = target_customer
+                ledger_new = _create_customer_ledger_entry(
+                    db,
+                    customer=target_customer,
+                    entry_type=models.CustomerLedgerEntryType.SALE,
+                    amount=sale.total_amount,
+                    note=f"Venta #{sale.id} actualizada ({sale.payment_method.value})",
+                    reference_type="sale",
+                    reference_id=str(sale.id),
+                    details={
+                        "event": "sale_updated",
+                        "payment_method": sale.payment_method.value,
+                        "status": sale.status,
+                    },
+                    created_by_id=performed_by_id,
+                )
+            _append_customer_history(
+                target_customer,
+                f"Venta #{sale.id} actualizada ({sale.payment_method.value})",
+            )
+            db.add(target_customer)
 
-    for customer_to_sync in customers_to_sync.values():
+        _recalculate_store_inventory_value(db, sale.store_id)
+
+        flush_session(db)
+        db.refresh(sale)
+
+        for customer_to_sync in customers_to_sync.values():
+            enqueue_sync_outbox(
+                db,
+                entity_type="customer",
+                entity_id=str(customer_to_sync.id),
+                operation="UPSERT",
+                payload=_customer_payload(customer_to_sync),
+            )
+        if ledger_reversal:
+            _sync_customer_ledger_entry(db, ledger_reversal)
+        if ledger_new:
+            _sync_customer_ledger_entry(db, ledger_new)
+
+        _log_action(
+            db,
+            action="sale_updated",
+            entity_type="sale",
+            entity_id=str(sale.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"store_id": sale.store_id, "reason": reason}),
+        )
+        flush_session(db)
+        db.refresh(sale)
+
+        sale_payload = {
+            "sale_id": sale.id,
+            "store_id": sale.store_id,
+            "customer_id": sale.customer_id,
+            "customer_name": sale.customer_name,
+            "payment_method": sale.payment_method.value,
+            "discount_percent": float(sale.discount_percent),
+            "subtotal_amount": float(sale.subtotal_amount),
+            "tax_amount": float(sale.tax_amount),
+            "total_amount": float(sale.total_amount),
+            "created_at": sale.created_at.isoformat(),
+            "items": [
+                {
+                    "device_id": item.device_id,
+                    "quantity": item.quantity,
+                    "unit_price": float(item.unit_price),
+                    "discount_amount": float(item.discount_amount),
+                    "total_line": float(item.total_line),
+                }
+                for item in sale.items
+            ],
+        }
         enqueue_sync_outbox(
             db,
-            entity_type="customer",
-            entity_id=str(customer_to_sync.id),
+            entity_type="sale",
+            entity_id=str(sale.id),
             operation="UPSERT",
-            payload=_customer_payload(customer_to_sync),
+            payload=sale_payload,
         )
-    if ledger_reversal:
-        _sync_customer_ledger_entry(db, ledger_reversal)
-    if ledger_new:
-        _sync_customer_ledger_entry(db, ledger_new)
-
-    _log_action(
-        db,
-        action="sale_updated",
-        entity_type="sale",
-        entity_id=str(sale.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"store_id": sale.store_id, "reason": reason}),
-    )
-    commit_session(db)
-    db.refresh(sale)
-
-    sale_payload = {
-        "sale_id": sale.id,
-        "store_id": sale.store_id,
-        "customer_id": sale.customer_id,
-        "customer_name": sale.customer_name,
-        "payment_method": sale.payment_method.value,
-        "discount_percent": float(sale.discount_percent),
-        "subtotal_amount": float(sale.subtotal_amount),
-        "tax_amount": float(sale.tax_amount),
-        "total_amount": float(sale.total_amount),
-        "created_at": sale.created_at.isoformat(),
-        "items": [
-            {
-                "device_id": item.device_id,
-                "quantity": item.quantity,
-                "unit_price": float(item.unit_price),
-                "discount_amount": float(item.discount_amount),
-                "total_line": float(item.total_line),
-            }
-            for item in sale.items
-        ],
-    }
-    enqueue_sync_outbox(
-        db,
-        entity_type="sale",
-        entity_id=str(sale.id),
-        operation="UPSERT",
-        payload=sale_payload,
-    )
     return sale
 
 
@@ -9348,91 +9363,92 @@ def cancel_sale(
     if sale.status and sale.status.upper() == "CANCELADA":
         raise ValueError("sale_already_cancelled")
 
-    cancel_reason = reason or f"Anulación venta #{sale.id}"
-    ledger_entry: models.CustomerLedgerEntry | None = None
-    customer_to_sync: models.Customer | None = None
-    for item in sale.items:
-        device = get_device(db, sale.store_id, item.device_id)
-        device.quantity += item.quantity
-        if device.quantity > 0:
-            _restore_device_availability(device)
-        db.add(
-            models.InventoryMovement(
-                store_id=sale.store_id,
-                source_store_id=None,
-                device_id=device.id,
-                movement_type=models.MovementType.IN,
-                quantity=item.quantity,
-                comment=cancel_reason,
-                performed_by_id=performed_by_id,
+    with transactional_session(db):
+        cancel_reason = reason or f"Anulación venta #{sale.id}"
+        ledger_entry: models.CustomerLedgerEntry | None = None
+        customer_to_sync: models.Customer | None = None
+        for item in sale.items:
+            device = get_device(db, sale.store_id, item.device_id)
+            device.quantity += item.quantity
+            if device.quantity > 0:
+                _restore_device_availability(device)
+            db.add(
+                models.InventoryMovement(
+                    store_id=sale.store_id,
+                    source_store_id=None,
+                    device_id=device.id,
+                    movement_type=models.MovementType.IN,
+                    quantity=item.quantity,
+                    comment=cancel_reason,
+                    performed_by_id=performed_by_id,
+                )
             )
-        )
 
-    if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and sale.total_amount > Decimal("0"):
-        updated_debt = (
-            _to_decimal(sale.customer.outstanding_debt) - _to_decimal(sale.total_amount)
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if updated_debt < Decimal("0"):
-            updated_debt = Decimal("0")
-        sale.customer.outstanding_debt = updated_debt
-        _append_customer_history(
-            sale.customer,
-            f"Venta #{sale.id} anulada",
-        )
-        db.add(sale.customer)
-        customer_to_sync = sale.customer
-        ledger_entry = _create_customer_ledger_entry(
+        if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and sale.total_amount > Decimal("0"):
+            updated_debt = (
+                _to_decimal(sale.customer.outstanding_debt) - _to_decimal(sale.total_amount)
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if updated_debt < Decimal("0"):
+                updated_debt = Decimal("0")
+            sale.customer.outstanding_debt = updated_debt
+            _append_customer_history(
+                sale.customer,
+                f"Venta #{sale.id} anulada",
+            )
+            db.add(sale.customer)
+            customer_to_sync = sale.customer
+            ledger_entry = _create_customer_ledger_entry(
+                db,
+                customer=sale.customer,
+                entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
+                amount=-_to_decimal(sale.total_amount),
+                note=f"Venta #{sale.id} anulada",
+                reference_type="sale",
+                reference_id=str(sale.id),
+                details={"event": "sale_cancelled", "store_id": sale.store_id},
+                created_by_id=performed_by_id,
+            )
+
+        sale.status = "CANCELADA"
+        _recalculate_store_inventory_value(db, sale.store_id)
+
+        flush_session(db)
+        db.refresh(sale)
+
+        if customer_to_sync:
+            enqueue_sync_outbox(
+                db,
+                entity_type="customer",
+                entity_id=str(customer_to_sync.id),
+                operation="UPSERT",
+                payload=_customer_payload(customer_to_sync),
+            )
+        if ledger_entry:
+            _sync_customer_ledger_entry(db, ledger_entry)
+
+        _log_action(
             db,
-            customer=sale.customer,
-            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
-            amount=-_to_decimal(sale.total_amount),
-            note=f"Venta #{sale.id} anulada",
-            reference_type="sale",
-            reference_id=str(sale.id),
-            details={"event": "sale_cancelled", "store_id": sale.store_id},
-            created_by_id=performed_by_id,
+            action="sale_cancelled",
+            entity_type="sale",
+            entity_id=str(sale.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"reason": cancel_reason}),
         )
+        flush_session(db)
+        db.refresh(sale)
 
-    sale.status = "CANCELADA"
-    _recalculate_store_inventory_value(db, sale.store_id)
-
-    commit_session(db)
-    db.refresh(sale)
-
-    if customer_to_sync:
+        sale_payload = {
+            "sale_id": sale.id,
+            "store_id": sale.store_id,
+            "status": sale.status,
+        }
         enqueue_sync_outbox(
             db,
-            entity_type="customer",
-            entity_id=str(customer_to_sync.id),
+            entity_type="sale",
+            entity_id=str(sale.id),
             operation="UPSERT",
-            payload=_customer_payload(customer_to_sync),
+            payload=sale_payload,
         )
-    if ledger_entry:
-        _sync_customer_ledger_entry(db, ledger_entry)
-
-    _log_action(
-        db,
-        action="sale_cancelled",
-        entity_type="sale",
-        entity_id=str(sale.id),
-        performed_by_id=performed_by_id,
-        details=json.dumps({"reason": cancel_reason}),
-    )
-    commit_session(db)
-    db.refresh(sale)
-
-    sale_payload = {
-        "sale_id": sale.id,
-        "store_id": sale.store_id,
-        "status": sale.status,
-    }
-    enqueue_sync_outbox(
-        db,
-        entity_type="sale",
-        entity_id=str(sale.id),
-        operation="UPSERT",
-        payload=sale_payload,
-    )
     return sale
 
 
@@ -9453,101 +9469,102 @@ def register_sale_return(
     ledger_entry: models.CustomerLedgerEntry | None = None
     customer_to_sync: models.Customer | None = None
 
-    for item in payload.items:
-        sale_item = items_by_device.get(item.device_id)
-        if sale_item is None:
-            raise LookupError("sale_item_not_found")
-        if item.quantity <= 0:
-            raise ValueError("sale_return_invalid_quantity")
+    with transactional_session(db):
+        for item in payload.items:
+            sale_item = items_by_device.get(item.device_id)
+            if sale_item is None:
+                raise LookupError("sale_item_not_found")
+            if item.quantity <= 0:
+                raise ValueError("sale_return_invalid_quantity")
 
-        returned_total = sum(
-            existing.quantity for existing in sale.returns if existing.device_id == item.device_id
-        )
-        if item.quantity > sale_item.quantity - returned_total:
-            raise ValueError("sale_return_invalid_quantity")
-
-        device = get_device(db, sale.store_id, item.device_id)
-        device.quantity += item.quantity
-        if device.quantity > 0:
-            _restore_device_availability(device)
-
-        sale_return = models.SaleReturn(
-            sale_id=sale.id,
-            device_id=item.device_id,
-            quantity=item.quantity,
-            reason=item.reason,
-            processed_by_id=processed_by_id,
-        )
-        db.add(sale_return)
-        returns.append(sale_return)
-
-        unit_refund = (sale_item.total_line / Decimal(sale_item.quantity)).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        refund_total += (unit_refund * Decimal(item.quantity)).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-
-        db.add(
-            models.InventoryMovement(
-                store_id=sale.store_id,
-                source_store_id=None,
-                device_id=item.device_id,
-                movement_type=models.MovementType.IN,
-                quantity=item.quantity,
-                comment=item.reason or reason,
-                performed_by_id=processed_by_id,
+            returned_total = sum(
+                existing.quantity for existing in sale.returns if existing.device_id == item.device_id
             )
-        )
+            if item.quantity > sale_item.quantity - returned_total:
+                raise ValueError("sale_return_invalid_quantity")
 
-    _recalculate_store_inventory_value(db, sale.store_id)
+            device = get_device(db, sale.store_id, item.device_id)
+            device.quantity += item.quantity
+            if device.quantity > 0:
+                _restore_device_availability(device)
 
-    commit_session(db)
-    for sale_return in returns:
-        db.refresh(sale_return)
+            sale_return = models.SaleReturn(
+                sale_id=sale.id,
+                device_id=item.device_id,
+                quantity=item.quantity,
+                reason=item.reason,
+                processed_by_id=processed_by_id,
+            )
+            db.add(sale_return)
+            returns.append(sale_return)
 
-    _log_action(
-        db,
-        action="sale_return_registered",
-        entity_type="sale",
-        entity_id=str(sale.id),
-        performed_by_id=processed_by_id,
-        details=json.dumps({"items": [item.model_dump() for item in payload.items]}),
-    )
-    commit_session(db)
+            unit_refund = (sale_item.total_line / Decimal(sale_item.quantity)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            refund_total += (unit_refund * Decimal(item.quantity)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
 
-    if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and refund_total > 0:
-        sale.customer.outstanding_debt = (
-            _to_decimal(sale.customer.outstanding_debt) - refund_total
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if sale.customer.outstanding_debt < Decimal("0"):
-            sale.customer.outstanding_debt = Decimal("0")
-        _append_customer_history(
-            sale.customer,
-            f"Devolución aplicada a venta #{sale.id} por ${float(refund_total):.2f}",
-        )
-        db.add(sale.customer)
-        commit_session(db)
-        ledger_entry = _create_customer_ledger_entry(
+            db.add(
+                models.InventoryMovement(
+                    store_id=sale.store_id,
+                    source_store_id=None,
+                    device_id=item.device_id,
+                    movement_type=models.MovementType.IN,
+                    quantity=item.quantity,
+                    comment=item.reason or reason,
+                    performed_by_id=processed_by_id,
+                )
+            )
+
+        _recalculate_store_inventory_value(db, sale.store_id)
+
+        flush_session(db)
+        for sale_return in returns:
+            db.refresh(sale_return)
+
+        _log_action(
             db,
-            customer=sale.customer,
-            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
-            amount=-refund_total,
-            note=f"Devolución venta #{sale.id}",
-            reference_type="sale",
-            reference_id=str(sale.id),
-            details={"event": "sale_return", "store_id": sale.store_id},
-            created_by_id=processed_by_id,
+            action="sale_return_registered",
+            entity_type="sale",
+            entity_id=str(sale.id),
+            performed_by_id=processed_by_id,
+            details=json.dumps({"items": [item.model_dump() for item in payload.items]}),
         )
-        enqueue_sync_outbox(
-            db,
-            entity_type="customer",
-            entity_id=str(sale.customer.id),
-            operation="UPSERT",
-            payload=_customer_payload(sale.customer),
-        )
-        if ledger_entry:
-            _sync_customer_ledger_entry(db, ledger_entry)
+        flush_session(db)
+
+        if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and refund_total > 0:
+            sale.customer.outstanding_debt = (
+                _to_decimal(sale.customer.outstanding_debt) - refund_total
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if sale.customer.outstanding_debt < Decimal("0"):
+                sale.customer.outstanding_debt = Decimal("0")
+            _append_customer_history(
+                sale.customer,
+                f"Devolución aplicada a venta #{sale.id} por ${float(refund_total):.2f}",
+            )
+            db.add(sale.customer)
+            flush_session(db)
+            ledger_entry = _create_customer_ledger_entry(
+                db,
+                customer=sale.customer,
+                entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
+                amount=-refund_total,
+                note=f"Devolución venta #{sale.id}",
+                reference_type="sale",
+                reference_id=str(sale.id),
+                details={"event": "sale_return", "store_id": sale.store_id},
+                created_by_id=processed_by_id,
+            )
+            enqueue_sync_outbox(
+                db,
+                entity_type="customer",
+                entity_id=str(sale.customer.id),
+                operation="UPSERT",
+                payload=_customer_payload(sale.customer),
+            )
+            if ledger_entry:
+                _sync_customer_ledger_entry(db, ledger_entry)
     return returns
 
 
@@ -9767,20 +9784,21 @@ def open_cash_session(
         notes=payload.notes,
         opened_by_id=opened_by_id,
     )
-    db.add(session)
-    commit_session(db)
-    db.refresh(session)
+    with transactional_session(db):
+        db.add(session)
+        flush_session(db)
+        db.refresh(session)
 
-    _log_action(
-        db,
-        action="cash_session_opened",
-        entity_type="cash_session",
-        entity_id=str(session.id),
-        performed_by_id=opened_by_id,
-        details=json.dumps({"store_id": session.store_id, "reason": reason}),
-    )
-    commit_session(db)
-    db.refresh(session)
+        _log_action(
+            db,
+            action="cash_session_opened",
+            entity_type="cash_session",
+            entity_id=str(session.id),
+            performed_by_id=opened_by_id,
+            details=json.dumps({"store_id": session.store_id, "reason": reason}),
+        )
+        flush_session(db)
+        db.refresh(session)
     return session
 
 
@@ -9826,25 +9844,26 @@ def close_cash_session(
     if payload.notes:
         session.notes = (session.notes or "") + f"\n{payload.notes}" if session.notes else payload.notes
 
-    db.add(session)
-    commit_session(db)
-    db.refresh(session)
+    with transactional_session(db):
+        db.add(session)
+        flush_session(db)
+        db.refresh(session)
 
-    _log_action(
-        db,
-        action="cash_session_closed",
-        entity_type="cash_session",
-        entity_id=str(session.id),
-        performed_by_id=closed_by_id,
-        details=json.dumps(
-            {
-                "difference": float(session.difference_amount),
-                "reason": reason,
-            }
-        ),
-    )
-    commit_session(db)
-    db.refresh(session)
+        _log_action(
+            db,
+            action="cash_session_closed",
+            entity_type="cash_session",
+            entity_id=str(session.id),
+            performed_by_id=closed_by_id,
+            details=json.dumps(
+                {
+                    "difference": float(session.difference_amount),
+                    "reason": reason,
+                }
+            ),
+        )
+        flush_session(db)
+        db.refresh(session)
     return session
 
 
@@ -9856,9 +9875,12 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
         prefix = store.name[:3].upper() if store.name else "POS"
         generated_prefix = f"{prefix}-{store_id:03d}"[:12]
         config = models.POSConfig(store_id=store_id, invoice_prefix=generated_prefix)
-        db.add(config)
-        commit_session(db)
-    db.refresh(config)
+        with transactional_session(db):
+            db.add(config)
+            flush_session(db)
+            db.refresh(config)
+    else:
+        db.refresh(config)
     return config
 
 
@@ -9870,42 +9892,43 @@ def update_pos_config(
     reason: str | None = None,
 ) -> models.POSConfig:
     config = get_pos_config(db, payload.store_id)
-    config.tax_rate = _to_decimal(payload.tax_rate).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    config.invoice_prefix = payload.invoice_prefix.strip().upper()
-    config.printer_name = payload.printer_name.strip() if payload.printer_name else None
-    config.printer_profile = (
-        payload.printer_profile.strip() if payload.printer_profile else None
-    )
-    config.quick_product_ids = payload.quick_product_ids
-    db.add(config)
-    commit_session(db)
-    db.refresh(config)
+    with transactional_session(db):
+        config.tax_rate = _to_decimal(payload.tax_rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        config.invoice_prefix = payload.invoice_prefix.strip().upper()
+        config.printer_name = payload.printer_name.strip() if payload.printer_name else None
+        config.printer_profile = (
+            payload.printer_profile.strip() if payload.printer_profile else None
+        )
+        config.quick_product_ids = payload.quick_product_ids
+        db.add(config)
+        flush_session(db)
+        db.refresh(config)
 
-    _log_action(
-        db,
-        action="pos_config_update",
-        entity_type="store",
-        entity_id=str(payload.store_id),
-        performed_by_id=updated_by_id,
-        details=json.dumps(
-            {
-                "tax_rate": float(config.tax_rate),
-                "invoice_prefix": config.invoice_prefix,
-                "reason": reason,
-            }
-        ),
-    )
-    commit_session(db)
-    db.refresh(config)
-    enqueue_sync_outbox(
-        db,
-        entity_type="pos_config",
-        entity_id=str(payload.store_id),
-        operation="UPSERT",
-        payload=_pos_config_payload(config),
-    )
+        _log_action(
+            db,
+            action="pos_config_update",
+            entity_type="store",
+            entity_id=str(payload.store_id),
+            performed_by_id=updated_by_id,
+            details=json.dumps(
+                {
+                    "tax_rate": float(config.tax_rate),
+                    "invoice_prefix": config.invoice_prefix,
+                    "reason": reason,
+                }
+            ),
+        )
+        flush_session(db)
+        db.refresh(config)
+        enqueue_sync_outbox(
+            db,
+            entity_type="pos_config",
+            entity_id=str(payload.store_id),
+            operation="UPSERT",
+            payload=_pos_config_payload(config),
+        )
     return config
 
 
@@ -9946,36 +9969,37 @@ def save_pos_draft(
         draft = models.POSDraftSale(store_id=payload.store_id)
         db.add(draft)
 
-    serialized = payload.model_dump(
-        mode="json",
-        exclude_none=True,
-        exclude={"confirm", "save_as_draft"},
-    )
-    draft.payload = serialized
-    db.add(draft)
-    commit_session(db)
-    db.refresh(draft)
+    with transactional_session(db):
+        serialized = payload.model_dump(
+            mode="json",
+            exclude_none=True,
+            exclude={"confirm", "save_as_draft"},
+        )
+        draft.payload = serialized
+        db.add(draft)
+        flush_session(db)
+        db.refresh(draft)
 
-    details = {"store_id": payload.store_id}
-    if reason:
-        details["reason"] = reason
-    _log_action(
-        db,
-        action="pos_draft_saved",
-        entity_type="pos_draft",
-        entity_id=str(draft.id),
-        performed_by_id=saved_by_id,
-        details=json.dumps(details),
-    )
-    commit_session(db)
-    db.refresh(draft)
-    enqueue_sync_outbox(
-        db,
-        entity_type="pos_draft",
-        entity_id=str(draft.id),
-        operation="UPSERT",
-        payload=_pos_draft_payload(draft),
-    )
+        details = {"store_id": payload.store_id}
+        if reason:
+            details["reason"] = reason
+        _log_action(
+            db,
+            action="pos_draft_saved",
+            entity_type="pos_draft",
+            entity_id=str(draft.id),
+            performed_by_id=saved_by_id,
+            details=json.dumps(details),
+        )
+        flush_session(db)
+        db.refresh(draft)
+        enqueue_sync_outbox(
+            db,
+            entity_type="pos_draft",
+            entity_id=str(draft.id),
+            operation="UPSERT",
+            payload=_pos_draft_payload(draft),
+        )
     return draft
 
 
@@ -9985,24 +10009,25 @@ def delete_pos_draft(db: Session, draft_id: int, *, removed_by_id: int | None = 
     if draft is None:
         raise LookupError("pos_draft_not_found")
     store_id = draft.store_id
-    db.delete(draft)
-    commit_session(db)
-    _log_action(
-        db,
-        action="pos_draft_removed",
-        entity_type="pos_draft",
-        entity_id=str(draft_id),
-        performed_by_id=removed_by_id,
-        details=json.dumps({"store_id": store_id}),
-    )
-    commit_session(db)
-    enqueue_sync_outbox(
-        db,
-        entity_type="pos_draft",
-        entity_id=str(draft_id),
-        operation="DELETE",
-        payload={"id": draft_id, "store_id": store_id},
-    )
+    with transactional_session(db):
+        db.delete(draft)
+        flush_session(db)
+        _log_action(
+            db,
+            action="pos_draft_removed",
+            entity_type="pos_draft",
+            entity_id=str(draft_id),
+            performed_by_id=removed_by_id,
+            details=json.dumps({"store_id": store_id}),
+        )
+        flush_session(db)
+        enqueue_sync_outbox(
+            db,
+            entity_type="pos_draft",
+            entity_id=str(draft_id),
+            operation="DELETE",
+            payload={"id": draft_id, "store_id": store_id},
+        )
 
 
 def register_pos_sale(
@@ -10059,16 +10084,15 @@ def register_pos_sale(
         except LookupError:
             pass
 
-    if payload.cash_session_id:
-        session = get_cash_session(db, payload.cash_session_id)
-        if session.status != models.CashSessionStatus.ABIERTO:
-            raise ValueError("cash_session_not_open")
-        sale.cash_session_id = session.id
-        db.add(sale)
-        commit_session(db)
+    with transactional_session(db):
+        if payload.cash_session_id:
+            session = get_cash_session(db, payload.cash_session_id)
+            if session.status != models.CashSessionStatus.ABIERTO:
+                raise ValueError("cash_session_not_open")
+            sale.cash_session_id = session.id
+            db.add(sale)
+            flush_session(db)
         db.refresh(sale)
-
-    db.refresh(sale)
     return sale, warnings
 
 def list_backup_jobs(db: Session, limit: int = 50) -> list[models.BackupJob]:
@@ -10277,9 +10301,10 @@ def create_inventory_import_record(
         patrones_columnas=patrones_columnas,
         duracion_segundos=duration_value,
     )
-    db.add(record)
-    commit_session(db)
-    db.refresh(record)
+    with transactional_session(db):
+        db.add(record)
+        flush_session(db)
+        db.refresh(record)
     return record
 
 
@@ -10344,11 +10369,12 @@ def mark_import_validation_corrected(
     validation = db.get(models.ImportValidation, validation_id)
     if validation is None:
         raise LookupError("validation_not_found")
-    validation.corregido = corrected
-    validation.fecha = datetime.utcnow()
-    db.add(validation)
-    commit_session(db)
-    db.refresh(validation)
+    with transactional_session(db):
+        validation.corregido = corrected
+        validation.fecha = datetime.utcnow()
+        db.add(validation)
+        flush_session(db)
+        db.refresh(validation)
     return validation
 
 

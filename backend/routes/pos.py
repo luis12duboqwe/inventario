@@ -13,6 +13,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.core.roles import GESTION_ROLES
+from backend.app.core.transactions import flush_session, transactional_session
 from backend.app.routers import pos as core_pos
 from backend.app.routers.dependencies import require_reason
 from backend.app.schemas import BinaryFileResponse
@@ -70,7 +71,7 @@ def _build_item_from_payload(sale: Sale, payload: schemas.SaleItemCreate) -> Sal
     tax_amount = _quantize(taxable_base * (tax_rate / Decimal("100")))
     total = _quantize(taxable_base + tax_amount)
     return SaleItem(
-        sale=sale,
+        sale_id=sale.id,
         product_id=payload.product_id,
         description=payload.description,
         quantity=payload.quantity,
@@ -91,10 +92,12 @@ def create_sale(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> schemas.SaleResponse:
     del reason, current_user
-    sale = Sale(store_id=payload.store_id, notes=payload.notes)
-    db.add(sale)
-    db.commit()
-    persisted = _ensure_sale(db, sale.id)
+    with transactional_session(db):
+        sale = Sale(store_id=payload.store_id, notes=payload.notes)
+        db.add(sale)
+        flush_session(db)
+        sale_id = sale.id
+    persisted = _ensure_sale(db, sale_id)
     logger.bind(module="pos", action="sale_created", sale_id=sale.id).info(
         "Se creó una venta POS en estado OPEN"
     )
@@ -114,24 +117,27 @@ def add_items(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> schemas.SaleResponse:
     del reason, current_user
-    sale = _ensure_sale(db, sale_id)
-    if sale.status not in {SaleStatus.OPEN, SaleStatus.HELD}:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "sale_not_editable",
-                "message": "Solo las ventas abiertas u on hold admiten modificaciones.",
-            },
+    with transactional_session(db):
+        sale = _ensure_sale(db, sale_id)
+        if sale.status not in {SaleStatus.OPEN, SaleStatus.HELD}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "sale_not_editable",
+                    "message": "Solo las ventas abiertas u on hold admiten modificaciones.",
+                },
+            )
+        sale.items.extend(
+            _build_item_from_payload(sale, item_payload)
+            for item_payload in payload.items
         )
-    sale.items.extend(
-        _build_item_from_payload(sale, item_payload) for item_payload in payload.items
-    )
-    sale.recompute_totals()
-    if sale.status == SaleStatus.HELD:
-        sale.held_at = datetime.utcnow()
-    db.add(sale)
-    db.commit()
-    persisted = _ensure_sale(db, sale_id)
+        sale.recompute_totals()
+        if sale.status == SaleStatus.HELD:
+            sale.held_at = datetime.utcnow()
+        db.add(sale)
+        flush_session(db)
+        db.refresh(sale)
+        persisted = sale
     logger.bind(module="pos", action="items_added", sale_id=sale_id).info(
         "Se añadieron artículos a la venta"
     )
@@ -151,49 +157,51 @@ def checkout_sale(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> schemas.CheckoutResponse:
     del reason, current_user
-    sale = _ensure_sale(db, sale_id)
-    if not sale.items:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "code": "sale_without_items",
-                "message": "No es posible finalizar una venta sin artículos registrados.",
-            },
-        )
-    if sale.status == SaleStatus.VOID:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "sale_voided", "message": "La venta fue anulada previamente."},
-        )
     request_id = uuid4()
-    sale.recompute_totals()
-    payments_total = _quantize(
-        sum((_quantize(payment.amount) for payment in payload.payments), _DECIMAL_ZERO)
-    )
-    if payments_total != sale.total_amount:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "code": "payments_do_not_match_total",
-                "message": "La suma de los pagos debe coincidir con el total de la venta.",
-            },
-        )
-    sale.payments.clear()
-    for payment_payload in payload.payments:
-        sale.payments.append(
-            Payment(
-                method=payment_payload.method,
-                amount=_quantize(payment_payload.amount),
-                reference=payment_payload.reference,
+    with transactional_session(db):
+        sale = _ensure_sale(db, sale_id)
+        if not sale.items:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "sale_without_items",
+                    "message": "No es posible finalizar una venta sin artículos registrados.",
+                },
             )
+        if sale.status == SaleStatus.VOID:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "sale_voided", "message": "La venta fue anulada previamente."},
+            )
+        sale.recompute_totals()
+        payments_total = _quantize(
+            sum((_quantize(payment.amount) for payment in payload.payments), _DECIMAL_ZERO)
         )
-    sale.status = SaleStatus.COMPLETED
-    sale.completed_at = datetime.utcnow()
-    sale.voided_at = None
-    sale.updated_at = datetime.utcnow()
-    db.add(sale)
-    db.commit()
-    persisted = _ensure_sale(db, sale_id)
+        if payments_total != sale.total_amount:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "payments_do_not_match_total",
+                    "message": "La suma de los pagos debe coincidir con el total de la venta.",
+                },
+            )
+        sale.payments.clear()
+        for payment_payload in payload.payments:
+            sale.payments.append(
+                Payment(
+                    method=payment_payload.method,
+                    amount=_quantize(payment_payload.amount),
+                    reference=payment_payload.reference,
+                )
+            )
+        sale.status = SaleStatus.COMPLETED
+        sale.completed_at = datetime.utcnow()
+        sale.voided_at = None
+        sale.updated_at = datetime.utcnow()
+        db.add(sale)
+        flush_session(db)
+        db.refresh(sale)
+        persisted = sale
     logger.bind(module="pos", action="sale_completed", sale_id=sale_id).info(
         "Venta finalizada con pagos múltiples"
     )
@@ -215,23 +223,25 @@ def hold_sale(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> schemas.SaleResponse:
     del reason, current_user
-    sale = _ensure_sale(db, sale_id)
-    if sale.status != SaleStatus.OPEN:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "sale_cannot_hold",
-                "message": "Solo las ventas abiertas pueden pasar a estado hold.",
-            },
-        )
-    sale.status = SaleStatus.HELD
-    sale.held_at = datetime.utcnow()
-    if payload and payload.reason:
-        sale.notes = payload.reason
-    sale.updated_at = datetime.utcnow()
-    db.add(sale)
-    db.commit()
-    persisted = _ensure_sale(db, sale_id)
+    with transactional_session(db):
+        sale = _ensure_sale(db, sale_id)
+        if sale.status != SaleStatus.OPEN:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "sale_cannot_hold",
+                    "message": "Solo las ventas abiertas pueden pasar a estado hold.",
+                },
+            )
+        sale.status = SaleStatus.HELD
+        sale.held_at = datetime.utcnow()
+        if payload and payload.reason:
+            sale.notes = payload.reason
+        sale.updated_at = datetime.utcnow()
+        db.add(sale)
+        flush_session(db)
+        db.refresh(sale)
+        persisted = sale
     logger.bind(module="pos", action="sale_held", sale_id=sale_id).info(
         "Venta movida a estado hold"
     )
@@ -249,21 +259,23 @@ def resume_sale(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> schemas.SaleResponse:
     del reason, current_user
-    sale = _ensure_sale(db, sale_id)
-    if sale.status != SaleStatus.HELD:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "sale_cannot_resume",
-                "message": "Solo las ventas en hold pueden reanudarse.",
-            },
-        )
-    sale.status = SaleStatus.OPEN
-    sale.held_at = None
-    sale.updated_at = datetime.utcnow()
-    db.add(sale)
-    db.commit()
-    persisted = _ensure_sale(db, sale_id)
+    with transactional_session(db):
+        sale = _ensure_sale(db, sale_id)
+        if sale.status != SaleStatus.HELD:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "sale_cannot_resume",
+                    "message": "Solo las ventas en hold pueden reanudarse.",
+                },
+            )
+        sale.status = SaleStatus.OPEN
+        sale.held_at = None
+        sale.updated_at = datetime.utcnow()
+        db.add(sale)
+        flush_session(db)
+        db.refresh(sale)
+        persisted = sale
     logger.bind(module="pos", action="sale_resumed", sale_id=sale_id).info(
         "Venta reanudada desde hold"
     )
@@ -282,24 +294,26 @@ def void_sale(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> schemas.SaleResponse:
     del reason, current_user
-    sale = _ensure_sale(db, sale_id)
-    if sale.status == SaleStatus.COMPLETED:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "sale_completed",
-                "message": "No es posible anular una venta completada desde el POS ligero.",
-            },
-        )
-    sale.status = SaleStatus.VOID
-    sale.voided_at = datetime.utcnow()
-    if payload and payload.reason:
-        sale.notes = payload.reason
-    sale.updated_at = datetime.utcnow()
-    sale.payments.clear()
-    db.add(sale)
-    db.commit()
-    persisted = _ensure_sale(db, sale_id)
+    with transactional_session(db):
+        sale = _ensure_sale(db, sale_id)
+        if sale.status == SaleStatus.COMPLETED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "sale_completed",
+                    "message": "No es posible anular una venta completada desde el POS ligero.",
+                },
+            )
+        sale.status = SaleStatus.VOID
+        sale.voided_at = datetime.utcnow()
+        if payload and payload.reason:
+            sale.notes = payload.reason
+        sale.updated_at = datetime.utcnow()
+        sale.payments.clear()
+        db.add(sale)
+        flush_session(db)
+        db.refresh(sale)
+        persisted = sale
     logger.bind(module="pos", action="sale_voided", sale_id=sale_id).warning(
         "Venta anulada"
     )

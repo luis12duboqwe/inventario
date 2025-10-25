@@ -8,6 +8,7 @@ from typing import Callable
 from .. import crud, models
 from ..config import settings
 from ..database import SessionLocal
+from ..core.transactions import transactional_session
 from . import sync as sync_service
 from .backups import generate_backup
 
@@ -90,13 +91,18 @@ def _sync_job() -> None:
         differences_count = 0
         error_message: str | None = None
         try:
-            requeued = sync_service.requeue_failed_outbox_entries(session)
-            if requeued:
-                logger.info("Cola híbrida: %s eventos listos para reintentar", len(requeued))
-            result = sync_service.run_sync_cycle(session, performed_by_id=None)
-            processed_events = int(result.get("processed", 0))
-            discrepancies = result.get("discrepancies", [])
-            differences_count = len(discrepancies) if isinstance(discrepancies, list) else 0
+            with transactional_session(session):
+                requeued = sync_service.requeue_failed_outbox_entries(session)
+                if requeued:
+                    logger.info(
+                        "Cola híbrida: %s eventos listos para reintentar", len(requeued)
+                    )
+                result = sync_service.run_sync_cycle(session, performed_by_id=None)
+                processed_events = int(result.get("processed", 0))
+                discrepancies = result.get("discrepancies", [])
+                differences_count = (
+                    len(discrepancies) if isinstance(discrepancies, list) else 0
+                )
         except Exception as exc:  # pragma: no cover - logged error path
             status = models.SyncStatus.FAILED
             error_message = str(exc)
@@ -116,10 +122,11 @@ def _sync_job() -> None:
 
 def _backup_job() -> None:
     with SessionLocal() as session:
-        generate_backup(
-            session,
-            base_dir=settings.backup_directory,
-            mode=models.BackupMode.AUTOMATIC,
-            triggered_by_id=None,
-            notes="Respaldo automático programado",
-        )
+        with transactional_session(session):
+            generate_backup(
+                session,
+                base_dir=settings.backup_directory,
+                mode=models.BackupMode.AUTOMATIC,
+                triggered_by_id=None,
+                notes="Respaldo automático programado",
+            )
