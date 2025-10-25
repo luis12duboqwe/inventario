@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Iterable
@@ -11,12 +10,14 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.core.logging import logger as core_logger
+
 from .. import crud, models
 from ..config import settings
 from ..database import SessionLocal
 from ..core.transactions import transactional_session
 
-logger = logging.getLogger(__name__)
+logger = core_logger.bind(component=__name__)
 
 
 def requeue_failed_outbox_entries(db: Session) -> list[models.SyncOutbox]:
@@ -48,7 +49,9 @@ def requeue_failed_outbox_entries(db: Session) -> list[models.SyncOutbox]:
     if not ready_ids:
         return []
 
-    logger.info("Reprogramando %s eventos híbridos para reintento", len(ready_ids))
+    logger.info(
+        f"Reprogramando {len(ready_ids)} eventos híbridos para reintento"
+    )
     return crud.reset_outbox_entries(
         db,
         ready_ids,
@@ -204,7 +207,9 @@ class SyncScheduler:
             try:
                 self._execute_sync()
             except Exception as exc:  # pragma: no cover - logged error path
-                logger.exception("Fallo al ejecutar la sincronización automática: %s", exc)
+                logger.exception(
+                    f"Fallo al ejecutar la sincronización automática: {exc}"
+                )
 
     def _execute_sync(self) -> None:
         with SessionLocal() as session:
@@ -217,7 +222,7 @@ class SyncScheduler:
                     requeued = requeue_failed_outbox_entries(session)
                     if requeued:
                         logger.info(
-                            "Cola híbrida: %s eventos listos para reintentar", len(requeued)
+                            f"Cola híbrida: {len(requeued)} eventos listos para reintentar"
                         )
                     result = run_sync_cycle(session, performed_by_id=None)
                     processed_events = int(result.get("processed", 0))
@@ -228,7 +233,9 @@ class SyncScheduler:
             except Exception as exc:  # pragma: no cover - logged error path
                 status = models.SyncStatus.FAILED
                 error_message = str(exc)
-                logger.exception("Fallo al ejecutar la sincronización automática: %s", exc)
+                logger.exception(
+                    f"Fallo al ejecutar la sincronización automática: {exc}"
+                )
             finally:
                 crud.record_sync_session(
                     session,

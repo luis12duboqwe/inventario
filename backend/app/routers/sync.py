@@ -1,14 +1,14 @@
 """Sincronización automática y bajo demanda."""
 from __future__ import annotations
 
-import logging
-
 from datetime import datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+
+from backend.core.logging import logger as core_logger
 
 from .. import crud, models, schemas
 from ..config import settings
@@ -20,7 +20,7 @@ from ..security import require_roles
 from ..services import sync as sync_service
 from ..services import sync_conflict_reports
 
-logger = logging.getLogger(__name__)
+logger = core_logger.bind(component=__name__)
 
 router = APIRouter(prefix="/sync", tags=["sincronizacion"])
 
@@ -53,7 +53,7 @@ def trigger_sync(
             requeued = sync_service.requeue_failed_outbox_entries(db)
             if requeued:
                 logger.info(
-                    "Cola híbrida: %s eventos listos para reintentar", len(requeued)
+                    f"Cola híbrida: {len(requeued)} eventos listos para reintentar"
                 )
             result = sync_service.run_sync_cycle(
                 db,
@@ -68,7 +68,9 @@ def trigger_sync(
     except Exception as exc:
         status = models.SyncStatus.FAILED
         error_message = str(exc)
-        logger.exception("No fue posible completar la sincronización manual: %s", exc)
+        logger.exception(
+            f"No fue posible completar la sincronización manual: {exc}"
+        )
 
     session = crud.record_sync_session(
         db,

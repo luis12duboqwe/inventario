@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Callable
+
+from backend.core.logging import logger as core_logger
 
 from .. import crud, models
 from ..config import settings
@@ -12,7 +13,7 @@ from ..core.transactions import transactional_session
 from . import sync as sync_service
 from .backups import generate_backup
 
-logger = logging.getLogger(__name__)
+logger = core_logger.bind(component=__name__)
 
 
 class _PeriodicJob:
@@ -38,7 +39,9 @@ class _PeriodicJob:
             try:
                 await self._task
             except asyncio.CancelledError:  # pragma: no cover
-                logger.debug("Tarea periódica %s cancelada limpiamente.", self.name)
+                logger.debug(
+                    f"Tarea periódica {self.name} cancelada limpiamente."
+                )
             self._task = None
 
     async def _run(self) -> None:
@@ -47,7 +50,9 @@ class _PeriodicJob:
             try:
                 await asyncio.to_thread(self._callback)
             except Exception as exc:  # pragma: no cover - logueamos pero no detenemos la app
-                logger.exception("Error en tarea periódica %s: %s", self.name, exc)
+                logger.exception(
+                    f"Error en tarea periódica {self.name}: {exc}"
+                )
 
 
 class BackgroundScheduler:
@@ -95,7 +100,7 @@ def _sync_job() -> None:
                 requeued = sync_service.requeue_failed_outbox_entries(session)
                 if requeued:
                     logger.info(
-                        "Cola híbrida: %s eventos listos para reintentar", len(requeued)
+                        f"Cola híbrida: {len(requeued)} eventos listos para reintentar"
                     )
                 result = sync_service.run_sync_cycle(session, performed_by_id=None)
                 processed_events = int(result.get("processed", 0))
@@ -106,7 +111,9 @@ def _sync_job() -> None:
         except Exception as exc:  # pragma: no cover - logged error path
             status = models.SyncStatus.FAILED
             error_message = str(exc)
-            logger.exception("Fallo durante el job automático de sincronización: %s", exc)
+            logger.exception(
+                f"Fallo durante el job automático de sincronización: {exc}"
+            )
         finally:
             crud.record_sync_session(
                 session,

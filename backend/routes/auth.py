@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """Rutas de autenticación para Softmobile 2025."""
 
-import logging
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -34,6 +33,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.app.core.transactions import flush_session, transactional_session
+from backend.core.logging import logger as core_logger
 from backend.core.security import (
     create_access_token,
     create_refresh_token,
@@ -63,7 +63,7 @@ from backend.schemas.auth import (
 
 REGISTER_SUCCESS_MESSAGE = "Usuario registrado correctamente."
 
-LOGGER = logging.getLogger("backend.routes.auth")
+LOGGER = core_logger.bind(component="backend.routes.auth")
 
 PASSWORD_RESET_TOKEN_MINUTES = 30
 EMAIL_VERIFICATION_TOKEN_MINUTES = 60 * 24
@@ -237,14 +237,11 @@ def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> 
     user_read = UserRead.model_validate(user)
     if settings.SMTP_HOST:
         LOGGER.info(
-            "Token de verificación para bootstrap preparado para envío SMTP a %s",
-            user.email,
+            f"Token de verificación para bootstrap preparado para envío SMTP a {user.email}"
         )
     else:
         LOGGER.info(
-            "Token de verificación para bootstrap de %s: %s",
-            user.email,
-            verification_token,
+            f"Token de verificación para bootstrap de {user.email}: {verification_token}"
         )
     return RegisterResponse(
         message="Usuario inicial creado correctamente.",
@@ -289,14 +286,11 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Re
     user_read = UserRead.model_validate(user)
     if settings.SMTP_HOST:
         LOGGER.info(
-            "Token de verificación preparado para envío SMTP a %s",
-            user.email,
+            f"Token de verificación preparado para envío SMTP a {user.email}"
         )
     else:
         LOGGER.info(
-            "Token de verificación generado para %s: %s",
-            user.email,
-            verification_token,
+            f"Token de verificación generado para {user.email}: {verification_token}"
         )
     return RegisterResponse(
         message=REGISTER_SUCCESS_MESSAGE,
@@ -379,14 +373,11 @@ def forgot_password(
     token = _build_password_reset_token(user)
     if settings.SMTP_HOST:
         LOGGER.info(
-            "Solicitud de restablecimiento lista para envío SMTP a %s",
-            user.email,
+            f"Solicitud de restablecimiento lista para envío SMTP a {user.email}"
         )
     else:
         LOGGER.info(
-            "Token de restablecimiento para %s: %s",
-            user.email,
-            token,
+            f"Token de restablecimiento para {user.email}: {token}"
         )
     return ForgotPasswordResponse(
         message="Se enviaron las instrucciones de restablecimiento.",
@@ -413,7 +404,7 @@ def reset_password(
         user.hashed_password = get_password_hash(payload.new_password)
         db.add(user)
         flush_session(db)
-    LOGGER.info("Contraseña restablecida para el usuario %s", user.email)
+    LOGGER.info(f"Contraseña restablecida para el usuario {user.email}")
     return AuthMessage(message="Contraseña actualizada correctamente.")
 
 
@@ -435,9 +426,9 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
             user.is_verified = True
             db.add(user)
             flush_session(db)
-        LOGGER.info("Correo verificado para %s", user.email)
+        LOGGER.info(f"Correo verificado para {user.email}")
     else:
-        LOGGER.info("Correo ya verificado para %s", user.email)
+        LOGGER.info(f"Correo ya verificado para {user.email}")
 
     return AuthMessage(message="Correo verificado correctamente.")
 

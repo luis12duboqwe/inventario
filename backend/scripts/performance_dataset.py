@@ -7,6 +7,7 @@ además de transacciones clave que alimentan los módulos de dashboard.
 from __future__ import annotations
 
 import os
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -28,10 +29,21 @@ os.environ.setdefault("SOFTMOBILE_ENABLE_SCHEDULER", "0")
 os.environ.setdefault("SOFTMOBILE_ENABLE_BACKUP_SCHEDULER", "0")
 os.environ.setdefault(
     "SOFTMOBILE_ALLOWED_ORIGINS",
-    "http://127.0.0.1:5173,http://localhost:5173,http://0.0.0.0:5173",
+    "[\"http://127.0.0.1:5173\",\"http://localhost:5173\",\"http://0.0.0.0:5173\"]",
 )
+os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+if not (
+    os.getenv("JWT_SECRET_KEY")
+    or os.getenv("SOFTMOBILE_SECRET_KEY")
+    or os.getenv("SECRET_KEY")
+):
+    os.environ["JWT_SECRET_KEY"] = secrets.token_hex(32)
 
 from backend.app.main import app  # noqa: E402  # import after configurar entorno
+from backend.core.logging import logger as core_logger, setup_logging  # noqa: E402
+
+setup_logging()
+logger = core_logger.bind(component="scripts.performance_dataset")
 
 
 ADMIN_USERNAME = "admin"
@@ -688,12 +700,15 @@ def run_scenario() -> list[StageResult]:
 
 def main() -> None:
     results = run_scenario()
-    print("ESCENARIO DE RENDIMIENTO — Softmobile 2025 v2.2.0")
-    print(f"Base de datos: {DB_PATH}")
-    print("Etapas ejecutadas:")
+    logger.info("ESCENARIO DE RENDIMIENTO — Softmobile 2025 v2.2.0")
+    logger.info("Base de datos configurada", database_path=str(DB_PATH))
+    logger.info("Etapas ejecutadas")
     for stage in results:
-        print(
-            f" - {stage.name}: {stage.duration_seconds:.2f}s | detalles: {stage.details}"
+        logger.info(
+            "Etapa completada",
+            stage_name=stage.name,
+            duration_seconds=f"{stage.duration_seconds:.2f}",
+            detalles=stage.details,
         )
     total_devices_created = next(
         (
@@ -711,8 +726,10 @@ def main() -> None:
         ),
         None,
     )
-    print(
-        f"Resumen: dispositivos={total_devices_created}, movimientos={total_movements}"
+    logger.info(
+        "Resumen de ejecución",
+        dispositivos=total_devices_created,
+        movimientos=total_movements,
     )
 
 

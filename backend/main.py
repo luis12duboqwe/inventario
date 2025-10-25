@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import logging
 import os
 import sys
 from collections.abc import AsyncIterator, Callable
@@ -76,8 +75,7 @@ from backend.app.main import create_app as create_core_app
 init_db = getattr(db_utils, "init_db")
 create_core_app = getattr(core_main_module, "create_app")
 
-logging.basicConfig(level=logging.INFO)
-LOGGER = logging.getLogger("softmobile.bootstrap")
+LOGGER = app_logger.bind(component="backend.main.bootstrap")
 
 
 _ENVIRONMENT_READY = False

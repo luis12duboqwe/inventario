@@ -11,10 +11,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 from backend.app.core.roles import GESTION_ROLES
 from backend.app.routers.dependencies import require_reason
 from backend.app.security import require_roles
-from backend.core.logging import logger
+from backend.core.logging import logger as core_logger
 from backend.schemas.jobs import ExportJobRequest, ExportJobResponse
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+logger = core_logger.bind(component="backend.routes.jobs")
 
 
 def _simulate_export(job_id: str, payload: ExportJobRequest) -> None:
