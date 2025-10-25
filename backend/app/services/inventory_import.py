@@ -72,6 +72,7 @@ def export_devices_csv(
         proveedor=proveedor,
         fecha_ingreso_desde=fecha_ingreso_desde,
         fecha_ingreso_hasta=fecha_ingreso_hasta,
+        limit=None,
     )
     buffer = StringIO()
     writer = csv.DictWriter(buffer, fieldnames=EXPORT_HEADERS)

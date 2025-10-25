@@ -63,7 +63,8 @@ def _prepare_purchase_report(
 def list_purchase_vendors_endpoint(
     q: str | None = Query(default=None, min_length=1, max_length=120),
     estado: str | None = Query(default=None, min_length=3, max_length=40),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
@@ -71,18 +72,22 @@ def list_purchase_vendors_endpoint(
     _ensure_feature_enabled()
     query = q.strip() if q else None
     estado_value = estado.strip() if estado else None
-    effective_limit = max(limit, pagination.size * pagination.page)
+    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_size = min(pagination.size, limit)
+    total = crud.count_purchase_vendors(
+        db,
+        query=query,
+        estado=estado_value,
+    )
     vendors = crud.list_purchase_vendors(
         db,
         vendor_id=None,
         query=query,
         estado=estado_value,
-        limit=effective_limit,
+        limit=page_size,
+        offset=page_offset,
     )
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = vendors[start:end]
-    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(vendors))
+    return Page.from_items(vendors, page=pagination.page, size=page_size, total=total)
 
 
 @router.post("/vendors", response_model=schemas.PurchaseVendorResponse, status_code=status.HTTP_201_CREATED)
@@ -235,7 +240,7 @@ def list_purchase_records_endpoint(
     date_to: datetime | None = Query(default=None),
     estado: str | None = Query(default=None, min_length=3, max_length=40),
     q: str | None = Query(default=None, min_length=1, max_length=120),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
@@ -244,8 +249,17 @@ def list_purchase_records_endpoint(
     _ensure_feature_enabled()
     query = q.strip() if q else None
     estado_value = estado.strip() if estado else None
-    page_offset = offset if offset else pagination.offset
-    page_limit = min(limit, pagination.size)
+    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_limit = min(pagination.size, limit)
+    total = crud.count_purchase_records(
+        db,
+        proveedor_id=proveedor_id,
+        usuario_id=usuario_id,
+        date_from=date_from,
+        date_to=date_to,
+        estado=estado_value,
+        query=query,
+    )
     records = crud.list_purchase_records(
         db,
         proveedor_id=proveedor_id,
@@ -257,7 +271,6 @@ def list_purchase_records_endpoint(
         limit=page_limit,
         offset=page_offset,
     )
-    total = page_offset + len(records)
     return Page.from_items(records, page=pagination.page, size=page_limit, total=total)
 
 
@@ -394,16 +407,23 @@ def get_purchase_statistics_endpoint(
 
 @router.get("/", response_model=Page[schemas.PurchaseOrderResponse])
 def list_purchase_orders_endpoint(
-    limit: int = 50,
-    store_id: int | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    store_id: int | None = Query(default=None, ge=1),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> Page[schemas.PurchaseOrderResponse]:
     _ensure_feature_enabled()
-    page_limit = min(limit, pagination.size)
-    orders = crud.list_purchase_orders(db, store_id=store_id, limit=page_limit)
-    total = len(orders)
+    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_limit = min(pagination.size, limit)
+    total = crud.count_purchase_orders(db, store_id=store_id)
+    orders = crud.list_purchase_orders(
+        db,
+        store_id=store_id,
+        limit=page_limit,
+        offset=page_offset,
+    )
     return Page.from_items(orders, page=pagination.page, size=page_limit, total=total)
 
 

@@ -18,7 +18,8 @@ router = APIRouter(prefix="/audit", tags=["auditoría"])
 
 @router.get("/logs", response_model=list[schemas.AuditLogResponse])
 def list_audit_logs_endpoint(
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, max_length=120),
     entity_type: str | None = Query(default=None, max_length=80),
     performed_by_id: int | None = Query(default=None, ge=1),
@@ -30,6 +31,7 @@ def list_audit_logs_endpoint(
     return crud.list_audit_logs(
         db,
         limit=limit,
+        offset=offset,
         action=action,
         entity_type=entity_type,
         performed_by_id=performed_by_id,

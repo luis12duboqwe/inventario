@@ -20,20 +20,26 @@ router = APIRouter(prefix="/users", tags=["usuarios"])
 
 @router.get("/roles", response_model=list[schemas.RoleResponse])
 def list_roles(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
-    return crud.list_roles(db)
+    return crud.list_roles(db, limit=limit, offset=offset)
 
 
 @router.get("/permissions", response_model=list[schemas.RolePermissionMatrix])
 def list_role_permissions(
     role: str | None = Query(default=None, min_length=1, max_length=60),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
     try:
-        return crud.list_role_permissions(db, role_name=role)
+        return crud.list_role_permissions(
+            db, role_name=role, limit=limit, offset=offset
+        )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rol no encontrado") from exc
 
@@ -94,6 +100,8 @@ def list_users(
         default="all", alias="status"
     ),
     store_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
@@ -103,6 +111,8 @@ def list_users(
         role=role,
         status=status_filter,
         store_id=store_id,
+        limit=limit,
+        offset=offset,
     )
 
 

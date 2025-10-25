@@ -283,6 +283,8 @@ def analytics_rotation(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -293,6 +295,8 @@ def analytics_rotation(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=limit,
+        offset=offset,
     )
     return schemas.AnalyticsRotationResponse(items=[schemas.RotationMetric(**item) for item in data])
 
@@ -303,6 +307,8 @@ def analytics_aging(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -313,6 +319,8 @@ def analytics_aging(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=limit,
+        offset=offset,
     )
     return schemas.AnalyticsAgingResponse(items=[schemas.AgingMetric(**item) for item in data])
 
@@ -323,6 +331,8 @@ def analytics_forecast(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -333,6 +343,8 @@ def analytics_forecast(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=limit,
+        offset=offset,
     )
     return schemas.AnalyticsForecastResponse(items=[schemas.StockoutForecastMetric(**item) for item in data])
 
@@ -343,6 +355,8 @@ def analytics_comparative(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -353,6 +367,8 @@ def analytics_comparative(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=limit,
+        offset=offset,
     )
     return schemas.AnalyticsComparativeResponse(
         items=[schemas.StoreComparativeMetric(**item) for item in data]
@@ -365,6 +381,8 @@ def analytics_profit_margin(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -375,6 +393,8 @@ def analytics_profit_margin(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=limit,
+        offset=offset,
     )
     return schemas.AnalyticsProfitMarginResponse(
         items=[schemas.ProfitMarginMetric(**item) for item in data]
@@ -387,6 +407,8 @@ def analytics_sales_projection(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -397,6 +419,8 @@ def analytics_sales_projection(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=limit,
+        offset=offset,
     )
     return schemas.AnalyticsSalesProjectionResponse(
         items=[schemas.SalesProjectionMetric(**item) for item in data]
@@ -405,11 +429,13 @@ def analytics_sales_projection(
 
 @router.get("/analytics/categories", response_model=schemas.AnalyticsCategoriesResponse)
 def analytics_categories(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
-    categories = crud.list_analytics_categories(db)
+    categories = crud.list_analytics_categories(db, limit=limit, offset=offset)
     return schemas.AnalyticsCategoriesResponse(categories=categories)
 
 
@@ -419,6 +445,8 @@ def analytics_alerts(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -429,6 +457,8 @@ def analytics_alerts(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=limit,
+        offset=offset,
     )
     return schemas.AnalyticsAlertsResponse(
         items=[schemas.AnalyticsAlert(**item) for item in data]
@@ -439,6 +469,8 @@ def analytics_alerts(
 def analytics_realtime(
     store_ids: list[int] | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -447,6 +479,8 @@ def analytics_realtime(
         db,
         store_ids=store_ids,
         category=category,
+        limit=limit,
+        offset=offset,
     )
     return schemas.AnalyticsRealtimeResponse(
         items=[schemas.StoreRealtimeWidget(**item) for item in data]
@@ -464,12 +498,15 @@ def analytics_pdf(
     _reason: str = Depends(require_reason),
 ):
     _ensure_analytics_enabled()
+    export_limit = 200
     rotation = crud.calculate_rotation_analytics(
         db,
         store_ids=store_ids,
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=export_limit,
+        offset=0,
     )
     aging = crud.calculate_aging_analytics(
         db,
@@ -477,6 +514,8 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=export_limit,
+        offset=0,
     )
     forecast = crud.calculate_stockout_forecast(
         db,
@@ -484,6 +523,8 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=export_limit,
+        offset=0,
     )
     comparatives = crud.calculate_store_comparatives(
         db,
@@ -491,6 +532,8 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=export_limit,
+        offset=0,
     )
     profit = crud.calculate_profit_margin(
         db,
@@ -498,6 +541,8 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=export_limit,
+        offset=0,
     )
     projection = crud.calculate_sales_projection(
         db,
@@ -505,6 +550,8 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        limit=export_limit,
+        offset=0,
     )
     pdf_bytes = analytics_service.render_analytics_pdf(
         rotation=rotation,

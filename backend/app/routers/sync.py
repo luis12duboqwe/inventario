@@ -88,19 +88,24 @@ def trigger_sync(
 @router.get("/sessions", response_model=list[schemas.SyncSessionResponse])
 def list_sessions(
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
-    return crud.list_sync_sessions(db, limit=limit)
+    return crud.list_sync_sessions(db, limit=limit, offset=offset)
 
 
 @router.get("/overview", response_model=list[schemas.SyncBranchOverview])
 def sync_overview(
     store_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
-    data = crud.get_store_sync_overview(db, store_id=store_id)
+    data = crud.get_store_sync_overview(
+        db, store_id=store_id, limit=limit, offset=offset
+    )
     return [schemas.SyncBranchOverview(**entry) for entry in data]
 
 
@@ -119,6 +124,7 @@ def _prepare_conflict_report(
         date_to=date_to,
         severity=severity,
         limit=500,
+        offset=0,
     )
     filters = schemas.SyncConflictReportFilters(
         store_id=store_id,
@@ -135,7 +141,8 @@ def list_conflicts(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     severity: schemas.SyncBranchHealth | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
@@ -146,6 +153,7 @@ def list_conflicts(
         date_to=date_to,
         severity=severity,
         limit=limit,
+        offset=offset,
     )
 
 
@@ -209,13 +217,15 @@ def export_conflicts_excel(
 
 @router.get("/outbox", response_model=list[schemas.SyncOutboxEntryResponse])
 def list_outbox_entries(
-    status_filter: models.SyncOutboxStatus | None = None,
+    status_filter: models.SyncOutboxStatus | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_hybrid_enabled()
     statuses = [status_filter] if status_filter else None
-    entries = crud.list_sync_outbox(db, statuses=statuses)
+    entries = crud.list_sync_outbox(db, statuses=statuses, limit=limit, offset=offset)
     return entries
 
 
@@ -240,21 +250,27 @@ def retry_outbox_entries(
 
 @router.get("/outbox/stats", response_model=list[schemas.SyncOutboxStatsEntry])
 def outbox_statistics(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_hybrid_enabled()
-    stats = crud.get_sync_outbox_statistics(db)
+    stats = crud.get_sync_outbox_statistics(db, limit=limit, offset=offset)
     return [schemas.SyncOutboxStatsEntry(**item) for item in stats]
 
 
 @router.get("/history", response_model=list[schemas.SyncStoreHistory])
 def list_sync_history(
     limit_per_store: int = Query(default=5, ge=1, le=20),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
-    history = crud.list_sync_history_by_store(db, limit_per_store=limit_per_store)
+    history = crud.list_sync_history_by_store(
+        db, limit_per_store=limit_per_store, limit=limit, offset=offset
+    )
     results: list[schemas.SyncStoreHistory] = []
     for item in history:
         sessions = [

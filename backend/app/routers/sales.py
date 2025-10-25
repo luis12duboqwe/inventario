@@ -46,6 +46,7 @@ def _prepare_sales_report(
         db,
         store_id=store_id,
         limit=None,
+        offset=0,
         date_from=date_from,
         date_to=date_to,
         customer_id=customer_id,
@@ -57,7 +58,8 @@ def _prepare_sales_report(
 
 @router.get("/", response_model=list[schemas.SaleResponse])
 def list_sales_endpoint(
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
     performed_by_id: int | None = Query(default=None, ge=1),
@@ -73,6 +75,7 @@ def list_sales_endpoint(
         db,
         store_id=store_id,
         limit=limit,
+        offset=offset,
         date_from=date_from,
         date_to=date_to,
         customer_id=customer_id,

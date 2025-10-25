@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pyotp
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -101,12 +101,16 @@ def totp_disable(
 
 @router.get("/sessions", response_model=list[schemas.ActiveSessionResponse])
 def list_sessions(
-    user_id: int | None = None,
+    user_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN, GERENTE)),
 ):
     target_user = user_id or current_user.id
-    sessions = crud.list_active_sessions(db, user_id=target_user)
+    sessions = crud.list_active_sessions(
+        db, user_id=target_user, limit=limit, offset=offset
+    )
     return sessions
 
 

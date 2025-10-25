@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from backend.app.core.roles import GESTION_ROLES, REPORTE_ROLES
@@ -21,19 +21,23 @@ router = APIRouter(tags=["stores"])
 
 @router.get("/stores", response_model=Page[schemas.StoreRead])
 def list_stores(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user: Any = Depends(require_roles(*GESTION_ROLES)),
 ) -> Page[schemas.StoreRead]:
     """Devuelve las sucursales del núcleo en un formato paginado."""
 
-    stores = core_stores.list_stores(db, current_user)
-    total = len(stores)
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = stores[start:end]
-    items = [schemas.StoreRead.from_core(item) for item in page_items]
-    return Page.from_items(items, page=pagination.page, size=pagination.size, total=total)
+    core_page = core_stores.list_stores(
+        pagination=pagination,
+        limit=limit,
+        offset=offset,
+        db=db,
+        current_user=current_user,
+    )
+    items = [schemas.StoreRead.from_core(item) for item in core_page.items]
+    return Page.from_items(items, page=core_page.page, size=core_page.size, total=core_page.total)
 
 
 @router.post("/stores", response_model=schemas.StoreRead, status_code=status.HTTP_201_CREATED)
@@ -89,19 +93,24 @@ def update_store(
 )
 def list_memberships(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user: Any = Depends(require_roles(*GESTION_ROLES)),
 ) -> Page[schemas.StoreMembershipRead]:
     """Lista las membresías activas de la sucursal en formato paginado."""
 
-    memberships = core_stores.list_store_memberships(store_id, db, current_user)
-    total = len(memberships)
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = memberships[start:end]
-    items = [schemas.StoreMembershipRead.from_core(item) for item in page_items]
-    return Page.from_items(items, page=pagination.page, size=pagination.size, total=total)
+    core_page = core_stores.list_store_memberships(
+        store_id=store_id,
+        limit=limit,
+        offset=offset,
+        pagination=pagination,
+        db=db,
+        current_user=current_user,
+    )
+    items = [schemas.StoreMembershipRead.from_core(item) for item in core_page.items]
+    return Page.from_items(items, page=core_page.page, size=core_page.size, total=core_page.total)
 
 
 @router.put(

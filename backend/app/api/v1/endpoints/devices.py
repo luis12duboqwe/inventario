@@ -1,5 +1,5 @@
 """Endpoints for device management."""
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from .... import schemas
@@ -15,6 +15,8 @@ router = APIRouter()
 @router.get("/", response_model=list[schemas.Device], summary="Listar dispositivos")
 def get_devices(
     store_id: int = Path(..., description="Identificador de la sucursal"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     _current_user=Depends(require_roles(*REPORTE_ROLES)),
 ) -> list[schemas.Device]:
@@ -23,7 +25,7 @@ def get_devices(
     store = db.get(Store, store_id)
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada")
-    return list_devices(db, store_id)
+    return list_devices(db, store_id, limit=limit, offset=offset)
 
 
 @router.post(

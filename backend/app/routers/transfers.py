@@ -43,6 +43,7 @@ def _prepare_transfer_report(
         date_from=date_from,
         date_to=date_to,
         limit=500,
+        offset=0,
     )
     filters = schemas.TransferReportFilters(
         store_id=store_id,
@@ -58,6 +59,7 @@ def _prepare_transfer_report(
 @router.get("/", response_model=list[schemas.TransferOrderResponse])
 def list_transfers(
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     store_id: int | None = Query(default=None, ge=1),
     origin_store_id: int | None = Query(default=None, ge=1),
     destination_store_id: int | None = Query(default=None, ge=1),
@@ -76,7 +78,8 @@ def list_transfers(
         status=status,
         date_from=date_from,
         date_to=date_to,
-        limit=min(limit, 200),
+        limit=limit,
+        offset=offset,
     )
     return orders
 
