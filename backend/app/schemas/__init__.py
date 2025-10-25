@@ -593,7 +593,7 @@ class DeviceIdentifierBase(BaseModel):
 
 
 class DeviceIdentifierRequest(DeviceIdentifierBase):
-    pass
+    """Payload utilizado para registrar identificadores de dispositivos."""
 
 
 class DeviceIdentifierResponse(DeviceIdentifierBase):
@@ -618,7 +618,7 @@ class StoreMembershipResponse(StoreMembershipBase):
 
 
 class StoreMembershipUpdate(StoreMembershipBase):
-    pass
+    """Actualiza los permisos de pertenencia de un usuario en una sucursal."""
 
 
 class ContactHistoryEntry(BaseModel):
@@ -1006,7 +1006,7 @@ class SupplierBatchBase(BaseModel):
 
 
 class SupplierBatchCreate(SupplierBatchBase):
-    pass
+    """Datos requeridos para registrar un nuevo lote de proveedor."""
 
 
 class SupplierBatchUpdate(BaseModel):
@@ -1056,7 +1056,7 @@ class TransferOrderItemBase(BaseModel):
 
 
 class TransferOrderItemCreate(TransferOrderItemBase):
-    pass
+    """Elemento incluido en la creación de una orden de transferencia."""
 
 
 class TransferOrderTransition(BaseModel):
@@ -2570,7 +2570,7 @@ class PurchaseRecordItemBase(BaseModel):
 
 
 class PurchaseRecordItemCreate(PurchaseRecordItemBase):
-    pass
+    """Detalle de ítems utilizados al registrar una compra."""
 
 
 class PurchaseRecordItemResponse(PurchaseRecordItemBase):

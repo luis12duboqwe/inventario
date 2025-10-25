@@ -71,7 +71,7 @@ def client(db_session: Session) -> Iterator[TestClient]:
         try:
             yield db_session
         finally:
-            pass
+            db_session.expunge_all()
 
     app.dependency_overrides[get_db] = override_get_db
 
