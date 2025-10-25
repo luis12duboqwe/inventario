@@ -5148,8 +5148,6 @@ def create_inventory_movement(
             movement_unit_cost = _quantize_currency(previous_cost)
             if source_store_id is None:
                 source_store_id = store_id
-            if device.quantity <= 0:
-                device.costo_unitario = Decimal("0.00")
         elif payload.tipo_movimiento == models.MovementType.ADJUST:
             _ensure_adjustment_authorized(db, performed_by_id)
             if source_store_id is None:
