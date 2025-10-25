@@ -434,6 +434,11 @@ def test_inventory_snapshot_summary_includes_store_values(client, db_session) ->
     assert summary["total_units"] == 9
     assert summary["inventory_value"] == pytest.approx(65800.0)
 
+    integrity = snapshot["integrity_report"]
+    assert integrity["resumen"]["dispositivos_evaluados"] == 3
+    assert integrity["resumen"]["dispositivos_inconsistentes"] == 3
+    assert integrity["resumen"]["discrepancias_totales"] >= 3
+
     stores = {store["name"]: store for store in snapshot["stores"]}
     assert stores["Sucursal Centro"]["inventory_value"] == pytest.approx(61000.0)
     assert stores["Sucursal Centro"]["device_count"] == 2

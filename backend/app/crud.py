@@ -23,6 +23,7 @@ from backend.core.logging import logger as core_logger
 from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .core.transactions import flush_session, transactional_session
+from .services import inventory_audit
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
@@ -5556,6 +5557,14 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     }
 
 
+def get_inventory_integrity_report(
+    db: Session, *, store_ids: Iterable[int] | None = None
+) -> schemas.InventoryIntegrityReport:
+    """Devuelve el reporte de integridad entre existencias y movimientos."""
+
+    return inventory_audit.build_inventory_integrity_report(db, store_ids=store_ids)
+
+
 def get_inventory_current_report(
     db: Session, *, store_ids: Iterable[int] | None = None
 ) -> schemas.InventoryCurrentReport:
@@ -10872,8 +10881,11 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
     )
     users = list(db.scalars(users_stmt).unique())
 
-    movements_stmt = select(models.InventoryMovement).order_by(models.InventoryMovement.created_at.desc())
+    movements_stmt = select(models.InventoryMovement).order_by(
+        models.InventoryMovement.created_at.desc()
+    )
     movements = list(db.scalars(movements_stmt))
+    _hydrate_movement_references(db, movements)
 
     sync_stmt = select(models.SyncSession).order_by(models.SyncSession.started_at.desc())
     sync_sessions = list(db.scalars(sync_stmt))
@@ -10943,6 +10955,8 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
             }
         )
 
+    integrity_report = inventory_audit.build_inventory_integrity_report(db)
+
     snapshot = {
         "stores": stores_payload,
         "users": [
@@ -10967,6 +10981,13 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                 "comentario": movement.comment,
                 "usuario_id": movement.performed_by_id,
                 "fecha": movement.created_at.isoformat(),
+                "costo_unitario": (
+                    float(_to_decimal(movement.unit_cost))
+                    if movement.unit_cost is not None
+                    else None
+                ),
+                "referencia_tipo": getattr(movement, "reference_type", None),
+                "referencia_id": getattr(movement, "reference_id", None),
             }
             for movement in movements
         ],
@@ -11005,6 +11026,7 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
                 total_inventory_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             ),
         },
+        "integrity_report": integrity_report.model_dump(mode="json"),
     }
     return snapshot
 
