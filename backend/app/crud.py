@@ -4,7 +4,6 @@ from __future__ import annotations
 import copy
 import csv
 import json
-import logging
 import math
 import secrets
 from collections import defaultdict
@@ -19,6 +18,8 @@ from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement, Select
 
+from backend.core.logging import logger as core_logger
+
 from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .core.transactions import flush_session, transactional_session
@@ -27,7 +28,7 @@ from .config import settings
 from .utils import audit as audit_utils
 from .utils.cache import TTLCache
 
-logger = logging.getLogger(__name__)
+logger = core_logger.bind(component=__name__)
 
 DEFAULT_SECURITY_MODULES: list[str] = [
     "usuarios",
@@ -10554,8 +10555,7 @@ def register_pos_sale(
             delete_pos_draft(db, payload.draft_id, removed_by_id=performed_by_id)
         except LookupError:
             logger.debug(
-                "Borrador POS %s no encontrado al confirmar la venta.",
-                payload.draft_id,
+                f"Borrador POS {payload.draft_id} no encontrado al confirmar la venta."
             )
 
     with transactional_session(db):

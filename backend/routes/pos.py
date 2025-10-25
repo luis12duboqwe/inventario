@@ -18,7 +18,7 @@ from backend.app.routers import pos as core_pos
 from backend.app.routers.dependencies import require_reason
 from backend.app.schemas import BinaryFileResponse
 from backend.app.security import require_roles
-from backend.core.logging import logger
+from backend.core.logging import logger as core_logger
 from backend.db import get_db
 from backend.models.pos import Payment, PaymentMethod, Sale, SaleItem, SaleStatus
 from backend.schemas import pos as schemas
@@ -26,6 +26,8 @@ from backend.schemas import pos as schemas
 from ._core_bridge import mount_core_router
 
 extended_router = APIRouter(prefix="/pos", tags=["pos"])
+
+logger = core_logger.bind(component="backend.routes.pos")
 
 
 _DECIMAL_ZERO = Decimal("0")

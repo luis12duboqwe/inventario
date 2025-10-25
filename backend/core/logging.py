@@ -1,12 +1,12 @@
 """Configuración centralizada de Loguru con contexto JSON."""
 from __future__ import annotations
 
-from contextvars import ContextVar, Token
-from datetime import datetime
-from typing import Any, Final
 import json
 import logging
 import sys
+from contextvars import ContextVar, Token
+from datetime import datetime
+from typing import Any, Final
 
 try:  # pragma: no cover - import guard exercised in environments con Loguru
     from loguru import logger as _loguru_logger

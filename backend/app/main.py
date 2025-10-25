@@ -1,11 +1,8 @@
 """Punto de entrada para la aplicación FastAPI."""
 from __future__ import annotations
 
-import os
-import logging
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 import traceback
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,7 +40,10 @@ from .routers import (
 )
 from .services.scheduler import BackgroundScheduler
 
-logger = logging.getLogger(__name__)
+from backend.core.logging import logger as core_logger, setup_logging
+
+setup_logging()
+logger = core_logger.bind(component="backend.app.main")
 
 _scheduler: BackgroundScheduler | None = None
 
