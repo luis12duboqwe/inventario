@@ -7,7 +7,7 @@ import json
 import math
 import secrets
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
@@ -6376,18 +6376,40 @@ def generate_analytics_alerts(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
+    normalized_offset = max(offset, 0)
+    normalized_limit = None if limit is None or limit < 0 else limit
     alerts: list[dict[str, object]] = []
-    window = None if limit is None else max(limit + offset, 0)
-    forecast = calculate_stockout_forecast(
-        db,
-        store_ids=store_ids,
-        date_from=date_from,
-        date_to=date_to,
-        category=category,
-        limit=window,
-        offset=0,
+
+    target_alerts = (
+        None
+        if normalized_limit is None
+        else max(normalized_limit + normalized_offset, 0)
     )
-    for item in forecast:
+    batch_size = 250
+    if target_alerts is not None:
+        batch_size = min(max(target_alerts, 100), 1000)
+
+    def _iter_stockout_batches() -> Iterator[dict[str, object]]:
+        page_offset = 0
+        while True:
+            chunk = calculate_stockout_forecast(
+                db,
+                store_ids=store_ids,
+                date_from=date_from,
+                date_to=date_to,
+                category=category,
+                limit=batch_size,
+                offset=page_offset,
+            )
+            if not chunk:
+                break
+            for entry in chunk:
+                yield entry
+            if len(chunk) < batch_size:
+                break
+            page_offset += len(chunk)
+
+    for item in _iter_stockout_batches():
         level = item.get("alert_level")
         if level in {"critical", "warning"}:
             projected_days = item.get("projected_days")
@@ -6410,17 +6432,28 @@ def generate_analytics_alerts(
                 }
             )
 
-    projections = calculate_sales_projection(
-        db,
-        store_ids=store_ids,
-        date_from=date_from,
-        date_to=date_to,
-        category=category,
-        horizon_days=14,
-        limit=window,
-        offset=0,
-    )
-    for item in projections:
+    def _iter_projection_batches() -> Iterator[dict[str, object]]:
+        page_offset = 0
+        while True:
+            chunk = calculate_sales_projection(
+                db,
+                store_ids=store_ids,
+                date_from=date_from,
+                date_to=date_to,
+                category=category,
+                horizon_days=14,
+                limit=batch_size,
+                offset=page_offset,
+            )
+            if not chunk:
+                break
+            for entry in chunk:
+                yield entry
+            if len(chunk) < batch_size:
+                break
+            page_offset += len(chunk)
+
+    for item in _iter_projection_batches():
         trend = item.get("trend")
         trend_score = float(item.get("trend_score", 0))
         if trend == "cayendo" and trend_score < -0.5:
@@ -6441,9 +6474,9 @@ def generate_analytics_alerts(
             )
 
     alerts.sort(key=lambda alert: (alert["level"] != "critical", alert["level"] != "warning"))
-    if limit is None:
-        return alerts[offset:]
-    return alerts[offset : offset + limit]
+    if normalized_limit is None:
+        return alerts[normalized_offset:]
+    return alerts[normalized_offset : normalized_offset + normalized_limit]
 
 
 def calculate_realtime_store_widget(
