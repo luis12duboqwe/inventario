@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import traceback
@@ -41,6 +42,8 @@ from .routers import (
     users,
 )
 from .services.scheduler import BackgroundScheduler
+
+logger = logging.getLogger(__name__)
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -195,7 +198,9 @@ def create_app() -> FastAPI:
                         ip_origen=client_host,
                     )
         except Exception:  # pragma: no cover - evitamos fallos en el logger
-            pass
+            logger.exception(
+                "No se pudo registrar el error del sistema en la bitácora."
+            )
 
     @app.middleware("http")
     async def enforce_reason_header(request: Request, call_next):

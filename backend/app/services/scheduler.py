@@ -38,7 +38,7 @@ class _PeriodicJob:
             try:
                 await self._task
             except asyncio.CancelledError:  # pragma: no cover
-                pass
+                logger.debug("Tarea periódica %s cancelada limpiamente.", self.name)
             self._task = None
 
     async def _run(self) -> None:

@@ -195,7 +195,7 @@ class SyncScheduler:
             try:
                 await self._task
             except asyncio.CancelledError:  # pragma: no cover - cancel path
-                pass
+                logger.debug("Ejecución automática de sincronización cancelada.")
             self._task = None
 
     async def _run(self) -> None:
