@@ -153,6 +153,7 @@ def acknowledge_audit_alert_endpoint(
         )
 
     return schemas.AuditAcknowledgementResponse(
+        id=acknowledgement.id,
         entity_type=acknowledgement.entity_type,
         entity_id=acknowledgement.entity_id,
         acknowledged_at=acknowledgement.acknowledged_at,
