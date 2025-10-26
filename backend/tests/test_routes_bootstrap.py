@@ -21,8 +21,8 @@ def _reset_database() -> None:
 
     init_db()
     with SessionLocal() as session:
-        session.query(User).delete()
-        session.commit()
+        with session.begin():
+            session.query(User).delete()
 
 
 def _create_test_app() -> FastAPI:

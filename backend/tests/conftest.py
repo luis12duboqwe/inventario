@@ -46,8 +46,8 @@ def db_session(db_engine) -> Iterator[Session]:
     session_factory = sessionmaker(bind=connection, autocommit=False, autoflush=False, future=True)
     session = session_factory()
     try:
-        yield session
-        session.commit()
+        with session.begin():
+            yield session
     finally:
         session.close()
         transaction.rollback()
