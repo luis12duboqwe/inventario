@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
-from typing import Any
+from typing import Any, TypeVar
 
 
 class SoftmobileError(Exception):
@@ -108,8 +108,9 @@ class InMemoryRepository:
         self.stores[store.id] = store
         return store
 
-    def list_stores(self) -> list[Store]:
-        return sorted(self.stores.values(), key=lambda store: store.name.lower())
+    def list_stores(self, limit: int = 50, offset: int = 0) -> list[Store]:
+        stores = sorted(self.stores.values(), key=lambda store: store.name.lower())
+        return _apply_pagination(stores, limit=limit, offset=offset)
 
     def get_store(self, store_id: int) -> Store:
         try:
@@ -148,12 +149,13 @@ class InMemoryRepository:
         self.devices[device.id] = device
         return device
 
-    def list_devices(self, store_id: int) -> list[Device]:
+    def list_devices(self, store_id: int, limit: int = 50, offset: int = 0) -> list[Device]:
         store = self.get_store(store_id)
-        return sorted(
+        devices = sorted(
             [device for device in self.devices.values() if device.store_id == store.id],
             key=lambda device: device.sku.lower(),
         )
+        return _apply_pagination(devices, limit=limit, offset=offset)
 
 
 def _validate_store_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -198,6 +200,18 @@ def _validate_device_payload(payload: dict[str, Any]) -> dict[str, Any]:
             message="La cantidad debe ser un entero positivo o cero.",
         )
     return {"sku": sku, "name": name, "quantity": quantity}
+
+
+T = TypeVar("T")
+
+
+def _apply_pagination(items: list[T], *, limit: int, offset: int) -> list[T]:
+    normalized_limit = 50 if limit is None else max(1, min(int(limit), 200))
+    normalized_offset = max(0, int(offset))
+    if not items:
+        return []
+    end_index = normalized_offset + normalized_limit
+    return items[normalized_offset:end_index]
 
 
 def _require_string(payload: dict[str, Any], key: str, *, max_length: int) -> str:
