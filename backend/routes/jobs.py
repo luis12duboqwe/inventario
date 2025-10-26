@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 from backend.app.core.roles import GESTION_ROLES
 from backend.app.routers.dependencies import require_reason
-from backend.app.security import require_roles
+from backend.app.security import get_current_user, require_roles
 from backend.core.logging import logger as core_logger
 from backend.schemas.jobs import ExportJobRequest, ExportJobResponse
 
@@ -30,6 +30,7 @@ def _simulate_export(job_id: str, payload: ExportJobRequest) -> None:
 @router.post(
     "/export",
     response_model=ExportJobResponse,
+    dependencies=[Depends(get_current_user)],
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def enqueue_export_job(

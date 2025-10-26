@@ -19,7 +19,11 @@ from ._core_bridge import mount_core_router
 router = APIRouter(tags=["stores"], dependencies=[Depends(get_current_user)])
 
 
-@router.get("/stores", response_model=Page[schemas.StoreRead])
+@router.get(
+    "/stores",
+    response_model=Page[schemas.StoreRead],
+    dependencies=[Depends(get_current_user)],
+)
 def list_stores(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -40,7 +44,12 @@ def list_stores(
     return Page.from_items(items, page=core_page.page, size=core_page.size, total=core_page.total)
 
 
-@router.post("/stores", response_model=schemas.StoreRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/stores",
+    response_model=schemas.StoreRead,
+    dependencies=[Depends(get_current_user)],
+    status_code=status.HTTP_201_CREATED,
+)
 def create_store(
     payload: schemas.StoreCreate,
     db: Session = Depends(get_db),
@@ -53,7 +62,11 @@ def create_store(
     return schemas.StoreRead.from_core(result)
 
 
-@router.get("/stores/{store_id}", response_model=schemas.StoreRead)
+@router.get(
+    "/stores/{store_id}",
+    response_model=schemas.StoreRead,
+    dependencies=[Depends(get_current_user)],
+)
 def retrieve_store(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
@@ -68,7 +81,11 @@ def retrieve_store(
     return schemas.StoreRead.from_core(result)
 
 
-@router.put("/stores/{store_id}", response_model=schemas.StoreRead)
+@router.put(
+    "/stores/{store_id}",
+    response_model=schemas.StoreRead,
+    dependencies=[Depends(get_current_user)],
+)
 def update_store(
     payload: schemas.StoreUpdate,
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
@@ -90,6 +107,7 @@ def update_store(
 @router.get(
     "/stores/{store_id}/memberships",
     response_model=Page[schemas.StoreMembershipRead],
+    dependencies=[Depends(get_current_user)],
 )
 def list_memberships(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
@@ -116,6 +134,7 @@ def list_memberships(
 @router.put(
     "/stores/{store_id}/memberships/{user_id}",
     response_model=schemas.StoreMembershipRead,
+    dependencies=[Depends(get_current_user)],
 )
 def upsert_membership(
     payload: schemas.StoreMembershipUpdate,
@@ -145,6 +164,7 @@ def upsert_membership(
 @router.get(
     "/stores/{store_id}/devices",
     response_model=Page[schemas.StoreDeviceRead],
+    dependencies=[Depends(get_current_user)],
     include_in_schema=False,
 )
 def proxy_list_devices(

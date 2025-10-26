@@ -17,7 +17,7 @@ from backend.app.core.transactions import flush_session, transactional_session
 from backend.app.routers import pos as core_pos
 from backend.app.routers.dependencies import require_reason
 from backend.app.schemas import BinaryFileResponse
-from backend.app.security import require_roles
+from backend.app.security import get_current_user, require_roles
 from backend.core.logging import logger as core_logger
 from backend.db import get_db
 from backend.models.pos import Payment, PaymentMethod, Sale, SaleItem, SaleStatus
@@ -86,7 +86,12 @@ def _build_item_from_payload(sale: Sale, payload: schemas.SaleItemCreate) -> Sal
     )
 
 
-@extended_router.post("/sales", response_model=schemas.SaleResponse, status_code=status.HTTP_201_CREATED)
+@extended_router.post(
+    "/sales",
+    response_model=schemas.SaleResponse,
+    dependencies=[Depends(get_current_user)],
+    status_code=status.HTTP_201_CREATED,
+)
 def create_sale(
     payload: schemas.SaleCreate,
     db: Session = Depends(get_db),
@@ -109,6 +114,7 @@ def create_sale(
 @extended_router.post(
     "/sales/{sale_id}/items",
     response_model=schemas.SaleResponse,
+    dependencies=[Depends(get_current_user)],
     status_code=status.HTTP_201_CREATED,
 )
 def add_items(
@@ -149,6 +155,7 @@ def add_items(
 @extended_router.post(
     "/sales/{sale_id}/checkout",
     response_model=schemas.CheckoutResponse,
+    dependencies=[Depends(get_current_user)],
     status_code=status.HTTP_200_OK,
 )
 def checkout_sale(
@@ -215,6 +222,7 @@ def checkout_sale(
 @extended_router.post(
     "/sales/{sale_id}/hold",
     response_model=schemas.SaleResponse,
+    dependencies=[Depends(get_current_user)],
     status_code=status.HTTP_200_OK,
 )
 def hold_sale(
@@ -253,6 +261,7 @@ def hold_sale(
 @extended_router.post(
     "/sales/{sale_id}/resume",
     response_model=schemas.SaleResponse,
+    dependencies=[Depends(get_current_user)],
 )
 def resume_sale(
     sale_id: int,
@@ -287,6 +296,7 @@ def resume_sale(
 @extended_router.post(
     "/sales/{sale_id}/void",
     response_model=schemas.SaleResponse,
+    dependencies=[Depends(get_current_user)],
 )
 def void_sale(
     sale_id: int,
@@ -325,6 +335,7 @@ def void_sale(
 @extended_router.get(
     "/receipt/{sale_id}",
     response_model=schemas.ReceiptResponse | BinaryFileResponse,
+    dependencies=[Depends(get_current_user)],
 )
 def read_receipt(
     sale_id: int,
