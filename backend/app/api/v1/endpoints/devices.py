@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from .... import schemas
 from ....core.roles import GESTION_ROLES, REPORTE_ROLES
 from ....models.store import Store
-from ....security import require_roles
+from ....security import get_current_user, require_roles
 from ....services.inventory import create_device, list_devices
 from ...deps import get_db
 
@@ -16,7 +16,7 @@ router = APIRouter()
     "/",
     response_model=list[schemas.Device],
     summary="Listar dispositivos",
-    dependencies=[Depends(require_roles(*REPORTE_ROLES))],
+    dependencies=[Depends(get_current_user), Depends(require_roles(*REPORTE_ROLES))],
 )
 def get_devices(
     store_id: int = Path(..., description="Identificador de la sucursal"),
@@ -38,7 +38,7 @@ def get_devices(
     response_model=schemas.Device,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar dispositivo",
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    dependencies=[Depends(get_current_user), Depends(require_roles(*GESTION_ROLES))],
 )
 def add_device(
     *,

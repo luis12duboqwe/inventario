@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from .... import schemas
 from ....core.roles import GESTION_ROLES
 from ....models.store import Store as StoreModel
-from ....security import require_roles
+from ....security import get_current_user, require_roles
 from ....services.inventory import create_store, list_stores
 from ...deps import get_db
 
@@ -16,7 +16,7 @@ router = APIRouter()
     "/",
     response_model=list[schemas.Store],
     summary="Listar sucursales",
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    dependencies=[Depends(get_current_user), Depends(require_roles(*GESTION_ROLES))],
 )
 def get_stores(
     limit: int = Query(default=50, ge=1, le=200),
@@ -34,7 +34,7 @@ def get_stores(
     response_model=schemas.Store,
     status_code=status.HTTP_201_CREATED,
     summary="Crear nueva sucursal",
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    dependencies=[Depends(get_current_user), Depends(require_roles(*GESTION_ROLES))],
 )
 def add_store(
     store_in: schemas.StoreCreate,
