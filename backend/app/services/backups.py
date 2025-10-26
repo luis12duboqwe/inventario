@@ -4,6 +4,7 @@ from __future__ import annotations
 import enum
 import json
 import shutil
+from contextlib import closing
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO, StringIO
@@ -386,20 +387,10 @@ def _restore_database(db: Session, sql_path: Path) -> None:
     engine = bind.engine if hasattr(bind, "engine") else bind
     sql_script = sql_path.read_text(encoding="utf-8")
     if engine.dialect.name == "sqlite":
-        raw_connection = engine.raw_connection()
-        try:
-            cursor = raw_connection.cursor()
-            try:
+        with engine.begin() as connection:
+            raw_connection = connection.connection
+            with closing(raw_connection.cursor()) as cursor:
                 cursor.executescript(sql_script)
-            except Exception:
-                raw_connection.rollback()
-                raise
-            else:
-                raw_connection.commit()
-            finally:
-                cursor.close()
-        finally:
-            raw_connection.close()
     else:
         statements = [segment.strip() for segment in sql_script.split(";") if segment.strip()]
         with transactional_session(db):
