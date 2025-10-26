@@ -387,18 +387,21 @@ def _restore_database(db: Session, sql_path: Path) -> None:
     engine = bind.engine if hasattr(bind, "engine") else bind
     sql_script = sql_path.read_text(encoding="utf-8")
     if engine.dialect.name == "sqlite":
-        with engine.begin() as connection:
-            raw_connection = connection.connection
+        raw_connection = engine.raw_connection()
+        try:
             with closing(raw_connection.cursor()) as cursor:
                 cursor.executescript(sql_script)
-    else:
-        statements = [segment.strip() for segment in sql_script.split(";") if segment.strip()]
-        with transactional_session(db):
-            for statement in statements:
-                upper = statement.upper()
-                if upper in {"BEGIN TRANSACTION", "COMMIT"}:
-                    continue
-                db.execute(text(statement))
+        finally:
+            raw_connection.close()
+        return
+
+    statements = [segment.strip() for segment in sql_script.split(";") if segment.strip()]
+    with transactional_session(db):
+        for statement in statements:
+            upper = statement.upper()
+            if upper in {"BEGIN TRANSACTION", "COMMIT"}:
+                continue
+            db.execute(text(statement))
 
 
 def generate_backup(
