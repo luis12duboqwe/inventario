@@ -231,9 +231,15 @@ def list_outbox_entries(
     return entries
 
 
-@router.post("/outbox/retry", response_model=list[schemas.SyncOutboxEntryResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
+@router.post(
+    "/outbox/retry",
+    response_model=list[schemas.SyncOutboxEntryResponse],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def retry_outbox_entries(
     payload: schemas.SyncOutboxReplayRequest,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
     reason: str = Depends(require_reason),
@@ -244,6 +250,8 @@ def retry_outbox_entries(
         payload.ids,
         performed_by_id=current_user.id if current_user else None,
         reason=reason,
+        limit=limit,
+        offset=offset,
     )
     if not entries:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entradas no encontradas")

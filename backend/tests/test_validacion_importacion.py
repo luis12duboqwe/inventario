@@ -57,7 +57,7 @@ def test_validacion_importacion_detecta_incidencias(db_session, client):
     assert summary.advertencias >= 1
     assert "modelo" in summary.campos_faltantes
 
-    validations = crud.list_import_validations(db_session)
+    validations = crud.list_import_validations(db_session, limit=200, offset=0)
     assert validations
     descriptions = [validation.descripcion for validation in validations]
     assert any("IMEI duplicado" in descripcion for descripcion in descriptions)

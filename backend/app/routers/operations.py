@@ -130,6 +130,8 @@ def get_operations_history_endpoint(
     end_date: date | None = Query(default=None),
     store_id: int | None = Query(default=None),
     technician_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> schemas.OperationsHistoryResponse:
@@ -145,4 +147,6 @@ def get_operations_history_endpoint(
         end=end_dt,
         store_id=store_id,
         technician_id=technician_id,
+        limit=limit,
+        offset=offset,
     )
