@@ -27,13 +27,23 @@ def _resolve_database_configuration() -> tuple[str, dict[str, object], Path | No
 
     url = make_url(database_url)
     if url.drivername.startswith("sqlite"):
-        database_path = Path(url.database) if url.database else DEFAULT_DATABASE_PATH
-        if not database_path.is_absolute():
-            database_path = (Path.cwd() / database_path).resolve()
+        database_is_memory = url.database == ":memory:"
+        database_uses_uri = bool(url.database and url.database.startswith("file:"))
+
+        if url.database and not database_is_memory and not database_uses_uri:
+            database_path = Path(url.database)
+            if not database_path.is_absolute():
+                database_path = (Path.cwd() / database_path).resolve()
+            database_url = url.set(database=str(database_path)).render_as_string(
+                hide_password=False
+            )
+        elif not url.database:
+            database_path = DEFAULT_DATABASE_PATH
+            database_url = url.set(database=str(database_path)).render_as_string(
+                hide_password=False
+            )
+
         connect_args["check_same_thread"] = False
-        database_url = url.set(database=str(database_path)).render_as_string(
-            hide_password=False
-        )
 
     if connect_args:
         engine_kwargs["connect_args"] = connect_args
