@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..config import settings
-from ..core.roles import GESTION_ROLES
+from ..core.roles import MOVEMENT_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -103,7 +103,11 @@ def _prepare_transfer_report(
     )
 
 
-@router.get("/", response_model=list[schemas.TransferOrderResponse])
+@router.get(
+    "/",
+    response_model=list[schemas.TransferOrderResponse],
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def list_transfers(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -114,7 +118,7 @@ def list_transfers(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     orders = crud.list_transfer_orders(
@@ -131,7 +135,11 @@ def list_transfers(
     return _transfers_with_audit(db, orders)
 
 
-@router.get("/report", response_model=schemas.TransferReport)
+@router.get(
+    "/report",
+    response_model=schemas.TransferReport,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def transfer_report(
     store_id: int | None = Query(default=None, ge=1),
     origin_store_id: int | None = Query(default=None, ge=1),
@@ -140,7 +148,7 @@ def transfer_report(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     return _prepare_transfer_report(
@@ -154,7 +162,11 @@ def transfer_report(
     )
 
 
-@router.get("/export/pdf", response_model=schemas.BinaryFileResponse)
+@router.get(
+    "/export/pdf",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def export_transfer_report_pdf(
     store_id: int | None = Query(default=None, ge=1),
     origin_store_id: int | None = Query(default=None, ge=1),
@@ -164,7 +176,7 @@ def export_transfer_report_pdf(
     date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
     _reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     report = _prepare_transfer_report(
@@ -188,7 +200,11 @@ def export_transfer_report_pdf(
     )
 
 
-@router.get("/export/xlsx", response_model=schemas.BinaryFileResponse)
+@router.get(
+    "/export/xlsx",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def export_transfer_report_excel(
     store_id: int | None = Query(default=None, ge=1),
     origin_store_id: int | None = Query(default=None, ge=1),
@@ -198,7 +214,7 @@ def export_transfer_report_excel(
     date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
     _reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     report = _prepare_transfer_report(
@@ -222,11 +238,16 @@ def export_transfer_report_excel(
     )
 
 
-@router.post("/", response_model=schemas.TransferOrderResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=schemas.TransferOrderResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def create_transfer(
     payload: schemas.TransferOrderCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -247,12 +268,16 @@ def create_transfer(
         raise
 
 
-@router.post("/{transfer_id}/dispatch", response_model=schemas.TransferOrderResponse)
+@router.post(
+    "/{transfer_id}/dispatch",
+    response_model=schemas.TransferOrderResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def dispatch_transfer(
     payload: schemas.TransferOrderTransition,
     transfer_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -273,12 +298,16 @@ def dispatch_transfer(
         raise
 
 
-@router.post("/{transfer_id}/receive", response_model=schemas.TransferOrderResponse)
+@router.post(
+    "/{transfer_id}/receive",
+    response_model=schemas.TransferOrderResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def receive_transfer(
     payload: schemas.TransferOrderTransition,
     transfer_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -304,12 +333,16 @@ def receive_transfer(
         raise
 
 
-@router.post("/{transfer_id}/cancel", response_model=schemas.TransferOrderResponse)
+@router.post(
+    "/{transfer_id}/cancel",
+    response_model=schemas.TransferOrderResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def cancel_transfer(
     payload: schemas.TransferOrderTransition,
     transfer_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:

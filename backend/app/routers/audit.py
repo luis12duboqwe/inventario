@@ -8,7 +8,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
-from ..core.roles import AUDITORIA_ROLES
+from ..core.roles import ADMIN
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -16,7 +16,11 @@ from ..security import require_roles
 router = APIRouter(prefix="/audit", tags=["auditoría"])
 
 
-@router.get("/logs", response_model=list[schemas.AuditLogResponse])
+@router.get(
+    "/logs",
+    response_model=list[schemas.AuditLogResponse],
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def list_audit_logs_endpoint(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -26,7 +30,7 @@ def list_audit_logs_endpoint(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*AUDITORIA_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     return crud.list_audit_logs(
         db,
@@ -40,7 +44,11 @@ def list_audit_logs_endpoint(
     )
 
 
-@router.get("/logs/export.csv", response_model=schemas.BinaryFileResponse)
+@router.get(
+    "/logs/export.csv",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def export_audit_logs(
     limit: int = Query(default=1000, ge=1, le=5000),
     action: str | None = Query(default=None, max_length=120),
@@ -49,7 +57,7 @@ def export_audit_logs(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*AUDITORIA_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     csv_data = crud.export_audit_logs_csv(
@@ -72,14 +80,18 @@ def export_audit_logs(
     )
 
 
-@router.get("/reminders", response_model=schemas.AuditReminderSummary)
+@router.get(
+    "/reminders",
+    response_model=schemas.AuditReminderSummary,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def list_audit_reminders(
     threshold_minutes: int = Query(default=15, ge=0, le=240),
     min_occurrences: int = Query(default=1, ge=1, le=50),
     lookback_hours: int = Query(default=48, ge=1, le=168),
     limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*AUDITORIA_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     reminders = crud.get_persistent_audit_alerts(
         db,
@@ -108,11 +120,12 @@ def list_audit_reminders(
     "/acknowledgements",
     response_model=schemas.AuditAcknowledgementResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(ADMIN))],
 )
 def acknowledge_audit_alert_endpoint(
     payload: schemas.AuditAcknowledgementCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*AUDITORIA_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     try:

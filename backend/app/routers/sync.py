@@ -12,7 +12,7 @@ from backend.core.logging import logger as core_logger
 
 from .. import crud, models, schemas
 from ..config import settings
-from ..core.roles import GESTION_ROLES, REPORTE_ROLES
+from ..core.roles import ADMIN, GESTION_ROLES
 from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
@@ -30,7 +30,7 @@ def _ensure_hybrid_enabled() -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
 
 
-@router.post("/run", response_model=schemas.SyncSessionResponse)
+@router.post("/run", response_model=schemas.SyncSessionResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def trigger_sync(
     payload: schemas.SyncRequest,
     db: Session = Depends(get_db),
@@ -87,23 +87,23 @@ def trigger_sync(
     return session
 
 
-@router.get("/sessions", response_model=list[schemas.SyncSessionResponse])
+@router.get("/sessions", response_model=list[schemas.SyncSessionResponse], dependencies=[Depends(require_roles(ADMIN))])
 def list_sessions(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     return crud.list_sync_sessions(db, limit=limit, offset=offset)
 
 
-@router.get("/overview", response_model=list[schemas.SyncBranchOverview])
+@router.get("/overview", response_model=list[schemas.SyncBranchOverview], dependencies=[Depends(require_roles(ADMIN))])
 def sync_overview(
     store_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     data = crud.get_store_sync_overview(
         db, store_id=store_id, limit=limit, offset=offset
@@ -137,7 +137,7 @@ def _prepare_conflict_report(
     return sync_conflict_reports.build_conflict_report(conflicts, filters)
 
 
-@router.get("/conflicts", response_model=list[schemas.SyncConflictLog])
+@router.get("/conflicts", response_model=list[schemas.SyncConflictLog], dependencies=[Depends(require_roles(ADMIN))])
 def list_conflicts(
     store_id: int | None = Query(default=None, ge=1),
     date_from: datetime | None = Query(default=None),
@@ -146,7 +146,7 @@ def list_conflicts(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     return crud.list_sync_conflicts(
         db,
@@ -159,7 +159,7 @@ def list_conflicts(
     )
 
 
-@router.get("/conflicts/export/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/conflicts/export/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def export_conflicts_pdf(
     store_id: int | None = Query(default=None, ge=1),
     date_from: datetime | None = Query(default=None),
@@ -167,7 +167,7 @@ def export_conflicts_pdf(
     severity: schemas.SyncBranchHealth | None = Query(default=None),
     db: Session = Depends(get_db),
     _reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     report = _prepare_conflict_report(
         db,
@@ -188,7 +188,7 @@ def export_conflicts_pdf(
     )
 
 
-@router.get("/conflicts/export/xlsx", response_model=schemas.BinaryFileResponse)
+@router.get("/conflicts/export/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def export_conflicts_excel(
     store_id: int | None = Query(default=None, ge=1),
     date_from: datetime | None = Query(default=None),
@@ -196,7 +196,7 @@ def export_conflicts_excel(
     severity: schemas.SyncBranchHealth | None = Query(default=None),
     db: Session = Depends(get_db),
     _reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     report = _prepare_conflict_report(
         db,
@@ -217,7 +217,7 @@ def export_conflicts_excel(
     )
 
 
-@router.get("/outbox", response_model=list[schemas.SyncOutboxEntryResponse])
+@router.get("/outbox", response_model=list[schemas.SyncOutboxEntryResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_outbox_entries(
     status_filter: models.SyncOutboxStatus | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -231,7 +231,7 @@ def list_outbox_entries(
     return entries
 
 
-@router.post("/outbox/retry", response_model=list[schemas.SyncOutboxEntryResponse])
+@router.post("/outbox/retry", response_model=list[schemas.SyncOutboxEntryResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def retry_outbox_entries(
     payload: schemas.SyncOutboxReplayRequest,
     db: Session = Depends(get_db),
@@ -250,7 +250,7 @@ def retry_outbox_entries(
     return entries
 
 
-@router.get("/outbox/stats", response_model=list[schemas.SyncOutboxStatsEntry])
+@router.get("/outbox/stats", response_model=list[schemas.SyncOutboxStatsEntry], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def outbox_statistics(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -262,13 +262,13 @@ def outbox_statistics(
     return [schemas.SyncOutboxStatsEntry(**item) for item in stats]
 
 
-@router.get("/history", response_model=list[schemas.SyncStoreHistory])
+@router.get("/history", response_model=list[schemas.SyncStoreHistory], dependencies=[Depends(require_roles(ADMIN))])
 def list_sync_history(
     limit_per_store: int = Query(default=5, ge=1, le=20),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     history = crud.list_sync_history_by_store(
         db, limit_per_store=limit_per_store, limit=limit, offset=offset

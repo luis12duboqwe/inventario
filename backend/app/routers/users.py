@@ -39,7 +39,11 @@ def _user_with_audit(db: Session, user_obj) -> schemas.UserResponse:
     return _serialize_user(user_obj, audit)
 
 
-@router.get("/roles", response_model=list[schemas.RoleResponse])
+@router.get(
+    "/roles",
+    response_model=list[schemas.RoleResponse],
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def list_roles(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -49,7 +53,11 @@ def list_roles(
     return crud.list_roles(db, limit=limit, offset=offset)
 
 
-@router.get("/permissions", response_model=list[schemas.RolePermissionMatrix])
+@router.get(
+    "/permissions",
+    response_model=list[schemas.RolePermissionMatrix],
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def list_role_permissions(
     role: str | None = Query(default=None, min_length=1, max_length=60),
     limit: int = Query(default=50, ge=1, le=200),
@@ -65,7 +73,11 @@ def list_role_permissions(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rol no encontrado") from exc
 
 
-@router.put("/roles/{role_name}/permissions", response_model=schemas.RolePermissionMatrix)
+@router.put(
+    "/roles/{role_name}/permissions",
+    response_model=schemas.RolePermissionMatrix,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def update_role_permissions(
     role_name: str,
     payload: schemas.RolePermissionUpdate,
@@ -85,7 +97,12 @@ def update_role_permissions(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rol no encontrado") from exc
 
 
-@router.post("", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=schemas.UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def create_user(
     payload: schemas.UserCreate,
     db: Session = Depends(get_db),
@@ -114,7 +131,11 @@ def create_user(
     return _user_with_audit(db, user)
 
 
-@router.get("", response_model=list[schemas.UserResponse])
+@router.get(
+    "",
+    response_model=list[schemas.UserResponse],
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def list_users(
     search: str | None = Query(default=None, min_length=1, max_length=120),
     role: str | None = Query(default=None, min_length=1, max_length=60),
@@ -147,7 +168,11 @@ def list_users(
     ]
 
 
-@router.get("/dashboard", response_model=schemas.UserDashboardMetrics)
+@router.get(
+    "/dashboard",
+    response_model=schemas.UserDashboardMetrics,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def user_dashboard(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
@@ -155,7 +180,11 @@ def user_dashboard(
     return crud.get_user_dashboard_metrics(db)
 
 
-@router.get("/export", response_model=schemas.BinaryFileResponse)
+@router.get(
+    "/export",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def export_users(
     format: Literal["pdf", "xlsx"] = Query(default="pdf"),
     search: str | None = Query(default=None, min_length=1, max_length=120),
@@ -206,7 +235,11 @@ def export_users(
     )
 
 
-@router.get("/{user_id}", response_model=schemas.UserResponse)
+@router.get(
+    "/{user_id}",
+    response_model=schemas.UserResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def get_user(
     user_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
@@ -219,7 +252,11 @@ def get_user(
     return _user_with_audit(db, user)
 
 
-@router.put("/{user_id}/roles", response_model=schemas.UserResponse)
+@router.put(
+    "/{user_id}/roles",
+    response_model=schemas.UserResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def update_user_roles(
     payload: schemas.UserRolesUpdate,
     user_id: int = Path(..., ge=1),
@@ -247,7 +284,11 @@ def update_user_roles(
     return _user_with_audit(db, updated)
 
 
-@router.put("/{user_id}", response_model=schemas.UserResponse)
+@router.put(
+    "/{user_id}",
+    response_model=schemas.UserResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def update_user(
     payload: schemas.UserUpdate,
     user_id: int = Path(..., ge=1),
@@ -292,7 +333,11 @@ def update_user(
     return _user_with_audit(db, updated)
 
 
-@router.patch("/{user_id}", response_model=schemas.UserResponse)
+@router.patch(
+    "/{user_id}",
+    response_model=schemas.UserResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def update_user_status(
     payload: schemas.UserStatusUpdate,
     user_id: int = Path(..., ge=1),

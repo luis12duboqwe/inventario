@@ -11,7 +11,7 @@ from ..security import require_roles
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 
 
-@router.get("/", response_model=list[schemas.SupplierResponse])
+@router.get("/", response_model=list[schemas.SupplierResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_suppliers_endpoint(
     q: str | None = Query(default=None, description="Término de búsqueda"),
     limit: int = Query(default=50, ge=1, le=200),
@@ -31,7 +31,7 @@ def list_suppliers_endpoint(
     return suppliers
 
 
-@router.post("/", response_model=schemas.SupplierResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=schemas.SupplierResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_supplier_endpoint(
     payload: schemas.SupplierCreate,
     db: Session = Depends(get_db),
@@ -54,7 +54,7 @@ def create_supplier_endpoint(
     return supplier
 
 
-@router.get("/{supplier_id}", response_model=schemas.SupplierResponse)
+@router.get("/{supplier_id}", response_model=schemas.SupplierResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def get_supplier_endpoint(
     supplier_id: int,
     db: Session = Depends(get_db),
@@ -66,7 +66,7 @@ def get_supplier_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
 
 
-@router.put("/{supplier_id}", response_model=schemas.SupplierResponse)
+@router.put("/{supplier_id}", response_model=schemas.SupplierResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def update_supplier_endpoint(
     supplier_id: int,
     payload: schemas.SupplierUpdate,
@@ -89,6 +89,7 @@ def update_supplier_endpoint(
     "/{supplier_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def delete_supplier_endpoint(
     supplier_id: int,
@@ -110,6 +111,7 @@ def delete_supplier_endpoint(
 @router.get(
     "/{supplier_id}/batches",
     response_model=list[schemas.SupplierBatchResponse],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def list_supplier_batches_endpoint(
     supplier_id: int,
@@ -130,6 +132,7 @@ def list_supplier_batches_endpoint(
     "/{supplier_id}/batches",
     response_model=schemas.SupplierBatchResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def create_supplier_batch_endpoint(
     supplier_id: int,
@@ -162,6 +165,7 @@ def create_supplier_batch_endpoint(
 @router.put(
     "/batches/{batch_id}",
     response_model=schemas.SupplierBatchResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def update_supplier_batch_endpoint(
     batch_id: int,
@@ -185,6 +189,7 @@ def update_supplier_batch_endpoint(
     "/batches/{batch_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def delete_supplier_batch_endpoint(
     batch_id: int,

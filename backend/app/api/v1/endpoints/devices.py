@@ -12,7 +12,12 @@ from ...deps import get_db
 router = APIRouter()
 
 
-@router.get("/", response_model=list[schemas.Device], summary="Listar dispositivos")
+@router.get(
+    "/",
+    response_model=list[schemas.Device],
+    summary="Listar dispositivos",
+    dependencies=[Depends(require_roles(*REPORTE_ROLES))],
+)
 def get_devices(
     store_id: int = Path(..., description="Identificador de la sucursal"),
     limit: int = Query(default=50, ge=1, le=200),
@@ -33,6 +38,7 @@ def get_devices(
     response_model=schemas.Device,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar dispositivo",
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def add_device(
     *,

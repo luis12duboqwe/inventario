@@ -48,6 +48,7 @@ def _map_validation(validation: models.ImportValidation) -> schemas.ImportValida
     "/pendientes",
     response_model=list[schemas.ImportValidationDetail],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def list_pending_validations(
     limit: int = Query(default=50, ge=1, le=200),
@@ -65,6 +66,7 @@ def list_pending_validations(
     "/{validation_id}/corregir",
     response_model=schemas.ImportValidation,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def mark_validation_corrected(
     validation_id: int = Path(..., ge=1),
@@ -83,6 +85,7 @@ def mark_validation_corrected(
     "/reporte",
     response_model=schemas.ImportValidationSummary,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def retrieve_validation_report(
     db: Session = Depends(get_db),
@@ -95,6 +98,7 @@ def retrieve_validation_report(
     "/exportar",
     status_code=status.HTTP_200_OK,
     response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def export_validation_report(
     formato: Literal["excel", "pdf"] = Query(default="excel"),
