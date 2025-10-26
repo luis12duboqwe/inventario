@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/ejemplo", tags=["ejemplo"])
+from backend.core.security import get_current_user
+
+router = APIRouter(
+    prefix="/ejemplo",
+    tags=["ejemplo"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 class ExampleResponse(BaseModel):

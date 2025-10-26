@@ -9,14 +9,14 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.roles import GESTION_ROLES, REPORTE_ROLES
 from backend.app.routers import stores as core_stores
-from backend.app.security import require_roles
+from backend.app.security import get_current_user, require_roles
 from backend.db import get_db
 from backend.schemas import store as schemas
 from backend.schemas.common import Page, PageParams
 
 from ._core_bridge import mount_core_router
 
-router = APIRouter(tags=["stores"])
+router = APIRouter(tags=["stores"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/stores", response_model=Page[schemas.StoreRead])
