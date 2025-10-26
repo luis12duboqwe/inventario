@@ -40,12 +40,18 @@ def test_supplier_crud_flow(client):
     assert create_response.status_code == status.HTTP_201_CREATED
     supplier_id = create_response.json()["id"]
 
-    list_response = client.get("/suppliers", headers={"Authorization": f"Bearer {token}"})
+    list_response = client.get(
+        "/suppliers",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"limit": 200, "offset": 0},
+    )
     assert list_response.status_code == status.HTTP_200_OK
     assert any(item["id"] == supplier_id for item in list_response.json())
 
     csv_response = client.get(
-        "/suppliers", headers={"Authorization": f"Bearer {token}"}, params={"export": "csv"}
+        "/suppliers",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"export": "csv", "limit": 200, "offset": 0},
     )
     assert csv_response.status_code == status.HTTP_200_OK
     assert "Refacciones Globales" in csv_response.text
@@ -60,7 +66,11 @@ def test_supplier_crud_flow(client):
     delete_response = client.delete(f"/suppliers/{supplier_id}", headers=headers)
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
 
-    list_after_delete = client.get("/suppliers", headers={"Authorization": f"Bearer {token}"})
+    list_after_delete = client.get(
+        "/suppliers",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"limit": 200, "offset": 0},
+    )
     assert list_after_delete.status_code == status.HTTP_200_OK
     assert all(item["id"] != supplier_id for item in list_after_delete.json())
 
@@ -134,6 +144,7 @@ def test_supplier_batches_and_inventory_value(client):
     list_batches = client.get(
         f"/suppliers/{supplier_id}/batches",
         headers=auth_headers,
+        params={"limit": 200, "offset": 0},
     )
     assert list_batches.status_code == status.HTTP_200_OK
     assert len(list_batches.json()) == 1
@@ -178,6 +189,7 @@ def test_supplier_batches_and_inventory_value(client):
     batches_after_delete = client.get(
         f"/suppliers/{supplier_id}/batches",
         headers=auth_headers,
+        params={"limit": 200, "offset": 0},
     )
     assert batches_after_delete.status_code == status.HTTP_200_OK
     assert batches_after_delete.json() == []

@@ -114,7 +114,11 @@ def test_device_identifier_upsert_and_uniqueness(client) -> None:
     retrieved = retrieve_response.json()
     assert retrieved["numero_serie"] == identifier_payload["numero_serie"]
 
-    devices_response = client.get(f"/stores/{store_id}/devices", headers=headers)
+    devices_response = client.get(
+        f"/stores/{store_id}/devices",
+        headers=headers,
+        params={"limit": 200, "offset": 0},
+    )
     assert devices_response.status_code == status.HTTP_200_OK
     device_list_payload = devices_response.json()
     device_list = device_list_payload["items"]

@@ -50,7 +50,7 @@ def test_user_filters_dashboard_and_export(client):
     list_response = client.get(
         "/users",
         headers=auth_headers,
-        params={"status": "inactive"},
+        params={"status": "inactive", "limit": 200, "offset": 0},
     )
     assert list_response.status_code == status.HTTP_200_OK
     users = list_response.json()

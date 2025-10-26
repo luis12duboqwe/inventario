@@ -58,7 +58,11 @@ def test_sync_outbox_list_and_retry(client):
     )
     assert sale_resp.status_code == status.HTTP_201_CREATED
 
-    outbox_response = client.get("/sync/outbox", headers=headers)
+    outbox_response = client.get(
+        "/sync/outbox",
+        headers=headers,
+        params={"limit": 200, "offset": 0},
+    )
     assert outbox_response.status_code == status.HTTP_200_OK
     entries = outbox_response.json()
     assert entries
@@ -73,7 +77,11 @@ def test_sync_outbox_list_and_retry(client):
     assert retry_response.status_code == status.HTTP_200_OK
     assert retry_response.json()[0]["attempt_count"] == 0
 
-    stats_response = client.get("/sync/outbox/stats", headers=headers)
+    stats_response = client.get(
+        "/sync/outbox/stats",
+        headers=headers,
+        params={"limit": 200, "offset": 0},
+    )
     assert stats_response.status_code == status.HTTP_200_OK
     stats = stats_response.json()
     assert any(item["priority"] == "HIGH" for item in stats)

@@ -210,7 +210,11 @@ def test_transfers_endpoints_return_404_when_feature_flag_disabled(client, db_se
     try:
         settings.enable_transfers = False
 
-        list_response = client.get("/transfers", headers=headers)
+        list_response = client.get(
+            "/transfers",
+            headers=headers,
+            params={"limit": 200, "offset": 0},
+        )
         assert list_response.status_code == status.HTTP_404_NOT_FOUND
 
         create_payload = {
