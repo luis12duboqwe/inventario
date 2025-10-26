@@ -1282,6 +1282,13 @@ class UserResponse(UserBase):
     def sucursal_id(self) -> int | None:
         return self.store_id
 
+    @computed_field(alias="rol_id")
+    @property
+    def primary_role_id(self) -> int | None:
+        if not self.roles:
+            return None
+        return self.roles[0].id
+
 
 class UserUpdate(BaseModel):
     full_name: str | None = Field(default=None, max_length=120, validation_alias=AliasChoices("full_name", "nombre"))
@@ -1763,10 +1770,20 @@ class MovementReportEntry(BaseModel):
     fecha: datetime
     ultima_accion: AuditTrailInfo | None = None
 
+    model_config = ConfigDict(from_attributes=True)
+
     @field_serializer("valor_total")
     @classmethod
     def _serialize_total_value(cls, value: Decimal) -> float:
         return float(value)
+
+    @computed_field(return_type=str | None, alias="referencia")
+    def referencia_compuesta(self) -> str | None:
+        if self.referencia_tipo and self.referencia_id:
+            return f"{self.referencia_tipo}:{self.referencia_id}"
+        if self.referencia_id:
+            return self.referencia_id
+        return None
 
 
 class MovementTypeSummary(BaseModel):
@@ -2231,8 +2248,13 @@ class AuditLogResponse(BaseModel):
     created_at: datetime
     severity: Literal["info", "warning", "critical"] = Field(default="info")
     severity_label: str = Field(default="Informativa")
+    module: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("module", "modulo"),
+        serialization_alias="modulo",
+    )
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     @model_validator(mode="after")
     def _derive_severity(self) -> "AuditLogResponse":
@@ -2241,6 +2263,10 @@ class AuditLogResponse(BaseModel):
         object.__setattr__(self, "severity", severity)
         object.__setattr__(self, "severity_label", label)
         return self
+
+    @computed_field(alias="accion")
+    def accion(self) -> str:
+        return self.action
 
 
 class SystemLogEntry(BaseModel):
@@ -2252,6 +2278,11 @@ class SystemLogEntry(BaseModel):
     fecha: datetime
     nivel: SystemLogLevel
     ip_origen: str | None = None
+    audit_log_id: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("audit_log_id"),
+        serialization_alias="audit_log_id",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2421,6 +2452,7 @@ class AuditAcknowledgementCreate(BaseModel):
 
 
 class AuditAcknowledgementResponse(BaseModel):
+    id: int
     entity_type: str
     entity_id: str
     acknowledged_at: datetime
@@ -3177,6 +3209,10 @@ class SaleResponse(BaseModel):
     def _serialize_sale_amount(cls, value: Decimal) -> float:
         return float(value)
 
+    @computed_field(alias="fecha", return_type=datetime)
+    def fecha_operacion(self) -> datetime:
+        return self.created_at
+
 
 class SaleReturnItem(BaseModel):
     device_id: int = Field(..., ge=1)
@@ -3214,6 +3250,10 @@ class SaleReturnResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(alias="fecha", return_type=datetime)
+    def fecha_registro(self) -> datetime:
+        return self.created_at
 
 
 class SalesReportFilters(BaseModel):
@@ -3392,6 +3432,14 @@ class POSSaleResponse(BaseModel):
     def _serialize_breakdown(cls, value: dict[str, float]) -> dict[str, float]:
         return {key: float(amount) for key, amount in value.items()}
 
+    @computed_field(return_type=float)  # type: ignore[misc]
+    def total_caja(self) -> float:
+        if self.sale is not None:
+            return float(self.sale.total_amount)
+        if self.payment_breakdown:
+            return float(sum(self.payment_breakdown.values()))
+        return 0.0
+
 
 class CashSessionOpenRequest(BaseModel):
     store_id: int = Field(..., ge=1)
@@ -3530,6 +3578,8 @@ class BackupJobResponse(BaseModel):
     total_size_bytes: int
     notes: str | None
     triggered_by_id: int | None
+    created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

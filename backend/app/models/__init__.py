@@ -530,6 +530,14 @@ class AuditLog(Base):
         "SystemLog", back_populates="audit_log", uselist=False
     )
 
+    @property
+    def module(self) -> str | None:
+        """Nombre del módulo asociado al evento de auditoría."""
+
+        if self.system_log is None:
+            return None
+        return self.system_log.modulo
+
 
 class AuditAlertAcknowledgement(Base):
     __tablename__ = "audit_alert_acknowledgements"
