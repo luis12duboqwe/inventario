@@ -198,12 +198,14 @@ def create_sale_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.create_sale(
-            db,
-            payload,
-            performed_by_id=current_user.id,
-            reason=reason,
-        )
+        with db.begin():
+            sale = crud.create_sale(
+                db,
+                payload,
+                performed_by_id=current_user.id,
+                reason=reason,
+            )
+        return sale
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -257,12 +259,14 @@ def register_sale_return_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.register_sale_return(
-            db,
-            payload,
-            processed_by_id=current_user.id,
-            reason=reason,
-        )
+        with db.begin():
+            sale_returns = crud.register_sale_return(
+                db,
+                payload,
+                processed_by_id=current_user.id,
+                reason=reason,
+            )
+        return sale_returns
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -297,13 +301,15 @@ def update_sale_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.update_sale(
-            db,
-            sale_id,
-            payload,
-            performed_by_id=current_user.id,
-            reason=reason,
-        )
+        with db.begin():
+            sale = crud.update_sale(
+                db,
+                sale_id,
+                payload,
+                performed_by_id=current_user.id,
+                reason=reason,
+            )
+        return sale
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -367,12 +373,14 @@ def cancel_sale_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.cancel_sale(
-            db,
-            sale_id,
-            performed_by_id=current_user.id,
-            reason=reason,
-        )
+        with db.begin():
+            sale = crud.cancel_sale(
+                db,
+                sale_id,
+                performed_by_id=current_user.id,
+                reason=reason,
+            )
+        return sale
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
