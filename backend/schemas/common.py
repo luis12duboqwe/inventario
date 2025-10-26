@@ -15,7 +15,7 @@ class PageParams(BaseModel):
 
     page: int = Field(default=1, ge=1, description="Número de página solicitada")
     size: int = Field(
-        default=20,
+        default=50,
         ge=1,
         le=200,
         description="Cantidad de registros por página",

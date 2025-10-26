@@ -165,7 +165,8 @@ def export_global_report(
 def customer_portfolio_report(
     request: Request,
     category: Literal["delinquent", "frequent"] = Query(default="delinquent"),
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     export: Literal["json", "pdf", "xlsx"] = Query(default="json"),
@@ -183,6 +184,7 @@ def customer_portfolio_report(
         db,
         category=category,
         limit=limit,
+        offset=offset,
         date_from=date_from,
         date_to=date_to,
     )
@@ -217,7 +219,8 @@ def customer_portfolio_report(
 
 @router.get("/audit", response_model=Page[schemas.AuditLogResponse], dependencies=[Depends(require_roles(ADMIN))])
 def audit_logs(
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, max_length=120),
     entity_type: str | None = Query(default=None, max_length=80),
     performed_by_id: int | None = Query(default=None, ge=1),
@@ -227,25 +230,36 @@ def audit_logs(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.AuditLogResponse]:
-    effective_limit = max(limit, pagination.size * pagination.page)
-    logs = crud.list_audit_logs(
+    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_size = min(pagination.size, limit)
+    total = crud.count_audit_logs(
         db,
-        limit=effective_limit,
         action=action,
         entity_type=entity_type,
         performed_by_id=performed_by_id,
         date_from=date_from,
         date_to=date_to,
     )
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = logs[start:end]
-    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(logs))
+    logs = crud.list_audit_logs(
+        db,
+        limit=page_size,
+        offset=page_offset,
+        action=action,
+        entity_type=entity_type,
+        performed_by_id=performed_by_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    page_number = (
+        pagination.page if offset == 0 else max(1, (page_offset // page_size) + 1)
+    )
+    return Page.from_items(logs, page=page_number, size=page_size, total=total)
 
 
 @router.get("/audit/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def audit_logs_pdf(
-    limit: int = Query(default=200, ge=1, le=1000),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, max_length=120),
     entity_type: str | None = Query(default=None, max_length=80),
     performed_by_id: int | None = Query(default=None, ge=1),
@@ -258,6 +272,7 @@ def audit_logs_pdf(
     logs = crud.list_audit_logs(
         db,
         limit=limit,
+        offset=offset,
         action=action,
         entity_type=entity_type,
         performed_by_id=performed_by_id,
@@ -838,7 +853,8 @@ def inventory_top_products(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
@@ -848,6 +864,7 @@ def inventory_top_products(
         date_from=date_from,
         date_to=date_to,
         limit=limit,
+        offset=offset,
     )
 
 
@@ -1308,7 +1325,8 @@ def inventory_top_products_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -1319,6 +1337,7 @@ def inventory_top_products_pdf(
         date_from=date_from,
         date_to=date_to,
         limit=limit,
+        offset=offset,
     )
     pdf_bytes = inventory_reports_service.render_top_products_pdf(report)
     buffer = BytesIO(pdf_bytes)
@@ -1338,7 +1357,8 @@ def inventory_top_products_excel(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -1349,6 +1369,7 @@ def inventory_top_products_excel(
         date_from=date_from,
         date_to=date_to,
         limit=limit,
+        offset=offset,
     )
     workbook_buffer = inventory_reports_service.build_top_products_excel(report)
     metadata = schemas.BinaryFileResponse(
@@ -1367,7 +1388,8 @@ def inventory_top_products_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -1378,6 +1400,7 @@ def inventory_top_products_csv(
         date_from=date_from,
         date_to=date_to,
         limit=limit,
+        offset=offset,
     )
 
     buffer = StringIO()
@@ -1427,17 +1450,27 @@ def inventory_top_products_csv(
 )
 def inventory_supplier_batches(
     store_id: int = Query(..., ge=1),
-    limit: int = Query(default=5, ge=1, le=25),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.SupplierBatchOverviewItem]:
-    effective_limit = max(limit, pagination.size * pagination.page)
-    overview = crud.get_supplier_batch_overview(db, store_id=store_id, limit=effective_limit)
-    start = pagination.offset
-    end = start + pagination.size
-    page_items = overview[start:end]
-    return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(overview))
+    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_size = min(pagination.size, limit)
+    total = crud.count_supplier_batch_overview(db, store_id=store_id)
+    overview = crud.get_supplier_batch_overview(
+        db,
+        store_id=store_id,
+        limit=page_size,
+        offset=page_offset,
+    )
+    return Page.from_items(
+        overview,
+        page=pagination.page,
+        size=page_size,
+        total=total,
+    )
 
 
 @router.get("/metrics", response_model=schemas.InventoryMetricsResponse, dependencies=[Depends(require_roles(ADMIN))])

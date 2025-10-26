@@ -13,7 +13,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 from typing import Literal
 
-from sqlalchemy import case, desc, func, or_, select, tuple_
+from sqlalchemy import case, desc, func, literal, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement, Select
@@ -1555,6 +1555,31 @@ def list_audit_logs(
     return list(db.scalars(statement).unique())
 
 
+def count_audit_logs(
+    db: Session,
+    *,
+    action: str | None = None,
+    entity_type: str | None = None,
+    performed_by_id: int | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+) -> int:
+    statement = select(func.count()).select_from(models.AuditLog)
+    if action:
+        statement = statement.where(models.AuditLog.action == action)
+    if entity_type:
+        statement = statement.where(models.AuditLog.entity_type == entity_type)
+    if performed_by_id is not None:
+        statement = statement.where(models.AuditLog.performed_by_id == performed_by_id)
+    if date_from is not None or date_to is not None:
+        start_dt, end_dt = _normalize_date_range(date_from, date_to)
+        statement = statement.where(
+            models.AuditLog.created_at >= start_dt,
+            models.AuditLog.created_at <= end_dt,
+        )
+    return int(db.scalar(statement) or 0)
+
+
 class AuditAcknowledgementError(Exception):
     """Errores relacionados con el registro de acuses manuales."""
 
@@ -1604,7 +1629,8 @@ def get_audit_acknowledgements_map(
 def export_audit_logs_csv(
     db: Session,
     *,
-    limit: int = 1000,
+    limit: int = 50,
+    offset: int = 0,
     action: str | None = None,
     entity_type: str | None = None,
     performed_by_id: int | None = None,
@@ -1614,6 +1640,7 @@ def export_audit_logs_csv(
     logs = list_audit_logs(
         db,
         limit=limit,
+        offset=offset,
         action=action,
         entity_type=entity_type,
         performed_by_id=performed_by_id,
@@ -1770,7 +1797,8 @@ def get_persistent_audit_alerts(
     threshold_minutes: int = 15,
     min_occurrences: int = 1,
     lookback_hours: int = 48,
-    limit: int = 10,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
     """Obtiene alertas críticas persistentes para recordatorios automáticos."""
 
@@ -1782,16 +1810,20 @@ def get_persistent_audit_alerts(
         raise ValueError("lookback_hours must be >= 1")
     if limit < 1:
         raise ValueError("limit must be >= 1")
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+
+    fetch_limit = limit + offset
 
     cache_key = _persistent_alerts_cache_key(
         threshold_minutes=threshold_minutes,
         min_occurrences=min_occurrences,
         lookback_hours=lookback_hours,
-        limit=limit,
+        limit=fetch_limit,
     )
     cached = _PERSISTENT_ALERTS_CACHE.get(cache_key)
     if cached is not None:
-        return copy.deepcopy(cached)
+        return copy.deepcopy(cached)[offset : offset + limit]
 
     now = datetime.utcnow()
     lookback_start = now - timedelta(hours=lookback_hours)
@@ -1807,7 +1839,7 @@ def get_persistent_audit_alerts(
         logs,
         threshold_minutes=threshold_minutes,
         min_occurrences=min_occurrences,
-        limit=limit,
+        limit=fetch_limit,
         reference_time=now,
     )
 
@@ -1866,7 +1898,7 @@ def get_persistent_audit_alerts(
         )
 
     _PERSISTENT_ALERTS_CACHE.set(cache_key, copy.deepcopy(enriched))
-    return enriched
+    return enriched[offset : offset + limit]
 
 
 def ensure_role_permissions(db: Session, role_name: str) -> None:
@@ -3728,6 +3760,7 @@ def build_customer_portfolio(
     *,
     category: Literal["delinquent", "frequent"],
     limit: int = 50,
+    offset: int = 0,
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> schemas.CustomerPortfolioReport:
@@ -3743,6 +3776,7 @@ def build_customer_portfolio(
         statement = (
             base_statement.join(sales_stats, sales_stats.c.customer_id == models.Customer.id)
             .order_by(desc(sales_stats.c.sales_total), models.Customer.name.asc())
+            .offset(offset)
             .limit(limit)
         )
     else:
@@ -3757,6 +3791,7 @@ def build_customer_portfolio(
                 )
             )
             .order_by(models.Customer.outstanding_debt.desc(), models.Customer.name.asc())
+            .offset(offset)
             .limit(limit)
         )
 
@@ -4300,74 +4335,102 @@ def get_supplier_batch_overview(
     db: Session,
     *,
     store_id: int,
-    limit: int = 5,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[dict[str, object]]:
-    statement = (
-        select(models.SupplierBatch, models.Supplier.name)
-        .join(models.Supplier, models.Supplier.id == models.SupplierBatch.supplier_id)
-        .where(
-            or_(
-                models.SupplierBatch.store_id == store_id,
-                models.SupplierBatch.store_id.is_(None),
-            )
-        )
-        .order_by(
+    batch_filter = or_(
+        models.SupplierBatch.store_id == store_id,
+        models.SupplierBatch.store_id.is_(None),
+    )
+
+    latest_rank = func.row_number().over(
+        partition_by=models.SupplierBatch.supplier_id,
+        order_by=(
             models.SupplierBatch.purchase_date.desc(),
             models.SupplierBatch.created_at.desc(),
+        ),
+    )
+
+    ranked_batches = (
+        select(
+            models.SupplierBatch.supplier_id.label("supplier_id"),
+            models.SupplierBatch.batch_code.label("latest_batch_code"),
+            models.SupplierBatch.unit_cost.label("latest_unit_cost"),
+            latest_rank.label("batch_rank"),
+        )
+        .where(batch_filter)
+    ).subquery()
+
+    latest_batches = (
+        select(
+            ranked_batches.c.supplier_id,
+            ranked_batches.c.latest_batch_code,
+            ranked_batches.c.latest_unit_cost,
+        )
+        .where(ranked_batches.c.batch_rank == 1)
+    ).subquery()
+
+    aggregated = (
+        select(
+            models.SupplierBatch.supplier_id.label("supplier_id"),
+            models.Supplier.name.label("supplier_name"),
+            func.count().label("batch_count"),
+            func.sum(models.SupplierBatch.quantity).label("total_quantity"),
+            func.sum(
+                models.SupplierBatch.quantity * models.SupplierBatch.unit_cost
+            ).label("total_value"),
+            func.max(models.SupplierBatch.purchase_date).label(
+                "latest_purchase_date"
+            ),
+        )
+        .join(models.Supplier, models.Supplier.id == models.SupplierBatch.supplier_id)
+        .where(batch_filter)
+        .group_by(models.SupplierBatch.supplier_id, models.Supplier.name)
+    ).subquery()
+
+    statement = (
+        select(
+            aggregated.c.supplier_id,
+            aggregated.c.supplier_name,
+            aggregated.c.batch_count,
+            aggregated.c.total_quantity,
+            aggregated.c.total_value,
+            aggregated.c.latest_purchase_date,
+            latest_batches.c.latest_batch_code,
+            latest_batches.c.latest_unit_cost,
+        )
+        .join(
+            latest_batches,
+            latest_batches.c.supplier_id == aggregated.c.supplier_id,
+            isouter=True,
+        )
+        .order_by(
+            aggregated.c.latest_purchase_date.desc(),
+            aggregated.c.total_value.desc(),
         )
     )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
+
     rows = db.execute(statement).all()
 
-    overview: dict[int, dict[str, object]] = {}
-    for batch, supplier_name in rows:
-        entry = overview.setdefault(
-            batch.supplier_id,
-            {
-                "supplier_id": batch.supplier_id,
-                "supplier_name": supplier_name,
-                "batch_count": 0,
-                "total_quantity": 0,
-                "total_value": Decimal("0"),
-                "latest_purchase_date": batch.purchase_date,
-                "latest_batch_code": batch.batch_code,
-                "latest_unit_cost": batch.unit_cost,
-            },
-        )
-        entry["batch_count"] = int(entry["batch_count"]) + 1
-        entry["total_quantity"] = int(entry["total_quantity"]) + batch.quantity
-        entry["total_value"] = Decimal(entry["total_value"]) + (
-            Decimal(batch.quantity) * batch.unit_cost
-        )
-
-        if batch.purchase_date > entry["latest_purchase_date"]:
-            entry["latest_purchase_date"] = batch.purchase_date
-            entry["latest_batch_code"] = batch.batch_code
-            entry["latest_unit_cost"] = batch.unit_cost
-
-    sorted_entries = sorted(
-        overview.values(),
-        key=lambda item: (
-            item["latest_purchase_date"],
-            Decimal(item["total_value"]),
-        ),
-        reverse=True,
-    )
-
     result: list[dict[str, object]] = []
-    for item in sorted_entries[:limit]:
-        total_value = Decimal(item["total_value"]).quantize(
+    for row in rows:
+        total_value = Decimal(row.total_value or 0).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
-        latest_unit_cost = item.get("latest_unit_cost")
+        latest_unit_cost = row.latest_unit_cost
         result.append(
             {
-                "supplier_id": item["supplier_id"],
-                "supplier_name": item["supplier_name"],
-                "batch_count": item["batch_count"],
-                "total_quantity": item["total_quantity"],
+                "supplier_id": row.supplier_id,
+                "supplier_name": row.supplier_name,
+                "batch_count": int(row.batch_count or 0),
+                "total_quantity": int(row.total_quantity or 0),
                 "total_value": float(total_value),
-                "latest_purchase_date": item["latest_purchase_date"],
-                "latest_batch_code": item.get("latest_batch_code"),
+                "latest_purchase_date": row.latest_purchase_date,
+                "latest_batch_code": row.latest_batch_code,
                 "latest_unit_cost": float(latest_unit_cost)
                 if latest_unit_cost is not None
                 else None,
@@ -4375,6 +4438,20 @@ def get_supplier_batch_overview(
         )
 
     return result
+
+
+def count_supplier_batch_overview(db: Session, *, store_id: int) -> int:
+    statement = (
+        select(func.count(func.distinct(models.SupplierBatch.supplier_id)))
+        .where(
+            or_(
+                models.SupplierBatch.store_id == store_id,
+                models.SupplierBatch.store_id.is_(None),
+            )
+        )
+    )
+    total = db.scalar(statement)
+    return int(total or 0)
 
 
 def create_supplier_batch(
@@ -5873,7 +5950,8 @@ def get_top_selling_products(
     store_ids: Iterable[int] | None = None,
     date_from: date | datetime | None = None,
     date_to: date | datetime | None = None,
-    limit: int = 10,
+    limit: int = 50,
+    offset: int = 0,
 ) -> schemas.TopProductsReport:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = _normalize_date_range(date_from, date_to)
@@ -5909,6 +5987,7 @@ def get_top_selling_products(
             models.Store.name,
         )
         .order_by(sold_units.desc(), total_revenue.desc())
+        .offset(offset)
         .limit(limit)
     )
 
@@ -7089,25 +7168,79 @@ def list_sync_history_by_store(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict[str, object]]:
+    store_limit = max(limit, 0) if limit is not None else None
+    store_offset = max(offset, 0)
+
+    if store_limit == 0:
+        return []
+
+    store_name_expr = func.coalesce(models.Store.name, literal("Global"))
+    store_listing_stmt = (
+        select(
+            models.SyncSession.store_id,
+            store_name_expr.label("store_name"),
+        )
+        .outerjoin(models.Store, models.SyncSession.store_id == models.Store.id)
+        .group_by(models.SyncSession.store_id, models.Store.name)
+        .order_by(func.lower(store_name_expr), models.SyncSession.store_id)
+    )
+    if store_offset:
+        store_listing_stmt = store_listing_stmt.offset(store_offset)
+    if store_limit is not None and store_limit:
+        store_listing_stmt = store_listing_stmt.limit(store_limit)
+
+    store_rows = db.execute(store_listing_stmt).all()
+    if not store_rows:
+        return []
+
+    selected_store_ids = [row.store_id for row in store_rows if row.store_id is not None]
+    include_global = any(row.store_id is None for row in store_rows)
+
+    ranked_sessions = (
+        select(
+            models.SyncSession.id.label("session_id"),
+            models.SyncSession.store_id.label("store_id"),
+            func.row_number()
+            .over(
+                partition_by=models.SyncSession.store_id,
+                order_by=models.SyncSession.started_at.desc(),
+            )
+            .label("rank"),
+        )
+    ).subquery()
+
     statement = (
         select(models.SyncSession)
         .options(joinedload(models.SyncSession.store))
-        .order_by(models.SyncSession.started_at.desc())
+        .join(
+            ranked_sessions,
+            ranked_sessions.c.session_id == models.SyncSession.id,
+        )
+        .where(ranked_sessions.c.rank <= limit_per_store)
     )
+
+    conditions: list[ColumnElement[bool]] = []
+    if selected_store_ids:
+        conditions.append(ranked_sessions.c.store_id.in_(selected_store_ids))
+    if include_global:
+        conditions.append(ranked_sessions.c.store_id.is_(None))
+    if conditions:
+        statement = statement.where(or_(*conditions))
+
     sessions = list(db.scalars(statement).unique())
+
     grouped: dict[int | None, list[models.SyncSession]] = {}
     for session in sessions:
-        key = session.store_id
-        bucket = grouped.setdefault(key, [])
-        if len(bucket) < limit_per_store:
-            bucket.append(session)
+        grouped.setdefault(session.store_id, []).append(session)
 
     history: list[dict[str, object]] = []
-    for store_id, entries in grouped.items():
+    for row in store_rows:
+        store_id = row.store_id
+        store_name = row.store_name or "Global"
+        entries = grouped.get(store_id, [])
         if not entries:
             continue
-        reference = entries[0]
-        store_name = reference.store.name if reference.store else "Global"
+        entries.sort(key=lambda entry: entry.started_at or datetime.min, reverse=True)
         history.append(
             {
                 "store_id": store_id,
@@ -7121,13 +7254,12 @@ def list_sync_history_by_store(
                         "finished_at": entry.finished_at,
                         "error_message": entry.error_message,
                     }
-                    for entry in entries
+                    for entry in entries[:limit_per_store]
                 ],
             }
         )
 
-    history.sort(key=lambda item: (item["store_name"].lower(), item["store_id"] or 0))
-    return history[offset : offset + limit]
+    return history
 
 
 def enqueue_sync_outbox(
@@ -7203,6 +7335,8 @@ def reset_outbox_entries(
     *,
     performed_by_id: int | None = None,
     reason: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[models.SyncOutbox]:
     ids_tuple = tuple({int(entry_id) for entry_id in entry_ids})
     if not ids_tuple:
@@ -7237,7 +7371,12 @@ def reset_outbox_entries(
                 details=json.dumps(details_payload, ensure_ascii=False),
             )
     refreshed = list(db.scalars(statement))
-    return refreshed
+    normalized_offset = max(offset, 0)
+    if limit is None:
+        return refreshed[normalized_offset:]
+    normalized_limit = max(limit, 0)
+    end_index = normalized_offset + normalized_limit if normalized_limit else normalized_offset
+    return refreshed[normalized_offset:end_index]
 
 
 def get_sync_outbox_statistics(
@@ -8414,7 +8553,8 @@ def list_vendor_purchase_history(
     db: Session,
     vendor_id: int,
     *,
-    limit: int = 20,
+    limit: int = 50,
+    offset: int = 0,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
 ) -> schemas.PurchaseVendorHistory:
@@ -8425,6 +8565,7 @@ def list_vendor_purchase_history(
         date_from=date_from,
         date_to=date_to,
         limit=limit,
+        offset=offset,
     )
     records = [_build_purchase_record_response(purchase) for purchase in purchases]
 
@@ -10501,6 +10642,8 @@ def list_operations_history(
     end: datetime | None = None,
     store_id: int | None = None,
     technician_id: int | None = None,
+    limit: int | None = 50,
+    offset: int = 0,
 ) -> schemas.OperationsHistoryResponse:
     start_dt = start or (datetime.utcnow() - timedelta(days=30))
     end_dt = end or datetime.utcnow()
@@ -10650,12 +10793,24 @@ def list_operations_history(
         )
 
     records.sort(key=lambda entry: entry.occurred_at, reverse=True)
+    paginated_records = records[offset:] if offset else records[:]
+    if limit is not None:
+        paginated_records = paginated_records[:limit]
+
+    technician_ids = {
+        entry.technician_id
+        for entry in paginated_records
+        if entry.technician_id is not None and entry.technician_id in technicians
+    }
     technicians_list = [
-        schemas.OperationHistoryTechnician(id=tech_id, name=name)
-        for tech_id, name in sorted(technicians.items(), key=lambda item: item[1].lower())
+        schemas.OperationHistoryTechnician(id=tech_id, name=technicians[tech_id])
+        for tech_id in sorted(technician_ids, key=lambda ident: technicians[ident].lower())
     ]
 
-    return schemas.OperationsHistoryResponse(records=records, technicians=technicians_list)
+    return schemas.OperationsHistoryResponse(
+        records=paginated_records,
+        technicians=technicians_list,
+    )
 
 
 def list_cash_sessions(
@@ -11293,15 +11448,19 @@ def list_import_validations(
     db: Session,
     *,
     corregido: bool | None = None,
-    limit: int | None = 500,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[models.ImportValidation]:
-    statement = select(models.ImportValidation).order_by(
-        models.ImportValidation.fecha.desc()
+    safe_limit = max(1, min(limit, 200))
+    safe_offset = max(0, offset)
+    statement = (
+        select(models.ImportValidation)
+        .order_by(models.ImportValidation.fecha.desc())
+        .offset(safe_offset)
+        .limit(safe_limit)
     )
     if corregido is not None:
         statement = statement.where(models.ImportValidation.corregido.is_(corregido))
-    if limit is not None:
-        statement = statement.limit(limit)
     return list(db.scalars(statement))
 
 

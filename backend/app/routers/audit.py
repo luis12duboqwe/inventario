@@ -50,7 +50,8 @@ def list_audit_logs_endpoint(
     dependencies=[Depends(require_roles(ADMIN))],
 )
 def export_audit_logs(
-    limit: int = Query(default=1000, ge=1, le=5000),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, max_length=120),
     entity_type: str | None = Query(default=None, max_length=80),
     performed_by_id: int | None = Query(default=None, ge=1),
@@ -63,6 +64,7 @@ def export_audit_logs(
     csv_data = crud.export_audit_logs_csv(
         db,
         limit=limit,
+        offset=offset,
         action=action,
         entity_type=entity_type,
         performed_by_id=performed_by_id,
@@ -89,7 +91,8 @@ def list_audit_reminders(
     threshold_minutes: int = Query(default=15, ge=0, le=240),
     min_occurrences: int = Query(default=1, ge=1, le=50),
     lookback_hours: int = Query(default=48, ge=1, le=168),
-    limit: int = Query(default=10, ge=1, le=100),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
@@ -99,6 +102,7 @@ def list_audit_reminders(
         min_occurrences=min_occurrences,
         lookback_hours=lookback_hours,
         limit=limit,
+        offset=offset,
     )
     pending_count = sum(1 for item in reminders if item.get("status") != "acknowledged")
     acknowledged_count = len(reminders) - pending_count

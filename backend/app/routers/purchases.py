@@ -213,7 +213,8 @@ def export_purchase_vendors_csv_endpoint(
 @router.get("/vendors/{vendor_id}/history", response_model=schemas.PurchaseVendorHistory, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def purchase_vendor_history_endpoint(
     vendor_id: int,
-    limit: int = Query(default=20, ge=1, le=200),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -225,6 +226,7 @@ def purchase_vendor_history_endpoint(
             db,
             vendor_id,
             limit=limit,
+            offset=offset,
             date_from=date_from,
             date_to=date_to,
         )
