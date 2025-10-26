@@ -93,7 +93,11 @@ def test_sync_conflict_exports_produce_files(client, db_session):
     db_session.add(log_entry)
     db_session.commit()
 
-    list_response = client.get("/sync/conflicts", headers=headers)
+    list_response = client.get(
+        "/sync/conflicts",
+        headers=headers,
+        params={"limit": 200, "offset": 0},
+    )
     assert list_response.status_code == status.HTTP_200_OK
     assert list_response.json(), "Se esperaba al menos un conflicto registrado"
 

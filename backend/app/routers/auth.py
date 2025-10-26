@@ -273,7 +273,12 @@ def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(
     hashed = hash_password(payload.new_password)
     crud.reset_user_password(db, user, password_hash=hashed, performed_by_id=None)
     crud.mark_password_reset_token_used(db, record)
-    active_sessions = crud.list_active_sessions(db, user_id=user.id)
+    active_sessions = crud.list_active_sessions(
+        db,
+        user_id=user.id,
+        limit=200,
+        offset=0,
+    )
     for session in active_sessions:
         if session.revoked_at is None:
             crud.revoke_session(

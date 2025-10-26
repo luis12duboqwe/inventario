@@ -178,7 +178,7 @@ def test_inventory_import_export_roundtrip(client) -> None:
 
     list_response = client.get(
         f"/stores/{store_id}/devices",
-        params={"estado_inventario": "apartado"},
+        params={"estado_inventario": "apartado", "limit": 200, "offset": 0},
         headers=headers,
     )
     assert list_response.status_code == status.HTTP_200_OK

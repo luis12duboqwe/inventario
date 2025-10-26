@@ -107,7 +107,11 @@ def test_repair_order_flow(client):
     assert repair_data["total_cost"] == 390.0
     assert repair_data["status"] == "PENDIENTE"
 
-    devices_after = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
+    devices_after = client.get(
+        f"/stores/{store_id}/devices",
+        headers=auth_headers,
+        params={"limit": 200, "offset": 0},
+    )
     part_record = next(
         item for item in _extract_items(devices_after.json()) if item["id"] == device_id
     )
@@ -123,7 +127,7 @@ def test_repair_order_flow(client):
 
     list_response = client.get(
         "/repairs",
-        params={"store_id": store_id, "status": "LISTO"},
+        params={"store_id": store_id, "status": "LISTO", "limit": 200, "offset": 0},
         headers=auth_headers,
     )
     assert list_response.status_code == status.HTTP_200_OK
@@ -141,7 +145,11 @@ def test_repair_order_flow(client):
     )
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
 
-    devices_final = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
+    devices_final = client.get(
+        f"/stores/{store_id}/devices",
+        headers=auth_headers,
+        params={"limit": 200, "offset": 0},
+    )
     part_final = next(
         item for item in _extract_items(devices_final.json()) if item["id"] == device_id
     )
@@ -220,7 +228,11 @@ def test_repair_forbidden_for_operator(client):
 
     operator_headers = {"Authorization": f"Bearer {operator_token}", "X-Reason": "Intento Operador"}
 
-    list_response = client.get("/repairs", headers={"Authorization": f"Bearer {operator_token}"})
+    list_response = client.get(
+        "/repairs",
+        headers={"Authorization": f"Bearer {operator_token}"},
+        params={"limit": 200, "offset": 0},
+    )
     assert list_response.status_code == status.HTTP_403_FORBIDDEN
 
     forbidden_response = client.post(

@@ -392,13 +392,19 @@ def test_sales_filters_and_exports(client, db_session):
     db_sale_two.created_at = db_sale_two.created_at - timedelta(days=5)
     db_session.commit()
 
-    list_all = client.get(f"/sales?store_id={store_id}", headers=auth_headers)
+    list_all = client.get(
+        "/sales",
+        params={"store_id": store_id, "limit": 200, "offset": 0},
+        headers=auth_headers,
+    )
     assert list_all.status_code == status.HTTP_200_OK
     list_all_items = _extract_items(list_all.json())
     assert {sale["id"] for sale in list_all_items} == {sale_one_id, sale_two_id}
 
     list_by_customer = client.get(
-        f"/sales?customer_id={customer_id}", headers=auth_headers
+        "/sales",
+        params={"customer_id": customer_id, "limit": 200, "offset": 0},
+        headers=auth_headers,
     )
     assert list_by_customer.status_code == status.HTTP_200_OK
     list_by_customer_items = _extract_items(list_by_customer.json())
@@ -407,7 +413,9 @@ def test_sales_filters_and_exports(client, db_session):
 
     today_iso = datetime.utcnow().date().isoformat()
     list_recent = client.get(
-        f"/sales?date_from={today_iso}", headers=auth_headers
+        "/sales",
+        params={"date_from": today_iso, "limit": 200, "offset": 0},
+        headers=auth_headers,
     )
     assert list_recent.status_code == status.HTTP_200_OK
     list_recent_items = _extract_items(list_recent.json())
@@ -415,13 +423,19 @@ def test_sales_filters_and_exports(client, db_session):
     assert list_recent_items[0]["id"] == sale_one_id
 
     list_by_user = client.get(
-        f"/sales?performed_by_id={user_id}", headers=auth_headers
+        "/sales",
+        params={"performed_by_id": user_id, "limit": 200, "offset": 0},
+        headers=auth_headers,
     )
     assert list_by_user.status_code == status.HTTP_200_OK
     list_by_user_items = _extract_items(list_by_user.json())
     assert len(list_by_user_items) == 2
 
-    list_by_query = client.get("/sales", params={"q": "FILTRO-1001"}, headers=auth_headers)
+    list_by_query = client.get(
+        "/sales",
+        params={"q": "FILTRO-1001", "limit": 200, "offset": 0},
+        headers=auth_headers,
+    )
     assert list_by_query.status_code == status.HTTP_200_OK
     list_by_query_items = _extract_items(list_by_query.json())
     assert len(list_by_query_items) == 1

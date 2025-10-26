@@ -149,7 +149,7 @@ def test_recurring_order_flow_creates_purchase(client, db_session):
 
         list_response = client.get(
             "/operations/recurring-orders",
-            params={"order_type": "purchase"},
+            params={"order_type": "purchase", "limit": 200, "offset": 0},
             headers=headers,
         )
         assert list_response.status_code == status.HTTP_200_OK
@@ -169,7 +169,7 @@ def test_recurring_order_flow_creates_purchase(client, db_session):
 
         purchases_response = client.get(
             "/purchases",
-            params={"store_id": store_id},
+            params={"store_id": store_id, "limit": 200, "offset": 0},
             headers=headers,
         )
         assert purchases_response.status_code == status.HTTP_200_OK
@@ -226,6 +226,7 @@ def test_operations_history_endpoint_returns_recent_records(client, db_session):
         history_response = client.get(
             "/operations/history",
             headers={"Authorization": f"Bearer {token}"},
+            params={"limit": 200, "offset": 0},
         )
         assert history_response.status_code == status.HTTP_200_OK
         history = history_response.json()
@@ -242,7 +243,7 @@ def test_operations_history_endpoint_returns_recent_records(client, db_session):
 
         filtered_response = client.get(
             "/operations/history",
-            params={"technician_id": user_id},
+            params={"technician_id": user_id, "limit": 200, "offset": 0},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert filtered_response.status_code == status.HTTP_200_OK

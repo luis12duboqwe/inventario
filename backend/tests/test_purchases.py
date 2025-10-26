@@ -316,7 +316,7 @@ def test_purchase_records_and_vendor_statistics(client, db_session):
 
     list_response = client.get(
         "/purchases/records",
-        params={"proveedor_id": vendor_id},
+        params={"proveedor_id": vendor_id, "limit": 200, "offset": 0},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert list_response.status_code == status.HTTP_200_OK
@@ -326,6 +326,7 @@ def test_purchase_records_and_vendor_statistics(client, db_session):
     history_response = client.get(
         f"/purchases/vendors/{vendor_id}/history",
         headers={"Authorization": f"Bearer {token}"},
+        params={"limit": 200, "offset": 0},
     )
     assert history_response.status_code == status.HTTP_200_OK
     history_payload = history_response.json()
