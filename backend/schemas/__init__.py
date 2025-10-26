@@ -1,5 +1,6 @@
 """Esquemas públicos expuestos por el backend ligero."""
 
+from .audit import AuditStatusResponse
 from .auth import (
     AuthMessage,
     ForgotPasswordRequest,
@@ -15,6 +16,7 @@ from .auth import (
 )
 
 __all__ = [
+    "AuditStatusResponse",
     "AuthMessage",
     "ForgotPasswordRequest",
     "ForgotPasswordResponse",

@@ -7,6 +7,7 @@ from http import HTTPStatus
 import pytest
 
 from backend.app.http import Request, Response, Router, SimpleApp
+from backend.schemas.audit import AuditStatusResponse
 
 
 @pytest.fixture()
@@ -93,7 +94,7 @@ def test_simple_app_admite_routers_con_prefijo(simple_app: SimpleApp) -> None:
 
     router = Router(prefix="/v1")
 
-    @router.get("/auditoria")
+    @router.get("/auditoria", response_model=AuditStatusResponse)
     def obtener_auditoria(_: Request) -> dict[str, str]:
         return {"estatus": "registrada"}
 

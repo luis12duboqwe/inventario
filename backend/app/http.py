@@ -38,12 +38,14 @@ class Route:
         path: str,
         endpoint: Callable[..., Any],
         status_code: int,
+        response_model: Optional[type[Any]] = None,
     ) -> None:
         self.methods = {method.upper() for method in methods}
         self.path = path
         self.endpoint = endpoint
         self.status_code = status_code
         self.pattern, self.param_names = self._compile_path(path)
+        self.response_model = response_model
 
     @staticmethod
     def _compile_path(path: str) -> tuple[re.Pattern[str], list[str]]:
@@ -76,23 +78,68 @@ class SimpleApp:
         self.state: dict[str, Any] = {}
 
     # --- routing API -------------------------------------------------
-    def route(self, path: str, *, methods: Iterable[str], status_code: int = HTTPStatus.OK) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def route(
+        self,
+        path: str,
+        *,
+        methods: Iterable[str],
+        status_code: int = HTTPStatus.OK,
+        response_model: Optional[type[Any]] = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.routes.append(Route(methods=methods, path=path, endpoint=func, status_code=int(status_code)))
+            self.routes.append(
+                Route(
+                    methods=methods,
+                    path=path,
+                    endpoint=func,
+                    status_code=int(status_code),
+                    response_model=response_model,
+                )
+            )
             return func
 
         return decorator
 
-    def get(self, path: str, *, status_code: int = HTTPStatus.OK) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        return self.route(path, methods=["GET"], status_code=status_code)
+    def get(
+        self,
+        path: str,
+        *,
+        status_code: int = HTTPStatus.OK,
+        response_model: Optional[type[Any]] = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        return self.route(
+            path,
+            methods=["GET"],
+            status_code=status_code,
+            response_model=response_model,
+        )
 
-    def post(self, path: str, *, status_code: int = HTTPStatus.CREATED) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        return self.route(path, methods=["POST"], status_code=status_code)
+    def post(
+        self,
+        path: str,
+        *,
+        status_code: int = HTTPStatus.CREATED,
+        response_model: Optional[type[Any]] = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        return self.route(
+            path,
+            methods=["POST"],
+            status_code=status_code,
+            response_model=response_model,
+        )
 
     def include_router(self, router: "Router", *, prefix: str = "") -> None:
         for route in router.routes:
             merged_path = f"{prefix.rstrip('/')}{route.path}" if prefix else route.path
-            self.routes.append(Route(methods=route.methods, path=merged_path, endpoint=route.endpoint, status_code=route.status_code))
+            self.routes.append(
+                Route(
+                    methods=route.methods,
+                    path=merged_path,
+                    endpoint=route.endpoint,
+                    status_code=route.status_code,
+                    response_model=route.response_model,
+                )
+            )
 
     # --- exception handling -----------------------------------------
     def exception_handler(
@@ -168,20 +215,57 @@ class Router:
         self.prefix = prefix
         self.routes: list[Route] = []
 
-    def route(self, path: str, *, methods: Iterable[str], status_code: int = HTTPStatus.OK) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def route(
+        self,
+        path: str,
+        *,
+        methods: Iterable[str],
+        status_code: int = HTTPStatus.OK,
+        response_model: Optional[type[Any]] = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         full_path = f"{self.prefix}{path}"
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.routes.append(Route(methods=methods, path=full_path, endpoint=func, status_code=int(status_code)))
+            self.routes.append(
+                Route(
+                    methods=methods,
+                    path=full_path,
+                    endpoint=func,
+                    status_code=int(status_code),
+                    response_model=response_model,
+                )
+            )
             return func
 
         return decorator
 
-    def get(self, path: str, *, status_code: int = HTTPStatus.OK) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        return self.route(path, methods=["GET"], status_code=status_code)
+    def get(
+        self,
+        path: str,
+        *,
+        status_code: int = HTTPStatus.OK,
+        response_model: Optional[type[Any]] = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        return self.route(
+            path,
+            methods=["GET"],
+            status_code=status_code,
+            response_model=response_model,
+        )
 
-    def post(self, path: str, *, status_code: int = HTTPStatus.CREATED) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        return self.route(path, methods=["POST"], status_code=status_code)
+    def post(
+        self,
+        path: str,
+        *,
+        status_code: int = HTTPStatus.CREATED,
+        response_model: Optional[type[Any]] = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        return self.route(
+            path,
+            methods=["POST"],
+            status_code=status_code,
+            response_model=response_model,
+        )
 
 
 class TestClient:
