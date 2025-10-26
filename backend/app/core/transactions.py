@@ -14,32 +14,24 @@ def transactional_session(session: Session) -> Iterator[Session]:
 
     existing = session.get_transaction()
     if existing is not None:
-        nested = session.begin_nested()
-        try:
+        with session.begin_nested():
             yield session
-            nested.commit()
-        except Exception:
-            if nested.is_active:
-                nested.rollback()
-            raise
         return
 
-    try:
-        with session.begin():
-            yield session
-    except Exception:
-        session.rollback()
-        raise
+    with session.begin():
+        yield session
 
 
 def commit_session(session: Session) -> None:
     """Confirma la transacción actual realizando rollback ante errores."""
 
-    try:
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
+    if session.get_transaction() is not None:
+        raise RuntimeError(
+            "commit_session no debe invocarse con una transacción activa; "
+            "usa transactional_session para manejar el contexto."
+        )
+    with session.begin():
+        pass
 
 
 def flush_session(session: Session) -> None:
