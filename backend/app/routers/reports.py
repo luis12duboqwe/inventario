@@ -230,8 +230,13 @@ def audit_logs(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.AuditLogResponse]:
-    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
     page_size = min(pagination.size, limit)
+    if offset > 0:
+        page_offset = offset
+        page_number = max(1, (page_offset // page_size) + 1)
+    else:
+        page_number = pagination.page
+        page_offset = 0 if page_number <= 1 else page_size * (page_number - 1)
     total = crud.count_audit_logs(
         db,
         action=action,
@@ -249,9 +254,6 @@ def audit_logs(
         performed_by_id=performed_by_id,
         date_from=date_from,
         date_to=date_to,
-    )
-    page_number = (
-        pagination.page if offset == 0 else max(1, (page_offset // page_size) + 1)
     )
     return Page.from_items(logs, page=page_number, size=page_size, total=total)
 
