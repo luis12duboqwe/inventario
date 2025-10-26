@@ -51,7 +51,7 @@ def _update_reminder_snapshot(entries: Iterable[Mapping[str, object]]) -> None:
         status = str(entry.get("status", ""))
         if status.lower() == "acknowledged":
             acknowledged += 1
-    pending = total - acknowledged
+    pending = max(total - acknowledged, 0)
     _AUDIT_REMINDER_CACHE_SNAPSHOT.labels(state="total").set(float(total))
     _AUDIT_REMINDER_CACHE_SNAPSHOT.labels(state="pending").set(float(pending))
     _AUDIT_REMINDER_CACHE_SNAPSHOT.labels(state="acknowledged").set(float(acknowledged))

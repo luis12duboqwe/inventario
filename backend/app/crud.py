@@ -781,7 +781,9 @@ def build_global_report_overview(
     last_activity_at = max(last_activity_candidates) if last_activity_candidates else None
 
     sync_stats = get_sync_outbox_statistics(db)
-    sync_pending = sum(int(entry.get("pending", 0) or 0) for entry in sync_stats)
+    sync_pending = sum(
+        max(int(entry.get("pending", 0) or 0), 0) for entry in sync_stats
+    )
     sync_failed = sum(int(entry.get("failed", 0) or 0) for entry in sync_stats)
 
     filters = schemas.GlobalReportFiltersState(
@@ -852,7 +854,7 @@ def build_global_report_overview(
 
     for stat in sync_stats:
         failed = int(stat.get("failed", 0) or 0)
-        pending = int(stat.get("pending", 0) or 0)
+        pending = max(int(stat.get("pending", 0) or 0), 0)
         if failed <= 0:
             continue
         severity_level = (
@@ -2619,7 +2621,8 @@ def get_user_dashboard_metrics(
     for highlight in summary.highlights:
         key = (highlight["entity_type"], highlight["entity_id"])
         alert_data = persistent_map.get(key)
-        status = str(alert_data.get("status", "pending")) if alert_data else "pending"
+        raw_status = str(alert_data.get("status", "pending")) if alert_data else "pending"
+        status = "acknowledged" if raw_status.lower() == "acknowledged" else "pending"
         acknowledged_at = alert_data.get("acknowledged_at") if alert_data else None
         acknowledged_by_id = alert_data.get("acknowledged_by_id") if alert_data else None
         acknowledged_by_name = alert_data.get("acknowledged_by_name") if alert_data else None
@@ -2643,7 +2646,7 @@ def get_user_dashboard_metrics(
                 severity=highlight["severity"],
                 entity_type=highlight["entity_type"],
                 entity_id=highlight["entity_id"],
-                status="acknowledged" if status == "acknowledged" else "pending",
+                status=status,
                 acknowledged_at=acknowledged_at,
                 acknowledged_by_id=acknowledged_by_id,
                 acknowledged_by_name=acknowledged_by_name,
@@ -6989,7 +6992,7 @@ def calculate_realtime_store_widget(
         for row in db.execute(sales_today_stmt)
     }
     repairs_map = {
-        int(row.store_id): int(row.pending or 0)
+        int(row.store_id): max(int(row.pending or 0), 0)
         for row in db.execute(repairs_stmt)
     }
     sync_map: dict[int | None, datetime | None] = {
@@ -7423,8 +7426,8 @@ def get_sync_outbox_statistics(
                 "entity_type": row.entity_type,
                 "priority": priority,
                 "total": int(row.total or 0),
-                "pending": int(row.pending or 0),
-                "failed": int(row.failed or 0),
+                "pending": max(int(row.pending or 0), 0),
+                "failed": max(int(row.failed or 0), 0),
                 "latest_update": row.latest_update,
                 "oldest_pending": row.oldest_pending,
             }
