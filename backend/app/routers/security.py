@@ -20,7 +20,7 @@ def _ensure_2fa_enabled() -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
 
 
-@router.get("/2fa/status", response_model=schemas.TOTPStatusResponse)
+@router.get("/2fa/status", response_model=schemas.TOTPStatusResponse, dependencies=[Depends(require_roles(ADMIN, GERENTE))])
 def totp_status(current_user=Depends(require_roles(ADMIN, GERENTE)), db: Session = Depends(get_db)):
     _ensure_2fa_enabled()
     record = crud.get_totp_secret(db, current_user.id)
@@ -33,7 +33,7 @@ def totp_status(current_user=Depends(require_roles(ADMIN, GERENTE)), db: Session
     )
 
 
-@router.post("/2fa/setup", response_model=schemas.TOTPSetupResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/2fa/setup", response_model=schemas.TOTPSetupResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(ADMIN, GERENTE))])
 def totp_setup(
     current_user=Depends(require_roles(ADMIN, GERENTE)),
     db: Session = Depends(get_db),
@@ -53,7 +53,7 @@ def totp_setup(
     return schemas.TOTPSetupResponse(secret=record.secret, otpauth_url=otpauth)
 
 
-@router.post("/2fa/activate", response_model=schemas.TOTPStatusResponse)
+@router.post("/2fa/activate", response_model=schemas.TOTPStatusResponse, dependencies=[Depends(require_roles(ADMIN, GERENTE))])
 def totp_activate(
     payload: schemas.TOTPActivateRequest,
     current_user=Depends(require_roles(ADMIN, GERENTE)),
@@ -83,6 +83,7 @@ def totp_activate(
     "/2fa/disable",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
+    dependencies=[Depends(require_roles(ADMIN, GERENTE))],
 )
 def totp_disable(
     current_user=Depends(require_roles(ADMIN, GERENTE)),
@@ -99,7 +100,7 @@ def totp_disable(
     return None
 
 
-@router.get("/sessions", response_model=list[schemas.ActiveSessionResponse])
+@router.get("/sessions", response_model=list[schemas.ActiveSessionResponse], dependencies=[Depends(require_roles(ADMIN, GERENTE))])
 def list_sessions(
     user_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=50, ge=1, le=200),
@@ -114,7 +115,7 @@ def list_sessions(
     return sessions
 
 
-@router.post("/sessions/{session_id}/revoke", response_model=schemas.ActiveSessionResponse)
+@router.post("/sessions/{session_id}/revoke", response_model=schemas.ActiveSessionResponse, dependencies=[Depends(require_roles(ADMIN, GERENTE))])
 def revoke_session_endpoint(
     payload: schemas.SessionRevokeRequest,
     session_id: int = Path(..., ge=1),

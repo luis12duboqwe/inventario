@@ -26,7 +26,11 @@ def _parse_iso_datetime(value: str | None, *, field: str) -> datetime | None:
         ) from exc
 
 
-@router.get("/sistema", response_model=list[schemas.SystemLogEntry])
+@router.get(
+    "/sistema",
+    response_model=list[schemas.SystemLogEntry],
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def get_system_logs(
     usuario: str | None = Query(default=None, max_length=120, description="Usuario responsable"),
     modulo: str | None = Query(default=None, max_length=80, description="Nombre del módulo"),
@@ -55,7 +59,11 @@ def get_system_logs(
     return [schemas.SystemLogEntry.model_validate(item) for item in logs]
 
 
-@router.get("/errores", response_model=list[schemas.SystemErrorEntry])
+@router.get(
+    "/errores",
+    response_model=list[schemas.SystemErrorEntry],
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def get_system_errors(
     usuario: str | None = Query(default=None, max_length=120, description="Usuario afectado"),
     modulo: str | None = Query(default=None, max_length=80, description="Módulo donde ocurrió"),

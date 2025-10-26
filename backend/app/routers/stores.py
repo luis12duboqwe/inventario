@@ -9,7 +9,7 @@ from datetime import date
 from backend.schemas.common import Page, PageParams
 
 from .. import crud, schemas
-from ..core.roles import GESTION_ROLES, REPORTE_ROLES
+from ..core.roles import ADMIN, GESTION_ROLES
 from ..database import get_db
 from ..models import CommercialState
 from ..security import require_roles
@@ -21,6 +21,7 @@ router = APIRouter(prefix="/stores", tags=["stores"])
     "",
     response_model=schemas.StoreResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def create_store(
     payload: schemas.StoreCreate,
@@ -50,7 +51,7 @@ def create_store(
     return store
 
 
-@router.get("", response_model=Page[schemas.StoreResponse])
+@router.get("", response_model=Page[schemas.StoreResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_stores(
     pagination: PageParams = Depends(),
     limit: int = Query(default=50, ge=1, le=200),
@@ -65,7 +66,7 @@ def list_stores(
     return Page.from_items(stores, page=pagination.page, size=page_size, total=total)
 
 
-@router.get("/{store_id}", response_model=schemas.StoreResponse)
+@router.get("/{store_id}", response_model=schemas.StoreResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def retrieve_store(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
@@ -80,7 +81,7 @@ def retrieve_store(
         ) from exc
 
 
-@router.put("/{store_id}", response_model=schemas.StoreResponse)
+@router.put("/{store_id}", response_model=schemas.StoreResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def update_store(
     payload: schemas.StoreUpdate,
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
@@ -123,6 +124,7 @@ def update_store(
     "/{store_id}/devices",
     response_model=schemas.DeviceResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def create_device(
     payload: schemas.DeviceCreate,
@@ -163,7 +165,7 @@ def create_device(
     return device
 
 
-@router.get("/{store_id}/devices", response_model=Page[schemas.DeviceResponse])
+@router.get("/{store_id}/devices", response_model=Page[schemas.DeviceResponse], dependencies=[Depends(require_roles(ADMIN))])
 def list_devices(
     store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
     search: str | None = Query(default=None, min_length=1, max_length=120),
@@ -179,7 +181,7 @@ def list_devices(
     offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.DeviceResponse]:
     estado_enum: CommercialState | None = None
     if estado:
@@ -242,6 +244,7 @@ def list_devices(
 @router.get(
     "/{store_id}/memberships",
     response_model=Page[schemas.StoreMembershipResponse],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def list_store_memberships(
     store_id: int = Path(..., ge=1),
@@ -270,6 +273,7 @@ def list_store_memberships(
 @router.put(
     "/{store_id}/memberships/{user_id}",
     response_model=schemas.StoreMembershipResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def upsert_membership(
     payload: schemas.StoreMembershipUpdate,

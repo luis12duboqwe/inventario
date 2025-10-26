@@ -11,7 +11,7 @@ from ..security import require_roles
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 
-@router.get("/", response_model=list[schemas.CustomerResponse])
+@router.get("/", response_model=list[schemas.CustomerResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_customers_endpoint(
     q: str | None = Query(default=None, description="Término de búsqueda"),
     limit: int = Query(default=50, ge=1, le=200),
@@ -71,7 +71,7 @@ def list_customers_endpoint(
     return customers
 
 
-@router.get("/dashboard", response_model=schemas.CustomerDashboardMetrics)
+@router.get("/dashboard", response_model=schemas.CustomerDashboardMetrics, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def get_customer_dashboard_metrics_endpoint(
     months: int = Query(default=6, ge=1, le=24),
     top_limit: int = Query(default=5, ge=1, le=50),
@@ -81,7 +81,7 @@ def get_customer_dashboard_metrics_endpoint(
     return crud.get_customer_dashboard_metrics(db, months=months, top_limit=top_limit)
 
 
-@router.post("/", response_model=schemas.CustomerResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=schemas.CustomerResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_customer_endpoint(
     payload: schemas.CustomerCreate,
     db: Session = Depends(get_db),
@@ -129,7 +129,7 @@ def create_customer_endpoint(
     return customer
 
 
-@router.get("/{customer_id}", response_model=schemas.CustomerResponse)
+@router.get("/{customer_id}", response_model=schemas.CustomerResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def get_customer_endpoint(
     customer_id: int,
     db: Session = Depends(get_db),
@@ -141,7 +141,7 @@ def get_customer_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado") from exc
 
 
-@router.put("/{customer_id}", response_model=schemas.CustomerResponse)
+@router.put("/{customer_id}", response_model=schemas.CustomerResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def update_customer_endpoint(
     customer_id: int,
     payload: schemas.CustomerUpdate,
@@ -192,6 +192,7 @@ def update_customer_endpoint(
     "/{customer_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def delete_customer_endpoint(
     customer_id: int,
@@ -210,7 +211,7 @@ def delete_customer_endpoint(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{customer_id}/notes", response_model=schemas.CustomerResponse)
+@router.post("/{customer_id}/notes", response_model=schemas.CustomerResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def append_customer_note_endpoint(
     customer_id: int,
     payload: schemas.CustomerNoteCreate,
@@ -233,6 +234,7 @@ def append_customer_note_endpoint(
     "/{customer_id}/payments",
     response_model=schemas.CustomerLedgerEntryResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def register_customer_payment_endpoint(
     customer_id: int,
@@ -271,7 +273,7 @@ def register_customer_payment_endpoint(
         raise
 
 
-@router.get("/{customer_id}/summary", response_model=schemas.CustomerSummaryResponse)
+@router.get("/{customer_id}/summary", response_model=schemas.CustomerSummaryResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def get_customer_summary_endpoint(
     customer_id: int,
     db: Session = Depends(get_db),

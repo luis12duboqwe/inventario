@@ -16,7 +16,7 @@ from ..security import require_roles
 router = APIRouter(prefix="/repairs", tags=["repairs"])
 
 
-@router.get("/", response_model=list[schemas.RepairOrderResponse])
+@router.get("/", response_model=list[schemas.RepairOrderResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_repairs_endpoint(
     store_id: int | None = Query(default=None, ge=1),
     status_filter: str | None = Query(default=None, alias="status"),
@@ -42,7 +42,7 @@ def list_repairs_endpoint(
     )
 
 
-@router.post("/", response_model=schemas.RepairOrderResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=schemas.RepairOrderResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_repair_order_endpoint(
     payload: schemas.RepairOrderCreate,
     db: Session = Depends(get_db),
@@ -71,7 +71,7 @@ def create_repair_order_endpoint(
         raise
 
 
-@router.get("/{order_id}", response_model=schemas.RepairOrderResponse)
+@router.get("/{order_id}", response_model=schemas.RepairOrderResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def get_repair_order_endpoint(
     order_id: int,
     db: Session = Depends(get_db),
@@ -83,7 +83,7 @@ def get_repair_order_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Orden no encontrada") from exc
 
 
-@router.put("/{order_id}", response_model=schemas.RepairOrderResponse)
+@router.put("/{order_id}", response_model=schemas.RepairOrderResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def update_repair_order_endpoint(
     order_id: int,
     payload: schemas.RepairOrderUpdate,
@@ -120,6 +120,7 @@ def update_repair_order_endpoint(
     "/{order_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def delete_repair_order_endpoint(
     order_id: int,
@@ -139,7 +140,7 @@ def delete_repair_order_endpoint(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/{order_id}/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/{order_id}/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def download_repair_order_pdf(
     order_id: int,
     db: Session = Depends(get_db),

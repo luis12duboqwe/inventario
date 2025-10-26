@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, schemas
 from ..config import settings
-from ..core.roles import GESTION_ROLES
+from ..core.roles import MOVEMENT_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -68,7 +68,11 @@ def _prepare_sales_report(
     )
 
 
-@router.get("/", response_model=list[schemas.SaleResponse])
+@router.get(
+    "/",
+    response_model=list[schemas.SaleResponse],
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def list_sales_endpoint(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -80,7 +84,7 @@ def list_sales_endpoint(
     date_to: datetime | None = Query(default=None),
     q: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     search = q.strip() if q else None
@@ -98,7 +102,11 @@ def list_sales_endpoint(
     )
 
 
-@router.get("/export/pdf", response_model=schemas.BinaryFileResponse)
+@router.get(
+    "/export/pdf",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def export_sales_pdf(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
@@ -109,7 +117,7 @@ def export_sales_pdf(
     q: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     _reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     search = q.strip() if q else None
@@ -135,7 +143,11 @@ def export_sales_pdf(
     )
 
 
-@router.get("/export/xlsx", response_model=schemas.BinaryFileResponse)
+@router.get(
+    "/export/xlsx",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def export_sales_excel(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
@@ -146,7 +158,7 @@ def export_sales_excel(
     q: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     _reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     search = q.strip() if q else None
@@ -172,12 +184,17 @@ def export_sales_excel(
     )
 
 
-@router.post("/", response_model=schemas.SaleResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=schemas.SaleResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def create_sale_endpoint(
     payload: schemas.SaleCreate,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -227,12 +244,16 @@ def create_sale_endpoint(
         raise
 
 
-@router.post("/returns", response_model=list[schemas.SaleReturnResponse])
+@router.post(
+    "/returns",
+    response_model=list[schemas.SaleReturnResponse],
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def register_sale_return_endpoint(
     payload: schemas.SaleReturnCreate,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -262,13 +283,17 @@ def register_sale_return_endpoint(
         raise
 
 
-@router.put("/{sale_id}", response_model=schemas.SaleResponse)
+@router.put(
+    "/{sale_id}",
+    response_model=schemas.SaleResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def update_sale_endpoint(
     payload: schemas.SaleUpdate,
     sale_id: int,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -329,12 +354,16 @@ def update_sale_endpoint(
         raise
 
 
-@router.post("/{sale_id}/cancel", response_model=schemas.SaleResponse)
+@router.post(
+    "/{sale_id}/cancel",
+    response_model=schemas.SaleResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def cancel_sale_endpoint(
     sale_id: int,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, schemas
 from ..config import settings
-from ..core.roles import GESTION_ROLES
+from ..core.roles import MOVEMENT_ROLES
 from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
@@ -28,12 +28,17 @@ def _ensure_feature_enabled() -> None:
         )
 
 
-@router.post("/sale", response_model=schemas.POSSaleResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sale",
+    response_model=schemas.POSSaleResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def register_pos_sale_endpoint(
     payload: schemas.POSSaleRequest,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -101,12 +106,16 @@ def register_pos_sale_endpoint(
         raise
 
 
-@router.get("/receipt/{sale_id}", response_model=schemas.BinaryFileResponse)
+@router.get(
+    "/receipt/{sale_id}",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def download_pos_receipt(
     sale_id: int,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -205,12 +214,16 @@ def download_pos_receipt(
     )
 
 
-@router.get("/config", response_model=schemas.POSConfigResponse)
+@router.get(
+    "/config",
+    response_model=schemas.POSConfigResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def read_pos_config(
     store_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -227,12 +240,16 @@ def read_pos_config(
     return config
 
 
-@router.put("/config", response_model=schemas.POSConfigResponse)
+@router.put(
+    "/config",
+    response_model=schemas.POSConfigResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def update_pos_config_endpoint(
     payload: schemas.POSConfigUpdate,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -247,12 +264,17 @@ def update_pos_config_endpoint(
     return config
 
 
-@router.post("/cash/open", response_model=schemas.CashSessionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/cash/open",
+    response_model=schemas.CashSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def open_cash_session_endpoint(
     payload: schemas.CashSessionOpenRequest,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -271,12 +293,16 @@ def open_cash_session_endpoint(
         raise
 
 
-@router.post("/cash/close", response_model=schemas.CashSessionResponse)
+@router.post(
+    "/cash/close",
+    response_model=schemas.CashSessionResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def close_cash_session_endpoint(
     payload: schemas.CashSessionCloseRequest,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     try:
@@ -297,14 +323,18 @@ def close_cash_session_endpoint(
         raise
 
 
-@router.get("/cash/history", response_model=list[schemas.CashSessionResponse])
+@router.get(
+    "/cash/history",
+    response_model=list[schemas.CashSessionResponse],
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
 def list_cash_sessions_endpoint(
     store_id: int = Query(..., ge=1),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
     return crud.list_cash_sessions(db, store_id=store_id, limit=limit, offset=offset)

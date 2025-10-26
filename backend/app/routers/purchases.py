@@ -59,7 +59,7 @@ def _prepare_purchase_report(
     return purchase_reports.build_purchase_report(purchases, filters)
 
 
-@router.get("/vendors", response_model=Page[schemas.PurchaseVendorResponse])
+@router.get("/vendors", response_model=Page[schemas.PurchaseVendorResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_purchase_vendors_endpoint(
     q: str | None = Query(default=None, min_length=1, max_length=120),
     estado: str | None = Query(default=None, min_length=3, max_length=40),
@@ -90,7 +90,7 @@ def list_purchase_vendors_endpoint(
     return Page.from_items(vendors, page=pagination.page, size=page_size, total=total)
 
 
-@router.post("/vendors", response_model=schemas.PurchaseVendorResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/vendors", response_model=schemas.PurchaseVendorResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_purchase_vendor_endpoint(
     payload: schemas.PurchaseVendorCreate,
     db: Session = Depends(get_db),
@@ -131,7 +131,7 @@ def create_purchase_vendor_endpoint(
     )
 
 
-@router.put("/vendors/{vendor_id}", response_model=schemas.PurchaseVendorResponse)
+@router.put("/vendors/{vendor_id}", response_model=schemas.PurchaseVendorResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def update_purchase_vendor_endpoint(
     vendor_id: int,
     payload: schemas.PurchaseVendorUpdate,
@@ -156,7 +156,7 @@ def update_purchase_vendor_endpoint(
     return summary[0]
 
 
-@router.post("/vendors/{vendor_id}/status", response_model=schemas.PurchaseVendorResponse)
+@router.post("/vendors/{vendor_id}/status", response_model=schemas.PurchaseVendorResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def update_purchase_vendor_status_endpoint(
     vendor_id: int,
     payload: schemas.PurchaseVendorStatusUpdate,
@@ -181,7 +181,7 @@ def update_purchase_vendor_status_endpoint(
     return summary[0]
 
 
-@router.get("/vendors/export/csv", response_model=schemas.BinaryFileResponse)
+@router.get("/vendors/export/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def export_purchase_vendors_csv_endpoint(
     q: str | None = Query(default=None, min_length=1, max_length=120),
     estado: str | None = Query(default=None, min_length=3, max_length=40),
@@ -210,7 +210,7 @@ def export_purchase_vendors_csv_endpoint(
     return response
 
 
-@router.get("/vendors/{vendor_id}/history", response_model=schemas.PurchaseVendorHistory)
+@router.get("/vendors/{vendor_id}/history", response_model=schemas.PurchaseVendorHistory, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def purchase_vendor_history_endpoint(
     vendor_id: int,
     limit: int = Query(default=20, ge=1, le=200),
@@ -232,7 +232,7 @@ def purchase_vendor_history_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
 
 
-@router.get("/records", response_model=Page[schemas.PurchaseRecordResponse])
+@router.get("/records", response_model=Page[schemas.PurchaseRecordResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_purchase_records_endpoint(
     proveedor_id: int | None = Query(default=None, ge=1),
     usuario_id: int | None = Query(default=None, ge=1),
@@ -274,7 +274,7 @@ def list_purchase_records_endpoint(
     return Page.from_items(records, page=pagination.page, size=page_limit, total=total)
 
 
-@router.post("/records", response_model=schemas.PurchaseRecordResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/records", response_model=schemas.PurchaseRecordResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_purchase_record_endpoint(
     payload: schemas.PurchaseRecordCreate,
     db: Session = Depends(get_db),
@@ -316,7 +316,7 @@ def create_purchase_record_endpoint(
         raise
 
 
-@router.get("/records/export/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/records/export/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def export_purchase_records_pdf_endpoint(
     proveedor_id: int | None = Query(default=None, ge=1),
     usuario_id: int | None = Query(default=None, ge=1),
@@ -352,7 +352,7 @@ def export_purchase_records_pdf_endpoint(
     )
 
 
-@router.get("/records/export/xlsx", response_model=schemas.BinaryFileResponse)
+@router.get("/records/export/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def export_purchase_records_excel_endpoint(
     proveedor_id: int | None = Query(default=None, ge=1),
     usuario_id: int | None = Query(default=None, ge=1),
@@ -388,7 +388,7 @@ def export_purchase_records_excel_endpoint(
     )
 
 
-@router.get("/statistics", response_model=schemas.PurchaseStatistics)
+@router.get("/statistics", response_model=schemas.PurchaseStatistics, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def get_purchase_statistics_endpoint(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
@@ -405,7 +405,7 @@ def get_purchase_statistics_endpoint(
     )
 
 
-@router.get("/", response_model=Page[schemas.PurchaseOrderResponse])
+@router.get("/", response_model=Page[schemas.PurchaseOrderResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_purchase_orders_endpoint(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -427,7 +427,7 @@ def list_purchase_orders_endpoint(
     return Page.from_items(orders, page=pagination.page, size=page_limit, total=total)
 
 
-@router.post("/", response_model=schemas.PurchaseOrderResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=schemas.PurchaseOrderResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_purchase_order_endpoint(
     payload: schemas.PurchaseOrderCreate,
     db: Session = Depends(get_db),
@@ -457,6 +457,7 @@ def create_purchase_order_endpoint(
     "/import",
     response_model=schemas.PurchaseImportResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 async def import_purchase_orders_endpoint(
     file: UploadFile = File(...),
@@ -498,7 +499,7 @@ async def import_purchase_orders_endpoint(
     )
 
 
-@router.post("/{order_id}/receive", response_model=schemas.PurchaseOrderResponse)
+@router.post("/{order_id}/receive", response_model=schemas.PurchaseOrderResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def receive_purchase_order_endpoint(
     payload: schemas.PurchaseReceiveRequest,
     order_id: int = Path(..., ge=1),
@@ -540,7 +541,7 @@ def receive_purchase_order_endpoint(
         raise
 
 
-@router.post("/{order_id}/cancel", response_model=schemas.PurchaseOrderResponse)
+@router.post("/{order_id}/cancel", response_model=schemas.PurchaseOrderResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def cancel_purchase_order_endpoint(
     order_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
@@ -569,7 +570,7 @@ def cancel_purchase_order_endpoint(
         raise
 
 
-@router.post("/{order_id}/returns", response_model=schemas.PurchaseReturnResponse)
+@router.post("/{order_id}/returns", response_model=schemas.PurchaseReturnResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def register_purchase_return_endpoint(
     payload: schemas.PurchaseReturnCreate,
     order_id: int = Path(..., ge=1),

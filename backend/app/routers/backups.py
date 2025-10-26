@@ -18,7 +18,12 @@ from ..services import backups as backup_services
 router = APIRouter(prefix="/backups", tags=["respaldos"])
 
 
-@router.post("/run", response_model=schemas.BackupJobResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/run",
+    response_model=schemas.BackupJobResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def run_backup(
     payload: schemas.BackupRunRequest,
     db: Session = Depends(get_db),
@@ -38,7 +43,11 @@ def run_backup(
     return job
 
 
-@router.get("/history", response_model=list[schemas.BackupJobResponse])
+@router.get(
+    "/history",
+    response_model=list[schemas.BackupJobResponse],
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def backup_history(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -48,7 +57,11 @@ def backup_history(
     return crud.list_backup_jobs(db, limit=limit, offset=offset)
 
 
-@router.post("/{job_id}/restore", response_model=schemas.BackupRestoreResponse)
+@router.post(
+    "/{job_id}/restore",
+    response_model=schemas.BackupRestoreResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def restore_backup(
     job_id: int,
     payload: schemas.BackupRestoreRequest,
@@ -74,7 +87,11 @@ def restore_backup(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.get("/{job_id}/download", response_model=schemas.BinaryFileResponse)
+@router.get(
+    "/{job_id}/download",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def download_backup(
     job_id: int,
     formato: schemas.BackupExportFormat,

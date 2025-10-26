@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..config import settings
-from ..core.roles import AUDITORIA_ROLES, REPORTE_ROLES
+from ..core.roles import ADMIN
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -41,14 +41,18 @@ def _coerce_datetime(value: datetime | date | None) -> datetime | None:
     return datetime.combine(value, datetime.min.time())
 
 
-@router.get("/global/overview", response_model=schemas.GlobalReportOverview)
+@router.get(
+    "/global/overview",
+    response_model=schemas.GlobalReportOverview,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def global_report_overview(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     module: str | None = Query(default=None, max_length=80),
     severity: schemas.SystemLogLevel | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     normalized_from = _coerce_datetime(date_from)
     normalized_to = _coerce_datetime(date_to)
@@ -61,14 +65,18 @@ def global_report_overview(
     )
 
 
-@router.get("/global/dashboard", response_model=schemas.GlobalReportDashboard)
+@router.get(
+    "/global/dashboard",
+    response_model=schemas.GlobalReportDashboard,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def global_report_dashboard(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     module: str | None = Query(default=None, max_length=80),
     severity: schemas.SystemLogLevel | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     normalized_from = _coerce_datetime(date_from)
     normalized_to = _coerce_datetime(date_to)
@@ -81,7 +89,11 @@ def global_report_dashboard(
     )
 
 
-@router.get("/global/export", response_model=schemas.BinaryFileResponse)
+@router.get(
+    "/global/export",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def export_global_report(
     format: Literal["pdf", "xlsx", "csv"] = Query(default="pdf"),
     date_from: datetime | date | None = Query(default=None),
@@ -89,7 +101,7 @@ def export_global_report(
     module: str | None = Query(default=None, max_length=80),
     severity: schemas.SystemLogLevel | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     normalized_from = _coerce_datetime(date_from)
@@ -149,7 +161,7 @@ def export_global_report(
     )
 
 
-@router.get("/customers/portfolio", response_model=schemas.CustomerPortfolioReport)
+@router.get("/customers/portfolio", response_model=schemas.CustomerPortfolioReport, dependencies=[Depends(require_roles(ADMIN))])
 def customer_portfolio_report(
     request: Request,
     category: Literal["delinquent", "frequent"] = Query(default="delinquent"),
@@ -158,7 +170,7 @@ def customer_portfolio_report(
     date_to: date | None = Query(default=None),
     export: Literal["json", "pdf", "xlsx"] = Query(default="json"),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     x_reason: str | None = Header(default=None, alias="X-Reason"),
 ):
     if date_from and date_to and date_from > date_to:
@@ -203,7 +215,7 @@ def customer_portfolio_report(
     )
 
 
-@router.get("/audit", response_model=Page[schemas.AuditLogResponse])
+@router.get("/audit", response_model=Page[schemas.AuditLogResponse], dependencies=[Depends(require_roles(ADMIN))])
 def audit_logs(
     limit: int = Query(default=100, ge=1, le=500),
     action: str | None = Query(default=None, max_length=120),
@@ -213,7 +225,7 @@ def audit_logs(
     date_to: datetime | date | None = Query(default=None),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*AUDITORIA_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.AuditLogResponse]:
     effective_limit = max(limit, pagination.size * pagination.page)
     logs = crud.list_audit_logs(
@@ -231,7 +243,7 @@ def audit_logs(
     return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(logs))
 
 
-@router.get("/audit/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/audit/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def audit_logs_pdf(
     limit: int = Query(default=200, ge=1, le=1000),
     action: str | None = Query(default=None, max_length=120),
@@ -240,7 +252,7 @@ def audit_logs_pdf(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*AUDITORIA_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     logs = crud.list_audit_logs(
@@ -277,7 +289,7 @@ def audit_logs_pdf(
     )
 
 
-@router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse)
+@router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_rotation(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -286,7 +298,7 @@ def analytics_rotation(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
     data = crud.calculate_rotation_analytics(
@@ -301,7 +313,7 @@ def analytics_rotation(
     return schemas.AnalyticsRotationResponse(items=[schemas.RotationMetric(**item) for item in data])
 
 
-@router.get("/analytics/aging", response_model=schemas.AnalyticsAgingResponse)
+@router.get("/analytics/aging", response_model=schemas.AnalyticsAgingResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_aging(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -310,7 +322,7 @@ def analytics_aging(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
     data = crud.calculate_aging_analytics(
@@ -325,7 +337,7 @@ def analytics_aging(
     return schemas.AnalyticsAgingResponse(items=[schemas.AgingMetric(**item) for item in data])
 
 
-@router.get("/analytics/stockout_forecast", response_model=schemas.AnalyticsForecastResponse)
+@router.get("/analytics/stockout_forecast", response_model=schemas.AnalyticsForecastResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_forecast(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -334,7 +346,7 @@ def analytics_forecast(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
     data = crud.calculate_stockout_forecast(
@@ -349,7 +361,7 @@ def analytics_forecast(
     return schemas.AnalyticsForecastResponse(items=[schemas.StockoutForecastMetric(**item) for item in data])
 
 
-@router.get("/analytics/comparative", response_model=schemas.AnalyticsComparativeResponse)
+@router.get("/analytics/comparative", response_model=schemas.AnalyticsComparativeResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_comparative(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -358,7 +370,7 @@ def analytics_comparative(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
     data = crud.calculate_store_comparatives(
@@ -375,7 +387,7 @@ def analytics_comparative(
     )
 
 
-@router.get("/analytics/profit_margin", response_model=schemas.AnalyticsProfitMarginResponse)
+@router.get("/analytics/profit_margin", response_model=schemas.AnalyticsProfitMarginResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_profit_margin(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -384,7 +396,7 @@ def analytics_profit_margin(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
     data = crud.calculate_profit_margin(
@@ -401,7 +413,7 @@ def analytics_profit_margin(
     )
 
 
-@router.get("/analytics/sales_forecast", response_model=schemas.AnalyticsSalesProjectionResponse)
+@router.get("/analytics/sales_forecast", response_model=schemas.AnalyticsSalesProjectionResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_sales_projection(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -410,7 +422,7 @@ def analytics_sales_projection(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
     data = crud.calculate_sales_projection(
@@ -427,19 +439,19 @@ def analytics_sales_projection(
     )
 
 
-@router.get("/analytics/categories", response_model=schemas.AnalyticsCategoriesResponse)
+@router.get("/analytics/categories", response_model=schemas.AnalyticsCategoriesResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_categories(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
     categories = crud.list_analytics_categories(db, limit=limit, offset=offset)
     return schemas.AnalyticsCategoriesResponse(categories=categories)
 
 
-@router.get("/analytics/alerts", response_model=schemas.AnalyticsAlertsResponse)
+@router.get("/analytics/alerts", response_model=schemas.AnalyticsAlertsResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_alerts(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -448,7 +460,7 @@ def analytics_alerts(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
     data = crud.generate_analytics_alerts(
@@ -465,14 +477,14 @@ def analytics_alerts(
     )
 
 
-@router.get("/analytics/realtime", response_model=schemas.AnalyticsRealtimeResponse)
+@router.get("/analytics/realtime", response_model=schemas.AnalyticsRealtimeResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_realtime(
     store_ids: list[int] | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     _ensure_analytics_enabled()
     data = crud.calculate_realtime_store_widget(
@@ -487,14 +499,14 @@ def analytics_realtime(
     )
 
 
-@router.get("/analytics/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/analytics/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     _ensure_analytics_enabled()
@@ -573,14 +585,14 @@ def analytics_pdf(
     )
 
 
-@router.get("/analytics/export.csv", response_model=schemas.BinaryFileResponse)
+@router.get("/analytics/export.csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def analytics_export_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     _ensure_analytics_enabled()
@@ -681,20 +693,20 @@ def analytics_export_csv(
     )
 
 
-@router.get("/inventory/current", response_model=schemas.InventoryCurrentReport)
+@router.get("/inventory/current", response_model=schemas.InventoryCurrentReport, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_current(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     return crud.get_inventory_current_report(db, store_ids=store_ids)
 
 
-@router.get("/inventory/current/csv", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/current/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_current_csv(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     report = crud.get_inventory_current_report(db, store_ids=store_ids)
@@ -730,11 +742,11 @@ def inventory_current_csv(
     )
 
 
-@router.get("/inventory/current/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/current/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_current_pdf(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     report = crud.get_inventory_current_report(db, store_ids=store_ids)
@@ -751,11 +763,11 @@ def inventory_current_pdf(
     )
 
 
-@router.get("/inventory/current/xlsx", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/current/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_current_excel(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     report = crud.get_inventory_current_report(db, store_ids=store_ids)
@@ -771,12 +783,12 @@ def inventory_current_excel(
     )
 
 
-@router.get("/inventory/value", response_model=schemas.InventoryValueReport)
+@router.get("/inventory/value", response_model=schemas.InventoryValueReport, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_value(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     normalized_categories = [category for category in categories or [] if category]
     return crud.get_inventory_value_report(
@@ -789,6 +801,7 @@ def inventory_value(
 @router.get(
     "/inventory/movements",
     response_model=schemas.InventoryMovementsReport,
+    dependencies=[Depends(require_roles(ADMIN))],
 )
 def inventory_movements(
     store_ids: list[int] | None = Query(default=None),
@@ -796,7 +809,7 @@ def inventory_movements(
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     movement_enum: models.MovementType | None = None
     if movement_type:
@@ -819,6 +832,7 @@ def inventory_movements(
 @router.get(
     "/inventory/top-products",
     response_model=schemas.TopProductsReport,
+    dependencies=[Depends(require_roles(ADMIN))],
 )
 def inventory_top_products(
     store_ids: list[int] | None = Query(default=None),
@@ -826,7 +840,7 @@ def inventory_top_products(
     date_to: datetime | date | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     return crud.get_top_selling_products(
         db,
@@ -837,10 +851,10 @@ def inventory_top_products(
     )
 
 
-@router.get("/inventory/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_pdf(
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     snapshot = backup_services.build_inventory_snapshot(db)
@@ -857,10 +871,10 @@ def inventory_pdf(
     )
 
 
-@router.get("/inventory/csv", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_csv(
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     snapshot = backup_services.build_inventory_snapshot(db)
@@ -988,12 +1002,12 @@ def inventory_csv(
     )
 
 
-@router.get("/inventory/value/csv", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/value/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_value_csv(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     normalized_categories = [category for category in categories or [] if category]
@@ -1039,12 +1053,12 @@ def inventory_value_csv(
     )
 
 
-@router.get("/inventory/value/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/value/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_value_pdf(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     normalized_categories = [category for category in categories or [] if category]
@@ -1066,12 +1080,12 @@ def inventory_value_pdf(
     )
 
 
-@router.get("/inventory/value/xlsx", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/value/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_value_excel(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     normalized_categories = [category for category in categories or [] if category]
@@ -1092,14 +1106,14 @@ def inventory_value_excel(
     )
 
 
-@router.get("/inventory/movements/csv", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/movements/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_movements_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     movement_enum: models.MovementType | None = None
@@ -1210,14 +1224,14 @@ def inventory_movements_csv(
     )
 
 
-@router.get("/inventory/movements/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/movements/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_movements_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     movement_enum: models.MovementType | None = None
@@ -1250,14 +1264,14 @@ def inventory_movements_pdf(
     )
 
 
-@router.get("/inventory/movements/xlsx", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/movements/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_movements_excel(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     movement_enum: models.MovementType | None = None
@@ -1289,14 +1303,14 @@ def inventory_movements_excel(
     )
 
 
-@router.get("/inventory/top-products/pdf", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/top-products/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_top_products_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     report = crud.get_top_selling_products(
@@ -1319,14 +1333,14 @@ def inventory_top_products_pdf(
     )
 
 
-@router.get("/inventory/top-products/xlsx", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/top-products/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_top_products_excel(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     report = crud.get_top_selling_products(
@@ -1348,14 +1362,14 @@ def inventory_top_products_excel(
     )
 
 
-@router.get("/inventory/top-products/csv", response_model=schemas.BinaryFileResponse)
+@router.get("/inventory/top-products/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_top_products_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
     report = crud.get_top_selling_products(
@@ -1409,13 +1423,14 @@ def inventory_top_products_csv(
 @router.get(
     "/inventory/supplier-batches",
     response_model=Page[schemas.SupplierBatchOverviewItem],
+    dependencies=[Depends(require_roles(ADMIN))],
 )
 def inventory_supplier_batches(
     store_id: int = Query(..., ge=1),
     limit: int = Query(default=5, ge=1, le=25),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.SupplierBatchOverviewItem]:
     effective_limit = max(limit, pagination.size * pagination.page)
     overview = crud.get_supplier_batch_overview(db, store_id=store_id, limit=effective_limit)
@@ -1425,10 +1440,10 @@ def inventory_supplier_batches(
     return Page.from_items(page_items, page=pagination.page, size=pagination.size, total=len(overview))
 
 
-@router.get("/metrics", response_model=schemas.InventoryMetricsResponse)
+@router.get("/metrics", response_model=schemas.InventoryMetricsResponse, dependencies=[Depends(require_roles(ADMIN))])
 def inventory_metrics(
     low_stock_threshold: int = Query(default=5, ge=0, le=100),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     return crud.compute_inventory_metrics(db, low_stock_threshold=low_stock_threshold)

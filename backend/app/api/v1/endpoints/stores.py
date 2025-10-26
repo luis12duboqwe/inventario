@@ -12,7 +12,12 @@ from ...deps import get_db
 router = APIRouter()
 
 
-@router.get("/", response_model=list[schemas.Store], summary="Listar sucursales")
+@router.get(
+    "/",
+    response_model=list[schemas.Store],
+    summary="Listar sucursales",
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def get_stores(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -29,6 +34,7 @@ def get_stores(
     response_model=schemas.Store,
     status_code=status.HTTP_201_CREATED,
     summary="Crear nueva sucursal",
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def add_store(
     store_in: schemas.StoreCreate,

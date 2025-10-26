@@ -40,7 +40,11 @@ def _serialize_template(template: models.RecurringOrder) -> schemas.RecurringOrd
     )
 
 
-@router.get("/recurring-orders", response_model=list[schemas.RecurringOrderResponse])
+@router.get(
+    "/recurring-orders",
+    response_model=list[schemas.RecurringOrderResponse],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def list_recurring_orders_endpoint(
     order_type: models.RecurringOrderType | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -58,6 +62,7 @@ def list_recurring_orders_endpoint(
     "/recurring-orders",
     response_model=schemas.RecurringOrderResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def create_recurring_order_endpoint(
     payload: schemas.RecurringOrderCreate,
@@ -83,6 +88,7 @@ def create_recurring_order_endpoint(
 @router.post(
     "/recurring-orders/{template_id}/execute",
     response_model=schemas.RecurringOrderExecutionResult,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def execute_recurring_order_endpoint(
     template_id: int,
@@ -114,7 +120,11 @@ def execute_recurring_order_endpoint(
         ) from exc
 
 
-@router.get("/history", response_model=schemas.OperationsHistoryResponse)
+@router.get(
+    "/history",
+    response_model=schemas.OperationsHistoryResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def get_operations_history_endpoint(
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),

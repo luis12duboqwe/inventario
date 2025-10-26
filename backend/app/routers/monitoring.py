@@ -13,7 +13,7 @@ from ..telemetry import REGISTRY
 router = APIRouter(prefix="/monitoring", tags=["monitoreo"])
 
 
-@router.get("/metrics", response_model=schemas.BinaryFileResponse)
+@router.get("/metrics", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
 def prometheus_metrics(current_user=Depends(require_roles(ADMIN))):  # noqa: ANN001
     """Expone las métricas internas en formato Prometheus."""
 

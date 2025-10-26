@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..config import settings
-from ..core.roles import GESTION_ROLES, MOVEMENT_ROLES, REPORTE_ROLES
+from ..core.roles import ADMIN, MOVEMENT_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -35,6 +35,7 @@ router = APIRouter(prefix="/inventory", tags=["inventario"])
     "/import/smart",
     response_model=schemas.InventorySmartImportResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
 async def smart_import_inventory(
     file: UploadFile = File(...),
@@ -42,7 +43,7 @@ async def smart_import_inventory(
     overrides: str | None = Form(default=None),
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     try:
         parsed_overrides = json.loads(overrides) if overrides else {}
@@ -87,13 +88,14 @@ async def smart_import_inventory(
 @router.get(
     "/import/smart/history",
     response_model=Page[schemas.InventoryImportHistoryEntry],
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
 def list_import_history(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ) -> Page[schemas.InventoryImportHistoryEntry]:
     page_offset = (
         pagination.offset if (pagination.page > 1 and offset == 0) else offset
@@ -113,6 +115,7 @@ def list_import_history(
 @router.get(
     "/devices/incomplete",
     response_model=Page[schemas.DeviceResponse],
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
 def list_incomplete_inventory_devices(
     store_id: int | None = Query(default=None, ge=1),
@@ -120,7 +123,7 @@ def list_incomplete_inventory_devices(
     offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ) -> Page[schemas.DeviceResponse]:
     page_offset = (
         pagination.offset if (pagination.page > 1 and offset == 0) else offset
@@ -138,6 +141,7 @@ def list_incomplete_inventory_devices(
     "/stores/{store_id}/movements",
     response_model=schemas.MovementResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
 def register_movement(
     payload: schemas.MovementCreate,
@@ -189,6 +193,7 @@ def register_movement(
 @router.patch(
     "/stores/{store_id}/devices/{device_id}",
     response_model=schemas.DeviceResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
 def update_device(
     payload: schemas.DeviceUpdate,
@@ -196,7 +201,7 @@ def update_device(
     device_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     try:
         device = crud.update_device(
@@ -224,12 +229,13 @@ def update_device(
 @router.get(
     "/stores/{store_id}/devices/{device_id}/identifier",
     response_model=schemas.DeviceIdentifierResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
 def retrieve_device_identifier(
     store_id: int = Path(..., ge=1),
     device_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     try:
         return crud.get_device_identifier(db, store_id, device_id)
@@ -254,6 +260,7 @@ def retrieve_device_identifier(
 @router.put(
     "/stores/{store_id}/devices/{device_id}/identifier",
     response_model=schemas.DeviceIdentifierResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
 def upsert_device_identifier(
     payload: schemas.DeviceIdentifierRequest,
@@ -261,7 +268,7 @@ def upsert_device_identifier(
     device_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     try:
         return crud.upsert_device_identifier(
@@ -289,7 +296,11 @@ def upsert_device_identifier(
         raise
 
 
-@router.get("/devices/search", response_model=Page[schemas.CatalogProDeviceResponse])
+@router.get(
+    "/devices/search",
+    response_model=Page[schemas.CatalogProDeviceResponse],
+    dependencies=[Depends(require_roles(ADMIN))],
+)
 def advanced_device_search(
     imei: str | None = Query(default=None, min_length=10, max_length=18),
     serial: str | None = Query(default=None, min_length=4, max_length=120),
@@ -308,7 +319,7 @@ def advanced_device_search(
     offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.CatalogProDeviceResponse]:
     if not settings.enable_catalog_pro:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
@@ -371,13 +382,13 @@ def advanced_device_search(
     return Page.from_items(results, page=pagination.page, size=page_size, total=total)
 
 
-@router.get("/summary", response_model=Page[schemas.InventorySummary])
+@router.get("/summary", response_model=Page[schemas.InventorySummary], dependencies=[Depends(require_roles(ADMIN))])
 def inventory_summary(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.InventorySummary]:
     page_offset = (
         pagination.offset if (pagination.page > 1 and offset == 0) else offset
@@ -412,6 +423,7 @@ def inventory_summary(
     "/stores/{store_id}/devices/export",
     response_class=Response,
     response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
 )
 def export_devices(
     store_id: int = Path(..., ge=1),
@@ -426,7 +438,7 @@ def export_devices(
     fecha_ingreso_hasta: date | None = Query(default=None),
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    current_user=Depends(require_roles(ADMIN)),
 ):
     estado_enum: models.CommercialState | None = None
     if estado:
@@ -469,13 +481,14 @@ def export_devices(
     "/stores/{store_id}/devices/import",
     status_code=status.HTTP_201_CREATED,
     response_model=schemas.InventoryImportSummary,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
 async def import_devices(
     store_id: int = Path(..., ge=1),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*GESTION_ROLES)),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     if file.content_type not in {"text/csv", "application/vnd.ms-excel", "application/octet-stream", None}:
         raise HTTPException(
