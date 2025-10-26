@@ -25,9 +25,11 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.routing import APIRoute, Mount
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.engine import URL, make_url
 
 from backend.app.security import get_current_user
 from backend.core.logging import (
@@ -85,6 +87,10 @@ class Settings(BaseSettings):
     """Configuración base del backend Softmobile 2025 v2.2.0."""
 
     db_path: str = "database/softmobile.db"
+    database_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DATABASE_URL", "SOFTMOBILE_DATABASE_URL"),
+    )
     api_port: int = 8000
     debug: bool = True
     secret_key: str | None = None
@@ -102,6 +108,10 @@ BASE_DIR: Final[Path] = Path(__file__).resolve().parent
 ROOT_DIR: Final[Path] = BASE_DIR.parent
 FRONTEND_DIST: Final[Path] = ROOT_DIR / "frontend" / "dist"
 DATABASE_FILE: Final[Path] = BASE_DIR / settings.db_path
+DEFAULT_DATABASE_URL: Final[str] = URL.create(
+    "sqlite", database=str(DATABASE_FILE.resolve())
+).render_as_string(hide_password=False)
+RESOLVED_DATABASE_URL: Final[str] = settings.database_url or DEFAULT_DATABASE_URL
 FAVICON_FALLBACK_SVG: Final[str] = dedent(
     """
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Softmobile">
@@ -200,7 +210,8 @@ FALLBACK_FRONTEND_HTML: Final[str] = dedent(
     """
 ).strip()
 
-os.environ.setdefault("SOFTMOBILE_DATABASE_URL", f"sqlite:///{DATABASE_FILE}")
+os.environ.setdefault("SOFTMOBILE_DATABASE_URL", RESOLVED_DATABASE_URL)
+os.environ.setdefault("DATABASE_URL", RESOLVED_DATABASE_URL)
 if settings.secret_key:
     os.environ.setdefault("SOFTMOBILE_SECRET_KEY", settings.secret_key)
 if settings.access_token_expire_minutes is not None:
@@ -348,10 +359,27 @@ def _include_routers(target_app: FastAPI) -> None:
         )
 
 
-def _ensure_database_file(database_path: Path) -> None:
+def _resolve_sqlite_path(database_url: str) -> Path | None:
+    """Obtiene la ruta absoluta del archivo SQLite cuando aplica."""
+
+    url = make_url(database_url)
+    if url.get_backend_name() != "sqlite":
+        return None
+
+    database = url.database
+    if not database:
+        return None
+
+    path = Path(database)
+    if not path.is_absolute():
+        path = (BASE_DIR / path).resolve()
+    return path
+
+
+def _ensure_database_file(database_path: Path | None) -> None:
     """Crea el archivo SQLite si no existe previamente."""
 
-    if database_path.exists():
+    if database_path is None or database_path.exists():
         return
 
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -359,16 +387,19 @@ def _ensure_database_file(database_path: Path) -> None:
     LOGGER.info("Se creó la base de datos SQLite en %s", database_path)
 
 
-def _validate_database_connection(database_path: Path) -> None:
-    """Valida que la base de datos SQLite sea accesible."""
+def _validate_database_connection(database_url: str) -> None:
+    """Valida que la base de datos configurada sea accesible."""
 
     try:
-        engine = create_engine(f"sqlite:///{database_path}")
+        engine_kwargs: dict[str, Any] = {"future": True}
+        if make_url(database_url).get_backend_name() == "sqlite":
+            engine_kwargs["connect_args"] = {"check_same_thread": False}
+        engine = create_engine(database_url, **engine_kwargs)
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:  # pragma: no cover - validación de arranque
         LOGGER.error(
-            "No fue posible validar la base de datos SQLite: %s",
+            "No fue posible validar la conexión a la base de datos: %s",
             exc,
         )
 
@@ -467,10 +498,19 @@ def _prepare_environment(target_app: FastAPI) -> None:
     global _ENVIRONMENT_READY
 
     if not _ENVIRONMENT_READY:
-        _ensure_database_file(DATABASE_FILE)
-        _validate_database_connection(DATABASE_FILE)
+        database_path = _resolve_sqlite_path(RESOLVED_DATABASE_URL)
+        _ensure_database_file(database_path)
+        _validate_database_connection(RESOLVED_DATABASE_URL)
         init_db()
-        LOGGER.info("Tablas de autenticación verificadas/creadas en %s", DATABASE_FILE)
+        if database_path is not None:
+            LOGGER.info(
+                "Tablas de autenticación verificadas/creadas en %s",
+                database_path,
+            )
+        else:
+            LOGGER.info(
+                "Tablas de autenticación verificadas/creadas en la URL configurada",
+            )
 
         for directory_name in ("models", "routes"):
             directory_path = BASE_DIR / directory_name
