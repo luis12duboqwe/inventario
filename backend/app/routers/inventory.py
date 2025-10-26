@@ -159,12 +159,13 @@ def register_movement(
             },
         )
     try:
-        movement = crud.create_inventory_movement(
-            db,
-            store_id,
-            payload,
-            performed_by_id=current_user.id if current_user else None,
-        )
+        with db.begin():
+            movement = crud.create_inventory_movement(
+                db,
+                store_id,
+                payload,
+                performed_by_id=current_user.id if current_user else None,
+            )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado") from exc
     except PermissionError as exc:
@@ -204,13 +205,14 @@ def update_device(
     current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     try:
-        device = crud.update_device(
-            db,
-            store_id,
-            device_id,
-            payload,
-            performed_by_id=current_user.id if current_user else None,
-        )
+        with db.begin():
+            device = crud.update_device(
+                db,
+                store_id,
+                device_id,
+                payload,
+                performed_by_id=current_user.id if current_user else None,
+            )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispositivo no encontrado") from exc
     except ValueError as exc:
