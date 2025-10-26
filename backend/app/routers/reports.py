@@ -1165,6 +1165,7 @@ def inventory_movements_csv(
             "Usuario",
             "Referencia",
             "Comentario",
+            "Última acción",
         ]
     )
     for movement in report.movimientos:
@@ -1176,6 +1177,11 @@ def inventory_movements_csv(
             reference_value = movement.referencia_tipo
         else:
             reference_value = "-"
+        last_action = "-"
+        if movement.ultima_accion:
+            timestamp = movement.ultima_accion.timestamp.strftime("%d/%m/%Y %H:%M")
+            actor = movement.ultima_accion.usuario or "-"
+            last_action = f"{movement.ultima_accion.accion} · {actor} · {timestamp}"
         writer.writerow(
             [
                 movement.id,
@@ -1188,6 +1194,7 @@ def inventory_movements_csv(
                 movement.usuario or "-",
                 reference_value,
                 movement.comentario or "-",
+                last_action,
             ]
         )
 

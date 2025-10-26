@@ -13,9 +13,30 @@ from ..core.roles import ADMIN, GERENTE, normalize_roles
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import hash_password, require_roles
-from ..services import user_reports
+from ..services import audit_logger, user_reports
 
 router = APIRouter(prefix="/users", tags=["usuarios"])
+
+
+def _serialize_user(user_obj, audit):
+    if audit is not None:
+        setattr(user_obj, "ultima_accion", audit)
+    elif not hasattr(user_obj, "ultima_accion"):
+        setattr(user_obj, "ultima_accion", None)
+    return schemas.UserResponse.model_validate(user_obj, from_attributes=True)
+
+
+def _user_with_audit(db: Session, user_obj) -> schemas.UserResponse:
+    user_id = getattr(user_obj, "id", None)
+    audit = None
+    if user_id is not None:
+        audit_map = audit_logger.get_last_audit_trails(
+            db,
+            entity_type="user",
+            entity_ids=[user_id],
+        )
+        audit = audit_map.get(str(user_id))
+    return _serialize_user(user_obj, audit)
 
 
 @router.get("/roles", response_model=list[schemas.RoleResponse])
@@ -84,12 +105,13 @@ def create_user(
             payload,
             password_hash=hash_password(payload.password),
             role_names=sorted(role_names),
+            performed_by_id=current_user.id,
         )
     except ValueError as exc:
         if str(exc) == "store_not_found":
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La sucursal asignada no existe") from exc
         raise
-    return user
+    return _user_with_audit(db, user)
 
 
 @router.get("", response_model=list[schemas.UserResponse])
@@ -105,7 +127,7 @@ def list_users(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
-    return crud.list_users(
+    users = crud.list_users(
         db,
         search=search,
         role=role,
@@ -114,6 +136,15 @@ def list_users(
         limit=limit,
         offset=offset,
     )
+    audit_map = audit_logger.get_last_audit_trails(
+        db,
+        entity_type="user",
+        entity_ids=[user.id for user in users if getattr(user, "id", None) is not None],
+    )
+    return [
+        _serialize_user(user, audit_map.get(str(user.id)))
+        for user in users
+    ]
 
 
 @router.get("/dashboard", response_model=schemas.UserDashboardMetrics)
@@ -182,9 +213,10 @@ def get_user(
     current_user=Depends(require_roles(ADMIN)),
 ):
     try:
-        return crud.get_user(db, user_id)
+        user = crud.get_user(db, user_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado") from exc
+    return _user_with_audit(db, user)
 
 
 @router.put("/{user_id}/roles", response_model=schemas.UserResponse)
@@ -212,7 +244,7 @@ def update_user_roles(
         performed_by_id=current_user.id,
         reason=reason,
     )
-    return updated
+    return _user_with_audit(db, updated)
 
 
 @router.put("/{user_id}", response_model=schemas.UserResponse)
@@ -257,7 +289,7 @@ def update_user(
             ) from exc
         raise
 
-    return updated
+    return _user_with_audit(db, updated)
 
 
 @router.patch("/{user_id}", response_model=schemas.UserResponse)
@@ -272,10 +304,11 @@ def update_user_status(
         user = crud.get_user(db, user_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado") from exc
-    return crud.set_user_status(
+    updated = crud.set_user_status(
         db,
         user,
         is_active=payload.is_active,
         performed_by_id=current_user.id,
         reason=reason,
     )
+    return _user_with_audit(db, updated)

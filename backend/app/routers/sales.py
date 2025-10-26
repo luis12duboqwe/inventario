@@ -14,7 +14,7 @@ from ..core.roles import GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import sales_reports
+from ..services import audit_logger, sales_reports
 
 router = APIRouter(prefix="/sales", tags=["ventas"])
 
@@ -30,6 +30,7 @@ def _prepare_sales_report(
     store_id: int | None,
     customer_id: int | None,
     performed_by_id: int | None,
+    product_id: int | None,
     date_from: datetime | None,
     date_to: datetime | None,
     query: str | None,
@@ -38,6 +39,7 @@ def _prepare_sales_report(
         store_id=store_id,
         customer_id=customer_id,
         performed_by_id=performed_by_id,
+        product_id=product_id,
         date_from=date_from,
         date_to=date_to,
         query=query,
@@ -51,9 +53,19 @@ def _prepare_sales_report(
         date_to=date_to,
         customer_id=customer_id,
         performed_by_id=performed_by_id,
+        product_id=product_id,
         query=query,
     )
-    return sales_reports.build_sales_report(sales, filters)
+    audit_trails = audit_logger.get_last_audit_trails(
+        db,
+        entity_type="sale",
+        entity_ids=[sale.id for sale in sales if sale.id is not None],
+    )
+    return sales_reports.build_sales_report(
+        sales,
+        filters,
+        audit_trails=audit_trails,
+    )
 
 
 @router.get("/", response_model=list[schemas.SaleResponse])
@@ -63,6 +75,7 @@ def list_sales_endpoint(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
     performed_by_id: int | None = Query(default=None, ge=1),
+    product_id: int | None = Query(default=None, ge=1),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     q: str | None = Query(default=None, min_length=1, max_length=120),
@@ -80,6 +93,7 @@ def list_sales_endpoint(
         date_to=date_to,
         customer_id=customer_id,
         performed_by_id=performed_by_id,
+        product_id=product_id,
         query=search,
     )
 
@@ -89,6 +103,7 @@ def export_sales_pdf(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
     performed_by_id: int | None = Query(default=None, ge=1),
+    product_id: int | None = Query(default=None, ge=1),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     q: str | None = Query(default=None, min_length=1, max_length=120),
@@ -103,6 +118,7 @@ def export_sales_pdf(
         store_id=store_id,
         customer_id=customer_id,
         performed_by_id=performed_by_id,
+        product_id=product_id,
         date_from=date_from,
         date_to=date_to,
         query=search,
@@ -124,6 +140,7 @@ def export_sales_excel(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
     performed_by_id: int | None = Query(default=None, ge=1),
+    product_id: int | None = Query(default=None, ge=1),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     q: str | None = Query(default=None, min_length=1, max_length=120),
@@ -138,6 +155,7 @@ def export_sales_excel(
         store_id=store_id,
         customer_id=customer_id,
         performed_by_id=performed_by_id,
+        product_id=product_id,
         date_from=date_from,
         date_to=date_to,
         query=search,

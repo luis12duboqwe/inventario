@@ -19,7 +19,8 @@ def transactional_session(session: Session) -> Iterator[Session]:
             yield session
             nested.commit()
         except Exception:
-            nested.rollback()
+            if nested.is_active:
+                nested.rollback()
             raise
         return
 

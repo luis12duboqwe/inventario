@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime
 from io import BytesIO
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -33,13 +33,25 @@ def _format_store(store: models.Store | None, store_id: int) -> str:
     return f"Sucursal #{store_id}"
 
 
+def _format_last_action(audit: schemas.AuditTrailInfo | None) -> str:
+    if audit is None:
+        return "—"
+    actor = audit.usuario or "—"
+    timestamp = audit.timestamp.astimezone().strftime("%d/%m/%Y %H:%M")
+    return f"{audit.accion} · {actor} · {timestamp}"
+
+
 def build_transfer_report(
     transfers: Sequence[models.TransferOrder],
     filters: schemas.TransferReportFilters,
+    *,
+    audit_trails: Mapping[str, schemas.AuditTrailInfo] | None = None,
 ) -> schemas.TransferReport:
     counters = Counter()
     total_quantity = 0
     items: list[schemas.TransferReportItem] = []
+
+    audit_trails = audit_trails or {}
 
     for transfer in transfers:
         counters[transfer.status.value] += 1
@@ -86,6 +98,7 @@ def build_transfer_report(
                 cancelled_by=_user_label(transfer.cancelled_by),
                 total_quantity=quantity,
                 devices=devices,
+                ultima_accion=audit_trails.get(str(transfer.id)),
             )
         )
 
@@ -188,6 +201,7 @@ def render_transfer_report_pdf(report: schemas.TransferReport) -> bytes:
         "Creada",
         "Despachada",
         "Recibida",
+        "Última acción",
     ]
     detail_rows = [detail_header]
     for item in report.items:
@@ -201,6 +215,7 @@ def render_transfer_report_pdf(report: schemas.TransferReport) -> bytes:
                 _format_timestamp(item.requested_at),
                 _format_timestamp(item.dispatched_at),
                 _format_timestamp(item.received_at),
+                _format_last_action(item.ultima_accion),
             ]
         )
 
@@ -270,6 +285,7 @@ def render_transfer_report_excel(report: schemas.TransferReport) -> bytes:
             "Solicitó",
             "Despachó",
             "Recibió",
+            "Última acción",
         ]
     )
     for cell in sheet[1]:
@@ -293,6 +309,7 @@ def render_transfer_report_excel(report: schemas.TransferReport) -> bytes:
                 item.requested_by or "—",
                 item.dispatched_by or "—",
                 item.received_by or "—",
+                _format_last_action(item.ultima_accion),
             ]
         )
         row_idx += 1

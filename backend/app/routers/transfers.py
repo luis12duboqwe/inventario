@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+from typing import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import StreamingResponse
@@ -14,7 +15,7 @@ from ..core.roles import GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import transfer_reports
+from ..services import audit_logger, transfer_reports
 
 router = APIRouter(prefix="/transfers", tags=["transferencias"])
 
@@ -22,6 +23,39 @@ router = APIRouter(prefix="/transfers", tags=["transferencias"])
 def _ensure_feature_enabled() -> None:
     if not settings.enable_transfers:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
+
+
+def _serialize_transfer(
+    transfer: models.TransferOrder,
+    audit: schemas.AuditTrailInfo | None,
+) -> schemas.TransferOrderResponse:
+    if audit is not None:
+        setattr(transfer, "ultima_accion", audit)
+    elif not hasattr(transfer, "ultima_accion"):
+        setattr(transfer, "ultima_accion", None)
+    return schemas.TransferOrderResponse.model_validate(transfer, from_attributes=True)
+
+
+def _transfers_with_audit(
+    db: Session,
+    transfers: Sequence[models.TransferOrder],
+) -> list[schemas.TransferOrderResponse]:
+    identifiers = [
+        transfer.id
+        for transfer in transfers
+        if getattr(transfer, "id", None) is not None
+    ]
+    audit_map: dict[str, schemas.AuditTrailInfo] = {}
+    if identifiers:
+        audit_map = audit_logger.get_last_audit_trails(
+            db,
+            entity_type="transfer_order",
+            entity_ids=identifiers,
+        )
+    return [
+        _serialize_transfer(transfer, audit_map.get(str(getattr(transfer, "id", ""))))
+        for transfer in transfers
+    ]
 
 
 def _prepare_transfer_report(
@@ -53,7 +87,20 @@ def _prepare_transfer_report(
         date_from=date_from,
         date_to=date_to,
     )
-    return transfer_reports.build_transfer_report(transfers, filters)
+    audit_trails = audit_logger.get_last_audit_trails(
+        db,
+        entity_type="transfer_order",
+        entity_ids=[
+            transfer.id
+            for transfer in transfers
+            if getattr(transfer, "id", None) is not None
+        ],
+    )
+    return transfer_reports.build_transfer_report(
+        transfers,
+        filters,
+        audit_trails=audit_trails,
+    )
 
 
 @router.get("/", response_model=list[schemas.TransferOrderResponse])
@@ -81,7 +128,7 @@ def list_transfers(
         limit=limit,
         offset=offset,
     )
-    return orders
+    return _transfers_with_audit(db, orders)
 
 
 @router.get("/report", response_model=schemas.TransferReport)
@@ -183,7 +230,8 @@ def create_transfer(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.create_transfer_order(db, payload, requested_by_id=current_user.id)
+        order = crud.create_transfer_order(db, payload, requested_by_id=current_user.id)
+        return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para transferir desde esta sucursal.") from exc
     except LookupError as exc:
@@ -208,12 +256,13 @@ def dispatch_transfer(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.dispatch_transfer_order(
+        order = crud.dispatch_transfer_order(
             db,
             transfer_id,
             performed_by_id=current_user.id,
             reason=payload.reason,
         )
+        return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para despachar esta transferencia.") from exc
     except LookupError as exc:
@@ -233,12 +282,13 @@ def receive_transfer(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.receive_transfer_order(
+        order = crud.receive_transfer_order(
             db,
             transfer_id,
             performed_by_id=current_user.id,
             reason=payload.reason,
         )
+        return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para recibir en esta sucursal.") from exc
     except LookupError as exc:
@@ -263,12 +313,13 @@ def cancel_transfer(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.cancel_transfer_order(
+        order = crud.cancel_transfer_order(
             db,
             transfer_id,
             performed_by_id=current_user.id,
             reason=payload.reason,
         )
+        return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para cancelar esta transferencia.") from exc
     except LookupError as exc:
