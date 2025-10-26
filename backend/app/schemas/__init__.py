@@ -1104,6 +1104,7 @@ class TransferOrderResponse(BaseModel):
     received_at: datetime | None
     cancelled_at: datetime | None
     items: list[TransferOrderItemResponse]
+    ultima_accion: AuditTrailInfo | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1140,6 +1141,7 @@ class TransferReportItem(BaseModel):
     cancelled_by: str | None
     total_quantity: int
     devices: list[TransferReportDevice]
+    ultima_accion: AuditTrailInfo | None = None
 
 
 class TransferReportTotals(BaseModel):
@@ -1236,6 +1238,7 @@ class UserResponse(UserBase):
     created_at: datetime
     roles: list[RoleResponse]
     store: StoreResponse | None = Field(default=None, exclude=True)
+    ultima_accion: AuditTrailInfo | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -1333,6 +1336,7 @@ class UserDirectoryEntry(BaseModel):
     store_id: int | None = Field(default=None)
     store_name: str | None = Field(default=None)
     last_login_at: datetime | None = None
+    ultima_accion: AuditTrailInfo | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1569,6 +1573,7 @@ class MovementResponse(BaseModel):
     )
     unit_cost: Decimal | None = Field(default=None)
     store_inventory_value: Decimal
+    ultima_accion: AuditTrailInfo | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -1756,6 +1761,7 @@ class MovementReportEntry(BaseModel):
     referencia_tipo: str | None = None
     referencia_id: str | None = None
     fecha: datetime
+    ultima_accion: AuditTrailInfo | None = None
 
     @field_serializer("valor_total")
     @classmethod
@@ -2200,6 +2206,19 @@ class AnalyticsCategoriesResponse(BaseModel):
 
 class SyncOutboxReplayRequest(BaseModel):
     ids: list[int] = Field(..., min_length=1)
+
+
+class AuditTrailInfo(BaseModel):
+    accion: str
+    descripcion: str | None = None
+    entidad: str
+    registro_id: str
+    usuario_id: int | None = None
+    usuario: str | None = None
+    timestamp: datetime
+    metadata: dict[str, Any] | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuditLogResponse(BaseModel):
@@ -3149,6 +3168,7 @@ class SaleResponse(BaseModel):
     returns: list["SaleReturnResponse"] = []
     store: SaleStoreSummary | None = None
     performed_by: SaleUserSummary | None = None
+    ultima_accion: AuditTrailInfo | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -3200,6 +3220,7 @@ class SalesReportFilters(BaseModel):
     store_id: int | None = None
     customer_id: int | None = None
     performed_by_id: int | None = None
+    product_id: int | None = None
     date_from: datetime | None = None
     date_to: datetime | None = None
     query: str | None = None
@@ -3210,8 +3231,11 @@ class SalesReportTotals(BaseModel):
     subtotal: Decimal
     tax: Decimal
     total: Decimal
+    cost: Decimal = Decimal("0")
+    net_income: Decimal = Decimal("0")
+    daily_average: Decimal = Decimal("0")
 
-    @field_serializer("subtotal", "tax", "total")
+    @field_serializer("subtotal", "tax", "total", "cost", "net_income", "daily_average")
     @classmethod
     def _serialize_totals(cls, value: Decimal) -> float:
         return float(value)
@@ -3229,10 +3253,36 @@ class SalesReportItem(BaseModel):
     total: Decimal
     created_at: datetime
     items: list[SaleItemResponse]
+    ultima_accion: AuditTrailInfo | None = None
 
     @field_serializer("subtotal", "tax", "total")
     @classmethod
     def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SalesReportGroup(BaseModel):
+    id: int | None
+    name: str
+    total: Decimal
+    count: int
+
+    @field_serializer("total")
+    @classmethod
+    def _serialize_total(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class SalesReportProduct(BaseModel):
+    product_id: int
+    sku: str | None
+    name: str
+    units: int
+    total: Decimal
+
+    @field_serializer("total")
+    @classmethod
+    def _serialize_total(cls, value: Decimal) -> float:
         return float(value)
 
 
@@ -3242,6 +3292,9 @@ class SalesReport(BaseModel):
     totals: SalesReportTotals
     daily_stats: list[DashboardChartPoint]
     items: list[SalesReportItem]
+    by_store: list[SalesReportGroup] = Field(default_factory=list)
+    by_user: list[SalesReportGroup] = Field(default_factory=list)
+    top_products: list[SalesReportProduct] = Field(default_factory=list)
 
 
 class POSCartItem(BaseModel):
@@ -3533,6 +3586,7 @@ __all__ = [
     "AuditAcknowledgementCreate",
     "AuditAcknowledgementResponse",
     "AuditHighlight",
+    "AuditTrailInfo",
     "AuditLogResponse",
     "SystemLogEntry",
     "SystemErrorEntry",
@@ -3626,6 +3680,8 @@ __all__ = [
     "SalesReportFilters",
     "SalesReportTotals",
     "SalesReportItem",
+    "SalesReportGroup",
+    "SalesReportProduct",
     "SalesReport",
     "POSCartItem",
     "POSSaleRequest",

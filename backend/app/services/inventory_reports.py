@@ -36,6 +36,14 @@ def _format_reference(reference_type: str | None, reference_id: str | None) -> s
     return "-"
 
 
+def _format_last_action(audit: schemas.AuditTrailInfo | None) -> str:
+    if audit is None:
+        return "-"
+    actor = audit.usuario or "-"
+    timestamp = audit.timestamp.strftime("%d/%m/%Y %H:%M")
+    return f"{audit.accion} · {actor} · {timestamp}"
+
+
 def _build_table(table_data: list[list[str]]) -> Table:
     table = Table(table_data, hAlign="LEFT")
     table.setStyle(
@@ -230,6 +238,7 @@ def render_inventory_movements_pdf(report: schemas.InventoryMovementsReport) -> 
             "Usuario",
             "Referencia",
             "Comentario",
+            "Última acción",
         ]
     ]
     for movement in report.movimientos:
@@ -245,6 +254,7 @@ def render_inventory_movements_pdf(report: schemas.InventoryMovementsReport) -> 
                 movement.usuario or "-",
                 _format_reference(movement.referencia_tipo, movement.referencia_id),
                 movement.comentario or "-",
+                _format_last_action(movement.ultima_accion),
             ]
         )
     elements.append(_build_table(detail_table))
@@ -435,6 +445,7 @@ def build_inventory_movements_excel(report: schemas.InventoryMovementsReport) ->
             "Usuario",
             "Referencia",
             "Comentario",
+            "Última acción",
         ]
     )
     for cell in detail_sheet[1]:
@@ -452,6 +463,7 @@ def build_inventory_movements_excel(report: schemas.InventoryMovementsReport) ->
                 movement.usuario or "-",
                 _format_reference(movement.referencia_tipo, movement.referencia_id),
                 movement.comentario or "-",
+                _format_last_action(movement.ultima_accion),
             ]
         )
     _autosize_columns(detail_sheet)

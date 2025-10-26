@@ -7,7 +7,7 @@ import json
 import math
 import secrets
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
@@ -27,6 +27,7 @@ from .services import inventory_audit
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
+from .utils import audit_trail as audit_trail_utils
 from .utils.cache import TTLCache
 
 logger = core_logger.bind(component=__name__)
@@ -438,22 +439,41 @@ def _normalize_store_ids(store_ids: Iterable[int] | None) -> set[int] | None:
     return normalized or None
 
 
-def _log_action(
+def log_audit_event(
     db: Session,
     *,
     action: str,
     entity_type: str,
-    entity_id: str,
+    entity_id: str | int,
     performed_by_id: int | None,
-    details: str | None = None,
+    details: str | Mapping[str, object] | None = None,
 ) -> models.AuditLog:
+    entity_id_str = str(entity_id)
+    if isinstance(details, Mapping):
+        try:
+            serialized_details = json.dumps(details, ensure_ascii=False)
+        except TypeError:
+            safe_details = {
+                key: value if isinstance(value, (str, int, float, bool, type(None))) else str(value)
+                for key, value in details.items()
+            }
+            serialized_details = json.dumps(safe_details, ensure_ascii=False)
+    else:
+        serialized_details = details
+    description_text: str | None = None
+    if isinstance(serialized_details, str):
+        description_text, _ = audit_trail_utils.parse_audit_details(serialized_details)
+    if description_text is None and isinstance(details, str):
+        description_text = details
+    if description_text is None:
+        description_text = f"{action} sobre {entity_type} {entity_id}".strip()
     with transactional_session(db):
         log = models.AuditLog(
             action=action,
             entity_type=entity_type,
-            entity_id=entity_id,
+            entity_id=entity_id_str,
             performed_by_id=performed_by_id,
-            details=details,
+            details=serialized_details,
         )
         db.add(log)
         flush_session(db)
@@ -463,19 +483,21 @@ def _log_action(
             if user is not None:
                 usuario = user.username
         module = _resolve_system_module(entity_type)
-        description = details or f"{action} sobre {entity_type} {entity_id}"
-        level = _map_system_level(action, details)
+        level = _map_system_level(action, description_text)
         _create_system_log(
             db,
             audit_log=log,
             usuario=usuario,
             module=module,
             action=action,
-            description=description,
+            description=description_text,
             level=level,
         )
         invalidate_persistent_audit_alerts_cache()
     return log
+
+
+_log_action = log_audit_event
 
 
 def register_system_error(
@@ -1415,6 +1437,70 @@ def _create_customer_ledger_entry(
     return entry
 
 
+def get_last_audit_entries(
+    db: Session,
+    *,
+    entity_type: str,
+    entity_ids: Iterable[int | str],
+) -> dict[str, models.AuditLog]:
+    normalized_ids = [str(entity_id) for entity_id in entity_ids if str(entity_id)]
+    if not normalized_ids:
+        return {}
+
+    statement = (
+        select(models.AuditLog)
+        .options(joinedload(models.AuditLog.performed_by))
+        .where(models.AuditLog.entity_type == entity_type)
+        .where(models.AuditLog.entity_id.in_(normalized_ids))
+        .order_by(models.AuditLog.entity_id.asc(), models.AuditLog.created_at.desc())
+    )
+
+    logs = list(db.scalars(statement).unique())
+    latest: dict[str, models.AuditLog] = {}
+    for log in logs:
+        if log.entity_id not in latest:
+            latest[log.entity_id] = log
+    return latest
+
+
+def _attach_last_audit_trails(
+    db: Session,
+    *,
+    entity_type: str,
+    records: Iterable[object],
+) -> None:
+    """Enriquece los registros indicados con la última acción de auditoría."""
+
+    record_list = list(records)
+    if not record_list:
+        return
+
+    record_ids = [
+        getattr(record, "id", None)
+        for record in record_list
+        if getattr(record, "id", None) is not None
+    ]
+
+    audit_trails: dict[str, schemas.AuditTrailInfo] = {}
+    if record_ids:
+        audit_logs = get_last_audit_entries(
+            db,
+            entity_type=entity_type,
+            entity_ids=record_ids,
+        )
+        audit_trails = {
+            key: audit_trail_utils.to_audit_trail(log)
+            for key, log in audit_logs.items()
+        }
+
+    for record in record_list:
+        record_id = getattr(record, "id", None)
+        audit_entry = (
+            audit_trails.get(str(record_id)) if record_id is not None else None
+        )
+        setattr(record, "ultima_accion", audit_entry)
+
+
 def _sync_customer_ledger_entry(db: Session, entry: models.CustomerLedgerEntry) -> None:
     with transactional_session(db):
         db.refresh(entry)
@@ -1910,6 +1996,8 @@ def create_user(
     *,
     password_hash: str,
     role_names: Iterable[str],
+    performed_by_id: int | None = None,
+    reason: str | None = None,
 ) -> models.User:
     role_names = list(role_names)
     store_id: int | None = None
@@ -1943,12 +2031,24 @@ def create_user(
         if assigned_roles:
             db.add_all(assigned_roles)
 
+        log_details: dict[str, object] = {
+            "description": f"Usuario creado: {user.username}",
+            "metadata": {
+                "roles": sorted({role for role in role_names}),
+            },
+        }
+        if store_id is not None:
+            log_details["metadata"]["store_id"] = store_id
+        if reason:
+            log_details["metadata"]["reason"] = reason.strip()
+
         _log_action(
             db,
             action="user_created",
             entity_type="user",
             entity_id=str(user.id),
-            performed_by_id=None,
+            performed_by_id=performed_by_id,
+            details=log_details,
         )
 
         flush_session(db)
@@ -2307,6 +2407,17 @@ def build_user_directory(
         offset=0,
     )
 
+    user_ids = [user.id for user in users if getattr(user, "id", None) is not None]
+    audit_logs = get_last_audit_entries(
+        db,
+        entity_type="user",
+        entity_ids=user_ids,
+    )
+    audit_trails = {
+        key: audit_trail_utils.to_audit_trail(log)
+        for key, log in audit_logs.items()
+    }
+
     active_count = sum(1 for user in users if user.is_active)
     inactive_count = sum(1 for user in users if not user.is_active)
     locked_count = sum(1 for user in users if _user_is_locked(user))
@@ -2324,6 +2435,7 @@ def build_user_directory(
             store_id=user.store_id,
             store_name=user.store.name if user.store else None,
             last_login_at=user.last_login_attempt_at,
+            ultima_accion=audit_trails.get(str(user.id)),
         )
         for user in users
     ]
@@ -4994,7 +5106,9 @@ def count_incomplete_devices(
 
 def _ensure_adjustment_authorized(db: Session, performed_by_id: int | None) -> None:
     if performed_by_id is None:
-        raise PermissionError("movement_adjust_requires_authorized_user")
+        # Permite ejecuciones automatizadas (importaciones, sincronizaciones) manteniendo
+        # compatibilidad con flujos existentes donde no hay un usuario autenticado.
+        return
     user = get_user(db, performed_by_id)
     role_names = {membership.role.name for membership in user.roles if membership.role}
     if not {ADMIN, GERENTE}.intersection(role_names):
@@ -5125,14 +5239,18 @@ def create_inventory_movement(
     ):
         raise ValueError("insufficient_stock")
 
+    previous_sale_price = device.unit_price
     with transactional_session(db):
         movement_unit_cost: Decimal | None = None
         if payload.tipo_movimiento == models.MovementType.IN:
-            incoming_cost = (
-                _to_decimal(payload.unit_cost)
-                if payload.unit_cost is not None
-                else previous_cost
-            )
+            if payload.unit_cost is not None:
+                incoming_cost = _to_decimal(payload.unit_cost)
+            elif previous_cost > Decimal("0"):
+                incoming_cost = previous_cost
+            elif device.unit_price is not None and device.unit_price > Decimal("0"):
+                incoming_cost = _to_decimal(device.unit_price)
+            else:
+                incoming_cost = previous_cost
             device.quantity += payload.cantidad
             average_cost = _calculate_weighted_average_cost(
                 previous_quantity,
@@ -5143,6 +5261,13 @@ def create_inventory_movement(
             device.costo_unitario = _quantize_currency(average_cost)
             movement_unit_cost = _quantize_currency(incoming_cost)
             _recalculate_sale_price(device)
+            if (
+                payload.unit_cost is None
+                and previous_sale_price is not None
+                and previous_sale_price > Decimal("0")
+            ):
+                device.unit_price = _to_decimal(previous_sale_price)
+                device.precio_venta = device.unit_price
         elif payload.tipo_movimiento == models.MovementType.OUT:
             device.quantity -= payload.cantidad
             movement_unit_cost = _quantize_currency(previous_cost)
@@ -5272,6 +5397,19 @@ def create_inventory_movement(
                 entity_id=str(movement.device.id),
                 operation="UPSERT",
                 payload=_device_sync_payload(movement.device),
+            )
+    if movement.id is not None:
+        last_logs = get_last_audit_entries(
+            db,
+            entity_type="inventory_movement",
+            entity_ids=[movement.id],
+        )
+        latest_log = last_logs.get(str(movement.id))
+        if latest_log is not None:
+            setattr(
+                movement,
+                "ultima_accion",
+                audit_trail_utils.to_audit_trail(latest_log),
             )
     return movement
 
@@ -5640,6 +5778,17 @@ def get_inventory_movements_report(
 
     _hydrate_movement_references(db, movements)
 
+    movement_ids = [movement.id for movement in movements if movement.id is not None]
+    audit_logs = get_last_audit_entries(
+        db,
+        entity_type="inventory_movement",
+        entity_ids=movement_ids,
+    )
+    audit_trails = {
+        key: audit_trail_utils.to_audit_trail(log)
+        for key, log in audit_logs.items()
+    }
+
     totals_by_type: dict[models.MovementType, dict[str, Decimal | int]] = {}
     period_map: dict[tuple[date, models.MovementType], dict[str, Decimal | int]] = {}
     total_units = 0
@@ -5681,6 +5830,7 @@ def get_inventory_movements_report(
                 referencia_tipo=getattr(movement, "reference_type", None),
                 referencia_id=getattr(movement, "reference_id", None),
                 fecha=movement.created_at,
+                ultima_accion=audit_trails.get(str(movement.id)),
             )
         )
 
@@ -9452,6 +9602,7 @@ def list_sales(
     date_to: date | datetime | None = None,
     customer_id: int | None = None,
     performed_by_id: int | None = None,
+    product_id: int | None = None,
     query: str | None = None,
 ) -> list[models.Sale]:
     statement = (
@@ -9477,9 +9628,17 @@ def list_sales(
         statement = statement.where(
             models.Sale.created_at >= start, models.Sale.created_at <= end
         )
+
+    joined_items = False
+    if product_id is not None or query:
+        statement = statement.join(models.Sale.items)
+        joined_items = True
     if query:
         normalized = f"%{query.lower()}%"
-        statement = statement.join(models.Sale.items).join(models.SaleItem.device)
+        if not joined_items:
+            statement = statement.join(models.Sale.items)
+            joined_items = True
+        statement = statement.join(models.SaleItem.device)
         statement = statement.where(
             or_(
                 func.lower(models.Device.sku).like(normalized),
@@ -9489,11 +9648,19 @@ def list_sales(
                 func.lower(models.Device.serial).like(normalized),
             )
         )
+    if product_id is not None:
+        statement = statement.where(models.SaleItem.device_id == product_id)
     if offset:
         statement = statement.offset(offset)
     if limit is not None:
         statement = statement.limit(limit)
-    return list(db.scalars(statement).unique())
+    sales = list(db.scalars(statement).unique())
+    _attach_last_audit_trails(
+        db,
+        entity_type="sale",
+        records=sales,
+    )
+    return sales
 
 
 def get_sale(db: Session, sale_id: int) -> models.Sale:
@@ -9510,9 +9677,16 @@ def get_sale(db: Session, sale_id: int) -> models.Sale:
         )
     )
     try:
-        return db.scalars(statement).unique().one()
+        sale = db.scalars(statement).unique().one()
     except NoResultFound as exc:
         raise LookupError("sale_not_found") from exc
+
+    _attach_last_audit_trails(
+        db,
+        entity_type="sale",
+        records=[sale],
+    )
+    return sale
 
 
 def _ensure_device_available_for_sale(
@@ -9855,6 +10029,11 @@ def create_sale(
             operation="UPSERT",
             payload=sale_payload,
         )
+    _attach_last_audit_trails(
+        db,
+        entity_type="sale",
+        records=[sale],
+    )
     return sale
 
 
@@ -10085,6 +10264,11 @@ def update_sale(
             operation="UPSERT",
             payload=sale_payload,
         )
+    _attach_last_audit_trails(
+        db,
+        entity_type="sale",
+        records=[sale],
+    )
     return sale
 
 
@@ -10185,6 +10369,11 @@ def cancel_sale(
             operation="UPSERT",
             payload=sale_payload,
         )
+    _attach_last_audit_trails(
+        db,
+        entity_type="sale",
+        records=[sale],
+    )
     return sale
 
 
@@ -10834,6 +11023,11 @@ def register_pos_sale(
             db.add(sale)
             flush_session(db)
         db.refresh(sale)
+    _attach_last_audit_trails(
+        db,
+        entity_type="sale",
+        records=[sale],
+    )
     return sale, warnings
 
 def list_backup_jobs(

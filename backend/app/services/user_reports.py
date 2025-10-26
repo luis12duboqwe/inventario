@@ -59,6 +59,14 @@ def _build_pdf_table(data: list[list[str]]) -> Table:
     return table
 
 
+def _format_last_action(audit: schemas.AuditTrailInfo | None) -> str:
+    if audit is None:
+        return "—"
+    actor = audit.usuario or "—"
+    timestamp = audit.timestamp.strftime("%d/%m/%Y %H:%M")
+    return f"{audit.accion} · {actor} · {timestamp}"
+
+
 def render_user_directory_pdf(report: schemas.UserDirectoryReport) -> bytes:
     elements, document, buffer = _build_pdf_document("Softmobile - Directorio de usuarios")
     styles = getSampleStyleSheet()
@@ -105,6 +113,7 @@ def render_user_directory_pdf(report: schemas.UserDirectoryReport) -> bytes:
             "Estado",
             "Teléfono",
             "Último acceso",
+            "Última acción",
         ]
     ]
 
@@ -122,6 +131,7 @@ def render_user_directory_pdf(report: schemas.UserDirectoryReport) -> bytes:
                 "Activo" if item.is_active else "Inactivo",
                 item.telefono or "—",
                 last_login,
+                _format_last_action(item.ultima_accion),
             ]
         )
 
@@ -144,10 +154,24 @@ def render_user_directory_xlsx(report: schemas.UserDirectoryReport) -> BytesIO:
 
     worksheet["A1"] = "Softmobile 2025 — Directorio de usuarios"
     worksheet["A1"].font = Font(color="38bdf8", bold=True, size=16)
-    worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=8)
+
+    detail_headers = [
+        "Correo",
+        "Nombre",
+        "Rol primario",
+        "Roles asignados",
+        "Sucursal",
+        "Estado",
+        "Teléfono",
+        "Último acceso",
+        "Última acción",
+    ]
+    total_columns = len(detail_headers)
+
+    worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_columns)
 
     worksheet["A2"] = f"Generado: {datetime.utcnow().strftime('%d/%m/%Y %H:%M UTC')}"
-    worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=8)
+    worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=total_columns)
 
     summary_headers = ["Indicador", "Valor"]
     summary_rows = [
@@ -175,18 +199,8 @@ def render_user_directory_xlsx(report: schemas.UserDirectoryReport) -> BytesIO:
 
     worksheet.append([])
 
-    headers = [
-        "Correo",
-        "Nombre",
-        "Rol primario",
-        "Roles asignados",
-        "Sucursal",
-        "Estado",
-        "Teléfono",
-        "Último acceso",
-    ]
-    worksheet.append(headers)
-    for column_index in range(1, len(headers) + 1):
+    worksheet.append(detail_headers)
+    for column_index in range(1, total_columns + 1):
         cell = worksheet.cell(row=worksheet.max_row, column=column_index)
         cell.font = header_font
         cell.fill = accent_fill
@@ -206,10 +220,11 @@ def render_user_directory_xlsx(report: schemas.UserDirectoryReport) -> BytesIO:
                 "Activo" if item.is_active else "Inactivo",
                 item.telefono or "",
                 last_login,
+                _format_last_action(item.ultima_accion),
             ]
         )
 
-    for column_index, _header in enumerate(headers, start=1):
+    for column_index, _header in enumerate(detail_headers, start=1):
         column_letter = get_column_letter(column_index)
         worksheet.column_dimensions[column_letter].width = 20
 
