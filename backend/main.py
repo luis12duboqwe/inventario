@@ -31,6 +31,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine import URL, make_url
 
+from backend.app import schemas as app_schemas
 from backend.app.security import get_current_user
 from backend.core.logging import (
     bind_context,
@@ -453,14 +454,22 @@ def _mount_frontend(target_app: FastAPI) -> None:
                 "application/octet-stream",
             )
 
-            @target_app.get("/favicon.ico", include_in_schema=False)
+            @target_app.get(
+                "/favicon.ico",
+                include_in_schema=False,
+                response_model=app_schemas.BinaryFileResponse,
+            )
             async def read_frontend_favicon() -> FileResponse:
                 """Devuelve el favicon compilado del frontend."""
 
                 return FileResponse(favicon_path, media_type=favicon_media_type)
         else:
 
-            @target_app.get("/favicon.ico", include_in_schema=False)
+            @target_app.get(
+                "/favicon.ico",
+                include_in_schema=False,
+                response_model=app_schemas.BinaryFileResponse,
+            )
             async def read_frontend_favicon_placeholder() -> Response:
                 """Evita respuestas 404 cuando el favicon no existe en la compilación."""
 
@@ -477,7 +486,11 @@ def _mount_frontend(target_app: FastAPI) -> None:
 
     if not _has_route(target_app, "/"):
 
-        @target_app.get("/", include_in_schema=False)
+        @target_app.get(
+            "/",
+            include_in_schema=False,
+            response_model=app_schemas.HTMLDocumentResponse,
+        )
         async def read_fallback_frontend() -> HTMLResponse:
             """Devuelve un panel informativo cuando el frontend no está compilado."""
 
@@ -485,7 +498,11 @@ def _mount_frontend(target_app: FastAPI) -> None:
 
     if not _has_route(target_app, "/favicon.ico"):
 
-        @target_app.get("/favicon.ico", include_in_schema=False)
+        @target_app.get(
+            "/favicon.ico",
+            include_in_schema=False,
+            response_model=app_schemas.BinaryFileResponse,
+        )
         async def read_favicon_placeholder() -> Response:
             """Entrega un favicon mínimo cuando no existe compilación del frontend."""
 

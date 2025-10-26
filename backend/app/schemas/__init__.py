@@ -73,6 +73,25 @@ class BinaryFileResponse(BaseModel):
         return {"Content-Disposition": f"{disposition}; filename={sanitized}"}
 
 
+class HTMLDocumentResponse(BaseModel):
+    """Describe un documento HTML estático entregado como respuesta."""
+
+    content: str = Field(
+        ...,
+        description="Contenido HTML completo renderizado por el servicio.",
+        min_length=1,
+    )
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "content": "<!DOCTYPE html><html lang=\"es\"><head>...</head><body>...</body></html>",
+            }
+        },
+    )
+
+
 class HealthStatusResponse(BaseModel):
     status: str = Field(
         ...,
@@ -3655,6 +3674,7 @@ __all__ = [
     "BackupRestoreRequest",
     "BackupRestoreResponse",
     "BinaryFileResponse",
+    "HTMLDocumentResponse",
     "BackupExportFormat",
     "DeviceBase",
     "DeviceCreate",
