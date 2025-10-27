@@ -1,4 +1,4 @@
-import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import React, { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { motion } from "framer-motion";
 import { useLocation } from "react-router-dom";
@@ -17,13 +17,7 @@ import {
   Smartphone,
   type LucideIcon,
 } from "lucide-react";
-
-const AdvancedSearch = lazy(() => import("../components/AdvancedSearch"));
-const DeviceEditDialog = lazy(() => import("../components/DeviceEditDialog"));
-const InventoryCategoryChart = lazy(() => import("../components/InventoryCategoryChart"));
-const InventoryReportsPanel = lazy(() => import("../components/InventoryReportsPanel"));
-const InventoryTable = lazy(() => import("../components/InventoryTable"));
-const MovementForm = lazy(() => import("../components/MovementForm"));
+import Loader from "../../../shared/components/Loader";
 import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 import LoadingOverlay from "../../../shared/components/LoadingOverlay";
 import Button from "../../../shared/components/ui/Button";
@@ -39,6 +33,13 @@ import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import { useSmartImportManager } from "./hooks/useSmartImportManager";
+
+const AdvancedSearch = React.lazy(() => import("../components/AdvancedSearch"));
+const DeviceEditDialog = React.lazy(() => import("../components/DeviceEditDialog"));
+const InventoryCategoryChart = React.lazy(() => import("../components/InventoryCategoryChart"));
+const InventoryReportsPanel = React.lazy(() => import("../components/InventoryReportsPanel"));
+const InventoryTable = React.lazy(() => import("../components/InventoryTable"));
+const MovementForm = React.lazy(() => import("../components/MovementForm"));
 
 type StatusBadge = {
   tone: "warning" | "success";
@@ -77,21 +78,13 @@ const CardFallback = memo(function CardFallback({
   const cardClassName = ["card", className].filter(Boolean).join(" ");
   return (
     <section className={cardClassName}>
-      <div className="loading-overlay compact" role="status" aria-live="polite">
-        <span className="spinner" aria-hidden="true" />
-        <span>Cargando {label}…</span>
-      </div>
+      <Loader message={`Cargando ${label}…`} variant="compact" />
     </section>
   );
 });
 
 const InlineFallback = memo(function InlineFallback({ label }: { label: string }) {
-  return (
-    <div className="loading-overlay compact" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
-      <span>Cargando {label}…</span>
-    </div>
-  );
+  return <Loader message={`Cargando ${label}…`} variant="compact" />;
 });
 
 const resolveLowStockSeverity = (quantity: number): "critical" | "warning" | "notice" => {

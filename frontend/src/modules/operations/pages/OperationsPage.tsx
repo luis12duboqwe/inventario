@@ -1,27 +1,25 @@
-import { Suspense, lazy, memo, useMemo } from "react";
+import React, { Suspense, memo, useMemo } from "react";
 import { Cog } from "lucide-react";
 
+import Loader from "../../../shared/components/Loader";
 import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 import Accordion, { type AccordionItem } from "../../../shared/components/ui/Accordion/Accordion";
 import { useOperationsModule } from "../hooks/useOperationsModule";
 
-const CustomersPanel = lazy(() => import("../components/Customers"));
-const SuppliersPanel = lazy(() => import("../components/Suppliers"));
-const POSDashboard = lazy(() => import("../components/POS/POSDashboard"));
-const PurchasesPanel = lazy(() => import("../components/Purchases"));
-const SalesPanel = lazy(() => import("../components/Sales"));
-const ReturnsPanel = lazy(() => import("../components/Returns"));
-const TransferOrdersPanel = lazy(() => import("../components/TransferOrders"));
-const InternalMovementsPanel = lazy(() => import("../components/InternalMovementsPanel"));
-const OperationsHistoryPanel = lazy(() => import("../components/OperationsHistoryPanel"));
+const CustomersPanel = React.lazy(() => import("../components/Customers"));
+const SuppliersPanel = React.lazy(() => import("../components/Suppliers"));
+const POSDashboard = React.lazy(() => import("../components/POS/POSDashboard"));
+const PurchasesPanel = React.lazy(() => import("../components/Purchases"));
+const SalesPanel = React.lazy(() => import("../components/Sales"));
+const ReturnsPanel = React.lazy(() => import("../components/Returns"));
+const TransferOrdersPanel = React.lazy(() => import("../components/TransferOrders"));
+const InternalMovementsPanel = React.lazy(() => import("../components/InternalMovementsPanel"));
+const OperationsHistoryPanel = React.lazy(() => import("../components/OperationsHistoryPanel"));
 
 const SectionLoader = memo(function SectionLoader({ label }: { label: string }) {
   return (
     <section className="card" role="status" aria-live="polite">
-      <div className="loading-overlay compact">
-        <span className="spinner" aria-hidden="true" />
-        <span>Cargando {label}…</span>
-      </div>
+      <Loader message={`Cargando ${label}…`} variant="compact" />
     </section>
   );
 });

@@ -1,7 +1,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
-import { createAppRouter, RouterLoader, type ThemeMode } from "../router";
+import { createAppRouter, type ThemeMode } from "../router";
+import Loader from "../shared/components/Loader";
 import { login, logout, type Credentials, UNAUTHORIZED_EVENT } from "../services/api/auth";
 import { getAuthToken } from "../services/api/http";
 
@@ -106,7 +107,7 @@ function App() {
 
   return (
     <div className={`app-root${!token ? " login-mode" : ""}`}>
-      <Suspense fallback={<RouterLoader />}>
+      <Suspense fallback={<Loader message="Cargando aplicación…" />}>
         <RouterProvider router={router} />
       </Suspense>
     </div>
