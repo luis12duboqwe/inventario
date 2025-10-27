@@ -31,7 +31,8 @@ def commit_session(session: Session) -> None:
             "usa transactional_session para manejar el contexto."
         )
     try:
-        session.commit()
+        with session.begin():
+            session.flush()
     except Exception:
         session.rollback()
         raise
