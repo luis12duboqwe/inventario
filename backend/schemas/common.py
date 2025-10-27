@@ -5,7 +5,6 @@ from math import ceil
 from typing import Generic, Sequence, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
-from pydantic.generics import GenericModel
 
 T = TypeVar("T")
 
@@ -29,7 +28,7 @@ class PageParams(BaseModel):
         return (self.page - 1) * self.size
 
 
-class Page(GenericModel, Generic[T]):
+class Page(BaseModel, Generic[T]):
     """Respuesta paginada genérica."""
 
     items: list[T]

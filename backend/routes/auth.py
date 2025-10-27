@@ -75,7 +75,6 @@ _auth_scheme = HTTPBearer(auto_error=False)
 init_db()
 
 
-@router.on_event("startup")
 async def _configure_rate_limiter() -> None:
     """Inicializa el limitador de peticiones usando Redis en memoria."""
 
@@ -89,6 +88,9 @@ async def _configure_rate_limiter() -> None:
         return
     redis = FakeRedis()
     await FastAPILimiter.init(redis)
+
+
+router.add_event_handler("startup", _configure_rate_limiter)
 
 
 def _generate_subject(user_id: int) -> str:

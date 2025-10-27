@@ -7850,8 +7850,8 @@ def create_transfer_order(
         raise ValueError("transfer_items_required")
 
     order = models.TransferOrder(
-        origin_store=origin_store,
-        destination_store=destination_store,
+        origin_store_id=origin_store.id,
+        destination_store_id=destination_store.id,
         status=models.TransferStatus.SOLICITADA,
         requested_by_id=requested_by_id,
         reason=payload.reason,
