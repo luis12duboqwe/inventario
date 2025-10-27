@@ -108,7 +108,12 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
         <p><strong>Serie:</strong> ${serialLabel}</p>
       </div>
       <div class="qr">
-        <img src="${dataUrl}" alt="QR del dispositivo" loading="lazy" decoding="async" />
+        <img
+          src="${dataUrl}"
+          alt="QR del dispositivo"
+          loading="lazy"
+          decoding="async"
+        />
       </div>
     </div>
     <script>
