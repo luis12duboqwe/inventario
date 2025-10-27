@@ -503,12 +503,10 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
         <td data-label="Diagnóstico">
           <div className="repair-visual">
             {visual.imageUrl ? (
-              <img
+              <img loading="lazy" decoding="async"
                 src={visual.imageUrl}
                 alt={`Dispositivo asociado a la reparación #${order.id}`}
                 className="repair-visual__image"
-                loading="lazy"
-                decoding="async"
               />
             ) : (
               <span className="repair-visual__icon" aria-hidden="true">
