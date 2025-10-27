@@ -30,8 +30,11 @@ def commit_session(session: Session) -> None:
             "commit_session no debe invocarse con una transacción activa; "
             "usa transactional_session para manejar el contexto."
         )
-    with session.begin():
-        pass
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
 
 
 def flush_session(session: Session) -> None:

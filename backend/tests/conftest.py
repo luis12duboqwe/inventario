@@ -7,6 +7,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 os.environ.setdefault("CORS_ORIGINS", "[\"http://testserver\"]")
+os.environ.setdefault("SOFTMOBILE_BOOTSTRAP_TOKEN", "test-bootstrap-token")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -81,6 +82,10 @@ def client(db_session: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = override_get_db
 
     with TestClient(app) as test_client:
+        if settings.bootstrap_token:
+            test_client.headers.update({
+                "X-Bootstrap-Token": settings.bootstrap_token,
+            })
         yield test_client
 
     app.dependency_overrides.clear()

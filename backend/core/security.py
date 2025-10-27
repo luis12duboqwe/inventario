@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Final
 
-from fastapi import Depends, HTTPException, status
+import secrets
+
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -39,7 +41,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES: Final[int] = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS: Final[int] = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
 
 def _create_token(*, subject: str, expires_delta: timedelta, token_type: str) -> str:
@@ -118,9 +120,39 @@ def verify_token_expiry(token_payload: TokenPayload) -> None:
 
 
 def get_current_user(
-    db=Depends(get_db), token: str = Depends(oauth2_scheme)
+    request: Request, db=Depends(get_db), token: str | None = Depends(oauth2_scheme)
 ) -> User:
     """Obtiene al usuario autenticado a partir del token JWT recibido."""
+
+    if token is None:
+        bootstrap_token = settings.BOOTSTRAP_TOKEN
+        requested_path = request.url.path.rstrip("/")
+        if (
+            bootstrap_token
+            and requested_path.startswith("/auth/bootstrap")
+            and secrets.compare_digest(
+                request.headers.get("X-Bootstrap-Token", ""), bootstrap_token
+            )
+        ):
+            has_existing_users = db.query(User.id).limit(1).first() is not None
+            if (not has_existing_users) or requested_path.endswith("/status"):
+                bootstrap_user = User(
+                    id=0,
+                    username="bootstrap-installer",
+                    email="bootstrap@local",  # pragma: no cover - valor simbólico
+                    hashed_password="",
+                    is_active=True,
+                    is_verified=True,
+                    created_at=datetime.utcnow(),
+                )
+                request.state.user = bootstrap_user
+                return bootstrap_user
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Autenticación requerida.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     payload = decode_access_token(token)
     verify_token_expiry(payload)
@@ -140,6 +172,7 @@ def get_current_user(
             detail="Token asociado a un usuario inexistente.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    request.state.user = user
     return user
 
 

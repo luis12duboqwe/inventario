@@ -9,6 +9,7 @@ from backend.models import User
 from backend.routes.auth import router as auth_router, verify_email
 from backend.schemas.auth import VerifyEmailRequest
 from fastapi_limiter import FastAPILimiter
+from backend.core.settings import settings
 
 
 class _DummyLimiter:
@@ -42,6 +43,10 @@ def client() -> Iterator[TestClient]:
     FastAPILimiter.identifier = _identifier
     test_app = _create_test_app()
     with TestClient(test_app) as test_client:
+        if settings.BOOTSTRAP_TOKEN:
+            test_client.headers.update(
+                {"X-Bootstrap-Token": settings.BOOTSTRAP_TOKEN}
+            )
         yield test_client
     FastAPILimiter.redis = None
     FastAPILimiter.identifier = None
@@ -50,7 +55,28 @@ def client() -> Iterator[TestClient]:
 def test_auth_status_route_returns_success(client: TestClient) -> None:
     """La ruta de estado de autenticación debe responder con el mensaje esperado."""
 
-    response = client.get("/auth/status")
+    register_payload = {
+        "username": "estado_user",
+        "email": "estado_user@example.com",
+        "password": "estado_seguro",
+    }
+    register_response = client.post("/auth/register", json=register_payload)
+    assert register_response.status_code == 200
+
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "username": register_payload["username"],
+            "password": register_payload["password"],
+        },
+    )
+    assert login_response.status_code == 200
+    token_payload = login_response.json()
+
+    response = client.get(
+        "/auth/status",
+        headers={"Authorization": f"Bearer {token_payload['access_token']}"},
+    )
 
     assert response.status_code == 200
     assert response.json() == {"message": "Autenticación lista y conectada a SQLite ✅"}

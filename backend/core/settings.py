@@ -33,6 +33,17 @@ class Settings(BaseSettings):
         ge=1,
         description="Días de vigencia para cada token de refresco.",
     )
+    BOOTSTRAP_TOKEN: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "SOFTMOBILE_BOOTSTRAP_TOKEN",
+            "BOOTSTRAP_TOKEN",
+        ),
+        description=(
+            "Token maestro opcional que habilita el bootstrap inicial cuando aún no"
+            " existen usuarios registrados."
+        ),
+    )
     SMTP_HOST: str | None = Field(
         default=None,
         description="Servidor SMTP utilizado para notificaciones por correo.",

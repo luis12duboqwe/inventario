@@ -219,6 +219,8 @@ if settings.access_token_expire_minutes is not None:
     os.environ.setdefault(
         "SOFTMOBILE_TOKEN_MINUTES", str(settings.access_token_expire_minutes)
     )
+if settings.bootstrap_token:
+    os.environ.setdefault("SOFTMOBILE_BOOTSTRAP_TOKEN", settings.bootstrap_token)
 
 setup_logging()
 app = create_core_app()
