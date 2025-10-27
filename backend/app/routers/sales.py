@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from .. import crud, schemas
 from ..config import settings
 from ..core.roles import MOVEMENT_ROLES
+from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -198,7 +199,7 @@ def create_sale_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        with db.begin():
+        with transactional_session(db):
             sale = crud.create_sale(
                 db,
                 payload,
@@ -259,7 +260,7 @@ def register_sale_return_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        with db.begin():
+        with transactional_session(db):
             sale_returns = crud.register_sale_return(
                 db,
                 payload,
@@ -301,7 +302,7 @@ def update_sale_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        with db.begin():
+        with transactional_session(db):
             sale = crud.update_sale(
                 db,
                 sale_id,
@@ -373,7 +374,7 @@ def cancel_sale_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        with db.begin():
+        with transactional_session(db):
             sale = crud.cancel_sale(
                 db,
                 sale_id,

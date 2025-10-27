@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import ADMIN, MOVEMENT_ROLES
+from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -159,7 +160,7 @@ def register_movement(
             },
         )
     try:
-        with db.begin():
+        with transactional_session(db):
             movement = crud.create_inventory_movement(
                 db,
                 store_id,
@@ -205,7 +206,7 @@ def update_device(
     current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     try:
-        with db.begin():
+        with transactional_session(db):
             device = crud.update_device(
                 db,
                 store_id,

@@ -3,6 +3,11 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
+os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+os.environ.setdefault("CORS_ORIGINS", "[\"http://testserver\"]")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
@@ -46,9 +51,9 @@ def db_session(db_engine) -> Iterator[Session]:
     session_factory = sessionmaker(bind=connection, autocommit=False, autoflush=False, future=True)
     session = session_factory()
     try:
-        with session.begin():
-            yield session
+        yield session
     finally:
+        session.rollback()
         session.close()
         transaction.rollback()
         connection.close()
