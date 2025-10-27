@@ -507,6 +507,7 @@ function RepairOrders({ token, stores, defaultStoreId = null, onInventoryRefresh
                 src={visual.imageUrl}
                 alt={`Dispositivo asociado a la reparación #${order.id}`}
                 className="repair-visual__image"
+                loading="lazy"
               />
             ) : (
               <span className="repair-visual__icon" aria-hidden="true">
