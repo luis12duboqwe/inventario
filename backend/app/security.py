@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import secrets
 import uuid
 
 import jwt
@@ -25,8 +26,6 @@ _ANONYMOUS_PATHS = frozenset(
         "/",
         "/health",
         "/api/v1/health",
-        "/auth/bootstrap",
-        "/auth/bootstrap/status",
         "/auth/token",
         "/auth/session",
         "/auth/verify",
@@ -84,6 +83,16 @@ async def get_current_user(
     db: Session = Depends(get_db),
 ):
     normalized_path = request.url.path.rstrip("/") or "/"
+    if normalized_path.startswith("/auth/bootstrap"):
+        bootstrap_token = settings.bootstrap_token
+        if bootstrap_token:
+            provided_token = request.headers.get("X-Bootstrap-Token", "")
+            if not secrets.compare_digest(provided_token, bootstrap_token):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token de arranque inválido.",
+                )
+        return None
     has_session_cookie = bool(request.cookies.get(settings.session_cookie_name))
     if token is None and not has_session_cookie and normalized_path in _ANONYMOUS_PATHS:
         return None

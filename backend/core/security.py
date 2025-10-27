@@ -48,8 +48,6 @@ _ANONYMOUS_PATHS = frozenset(
         "/",
         "/health",
         "/api/v1/health",
-        "/auth/bootstrap",
-        "/auth/bootstrap/status",
         "/auth/token",
         "/auth/session",
         "/auth/verify",
@@ -146,30 +144,40 @@ def get_current_user(
 
     if token is None:
         requested_path = request.url.path.rstrip("/") or "/"
+        if requested_path.startswith("/auth/bootstrap"):
+            bootstrap_token = settings.BOOTSTRAP_TOKEN
+            if bootstrap_token:
+                provided_token = request.headers.get("X-Bootstrap-Token", "")
+                if not secrets.compare_digest(provided_token, bootstrap_token):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Token de arranque inválido.",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                has_existing_users = db.query(User.id).limit(1).first() is not None
+                if (not has_existing_users) or requested_path.endswith("/status"):
+                    bootstrap_user = User(
+                        id=0,
+                        username="bootstrap-installer",
+                        email="bootstrap@local",  # pragma: no cover - valor simbólico
+                        hashed_password="",
+                        is_active=True,
+                        is_verified=True,
+                        created_at=datetime.utcnow(),
+                    )
+                    request.state.user = bootstrap_user
+                    return bootstrap_user
+            else:
+                request.state.user = None
+                return None
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Autenticación requerida.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         if requested_path in _ANONYMOUS_PATHS:
             request.state.user = None
             return None
-        bootstrap_token = settings.BOOTSTRAP_TOKEN
-        if (
-            bootstrap_token
-            and requested_path.startswith("/auth/bootstrap")
-            and secrets.compare_digest(
-                request.headers.get("X-Bootstrap-Token", ""), bootstrap_token
-            )
-        ):
-            has_existing_users = db.query(User.id).limit(1).first() is not None
-            if (not has_existing_users) or requested_path.endswith("/status"):
-                bootstrap_user = User(
-                    id=0,
-                    username="bootstrap-installer",
-                    email="bootstrap@local",  # pragma: no cover - valor simbólico
-                    hashed_password="",
-                    is_active=True,
-                    is_verified=True,
-                    created_at=datetime.utcnow(),
-                )
-                request.state.user = bootstrap_user
-                return bootstrap_user
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
