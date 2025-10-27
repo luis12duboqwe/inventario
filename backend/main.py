@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     debug: bool = True
     secret_key: str | None = None
     access_token_expire_minutes: int | None = None
+    bootstrap_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "SOFTMOBILE_BOOTSTRAP_TOKEN",
+            "BOOTSTRAP_TOKEN",
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).resolve().parent / ".env"),
