@@ -53,10 +53,12 @@ function dispatchUnauthorized(detail?: string): void {
   window.dispatchEvent(new CustomEvent<string | undefined>(UNAUTHORIZED_EVENT, { detail }));
 }
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL?.trim() ?? "") || getApiBaseUrl();
+
 async function requestRefreshToken(): Promise<string | null> {
   try {
     const response = await axios.post<{ access_token?: string | null }>(
-      `${getApiBaseUrl()}/auth/refresh`,
+      `${API_BASE_URL}/auth/refresh`,
       {},
       {
         withCredentials: true,
@@ -99,7 +101,7 @@ function attachAuthorization(config: AxiosRequestConfig): AxiosRequestConfig {
 
 export function createHttpClient(): AxiosInstance {
   const instance = axios.create({
-    baseURL: getApiBaseUrl(),
+    baseURL: API_BASE_URL,
     withCredentials: true,
   });
 

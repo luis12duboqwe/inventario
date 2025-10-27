@@ -1681,7 +1681,7 @@ export type UpdateStatus = {
   latest_release: ReleaseInfo | null;
 };
 
-const API_URL = getApiBaseUrl();
+const API_URL = (import.meta.env.VITE_API_URL?.trim() ?? "") || getApiBaseUrl();
 
 const REQUEST_CACHE_TTL_MS = 60_000;
 const REQUEST_CACHE_MAX_ENTRIES = 128;
