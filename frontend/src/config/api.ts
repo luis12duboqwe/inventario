@@ -1,4 +1,7 @@
-const LOCAL_API_BASE_URL = "http://127.0.0.1:8000";
+const API_URL = import.meta.env.VITE_API_URL?.trim();
+const DEFAULT_API_PORT = "8000";
+const DEFAULT_HOSTNAME = "127.0.0.1";
+const DEFAULT_PROTOCOL = "https";
 const CODESPACES_DOMAIN_REGEX = /-(\d+)\.(app\.github\.dev|githubpreview\.dev)$/;
 
 type RuntimeEnvironment = "codespaces" | "local" | "custom";
@@ -20,11 +23,14 @@ function buildCodespacesUrlFromHostname(hostname: string, protocol: string | und
     return undefined;
   }
   const [, port, domain] = match;
-  if (port === "8000") {
+  if (port === DEFAULT_API_PORT) {
     const normalizedProtocol = normalizeProtocol(protocol);
     return `${normalizedProtocol}://${hostname}`;
   }
-  const targetHostname = hostname.replace(CODESPACES_DOMAIN_REGEX, `-8000.${domain}`);
+  const targetHostname = hostname.replace(
+    CODESPACES_DOMAIN_REGEX,
+    `-${DEFAULT_API_PORT}.${domain}`,
+  );
   const normalizedProtocol = normalizeProtocol(protocol);
   return `${normalizedProtocol}://${targetHostname}`;
 }
@@ -60,11 +66,11 @@ function detectCodespacesUrlFromProcess(): string | undefined {
     return undefined;
   }
   const domain = env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN ?? "app.github.dev";
-  return `https://${name}-8000.${domain}`;
+  return `${DEFAULT_PROTOCOL}://${name}-${DEFAULT_API_PORT}.${domain}`;
 }
 
 export function detectRuntimeEnvironment(): RuntimeEnvironment {
-  const configuredUrl = import.meta.env.VITE_API_BASE_URL;
+  const configuredUrl = API_URL;
   if (configuredUrl) {
     if (configuredUrl.includes("github.dev") || configuredUrl.includes("githubpreview.dev")) {
       return "codespaces";
@@ -90,10 +96,19 @@ export function detectRuntimeEnvironment(): RuntimeEnvironment {
   return "local";
 }
 
+function buildLocalFallbackUrl(): string | undefined {
+  if (typeof window === "undefined" || !window.location) {
+    return undefined;
+  }
+
+  const { protocol, hostname } = window.location;
+  const normalizedProtocol = normalizeProtocol(protocol);
+  return `${normalizedProtocol}://${hostname}:${DEFAULT_API_PORT}`;
+}
+
 export function getApiBaseUrl(): string {
-  const configuredUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-  if (configuredUrl) {
-    return configuredUrl;
+  if (API_URL) {
+    return API_URL;
   }
 
   const codespacesUrl = detectCodespacesUrlFromWindow() ?? detectCodespacesUrlFromProcess();
@@ -101,7 +116,12 @@ export function getApiBaseUrl(): string {
     return codespacesUrl;
   }
 
-  return LOCAL_API_BASE_URL;
+  const localFallback = buildLocalFallbackUrl();
+  if (localFallback) {
+    return localFallback;
+  }
+
+  return `${DEFAULT_PROTOCOL}://${DEFAULT_HOSTNAME}:${DEFAULT_API_PORT}`;
 }
 
 export const apiConfig = {
