@@ -6,9 +6,10 @@ from http import HTTPStatus
 
 import pytest
 
-from fastapi import Query
+from fastapi import Depends, Query
 
 from backend.app.http import Request, Response, Router, SimpleApp
+from backend.core.security import get_current_user
 from backend.schemas.audit import AuditStatusResponse
 
 
@@ -105,7 +106,11 @@ def test_simple_app_admite_routers_con_prefijo(simple_app: SimpleApp) -> None:
 
     router = Router(prefix="/v1")
 
-    @router.get("/auditoria", response_model=AuditStatusResponse)
+    @router.get(
+        "/auditoria",
+        response_model=AuditStatusResponse,
+        dependencies=[Depends(get_current_user)],
+    )
     def obtener_auditoria(_: Request) -> dict[str, str]:
         return {"estatus": "registrada"}
 

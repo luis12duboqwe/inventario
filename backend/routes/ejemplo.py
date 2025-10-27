@@ -20,7 +20,11 @@ class ExampleResponse(BaseModel):
     detail: str
 
 
-@router.get("/ping", response_model=ExampleResponse)
+@router.get(
+    "/ping",
+    response_model=ExampleResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def get_example_ping() -> ExampleResponse:
     """Permite comprobar que las rutas de ejemplo están disponibles."""
 

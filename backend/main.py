@@ -553,6 +553,7 @@ def _prepare_environment(target_app: FastAPI) -> None:
     tags=["estado"],
     summary="Consultar el estado base de la API",
     response_model=APIStatusResponse,
+    dependencies=[Depends(get_current_user)],
 )
 async def read_status(current_user=Depends(get_current_user)) -> APIStatusResponse:  # noqa: ANN001
     """Devuelve el estado base de la API para verificaciones rápidas."""

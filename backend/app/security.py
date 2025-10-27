@@ -20,6 +20,26 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 ALGORITHM = "HS256"
 
+_ANONYMOUS_PATHS = frozenset(
+    {
+        "/",
+        "/health",
+        "/api/v1/health",
+        "/auth/bootstrap",
+        "/auth/bootstrap/status",
+        "/auth/token",
+        "/auth/session",
+        "/auth/verify",
+        "/auth/password/request",
+        "/auth/password/reset",
+        "/auth/register",
+        "/auth/login",
+        "/auth/refresh",
+        "/auth/forgot",
+        "/auth/reset",
+    }
+)
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -63,6 +83,11 @@ async def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
+    normalized_path = request.url.path.rstrip("/") or "/"
+    has_session_cookie = bool(request.cookies.get(settings.session_cookie_name))
+    if token is None and not has_session_cookie and normalized_path in _ANONYMOUS_PATHS:
+        return None
+
     session_token: str | None = None
     if token:
         token_payload = decode_token(token)

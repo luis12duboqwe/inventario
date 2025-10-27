@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from http import HTTPStatus
-from typing import Any, Callable, Dict, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, Optional, Sequence
 
 
 @dataclass
@@ -39,6 +39,7 @@ class Route:
         endpoint: Callable[..., Any],
         status_code: int,
         response_model: Optional[type[Any]] = None,
+        dependencies: Sequence[Callable[..., Any]] | None = None,
     ) -> None:
         self.methods = {method.upper() for method in methods}
         self.path = path
@@ -46,6 +47,7 @@ class Route:
         self.status_code = status_code
         self.pattern, self.param_names = self._compile_path(path)
         self.response_model = response_model
+        self.dependencies = tuple(dependencies or ())
 
     @staticmethod
     def _compile_path(path: str) -> tuple[re.Pattern[str], list[str]]:
@@ -85,6 +87,7 @@ class SimpleApp:
         methods: Iterable[str],
         status_code: int = HTTPStatus.OK,
         response_model: Optional[type[Any]] = None,
+        dependencies: Sequence[Callable[..., Any]] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             self.routes.append(
@@ -94,6 +97,7 @@ class SimpleApp:
                     endpoint=func,
                     status_code=int(status_code),
                     response_model=response_model,
+                    dependencies=dependencies,
                 )
             )
             return func
@@ -106,12 +110,14 @@ class SimpleApp:
         *,
         status_code: int = HTTPStatus.OK,
         response_model: Optional[type[Any]] = None,
+        dependencies: Sequence[Callable[..., Any]] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         return self.route(
             path,
             methods=["GET"],
             status_code=status_code,
             response_model=response_model,
+            dependencies=dependencies,
         )
 
     def post(
@@ -120,12 +126,14 @@ class SimpleApp:
         *,
         status_code: int = HTTPStatus.CREATED,
         response_model: Optional[type[Any]] = None,
+        dependencies: Sequence[Callable[..., Any]] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         return self.route(
             path,
             methods=["POST"],
             status_code=status_code,
             response_model=response_model,
+            dependencies=dependencies,
         )
 
     def include_router(self, router: "Router", *, prefix: str = "") -> None:
@@ -138,6 +146,7 @@ class SimpleApp:
                     endpoint=route.endpoint,
                     status_code=route.status_code,
                     response_model=route.response_model,
+                    dependencies=route.dependencies,
                 )
             )
 
@@ -222,6 +231,7 @@ class Router:
         methods: Iterable[str],
         status_code: int = HTTPStatus.OK,
         response_model: Optional[type[Any]] = None,
+        dependencies: Sequence[Callable[..., Any]] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         full_path = f"{self.prefix}{path}"
 
@@ -233,6 +243,7 @@ class Router:
                     endpoint=func,
                     status_code=int(status_code),
                     response_model=response_model,
+                    dependencies=dependencies,
                 )
             )
             return func
@@ -245,12 +256,14 @@ class Router:
         *,
         status_code: int = HTTPStatus.OK,
         response_model: Optional[type[Any]] = None,
+        dependencies: Sequence[Callable[..., Any]] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         return self.route(
             path,
             methods=["GET"],
             status_code=status_code,
             response_model=response_model,
+            dependencies=dependencies,
         )
 
     def post(
@@ -259,12 +272,14 @@ class Router:
         *,
         status_code: int = HTTPStatus.CREATED,
         response_model: Optional[type[Any]] = None,
+        dependencies: Sequence[Callable[..., Any]] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         return self.route(
             path,
             methods=["POST"],
             status_code=status_code,
             response_model=response_model,
+            dependencies=dependencies,
         )
 
 
