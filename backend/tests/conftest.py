@@ -54,9 +54,11 @@ def db_session(db_engine) -> Iterator[Session]:
     try:
         yield session
     finally:
-        session.rollback()
+        if session.is_active:
+            session.rollback()
         session.close()
-        transaction.rollback()
+        if transaction.is_active:
+            transaction.rollback()
         connection.close()
         with db_engine.connect() as cleanup_connection:
             drop_movimientos_inventario_view(cleanup_connection)
