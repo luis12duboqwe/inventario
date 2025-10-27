@@ -1,4 +1,3 @@
-// Creado por Codex el 2025-10-20
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -15,11 +14,14 @@ export default defineConfig({
     },
   },
   build: {
+    minify: "terser",
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ["react", "react-dom", "react-router-dom"],
-          analytics: ["recharts", "framer-motion"],
+          react: ["react", "react-dom"],
+          charts: ["recharts"],
+          router: ["react-router", "react-router-dom"],
         },
       },
     },

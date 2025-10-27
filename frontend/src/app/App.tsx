@@ -142,8 +142,9 @@ const AppRouter = memo(function AppRouter({
   const location = useLocation();
 
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
+    <Suspense fallback={<RouterFallback />}>
+      <AnimatePresence mode="wait">
+        <Routes location={location} key={location.pathname}>
         {!token ? (
           <>
             <Route
@@ -174,8 +175,9 @@ const AppRouter = memo(function AppRouter({
             <Route path="*" element={<Navigate to="/dashboard/inventory" replace />} />
           </>
         )}
-      </Routes>
-    </AnimatePresence>
+        </Routes>
+      </AnimatePresence>
+    </Suspense>
   );
 });
 
@@ -271,6 +273,7 @@ const LoginScene = memo(function LoginScene({
         await refetchBootstrapStatus();
         await onLogin({ username: values.username, password: values.password });
       } catch (submitError) {
+        /* eslint-disable-next-line no-console */
         console.warn("No fue posible completar el registro inicial", submitError);
       }
     },
@@ -352,6 +355,15 @@ type DashboardSceneProps = {
   onToggleTheme: () => void;
   onLogout: () => void;
 };
+
+const RouterFallback = memo(function RouterFallback() {
+  return (
+    <div className="loading-overlay" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      <span>Cargando panel principal…</span>
+    </div>
+  );
+});
 
 const ModuleFallback = memo(function ModuleFallback() {
   return (
