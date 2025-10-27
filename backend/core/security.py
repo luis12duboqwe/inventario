@@ -43,6 +43,26 @@ REFRESH_TOKEN_EXPIRE_DAYS: Final[int] = settings.REFRESH_TOKEN_EXPIRE_DAYS
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
+_ANONYMOUS_PATHS = frozenset(
+    {
+        "/",
+        "/health",
+        "/api/v1/health",
+        "/auth/bootstrap",
+        "/auth/bootstrap/status",
+        "/auth/token",
+        "/auth/session",
+        "/auth/verify",
+        "/auth/password/request",
+        "/auth/password/reset",
+        "/auth/register",
+        "/auth/login",
+        "/auth/refresh",
+        "/auth/forgot",
+        "/auth/reset",
+    }
+)
+
 
 def _create_token(*, subject: str, expires_delta: timedelta, token_type: str) -> str:
     expire_at = datetime.now(tz=timezone.utc) + expires_delta
@@ -125,8 +145,11 @@ def get_current_user(
     """Obtiene al usuario autenticado a partir del token JWT recibido."""
 
     if token is None:
+        requested_path = request.url.path.rstrip("/") or "/"
+        if requested_path in _ANONYMOUS_PATHS:
+            request.state.user = None
+            return None
         bootstrap_token = settings.BOOTSTRAP_TOKEN
-        requested_path = request.url.path.rstrip("/")
         if (
             bootstrap_token
             and requested_path.startswith("/auth/bootstrap")

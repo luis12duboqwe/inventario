@@ -263,7 +263,12 @@ def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> 
     )
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/register",
+    response_model=RegisterResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(get_current_user)],
+)
 def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     """Crea un nuevo usuario siempre que el correo o usuario no existan."""
 
@@ -312,7 +317,11 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Re
     )
 
 
-@router.post("/login", response_model=TokenPairResponse)
+@router.post(
+    "/login",
+    response_model=TokenPairResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def login(
     credentials: LoginRequest = Depends(_login_form_or_json),
     db: Session = Depends(get_db),
@@ -337,7 +346,7 @@ async def login(
 @router.post(
     "/token",
     response_model=TokenPairResponse,
-    dependencies=[Depends(RateLimiter(times=5, minutes=1))],
+    dependencies=[Depends(RateLimiter(times=5, minutes=1)), Depends(get_current_user)],
 )
 async def login_legacy(
     credentials: LoginRequest = Depends(_login_form_or_json),
@@ -348,7 +357,11 @@ async def login_legacy(
     return await login(credentials, db)
 
 
-@router.post("/refresh", response_model=TokenPairResponse)
+@router.post(
+    "/refresh",
+    response_model=TokenPairResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def refresh_tokens(
     payload: RefreshTokenRequest, db: Session = Depends(get_db)
 ) -> TokenPairResponse:
@@ -369,6 +382,7 @@ async def refresh_tokens(
     "/forgot",
     response_model=ForgotPasswordResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(get_current_user)],
 )
 def forgot_password(
     payload: ForgotPasswordRequest, db: Session = Depends(get_db)
@@ -398,7 +412,11 @@ def forgot_password(
     )
 
 
-@router.post("/reset", response_model=AuthMessage)
+@router.post(
+    "/reset",
+    response_model=AuthMessage,
+    dependencies=[Depends(get_current_user)],
+)
 def reset_password(
     payload: ResetPasswordRequest, db: Session = Depends(get_db)
 ) -> AuthMessage:
@@ -421,7 +439,11 @@ def reset_password(
     return AuthMessage(message="Contraseña actualizada correctamente.")
 
 
-@router.post("/verify", response_model=AuthMessage)
+@router.post(
+    "/verify",
+    response_model=AuthMessage,
+    dependencies=[Depends(get_current_user)],
+)
 def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> AuthMessage:
     """Marca una cuenta como verificada a partir del token enviado por correo."""
 
@@ -446,14 +468,22 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
     return AuthMessage(message="Correo verificado correctamente.")
 
 
-@router.get("/me", response_model=UserRead)
+@router.get(
+    "/me",
+    response_model=UserRead,
+    dependencies=[Depends(get_current_user)],
+)
 async def read_current_user(current_user: User = Depends(get_current_user)) -> UserRead:
     """Devuelve la información del usuario autenticado."""
 
     return UserRead.model_validate(current_user)
 
 
-@router.get("/verify", response_model=VerificationResponse)
+@router.get(
+    "/verify",
+    response_model=VerificationResponse,
+    dependencies=[Depends(get_current_user)],
+)
 def verify_token(
     credentials: HTTPAuthorizationCredentials | None = Depends(_auth_scheme),
     db: Session = Depends(get_db),

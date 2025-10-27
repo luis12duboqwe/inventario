@@ -16,7 +16,9 @@ from backend.routes import auth as auth_module
 def _build_test_app():
     """Crea una instancia de FastAPI con base de datos en memoria."""
 
-    database_url = os.getenv("DATABASE_URL", "sqlite://")
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        database_url = "sqlite+pysqlite:///:memory:"
     engine = create_engine(
         database_url,
         connect_args={"check_same_thread": False},

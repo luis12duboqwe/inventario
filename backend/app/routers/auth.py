@@ -15,6 +15,7 @@ from ..database import get_db
 from ..security import (
     create_access_token,
     decode_token,
+    get_current_user,
     hash_password,
     require_active_user,
     verify_password,
@@ -80,7 +81,11 @@ def _authenticate_user(
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.get("/bootstrap/status", response_model=schemas.BootstrapStatusResponse)
+@router.get(
+    "/bootstrap/status",
+    response_model=schemas.BootstrapStatusResponse,
+    dependencies=[Depends(get_current_user)],
+)
 def get_bootstrap_status(db: Session = Depends(get_db)):
     total_users = crud.count_users(db)
     return schemas.BootstrapStatusResponse(
@@ -89,7 +94,12 @@ def get_bootstrap_status(db: Session = Depends(get_db)):
     )
 
 
-@router.post("/bootstrap", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/bootstrap",
+    response_model=schemas.UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 def bootstrap_admin(payload: schemas.UserCreate, db: Session = Depends(get_db)):
     if crud.count_users(db) > 0:
         raise HTTPException(
@@ -130,7 +140,11 @@ class OAuth2PasswordRequestFormWithOTP(OAuth2PasswordRequestForm):
         self.otp = otp.strip()
 
 
-@router.post("/token", response_model=schemas.TokenResponse)
+@router.post(
+    "/token",
+    response_model=schemas.TokenResponse,
+    dependencies=[Depends(get_current_user)],
+)
 def login(form_data: OAuth2PasswordRequestFormWithOTP = Depends(), db: Session = Depends(get_db)):
     user = _authenticate_user(
         db,
@@ -149,7 +163,11 @@ def login(form_data: OAuth2PasswordRequestFormWithOTP = Depends(), db: Session =
     return schemas.TokenResponse(access_token=token, session_id=session.id)
 
 
-@router.post("/session", response_model=schemas.SessionLoginResponse)
+@router.post(
+    "/session",
+    response_model=schemas.SessionLoginResponse,
+    dependencies=[Depends(get_current_user)],
+)
 def login_with_session(
     response: Response,
     form_data: OAuth2PasswordRequestFormWithOTP = Depends(),
@@ -187,7 +205,11 @@ def login_with_session(
     )
 
 
-@router.post("/verify", response_model=schemas.TokenVerificationResponse)
+@router.post(
+    "/verify",
+    response_model=schemas.TokenVerificationResponse,
+    dependencies=[Depends(get_current_user)],
+)
 def verify_access_token(
     payload: schemas.TokenVerificationRequest, db: Session = Depends(get_db)
 ):
@@ -220,7 +242,11 @@ def verify_access_token(
     )
 
 
-@router.get("/me", response_model=schemas.UserResponse)
+@router.get(
+    "/me",
+    response_model=schemas.UserResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def read_current_user(current_user=Depends(require_active_user)):
     return current_user
 
@@ -229,6 +255,7 @@ async def read_current_user(current_user=Depends(require_active_user)):
     "/password/request",
     response_model=schemas.PasswordResetResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(get_current_user)],
 )
 def request_password_reset(
     payload: schemas.PasswordRecoveryRequest, db: Session = Depends(get_db)
@@ -251,6 +278,7 @@ def request_password_reset(
     "/password/reset",
     response_model=schemas.PasswordResetResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(get_current_user)],
 )
 def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(get_db)):
     record = crud.get_password_reset_token(db, payload.token)
