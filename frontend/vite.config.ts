@@ -3,6 +3,15 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react-router",
+      "react-router-dom",
+      "recharts",
+    ],
+  },
   test: {
     environment: "jsdom",
     globals: true,
@@ -20,14 +29,16 @@ export default defineConfig({
     },
   },
   build: {
-    minify: 'terser',
+    target: "esnext",
+    cssCodeSplit: true,
+    minify: "terser",
     sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ['react', 'react-dom'],
-          charts: ['recharts'],
-          router: ['react-router', 'react-router-dom'],
+          react: ["react", "react-dom"],
+          charts: ["recharts"],
+          router: ["react-router", "react-router-dom"],
         },
       },
     },
