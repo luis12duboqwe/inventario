@@ -5,6 +5,7 @@ __pycache__/
 *.db
 *.db-journal
 .env
+!frontend/.env.production
 .venv/
 
 # VSCode

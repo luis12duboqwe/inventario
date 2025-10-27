@@ -2,7 +2,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getApiBaseUrl } from "../../../../config/api";
+
 import type { CatalogDevice } from "../../../../api";
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL?.trim() ?? "") || getApiBaseUrl();
+
+const buildImageUrl = (path: string): string => new URL(path, API_BASE_URL).toString();
 
 const searchCatalogDevicesMock = vi.hoisted(() => vi.fn());
 
@@ -73,7 +79,7 @@ describe("AdvancedSearch", () => {
         lote: "L-15P-2025",
         fecha_compra: "2025-02-10",
         descripcion: "Equipo sellado",
-        imagen_url: "https://example.com/iphone15pro.png",
+        imagen_url: buildImageUrl("/media/devices/iphone15pro.png"),
       },
     ];
 

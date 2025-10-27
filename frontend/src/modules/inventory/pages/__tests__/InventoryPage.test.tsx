@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getApiBaseUrl } from "../../../../config/api";
+
 import type {
   Device,
   DeviceImportSummary,
@@ -257,6 +259,10 @@ const buildStore = (): Store => ({
   low_stock_threshold: 7,
 });
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL?.trim() ?? "") || getApiBaseUrl();
+
+const buildImageUrl = (path: string): string => new URL(path, API_BASE_URL).toString();
+
 const buildDevice = (): Device => ({
   id: 101,
   sku: "SKU-001",
@@ -288,7 +294,7 @@ const buildDevice = (): Device => ({
   fecha_ingreso: "2025-01-16",
   ubicacion: "Vitrina",
   descripcion: "Equipo de exhibición",
-  imagen_url: "https://example.com/galaxy-s24.png",
+  imagen_url: buildImageUrl("/media/devices/galaxy-s24.png"),
 });
 
 const buildLowStockDevice = (): LowStockDevice => ({
