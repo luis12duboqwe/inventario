@@ -10,7 +10,7 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
-import { useDashboard } from "../modules/dashboard/context/DashboardContext";
+import { useDashboard } from "../../modules/dashboard/context/DashboardContext";
 
 type ScrollableTableProps<T> = {
   items: T[];

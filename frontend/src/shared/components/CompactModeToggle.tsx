@@ -1,7 +1,7 @@
 import { type MouseEvent } from "react";
 import { Minimize2, Maximize2 } from "lucide-react";
 
-import { useDashboard } from "../modules/dashboard/context/DashboardContext";
+import { useDashboard } from "../../modules/dashboard/context/DashboardContext";
 import Button from "./ui/Button";
 
 function CompactModeToggle() {
