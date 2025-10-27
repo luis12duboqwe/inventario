@@ -21,11 +21,22 @@ export default defineConfig({
     },
   },
   build: {
+    // Forzamos el minificador Terser para obtener bundles más compactos sin perder compatibilidad.
+    minify: "terser",
+    // Deshabilitamos los sourcemaps en producción para reducir el tamaño final y evitar exponer código fuente.
+    sourcemap: false,
     rollupOptions: {
       output: {
+        // Dividimos dependencias críticas en chunks dedicados para mejorar el cacheo entre despliegues.
         manualChunks: {
-          vendor: ["react", "react-dom", "react-router-dom"],
-          analytics: ["recharts", "framer-motion"],
+          // React y su DOM virtual quedan en un chunk estable reutilizable.
+          react: ["react", "react-dom"],
+          // Librerías de gráficos se separan para cargarse bajo demanda en secciones analíticas.
+          charts: ["recharts"],
+          // El router mantiene su propio bundle para optimizar la navegación basada en rutas.
+          router: ["react-router", "react-router-dom"],
+          // Conservamos un chunk dedicado para animaciones y efectos visuales pesados.
+          analytics: ["framer-motion"],
         },
       },
     },
