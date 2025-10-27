@@ -1,6 +1,6 @@
 import { Suspense, lazy, memo, type ReactNode, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import DashboardLayout from "./layout/DashboardLayout";
+const DashboardLayout = lazy(() => import("./layout/DashboardLayout"));
 
 const InventoryPage = lazy(() => import("../inventory/pages/InventoryPage"));
 const OperationsPage = lazy(() => import("../operations/pages/OperationsPage"));
@@ -60,7 +60,13 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
 
   return (
     <Routes>
-      <Route element={<DashboardLayout theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />}>
+      <Route
+        element={
+          <ModuleBoundary>
+            <DashboardLayout theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />
+          </ModuleBoundary>
+        }
+      >
         <Route index element={<Navigate to={initialModule} replace />} />
         <Route
           path="inventory"

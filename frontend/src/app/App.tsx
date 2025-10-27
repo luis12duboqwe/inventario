@@ -2,8 +2,6 @@ import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import LoginForm from "../shared/components/LoginForm";
-import BootstrapForm, { type BootstrapFormValues } from "../shared/components/BootstrapForm";
 import Button from "../shared/components/ui/Button";
 import {
   bootstrapAdmin,
@@ -15,9 +13,12 @@ import {
   UNAUTHORIZED_EVENT,
 } from "../services/api/auth";
 import { getAuthToken } from "../services/api/http";
-import WelcomeHero from "../shared/components/WelcomeHero";
+import type { BootstrapFormValues } from "../shared/components/BootstrapForm";
 
 const Dashboard = lazy(() => import("../shared/components/Dashboard"));
+const WelcomeHero = lazy(() => import("../shared/components/WelcomeHero"));
+const LoginForm = lazy(() => import("../shared/components/LoginForm"));
+const BootstrapForm = lazy(() => import("../shared/components/BootstrapForm"));
 
 type ThemeMode = "dark" | "light";
 
@@ -148,14 +149,16 @@ const AppRouter = memo(function AppRouter({
             <Route
               path="/login"
               element={
-                <LoginScene
-                  theme={theme}
-                  themeLabel={themeLabel}
-                  onToggleTheme={onToggleTheme}
-                  loading={loading}
-                  error={error}
-                  onLogin={onLogin}
-                />
+                <Suspense fallback={<AuthFallback />}>
+                  <LoginScene
+                    theme={theme}
+                    themeLabel={themeLabel}
+                    onToggleTheme={onToggleTheme}
+                    loading={loading}
+                    error={error}
+                    onLogin={onLogin}
+                  />
+                </Suspense>
               }
             />
             <Route path="*" element={<Navigate to="/login" replace />} />
@@ -355,6 +358,15 @@ const ModuleFallback = memo(function ModuleFallback() {
     <div className="loading-overlay" role="status" aria-live="polite">
       <span className="spinner" aria-hidden="true" />
       <span>Cargando módulo…</span>
+    </div>
+  );
+});
+
+const AuthFallback = memo(function AuthFallback() {
+  return (
+    <div className="loading-overlay" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      <span>Preparando acceso seguro…</span>
     </div>
   );
 });
