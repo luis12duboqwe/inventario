@@ -2,7 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings
 from sqlalchemy.engine import URL
 
@@ -23,12 +23,25 @@ class Settings(BaseSettings):
         description="Cadena de conexión proporcionada por el entorno.",
     )
 
+    @model_validator(mode="after")
+    def _populate_database_url(self) -> "Settings":
+        """Ensure ``database_url`` always has a usable value."""
+
+        if not self.database_url:
+            self.database_url = self._build_sqlite_url()
+        return self
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         """Return the SQLAlchemy connection string for the local database."""
 
         if self.database_url:
             return self.database_url
+
+        return self._build_sqlite_url()
+
+    def _build_sqlite_url(self) -> str:
+        """Generate the normalized SQLite URL used as default."""
 
         sqlite_path = self.sqlite_db_file
         if not sqlite_path.is_absolute():
