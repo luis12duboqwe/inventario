@@ -14,14 +14,14 @@ export default defineConfig({
     },
   },
   build: {
-    minify: "terser",
+    minify: 'terser',
     sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ["react", "react-dom"],
-          charts: ["recharts"],
-          router: ["react-router", "react-router-dom"],
+          react: ['react', 'react-dom'],
+          charts: ['recharts'],
+          router: ['react-router', 'react-router-dom'],
         },
       },
     },
