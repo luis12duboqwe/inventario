@@ -191,11 +191,7 @@ def _build_verification_token(user: User) -> str:
     )
 
 
-@router.get(
-    "/status",
-    response_model=AuthMessage,
-    dependencies=[Depends(get_current_user)],
-)
+@router.get("/status", response_model=AuthMessage)
 async def get_auth_status() -> AuthMessage:
     """Indica si el módulo de autenticación se encuentra operativo."""
 

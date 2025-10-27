@@ -14,11 +14,71 @@ from time import perf_counter
 from typing import Any, Callable, Iterable, TypeVar, cast
 
 from fastapi.testclient import TestClient
+from pydantic import AliasChoices, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-DB_PATH = ROOT_DIR / "softmobile_performance.db"
 
-os.environ.setdefault("SOFTMOBILE_DATABASE_URL", f"sqlite:///{DB_PATH}")
+
+class _RuntimeSettings(BaseSettings):
+    """Carga valores mínimos requeridos para ejecutar el script."""
+
+    database_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DATABASE_URL", "SOFTMOBILE_DATABASE_URL"),
+    )
+
+    model_config = SettingsConfigDict(
+        env_file=str(ROOT_DIR / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
+def _ensure_database_url() -> str:
+    """Obtiene y exporta la URL de la base de datos para el escenario."""
+
+    candidates = ("SOFTMOBILE_DATABASE_URL", "DATABASE_URL")
+    for name in candidates:
+        value = os.getenv(name)
+        if value:
+            for target in candidates:
+                os.environ.setdefault(target, value)
+            return value
+
+    settings = _RuntimeSettings()
+    if settings.database_url:
+        for target in candidates:
+            os.environ.setdefault(target, settings.database_url)
+        return settings.database_url
+
+    raise RuntimeError(
+        "Define la variable de entorno SOFTMOBILE_DATABASE_URL o DATABASE_URL "
+        "antes de ejecutar el script de rendimiento."
+    )
+
+
+DATABASE_URL = _ensure_database_url()
+
+
+def _resolve_database_path(url: str) -> Path | None:
+    sqlalchemy_url = make_url(url)
+    if not sqlalchemy_url.drivername.startswith("sqlite"):
+        return None
+
+    database = sqlalchemy_url.database
+    if not database:
+        return None
+
+    db_path = Path(database)
+    if not db_path.is_absolute():
+        db_path = (ROOT_DIR / db_path).resolve()
+    return db_path
+
+
+DATABASE_PATH = _resolve_database_path(DATABASE_URL)
+
 os.environ.setdefault("SOFTMOBILE_ENABLE_CATALOG_PRO", "1")
 os.environ.setdefault("SOFTMOBILE_ENABLE_TRANSFERS", "1")
 os.environ.setdefault("SOFTMOBILE_ENABLE_PURCHASES_SALES", "1")
@@ -71,9 +131,12 @@ T = TypeVar("T")
 
 
 def _reset_database() -> None:
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if DATABASE_PATH is None:
+        return
+
+    if DATABASE_PATH.exists():
+        DATABASE_PATH.unlink()
+    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _ensure_ok(response, *, context: str) -> dict[str, Any]:
@@ -701,7 +764,11 @@ def run_scenario() -> list[StageResult]:
 def main() -> None:
     results = run_scenario()
     logger.info("ESCENARIO DE RENDIMIENTO — Softmobile 2025 v2.2.0")
-    logger.info("Base de datos configurada", database_path=str(DB_PATH))
+    logger.info(
+        "Base de datos configurada",
+        database_url=DATABASE_URL,
+        database_path=str(DATABASE_PATH) if DATABASE_PATH else None,
+    )
     logger.info("Etapas ejecutadas")
     for stage in results:
         logger.info(
