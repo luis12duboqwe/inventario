@@ -191,14 +191,22 @@ def _build_verification_token(user: User) -> str:
     )
 
 
-@router.get("/status", response_model=AuthMessage)
+@router.get(
+    "/status",
+    response_model=AuthMessage,
+    dependencies=[Depends(get_current_user)],
+)
 async def get_auth_status() -> AuthMessage:
     """Indica si el módulo de autenticación se encuentra operativo."""
 
     return AuthMessage(message="Autenticación lista y conectada a SQLite ✅")
 
 
-@router.get("/bootstrap/status", response_model=BootstrapStatusResponse)
+@router.get(
+    "/bootstrap/status",
+    response_model=BootstrapStatusResponse,
+    dependencies=[Depends(get_current_user)],
+)
 def read_bootstrap_status(db: Session = Depends(get_db)) -> BootstrapStatusResponse:
     """Devuelve si aún es posible registrar la cuenta inicial del sistema."""
 
@@ -210,7 +218,12 @@ def read_bootstrap_status(db: Session = Depends(get_db)) -> BootstrapStatusRespo
     )
 
 
-@router.post("/bootstrap", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/bootstrap",
+    response_model=RegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     """Crea el usuario inicial siempre que no existan registros previos."""
 

@@ -49,6 +49,13 @@ class Settings(BaseSettings):
             "SECRET_KEY",
         ),
     )
+    bootstrap_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "SOFTMOBILE_BOOTSTRAP_TOKEN",
+            "BOOTSTRAP_TOKEN",
+        ),
+    )
     access_token_expire_minutes: int = Field(
         ...,
         validation_alias=AliasChoices(

@@ -9,17 +9,19 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
-
-
-DEFAULT_DATABASE_PATH = Path(__file__).resolve().parent / "softmobile.db"
-"""Ruta predeterminada hacia la base de datos SQLite local."""
+from sqlalchemy.pool import StaticPool
 
 
 def _resolve_database_configuration() -> tuple[str, dict[str, object], Path | None]:
     """Obtiene la configuración de conexión a la base de datos desde el entorno."""
 
     env_url = os.getenv("DATABASE_URL") or os.getenv("SOFTMOBILE_DATABASE_URL")
-    database_url = env_url or f"sqlite:///{DEFAULT_DATABASE_PATH}"
+    if not env_url:
+        raise RuntimeError(
+            "Define la variable de entorno DATABASE_URL o SOFTMOBILE_DATABASE_URL "
+            "con la cadena de conexión completa."
+        )
+    database_url = env_url
 
     engine_kwargs: dict[str, object] = {"future": True}
     connect_args: dict[str, object] = {}
@@ -27,13 +29,16 @@ def _resolve_database_configuration() -> tuple[str, dict[str, object], Path | No
 
     url = make_url(database_url)
     if url.drivername.startswith("sqlite"):
-        database_path = Path(url.database) if url.database else DEFAULT_DATABASE_PATH
-        if not database_path.is_absolute():
-            database_path = (Path.cwd() / database_path).resolve()
         connect_args["check_same_thread"] = False
-        database_url = url.set(database=str(database_path)).render_as_string(
-            hide_password=False
-        )
+        if url.database in {None, "", ":memory:"}:
+            engine_kwargs["poolclass"] = StaticPool
+        else:
+            database_path = Path(url.database)
+            if not database_path.is_absolute():
+                database_path = (Path.cwd() / database_path).resolve()
+            database_url = url.set(database=str(database_path)).render_as_string(
+                hide_password=False
+            )
 
     if connect_args:
         engine_kwargs["connect_args"] = connect_args
