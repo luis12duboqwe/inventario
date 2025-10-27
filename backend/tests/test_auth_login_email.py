@@ -1,6 +1,8 @@
 """Pruebas específicas para validar inicio de sesión con correo o usuario."""
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -14,8 +16,9 @@ from backend.routes import auth as auth_module
 def _build_test_app():
     """Crea una instancia de FastAPI con base de datos en memoria."""
 
+    database_url = os.getenv("DATABASE_URL", "sqlite://")
     engine = create_engine(
-        "sqlite://",
+        database_url,
         connect_args={"check_same_thread": False},
         future=True,
         poolclass=StaticPool,
@@ -34,7 +37,7 @@ def _build_test_app():
     def override_get_db():
         db = testing_session()
         try:
-            assert str(db.bind.url) == "sqlite://", "Sesión inesperada"
+            assert str(db.bind.url) == database_url, "Sesión inesperada"
             yield db
         finally:
             db.close()

@@ -6,6 +6,8 @@ from http import HTTPStatus
 
 import pytest
 
+from fastapi import Query
+
 from backend.app.http import Request, Response, Router, SimpleApp
 from backend.schemas.audit import AuditStatusResponse
 
@@ -71,7 +73,16 @@ def test_simple_app_aplica_manejadores_de_excepcion(simple_app: SimpleApp) -> No
     """Verifica que los manejadores de excepción registrados transformen la respuesta."""
 
     @simple_app.get("/reportes")
-    def listar_reportes(_: Request) -> None:
+    def listar_reportes(
+        _: Request,
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+    ) -> None:
+        # Emula la paginación de consultas reales limitando la colección en memoria.
+        limit_value = getattr(limit, "default", limit)
+        offset_value = getattr(offset, "default", offset)
+        reportes = ["reporte"] * 5
+        _ = reportes[offset_value : offset_value + limit_value]
         raise ValueError("error controlado")
 
     @simple_app.exception_handler(ValueError)
