@@ -273,20 +273,28 @@ def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(
     hashed = hash_password(payload.new_password)
     crud.reset_user_password(db, user, password_hash=hashed, performed_by_id=None)
     crud.mark_password_reset_token_used(db, record)
-    active_sessions = crud.list_active_sessions(
-        db,
-        user_id=user.id,
-        limit=200,
-        offset=0,
-    )
-    for session in active_sessions:
-        if session.revoked_at is None:
-            crud.revoke_session(
-                db,
-                session.id,
-                revoked_by_id=None,
-                reason="password_reset",
-            )
+    page_size = 200
+    offset = 0
+    while True:
+        active_sessions = crud.list_active_sessions(
+            db,
+            user_id=user.id,
+            limit=page_size,
+            offset=offset,
+        )
+        if not active_sessions:
+            break
+        for session in active_sessions:
+            if session.revoked_at is None:
+                crud.revoke_session(
+                    db,
+                    session.id,
+                    revoked_by_id=None,
+                    reason="password_reset",
+                )
+        if len(active_sessions) < page_size:
+            break
+        offset += page_size
     detail = "Contraseña actualizada correctamente."
     response_payload = schemas.PasswordResetResponse(detail=detail)
     if settings.testing_mode:
