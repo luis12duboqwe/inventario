@@ -1,8 +1,44 @@
-const API_URL = import.meta.env.VITE_API_URL?.trim();
 const DEFAULT_API_PORT = "8000";
 const DEFAULT_HOSTNAME = "127.0.0.1";
 const DEFAULT_PROTOCOL = "https";
 const CODESPACES_DOMAIN_REGEX = /-(\d+)\.(app\.github\.dev|githubpreview\.dev)$/;
+
+const ENVIRONMENT_VARIABLE_KEYS = ["VITE_API_URL", "VITE_API_BASE_URL"] as const;
+
+type ProcessEnv = { [key: string]: string | undefined };
+
+type EnvRecord = Record<string, string | undefined>;
+
+function getProcessEnv(): ProcessEnv | undefined {
+  if (typeof globalThis === "undefined") {
+    return undefined;
+  }
+  const globalProcess = (globalThis as { process?: { env?: ProcessEnv } }).process;
+  return globalProcess?.env;
+}
+
+function readConfiguredApiUrl(): string | undefined {
+  const sources: Array<EnvRecord | undefined> = [
+    import.meta.env as EnvRecord,
+    getProcessEnv(),
+  ];
+
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+    for (const key of ENVIRONMENT_VARIABLE_KEYS) {
+      const value = source[key];
+      if (value && value.trim()) {
+        return value.trim();
+      }
+    }
+  }
+
+  return undefined;
+}
+
+const API_URL = readConfiguredApiUrl();
 
 type RuntimeEnvironment = "codespaces" | "local" | "custom";
 
@@ -44,16 +80,6 @@ function detectCodespacesUrlFromWindow(): string | undefined {
     return undefined;
   }
   return buildCodespacesUrlFromHostname(hostname, protocol);
-}
-
-type ProcessEnv = { [key: string]: string | undefined };
-
-function getProcessEnv(): ProcessEnv | undefined {
-  if (typeof globalThis === "undefined") {
-    return undefined;
-  }
-  const globalProcess = (globalThis as { process?: { env?: ProcessEnv } }).process;
-  return globalProcess?.env;
 }
 
 function detectCodespacesUrlFromProcess(): string | undefined {
