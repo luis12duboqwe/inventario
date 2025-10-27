@@ -1,7 +1,8 @@
-import { Suspense, lazy, memo, useMemo, useState, useCallback, useEffect } from "react";
+import React, { Suspense, memo, useMemo, useState, useCallback, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Navigate, createBrowserRouter, useLocation, useRoutes } from "react-router-dom";
+import Loader from "../shared/components/Loader";
 import Button from "../shared/components/ui/Button";
 import {
   bootstrapAdmin,
@@ -11,10 +12,10 @@ import {
 } from "../services/api/auth";
 import type { BootstrapFormValues } from "../shared/components/BootstrapForm";
 
-const Dashboard = lazy(() => import("../shared/components/Dashboard"));
-const WelcomeHero = lazy(() => import("../shared/components/WelcomeHero"));
-const LoginForm = lazy(() => import("../shared/components/LoginForm"));
-const BootstrapForm = lazy(() => import("../shared/components/BootstrapForm"));
+const Dashboard = React.lazy(() => import("../shared/components/Dashboard"));
+const WelcomeHero = React.lazy(() => import("../shared/components/WelcomeHero"));
+const LoginForm = React.lazy(() => import("../shared/components/LoginForm"));
+const BootstrapForm = React.lazy(() => import("../shared/components/BootstrapForm"));
 
 export type ThemeMode = "dark" | "light";
 
@@ -29,40 +30,16 @@ export type AppRouterProps = {
   onLogout: () => void;
 };
 
-export const RouterLoader = memo(function RouterLoader() {
-  return (
-    <div className="loading-overlay" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
-      <span>Cargando aplicación…</span>
-    </div>
-  );
-});
-
 const RouterFallback = memo(function RouterFallback() {
-  return (
-    <div className="loading-overlay" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
-      <span>Cargando panel principal…</span>
-    </div>
-  );
+  return <Loader message="Cargando panel principal…" />;
 });
 
 const ModuleFallback = memo(function ModuleFallback() {
-  return (
-    <div className="loading-overlay" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
-      <span>Cargando módulo…</span>
-    </div>
-  );
+  return <Loader message="Cargando módulo…" />;
 });
 
 const AuthFallback = memo(function AuthFallback() {
-  return (
-    <div className="loading-overlay" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
-      <span>Preparando acceso seguro…</span>
-    </div>
-  );
+  return <Loader message="Preparando acceso seguro…" />;
 });
 
 const AppRouter = memo(function AppRouter({

@@ -1,1 +1,1 @@
-export { createAppRouter, RouterLoader, type AppRouterProps, type ThemeMode } from "./AppRouter";
+export { createAppRouter, type AppRouterProps, type ThemeMode } from "./AppRouter";

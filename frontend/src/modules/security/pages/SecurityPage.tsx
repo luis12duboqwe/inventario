@@ -1,9 +1,13 @@
+import React, { Suspense } from "react";
+
 import { ShieldCheck } from "lucide-react";
 
-import AuditLog from "../components/AuditLog";
-import TwoFactorSetup from "../components/TwoFactorSetup";
+import Loader from "../../../shared/components/Loader";
 import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 import { useSecurityModule } from "../hooks/useSecurityModule";
+
+const AuditLog = React.lazy(() => import("../components/AuditLog"));
+const TwoFactorSetup = React.lazy(() => import("../components/TwoFactorSetup"));
 
 function SecurityPage() {
   const { token, enableTwoFactor } = useSecurityModule();
@@ -24,7 +28,15 @@ function SecurityPage() {
       <div className="section-scroll">
         <div className="section-grid">
           {enableTwoFactor ? (
-            <TwoFactorSetup token={token} />
+            <Suspense
+              fallback={
+                <section className="card">
+                  <Loader message="Cargando autenticación de dos factores…" variant="compact" />
+                </section>
+              }
+            >
+              <TwoFactorSetup token={token} />
+            </Suspense>
           ) : (
             <section className="card">
               <h2>Autenticación de dos factores</h2>
@@ -35,7 +47,15 @@ function SecurityPage() {
             </section>
           )}
 
-          <AuditLog token={token} />
+          <Suspense
+            fallback={
+              <section className="card">
+                <Loader message="Cargando bitácora de auditoría…" variant="compact" />
+              </section>
+            }
+          >
+            <AuditLog token={token} />
+          </Suspense>
         </div>
       </div>
     </div>
