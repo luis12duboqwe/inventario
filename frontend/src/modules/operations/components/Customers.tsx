@@ -537,7 +537,7 @@ function Customers({ token }: Props) {
     if (nextAmountRaw === null) {
       return;
     }
-    const parsed = Number(nextAmountRaw.replace(/[^0-9.\-]/g, ""));
+    const parsed = Number(nextAmountRaw.replace(/[^0-9.-]/g, ""));
     if (!Number.isFinite(parsed) || parsed < 0) {
       setError("Indica un monto válido (mayor o igual a cero).");
       return;
