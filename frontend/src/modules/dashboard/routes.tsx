@@ -22,6 +22,10 @@ const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazy(() => import("../users/pages/UsersPage"));
 const RepairsPage = lazy(() => import("../repairs/pages/RepairsPage"));
+const RepairsPendingPage = lazy(() => import("../repairs/pages/RepairsPendingPage"));
+const RepairsFinalizedPage = lazy(() => import("../repairs/pages/RepairsFinalizedPage"));
+const RepairsPartsPage = lazy(() => import("../repairs/pages/RepairsPartsPage"));
+const RepairsBudgetsPage = lazy(() => import("../repairs/pages/RepairsBudgetsPage"));
 const GlobalReportsPage = lazy(() => import("../reports/pages/GlobalReportsPage"));
 
 type DashboardRoutesProps = {
@@ -164,13 +168,47 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           }
         />
         <Route
-          path="repairs"
+          path="repairs/*"
           element={
             <ModuleBoundary>
               <RepairsPage />
             </ModuleBoundary>
           }
-        />
+        >
+          <Route index element={<Navigate to="pendientes" replace />} />
+          <Route
+            path="pendientes"
+            element={
+              <ModuleBoundary>
+                <RepairsPendingPage />
+              </ModuleBoundary>
+            }
+          />
+          <Route
+            path="finalizadas"
+            element={
+              <ModuleBoundary>
+                <RepairsFinalizedPage />
+              </ModuleBoundary>
+            }
+          />
+          <Route
+            path="repuestos"
+            element={
+              <ModuleBoundary>
+                <RepairsPartsPage />
+              </ModuleBoundary>
+            }
+          />
+          <Route
+            path="presupuestos"
+            element={
+              <ModuleBoundary>
+                <RepairsBudgetsPage />
+              </ModuleBoundary>
+            }
+          />
+        </Route>
         <Route path="*" element={<Navigate to="inventory" replace />} />
       </Route>
     </Routes>

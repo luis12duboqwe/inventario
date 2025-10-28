@@ -4596,6 +4596,113 @@ button.ghost {
   padding-left: 1.25rem;
 }
 
+.repairs-subpage {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.repair-orders-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.repair-orders-toolbar__filters {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.repair-orders-toolbar__filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.repair-orders-toolbar__filters select,
+.repair-orders-toolbar__filters input {
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--color-surface-strong);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 0 0.75rem;
+}
+
+.repair-orders-toolbar__meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.repair-orders-toolbar__meta strong {
+  font-size: 1.25rem;
+  color: var(--color-text-primary);
+}
+
+.repair-orders-table {
+  margin-top: 1.5rem;
+}
+
+.toolbar-inline-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.toolbar-inline-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 180px;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.toolbar-inline-fields select {
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--color-surface-strong);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 0 0.75rem;
+}
+
+.metrics-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-bottom: 1.5rem;
+}
+
+.metrics-grid .metric {
+  background: var(--color-surface-soft);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.metrics-grid .metric h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.metrics-grid .metric strong {
+  font-size: 1.5rem;
+  color: var(--color-text-primary);
+}
+
 .btn.ghost {
   background: transparent;
   border-color: var(--color-accent-border);
