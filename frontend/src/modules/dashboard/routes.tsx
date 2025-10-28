@@ -3,12 +3,29 @@ import { Navigate, Route, Routes } from "react-router-dom";
 const DashboardLayout = lazy(() => import("./layout/DashboardLayout"));
 
 const InventoryPage = lazy(() => import("../inventory/pages/InventoryPage"));
+const InventoryProductsPage = lazy(() => import("../inventory/pages/InventoryProductsPage"));
+const InventoryMovementsPage = lazy(() => import("../inventory/pages/InventoryMovementsPage"));
+const InventorySuppliersPage = lazy(() => import("../inventory/pages/InventorySuppliersPage"));
+const InventoryAlertsPage = lazy(() => import("../inventory/pages/InventoryAlertsPage"));
 const OperationsPage = lazy(() => import("../operations/pages/OperationsPage"));
+const VentasCajaPage = lazy(() => import("../operations/pages/ventas/CajaPage"));
+const VentasFacturacionPage = lazy(() => import("../operations/pages/ventas/FacturacionPage"));
+const VentasClientesPage = lazy(() => import("../operations/pages/ventas/ClientesPage"));
+const VentasCajasPage = lazy(() => import("../operations/pages/ventas/CajasPage"));
+const ComprasOrdenesPage = lazy(() => import("../operations/pages/compras/OrdenesPage"));
+const ComprasPagosPage = lazy(() => import("../operations/pages/compras/PagosPage"));
+const ComprasProveedoresPage = lazy(() => import("../operations/pages/compras/ProveedoresPage"));
+const MovimientosInternosPage = lazy(() => import("../operations/pages/movimientos/InternosPage"));
+const TransferenciasPage = lazy(() => import("../operations/pages/movimientos/TransferenciasPage"));
 const AnalyticsPage = lazy(() => import("../analytics/pages/AnalyticsPage"));
 const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazy(() => import("../users/pages/UsersPage"));
 const RepairsPage = lazy(() => import("../repairs/pages/RepairsPage"));
+const RepairsPendingPage = lazy(() => import("../repairs/pages/RepairsPendingPage"));
+const RepairsFinalizedPage = lazy(() => import("../repairs/pages/RepairsFinalizedPage"));
+const RepairsPartsPage = lazy(() => import("../repairs/pages/RepairsPartsPage"));
+const RepairsBudgetsPage = lazy(() => import("../repairs/pages/RepairsBudgetsPage"));
 const GlobalReportsPage = lazy(() => import("../reports/pages/GlobalReportsPage"));
 
 type DashboardRoutesProps = {
@@ -69,21 +86,47 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
       >
         <Route index element={<Navigate to={initialModule} replace />} />
         <Route
-          path="inventory"
+          path="inventory/*"
           element={
             <ModuleBoundary>
               <InventoryPage />
             </ModuleBoundary>
           }
-        />
+        >
+          <Route index element={<Navigate to="productos" replace />} />
+          <Route path="productos" element={<InventoryProductsPage />} />
+          <Route path="movimientos" element={<InventoryMovementsPage />} />
+          <Route path="proveedores" element={<InventorySuppliersPage />} />
+          <Route path="alertas" element={<InventoryAlertsPage />} />
+        </Route>
         <Route
-          path="operations"
+          path="operations/*"
           element={
             <ModuleBoundary>
               <OperationsPage />
             </ModuleBoundary>
           }
-        />
+        >
+          <Route index element={<Navigate to="ventas/caja" replace />} />
+          <Route path="ventas">
+            <Route index element={<Navigate to="caja" replace />} />
+            <Route path="caja" element={<VentasCajaPage />} />
+            <Route path="facturacion" element={<VentasFacturacionPage />} />
+            <Route path="clientes" element={<VentasClientesPage />} />
+            <Route path="cajas" element={<VentasCajasPage />} />
+          </Route>
+          <Route path="compras">
+            <Route index element={<Navigate to="ordenes" replace />} />
+            <Route path="ordenes" element={<ComprasOrdenesPage />} />
+            <Route path="pagos" element={<ComprasPagosPage />} />
+            <Route path="proveedores" element={<ComprasProveedoresPage />} />
+          </Route>
+          <Route path="movimientos">
+            <Route index element={<Navigate to="internos" replace />} />
+            <Route path="internos" element={<MovimientosInternosPage />} />
+            <Route path="transferencias" element={<TransferenciasPage />} />
+          </Route>
+        </Route>
         <Route
           path="analytics"
           element={
@@ -125,13 +168,47 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           }
         />
         <Route
-          path="repairs"
+          path="repairs/*"
           element={
             <ModuleBoundary>
               <RepairsPage />
             </ModuleBoundary>
           }
-        />
+        >
+          <Route index element={<Navigate to="pendientes" replace />} />
+          <Route
+            path="pendientes"
+            element={
+              <ModuleBoundary>
+                <RepairsPendingPage />
+              </ModuleBoundary>
+            }
+          />
+          <Route
+            path="finalizadas"
+            element={
+              <ModuleBoundary>
+                <RepairsFinalizedPage />
+              </ModuleBoundary>
+            }
+          />
+          <Route
+            path="repuestos"
+            element={
+              <ModuleBoundary>
+                <RepairsPartsPage />
+              </ModuleBoundary>
+            }
+          />
+          <Route
+            path="presupuestos"
+            element={
+              <ModuleBoundary>
+                <RepairsBudgetsPage />
+              </ModuleBoundary>
+            }
+          />
+        </Route>
         <Route path="*" element={<Navigate to="inventory" replace />} />
       </Route>
     </Routes>

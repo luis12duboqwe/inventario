@@ -7,6 +7,7 @@ export function useRepairsModule() {
     token: dashboard.token,
     stores: dashboard.stores,
     selectedStoreId: dashboard.selectedStoreId,
+    setSelectedStoreId: dashboard.setSelectedStoreId,
     refreshInventoryAfterTransfer: dashboard.refreshInventoryAfterTransfer,
     enablePurchasesSales: dashboard.enablePurchasesSales,
   };
