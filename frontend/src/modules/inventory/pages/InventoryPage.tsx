@@ -32,7 +32,6 @@ function InventoryPage() {
         id: tab.id,
         label: tab.label,
         icon: tab.icon,
-        content: null,
       })),
     [tabOptions],
   );

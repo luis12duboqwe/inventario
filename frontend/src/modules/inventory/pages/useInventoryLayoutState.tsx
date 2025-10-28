@@ -764,6 +764,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         downloadSmartResultPdf,
         triggerRefreshSupplierOverview,
         triggerRefreshRecentMovements,
+        requestDownloadWithReason: requestSnapshotDownload,
       },
       catalog: {
         catalogFile,
@@ -815,6 +816,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
       downloadSmartResultPdf,
       triggerRefreshSupplierOverview,
       triggerRefreshRecentMovements,
+      requestSnapshotDownload,
       catalogFile,
       importingCatalog,
       exportingCatalog,

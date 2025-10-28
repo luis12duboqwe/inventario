@@ -5,6 +5,7 @@ function InventoryCorrectionsSection() {
   const {
     smartImport: { pendingDevices, pendingDevicesLoading, refreshPendingDevices },
     helpers: { resolvePendingFields, storeNameById },
+    editing: { openEditDialog },
   } = useInventoryLayout();
 
   return (
@@ -39,6 +40,7 @@ function InventoryCorrectionsSection() {
                 <th>Sucursal</th>
                 <th>Campos faltantes</th>
                 <th>Estado</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -71,6 +73,16 @@ function InventoryCorrectionsSection() {
                       >
                         {device.completo ? "Completo" : "Pendiente"}
                       </span>
+                    </td>
+                    <td>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => openEditDialog(device)}
+                      >
+                        Completar datos
+                      </Button>
                     </td>
                   </tr>
                 );

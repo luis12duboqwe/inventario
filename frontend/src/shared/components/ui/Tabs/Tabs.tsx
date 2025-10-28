@@ -6,7 +6,7 @@ export type TabOption<TValue extends string = string> = {
   id: TValue;
   label: string;
   icon?: ReactNode;
-  content: ReactNode;
+  content?: ReactNode;
 };
 
 type TabsProps<TValue extends string = string> = {
@@ -17,6 +17,8 @@ type TabsProps<TValue extends string = string> = {
 
 function Tabs<TValue extends string>({ tabs, activeTab, onTabChange }: TabsProps<TValue>) {
   const tabListId = useId();
+
+  const hasPanels = tabs.some((tab) => tab.content !== undefined);
 
   return (
     <div className={styles.tabs}>
@@ -30,7 +32,7 @@ function Tabs<TValue extends string>({ tabs, activeTab, onTabChange }: TabsProps
               className={`${styles.tabTrigger} ${isActive ? styles.active : ""}`}
               role="tab"
               aria-selected={isActive}
-              aria-controls={`${tabListId}-${tab.id}`}
+              aria-controls={hasPanels ? `${tabListId}-${tab.id}` : undefined}
               id={`${tabListId}-trigger-${tab.id}`}
               onClick={() => onTabChange(tab.id)}
             >
@@ -40,21 +42,23 @@ function Tabs<TValue extends string>({ tabs, activeTab, onTabChange }: TabsProps
           );
         })}
       </div>
-      {tabs.map((tab) => {
-        const isActive = tab.id === activeTab;
-        return (
-          <section
-            key={tab.id}
-            role="tabpanel"
-            id={`${tabListId}-${tab.id}`}
-            aria-labelledby={`${tabListId}-trigger-${tab.id}`}
-            hidden={!isActive}
-            className={styles.tabPanel}
-          >
-            {isActive ? tab.content : null}
-          </section>
-        );
-      })}
+      {hasPanels
+        ? tabs.map((tab) => {
+            const isActive = tab.id === activeTab;
+            return (
+              <section
+                key={tab.id}
+                role="tabpanel"
+                id={`${tabListId}-${tab.id}`}
+                aria-labelledby={`${tabListId}-trigger-${tab.id}`}
+                hidden={!isActive}
+                className={styles.tabPanel}
+              >
+                {isActive ? tab.content ?? null : null}
+              </section>
+            );
+          })
+        : null}
     </div>
   );
 }

@@ -34,6 +34,7 @@
 ## 7. Plan actualizado por módulo
 ### Inventario (`/dashboard/inventory/*`)
 - Estado actual: `InventoryPage` ya funciona como layout con Tabs, `InventoryLayoutContext` y `<Outlet />`; las subrutas `productos`, `movimientos`, `proveedores` y `alertas` cargan pantallas dedicadas con `PageHeader`/`PageToolbar` y secciones desacopladas (`InventoryStatusSection`, `InventoryMovementsTimelineSection`, etc.).【F:frontend/src/modules/inventory/pages/InventoryPage.tsx†L14-L66】【F:frontend/src/modules/inventory/pages/InventoryProductsPage.tsx†L1-L44】【F:frontend/src/modules/inventory/pages/InventoryMovementsPage.tsx†L1-L18】【F:frontend/src/modules/inventory/pages/components/InventoryStatusSection.tsx†L1-L120】
+- Dentro de `InventoryProductsPage`, el panel `InventoryReportsPanel` consume el contexto para disparar descargas con motivo corporativo y renderiza existencias, valuación, movimientos y top productos bajo el layout modular.【F:frontend/src/modules/inventory/pages/InventoryProductsPage.tsx†L15-L44】【F:frontend/src/modules/inventory/components/InventoryReportsPanel.tsx†L1-L260】
 - Próximos pasos: actualizar las pruebas de `InventoryPage` para apuntar a las nuevas rutas/componentes y validar que `useInventoryLayoutState` siga cubriendo todos los flujos (descargas, importaciones inteligentes, métricas).【F:frontend/src/modules/inventory/pages/__tests__/InventoryPage.test.tsx†L1-L40】【F:frontend/src/modules/inventory/pages/useInventoryLayoutState.tsx†L1-L80】
 
 ### Operaciones (`/dashboard/operations/*`)

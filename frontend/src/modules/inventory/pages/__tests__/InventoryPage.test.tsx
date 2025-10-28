@@ -1,9 +1,13 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getApiBaseUrl } from "../../../../config/api";
+import InventoryAlertsPage from "../InventoryAlertsPage";
+import InventoryMovementsPage from "../InventoryMovementsPage";
+import InventoryProductsPage from "../InventoryProductsPage";
+import InventorySuppliersPage from "../InventorySuppliersPage";
 
 import type {
   Device,
@@ -585,11 +589,19 @@ const openTab = async (user: ReturnType<typeof userEvent.setup>, tabName: RegExp
   await user.click(tab);
 };
 
-const renderInventoryPage = async () => {
+const renderInventoryPage = async (initialEntry = "/dashboard/inventory/productos") => {
   const user = userEvent.setup();
   render(
-    <MemoryRouter initialEntries={["/dashboard/inventory"]}>
-      <InventoryPage />
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route path="/dashboard/inventory/*" element={<InventoryPage />}>
+          <Route index element={<Navigate to="productos" replace />} />
+          <Route path="productos" element={<InventoryProductsPage />} />
+          <Route path="movimientos" element={<InventoryMovementsPage />} />
+          <Route path="proveedores" element={<InventorySuppliersPage />} />
+          <Route path="alertas" element={<InventoryAlertsPage />} />
+        </Route>
+      </Routes>
     </MemoryRouter>
   );
   return user;
@@ -659,8 +671,6 @@ describe("InventoryPage", () => {
   it("permite editar un dispositivo y envía los cambios", async () => {
     const user = await renderInventoryPage();
 
-    await openTab(user, /movimientos/i);
-
     const editButton = await screen.findByRole("button", { name: /editar ficha/i });
     await user.click(editButton);
 
@@ -716,6 +726,8 @@ describe("InventoryPage", () => {
   it("despliega los últimos movimientos y permite actualizarlos", async () => {
     const user = await renderInventoryPage();
 
+    await openTab(user, /movimientos/i);
+
     const heading = await screen.findByRole("heading", { name: /Últimos movimientos/i });
     const section = heading.closest("section");
     expect(section).not.toBeNull();
@@ -758,8 +770,6 @@ describe("InventoryPage", () => {
 
     const user = await renderInventoryPage();
 
-    await openTab(user, /movimientos/i);
-
     const downloadButton = await screen.findByRole("button", { name: "Descargar PDF" });
     await user.click(downloadButton);
 
@@ -783,8 +793,6 @@ describe("InventoryPage", () => {
     downloadInventoryReportMock.mockRejectedValueOnce(new Error(errorMessage));
 
     const user = await renderInventoryPage();
-
-    await openTab(user, /movimientos/i);
 
     const downloadButton = await screen.findByRole("button", { name: "Descargar PDF" });
     await user.click(downloadButton);
@@ -831,8 +839,6 @@ describe("InventoryPage", () => {
 
     const user = await renderInventoryPage();
 
-    await openTab(user, /búsqueda avanzada/i);
-
     expect(await screen.findByText(/inventario\.xlsx/i)).toBeInTheDocument();
 
     const fileInput = screen.getByLabelText(/Archivo Excel o CSV/i) as HTMLInputElement;
@@ -856,10 +862,12 @@ describe("InventoryPage", () => {
 
     expect(await screen.findByText(/Columnas faltantes: imei/i)).toBeInTheDocument();
 
-    const imeiCell = await screen.findByText(/^imei$/i);
-    const imeiRow = imeiCell.closest("tr") as HTMLElement;
-    const overrideSelect = within(imeiRow).getByRole("combobox");
-    await user.selectOptions(overrideSelect, "Identificador");
+    const overrideSelects = await screen.findAllByRole("combobox");
+    const imeiSelect = overrideSelects.find((element) =>
+      element.closest("tr")?.textContent?.toLowerCase().includes("imei"),
+    );
+    expect(imeiSelect).toBeDefined();
+    await user.selectOptions(imeiSelect as HTMLSelectElement, "Identificador");
 
     expect(screen.getByText(/Reanaliza el archivo/i)).toBeInTheDocument();
 
@@ -920,8 +928,6 @@ describe("InventoryPage", () => {
 
     const user = await renderInventoryPage();
 
-    await openTab(user, /correcciones pendientes/i);
-
     await waitFor(() => {
       expect(fetchIncompleteDevicesMock).toHaveBeenCalledWith(1, 200);
     });
@@ -953,8 +959,6 @@ describe("InventoryPage", () => {
     promptCorporateReasonMock.mockReturnValue("Reporte inventario");
 
     const user = await renderInventoryPage();
-
-    await openTab(user, /reportes/i);
 
     expect(await screen.findByText(/Reportes y estadísticas/i)).toBeInTheDocument();
     expect(screen.getByText(/Existencias actuales/i)).toBeInTheDocument();
