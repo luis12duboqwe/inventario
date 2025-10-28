@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
 from time import perf_counter
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Sequence, TypedDict
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -25,12 +25,22 @@ NUMERIC_FIELDS: tuple[str, ...] = ("cantidad", "precio", "costo")
 DATE_FIELDS: tuple[str, ...] = ("fecha_compra", "fecha_ingreso")
 
 
+class CommercialStateIncident(TypedDict):
+    """Incidencia detectada para un estado comercial no válido."""
+
+    row_index: int
+    device_id: int | None
+    valor_original: str
+    fix_sugerido: str
+
+
 def validar_importacion(
     db: Session,
     *,
     registros: Sequence[dict[str, Any]],
     columnas_faltantes: Iterable[str],
     import_duration: float,
+    incidencias_estado_comercial: Sequence[CommercialStateIncident] | None = None,
 ) -> schemas.ImportValidationSummary:
     """Analiza los registros importados y almacena incidencias detectadas."""
 
@@ -176,6 +186,28 @@ def validar_importacion(
                     tipo="identificadores",
                     severidad="advertencia",
                     descripcion=f"Fila {row_index}: el registro carece de IMEI y número de serie.",
+                    fecha=now,
+                    corregido=False,
+                )
+            )
+
+    if incidencias_estado_comercial:
+        for incident in incidencias_estado_comercial:
+            advertencias += 1
+            valor_original = _sanitize_text(str(incident["valor_original"]))
+            descripcion = (
+                f"Fila {incident['row_index']}: [ESTADO_COMERCIAL_INVALIDO] "
+                "campo='estado_comercial', "
+                f"valor_original=\"{valor_original}\", "
+                f"fix_sugerido='{incident['fix_sugerido']}'. "
+                "Se aplicó la normalización automática a nuevo."
+            )
+            validations.append(
+                models.ImportValidation(
+                    producto_id=incident.get("device_id"),
+                    tipo="estado_comercial",
+                    severidad="advertencia",
+                    descripcion=descripcion,
                     fecha=now,
                     corregido=False,
                 )

@@ -21,6 +21,12 @@ from . import import_validation
 
 IMEI_PATTERN = re.compile(r"\b\d{15}\b")
 
+ESTADOS_COMERCIALES_VALIDOS: set[str] = {
+    estado.name for estado in models.CommercialState
+} | {estado.value.upper() for estado in models.CommercialState}
+
+ESTADO_COMERCIAL_FIX_SUGERIDO = models.CommercialState.NUEVO.value.upper()
+
 BOOLEAN_TRUE_VALUES = frozenset(
     {
         "si",
@@ -269,6 +275,9 @@ def _commit_import(
     warnings = list(preview.advertencias)
     new_stores: list[str] = []
     processed_records: list[dict[str, Any]] = []
+    estado_comercial_incidencias: list[
+        import_validation.CommercialStateIncident
+    ] = []
     duration = 0.0
     resumen = ""
     resumen_validacion: schemas.ImportValidationSummary | None = None
@@ -323,7 +332,9 @@ def _commit_import(
             name = row.get("name") or _generate_name(row)
             capacidad_gb = _parse_int(row.get("capacidad_gb"))
             estado = row.get("estado") or "pendiente"
-            estado_comercial = _resolve_estado_comercial(row.get("estado_comercial"))
+            estado_comercial, estado_comercial_original = _resolve_estado_comercial(
+                row.get("estado_comercial")
+            )
             completo = not _is_row_incomplete(row)
             if not completo:
                 registros_incompletos += 1
@@ -431,6 +442,15 @@ def _commit_import(
                     continue
                 updated += 1
             record_kwargs["device_id"] = device.id if device else None
+            if estado_comercial_original:
+                estado_comercial_incidencias.append(
+                    {
+                        "row_index": row_index,
+                        "device_id": record_kwargs["device_id"],
+                        "valor_original": estado_comercial_original,
+                        "fix_sugerido": ESTADO_COMERCIAL_FIX_SUGERIDO,
+                    }
+                )
             if quantity is not None and quantity >= 0 and device is not None:
                 movement_payload = schemas.MovementCreate(
                     producto_id=device.id,
@@ -482,6 +502,7 @@ def _commit_import(
             registros=processed_records,
             columnas_faltantes=preview.columnas_faltantes,
             import_duration=duration,
+            incidencias_estado_comercial=estado_comercial_incidencias,
         )
         crud._create_system_log(  # type: ignore[attr-defined]
             db,
@@ -658,15 +679,20 @@ def _detect_imei(values: Iterable[Any]) -> str | None:
     return None
 
 
-def _resolve_estado_comercial(value: Any) -> models.CommercialState:
+def _resolve_estado_comercial(
+    value: Any,
+) -> tuple[models.CommercialState, str | None]:
     normalized = _normalize_cell(value)
     if not normalized:
-        return models.CommercialState.NUEVO
-    candidate = normalized.upper()
-    try:
-        return models.CommercialState(candidate)
-    except ValueError:
-        return models.CommercialState.NUEVO
+        return models.CommercialState.NUEVO, None
+    candidate_upper = normalized.upper()
+    if candidate_upper in ESTADOS_COMERCIALES_VALIDOS:
+        for candidate in (candidate_upper, candidate_upper.lower(), normalized):
+            try:
+                return models.CommercialState(candidate), None
+            except ValueError:
+                continue
+    return models.CommercialState.NUEVO, normalized
 
 
 def _parse_int(value: Any) -> int | None:
