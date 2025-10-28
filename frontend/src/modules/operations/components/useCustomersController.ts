@@ -614,10 +614,20 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   }, [customers]);
 
   const delinquentRatio = useMemo(() => {
-    if (!dashboardMetrics || dashboardMetrics.total_customers === 0) {
-      return 0;
+    const delinquentSummary = dashboardMetrics?.delinquent_summary;
+    if (!delinquentSummary) {
+      return { percentage: 0, total: 0 } as const;
     }
-    return dashboardMetrics.delinquent_customers / dashboardMetrics.total_customers;
+
+    const { customers_with_debt, moroso_flagged, total_outstanding_debt } = delinquentSummary;
+    const percentage = customers_with_debt === 0
+      ? 0
+      : Math.round((moroso_flagged / customers_with_debt) * 100);
+
+    return {
+      percentage,
+      total: total_outstanding_debt,
+    } as const;
   }, [dashboardMetrics]);
 
   const customerNotes = useMemo(() => {
