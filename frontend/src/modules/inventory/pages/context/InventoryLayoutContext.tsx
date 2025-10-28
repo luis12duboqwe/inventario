@@ -57,6 +57,10 @@ export type InventoryLayoutContextValue = {
     triggerRefreshSummary: () => void;
     triggerDownloadReport: () => void;
     triggerDownloadCsv: () => void;
+    requestDownloadWithReason: (
+      downloader: (reason: string) => Promise<void>,
+      successMessage: string,
+    ) => Promise<void>;
     triggerExportCatalog: () => void;
     triggerImportCatalog: () => void;
     downloadSmartResultCsv: () => void;
