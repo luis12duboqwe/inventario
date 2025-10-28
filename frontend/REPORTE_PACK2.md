@@ -66,6 +66,9 @@
 - `InventoryPage` delega sus submódulos a `<Outlet />` dentro de `Suspense`, mientras que los formularios/tablas se mantienen perezosos mediante `lazy` locales.
 - `OperationsPage` conserva el `Suspense` interno para cada sección (POS, compras, transferencias, etc.) y sincroniza las rutas hijas con la URL.
 - `RepairsPage` funciona como layout modular: Tabs sincronizados con la URL, contexto compartido y cargas diferidas para pendientes, finalizadas, repuestos y presupuestos.
+- Las rutas hijas de Inventario y Operaciones se cargan mediante `React.lazy` desde `dashboard/routes.tsx` y se envuelven en `Suspense` (loader global en el router y `Loader` corporativo en cada layout).
+- `InventoryPage` delega sus submódulos a `<Outlet />` dentro de `Suspense`, mientras que los formularios/tablas se mantienen perezosos mediante `lazy` locales.
+- `OperationsPage` conserva el `Suspense` interno para cada sección (POS, compras, transferencias, etc.).
 
 ## Navegación y comportamiento
 - Inventario ahora funciona como layout ligero: el tab seleccionado controla la URL (`/inventory/*`) y cada subruta abre su propia pantalla con `PageHeader`/`PageToolbar` y las secciones heredadas (salud, tabla, importación inteligente, lotes, alertas).
@@ -75,9 +78,16 @@
 - `RepairOrdersBoard` se fragmentó en hooks (`useRepairOrdersBoard`, `useRepairOrderActions`) y helpers reutilizables para cumplir el límite <500 líneas sin alterar la UI ni la lógica de inventario sincronizado.
 
 ## Pendientes
+- Los componentes `PageHeader` y `PageToolbar` unifican encabezados, acciones, filtros y búsqueda en Inventario y Operaciones, respetando el tema oscuro y los estilos previos (`inventory-*`, `operations-*`).
+
+## Pendientes
+- Reparaciones: dividir `RepairOrders` en subrutas (`pendientes`, `finalizadas`, `repuestos`, `presupuestos`) manteniendo exportaciones y controles existentes.
+- Inventario: revisar pruebas unitarias/integración para asegurar que la división por secciones mantenga la cobertura previa (test de `InventoryPage` requiere actualización hacia los nuevos componentes).
 - Documentar capturas o walkthrough de navegación una vez completadas las pruebas finales.
 
 ## Avance del sprint
 - Operaciones: 100 % (subrutas activas con `React.lazy`, navegación interna y documentación).
 - Inventario: 100 % (layout modular con pruebas actualizadas para el router y las subpáginas perezosas).
 - Reparaciones: 100 % (layout con Tabs, subrutas perezosas y vistas dedicadas; hooks y helpers validados con pruebas unitarias).
+- Inventario: 85 % (layout convertido en router, subpáginas modulares y secciones reutilizables; faltan ajustes de pruebas/documentación visual).
+- Reparaciones: 0 % (pendiente iniciar subdivisión y lazy loading por estado de orden).
