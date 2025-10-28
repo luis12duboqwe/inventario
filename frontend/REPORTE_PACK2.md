@@ -63,6 +63,50 @@
 - `frontend/src/components/common/Loader.tsx`
 - `frontend/src/styles.css`
 
+## Operaciones — Compras y Clientes
+
+### Inventario de bloques previos
+- `frontend/src/modules/operations/components/Purchases.tsx` concentraba:
+  - Formulario de registro directo de compras con cálculo de impuestos y selección de sucursal/dispositivo.
+  - Filtros, exportaciones y tabla histórica de compras registradas.
+  - Panel completo de proveedores (alta/edición, filtros, exportación CSV, detalle con historial y métricas).
+  - Tarjetas de estadísticas de compras (totales, rankings y serie mensual).
+  - Gestión de órdenes de compra con plantillas recurrentes, importación CSV y tabla de seguimiento.
+- `frontend/src/modules/operations/components/Customers.tsx` reunía:
+  - Formulario de altas/edición con notas, motivo corporativo y exportación CSV.
+  - Filtros rápidos, contadores y tabla con acciones de perfil, notas, pagos y ajustes.
+  - Panel lateral con resumen financiero, ventas/pagos/notas, historial de contacto y bitácora.
+  - Sección de portafolio corporativo y dashboard de métricas con controles propios.
+
+### Nueva estructura de componentes
+- Compras (`frontend/src/pages/operaciones/purchases/components/`):
+  - `Toolbar.tsx`: alertas de error/éxito reutilizables en el módulo.
+  - `FormModal.tsx`: UI del registro directo de compras y totales calculados.
+  - `FiltersPanel.tsx`: filtros de historial y accesos a exportaciones.
+  - `Table.tsx`: tabla responsiva con el historial de compras.
+  - `SidePanel.tsx`: administración de proveedores, filtros y detalle con historial.
+  - `SummaryCards.tsx`: tarjetas de estadísticas de compras.
+  - `OrdersPanel.tsx`: formulario de órdenes, plantillas recurrentes, importación y tabla de seguimiento.
+- Clientes (`frontend/src/pages/operaciones/customers/components/`):
+  - `Toolbar.tsx`: contenedor de alertas del módulo.
+  - `FormModal.tsx`: formulario de clientes con control de estado y exportación CSV.
+  - `FiltersPanel.tsx`: búsqueda rápida, filtros combinados y contadores.
+  - `Table.tsx`: tabla de clientes con acciones (perfil, nota, pago, ajuste, eliminación).
+  - `SidePanel.tsx`: resumen financiero, ventas/pagos/notas y bitácora con detalle accesible.
+  - `SummaryCards.tsx`: portafolio corporativo y dashboard de métricas con controles.
+
+### Ensamblaje en contenedores
+- `Purchases.tsx` conserva efectos, servicios y validaciones corporativas, delegando toda la presentación a los nuevos subcomponentes y encapsulando la orquestación en `usePurchasesController.ts` (archivo local que concentra estado y manejadores sin exponer contratos globales).
+- `Customers.tsx` mantiene la lógica de datos (fetching, validaciones, notas y operaciones financieras), delega la interfaz a los subcomponentes y apoya la coordinación en `useCustomersController.ts`, garantizando motivos corporativos y selectores derivados sin mezclar UI con servicios.
+
+### Reducción del tamaño de contenedores
+- `Purchases.tsx` pasó de ~1 050 líneas a 213 líneas gracias a la separación del controlador interno.
+- `Customers.tsx` pasó de ~840 líneas a 168 líneas manteniendo intactos los contratos de rutas y props.
+
+### Verificación
+- `npm --prefix frontend run build`
+- `pytest`
+
 ## Reparaciones
 
 ### Nueva estructura de rutas
