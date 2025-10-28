@@ -3905,6 +3905,15 @@ button.ghost {
   font-size: 0.85rem;
 }
 
+.pending-validations-table th:nth-child(2) {
+  width: 40%;
+}
+
+.pending-validations-table td:nth-child(2) {
+  white-space: normal;
+  word-break: break-word;
+}
+
 
 .table-wrapper tbody tr:hover {
   background: var(--color-surface-interactive);
