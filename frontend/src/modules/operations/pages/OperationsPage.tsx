@@ -1,166 +1,107 @@
-import React, { Suspense, memo, useMemo } from "react";
+import { Suspense, memo, useMemo } from "react";
+import { NavLink, Outlet } from "react-router-dom";
 import { Cog } from "lucide-react";
 
-import Loader from "../../../shared/components/Loader";
+import Loader from "../../../components/common/Loader";
 import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
-import Accordion, { type AccordionItem } from "../../../shared/components/ui/Accordion/Accordion";
 import { useOperationsModule } from "../hooks/useOperationsModule";
 
-const CustomersPanel = React.lazy(() => import("../components/Customers"));
-const SuppliersPanel = React.lazy(() => import("../components/Suppliers"));
-const POSDashboard = React.lazy(() => import("../components/POS/POSDashboard"));
-const PurchasesPanel = React.lazy(() => import("../components/Purchases"));
-const SalesPanel = React.lazy(() => import("../components/Sales"));
-const ReturnsPanel = React.lazy(() => import("../components/Returns"));
-const TransferOrdersPanel = React.lazy(() => import("../components/TransferOrders"));
-const InternalMovementsPanel = React.lazy(() => import("../components/InternalMovementsPanel"));
-const OperationsHistoryPanel = React.lazy(() => import("../components/OperationsHistoryPanel"));
-
-const SectionLoader = memo(function SectionLoader({ label }: { label: string }) {
-  return (
-    <section className="card" role="status" aria-live="polite">
-      <Loader message={`Cargando ${label}…`} variant="compact" />
-    </section>
-  );
+const OperationsContentFallback = memo(function OperationsContentFallback() {
+  return <Loader message="Cargando vista de operaciones…" />;
 });
 
-type OperationsAccordionId =
-  | "sales"
-  | "internal"
-  | "transfers"
-  | "history";
+type SubRouteLink = {
+  id: string;
+  to: string;
+  label: string;
+  description: string;
+  disabled?: boolean;
+};
 
-type OperationsAccordionItem = AccordionItem<OperationsAccordionId>;
+const baseOperationsNavigation: Array<{
+  id: string;
+  title: string;
+  links: SubRouteLink[];
+}> = [
+  {
+    id: "ventas",
+    title: "Ventas",
+    links: [
+      { id: "ventas-caja", to: "ventas/caja", label: "Caja", description: "Cobros rápidos y conciliaciones" },
+      { id: "ventas-facturacion", to: "ventas/facturacion", label: "Facturación", description: "Ventas, notas y devoluciones" },
+      { id: "ventas-clientes", to: "ventas/clientes", label: "Clientes", description: "Cartera, notas y métricas" },
+      { id: "ventas-cajas", to: "ventas/cajas", label: "Cajas", description: "Historial de sesiones" },
+    ],
+  },
+  {
+    id: "compras",
+    title: "Compras",
+    links: [
+      { id: "compras-ordenes", to: "compras/ordenes", label: "Órdenes", description: "Recepciones y costos" },
+      { id: "compras-pagos", to: "compras/pagos", label: "Pagos", description: "Desembolsos y notas" },
+      { id: "compras-proveedores", to: "compras/proveedores", label: "Proveedores", description: "Catálogo y lotes" },
+    ],
+  },
+  {
+    id: "movimientos",
+    title: "Logística",
+    links: [
+      {
+        id: "movimientos-internos",
+        to: "movimientos/internos",
+        label: "Movimientos internos",
+        description: "Ajustes y conteos",
+      },
+      {
+        id: "movimientos-transferencias",
+        to: "movimientos/transferencias",
+        label: "Transferencias",
+        description: "Entre sucursales",
+      },
+    ],
+  },
+];
 
 function OperationsPage() {
-  const {
-    token,
-    stores,
-    selectedStoreId,
-    enablePurchasesSales,
-    enableTransfers,
-    refreshInventoryAfterTransfer,
-  } = useOperationsModule();
+  const { enablePurchasesSales, enableTransfers } = useOperationsModule();
 
-  let moduleStatus: ModuleStatus = "ok";
-  let moduleStatusLabel = "Flujos de operaciones activos";
+  const navigation = useMemo(() => {
+    return baseOperationsNavigation.map((group) => ({
+      ...group,
+      links: group.links.map((link) => ({
+        ...link,
+        disabled:
+          !enablePurchasesSales && (group.id === "ventas" || group.id === "compras")
+            ? true
+            : link.id === "movimientos-transferencias" && !enableTransfers
+              ? true
+              : link.disabled,
+      })),
+    }));
+  }, [enablePurchasesSales, enableTransfers]);
 
-  if (!enablePurchasesSales && !enableTransfers) {
-    moduleStatus = "critical";
-    moduleStatusLabel = "Operaciones deshabilitadas. Activa los flags corporativos";
-  } else if (!enablePurchasesSales || !enableTransfers) {
-    moduleStatus = "warning";
-    moduleStatusLabel = "Revisa las funciones pendientes por activar";
-  }
+  const moduleStatus = useMemo<ModuleStatus>(() => {
+    if (!enablePurchasesSales && !enableTransfers) {
+      return "critical";
+    }
+    if (!enablePurchasesSales || !enableTransfers) {
+      return "warning";
+    }
+    return "ok";
+  }, [enablePurchasesSales, enableTransfers]);
 
-  const accordionItems = useMemo<OperationsAccordionItem[]>(
-    () => [
-      {
-        id: "sales",
-        title: "Ventas / Compras",
-        description: "POS táctil, compras, devoluciones y catálogos corporativos.",
-        defaultOpen: true,
-        content: enablePurchasesSales ? (
-          <Suspense fallback={<SectionLoader label="panel de ventas y compras" />}>
-            <div className="section-grid">
-              <CustomersPanel token={token} />
-              <SuppliersPanel token={token} stores={stores} />
-              <POSDashboard
-                token={token}
-                stores={stores}
-                defaultStoreId={selectedStoreId}
-                onInventoryRefresh={refreshInventoryAfterTransfer}
-              />
-              <PurchasesPanel
-                token={token}
-                stores={stores}
-                defaultStoreId={selectedStoreId}
-                onInventoryRefresh={refreshInventoryAfterTransfer}
-              />
-              <SalesPanel
-                token={token}
-                stores={stores}
-                defaultStoreId={selectedStoreId}
-                onInventoryRefresh={refreshInventoryAfterTransfer}
-              />
-              <ReturnsPanel
-                token={token}
-                stores={stores}
-                defaultStoreId={selectedStoreId}
-                onInventoryRefresh={refreshInventoryAfterTransfer}
-              />
-            </div>
-          </Suspense>
-        ) : (
-          <section className="card">
-            <h2>Compras y ventas</h2>
-            <p className="muted-text">
-              Activa el flag corporativo <code>SOFTMOBILE_ENABLE_PURCHASES_SALES</code> para operar compras, ventas y devoluciones.
-            </p>
-          </section>
-        ),
-      },
-      {
-        id: "internal",
-        title: "Movimientos internos",
-        description: "Ajustes, recepciones y conteos internos con bitácora instantánea.",
-        content: (
-          <Suspense fallback={<SectionLoader label="movimientos internos" />}>
-            <div className="section-grid">
-              <InternalMovementsPanel stores={stores} defaultStoreId={selectedStoreId} />
-            </div>
-          </Suspense>
-        ),
-      },
-      {
-        id: "transfers",
-        title: "Transferencias entre tiendas",
-        description: "Flujo SOLICITADA → EN_TRANSITO → RECIBIDA con permisos por sucursal.",
-        content: enableTransfers ? (
-          <Suspense fallback={<SectionLoader label="transferencias entre tiendas" />}>
-            <div className="section-grid">
-              <TransferOrdersPanel
-                token={token}
-                stores={stores}
-                defaultOriginId={selectedStoreId}
-                onRefreshInventory={refreshInventoryAfterTransfer}
-              />
-            </div>
-          </Suspense>
-        ) : (
-          <section className="card">
-            <h2>Transferencias entre tiendas</h2>
-            <p className="muted-text">
-              Para habilitar transferencias activa el flag <code>SOFTMOBILE_ENABLE_TRANSFERS</code>.
-            </p>
-          </section>
-        ),
-      },
-      {
-        id: "history",
-        title: "Historial de operaciones",
-        description: "Consulta unificado de movimientos recientes por tienda.",
-        content: (
-          <Suspense fallback={<SectionLoader label="historial de operaciones" />}>
-            <div className="section-grid">
-              <OperationsHistoryPanel token={token} stores={stores} />
-            </div>
-          </Suspense>
-        ),
-      },
-    ],
-    [
-      enablePurchasesSales,
-      enableTransfers,
-      refreshInventoryAfterTransfer,
-      selectedStoreId,
-      stores,
-      token,
-    ],
-  );
+  const moduleStatusLabel = useMemo(() => {
+    if (!enablePurchasesSales && !enableTransfers) {
+      return "Operaciones deshabilitadas. Activa los flags corporativos";
+    }
+    if (!enablePurchasesSales || !enableTransfers) {
+      return "Revisa las funciones pendientes por activar";
+    }
+    return "Flujos de operaciones activos";
+  }, [enablePurchasesSales, enableTransfers]);
 
   return (
-    <div className="module-content">
+    <div className="module-content operations-module">
       <ModuleHeader
         icon={<Cog aria-hidden="true" />}
         title="Operaciones"
@@ -168,7 +109,43 @@ function OperationsPage() {
         status={moduleStatus}
         statusLabel={moduleStatusLabel}
       />
-      <Accordion items={accordionItems} />
+
+      <nav className="operations-subnav" aria-label="Subrutas de operaciones">
+        {navigation.map((group) => (
+          <div key={group.id} className="operations-subnav__group">
+            <p className="operations-subnav__title">{group.title}</p>
+            <ul className="operations-subnav__list">
+              {group.links.map((link) => (
+                <li key={link.id} className="operations-subnav__item">
+                  <NavLink
+                    to={link.to}
+                    className={({ isActive }) =>
+                      [
+                        "operations-subnav__link",
+                        isActive ? "operations-subnav__link--active" : null,
+                        link.disabled ? "operations-subnav__link--disabled" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")
+                    }
+                    aria-disabled={link.disabled}
+                    tabIndex={link.disabled ? -1 : 0}
+                  >
+                    <span className="operations-subnav__link-label">{link.label}</span>
+                    <span className="operations-subnav__link-desc">{link.description}</span>
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      <Suspense fallback={<OperationsContentFallback />}>
+        <div className="operations-subpage-container">
+          <Outlet />
+        </div>
+      </Suspense>
     </div>
   );
 }
