@@ -4,6 +4,7 @@ import { useInventoryLayout } from "./context/InventoryLayoutContext";
 import InventoryStatusSection from "./components/InventoryStatusSection";
 import InventoryProductsTableSection from "./components/InventoryProductsTableSection";
 import InventoryCatalogToolsSection from "./components/InventoryCatalogToolsSection";
+import InventoryReportsPanel from "../components/InventoryReportsPanel";
 import InventorySmartImportSection from "./components/InventorySmartImportSection";
 import InventoryCorrectionsSection from "./components/InventoryCorrectionsSection";
 import InventoryProductsFilters from "./components/InventoryProductsFilters";
@@ -49,6 +50,8 @@ function InventoryProductsPage() {
       <InventoryProductsTableSection />
 
       <InventoryCatalogToolsSection />
+
+      <InventoryReportsPanel />
 
       <InventorySmartImportSection />
 

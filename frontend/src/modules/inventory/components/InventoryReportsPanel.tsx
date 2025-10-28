@@ -10,10 +10,10 @@ import type {
   InventoryTopProductsFilters,
   InventoryValueFilters,
   InventoryValueReport,
-  Store,
   TopProductsReport,
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
+import { useInventoryLayout } from "../pages/context/InventoryLayoutContext";
 
 const formatDateInput = (date: Date): string => date.toISOString().slice(0, 10);
 
@@ -27,70 +27,32 @@ const createDefaultDateRange = () => {
   };
 };
 
-type InventoryReportsPanelProps = {
-  stores: Store[];
-  selectedStoreId: number | null;
-  formatCurrency: (value: number) => string;
-  fetchInventoryCurrentReport: (filters: InventoryCurrentFilters) => Promise<InventoryCurrentReport>;
-  downloadInventoryCurrentCsv: (
-    reason: string,
-    filters: InventoryCurrentFilters,
-  ) => Promise<void>;
-  downloadInventoryCurrentPdf: (
-    reason: string,
-    filters: InventoryCurrentFilters,
-  ) => Promise<void>;
-  downloadInventoryCurrentXlsx: (
-    reason: string,
-    filters: InventoryCurrentFilters,
-  ) => Promise<void>;
-  fetchInventoryValueReport: (filters: InventoryValueFilters) => Promise<InventoryValueReport>;
-  fetchInventoryMovementsReport: (filters: InventoryMovementsFilters) => Promise<InventoryMovementsReport>;
-  fetchTopProductsReport: (filters: InventoryTopProductsFilters) => Promise<TopProductsReport>;
-  requestDownloadWithReason: (
-    downloader: (reason: string) => Promise<void>,
-    successMessage: string,
-  ) => Promise<void>;
-  downloadInventoryValueCsv: (reason: string, filters: InventoryValueFilters) => Promise<void>;
-  downloadInventoryValuePdf: (reason: string, filters: InventoryValueFilters) => Promise<void>;
-  downloadInventoryValueXlsx: (reason: string, filters: InventoryValueFilters) => Promise<void>;
-  downloadInventoryMovementsCsv: (reason: string, filters: InventoryMovementsFilters) => Promise<void>;
-  downloadInventoryMovementsPdf: (
-    reason: string,
-    filters: InventoryMovementsFilters,
-  ) => Promise<void>;
-  downloadInventoryMovementsXlsx: (
-    reason: string,
-    filters: InventoryMovementsFilters,
-  ) => Promise<void>;
-  downloadTopProductsCsv: (reason: string, filters: InventoryTopProductsFilters) => Promise<void>;
-  downloadTopProductsPdf: (reason: string, filters: InventoryTopProductsFilters) => Promise<void>;
-  downloadTopProductsXlsx: (reason: string, filters: InventoryTopProductsFilters) => Promise<void>;
-};
-
-function InventoryReportsPanel({
-  stores,
-  selectedStoreId,
-  formatCurrency,
-  fetchInventoryCurrentReport,
-  downloadInventoryCurrentCsv,
-  downloadInventoryCurrentPdf,
-  downloadInventoryCurrentXlsx,
-  fetchInventoryValueReport,
-  fetchInventoryMovementsReport,
-  fetchTopProductsReport,
-  requestDownloadWithReason,
-  downloadInventoryValueCsv,
-  downloadInventoryValuePdf,
-  downloadInventoryValueXlsx,
-  downloadInventoryMovementsCsv,
-  downloadInventoryMovementsPdf,
-  downloadInventoryMovementsXlsx,
-  downloadTopProductsCsv,
-  downloadTopProductsPdf,
-  downloadTopProductsXlsx,
-}: InventoryReportsPanelProps) {
+function InventoryReportsPanel() {
   const dashboard = useDashboard();
+  const {
+    module: {
+      stores,
+      selectedStoreId,
+      formatCurrency,
+      fetchInventoryCurrentReport,
+      downloadInventoryCurrentCsv,
+      downloadInventoryCurrentPdf,
+      downloadInventoryCurrentXlsx,
+      fetchInventoryValueReport,
+      fetchInventoryMovementsReport,
+      fetchTopProductsReport,
+      downloadInventoryValueCsv,
+      downloadInventoryValuePdf,
+      downloadInventoryValueXlsx,
+      downloadInventoryMovementsCsv,
+      downloadInventoryMovementsPdf,
+      downloadInventoryMovementsXlsx,
+      downloadTopProductsCsv,
+      downloadTopProductsPdf,
+      downloadTopProductsXlsx,
+    },
+    downloads: { requestDownloadWithReason },
+  } = useInventoryLayout();
 
   const [storeFilter, setStoreFilter] = useState<number | "ALL">(selectedStoreId ?? "ALL");
   const [{ from: dateFrom, to: dateTo }, setDateRange] = useState(createDefaultDateRange);

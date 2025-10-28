@@ -111,6 +111,10 @@ export function useSmartImportManager({
     void refreshSmartImportHistory();
   }, [refreshSmartImportHistory]);
 
+  useEffect(() => {
+    void refreshPendingDevices();
+  }, [refreshPendingDevices]);
+
   const handleSmartOverrideChange = useCallback((field: string, header: string) => {
     setSmartImportOverrides((current) => {
       const next = { ...current };

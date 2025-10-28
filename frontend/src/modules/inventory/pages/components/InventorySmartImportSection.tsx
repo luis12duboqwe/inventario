@@ -172,6 +172,7 @@ function InventorySmartImportSection() {
                       </td>
                       <td>
                         <select
+                          aria-label={`Reasignar campo ${match.campo}`}
                           value={currentHeader}
                           onChange={(event) => handleSmartOverrideChange(match.campo, event.target.value)}
                         >
@@ -201,6 +202,16 @@ function InventorySmartImportSection() {
             <li>Actualizados: {smartImportResult.actualizados}</li>
             <li>Registros incompletos: {smartImportResult.registros_incompletos}</li>
           </ul>
+          {smartImportResult.duracion_segundos != null ? (
+            <p className="muted-text">
+              Tiempo estimado: {smartImportResult.duracion_segundos.toFixed(1)} segundos
+            </p>
+          ) : null}
+          {smartImportResult.tiendas_nuevas?.length ? (
+            <p className="muted-text">
+              Tiendas creadas automáticamente: {smartImportResult.tiendas_nuevas.join(", ")}
+            </p>
+          ) : null}
           <div className="smart-import__result-actions">
             <Button variant="ghost" size="sm" type="button" onClick={downloadSmartResultCsv}>
               Descargar resumen CSV
@@ -234,7 +245,7 @@ function InventorySmartImportSection() {
           <ul className="metrics-list">
             {smartImportHistory.map((entry) => (
               <li key={entry.id}>
-                <strong>{entry.file_name}</strong> · {new Date(entry.created_at).toLocaleString("es-MX")} · {entry.total_records}
+                <strong>{entry.nombre_archivo}</strong> · {new Date(entry.fecha).toLocaleString("es-MX")} · {entry.total_registros}
                 registros
               </li>
             ))}

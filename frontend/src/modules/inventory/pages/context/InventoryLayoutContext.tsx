@@ -63,6 +63,10 @@ export type InventoryLayoutContextValue = {
     downloadSmartResultPdf: () => void;
     triggerRefreshSupplierOverview: () => void;
     triggerRefreshRecentMovements: () => void;
+    requestDownloadWithReason: (
+      downloader: (reason: string) => Promise<void>,
+      successMessage: string,
+    ) => Promise<void>;
   };
   catalog: {
     catalogFile: File | null;
