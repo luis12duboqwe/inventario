@@ -4602,6 +4602,111 @@ button.ghost {
   gap: 1.5rem;
 }
 
+.reparaciones-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.reparaciones-tabs {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border-strong);
+  padding-bottom: 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.reparaciones-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.45rem 1.1rem;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: transparent;
+  transition: background-color 0.25s ease, color 0.25s ease, transform 0.25s ease;
+  outline: none;
+}
+
+.reparaciones-tab:hover,
+.reparaciones-tab:focus-visible {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(14, 165, 233, 0.15);
+}
+
+.reparaciones-tab:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-accent-focus-border),
+    0 8px 18px rgba(14, 165, 233, 0.2);
+}
+
+.reparaciones-tab--active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(14, 165, 233, 0.28));
+  color: var(--color-text-primary);
+  box-shadow: 0 12px 28px rgba(14, 165, 233, 0.2);
+}
+
+.reparaciones-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.12);
+}
+
+.reparaciones-status__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+}
+
+.reparaciones-status--ok {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--color-success-glow);
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+}
+
+.reparaciones-status--ok .reparaciones-status__dot {
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.22);
+}
+
+.reparaciones-status--warning {
+  background: rgba(251, 191, 36, 0.16);
+  color: var(--color-warning-highlight);
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.28);
+}
+
+.reparaciones-status--warning .reparaciones-status__dot {
+  background: var(--color-warning);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.22);
+}
+
+.reparaciones-status--critical {
+  background: rgba(239, 68, 68, 0.18);
+  color: var(--color-danger-highlight);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.35);
+}
+
+.reparaciones-status--critical .reparaciones-status__dot {
+  background: var(--color-error);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.24);
+}
+
 .repair-orders-toolbar {
   display: flex;
   flex-direction: column;

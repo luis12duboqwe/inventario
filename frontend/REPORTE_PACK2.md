@@ -18,7 +18,8 @@
 - Operaciones → Logística
   - `/dashboard/operations/movimientos/internos`
   - `/dashboard/operations/movimientos/transferencias`
-- Reparaciones
+- Reparaciones (`/dashboard/repairs/*` servido desde 
+  `frontend/src/pages/reparaciones`)
   - `/dashboard/repairs/pendientes`
   - `/dashboard/repairs/finalizadas`
   - `/dashboard/repairs/repuestos`
@@ -46,10 +47,11 @@
 - `frontend/src/modules/operations/pages/movimientos/InternosPage.tsx`
 - `frontend/src/modules/operations/pages/movimientos/TransferenciasPage.tsx`
 - `frontend/src/modules/repairs/pages/RepairsPage.tsx`
-- `frontend/src/modules/repairs/pages/RepairsPendingPage.tsx`
-- `frontend/src/modules/repairs/pages/RepairsFinalizedPage.tsx`
-- `frontend/src/modules/repairs/pages/RepairsPartsPage.tsx`
-- `frontend/src/modules/repairs/pages/RepairsBudgetsPage.tsx`
+- `frontend/src/pages/reparaciones/ReparacionesLayout.tsx`
+- `frontend/src/pages/reparaciones/Pendientes.tsx`
+- `frontend/src/pages/reparaciones/Finalizadas.tsx`
+- `frontend/src/pages/reparaciones/Repuestos.tsx`
+- `frontend/src/pages/reparaciones/Presupuestos.tsx`
 - `frontend/src/modules/repairs/pages/components/*`
 - `frontend/src/modules/repairs/pages/components/useRepairOrderActions.ts`
 - `frontend/src/modules/repairs/pages/components/useRepairOrdersBoard.ts`
@@ -61,33 +63,55 @@
 - `frontend/src/components/common/Loader.tsx`
 - `frontend/src/styles.css`
 
-## Lazy/Suspense
-- Las rutas hijas de Inventario, Operaciones y Reparaciones se cargan mediante `React.lazy` desde `dashboard/routes.tsx` y se envuelven en `Suspense` (loader global en el router y `Loader` corporativo en cada layout).
-- `InventoryPage` delega sus submódulos a `<Outlet />` dentro de `Suspense`, mientras que los formularios/tablas se mantienen perezosos mediante `lazy` locales.
-- `OperationsPage` conserva el `Suspense` interno para cada sección (POS, compras, transferencias, etc.) y sincroniza las rutas hijas con la URL.
-- `RepairsPage` funciona como layout modular: Tabs sincronizados con la URL, contexto compartido y cargas diferidas para pendientes, finalizadas, repuestos y presupuestos.
-- Las rutas hijas de Inventario y Operaciones se cargan mediante `React.lazy` desde `dashboard/routes.tsx` y se envuelven en `Suspense` (loader global en el router y `Loader` corporativo en cada layout).
-- `InventoryPage` delega sus submódulos a `<Outlet />` dentro de `Suspense`, mientras que los formularios/tablas se mantienen perezosos mediante `lazy` locales.
-- `OperationsPage` conserva el `Suspense` interno para cada sección (POS, compras, transferencias, etc.).
+## Reparaciones
 
-## Navegación y comportamiento
-- Inventario ahora funciona como layout ligero: el tab seleccionado controla la URL (`/inventory/*`) y cada subruta abre su propia pantalla con `PageHeader`/`PageToolbar` y las secciones heredadas (salud, tabla, importación inteligente, lotes, alertas).
-- Se reemplazó el acordeón de Operaciones por navegación de subrutas; las pestañas internas reflejan el estado activo en la URL y reutilizan POS, Purchases, Sales, Returns y Suppliers sin alterar su lógica.
-- Los componentes `PageHeader` y `PageToolbar` unifican encabezados, acciones, filtros y búsqueda en Inventario, Operaciones y Reparaciones, respetando el tema oscuro y los estilos previos (`inventory-*`, `operations-*`, `repairs-*`).
-- Reparaciones se divide en cuatro subrutas: el panel de pendientes conserva el formulario completo con filtros encapsulados en `PageToolbar`, las finalizadas se concentran en el historial con descargas, repuestos agrega resumen por dispositivo y presupuestos muestra métricas financieras.
-- `RepairOrdersBoard` se fragmentó en hooks (`useRepairOrdersBoard`, `useRepairOrderActions`) y helpers reutilizables para cumplir el límite <500 líneas sin alterar la UI ni la lógica de inventario sincronizado.
+### Nueva estructura de rutas
+- `/dashboard/repairs` sirve como layout con `<Outlet />` y redirige su índice a
+  `/dashboard/repairs/pendientes`.
+- Subrutas disponibles: `pendientes`, `finalizadas`, `repuestos` y `presupuestos`,
+  todas cargadas con `React.lazy` y envueltas por `<Suspense>`.
+- La navegación superior usa `NavLink` para reflejar la URL activa y conserva el
+  estado global del módulo (token, sucursal, inventario, indicadores).
 
-## Pendientes
-- Los componentes `PageHeader` y `PageToolbar` unifican encabezados, acciones, filtros y búsqueda en Inventario y Operaciones, respetando el tema oscuro y los estilos previos (`inventory-*`, `operations-*`).
+### Archivos creados o modificados
+- `frontend/src/modules/dashboard/routes.tsx`
+- `frontend/src/modules/repairs/pages/RepairsPage.tsx`
+- `frontend/src/pages/reparaciones/ReparacionesLayout.tsx`
+- `frontend/src/pages/reparaciones/Pendientes.tsx`
+- `frontend/src/pages/reparaciones/Finalizadas.tsx`
+- `frontend/src/pages/reparaciones/Repuestos.tsx`
+- `frontend/src/pages/reparaciones/Presupuestos.tsx`
+- `frontend/src/modules/repairs/pages/RepairsPendingPage.tsx`
+- `frontend/src/modules/repairs/pages/RepairsFinalizedPage.tsx`
+- `frontend/src/modules/repairs/pages/RepairsPartsPage.tsx`
+- `frontend/src/modules/repairs/pages/RepairsBudgetsPage.tsx`
+- `frontend/src/modules/repairs/pages/context/RepairsLayoutContext.tsx`
+- `frontend/src/modules/repairs/pages/components/RepairOrdersBoard.tsx`
+- `frontend/src/components/layout/PageHeader.tsx`
+- `frontend/src/components/layout/PageToolbar.tsx`
+- `frontend/src/components/common/Loader.tsx`
+- `frontend/src/styles.css`
 
-## Pendientes
-- Reparaciones: dividir `RepairOrders` en subrutas (`pendientes`, `finalizadas`, `repuestos`, `presupuestos`) manteniendo exportaciones y controles existentes.
-- Inventario: revisar pruebas unitarias/integración para asegurar que la división por secciones mantenga la cobertura previa (test de `InventoryPage` requiere actualización hacia los nuevos componentes).
-- Documentar capturas o walkthrough de navegación una vez completadas las pruebas finales.
+### Lazy y `<Suspense>`
+- `dashboard/routes.tsx` delega cada subruta de reparaciones mediante `React.lazy`
+  y `ModuleBoundary` (que a su vez utiliza `<Suspense>`).
+- `ReparacionesLayout` envuelve `<Outlet />` con `<Suspense>` y reutiliza el
+  `Loader` corporativo.
+- Las subpáginas (`Pendientes`, `Finalizadas`, `Repuestos`, `Presupuestos`)
+  mantienen cargas diferidas y encapsulan filtros/acciones dentro de
+  `PageToolbar` locales para evitar montajes innecesarios.
 
-## Avance del sprint
-- Operaciones: 100 % (subrutas activas con `React.lazy`, navegación interna y documentación).
-- Inventario: 100 % (layout modular con pruebas actualizadas para el router y las subpáginas perezosas).
-- Reparaciones: 100 % (layout con Tabs, subrutas perezosas y vistas dedicadas; hooks y helpers validados con pruebas unitarias).
-- Inventario: 85 % (layout convertido en router, subpáginas modulares y secciones reutilizables; faltan ajustes de pruebas/documentación visual).
-- Reparaciones: 0 % (pendiente iniciar subdivisión y lazy loading por estado de orden).
+### Compatibilidad
+- No se modificaron stores ni servicios globales; `useRepairsModule` expone el
+  mismo contrato que consumían las pantallas originales.
+- Los callbacks de inventario y los indicadores del módulo se propagan a través
+  de `RepairsLayoutContext`, conservando actualizaciones de estado en tiempo real.
+- El diseño respeta el tema oscuro y los estilos previos (`reparaciones-*`) y
+  añade clases específicas solo para el layout de pestañas.
+
+### Avance
+- Reparaciones: 100 % — layout centralizado, subrutas perezosas y documentación
+  actualizada sin romper integraciones existentes.
+
+## Compatibilidad
+- `RepairsPage.tsx` reexporta el nuevo layout para mantener el contrato del dashboard; no se modificaron stores ni servicios y las rutas `/dashboard/repairs/*` siguen operando sin cambios.
