@@ -199,6 +199,7 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     triggerRefreshSummary: vi.fn(),
     triggerDownloadReport: vi.fn(),
     triggerDownloadCsv: vi.fn(),
+    requestDownloadWithReason: vi.fn().mockResolvedValue(undefined),
     triggerExportCatalog: vi.fn(),
     triggerImportCatalog: vi.fn(),
     downloadSmartResultCsv: vi.fn(),
@@ -328,6 +329,7 @@ describe("InventoryProductsPage", () => {
     expect(screen.getByTestId("inventory-status-section")).toBeInTheDocument();
     expect(screen.getByTestId("inventory-products-table")).toBeInTheDocument();
     expect(screen.getByTestId("inventory-catalog-tools")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Reportes y estadísticas/i })).toBeInTheDocument();
     expect(screen.getByTestId("inventory-smart-import")).toBeInTheDocument();
     expect(screen.getByTestId("inventory-corrections")).toBeInTheDocument();
   });
