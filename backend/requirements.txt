@@ -1,0 +1,3 @@
+# Archivo de compatibilidad para instalaciones heredadas del backend.
+# Delegamos las dependencias al archivo unificado en la raíz del repositorio.
+-r ../requirements.txt
