@@ -1,5 +1,6 @@
 import { Suspense, lazy, memo, type ReactNode, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import NotFound from "../../components/feedback/NotFound";
 const DashboardLayout = lazy(() => import("./layout/DashboardLayout"));
 
 const InventoryLayout = lazy(() => import("../inventory/pages/InventoryLayout"));
@@ -162,7 +163,7 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           <Route path="repuestos" element={<RepairsParts />} />
           <Route path="presupuestos" element={<RepairsBudgets />} />
         </Route>
-        <Route path="*" element={<Navigate to="inventory" replace />} />
+        <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   );

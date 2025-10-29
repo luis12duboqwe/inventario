@@ -5,6 +5,9 @@ import { createAppRouter, type ThemeMode } from "../router";
 import Loader from "../shared/components/Loader";
 import { login, logout, type Credentials, UNAUTHORIZED_EVENT } from "../services/api/auth";
 import { getAuthToken } from "../services/api/http";
+import ErrorBoundary from "../components/boundaries/ErrorBoundary";
+import SkipLink from "../components/a11y/SkipLink";
+import { startWebVitalsLite } from "../lib/metrics/webVitalsLite";
 
 function resolveInitialTheme(): ThemeMode {
   if (typeof window === "undefined") {
@@ -42,6 +45,10 @@ function App() {
   });
 
   const { mutateAsync: executeLogin, reset: resetLoginMutation, isPending: loading } = loginMutation;
+
+  useEffect(() => {
+    startWebVitalsLite();
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -106,11 +113,14 @@ function App() {
   );
 
   return (
-    <div className={`app-root${!token ? " login-mode" : ""}`}>
-      <Suspense fallback={<Loader message="Cargando aplicación…" />}>
-        <RouterProvider router={router} />
-      </Suspense>
-    </div>
+    <ErrorBoundary>
+      <div className={`app-root${!token ? " login-mode" : ""}`}>
+        <SkipLink />
+        <Suspense fallback={<Loader variant="overlay" message="Cargando interfaz…" />}>
+          <RouterProvider router={router} />
+        </Suspense>
+      </div>
+    </ErrorBoundary>
   );
 }
 

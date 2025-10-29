@@ -423,9 +423,6 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
           />
         ) : null}
       </AnimatePresence>
-      <a href="#dashboard-main-content" className="skip-to-content-link">
-        Saltar al contenido principal
-      </a>
       <div className="dashboard-main">
         <div className="dashboard-role-banner" role="complementary" aria-live="polite">
           <span className="dashboard-role-badge">{roleVisual.label}</span>
@@ -556,7 +553,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
           lastInventoryRefresh={lastInventoryRefresh}
         />
 
-        <main className="dashboard-content" id="dashboard-main-content">
+        <main className="dashboard-content" id="main-content">
           <AdminControlPanel
             modules={panelModules}
             roleVariant={roleVisual.variant}
