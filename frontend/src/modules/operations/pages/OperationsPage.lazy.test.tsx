@@ -2,28 +2,9 @@ import { Suspense, act } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import OperationsPage from "./OperationsPage";
-
-const customersSpy = vi.fn(() => <div data-testid="customers-panel" />);
-const suppliersSpy = vi.fn(() => <div data-testid="suppliers-panel" />);
-const posSpy = vi.fn(() => <div data-testid="pos-panel" />);
-const purchasesSpy = vi.fn(() => <div data-testid="purchases-panel" />);
-const salesSpy = vi.fn(() => <div data-testid="sales-panel" />);
-const returnsSpy = vi.fn(() => <div data-testid="returns-panel" />);
-const transfersSpy = vi.fn(() => <div data-testid="transfers-panel" />);
-const internalSpy = vi.fn(() => <div data-testid="internal-panel" />);
-const historySpy = vi.fn(() => <div data-testid="history-panel" />);
-
-vi.mock("../components/Customers", () => ({ default: customersSpy }));
-vi.mock("../components/Suppliers", () => ({ default: suppliersSpy }));
-vi.mock("../components/POS/POSDashboard", () => ({ default: posSpy }));
-vi.mock("../components/Purchases", () => ({ default: purchasesSpy }));
-vi.mock("../components/Sales", () => ({ default: salesSpy }));
-vi.mock("../components/Returns", () => ({ default: returnsSpy }));
-vi.mock("../components/TransferOrders", () => ({ default: transfersSpy }));
-vi.mock("../components/InternalMovementsPanel", () => ({ default: internalSpy }));
-vi.mock("../components/OperationsHistoryPanel", () => ({ default: historySpy }));
 
 vi.mock("../hooks/useOperationsModule", () => ({
   useOperationsModule: () => ({
@@ -38,42 +19,56 @@ vi.mock("../hooks/useOperationsModule", () => ({
   }),
 }));
 
-describe("OperationsPage carga diferida", () => {
-  it("monta paneles pesados sólo al expandirlos", async () => {
+describe("OperationsPage navegación", () => {
+  it("muestra paneles al navegar entre secciones", async () => {
     const user = userEvent.setup();
 
     await act(async () => {
       render(
-        <Suspense fallback={<div data-testid="fallback" />}>
-          <OperationsPage />
-        </Suspense>,
+        <MemoryRouter initialEntries={["/dashboard/operations"]}>
+          <Routes>
+            <Route
+              path="/dashboard/operations/*"
+              element={
+                <Suspense fallback={<div data-testid="fallback" />}>
+                  <OperationsPage />
+                </Suspense>
+              }
+            >
+              <Route index element={<Navigate to="ventas/caja" replace />} />
+              <Route path="ventas">
+                <Route index element={<Navigate to="caja" replace />} />
+                <Route path="caja" element={<div data-testid="pos-panel" />} />
+                <Route path="clientes" element={<div data-testid="customers-panel" />} />
+                <Route path="facturacion" element={<div data-testid="sales-panel" />} />
+              </Route>
+              <Route path="compras">
+                <Route index element={<Navigate to="ordenes" replace />} />
+                <Route path="ordenes" element={<div data-testid="purchases-panel" />} />
+              </Route>
+              <Route path="movimientos">
+                <Route index element={<Navigate to="internos" replace />} />
+                <Route path="internos" element={<div data-testid="internal-panel" />} />
+                <Route path="transferencias" element={<div data-testid="transfers-panel" />} />
+              </Route>
+            </Route>
+          </Routes>
+        </MemoryRouter>,
       );
     });
 
-    await screen.findByTestId("customers-panel");
-    expect(customersSpy).toHaveBeenCalledOnce();
-    expect(suppliersSpy).toHaveBeenCalledOnce();
-    expect(posSpy).toHaveBeenCalledOnce();
-    expect(purchasesSpy).toHaveBeenCalledOnce();
-    expect(salesSpy).toHaveBeenCalledOnce();
-    expect(returnsSpy).toHaveBeenCalledOnce();
-    expect(internalSpy).not.toHaveBeenCalled();
-    expect(transfersSpy).not.toHaveBeenCalled();
-    expect(historySpy).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("pos-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("customers-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("internal-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("transfers-panel")).not.toBeInTheDocument();
 
-    const internalButton = screen.getByRole("button", { name: /movimientos internos/i });
-    await user.click(internalButton);
-    await screen.findByTestId("internal-panel");
-    expect(internalSpy).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("link", { name: /clientes/i }));
+    expect(await screen.findByTestId("customers-panel")).toBeInTheDocument();
 
-    const transfersButton = screen.getByRole("button", { name: /transferencias entre tiendas/i });
-    await user.click(transfersButton);
-    await screen.findByTestId("transfers-panel");
-    expect(transfersSpy).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("link", { name: /movimientos internos/i }));
+    expect(await screen.findByTestId("internal-panel")).toBeInTheDocument();
 
-    const historyButton = screen.getByRole("button", { name: /historial de operaciones/i });
-    await user.click(historyButton);
-    await screen.findByTestId("history-panel");
-    expect(historySpy).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("link", { name: /transferencias/i }));
+    expect(await screen.findByTestId("transfers-panel")).toBeInTheDocument();
   });
 });

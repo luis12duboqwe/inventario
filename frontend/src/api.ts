@@ -30,6 +30,15 @@ export type Store = {
   created_at: string;
 };
 
+export type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+  has_next: boolean;
+};
+
 export type Role = {
   id: number;
   name: string;
@@ -1916,6 +1925,26 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   }
 }
 
+function extractCollectionItems<T>(payload: PaginatedResponse<T> | T[]): T[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (payload && Array.isArray(payload.items)) {
+    return payload.items;
+  }
+  return [];
+}
+
+function requestCollection<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string,
+): Promise<T[]> {
+  return request<PaginatedResponse<T> | T[]>(path, options, token).then((payload) =>
+    extractCollectionItems(payload),
+  );
+}
+
 export function getBootstrapStatus(): Promise<BootstrapStatus> {
   return request<BootstrapStatus>("/auth/bootstrap/status", { method: "GET" });
 }
@@ -1985,7 +2014,7 @@ export function listUsers(
   }
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
-  return request<UserAccount[]>(
+  return requestCollection<UserAccount>(
     `/users${suffix}`,
     { method: "GET", signal: options.signal },
     token,
@@ -1993,7 +2022,7 @@ export function listUsers(
 }
 
 export function listRoles(token: string): Promise<Role[]> {
-  return request<Role[]>("/users/roles", { method: "GET" }, token);
+  return requestCollection<Role>("/users/roles", { method: "GET" }, token);
 }
 
 export function updateUserRoles(token: string, userId: number, roles: string[], reason: string): Promise<UserAccount> {
@@ -2043,7 +2072,11 @@ export function listRolePermissions(token: string, role?: string): Promise<RoleP
     params.set("role", role);
   }
   const suffix = params.toString() ? `?${params}` : "";
-  return request<RolePermissionMatrix[]>(`/users/permissions${suffix}`, { method: "GET" }, token);
+  return requestCollection<RolePermissionMatrix>(
+    `/users/permissions${suffix}`,
+    { method: "GET" },
+    token,
+  );
 }
 
 export function updateRolePermissions(
@@ -2096,11 +2129,11 @@ export function exportUsers(
 }
 
 export function getStores(token: string): Promise<Store[]> {
-  return request<Store[]>("/stores", { method: "GET" }, token);
+  return requestCollection<Store>("/stores/?limit=200", { method: "GET" }, token);
 }
 
 export function getSummary(token: string): Promise<Summary[]> {
-  return request<Summary[]>("/inventory/summary", { method: "GET" }, token);
+  return requestCollection<Summary>("/inventory/summary", { method: "GET" }, token);
 }
 
 export function getInventoryCurrentReport(
@@ -2277,7 +2310,7 @@ export function getDevices(
   const params = buildDeviceFilterParams(filters);
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
-  return request<Device[]>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
+  return requestCollection<Device>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
 }
 
 export function getDeviceIdentifier(
@@ -2382,7 +2415,7 @@ export function getSmartImportHistory(
 ): Promise<InventoryImportHistoryEntry[]> {
   const params = new URLSearchParams();
   params.set("limit", String(limit));
-  return request<InventoryImportHistoryEntry[]>(
+  return requestCollection<InventoryImportHistoryEntry>(
     `/inventory/import/smart/history?${params.toString()}`,
     { method: "GET" },
     token,
@@ -2401,7 +2434,7 @@ export function getIncompleteDevices(
   params.set("limit", String(limit));
   const query = params.toString();
   const url = query ? `/inventory/devices/incomplete?${query}` : "/inventory/devices/incomplete";
-  return request<Device[]>(url, { method: "GET" }, token);
+  return requestCollection<Device>(url, { method: "GET" }, token);
 }
 
 export function updateDevice(
@@ -2427,7 +2460,11 @@ export function getPendingImportValidations(
   limit = 200,
 ): Promise<ImportValidationDetail[]> {
   const params = new URLSearchParams({ limit: String(limit) });
-  return request<ImportValidationDetail[]>(`/validacion/pendientes?${params.toString()}`, { method: "GET" }, token);
+  return requestCollection<ImportValidationDetail>(
+    `/validacion/pendientes?${params.toString()}`,
+    { method: "GET" },
+    token,
+  );
 }
 
 export function markImportValidationCorrected(
@@ -2444,7 +2481,11 @@ export function markImportValidationCorrected(
 
 export function listPurchaseOrders(token: string, storeId: number, limit = 50): Promise<PurchaseOrder[]> {
   const params = new URLSearchParams({ limit: String(limit), store_id: String(storeId) });
-  return request<PurchaseOrder[]>(`/purchases/?${params.toString()}`, { method: "GET" }, token);
+  return requestCollection<PurchaseOrder>(
+    `/purchases/?${params.toString()}`,
+    { method: "GET" },
+    token,
+  );
 }
 
 export function createPurchaseOrder(
@@ -2542,7 +2583,11 @@ export function listPurchaseVendors(
   }
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
-  return request<PurchaseVendor[]>(`/purchases/vendors${suffix}`, { method: "GET" }, token);
+  return requestCollection<PurchaseVendor>(
+    `/purchases/vendors${suffix}`,
+    { method: "GET" },
+    token,
+  );
 }
 
 export function createPurchaseVendor(
@@ -2668,7 +2713,11 @@ export function listPurchaseRecords(
   }
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
-  return request<PurchaseRecord[]>(`/purchases/records${suffix}`, { method: "GET" }, token);
+  return requestCollection<PurchaseRecord>(
+    `/purchases/records${suffix}`,
+    { method: "GET" },
+    token,
+  );
 }
 
 export function createPurchaseRecord(
@@ -2817,7 +2866,7 @@ export function listCustomers(
     params.append("customer_type_filter", options.customerTypeFilter);
   }
   const queryString = params.toString();
-  return request<Customer[]>(`/customers?${queryString}`, { method: "GET" }, token);
+  return requestCollection<Customer>(`/customers?${queryString}`, { method: "GET" }, token);
 }
 
 export function exportCustomersCsv(
@@ -3035,7 +3084,7 @@ export function listSuppliers(
   if (query) {
     params.append("q", query);
   }
-  return request<Supplier[]>(`/suppliers?${params.toString()}`, { method: "GET" }, token);
+  return requestCollection<Supplier>(`/suppliers?${params.toString()}`, { method: "GET" }, token);
 }
 
 export function exportSuppliersCsv(token: string, query?: string): Promise<Blob> {
@@ -3084,7 +3133,7 @@ export function getSupplierBatchOverview(
   storeId: number,
   limit = 5,
 ): Promise<SupplierBatchOverviewItem[]> {
-  return request<SupplierBatchOverviewItem[]>(
+  return requestCollection<SupplierBatchOverviewItem>(
     `/reports/inventory/supplier-batches?store_id=${storeId}&limit=${limit}`,
     { method: "GET" },
     token,
@@ -3097,7 +3146,7 @@ export function listSupplierBatches(
   limit = 50
 ): Promise<SupplierBatch[]> {
   const params = new URLSearchParams({ limit: String(limit) });
-  return request<SupplierBatch[]>(
+  return requestCollection<SupplierBatch>(
     `/suppliers/${supplierId}/batches?${params.toString()}`,
     { method: "GET" },
     token
@@ -3157,7 +3206,7 @@ export function listRepairOrders(
   }
   const query = searchParams.toString();
   const suffix = query ? `?${query}` : "";
-  return request<RepairOrder[]>(`/repairs${suffix}`, { method: "GET" }, token);
+  return requestCollection<RepairOrder>(`/repairs${suffix}`, { method: "GET" }, token);
 }
 
 export function createRepairOrder(
@@ -3217,7 +3266,7 @@ export function searchCatalogDevices(
   if (filters.fecha_ingreso_hasta) params.append("fecha_ingreso_hasta", filters.fecha_ingreso_hasta);
   const query = params.toString();
   const path = query ? `/inventory/devices/search?${query}` : "/inventory/devices/search";
-  return request<CatalogDevice[]>(path, { method: "GET" }, token);
+  return requestCollection<CatalogDevice>(path, { method: "GET" }, token);
 }
 
 export function registerMovement(
@@ -3239,7 +3288,7 @@ export function listSales(token: string, filters: SalesFilters = {}): Promise<Sa
   params.append("limit", String(limit));
   const query = params.toString();
   const path = `/sales?${query}`;
-  return request<Sale[]>(path, { method: "GET" }, token);
+  return requestCollection<Sale>(path, { method: "GET" }, token);
 }
 
 export function createSale(
@@ -3289,7 +3338,7 @@ export function registerSaleReturn(
 }
 
 export function listStoreMemberships(token: string, storeId: number): Promise<StoreMembership[]> {
-  return request(`/stores/${storeId}/memberships`, { method: "GET" }, token);
+  return requestCollection<StoreMembership>(`/stores/${storeId}/memberships`, { method: "GET" }, token);
 }
 
 export function upsertStoreMembership(
@@ -3312,7 +3361,7 @@ export function listTransfers(token: string, storeId?: number): Promise<Transfer
   }
   const query = params.toString();
   const path = `/transfers${query ? `?${query}` : ""}`;
-  return request<TransferOrder[]>(path, { method: "GET" }, token);
+  return requestCollection<TransferOrder>(path, { method: "GET" }, token);
 }
 
 export function createTransferOrder(
@@ -3446,7 +3495,11 @@ export function listRecurringOrders(
   }
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
-  return request<RecurringOrder[]>(`/operations/recurring-orders${suffix}`, { method: "GET" }, token);
+  return requestCollection<RecurringOrder>(
+    `/operations/recurring-orders${suffix}`,
+    { method: "GET" },
+    token,
+  );
 }
 
 export function createRecurringOrder(
@@ -3520,7 +3573,7 @@ export function runBackup(token: string, reason: string, note?: string): Promise
 }
 
 export function fetchBackupHistory(token: string): Promise<BackupJob[]> {
-  return request<BackupJob[]>("/backups/history", { method: "GET" }, token);
+  return requestCollection<BackupJob>("/backups/history", { method: "GET" }, token);
 }
 
 export async function downloadInventoryPdf(token: string, reason: string): Promise<void> {
@@ -3948,7 +4001,7 @@ export function getUpdateStatus(token: string): Promise<UpdateStatus> {
 }
 
 export function getReleaseHistory(token: string, limit = 10): Promise<ReleaseInfo[]> {
-  return request<ReleaseInfo[]>(`/updates/history?limit=${limit}`, { method: "GET" }, token);
+  return requestCollection<ReleaseInfo>(`/updates/history?limit=${limit}`, { method: "GET" }, token);
 }
 
 export function getInventoryMetrics(token: string, lowStockThreshold = 5): Promise<InventoryMetrics> {
@@ -4247,7 +4300,7 @@ export function disableTotp(token: string, reason: string): Promise<void> {
 
 export function listActiveSessions(token: string, userId?: number): Promise<ActiveSession[]> {
   const query = userId ? `?user_id=${userId}` : "";
-  return request<ActiveSession[]>(`/security/sessions${query}`, { method: "GET" }, token);
+  return requestCollection<ActiveSession>(`/security/sessions${query}`, { method: "GET" }, token);
 }
 
 export function revokeSession(token: string, sessionId: number, reason: string): Promise<ActiveSession> {
@@ -4264,7 +4317,7 @@ export function revokeSession(token: string, sessionId: number, reason: string):
 
 export function listSyncOutbox(token: string, statusFilter?: SyncOutboxStatus): Promise<SyncOutboxEntry[]> {
   const query = statusFilter ? `?status_filter=${statusFilter}` : "";
-  return request<SyncOutboxEntry[]>(`/sync/outbox${query}`, { method: "GET" }, token);
+  return requestCollection<SyncOutboxEntry>(`/sync/outbox${query}`, { method: "GET" }, token);
 }
 
 export function retrySyncOutbox(token: string, ids: number[], reason: string): Promise<SyncOutboxEntry[]> {
@@ -4280,11 +4333,11 @@ export function retrySyncOutbox(token: string, ids: number[], reason: string): P
 }
 
 export function getSyncOutboxStats(token: string): Promise<SyncOutboxStatsEntry[]> {
-  return request<SyncOutboxStatsEntry[]>("/sync/outbox/stats", { method: "GET" }, token);
+  return requestCollection<SyncOutboxStatsEntry>("/sync/outbox/stats", { method: "GET" }, token);
 }
 
 export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncStoreHistory[]> {
-  return request<SyncStoreHistory[]>(
+  return requestCollection<SyncStoreHistory>(
     `/sync/history?limit_per_store=${limitPerStore}`,
     { method: "GET" },
     token,
@@ -4293,7 +4346,7 @@ export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncSt
 
 export function getSyncOverview(token: string, storeId?: number): Promise<SyncBranchOverview[]> {
   const query = typeof storeId === "number" ? `?store_id=${storeId}` : "";
-  return request<SyncBranchOverview[]>(`/sync/overview${query}`, { method: "GET" }, token);
+  return requestCollection<SyncBranchOverview>(`/sync/overview${query}`, { method: "GET" }, token);
 }
 
 function buildSyncConflictQuery(filters: SyncConflictFilters = {}): string {
@@ -4322,7 +4375,7 @@ export function listSyncConflicts(
   filters: SyncConflictFilters = {},
 ): Promise<SyncConflictLog[]> {
   const query = buildSyncConflictQuery(filters);
-  return request<SyncConflictLog[]>(`/sync/conflicts${query}`, { method: "GET" }, token);
+  return requestCollection<SyncConflictLog>(`/sync/conflicts${query}`, { method: "GET" }, token);
 }
 
 export function exportSyncConflictsPdf(
@@ -4377,7 +4430,7 @@ function buildAuditQuery(filters: AuditLogFilters = {}): string {
 export function getAuditLogs(token: string, filters: AuditLogFilters = {}): Promise<AuditLogEntry[]> {
   const query = buildAuditQuery(filters);
   const suffix = query ? `?${query}` : "";
-  return request<AuditLogEntry[]>(`/audit/logs${suffix}`, { method: "GET" }, token);
+  return requestCollection<AuditLogEntry>(`/audit/logs${suffix}`, { method: "GET" }, token);
 }
 
 export function exportAuditLogsCsv(
@@ -4490,7 +4543,7 @@ export function listCashSessions(
   limit = 30
 ): Promise<CashSession[]> {
   const params = new URLSearchParams({ store_id: String(storeId), limit: String(limit) });
-  return request<CashSession[]>(`/pos/cash/history?${params.toString()}`, { method: "GET" }, token);
+  return requestCollection<CashSession>(`/pos/cash/history?${params.toString()}`, { method: "GET" }, token);
 }
 
 export async function downloadPosReceipt(token: string, saleId: number): Promise<Blob> {
