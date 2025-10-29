@@ -96,7 +96,7 @@ function OrderDetailPage() {
   const [returnOpen, setReturnOpen] = useState(false);
 
   const totals = useMemo(() => {
-    const subtotal = order.items.reduce((sum, item) => sum + item.subtotal, 0);
+    const subtotal = order.items.reduce((sum, item) => sum + item.price * item.qty, 0);
     const discount = order.items.reduce((sum, item) => sum + (item.discount ?? 0), 0);
     const taxable = Math.max(0, subtotal - discount);
     const taxes = taxable * order.taxRate;
