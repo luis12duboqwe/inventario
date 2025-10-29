@@ -17,17 +17,24 @@ describe("memoización de peticiones del SDK", () => {
   });
 
   it("agrupa solicitudes GET simultáneas y evita duplicados", async () => {
-    const payload = [
-      {
-        id: 1,
-        name: "Central",
-        status: "activa",
-        code: "SUC-001",
-        timezone: "America/Mexico_City",
-        inventory_value: 1000,
-        created_at: "2025-10-25T10:00:00Z",
-      },
-    ];
+    const payload = {
+      items: [
+        {
+          id: 1,
+          name: "Central",
+          status: "activa",
+          code: "SUC-001",
+          timezone: "America/Mexico_City",
+          inventory_value: 1000,
+          created_at: "2025-10-25T10:00:00Z",
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 50,
+      pages: 1,
+      has_next: false,
+    };
 
     let releaseResponse: (() => void) | null = null;
     const fetchMock = vi.fn().mockImplementation(
@@ -59,23 +66,30 @@ describe("memoización de peticiones del SDK", () => {
     const [first, second] = await Promise.all([firstPromise, secondPromise]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(first).toEqual(payload);
-    expect(second).toEqual(payload);
+    expect(first).toEqual(payload.items);
+    expect(second).toEqual(payload.items);
     expect(first).not.toBe(second);
   });
 
   it("reutiliza la respuesta cacheada para solicitudes GET equivalentes", async () => {
-    const payload = [
-      {
-        id: 1,
-        name: "Central",
-        status: "activa",
-        code: "SUC-001",
-        timezone: "America/Mexico_City",
-        inventory_value: 1000,
-        created_at: "2025-10-25T10:00:00Z",
-      },
-    ];
+    const payload = {
+      items: [
+        {
+          id: 1,
+          name: "Central",
+          status: "activa",
+          code: "SUC-001",
+          timezone: "America/Mexico_City",
+          inventory_value: 1000,
+          created_at: "2025-10-25T10:00:00Z",
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 50,
+      pages: 1,
+      has_next: false,
+    };
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -89,37 +103,51 @@ describe("memoización de peticiones del SDK", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const first = await getStores(token);
-    expect(first).toEqual(payload);
+    expect(first).toEqual(payload.items);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const second = await getStores(token);
-    expect(second).toEqual(payload);
+    expect(second).toEqual(payload.items);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("invalida la caché cuando se ejecuta una operación mutable", async () => {
-    const initialStores = [
-      {
-        id: 1,
-        name: "Central",
-        status: "activa",
-        code: "SUC-001",
-        timezone: "America/Mexico_City",
-        inventory_value: 1000,
-        created_at: "2025-10-25T10:00:00Z",
-      },
-    ];
-    const updatedStores = [
-      {
-        id: 2,
-        name: "Norte",
-        status: "activa",
-        code: "SUC-002",
-        timezone: "America/Mexico_City",
-        inventory_value: 1500,
-        created_at: "2025-10-26T12:00:00Z",
-      },
-    ];
+    const initialStores = {
+      items: [
+        {
+          id: 1,
+          name: "Central",
+          status: "activa",
+          code: "SUC-001",
+          timezone: "America/Mexico_City",
+          inventory_value: 1000,
+          created_at: "2025-10-25T10:00:00Z",
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 50,
+      pages: 1,
+      has_next: false,
+    };
+    const updatedStores = {
+      items: [
+        {
+          id: 2,
+          name: "Norte",
+          status: "activa",
+          code: "SUC-002",
+          timezone: "America/Mexico_City",
+          inventory_value: 1500,
+          created_at: "2025-10-26T12:00:00Z",
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 50,
+      pages: 1,
+      has_next: false,
+    };
 
     const fetchMock = vi.fn()
       .mockImplementationOnce(async () => ({
@@ -150,7 +178,7 @@ describe("memoización de peticiones del SDK", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const first = await getStores(token);
-    expect(first).toEqual(initialStores);
+    expect(first).toEqual(initialStores.items);
 
     const movement: MovementInput = {
       producto_id: 99,
@@ -162,7 +190,7 @@ describe("memoización de peticiones del SDK", () => {
     await registerMovement(token, 1, movement, "Reabastecimiento autorizado");
 
     const second = await getStores(token);
-    expect(second).toEqual(updatedStores);
+    expect(second).toEqual(updatedStores.items);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
