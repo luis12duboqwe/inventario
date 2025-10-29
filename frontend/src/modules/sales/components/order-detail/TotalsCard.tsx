@@ -1,20 +1,32 @@
 import React from "react";
 
-type Props = {
+export type OrderTotalsCardProps = {
   subtotal: number;
   discount: number;
-  tax: number;
+  taxes: number;
   total: number;
+  paid: number;
+  balance: number;
 };
 
-function TotalsCard({ subtotal, discount, tax, total }: Props) {
-  const Row = ({ label, value, strong }: { label: string; value: number; strong?: boolean }) => (
+const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+
+type TotalsRowProps = {
+  label: string;
+  value: number;
+  strong?: boolean;
+};
+
+function TotalsRow({ label, value, strong }: TotalsRowProps) {
+  return (
     <div style={{ display: "flex", justifyContent: "space-between", fontWeight: strong ? 700 : 400 }}>
       <span style={{ color: strong ? "#e5e7eb" : "#94a3b8" }}>{label}</span>
-      <span>{Intl.NumberFormat().format(value || 0)}</span>
+      <span>{currency.format(value ?? 0)}</span>
     </div>
   );
+}
 
+function TotalsCard({ subtotal, discount, taxes, total, paid, balance }: OrderTotalsCardProps) {
   return (
     <div
       style={{
@@ -26,10 +38,12 @@ function TotalsCard({ subtotal, discount, tax, total }: Props) {
         gap: 8,
       }}
     >
-      <Row label="Subtotal" value={subtotal} />
-      <Row label="Descuento" value={-Math.abs(discount)} />
-      <Row label="Impuestos" value={tax} />
-      <Row label="Total" value={total} strong />
+      <TotalsRow label="Subtotal" value={subtotal} />
+      <TotalsRow label="Descuento" value={discount} />
+      <TotalsRow label="Impuestos" value={taxes} />
+      <TotalsRow label="Total" value={total} strong />
+      <TotalsRow label="Pagado" value={paid} />
+      <TotalsRow label="Saldo" value={balance} strong />
     </div>
   );
 }

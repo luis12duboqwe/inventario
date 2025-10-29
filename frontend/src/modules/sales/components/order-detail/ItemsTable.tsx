@@ -1,22 +1,27 @@
 import React from "react";
 
-type Item = {
+export type OrderItem = {
   id: string;
-  sku: string;
+  sku?: string;
   name: string;
-  price: number;
+  imei?: string;
+  serial?: string;
   qty: number;
+  price: number;
   discount?: number;
+  subtotal: number;
 };
 
-type Props = {
-  items?: Item[];
+export type OrderItemsTableProps = {
+  items?: OrderItem[];
 };
 
-function ItemsTable({ items }: Props) {
+const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+
+function ItemsTable({ items }: OrderItemsTableProps) {
   const data = Array.isArray(items) ? items : [];
 
-  if (!data.length) {
+  if (data.length === 0) {
     return <div style={{ padding: 12, color: "#9ca3af" }}>Sin items</div>;
   }
 
@@ -27,29 +32,25 @@ function ItemsTable({ items }: Props) {
           <tr style={{ background: "rgba(255, 255, 255, 0.03)" }}>
             <th style={{ textAlign: "left", padding: 10 }}>SKU</th>
             <th style={{ textAlign: "left", padding: 10 }}>Producto</th>
-            <th style={{ textAlign: "right", padding: 10 }}>Precio</th>
+            <th style={{ textAlign: "left", padding: 10 }}>IMEI/Serial</th>
             <th style={{ textAlign: "center", padding: 10 }}>Cant.</th>
+            <th style={{ textAlign: "right", padding: 10 }}>Precio</th>
             <th style={{ textAlign: "right", padding: 10 }}>Desc.</th>
             <th style={{ textAlign: "right", padding: 10 }}>Subtotal</th>
           </tr>
         </thead>
         <tbody>
-          {data.map((row) => {
-            const discount = row.discount || 0;
-            const subtotal = row.qty * row.price - discount;
-            return (
-              <tr key={row.id}>
-                <td style={{ padding: 10 }}>{row.sku}</td>
-                <td style={{ padding: 10 }}>{row.name}</td>
-                <td style={{ padding: 10, textAlign: "right" }}>{Intl.NumberFormat().format(row.price)}</td>
-                <td style={{ padding: 10, textAlign: "center" }}>{row.qty}</td>
-                <td style={{ padding: 10, textAlign: "right" }}>
-                  {discount ? `-${Intl.NumberFormat().format(discount)}` : "—"}
-                </td>
-                <td style={{ padding: 10, textAlign: "right" }}>{Intl.NumberFormat().format(subtotal)}</td>
-              </tr>
-            );
-          })}
+          {data.map((item) => (
+            <tr key={item.id}>
+              <td style={{ padding: 10 }}>{item.sku ?? "—"}</td>
+              <td style={{ padding: 10 }}>{item.name}</td>
+              <td style={{ padding: 10 }}>{item.imei ?? item.serial ?? "—"}</td>
+              <td style={{ padding: 10, textAlign: "center" }}>{item.qty}</td>
+              <td style={{ padding: 10, textAlign: "right" }}>{currency.format(item.price)}</td>
+              <td style={{ padding: 10, textAlign: "right" }}>{currency.format(item.discount ?? 0)}</td>
+              <td style={{ padding: 10, textAlign: "right" }}>{currency.format(item.subtotal)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

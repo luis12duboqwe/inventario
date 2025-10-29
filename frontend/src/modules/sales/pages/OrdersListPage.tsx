@@ -1,19 +1,23 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import {
-  OrdersBulkActions,
   OrdersCancelModal,
   OrdersEmailInvoiceModal,
-  OrdersExportModal,
-  OrdersFiltersPanel,
   OrdersPaymentCaptureModal,
   OrdersReturnModal,
+} from "../components/orders";
+import {
+  OrdersBulkActions as OrdersListBulkActions,
+  OrdersExportModal,
+  OrdersFiltersBar,
+  OrdersImportModal,
+  OrdersPagination,
   OrdersSidePanel,
   OrdersSummaryCards,
   OrdersTable,
   type OrderFilters,
   type OrderRow,
-} from "../components/orders";
+} from "../components/orders-list";
 
 type OrderRecord = OrderRow & {
   storeId: string;
@@ -27,7 +31,10 @@ const ORDERS_DATA: OrderRecord[] = [
     customer: "Andrea Solís",
     itemsCount: 3,
     total: 25999,
-    status: "PAID",
+    paid: 25999,
+    status: "COMPLETED",
+    paymentStatus: "PAID",
+    channel: "POS",
     storeId: "MX-001",
   },
   {
@@ -37,7 +44,10 @@ const ORDERS_DATA: OrderRecord[] = [
     customer: "Corporativo Atlan",
     itemsCount: 8,
     total: 112499,
+    paid: 56249,
     status: "OPEN",
+    paymentStatus: "PARTIAL",
+    channel: "WEB",
     storeId: "MX-002",
   },
   {
@@ -47,7 +57,10 @@ const ORDERS_DATA: OrderRecord[] = [
     customer: "Luis Hernández",
     itemsCount: 1,
     total: 7899,
-    status: "PAID",
+    paid: 0,
+    status: "OPEN",
+    paymentStatus: "UNPAID",
+    channel: "POS",
     storeId: "MX-001",
   },
   {
@@ -57,7 +70,10 @@ const ORDERS_DATA: OrderRecord[] = [
     customer: "Ferretería Norte",
     itemsCount: 5,
     total: 34999,
+    paid: 34999,
     status: "CANCELLED",
+    paymentStatus: "REFUNDED",
+    channel: "MANUAL",
     storeId: "MX-003",
   },
   {
@@ -67,7 +83,10 @@ const ORDERS_DATA: OrderRecord[] = [
     customer: "Sofía Ramírez",
     itemsCount: 2,
     total: 14599,
-    status: "OPEN",
+    paid: 0,
+    status: "DRAFT",
+    paymentStatus: "UNPAID",
+    channel: "WEB",
     storeId: "MX-002",
   },
   {
@@ -77,7 +96,10 @@ const ORDERS_DATA: OrderRecord[] = [
     customer: "Consultores Delta",
     itemsCount: 6,
     total: 68500,
-    status: "REFUNDED",
+    paid: 68500,
+    status: "COMPLETED",
+    paymentStatus: "PAID",
+    channel: "MANUAL",
     storeId: "MX-001",
   },
   {
@@ -87,7 +109,10 @@ const ORDERS_DATA: OrderRecord[] = [
     customer: "Laura Ponce",
     itemsCount: 4,
     total: 18999,
-    status: "DRAFT",
+    paid: 12000,
+    status: "OPEN",
+    paymentStatus: "PARTIAL",
+    channel: "POS",
     storeId: "MX-002",
   },
 ];
@@ -95,16 +120,19 @@ const ORDERS_DATA: OrderRecord[] = [
 const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
 
 function OrdersListPage() {
-  const [filters, setFilters] = useState<OrderFilters>({ status: "ALL" });
+  const [filters, setFilters] = useState<OrderFilters>({ status: "ALL", payment: "ALL", channel: "ALL" });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeRow, setActiveRow] = useState<OrderRow | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 5;
 
   const filteredRows = useMemo(() => {
     const normalizedQuery = filters.query?.trim().toLowerCase() ?? "";
@@ -112,7 +140,10 @@ function OrdersListPage() {
       if (filters.status && filters.status !== "ALL" && order.status !== filters.status) {
         return false;
       }
-      if (filters.storeId && order.storeId !== filters.storeId) {
+      if (filters.payment && filters.payment !== "ALL" && order.paymentStatus !== filters.payment) {
+        return false;
+      }
+      if (filters.channel && filters.channel !== "ALL" && order.channel !== filters.channel) {
         return false;
       }
       if (filters.dateFrom && order.date < filters.dateFrom) {
@@ -127,12 +158,12 @@ function OrdersListPage() {
       const haystack = `${order.customer} ${order.number}`.toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [filters.dateFrom, filters.dateTo, filters.query, filters.status, filters.storeId]);
+  }, [filters.channel, filters.dateFrom, filters.dateTo, filters.payment, filters.query, filters.status]);
 
   const summaryCards = useMemo(() => {
     const count = filteredRows.length;
     const totalAmount = filteredRows.reduce((sum, order) => sum + order.total, 0);
-    const paidCount = filteredRows.filter((order) => order.status === "PAID").length;
+    const paidCount = filteredRows.filter((order) => order.paymentStatus === "PAID").length;
     const openCount = filteredRows.filter((order) => order.status === "OPEN").length;
     const average = count > 0 ? totalAmount / count : 0;
 
@@ -150,17 +181,29 @@ function OrdersListPage() {
 
   const rows: OrderRow[] = useMemo(
     () =>
-      filteredRows.map(({ id, number, date, customer, itemsCount, total, status }) => ({
+      filteredRows.map(({ id, number, date, customer, itemsCount, total, paid, status, paymentStatus, channel }) => ({
         id,
         number,
         date,
         customer,
         itemsCount,
         total,
+        paid,
         status,
+        paymentStatus,
+        channel,
       })),
     [filteredRows],
   );
+
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const paginatedRows = rows.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    if (page > pages) {
+      setPage(pages);
+    }
+  }, [page, pages]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((current) =>
@@ -170,15 +213,23 @@ function OrdersListPage() {
 
   const toggleSelectAll = () => {
     setSelectedIds((current) => {
-      if (current.length === rows.length) {
-        return [];
+      const currentPageIds = paginatedRows.map((row) => row.id);
+      if (currentPageIds.every((identifier) => current.includes(identifier))) {
+        return current.filter((identifier) => !currentPageIds.includes(identifier));
       }
-      return rows.map((row) => row.id);
+      const unique = new Set([...current, ...currentPageIds]);
+      return Array.from(unique);
     });
   };
 
   const handleFiltersChange = (next: OrderFilters) => {
     setFilters(next);
+    setSelectedIds([]);
+    setPage(1);
+  };
+
+  const handleMarkPaidMany = () => {
+    setMessage(`Se marcaron como pagadas ${selectedIds.length} órdenes.`);
     setSelectedIds([]);
   };
 
@@ -199,9 +250,13 @@ function OrdersListPage() {
     setCaptureOpen(false);
   };
 
+  const handlePrintSelected = () => {
+    setMessage(`Se enviaron ${selectedIds.length} órdenes a impresión.`);
+  };
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <OrdersFiltersPanel value={filters} onChange={handleFiltersChange} />
+      <OrdersFiltersBar value={filters} onChange={handleFiltersChange} />
       <OrdersSummaryCards items={summaryCards} />
 
       {message ? (
@@ -218,15 +273,22 @@ function OrdersListPage() {
         </div>
       ) : null}
 
-      <OrdersBulkActions
+      <OrdersListBulkActions
         selectedCount={selectedIds.length}
-        onExport={() => setExportOpen(true)}
-        onEmail={() => setEmailOpen(true)}
+        onMarkPaid={handleMarkPaidMany}
         onCancel={() => setCancelOpen(true)}
-        onRefund={() => setReturnOpen(true)}
+        onExport={() => setExportOpen(true)}
+        onPrint={handlePrintSelected}
+        onImport={() => setImportOpen(true)}
       />
 
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button onClick={() => setEmailOpen(true)} style={{ padding: "8px 12px", borderRadius: 8 }}>
+          Enviar recibo
+        </button>
+        <button onClick={() => setReturnOpen(true)} style={{ padding: "8px 12px", borderRadius: 8 }}>
+          Procesar devolución
+        </button>
         <button
           onClick={() => setCaptureOpen(true)}
           style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
@@ -236,7 +298,7 @@ function OrdersListPage() {
       </div>
 
       <OrdersTable
-        rows={rows}
+        rows={paginatedRows}
         loading={false}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
@@ -246,6 +308,9 @@ function OrdersListPage() {
 
       <OrdersSidePanel row={activeRow} onClose={() => setActiveRow(null)} />
 
+      <OrdersPagination page={page} pages={pages} onPage={setPage} />
+
+      <OrdersImportModal open={importOpen} onClose={() => setImportOpen(false)} />
       <OrdersExportModal open={exportOpen} onClose={() => setExportOpen(false)} />
       <OrdersEmailInvoiceModal open={emailOpen} onClose={() => setEmailOpen(false)} />
       <OrdersCancelModal open={cancelOpen} onClose={() => setCancelOpen(false)} onConfirm={handleBulkCancel} />

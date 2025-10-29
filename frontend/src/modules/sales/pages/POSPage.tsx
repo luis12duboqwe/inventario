@@ -17,6 +17,21 @@ import {
   type POSFilters,
   type ProductCard,
 } from "../components/pos";
+import {
+  POSActions as DrawerActions,
+  POSAmountPad,
+  POSCartLines as DrawerCartLines,
+  POSChangeDue,
+  POSCustomerSelector as DrawerCustomerSelector,
+  POSDiscountPanel,
+  POSDrawer,
+  POSLineEditor,
+  POSPaymentMethods,
+  POSQuickGrid,
+  POSSearchBar as DrawerSearchBar,
+  POSTaxesPanel,
+  type POSPaymentMethod,
+} from "../components/pos-drawer";
 
 type HoldOrderRecord = HoldOrder & {
   items: CartItem[];
@@ -159,6 +174,14 @@ function POSPage() {
   const [holdDrawerOpen, setHoldDrawerOpen] = useState(false);
   const [holdOrders, setHoldOrders] = useState<HoldOrderRecord[]>([]);
   const [customerCursor, setCustomerCursor] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerQuery, setDrawerQuery] = useState("");
+  const [drawerMethod, setDrawerMethod] = useState<POSPaymentMethod>("CASH");
+  const [drawerCashGiven, setDrawerCashGiven] = useState(0);
+  const [drawerLineId, setDrawerLineId] = useState<string | null>(null);
+  const [drawerNotes, setDrawerNotes] = useState<Record<string, string>>({});
+  const [drawerDiscountPct, setDrawerDiscountPct] = useState(0);
+  const [drawerDiscountAbs, setDrawerDiscountAbs] = useState(0);
 
   useEffect(() => {
     setLoadingProducts(true);
@@ -178,6 +201,75 @@ function POSPage() {
     return { subtotal, discountTotal, taxTotal, grandTotal };
   }, [cart]);
 
+  const quickItems = useMemo(() => {
+    const normalized = drawerQuery.trim().toLowerCase();
+    const source = normalized
+      ? PRODUCT_CATALOG.filter(
+          (item) =>
+            item.name.toLowerCase().includes(normalized) ||
+            item.sku.toLowerCase().includes(normalized),
+        )
+      : PRODUCT_CATALOG;
+    return source.slice(0, 12).map(({ id, name, price, imageUrl }) => ({
+      id,
+      name,
+      price,
+      imageUrl,
+    }));
+  }, [drawerQuery]);
+
+  const drawerCartLines = useMemo(
+    () =>
+      cart.map((item) => ({
+        id: item.id,
+        name: item.name,
+        sku: item.sku,
+        qty: item.qty,
+        price: item.price,
+        discount: item.discount,
+        subtotal: item.qty * item.price - (item.discount ?? 0),
+      })),
+    [cart],
+  );
+
+  const activeDrawerLine = useMemo(() => {
+    if (!drawerLineId) return null;
+    const line = cart.find((item) => item.id === drawerLineId);
+    if (!line) return null;
+    const subtotal = line.qty * line.price;
+    const discountValue = line.discount ?? 0;
+    const discountPct = subtotal > 0 ? Math.round((discountValue / subtotal) * 100) : 0;
+    return {
+      id: line.id,
+      qty: line.qty,
+      discountPct,
+      note: drawerNotes[line.id] ?? "",
+    };
+  }, [cart, drawerLineId, drawerNotes]);
+
+  const taxRows = useMemo(() => {
+    if (!totals.taxTotal) return [];
+    return [{ label: "IVA 16%", amount: totals.taxTotal }];
+  }, [totals.taxTotal]);
+
+  useEffect(() => {
+    if (drawerOpen) {
+      setDrawerDiscountAbs(totals.discountTotal);
+      const pct = totals.subtotal > 0 ? Math.round((totals.discountTotal / totals.subtotal) * 100) : 0;
+      setDrawerDiscountPct(pct);
+      setDrawerCashGiven(totals.grandTotal);
+    }
+  }, [drawerOpen, totals.discountTotal, totals.grandTotal, totals.subtotal]);
+
+  useEffect(() => {
+    if (drawerLineId && !cart.find((item) => item.id === drawerLineId)) {
+      setDrawerLineId(null);
+    }
+    if (drawerOpen && cart.length > 0 && !drawerLineId) {
+      setDrawerLineId(cart[0].id);
+    }
+  }, [cart, drawerLineId, drawerOpen]);
+
   const focusSearch = useCallback(() => {
     if (searchInputRef.current) {
       searchInputRef.current.focus();
@@ -188,6 +280,11 @@ function POSPage() {
   const handleSearch = useCallback(() => {
     setQuery(pendingQuery);
   }, [pendingQuery]);
+
+  const handleDrawerSearchSubmit = useCallback(() => {
+    setPendingQuery(drawerQuery);
+    setQuery(drawerQuery);
+  }, [drawerQuery]);
 
   const handleFiltersChange = useCallback((next: POSFilters) => {
     setFilters(next);
@@ -221,6 +318,7 @@ function POSPage() {
         },
       ];
     });
+    setDrawerLineId(id);
   }, []);
 
   const handleInc = useCallback((id: string) => {
@@ -255,6 +353,67 @@ function POSPage() {
     setCart([]);
     setCustomer(null);
     setEditingId(null);
+  }, []);
+
+  const handleDrawerQty = useCallback((id: string, qty: number) => {
+    const product = PRODUCT_CATALOG.find((item) => item.id === id);
+    const maxStock = product?.stock ?? Number.POSITIVE_INFINITY;
+    const sanitizedQty = Math.max(0, Math.min(Math.floor(Number.isFinite(qty) ? qty : 0), maxStock));
+    if (sanitizedQty <= 0) {
+      setCart((prev) => prev.filter((item) => item.id !== id));
+      return;
+    }
+    setCart((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, qty: sanitizedQty } : item)),
+    );
+    setDrawerLineId(id);
+  }, []);
+
+  const handleDrawerRemove = useCallback(
+    (id: string) => {
+      handleRemove(id);
+      setDrawerLineId((current) => (current === id ? null : current));
+    },
+    [handleRemove],
+  );
+
+  const handleDrawerPatchLine = useCallback(
+    (patch: { qty?: number; discountPct?: number; note?: string }) => {
+      if (!drawerLineId) return;
+      setCart((prev) =>
+        prev.map((item) => {
+          if (item.id !== drawerLineId) return item;
+          const product = PRODUCT_CATALOG.find((entry) => entry.id === item.id);
+          const maxStock = product?.stock ?? Number.POSITIVE_INFINITY;
+          let nextQty = item.qty;
+          if (patch.qty !== undefined) {
+            nextQty = Math.max(1, Math.min(Math.floor(patch.qty), maxStock));
+          }
+          let nextDiscount = item.discount ?? 0;
+          if (patch.discountPct !== undefined) {
+            const sanitizedPct = Math.max(0, Math.min(patch.discountPct, 100));
+            const base = nextQty * item.price;
+            nextDiscount = (sanitizedPct / 100) * base;
+          }
+          return { ...item, qty: nextQty, discount: nextDiscount };
+        }),
+      );
+      if (patch.note !== undefined) {
+        setDrawerNotes((prev) => ({ ...prev, [drawerLineId]: patch.note ?? "" }));
+      }
+    },
+    [drawerLineId],
+  );
+
+  const handleDrawerDiscountPatch = useCallback((patch: { valuePct?: number; valueAbs?: number }) => {
+    if (patch.valuePct !== undefined) {
+      const sanitizedPct = Math.max(0, Math.min(patch.valuePct, 100));
+      setDrawerDiscountPct(sanitizedPct);
+    }
+    if (patch.valueAbs !== undefined) {
+      const sanitizedAbs = Math.max(0, patch.valueAbs);
+      setDrawerDiscountAbs(sanitizedAbs);
+    }
   }, []);
 
   const handleEditDiscount = useCallback((id: string) => {
@@ -334,6 +493,25 @@ function POSPage() {
     setCustomerCursor((prev) => prev + 1);
   }, [customerCursor]);
 
+  const handleDrawerSaveDraft = useCallback(() => {
+    handleHold();
+  }, [handleHold]);
+
+  const handleDrawerHoldAction = useCallback(() => {
+    handleHold();
+    setDrawerOpen(false);
+  }, [handleHold]);
+
+  const handleDrawerResume = useCallback(() => {
+    setHoldDrawerOpen(true);
+    setDrawerOpen(false);
+  }, []);
+
+  const handleDrawerComplete = useCallback(() => {
+    setDrawerOpen(false);
+    setPaymentsOpen(true);
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "F1") {
@@ -397,6 +575,12 @@ function POSPage() {
             onHold={handleHold}
             onClear={handleClearCart}
           />
+          <button
+            onClick={() => setDrawerOpen(true)}
+            style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "#fff", border: 0 }}
+          >
+            Abrir POS Drawer
+          </button>
         </div>
       </div>
 
@@ -419,6 +603,30 @@ function POSPage() {
         onResume={handleResumeHold}
         onDelete={handleDeleteHold}
       />
+
+      <POSDrawer open={drawerOpen} title="POS" onClose={() => setDrawerOpen(false)}>
+        <DrawerSearchBar value={drawerQuery} onChange={setDrawerQuery} onSubmit={handleDrawerSearchSubmit} />
+        <POSQuickGrid items={quickItems} onPick={handlePickProduct} />
+        <DrawerCustomerSelector
+          customer={customer ? { id: customer.id, name: customer.name, phone: customer.phone } : undefined}
+          onPick={handlePickCustomer}
+          onCreate={handlePickCustomer}
+        />
+        <DrawerCartLines items={drawerCartLines} onQty={handleDrawerQty} onRemove={handleDrawerRemove} />
+        <POSLineEditor line={activeDrawerLine} onPatch={handleDrawerPatchLine} />
+        <POSDiscountPanel valuePct={drawerDiscountPct} valueAbs={drawerDiscountAbs} onPatch={handleDrawerDiscountPatch} />
+        <POSTaxesPanel rows={taxRows} />
+        <POSPaymentMethods method={drawerMethod} onChange={setDrawerMethod} />
+        <POSAmountPad value={drawerCashGiven} onChange={setDrawerCashGiven} />
+        <POSChangeDue total={totals.grandTotal} cash={drawerCashGiven} />
+        <DrawerActions
+          onSaveDraft={handleDrawerSaveDraft}
+          onHold={handleDrawerHoldAction}
+          onResume={handleDrawerResume}
+          onComplete={handleDrawerComplete}
+          disabled={!cart.length}
+        />
+      </POSDrawer>
     </div>
   );
 }
