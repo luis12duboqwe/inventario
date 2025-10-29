@@ -18,6 +18,14 @@ import {
   OrdersPaymentCaptureModal,
   OrdersReturnModal,
 } from "../components/orders";
+import {
+  CreditNoteModal,
+  PaymentModal,
+  RefundModal,
+  SettlementCard,
+  TransactionsTimeline,
+  CustomerDebtCard,
+} from "../components/payments";
 
 const ORDER_SAMPLE = {
   id: "ord-1002",
@@ -77,6 +85,22 @@ const ORDER_SAMPLE = {
     { id: "evt-1", date: "2025-02-15T10:15:00", message: "Orden creada desde canal WEB" },
     { id: "evt-2", date: "2025-02-16T11:45:00", message: "Pago parcial registrado" },
   ],
+  transactions: [
+    {
+      id: "txn-1",
+      kind: "PAY" as const,
+      message: "Pago parcial registrado con tarjeta",
+      date: "2025-02-16T11:45:00",
+      amount: 30000,
+    },
+    {
+      id: "txn-2",
+      kind: "CN" as const,
+      message: "Nota de crédito aplicada por diferencia de precio",
+      date: "2025-02-17T09:20:00",
+      amount: 2500,
+    },
+  ],
   attachments: [
     { id: "att-1", name: "cotizacion.pdf", url: "#" },
     { id: "att-2", name: "orden_compra.xlsx", url: "#" },
@@ -94,6 +118,9 @@ function OrderDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [creditNoteOpen, setCreditNoteOpen] = useState(false);
 
   const totals = useMemo(() => {
     const subtotal = order.items.reduce((sum, item) => sum + item.subtotal, 0);
@@ -129,12 +156,22 @@ function OrderDetailPage() {
     setReturnOpen(false);
   };
 
-  const handleMarkPaid = () => {
-    setMessage("La orden se marcó como pagada.");
+  const handleSubmitPayment = (payload: { amount: number }) => {
+    setMessage(`Pago registrado por ${currency.format(payload.amount)}.`);
+    setPaymentOpen(false);
+    // TODO(wire): delegar al servicio/store correspondiente
   };
 
-  const handleRefund = () => {
-    setMessage("Se registró una solicitud de reembolso.");
+  const handleSubmitRefund = (payload: { amount: number }) => {
+    setMessage(`Se procesó un reembolso por ${currency.format(payload.amount)}.`);
+    setRefundOpen(false);
+    // TODO(wire): delegar al servicio/store correspondiente
+  };
+
+  const handleSubmitCreditNote = (payload: { total: number }) => {
+    setMessage(`Nota de crédito emitida por ${currency.format(payload.total)}.`);
+    setCreditNoteOpen(false);
+    // TODO(wire): delegar al servicio/store correspondiente
   };
 
   return (
@@ -146,7 +183,7 @@ function OrderDetailPage() {
         onPrint={handlePrint}
         onExportPDF={handleExportPDF}
         onCancel={() => setCancelOpen(true)}
-        onMarkPaid={handleMarkPaid}
+        onMarkPaid={() => setPaymentOpen(true)}
       />
 
       {message ? (
@@ -167,10 +204,13 @@ function OrderDetailPage() {
         <div style={{ display: "grid", gap: 12 }}>
           <OrderItemsTable items={order.items} />
           <OrderNotes value={order.note} />
+          <TransactionsTimeline items={order.transactions} />
         </div>
 
         <div style={{ display: "grid", gap: 12 }}>
           <OrderCustomerCard customer={order.customer} />
+          <CustomerDebtCard totalDebt={120000} creditLimit={250000} />
+          <SettlementCard total={totals.total} paid={totals.paid} />
           <OrderTotalsCard
             subtotal={totals.subtotal}
             discount={totals.discount}
@@ -195,8 +235,8 @@ function OrderDetailPage() {
       <OrderActionsBar
         onPrint={handlePrint}
         onPDF={handleExportPDF}
-        onMarkPaid={handleMarkPaid}
-        onRefund={handleRefund}
+        onMarkPaid={() => setPaymentOpen(true)}
+        onRefund={() => setRefundOpen(true)}
         onCancel={() => setCancelOpen(true)}
       />
 
@@ -204,6 +244,9 @@ function OrderDetailPage() {
       <OrdersCancelModal open={cancelOpen} onClose={() => setCancelOpen(false)} onConfirm={handleCancel} />
       <OrdersPaymentCaptureModal open={captureOpen} onClose={() => setCaptureOpen(false)} onSubmit={handleCapturePayment} />
       <OrdersReturnModal open={returnOpen} onClose={() => setReturnOpen(false)} onSubmit={handleRegisterReturn} />
+      <PaymentModal open={paymentOpen} orderId={order.id} onClose={() => setPaymentOpen(false)} onSubmit={handleSubmitPayment} />
+      <RefundModal open={refundOpen} orderId={order.id} onClose={() => setRefundOpen(false)} onSubmit={handleSubmitRefund} />
+      <CreditNoteModal open={creditNoteOpen} orderId={order.id} onClose={() => setCreditNoteOpen(false)} onSubmit={handleSubmitCreditNote} />
     </div>
   );
 }
