@@ -1,44 +1,47 @@
 import React from "react";
 
-import OrderStatusBadge from "../orders/StatusBadge";
+import OrdersPaymentStatusBadge from "../orders-list/PaymentStatusBadge";
+import OrdersStatusBadge from "../orders-list/StatusBadge";
 
-type Props = {
-  orderNumber?: string;
+export type OrderHeaderProps = {
+  number?: string;
   status: string;
+  paymentStatus: string;
   onPrint?: () => void;
-  onEmail?: () => void;
-  onCapturePayment?: () => void;
+  onExportPDF?: () => void;
   onCancel?: () => void;
+  onMarkPaid?: () => void;
 };
 
-function Header({ orderNumber, status, onPrint, onEmail, onCapturePayment, onCancel }: Props) {
+function Header({ number, status, paymentStatus, onPrint, onExportPDF, onCancel, onMarkPaid }: OrderHeaderProps) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div>
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>Factura</div>
-        <h2 style={{ margin: "4px 0 0 0" }}>{orderNumber || "—"}</h2>
-        <div style={{ marginTop: 6 }}>
-          <OrderStatusBadge value={status} />
+      <div style={{ display: "grid", gap: 6 }}>
+        <div style={{ fontSize: 12, color: "#94a3b8" }}>Pedido</div>
+        <h2 style={{ margin: 0 }}>{number ?? "—"}</h2>
+        <div style={{ display: "flex", gap: 8 }}>
+          <OrdersPaymentStatusBadge value={paymentStatus} />
+          <OrdersStatusBadge value={status} />
         </div>
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={onPrint} style={{ padding: "8px 12px", borderRadius: 8 }}>
-          Imprimir
-        </button>
-        <button onClick={onEmail} style={{ padding: "8px 12px", borderRadius: 8 }}>
-          Enviar
-        </button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
-          onClick={onCapturePayment}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0, fontWeight: 700 }}
+          onClick={onMarkPaid}
+          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
         >
-          Registrar pago
+          Marcar pagado
         </button>
         <button
           onClick={onCancel}
           style={{ padding: "8px 12px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}
         >
           Cancelar
+        </button>
+        <button onClick={onPrint} style={{ padding: "8px 12px", borderRadius: 8 }}>
+          Imprimir
+        </button>
+        <button onClick={onExportPDF} style={{ padding: "8px 12px", borderRadius: 8 }}>
+          PDF
         </button>
       </div>
     </div>
