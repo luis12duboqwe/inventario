@@ -39,6 +39,7 @@ export const PageToolbar: React.FC<PageToolbarProps> = ({
   className,
 }) => {
   const [value, setValue] = useState<string>(defaultSearch);
+  const showSearch = Boolean(onSearch) && !disableSearch;
 
   useEffect(() => {
     setValue(defaultSearch);
@@ -46,10 +47,10 @@ export const PageToolbar: React.FC<PageToolbarProps> = ({
 
   // debounce simple
   useEffect(() => {
-    if (!onSearch) return;
+    if (!showSearch || !onSearch) return;
     const h = setTimeout(() => onSearch(value), 300);
     return () => clearTimeout(h);
-  }, [value, onSearch]);
+  }, [value, onSearch, showSearch]);
 
   const handleChange = useCallback<React.ChangeEventHandler<HTMLInputElement>>((e) => {
     setValue(e.target.value);
@@ -96,24 +97,25 @@ export const PageToolbar: React.FC<PageToolbarProps> = ({
       }}
     >
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          aria-label="Buscar"
-          type="search"
-          placeholder={searchPlaceholder}
-          value={value}
-          onChange={handleChange}
-          disabled={disableSearch}
-          style={{
-            minWidth: 220,
-            flex: "1 1 260px",
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(0,0,0,0.25)",
-            color: "#e5e7eb",
-            outline: "none",
-          }}
-        />
+        {showSearch ? (
+          <input
+            aria-label="Buscar"
+            type="search"
+            placeholder={searchPlaceholder}
+            value={value}
+            onChange={handleChange}
+            style={{
+              minWidth: 220,
+              flex: "1 1 260px",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(0,0,0,0.25)",
+              color: "#e5e7eb",
+              outline: "none",
+            }}
+          />
+        ) : null}
         <div style={{ flex: "1 1 auto" }}>{filters}</div>
         {renderedActions}
       </div>
