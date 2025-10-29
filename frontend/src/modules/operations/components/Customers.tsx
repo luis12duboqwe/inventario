@@ -1,9 +1,11 @@
-import CustomersFiltersPanel from "../../../pages/operaciones/customers/components/FiltersPanel";
-import CustomersFormModal from "../../../pages/operaciones/customers/components/FormModal";
-import CustomersSidePanel from "../../../pages/operaciones/customers/components/SidePanel";
-import CustomersSummaryCards from "../../../pages/operaciones/customers/components/SummaryCards";
-import CustomersTable from "../../../pages/operaciones/customers/components/Table";
-import CustomersToolbar from "../../../pages/operaciones/customers/components/Toolbar";
+import {
+  CustomersFiltersPanel,
+  CustomersFormModal,
+  CustomersSidePanel,
+  CustomersSummaryCards,
+  CustomersTable,
+  CustomersToolbar,
+} from "./customers";
 import {
   CUSTOMER_STATUSES,
   CUSTOMER_TYPES,
@@ -64,6 +66,11 @@ function Customers({ token }: Props) {
     refreshDashboard,
   } = useCustomersController({ token });
 
+  const customerList = Array.isArray(customers) ? customers : [];
+  const notesList = Array.isArray(customerNotes) ? customerNotes : [];
+  const historyList = Array.isArray(customerHistory) ? customerHistory : [];
+  const invoicesList = Array.isArray(recentInvoices) ? recentInvoices : [];
+
   return (
     <section className="customers-module">
       <CustomersToolbar error={error} message={message} />
@@ -96,13 +103,13 @@ function Customers({ token }: Props) {
             statuses={CUSTOMER_STATUSES}
             types={CUSTOMER_TYPES}
             debtOptions={DEBT_FILTERS}
-            customersCount={customers.length}
+            customersCount={customerList.length}
             totalDebt={totalDebt}
             onFilterChange={handleCustomerFiltersChange}
             formatCurrency={formatCurrency}
           />
           <CustomersTable
-            customers={customers}
+            customers={customerList}
             loading={loadingCustomers}
             selectedCustomerId={selectedCustomerId}
             formatCurrency={formatCurrency}
@@ -128,9 +135,9 @@ function Customers({ token }: Props) {
           summary={customerSummary}
           summaryLoading={summaryLoading}
           summaryError={summaryError}
-          customerHistory={customerHistory}
-          customerNotes={customerNotes}
-          recentInvoices={recentInvoices}
+          customerHistory={historyList}
+          customerNotes={notesList}
+          recentInvoices={invoicesList}
           ledgerLabels={LEDGER_LABELS}
           resolveDetails={resolveDetails}
           formatCurrency={formatCurrency}
