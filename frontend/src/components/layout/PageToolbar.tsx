@@ -1,84 +1,125 @@
-import { useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
+/* eslint-disable react-hooks/exhaustive-deps */
+import React, { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
-import Button from "../../shared/components/ui/Button";
-import type { PageHeaderAction } from "./PageHeader";
-
-type PageToolbarProps = {
-  actions?: PageHeaderAction[];
-  onSearch?: (value: string) => void;
-  searchPlaceholder?: string;
-  filters?: ReactNode;
-  children?: ReactNode;
+export type ToolbarAction = {
+  id: string;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
 };
 
-function PageToolbarSM({
-  actions,
-  onSearch,
-  searchPlaceholder = "Buscar…",
+export type PageToolbarProps = {
+  /** Nodo con filtros avanzados (chips, selects, etc.) */
+  filters?: ReactNode;
+  /** Placeholder del buscador */
+  searchPlaceholder?: string;
+  /** Callback de búsqueda (debounced 300ms) */
+  onSearch?: (value: string) => void;
+  /** Acciones a la derecha (botones) */
+  actions?: ToolbarAction[];
+  /** Contenido libre adicional (slots) */
+  children?: ReactNode;
+  /** Valor inicial del buscador */
+  defaultSearch?: string;
+  /** Deshabilitar buscador */
+  disableSearch?: boolean;
+  /** Clase externa para estilos */
+  className?: string;
+};
+
+export const PageToolbar: React.FC<PageToolbarProps> = ({
   filters,
+  searchPlaceholder = "Buscar…",
+  onSearch,
+  actions = [],
   children,
-}: PageToolbarProps) {
-  const [searchValue, setSearchValue] = useState("");
-  const searchId = useId();
+  defaultSearch = "",
+  disableSearch = false,
+  className,
+}) => {
+  const [value, setValue] = useState<string>(defaultSearch);
 
-  const toolbarActions = useMemo(() => actions ?? [], [actions]);
+  useEffect(() => {
+    setValue(defaultSearch);
+  }, [defaultSearch]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!onSearch) {
-      return;
-    }
-    onSearch(searchValue.trim());
-  };
+  // debounce simple
+  useEffect(() => {
+    if (!onSearch) return;
+    const h = setTimeout(() => onSearch(value), 300);
+    return () => clearTimeout(h);
+  }, [value, onSearch]);
+
+  const handleChange = useCallback<React.ChangeEventHandler<HTMLInputElement>>((e) => {
+    setValue(e.target.value);
+  }, []);
+
+  const renderedActions = useMemo(() => {
+    if (!actions?.length) return null;
+    return (
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {actions.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            onClick={a.onClick}
+            disabled={!!a.disabled}
+            title={a.title || a.label}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: a.disabled ? "#3a3a3a" : "#2563eb",
+              color: "#fff",
+              border: "none",
+              cursor: a.disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+    );
+  }, [actions]);
 
   return (
-    <section className="page-toolbar-sm">
-      <div className="page-toolbar-sm__row">
-        {onSearch ? (
-          <form className="page-toolbar-sm__search" onSubmit={handleSubmit} role="search">
-            <label className="sr-only" htmlFor={searchId}>
-              Buscar
-            </label>
-            <input
-              id={searchId}
-              type="search"
-              placeholder={searchPlaceholder}
-              value={searchValue}
-              onChange={(event) => setSearchValue(event.target.value)}
-            />
-            <Button type="submit" variant="secondary" size="sm">
-              Buscar
-            </Button>
-          </form>
-        ) : null}
-
-        {toolbarActions.length > 0 ? (
-          <div className="page-toolbar-sm__actions">
-            {toolbarActions.map((action) => (
-              <Button
-                key={action.id ?? action.label}
-                variant={action.variant ?? "primary"}
-                size="sm"
-                type={action.type ?? "button"}
-                onClick={action.onClick}
-                disabled={action.disabled}
-                leadingIcon={action.icon}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
-        ) : null}
+    <div
+      className={className}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        padding: 12,
+        borderRadius: 12,
+        background: "rgba(255,255,255,0.03)",
+        border: "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          aria-label="Buscar"
+          type="search"
+          placeholder={searchPlaceholder}
+          value={value}
+          onChange={handleChange}
+          disabled={disableSearch}
+          style={{
+            minWidth: 220,
+            flex: "1 1 260px",
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(0,0,0,0.25)",
+            color: "#e5e7eb",
+            outline: "none",
+          }}
+        />
+        <div style={{ flex: "1 1 auto" }}>{filters}</div>
+        {renderedActions}
       </div>
-
-      {filters ? <div className="page-toolbar-sm__filters">{filters}</div> : null}
-      {children ? <div className="page-toolbar-sm__extra">{children}</div> : null}
-    </section>
+      {children ? <div>{children}</div> : null}
+    </div>
   );
-}
+};
 
-export type { PageToolbarProps };
-const PageToolbar = PageToolbarSM;
-
-export { PageToolbarSM, PageToolbar };
 export default PageToolbar;
