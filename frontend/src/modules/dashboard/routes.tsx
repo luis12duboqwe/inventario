@@ -7,16 +7,11 @@ const InventoryProducts = lazy(() => import("../inventory/pages/InventoryProduct
 const InventoryMoves = lazy(() => import("../inventory/pages/InventoryMovements"));
 const InventorySuppliers = lazy(() => import("../inventory/pages/InventorySuppliers"));
 const InventoryAlerts = lazy(() => import("../inventory/pages/InventoryAlerts"));
-const OperationsPage = lazy(() => import("../operations/pages/OperationsPage"));
-const VentasCajaPage = lazy(() => import("../operations/pages/ventas/CajaPage"));
-const VentasFacturacionPage = lazy(() => import("../operations/pages/ventas/FacturacionPage"));
-const VentasClientesPage = lazy(() => import("../operations/pages/ventas/ClientesPage"));
-const VentasCajasPage = lazy(() => import("../operations/pages/ventas/CajasPage"));
-const ComprasOrdenesPage = lazy(() => import("../operations/pages/compras/OrdenesPage"));
-const ComprasPagosPage = lazy(() => import("../operations/pages/compras/PagosPage"));
-const ComprasProveedoresPage = lazy(() => import("../operations/pages/compras/ProveedoresPage"));
-const MovimientosInternosPage = lazy(() => import("../operations/pages/movimientos/InternosPage"));
-const TransferenciasPage = lazy(() => import("../operations/pages/movimientos/TransferenciasPage"));
+const OperationsLayout = lazy(() => import("../operations/pages/OperationsLayout"));
+const OperationsPOS = lazy(() => import("../operations/pages/OperationsPOS"));
+const OperationsPurchases = lazy(() => import("../operations/pages/OperationsPurchases"));
+const OperationsReturns = lazy(() => import("../operations/pages/OperationsReturns"));
+const OperationsTransfers = lazy(() => import("../operations/pages/OperationsTransfers"));
 const AnalyticsPage = lazy(() => import("../analytics/pages/AnalyticsPage"));
 const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
@@ -103,29 +98,15 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="operations/*"
           element={
             <ModuleBoundary>
-              <OperationsPage />
+              <OperationsLayout />
             </ModuleBoundary>
           }
         >
-          <Route index element={<Navigate to="ventas/caja" replace />} />
-          <Route path="ventas">
-            <Route index element={<Navigate to="caja" replace />} />
-            <Route path="caja" element={<VentasCajaPage />} />
-            <Route path="facturacion" element={<VentasFacturacionPage />} />
-            <Route path="clientes" element={<VentasClientesPage />} />
-            <Route path="cajas" element={<VentasCajasPage />} />
-          </Route>
-          <Route path="compras">
-            <Route index element={<Navigate to="ordenes" replace />} />
-            <Route path="ordenes" element={<ComprasOrdenesPage />} />
-            <Route path="pagos" element={<ComprasPagosPage />} />
-            <Route path="proveedores" element={<ComprasProveedoresPage />} />
-          </Route>
-          <Route path="movimientos">
-            <Route index element={<Navigate to="internos" replace />} />
-            <Route path="internos" element={<MovimientosInternosPage />} />
-            <Route path="transferencias" element={<TransferenciasPage />} />
-          </Route>
+          <Route index element={<Navigate to="pos" replace />} />
+          <Route path="pos" element={<OperationsPOS />} />
+          <Route path="compras" element={<OperationsPurchases />} />
+          <Route path="devoluciones" element={<OperationsReturns />} />
+          <Route path="transferencias" element={<OperationsTransfers />} />
         </Route>
         <Route
           path="analytics"
