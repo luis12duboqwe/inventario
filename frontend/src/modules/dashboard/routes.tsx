@@ -21,11 +21,11 @@ const AnalyticsPage = lazy(() => import("../analytics/pages/AnalyticsPage"));
 const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazy(() => import("../users/pages/UsersPage"));
-const RepairsPage = lazy(() => import("../repairs/pages/RepairsPage"));
-const RepairsPendingPage = lazy(() => import("../repairs/pages/RepairsPendingPage"));
-const RepairsFinalizedPage = lazy(() => import("../repairs/pages/RepairsFinalizedPage"));
-const RepairsPartsPage = lazy(() => import("../repairs/pages/RepairsPartsPage"));
-const RepairsBudgetsPage = lazy(() => import("../repairs/pages/RepairsBudgetsPage"));
+const RepairsLayout = lazy(() => import("../repairs/pages/RepairsLayout"));
+const RepairsPending = lazy(() => import("../repairs/pages/RepairsPending"));
+const RepairsCompleted = lazy(() => import("../repairs/pages/RepairsCompleted"));
+const RepairsParts = lazy(() => import("../repairs/pages/RepairsParts"));
+const RepairsBudgets = lazy(() => import("../repairs/pages/RepairsBudgets"));
 const GlobalReportsPage = lazy(() => import("../reports/pages/GlobalReportsPage"));
 
 type DashboardRoutesProps = {
@@ -171,43 +171,15 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="repairs/*"
           element={
             <ModuleBoundary>
-              <RepairsPage />
+              <RepairsLayout />
             </ModuleBoundary>
           }
         >
           <Route index element={<Navigate to="pendientes" replace />} />
-          <Route
-            path="pendientes"
-            element={
-              <ModuleBoundary>
-                <RepairsPendingPage />
-              </ModuleBoundary>
-            }
-          />
-          <Route
-            path="finalizadas"
-            element={
-              <ModuleBoundary>
-                <RepairsFinalizedPage />
-              </ModuleBoundary>
-            }
-          />
-          <Route
-            path="repuestos"
-            element={
-              <ModuleBoundary>
-                <RepairsPartsPage />
-              </ModuleBoundary>
-            }
-          />
-          <Route
-            path="presupuestos"
-            element={
-              <ModuleBoundary>
-                <RepairsBudgetsPage />
-              </ModuleBoundary>
-            }
-          />
+          <Route path="pendientes" element={<RepairsPending />} />
+          <Route path="finalizadas" element={<RepairsCompleted />} />
+          <Route path="repuestos" element={<RepairsParts />} />
+          <Route path="presupuestos" element={<RepairsBudgets />} />
         </Route>
         <Route path="*" element={<Navigate to="inventory" replace />} />
       </Route>
