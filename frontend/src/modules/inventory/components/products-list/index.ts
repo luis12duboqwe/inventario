@@ -12,6 +12,7 @@ export { default as ProductsExportModal } from "./ExportModal";
 export { default as ProductsMoveCategoryModal } from "./MoveCategoryModal";
 export { default as ProductsTagModal } from "./TagModal";
 export { default as ProductsSidePanel } from "./SidePanel";
+export { default as ProductsStockAdjustModal } from "./StockAdjustModal";
 export { default as ProductStatusBadge } from "./StatusBadge";
 export { default as ProductStockBadge } from "./StockBadge";
 export { default as ProductsPagination } from "./Pagination";
