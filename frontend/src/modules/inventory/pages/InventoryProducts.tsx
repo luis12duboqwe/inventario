@@ -13,6 +13,7 @@ import {
   ProductsTable,
   ProductsTagModal,
   ProductsViewSwitch,
+  ProductsStockAdjustModal,
 } from "../components/products-list";
 import type { ProductFilters, ProductCardData, ProductRow } from "../components/products-list";
 
@@ -34,6 +35,7 @@ export default function InventoryProducts() {
   const [mExport, setMExport] = React.useState(false);
   const [mMove, setMMove] = React.useState(false);
   const [mTag, setMTag] = React.useState(false);
+  const [mAdjust, setMAdjust] = React.useState(false);
   const [page, setPage] = React.useState<number>(1);
 
   const rows = React.useMemo<ProductRow[]>(() => [], []);
@@ -133,6 +135,10 @@ export default function InventoryProducts() {
     setMMove(true);
   }, []);
 
+  const handleAdjustStock = React.useCallback(() => {
+    setMAdjust(true);
+  }, []);
+
   const handleImport = React.useCallback(() => {
     setMImport(true);
   }, []);
@@ -156,6 +162,15 @@ export default function InventoryProducts() {
     setMTag(false);
   }, []);
 
+  const handleAdjustConfirm = React.useCallback(
+    (delta: number) => {
+      console.info("Ajustar stock", { ids: selectedIds, delta });
+      setMAdjust(false);
+      setSelectedIds([]);
+    },
+    [selectedIds],
+  );
+
   const handlePageChange = React.useCallback((nextPage: number) => {
     setPage(nextPage);
   }, []);
@@ -173,6 +188,11 @@ export default function InventoryProducts() {
       category: side.category,
     };
   }, [side]);
+
+  const selectedRows = React.useMemo(
+    () => rows.filter((row) => selectedIds.includes(row.id)),
+    [rows, selectedIds],
+  );
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -198,6 +218,7 @@ export default function InventoryProducts() {
         onImport={handleImport}
         onMoveCategory={handleMoveCategory}
         onTag={handleTag}
+        onAdjustStock={handleAdjustStock}
       />
 
       {mode === "grid" ? (
@@ -220,6 +241,12 @@ export default function InventoryProducts() {
       <ProductsExportModal open={mExport} onClose={() => setMExport(false)} />
       <ProductsMoveCategoryModal open={mMove} onClose={() => setMMove(false)} onSubmit={handleMoveCategorySubmit} />
       <ProductsTagModal open={mTag} onClose={() => setMTag(false)} onSubmit={handleTagSubmit} />
+      <ProductsStockAdjustModal
+        open={mAdjust}
+        items={selectedRows}
+        onClose={() => setMAdjust(false)}
+        onConfirm={handleAdjustConfirm}
+      />
     </div>
   );
 }
