@@ -8,10 +8,16 @@ const InventoryMoves = lazy(() => import("../inventory/pages/InventoryMovements"
 const InventorySuppliers = lazy(() => import("../inventory/pages/InventorySuppliers"));
 const InventoryAlerts = lazy(() => import("../inventory/pages/InventoryAlerts"));
 const OperationsLayout = lazy(() => import("../operations/pages/OperationsLayout"));
-const OperationsPOS = lazy(() => import("../operations/pages/OperationsPOS"));
-const OperationsPurchases = lazy(() => import("../operations/pages/OperationsPurchases"));
-const OperationsReturns = lazy(() => import("../operations/pages/OperationsReturns"));
-const OperationsTransfers = lazy(() => import("../operations/pages/OperationsTransfers"));
+const OperationsPage = lazy(() => import("../operations/pages/OperationsPage"));
+const OperationsSalesCashPage = lazy(() => import("../operations/pages/ventas/CajaPage"));
+const OperationsSalesBillingPage = lazy(() => import("../operations/pages/ventas/FacturacionPage"));
+const OperationsSalesClientsPage = lazy(() => import("../operations/pages/ventas/ClientesPage"));
+const OperationsSalesRegistersPage = lazy(() => import("../operations/pages/ventas/CajasPage"));
+const OperationsPurchasesOrdersPage = lazy(() => import("../operations/pages/compras/OrdenesPage"));
+const OperationsPurchasesPaymentsPage = lazy(() => import("../operations/pages/compras/PagosPage"));
+const OperationsPurchasesSuppliersPage = lazy(() => import("../operations/pages/compras/ProveedoresPage"));
+const OperationsMovementsInternalPage = lazy(() => import("../operations/pages/movimientos/InternosPage"));
+const OperationsMovementsTransfersPage = lazy(() => import("../operations/pages/movimientos/TransferenciasPage"));
 const AnalyticsPage = lazy(() => import("../analytics/pages/AnalyticsPage"));
 const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
@@ -102,11 +108,31 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
             </ModuleBoundary>
           }
         >
-          <Route index element={<Navigate to="pos" replace />} />
-          <Route path="pos" element={<OperationsPOS />} />
-          <Route path="compras" element={<OperationsPurchases />} />
-          <Route path="devoluciones" element={<OperationsReturns />} />
-          <Route path="transferencias" element={<OperationsTransfers />} />
+          <Route index element={<Navigate to="ventas/caja" replace />} />
+          <Route path="pos" element={<Navigate to="ventas/caja" replace />} />
+          <Route path="compras" element={<Navigate to="compras/ordenes" replace />} />
+          <Route path="devoluciones" element={<Navigate to="ventas/facturacion" replace />} />
+          <Route path="transferencias" element={<Navigate to="movimientos/transferencias" replace />} />
+          <Route element={<OperationsPage />}>
+            <Route path="ventas">
+              <Route index element={<Navigate to="caja" replace />} />
+              <Route path="caja" element={<OperationsSalesCashPage />} />
+              <Route path="clientes" element={<OperationsSalesClientsPage />} />
+              <Route path="facturacion" element={<OperationsSalesBillingPage />} />
+              <Route path="cajas" element={<OperationsSalesRegistersPage />} />
+            </Route>
+            <Route path="compras">
+              <Route index element={<Navigate to="ordenes" replace />} />
+              <Route path="ordenes" element={<OperationsPurchasesOrdersPage />} />
+              <Route path="pagos" element={<OperationsPurchasesPaymentsPage />} />
+              <Route path="proveedores" element={<OperationsPurchasesSuppliersPage />} />
+            </Route>
+            <Route path="movimientos">
+              <Route index element={<Navigate to="internos" replace />} />
+              <Route path="internos" element={<OperationsMovementsInternalPage />} />
+              <Route path="transferencias" element={<OperationsMovementsTransfersPage />} />
+            </Route>
+          </Route>
         </Route>
         <Route
           path="analytics"
