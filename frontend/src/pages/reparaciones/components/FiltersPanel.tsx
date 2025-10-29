@@ -1,6 +1,6 @@
-import type { RepairOrder } from "../../../../api";
+import type { RepairOrder } from "../../../api";
 
-type RepairOrdersFiltersSectionProps = {
+type FiltersPanelProps = {
   statusFilter: RepairOrder["status"] | "TODOS";
   statusOptions: Array<RepairOrder["status"] | "TODOS">;
   onStatusFilterChange: (value: RepairOrder["status"] | "TODOS") => void;
@@ -11,7 +11,7 @@ type RepairOrdersFiltersSectionProps = {
   getStatusLabel: (status: RepairOrder["status"]) => string;
 };
 
-function RepairOrdersFiltersSection({
+function FiltersPanel({
   statusFilter,
   statusOptions,
   onStatusFilterChange,
@@ -20,7 +20,7 @@ function RepairOrdersFiltersSection({
   searchPlaceholder = "Cliente, técnico, daño o folio",
   totalOrders,
   getStatusLabel,
-}: RepairOrdersFiltersSectionProps) {
+}: FiltersPanelProps) {
   return (
     <div className="repair-orders-toolbar">
       <div className="repair-orders-toolbar__filters">
@@ -60,4 +60,5 @@ function RepairOrdersFiltersSection({
   );
 }
 
-export default RepairOrdersFiltersSection;
+export type { FiltersPanelProps };
+export default FiltersPanel;

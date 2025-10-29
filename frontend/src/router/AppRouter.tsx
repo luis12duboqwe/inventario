@@ -204,9 +204,8 @@ const LoginScene = memo(function LoginScene({
         setBootstrapSuccess("Cuenta creada correctamente. Iniciando sesión…");
         await refetchBootstrapStatus();
         await onLogin({ username: values.username, password: values.password });
-      } catch (submitError) {
-        // eslint-disable-next-line no-console
-        console.warn("No fue posible completar el registro inicial", submitError);
+      } catch (_error) {
+        setBootstrapSuccess(null);
       }
     },
     [bootstrapMutation, onLogin, refetchBootstrapStatus],

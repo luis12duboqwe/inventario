@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from "axios";
 import { getApiBaseUrl } from "../../config/api";
+import { emitClientWarning } from "../../utils/clientLog";
 
 export const UNAUTHORIZED_EVENT = "softmobile:unauthorized";
 
@@ -12,8 +13,7 @@ function readStoredToken(): string | null {
   try {
     return window.localStorage.getItem(TOKEN_STORAGE_KEY);
   } catch (error) {
-    /* eslint-disable-next-line no-console */
-    console.warn("No se pudo leer el token de autenticación", error);
+    emitClientWarning("No se pudo leer el token de autenticación", error);
     return null;
   }
 }
@@ -37,8 +37,7 @@ export function setAuthToken(token: string | null): void {
       window.localStorage.removeItem(TOKEN_STORAGE_KEY);
     }
   } catch (error) {
-    /* eslint-disable-next-line no-console */
-    console.warn("No se pudo persistir el token de autenticación", error);
+    emitClientWarning("No se pudo persistir el token de autenticación", error);
   }
 }
 

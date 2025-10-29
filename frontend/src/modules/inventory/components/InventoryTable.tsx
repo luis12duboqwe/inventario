@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import ScrollableTable from "../../../shared/components/ScrollableTable";
 import { Device } from "../../../api";
 import { colors } from "../../../theme/designTokens";
+import { emitClientError } from "../../../utils/clientLog";
 
 type Props = {
   devices: Device[];
@@ -66,8 +67,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
     try {
       dataUrl = await QRCode.toDataURL(qrPayload, { width: 160, margin: 1, errorCorrectionLevel: "M" });
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error("No fue posible generar el código QR", error);
+      emitClientError("No fue posible generar el código QR", error);
       window.alert("No fue posible generar la etiqueta. Intenta nuevamente.");
       return;
     }

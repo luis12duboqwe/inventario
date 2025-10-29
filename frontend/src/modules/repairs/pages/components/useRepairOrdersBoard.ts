@@ -22,7 +22,7 @@ import {
   resolveDamageIcon,
   type RepairVisual,
 } from "./repairOrdersBoardConstants";
-import type { RepairForm, RepairPartForm } from "./RepairOrdersTypes";
+import type { RepairForm, RepairPartForm } from "../../../../types/repairs";
 import useRepairOrderActions from "./useRepairOrderActions";
 
 type RepairOrdersBoardHookOptions = {
@@ -34,6 +34,8 @@ type RepairOrdersBoardHookOptions = {
   initialStatusFilter?: RepairOrder["status"] | "TODOS";
   statusFilterOptions?: Array<RepairOrder["status"] | "TODOS">;
   showCreateForm?: boolean;
+  onShowBudget?: (order: RepairOrder) => void;
+  onShowParts?: (order: RepairOrder) => void;
 };
 
 type RepairOrdersBoardHookResult = {
@@ -74,6 +76,8 @@ function useRepairOrdersBoard({
   initialStatusFilter = "TODOS",
   statusFilterOptions,
   showCreateForm = true,
+  onShowBudget,
+  onShowParts,
 }: RepairOrdersBoardHookOptions): RepairOrdersBoardHookResult {
   const { globalSearchTerm, setGlobalSearchTerm } = useDashboard();
 
@@ -353,8 +357,19 @@ function useRepairOrdersBoard({
       handleStatusChange,
       handleDownload,
       handleDelete,
+      onShowBudget,
+      onShowParts,
     });
-  }, [devicesById, getVisual, handleVisualEdit, handleStatusChange, handleDownload, handleDelete]);
+  }, [
+    devicesById,
+    getVisual,
+    handleVisualEdit,
+    handleStatusChange,
+    handleDownload,
+    handleDelete,
+    onShowBudget,
+    onShowParts,
+  ]);
 
 
   const availableStatusFilters = useMemo(() => {

@@ -1,8 +1,8 @@
 import { Fragment, type FormEvent } from "react";
 
-import type { RepairForm, RepairPartForm, Customer, Device, Store } from "./RepairOrdersTypes";
+import type { Customer, Device, RepairForm, RepairPartForm, Store } from "../../../types/repairs";
 
-type RepairOrderFormSectionProps = {
+type SidePanelProps = {
   stores: Store[];
   selectedStoreId: number | null;
   form: RepairForm;
@@ -19,7 +19,7 @@ type RepairOrderFormSectionProps = {
   onPartChange: (index: number, updates: Partial<RepairPartForm>) => void;
 };
 
-function RepairOrderFormSection({
+function SidePanel({
   stores,
   selectedStoreId,
   form,
@@ -34,7 +34,7 @@ function RepairOrderFormSection({
   onAddPart,
   onRemovePart,
   onPartChange,
-}: RepairOrderFormSectionProps) {
+}: SidePanelProps) {
   return (
     <form className="form-grid" onSubmit={onSubmit}>
       <label>
@@ -231,4 +231,5 @@ function RepairOrderFormSection({
   );
 }
 
-export default RepairOrderFormSection;
+export type { SidePanelProps };
+export default SidePanel;
