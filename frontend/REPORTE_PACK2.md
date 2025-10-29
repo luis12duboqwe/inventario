@@ -157,5 +157,61 @@
 - Reparaciones: 100 % — layout centralizado, subrutas perezosas y documentación
   actualizada sin romper integraciones existentes.
 
+### Modularización UI — Reparaciones
+- `RepairOrdersBoard.tsx` conserva la lógica de datos y delega la interfaz en
+  `frontend/src/pages/reparaciones/components/{FiltersPanel.tsx, RepairTable.tsx,
+  SidePanel.tsx, Toolbar.tsx, BudgetModal.tsx, PartsModal.tsx}` para dividir filtros,
+  formulario, tabla y modales de detalle.
+- Los formularios y tablas reutilizan los tipos declarados en
+  `frontend/src/types/repairs.d.ts`, manteniendo intactos los contratos de los
+  servicios (`RepairForm`, `RepairPartForm`).
+
 ## Compatibilidad
 - `RepairsPage.tsx` reexporta el nuevo layout para mantener el contrato del dashboard; no se modificaron stores ni servicios y las rutas `/dashboard/repairs/*` siguen operando sin cambios.
+
+## Sincronización
+
+### Modularización del panel híbrido
+- `SyncPage.tsx` pasó de 978 a 880 líneas al mover el dashboard y las acciones a
+  `frontend/src/pages/sync/components/{SyncSummary.tsx, SyncActions.tsx, LogsTable.tsx}`
+  manteniendo la lógica de datos, descargas y validaciones corporativas en el
+  contenedor.
+- Los reportes de respaldo y la tabla de outbox se nutren de los tipos
+  centralizados en `frontend/src/types/sync.d.ts`, garantizando contratos
+  consistentes para logs recientes y respaldos (`RecentSyncLog`, `SyncBackupEntry`).
+
+## Cierre
+
+### Modularización completada
+- **Usuarios — `UserManagement.tsx`:** 1050 → 540 líneas. Se trasladó la interfaz a `frontend/src/pages/usuarios/components/` con los componentes `Toolbar.tsx`, `SummaryCards.tsx`, `FiltersPanel.tsx`, `Table.tsx`, `SidePanel.tsx`, `PermissionMatrix.tsx` y `RoleModal.tsx`, conservando el contenedor como orquestador de datos y flujos corporativos.
+- **POS — `POSDashboard.tsx`:** 972 → 201 líneas. La vista delega toda la interfaz en `frontend/src/pages/pos/components/{Toolbar.tsx, QuickSaleForm.tsx, ProductGrid.tsx, CartPanel.tsx, PaymentModal.tsx, ReceiptPreview.tsx}` y mueve la orquestación de estado a `frontend/src/modules/operations/components/POS/usePosDashboardController.ts`, que concentra efectos, sincronización, ventas y sesiones de caja sin exponer contratos nuevos.
+- **Ventas — `Sales.tsx`:** 871 → 497 líneas. El contenedor traslada la interfaz a `frontend/src/pages/ventas/components/{Toolbar.tsx, FiltersPanel.tsx, SummaryCards.tsx, SalesTable.tsx, SidePanel.tsx, InvoiceModal.tsx}`, incorpora un modal de factura previo a la descarga y conserva hooks, servicios POS y validaciones de motivo corporativo.
+- **Reparaciones — `RepairOrdersBoard.tsx`:** mantiene 188 líneas enfocadas en la orquestación y delega filtros, tabla, panel
+  lateral y modales en `frontend/src/pages/reparaciones/components/{FiltersPanel.tsx, RepairTable.tsx, SidePanel.tsx,
+  Toolbar.tsx, BudgetModal.tsx, PartsModal.tsx}`.
+- **Sincronización — `SyncPage.tsx`:** 978 → 880 líneas. El dashboard, la sección de acciones y la tabla de outbox migran a
+  `frontend/src/pages/sync/components/{SyncSummary.tsx, SyncActions.tsx, LogsTable.tsx}` mientras el contenedor conserva la
+  lógica de sincronización híbrida.
+
+### Archivos a modular — Cierre
+| Archivo | Líneas |
+| --- | ---: |
+| `frontend/src/pages/operaciones/purchases/components/SidePanel.tsx` | 377 |
+| `frontend/src/pages/operaciones/customers/components/SummaryCards.tsx` | 347 |
+| `frontend/src/pages/pos/components/PaymentModal.tsx` | 340 |
+| `frontend/src/pages/operaciones/purchases/components/OrdersPanel.tsx` | 298 |
+| `frontend/src/pages/ventas/components/SidePanel.tsx` | 292 |
+
+### Higiene y telemetría
+- Se reemplazaron los `console.*` de autenticación y QR por el nuevo emisor `softmobile:client-log` definido en
+  `frontend/src/utils/clientLog.ts`, evitando ruido en consola y conservando trazabilidad mediante eventos personalizados.
+- `frontend/src/services/api/http.ts` reporta fallas al leer o persistir el token con `emitClientWarning`,
+  manteniendo el estado en memoria aunque `localStorage` falle.
+- `frontend/src/modules/inventory/components/InventoryTable.tsx` usa `emitClientError` y alerta en la UI cuando la generación de códigos QR no es posible.
+
+### Validación de rutas y lazy loading
+- Nuevas suites Vitest:
+  - `frontend/src/__tests__/routes/inventario.routes.test.tsx`
+  - `frontend/src/__tests__/routes/reparaciones.routes.test.tsx`
+- Ambas prueban el render “smoke” de `/dashboard/inventory/*` y `/dashboard/repairs/*`, verifican que los índices redirigen a sus subrutas por defecto y afirman que los `<Suspense>` muestran los loaders corporativos durante la carga perezosa.
+- Resultado: `npm --prefix frontend run test -- src/__tests__/routes/inventario.routes.test.tsx src/__tests__/routes/reparaciones.routes.test.tsx` en verde.

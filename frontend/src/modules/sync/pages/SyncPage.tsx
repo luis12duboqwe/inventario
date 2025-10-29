@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Repeat } from "lucide-react";
 
-import SyncPanel from "../components/SyncPanel";
-import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
+import type { ModuleStatus } from "../../../shared/components/ModuleHeader";
+import SyncSummary from "../../../pages/sync/components/SyncSummary";
+import SyncActions from "../../../pages/sync/components/SyncActions";
+import LogsTable from "../../../pages/sync/components/LogsTable";
 import { useSyncModule } from "../hooks/useSyncModule";
 import {
   exportSyncConflictsExcel,
@@ -19,6 +20,7 @@ import {
   type TransferReport,
 } from "../../../api";
 import { promptCorporateReason } from "../../../utils/corporateReason";
+import type { RecentSyncLog, SyncBackupEntry } from "../../../types/sync";
 
 const transferStatusLabels: Record<TransferOrder["status"], string> = {
   SOLICITADA: "Solicitada",
@@ -41,22 +43,15 @@ const severityBadgeClass: Record<SyncConflictLog["severity"], string> = {
   sin_registros: "badge neutral",
 };
 
-const moduleStatusBadgeClass: Record<ModuleStatus, string> = {
-  ok: "badge success",
-  warning: "badge warning",
-  critical: "badge critical",
-};
-
 const MIN_REASON_LENGTH = 5;
 
-type RecentSyncLog = {
+type OutboxRow = {
   id: string;
-  storeName: string;
+  entity: string;
+  operation: string;
+  attempts: number;
   status: string;
-  mode: string;
-  startedAt: string;
-  finishedAt: string | null;
-  errorMessage: string | null;
+  updatedAt: string;
 };
 
 function formatDateTime(value?: string | null): string {
@@ -398,104 +393,51 @@ function SyncPage() {
   const totalPendingOutbox = outbox.length;
 
   const topConflicts = useMemo(() => conflicts.slice(0, 6), [conflicts]);
+  const outboxEntries = useMemo<OutboxRow[]>(() => {
+    return outbox.map((entry) => ({
+      id: entry.id,
+      entity: `${entry.entity_type} #${entry.entity_id}`,
+      operation: entry.operation,
+      attempts: entry.attempt_count,
+      status: entry.status,
+      updatedAt: formatDateTime(entry.updated_at),
+    }));
+  }, [outbox]);
+
+  const outboxColumns = useMemo(
+    () => [
+      { key: "entity", header: "Entidad", render: (item: OutboxRow) => item.entity },
+      { key: "operation", header: "Operación", render: (item: OutboxRow) => item.operation },
+      { key: "attempts", header: "Intentos", render: (item: OutboxRow) => item.attempts },
+      { key: "status", header: "Estado", render: (item: OutboxRow) => item.status },
+      { key: "updatedAt", header: "Actualizado", render: (item: OutboxRow) => item.updatedAt },
+    ],
+    [],
+  );
 
   return (
     <div className="module-content">
-      <ModuleHeader
-        icon={<Repeat aria-hidden="true" />}
-        title="Sincronización"
-        subtitle="Control de sincronizaciones locales, respaldos y versiones distribuidas"
-        status={moduleStatus}
-        statusLabel={moduleStatusLabel}
-        actions={
-          <button className="btn btn--ghost" type="button" onClick={() => void refreshOutbox()}>
-            Refrescar cola
-          </button>
-        }
+      <SyncSummary
+        moduleStatus={moduleStatus}
+        moduleStatusLabel={moduleStatusLabel}
+        currentSyncLabel={currentSyncLabel}
+        hasSyncFailure={hasSyncFailure}
+        branchCount={branchOverview.length}
+        totalInventoryValue={totalInventoryValue}
+        totalPendingOutbox={totalPendingOutbox}
+        totalOpenConflicts={totalOpenConflicts}
+        totalPendingTransfers={totalPendingTransfers}
+        formatCurrency={formatCurrency}
+        recentSyncLogs={recentSyncLogs}
+        lastSyncExecution={lastSyncExecution}
+        enableHybridPrep={enableHybridPrep}
+        onRefreshOutbox={() => {
+          void refreshOutbox();
+        }}
+        formatDateTime={formatDateTime}
       />
       <div className="section-scroll">
         <div className="section-grid">
-          <section className="card sync-dashboard">
-            <div className="sync-dashboard__header">
-              <h2>Dashboard de sincronización</h2>
-              <span className={moduleStatusBadgeClass[moduleStatus]}>{moduleStatusLabel}</span>
-            </div>
-            <div className="sync-dashboard__summary">
-              <div className="sync-metric">
-                <span>Estado actual</span>
-                <strong>{currentSyncLabel}</strong>
-                <small>
-                  {hasSyncFailure
-                    ? "Atiende los errores pendientes para recuperar la sincronización"
-                    : "Monitoreo híbrido en ejecución"}
-                </small>
-              </div>
-              <div className="sync-metric">
-                <span>Última ejecución</span>
-                <strong>{lastSyncExecution ? formatDateTime(lastSyncExecution.startedAt) : "Sin registros"}</strong>
-                <small>
-                  {lastSyncExecution
-                    ? `${lastSyncExecution.storeName} · ${lastSyncExecution.mode}`
-                    : "Ejecuta una sincronización manual para registrar actividad"}
-                </small>
-              </div>
-              <div className="sync-metric">
-                <span>Sucursales monitoreadas</span>
-                <strong>{branchOverview.length}</strong>
-                <small>{branchOverview.length === 1 ? "1 tienda activa" : `${branchOverview.length} tiendas activas`}</small>
-              </div>
-              <div className="sync-metric">
-                <span>Inventario monitoreado</span>
-                <strong>{branchOverview.length > 0 ? formatCurrency(totalInventoryValue) : "—"}</strong>
-                <small>Valor acumulado por sucursal</small>
-              </div>
-              <div className="sync-metric">
-                <span>Cola local pendiente</span>
-                <strong>{totalPendingOutbox}</strong>
-                <small>{enableHybridPrep ? "Eventos por replicar" : "Habilita el modo híbrido"}</small>
-              </div>
-              <div className="sync-metric">
-                <span>Conflictos abiertos</span>
-                <strong>{totalOpenConflicts}</strong>
-                <small>{totalOpenConflicts === 1 ? "Un conflicto detectado" : "Conflictos por resolver"}</small>
-              </div>
-              <div className="sync-metric">
-                <span>Transferencias activas</span>
-                <strong>{totalPendingTransfers}</strong>
-                <small>Solicitadas o en tránsito</small>
-              </div>
-            </div>
-            <div className="sync-dashboard__logs">
-              <h3>Últimos registros</h3>
-              {recentSyncLogs.length === 0 ? (
-                <p className="muted-text">Sin ejecuciones registradas en la bitácora.</p>
-              ) : (
-                <ul className="sync-log-list">
-                  {recentSyncLogs.map((log) => (
-                    <li key={log.id} className="sync-log__item">
-                      <div className="sync-log__header">
-                        <div
-                          className={`badge ${log.status === "exitoso" ? "success" : "warning"}`}
-                          aria-label={log.status === "exitoso" ? "Ejecución exitosa" : "Ejecución con fallos"}
-                        >
-                          {log.status === "exitoso" ? "Exitoso" : "Fallido"}
-                        </div>
-                        <span className="sync-log__time">{formatDateTime(log.startedAt)}</span>
-                      </div>
-                      <div className="sync-log__meta">
-                        <span>{log.storeName}</span>
-                        <span>Modo: {log.mode}</span>
-                        {log.finishedAt ? <span>Finalizó {formatDateTime(log.finishedAt)}</span> : null}
-                      </div>
-                      {log.errorMessage ? (
-                        <p className="sync-log__error">⚠️ {log.errorMessage}</p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
 
           <section className="card">
             <div className="card-header">
@@ -780,32 +722,15 @@ function SyncPage() {
             )}
           </section>
 
-          <section className="card">
-            <h2>Sincronización y reportes</h2>
-            <SyncPanel
-              onSync={handleSync}
-              syncStatus={syncStatus}
-              onDownloadPdf={handleDownloadInventoryPdf}
-              onBackup={handleBackup}
-              onExportCsv={handleExportCsv}
-            />
-            <div className="section-divider">
-              <h3>Historial de respaldos</h3>
-              {backupHistory.length === 0 ? (
-                <p className="muted-text">No existen respaldos previos.</p>
-              ) : (
-                <ul className="history-list">
-                  {backupHistory.map((backup) => (
-                    <li key={backup.id}>
-                      <span className="badge neutral">{backup.mode}</span>
-                      <span>{formatDateTime(backup.executed_at)}</span>
-                      <span>{(backup.total_size_bytes / 1024).toFixed(1)} KB</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
+          <SyncActions
+            onSync={handleSync}
+            syncStatus={syncStatus}
+            onDownloadPdf={handleDownloadInventoryPdf}
+            onBackup={handleBackup}
+            onExportCsv={handleExportCsv}
+            backupHistory={backupHistory as SyncBackupEntry[]}
+            formatDateTime={formatDateTime}
+          />
 
           <section className="card">
             <h2>Historial de versiones</h2>
@@ -850,34 +775,11 @@ function SyncPage() {
                   </button>
                 </div>
                 {outboxError && <p className="error-text">{outboxError}</p>}
-                {outbox.length === 0 ? (
-                  <p className="muted-text">Sin eventos en la cola local.</p>
-                ) : (
-                  <table className="outbox-table">
-                    <thead>
-                      <tr>
-                        <th>Entidad</th>
-                        <th>Operación</th>
-                        <th>Intentos</th>
-                        <th>Estado</th>
-                        <th>Actualizado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {outbox.map((entry) => (
-                        <tr key={entry.id}>
-                          <td>
-                            {entry.entity_type} #{entry.entity_id}
-                          </td>
-                          <td>{entry.operation}</td>
-                          <td>{entry.attempt_count}</td>
-                          <td>{entry.status}</td>
-                          <td>{new Date(entry.updated_at).toLocaleString("es-MX")}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                <LogsTable
+                  entries={outboxEntries}
+                  columns={outboxColumns}
+                  emptyMessage="Sin eventos en la cola local."
+                />
               </>
             ) : (
               <p className="muted-text">

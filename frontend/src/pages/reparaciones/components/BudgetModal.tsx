@@ -1,0 +1,79 @@
+import type { RepairOrder } from "../../../api";
+import Modal from "../../../shared/components/ui/Modal";
+
+import type { RepairPartForm } from "../../../types/repairs";
+
+type BudgetModalProps = {
+  order: RepairOrder | null;
+  open: boolean;
+  onClose: () => void;
+};
+
+function getPartsTotal(parts: RepairOrder["parts"], fallbackParts: RepairPartForm[] = []) {
+  if (parts.length === 0 && fallbackParts.length === 0) {
+    return 0;
+  }
+  const activeParts = parts.length > 0 ? parts : fallbackParts;
+  return activeParts.reduce((acc, part) => acc + Number(part.unit_cost ?? part.unitCost ?? 0) * Number(part.quantity ?? 0), 0);
+}
+
+function BudgetModal({ order, open, onClose }: BudgetModalProps) {
+  if (!order) {
+    return null;
+  }
+
+  const labor = Number(order.labor_cost ?? 0);
+  const partsTotal = getPartsTotal(order.parts);
+  const total = Number(order.total_cost ?? labor + partsTotal);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Presupuesto de la reparación #${order.id}`}
+      description="Detalle del costo estimado antes de confirmar la orden."
+      size="lg"
+    >
+      <div className="budget-modal">
+        <section>
+          <h3>Información general</h3>
+          <ul className="muted-text">
+            <li>
+              Cliente: <strong>{order.customer_name ?? "Mostrador"}</strong>
+            </li>
+            <li>
+              Técnico: <strong>{order.technician_name}</strong>
+            </li>
+            <li>
+              Diagnóstico: <strong>{order.damage_type}</strong>
+            </li>
+          </ul>
+        </section>
+        <section>
+          <h3>Totales estimados</h3>
+          <div className="budget-modal__totals">
+            <div>
+              <span className="muted-text">Mano de obra</span>
+              <strong>${labor.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            </div>
+            <div>
+              <span className="muted-text">Repuestos</span>
+              <strong>${partsTotal.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            </div>
+            <div>
+              <span className="muted-text">Total</span>
+              <strong>${total.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            </div>
+          </div>
+        </section>
+        <section>
+          <h3>Notas registradas</h3>
+          {order.notes ? <p>{order.notes}</p> : <p className="muted-text">Sin notas adicionales.</p>}
+        </section>
+      </div>
+    </Modal>
+  );
+}
+
+export type { BudgetModalProps };
+export default BudgetModal;

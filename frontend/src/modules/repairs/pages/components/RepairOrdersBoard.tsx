@@ -1,12 +1,15 @@
-import type { ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { RepairOrder, Store } from "../../../../api";
 import type { ModuleStatus } from "../../../../shared/components/ModuleHeader";
 import type { PageHeaderAction } from "../../../../components/layout/PageHeader";
 
-import RepairOrderFormSection from "./RepairOrderFormSection";
-import RepairOrdersFiltersSection from "./RepairOrdersFiltersSection";
-import RepairOrdersTableSection from "./RepairOrdersTableSection";
+import BudgetModal from "../../../../pages/reparaciones/components/BudgetModal";
+import FiltersPanel from "../../../../pages/reparaciones/components/FiltersPanel";
+import PartsModal from "../../../../pages/reparaciones/components/PartsModal";
+import RepairTable from "../../../../pages/reparaciones/components/RepairTable";
+import SidePanel from "../../../../pages/reparaciones/components/SidePanel";
+import Toolbar from "../../../../pages/reparaciones/components/Toolbar";
 import useRepairOrdersBoard from "./useRepairOrdersBoard";
 
 type RepairOrdersBoardProps = {
@@ -36,6 +39,9 @@ function RepairOrdersBoard({
   renderToolbar,
   searchPlaceholder,
 }: RepairOrdersBoardProps) {
+  const [selectedBudgetOrder, setSelectedBudgetOrder] = useState<RepairOrder | null>(null);
+  const [selectedPartsOrder, setSelectedPartsOrder] = useState<RepairOrder | null>(null);
+
   const {
     localStoreId,
     handleStoreChange,
@@ -72,10 +78,23 @@ function RepairOrdersBoard({
     initialStatusFilter,
     statusFilterOptions,
     showCreateForm,
+    onShowBudget: (order) => setSelectedBudgetOrder(order),
+    onShowParts: (order) => setSelectedPartsOrder(order),
   });
 
+  const deviceLabelById = useMemo(() => {
+    const mapping = new Map<number, string>();
+    devices.forEach((device) => {
+      const label = device.sku ? `${device.sku} · ${device.name}` : device.name;
+      mapping.set(device.id, label);
+    });
+    return mapping;
+  }, [devices]);
+
+  const resolveDeviceLabel = (deviceId: number) => deviceLabelById.get(deviceId) ?? `Dispositivo #${deviceId}`;
+
   const filtersSection = (
-    <RepairOrdersFiltersSection
+    <FiltersPanel
       statusFilter={statusFilter}
       statusOptions={availableStatusFilters}
       onStatusFilterChange={handleStatusFilterChange}
@@ -96,7 +115,9 @@ function RepairOrdersBoard({
     },
   ];
 
-  const toolbar = renderToolbar ? renderToolbar({ filters: filtersSection, actions: toolbarActions }) : filtersSection;
+  const defaultToolbar = <Toolbar actions={toolbarActions}>{filtersSection}</Toolbar>;
+
+  const toolbar = renderToolbar ? renderToolbar({ filters: filtersSection, actions: toolbarActions }) : defaultToolbar;
 
   return (
     <section className="card wide">
@@ -108,7 +129,7 @@ function RepairOrdersBoard({
       {error ? <div className="alert error">{error}</div> : null}
 
       {showCreateFormEnabled ? (
-        <RepairOrderFormSection
+        <SidePanel
           stores={stores}
           selectedStoreId={localStoreId}
           form={form}
@@ -128,7 +149,7 @@ function RepairOrdersBoard({
 
       {toolbar}
 
-      <RepairOrdersTableSection
+      <RepairTable
         loading={loading}
         orders={orders}
         renderHead={() => (
@@ -145,6 +166,19 @@ function RepairOrdersBoard({
           </>
         )}
         renderRow={renderRepairRow}
+      />
+
+      <BudgetModal
+        order={selectedBudgetOrder}
+        open={selectedBudgetOrder !== null}
+        onClose={() => setSelectedBudgetOrder(null)}
+      />
+
+      <PartsModal
+        order={selectedPartsOrder}
+        open={selectedPartsOrder !== null}
+        onClose={() => setSelectedPartsOrder(null)}
+        resolveDeviceLabel={resolveDeviceLabel}
       />
     </section>
   );

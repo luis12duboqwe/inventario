@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 
-import type { RepairOrder } from "../../../../api";
-import LoadingOverlay from "../../../../shared/components/LoadingOverlay";
-import ScrollableTable from "../../../../shared/components/ScrollableTable";
+import type { RepairOrder } from "../../../api";
+import LoadingOverlay from "../../../shared/components/LoadingOverlay";
+import ScrollableTable from "../../../shared/components/ScrollableTable";
 
-type RepairOrdersTableSectionProps = {
+type RepairTableProps = {
   loading: boolean;
   orders: RepairOrder[];
   renderHead: () => ReactNode;
@@ -12,13 +12,13 @@ type RepairOrdersTableSectionProps = {
   emptyMessage?: string;
 };
 
-function RepairOrdersTableSection({
+function RepairTable({
   loading,
   orders,
   renderHead,
   renderRow,
   emptyMessage = "No hay órdenes con los filtros actuales.",
-}: RepairOrdersTableSectionProps) {
+}: RepairTableProps) {
   return (
     <div className="repair-orders-table">
       <LoadingOverlay visible={loading} label="Cargando órdenes de reparación..." />
@@ -38,4 +38,5 @@ function RepairOrdersTableSection({
   );
 }
 
-export default RepairOrdersTableSection;
+export type { RepairTableProps };
+export default RepairTable;

@@ -1,6 +1,6 @@
 import type { RepairOrder } from "../../../../api";
 
-import type { RepairForm } from "./RepairOrdersTypes";
+import type { RepairForm } from "../../../../types/repairs";
 
 type RepairVisual = {
   icon: string;

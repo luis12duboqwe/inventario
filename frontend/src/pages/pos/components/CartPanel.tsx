@@ -1,4 +1,4 @@
-import type { Device } from "../../../../api";
+import type { Device } from "../../../api";
 
 type CartLine = {
   device: Device;
@@ -21,7 +21,7 @@ type Props = {
   globalDiscount: number;
 };
 
-function POSCart({ items, onUpdate, onRemove, totals, hasTaxes, globalDiscount }: Props) {
+function CartPanel({ items, onUpdate, onRemove, totals, hasTaxes, globalDiscount }: Props) {
   const formatCurrency = (value: number) => value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
@@ -121,4 +121,4 @@ function POSCart({ items, onUpdate, onRemove, totals, hasTaxes, globalDiscount }
 }
 
 export type { CartLine };
-export default POSCart;
+export default CartPanel;

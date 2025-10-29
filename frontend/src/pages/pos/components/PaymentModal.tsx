@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { CashSession, Customer, PaymentMethod } from "../../../../api";
+import type { CashSession, Customer, PaymentMethod } from "../../../api";
 
 type Totals = {
   subtotal: number;
@@ -48,6 +48,8 @@ type Props = {
   warnings: string[];
 };
 
+export type PaymentModalProps = Props;
+
 const paymentLabels: Record<PaymentMethod, string> = {
   EFECTIVO: "Efectivo",
   TARJETA: "Tarjeta",
@@ -64,7 +66,7 @@ const paymentMethodsOrder: PaymentMethod[] = [
   "OTRO",
 ];
 
-function POSPayment({
+function PaymentModal({
   paymentMethod,
   onPaymentMethodChange,
   customerId,
@@ -335,4 +337,4 @@ function POSPayment({
   );
 }
 
-export default POSPayment;
+export default PaymentModal;

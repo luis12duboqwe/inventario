@@ -1,12 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Activity,
-  FileSpreadsheet,
-  FileText,
-  RefreshCcw,
-  ShieldAlert,
-  Users as UsersIcon,
-} from "lucide-react";
 
 import type {
   Role,
@@ -15,28 +7,26 @@ import type {
   Store,
   UserAccount,
   UserDashboardMetrics,
+  UserQueryFilters,
+  UserCreateInput,
+  UserUpdateInput,
 } from "../../../api";
 import { getStores, listRoles } from "../../../api";
-import LoadingOverlay from "../../../shared/components/LoadingOverlay";
+import FiltersPanel from "../../../pages/usuarios/components/FiltersPanel";
+import RoleModal from "../../../pages/usuarios/components/RoleModal";
+import SidePanel from "../../../pages/usuarios/components/SidePanel";
+import SummaryCards from "../../../pages/usuarios/components/SummaryCards";
+import UsersTable from "../../../pages/usuarios/components/Table";
+import Toolbar from "../../../pages/usuarios/components/Toolbar";
+import type { UserFormState } from "../../../pages/usuarios/components/types";
 import { useUsersModule } from "../hooks/useUsersModule";
 import { usersService } from "../services/usersService";
-
-import type { UserQueryFilters, UserCreateInput, UserUpdateInput } from "../../../api";
 
 type Props = {
   token: string;
 };
 
-type FormState = {
-  username: string;
-  fullName: string;
-  telefono: string;
-  password: string;
-  storeId: number | "none";
-  roles: string[];
-};
-
-const DEFAULT_FORM_STATE: FormState = {
+const DEFAULT_FORM_STATE: UserFormState = {
   username: "",
   fullName: "",
   telefono: "",
@@ -53,392 +43,6 @@ function ensureReason(): string | null {
   return value.trim().length >= 5 ? value.trim() : null;
 }
 
-const formatDateTime = (value: string | null | undefined): string => {
-  if (!value) {
-    return "—";
-  }
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-    return new Intl.DateTimeFormat("es-MX", {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(date);
-  } catch {
-    return value;
-  }
-};
-
-const isUserLocked = (user: UserAccount): boolean => {
-  if (!user.locked_until) {
-    return false;
-  }
-  const lockedUntil = new Date(user.locked_until);
-  if (Number.isNaN(lockedUntil.getTime())) {
-    return false;
-  }
-  return lockedUntil.getTime() > Date.now();
-};
-
-type UserDashboardPanelProps = {
-  dashboard: UserDashboardMetrics | null;
-  loading: boolean;
-  onRefresh: () => void;
-};
-
-function UserDashboardPanel({ dashboard, loading, onRefresh }: UserDashboardPanelProps) {
-  const totals = dashboard?.totals ?? { total: 0, active: 0, inactive: 0, locked: 0 };
-  const recentActivity = dashboard?.recent_activity?.slice(0, 5) ?? [];
-  const recentSessions = dashboard?.active_sessions?.slice(0, 5) ?? [];
-  const alerts = dashboard?.audit_alerts;
-
-  return (
-    <section className="user-dashboard card-section">
-      <header className="user-dashboard__header">
-        <div>
-          <h3>Panel de seguridad y accesos</h3>
-          <p className="card-subtitle">Actividad reciente, sesiones activas y alertas corporativas</p>
-        </div>
-        <button type="button" className="button button-secondary" onClick={onRefresh} disabled={loading}>
-          <RefreshCcw size={16} aria-hidden="true" />
-          Actualizar
-        </button>
-      </header>
-      <div className="user-dashboard__body">
-        <div className="user-dashboard__totals">
-          <div className="stat-card">
-            <UsersIcon size={18} aria-hidden="true" />
-            <div>
-              <span className="stat-card__label">Usuarios totales</span>
-              <strong className="stat-card__value">{totals.total}</strong>
-            </div>
-          </div>
-          <div className="stat-card stat-card--success">
-            <UsersIcon size={18} aria-hidden="true" />
-            <div>
-              <span className="stat-card__label">Activos</span>
-              <strong className="stat-card__value">{totals.active}</strong>
-            </div>
-          </div>
-          <div className="stat-card stat-card--warning">
-            <UsersIcon size={18} aria-hidden="true" />
-            <div>
-              <span className="stat-card__label">Inactivos</span>
-              <strong className="stat-card__value">{totals.inactive}</strong>
-            </div>
-          </div>
-          <div className="stat-card stat-card--alert">
-            <ShieldAlert size={18} aria-hidden="true" />
-            <div>
-              <span className="stat-card__label">Bloqueados</span>
-              <strong className="stat-card__value">{totals.locked}</strong>
-            </div>
-          </div>
-        </div>
-        <div className="user-dashboard__columns">
-          <div className="user-dashboard__column">
-            <div className="user-dashboard__column-title">
-              <Activity size={16} aria-hidden="true" />
-              <h4>Actividad reciente</h4>
-            </div>
-            {recentActivity.length === 0 ? (
-              <p className="muted-text">Sin movimientos relevantes en las últimas horas.</p>
-            ) : (
-              <ul className="user-dashboard__list">
-                {recentActivity.map((item) => (
-                  <li key={item.id}>
-                    <div className={`badge badge-${item.severity}`} aria-label={`Severidad ${item.severity}`} />
-                    <div>
-                      <p className="user-dashboard__list-title">{item.action}</p>
-                      <p className="user-dashboard__list-meta">
-                        {formatDateTime(item.created_at)} · {item.performed_by_name ?? "Sistema"}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="user-dashboard__column">
-            <div className="user-dashboard__column-title">
-              <UsersIcon size={16} aria-hidden="true" />
-              <h4>Sesiones activas</h4>
-            </div>
-            {recentSessions.length === 0 ? (
-              <p className="muted-text">No hay sesiones corporativas activas.</p>
-            ) : (
-              <ul className="user-dashboard__list">
-                {recentSessions.map((session) => (
-                  <li key={session.session_id}>
-                    <div className={`status-indicator status-${session.status}`} aria-hidden="true" />
-                    <div>
-                      <p className="user-dashboard__list-title">{session.username}</p>
-                      <p className="user-dashboard__list-meta">
-                        Inicio: {formatDateTime(session.created_at)}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="user-dashboard__column">
-            <div className="user-dashboard__column-title">
-              <ShieldAlert size={16} aria-hidden="true" />
-              <h4>Alertas</h4>
-            </div>
-            {alerts ? (
-              <div className="user-dashboard__alerts">
-                <p><strong>Críticas:</strong> {alerts.critical}</p>
-                <p><strong>Preventivas:</strong> {alerts.warning}</p>
-                <p><strong>Informativas:</strong> {alerts.info}</p>
-                <p><strong>Pendientes:</strong> {alerts.pending_count}</p>
-              </div>
-            ) : (
-              <p className="muted-text">Sin alertas registradas.</p>
-            )}
-          </div>
-        </div>
-      </div>
-      <LoadingOverlay visible={loading} label="Sincronizando panel de seguridad..." />
-    </section>
-  );
-}
-
-type RolePermissionsMatrixProps = {
-  roles: RolePermissionMatrix[];
-  selectedRole: string;
-  permissions: RoleModulePermission[];
-  onSelectRole: (role: string) => void;
-  onToggle: (module: string, field: keyof RoleModulePermission) => void;
-  onReset: () => void;
-  onSave: () => void;
-  saving: boolean;
-  loading: boolean;
-  hasChanges: boolean;
-};
-
-function RolePermissionsMatrix({
-  roles,
-  selectedRole,
-  permissions,
-  onSelectRole,
-  onToggle,
-  onReset,
-  onSave,
-  saving,
-  loading,
-  hasChanges,
-}: RolePermissionsMatrixProps) {
-  return (
-    <section className="permissions-panel card-section">
-      <header className="permissions-panel__header">
-        <div>
-          <h3>Permisos por rol</h3>
-          <p className="card-subtitle">Controla la matriz de acceso a módulos sensibles</p>
-        </div>
-        <select value={selectedRole} onChange={(event) => onSelectRole(event.target.value)}>
-          {roles.map((role) => (
-            <option key={role.role} value={role.role}>
-              {role.role}
-            </option>
-          ))}
-        </select>
-      </header>
-      {loading ? (
-        <LoadingOverlay visible label="Cargando permisos corporativos..." />
-      ) : permissions.length === 0 ? (
-        <p className="muted-text">No hay permisos registrados para este rol.</p>
-      ) : (
-        <div className="permissions-table-wrapper">
-          <table className="permissions-table">
-            <thead>
-              <tr>
-                <th>Módulo</th>
-                <th>Ver</th>
-                <th>Editar</th>
-                <th>Eliminar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {permissions.map((permission) => (
-                <tr key={permission.module}>
-                  <td className="permissions-table__module">{permission.module}</td>
-                  {["can_view", "can_edit", "can_delete"].map((field) => (
-                    <td key={field}>
-                      <label className="checkbox-control">
-                        <input
-                          type="checkbox"
-                          checked={permission[field as keyof RoleModulePermission] as boolean}
-                          onChange={() => onToggle(permission.module, field as keyof RoleModulePermission)}
-                        />
-                        <span />
-                      </label>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <div className="permissions-actions">
-        <button type="button" className="button button-secondary" onClick={onReset} disabled={!hasChanges || saving}>
-          Restablecer
-        </button>
-        <button type="button" className="button button-primary" onClick={onSave} disabled={!hasChanges || saving}>
-          {saving ? "Guardando..." : "Guardar"}
-        </button>
-      </div>
-    </section>
-  );
-}
-
-type UserFormProps = {
-  mode: "create" | "edit";
-  values: FormState;
-  onChange: (patch: Partial<FormState>) => void;
-  onSubmit: () => void;
-  onReset: () => void;
-  roles: Role[];
-  stores: Store[];
-  saving: boolean;
-  disabled?: boolean;
-};
-
-function UserForm({ mode, values, onChange, onSubmit, onReset, roles, stores, saving, disabled }: UserFormProps) {
-  const isCreate = mode === "create";
-  const handleCheckboxChange = (roleName: string) => {
-    if (!isCreate) {
-      return;
-    }
-    const nextRoles = values.roles.includes(roleName)
-      ? values.roles.filter((value) => value !== roleName)
-      : [...values.roles, roleName];
-    onChange({ roles: nextRoles });
-  };
-
-  return (
-    <section className="user-form card-section">
-      <header className="user-form__header">
-        <h3>{isCreate ? "Crear usuario" : "Editar usuario"}</h3>
-        <p className="card-subtitle">
-          {isCreate
-            ? "Registra colaboradores con roles corporativos y sucursal asignada"
-            : "Actualiza datos de contacto y credenciales corporativas"}
-        </p>
-      </header>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit();
-        }}
-        className="user-form__body"
-      >
-        <div className="user-form__row">
-          <label>
-            <span>Correo corporativo</span>
-            <input
-              type="email"
-              value={values.username}
-              onChange={(event) => onChange({ username: event.target.value })}
-              placeholder="usuario@softmobile"
-              required={isCreate}
-              disabled={!isCreate || disabled || saving}
-            />
-          </label>
-          <label>
-            <span>Nombre completo</span>
-            <input
-              type="text"
-              value={values.fullName}
-              onChange={(event) => onChange({ fullName: event.target.value })}
-              placeholder="Nombre y apellidos"
-              disabled={disabled || saving}
-            />
-          </label>
-        </div>
-        <div className="user-form__row">
-          <label>
-            <span>Teléfono</span>
-            <input
-              type="tel"
-              value={values.telefono}
-              onChange={(event) => onChange({ telefono: event.target.value })}
-              placeholder="+52 55 0000 0000"
-              disabled={disabled || saving}
-            />
-          </label>
-          <label>
-            <span>{isCreate ? "Contraseña inicial" : "Nueva contraseña (opcional)"}</span>
-            <input
-              type="password"
-              value={values.password}
-              onChange={(event) => onChange({ password: event.target.value })}
-              placeholder={isCreate ? "Mínimo 8 caracteres" : "Dejar vacío para conservar la actual"}
-              required={isCreate}
-              minLength={isCreate ? 8 : undefined}
-              disabled={disabled || saving}
-            />
-          </label>
-        </div>
-        <div className="user-form__row">
-          <label>
-            <span>Sucursal</span>
-            <select
-              value={values.storeId === "none" ? "none" : String(values.storeId)}
-              onChange={(event) => {
-                const selected = event.target.value === "none" ? "none" : Number(event.target.value);
-                onChange({ storeId: selected });
-              }}
-              disabled={disabled || saving}
-            >
-              <option value="none">Sin sucursal</option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="user-form__row">
-          <fieldset className="user-form__roles" disabled={disabled || saving}>
-            <legend>Roles asignados</legend>
-            {isCreate ? (
-              <div className="role-checkboxes">
-                {roles.map((role) => (
-                  <label key={role.id} className="checkbox-control checkbox-control--inline">
-                    <input
-                      type="checkbox"
-                      checked={values.roles.includes(role.name)}
-                      onChange={() => handleCheckboxChange(role.name)}
-                    />
-                    <span />
-                    <span>{role.name}</span>
-                  </label>
-                ))}
-              </div>
-            ) : (
-              <p className="muted-text">Gestiona los roles desde la tabla inferior utilizando los checkboxes por módulo.</p>
-            )}
-          </fieldset>
-        </div>
-        <div className="user-form__actions">
-          <button type="button" className="button button-secondary" onClick={onReset} disabled={saving}>
-            {isCreate ? "Limpiar" : "Cancelar"}
-          </button>
-          <button type="submit" className="button button-primary" disabled={saving}>
-            {saving ? "Guardando..." : isCreate ? "Registrar usuario" : "Guardar cambios"}
-          </button>
-        </div>
-      </form>
-    </section>
-  );
-}
-
 function UserManagement({ token }: Props) {
   const { pushToast, currentUser } = useUsersModule();
   const [users, setUsers] = useState<UserAccount[]>([]);
@@ -449,7 +53,7 @@ function UserManagement({ token }: Props) {
   const [permissionDraft, setPermissionDraft] = useState<Record<string, RoleModulePermission[]>>({});
   const [selectedRole, setSelectedRole] = useState<string>("OPERADOR");
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const [formState, setFormState] = useState<FormState>(DEFAULT_FORM_STATE);
+  const [formState, setFormState] = useState<UserFormState>(DEFAULT_FORM_STATE);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("TODOS");
   const [statusFilter, setStatusFilter] = useState<UserQueryFilters["status"]>("all");
@@ -461,6 +65,7 @@ function UserManagement({ token }: Props) {
   const [savingUser, setSavingUser] = useState(false);
   const [exporting, setExporting] = useState<"pdf" | "xlsx" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
 
   const debouncedSearch = useMemo(() => search.trim(), [search]);
 
@@ -832,6 +437,7 @@ function UserManagement({ token }: Props) {
         [updated.role]: updated.permissions.map((permission) => ({ ...permission })),
       }));
       pushToast({ message: `Permisos actualizados para ${updated.role}`, variant: "success" });
+      setIsRoleModalOpen(false);
     } catch (error_) {
       const message =
         error_ instanceof Error ? error_.message : "No fue posible actualizar los permisos del rol.";
@@ -856,193 +462,77 @@ function UserManagement({ token }: Props) {
 
   return (
     <section className="card user-management">
-      <header className="card-header">
-        <div>
-          <h2>Gestión de usuarios</h2>
-          <p className="card-subtitle">
-            Administra cuentas corporativas, roles asignados, motivos de inactivación y permisos por módulo.
-          </p>
-        </div>
-        <div className="export-buttons">
-          <button
-            type="button"
-            className="button button-secondary"
-            onClick={() => handleExport("pdf")}
-            disabled={exporting !== null}
-          >
-            <FileText size={16} aria-hidden="true" />
-            PDF
-          </button>
-          <button
-            type="button"
-            className="button button-secondary"
-            onClick={() => handleExport("xlsx")}
-            disabled={exporting !== null}
-          >
-            <FileSpreadsheet size={16} aria-hidden="true" />
-            Excel
-          </button>
-        </div>
-      </header>
-      {error ? <p className="error-text">{error}</p> : null}
-      <UserDashboardPanel dashboard={dashboard} loading={loadingDashboard} onRefresh={loadDashboard} />
+      <Toolbar
+        onExportPdf={() => handleExport("pdf")}
+        onExportExcel={() => handleExport("xlsx")}
+        disabled={exporting !== null}
+        error={error}
+      />
+      <SummaryCards dashboard={dashboard} loading={loadingDashboard} onRefresh={loadDashboard} />
       <div className="user-management__content">
         <div className="user-management__main">
-          <div className="user-filters">
-            <label>
-              <span>Búsqueda</span>
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Correo o nombre completo"
-              />
-            </label>
-            <label>
-              <span>Rol</span>
-              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
-                <option value="TODOS">Todos</option>
-                {roleNames.map((role) => (
-                  <option key={role} value={role}>
-                    {role}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Estado</span>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
-                <option value="all">Todos</option>
-                <option value="active">Activos</option>
-                <option value="inactive">Inactivos</option>
-                <option value="locked">Bloqueados</option>
-              </select>
-            </label>
-            <label>
-              <span>Sucursal</span>
-              <select
-                value={storeFilter === "ALL" ? "ALL" : String(storeFilter)}
-                onChange={(event) =>
-                  setStoreFilter(event.target.value === "ALL" ? "ALL" : Number(event.target.value))
-                }
-              >
-                <option value="ALL">Todas</option>
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {loadingUsers ? <LoadingOverlay visible label="Cargando usuarios..." /> : null}
-          {users.length === 0 && !loadingUsers ? (
-            <p className="muted-text">No hay usuarios que coincidan con los filtros aplicados.</p>
-          ) : (
-            <div className="user-table-wrapper">
-              <table className="user-table">
-                <thead>
-                  <tr>
-                    <th>Usuario</th>
-                    <th>Nombre</th>
-                    <th>Sucursal</th>
-                    <th>Estado</th>
-                    <th>Activo</th>
-                    <th>Bloqueado</th>
-                    {roleNames.map((role) => (
-                      <th key={role}>{role}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => {
-                    const locked = isUserLocked(user);
-                    return (
-                      <tr
-                        key={user.id}
-                        className={selectedUserId === user.id ? "is-selected" : undefined}
-                        onClick={() => setSelectedUserId(user.id)}
-                      >
-                      <td>{user.username}</td>
-                      <td>{user.full_name ?? "—"}</td>
-                      <td>{user.store_name ?? "—"}</td>
-                      <td>{user.estado}</td>
-                      <td>
-                        <label className="toggle-control" onClick={(event) => event.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={user.is_active}
-                            onChange={(event) => handleStatusToggle(user, event.target.checked)}
-                            disabled={currentUser?.id === user.id}
-                          />
-                          <span className="toggle-slider" />
-                        </label>
-                      </td>
-                      <td>
-                        <span
-                          className={`user-lock-indicator${
-                            locked ? " user-lock-indicator--active" : " user-lock-indicator--clear"
-                          }`}
-                          title={locked ? `Bloqueado hasta ${formatDateTime(user.locked_until)}` : "Sin bloqueo activo"}
-                        >
-                          <span className="user-lock-indicator__dot" aria-hidden="true" />
-                          {locked ? "Sí" : "No"}
-                        </span>
-                      </td>
-                      {roleNames.map((roleName) => {
-                        const hasRole = user.roles.some((role) => role.name === roleName);
-                        return (
-                          <td key={`${user.id}-${roleName}`}>
-                            <label className="checkbox-control" onClick={(event) => event.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={hasRole}
-                                onChange={(event) => handleRoleToggle(user, roleName, event.target.checked)}
-                                disabled={currentUser?.id === user.id}
-                              />
-                              <span />
-                            </label>
-                          </td>
-                        );
-                      })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-        <div className="user-management__aside">
-          <UserForm
-            mode={selectedUser ? "edit" : "create"}
-            values={formState}
-            onChange={(patch) => setFormState((current) => ({ ...current, ...patch }))}
-            onSubmit={handleFormSubmit}
-            onReset={() => {
-              setSelectedUserId(null);
-              setFormState(DEFAULT_FORM_STATE);
-            }}
-            roles={sortedRoles}
+          <FiltersPanel
+            search={search}
+            onSearchChange={setSearch}
+            roleFilter={roleFilter}
+            onRoleFilterChange={setRoleFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={(value) => setStatusFilter(value)}
+            storeFilter={storeFilter}
+            onStoreFilterChange={(value) => setStoreFilter(value)}
+            roleOptions={roleNames}
             stores={stores}
-            saving={savingUser}
           />
-          <RolePermissionsMatrix
-            roles={sortedPermissionsMatrix}
-            selectedRole={selectedRole}
-            permissions={currentPermissions}
-            onSelectRole={(role) => {
-              setSelectedRole(role);
-            }}
-            onToggle={handlePermissionToggle}
-            onReset={handlePermissionReset}
-            onSave={handlePermissionSave}
-            saving={savingPermissions}
-            loading={loadingPermissions}
-            hasChanges={hasPermissionChanges}
+          <UsersTable
+            users={users}
+            roleNames={roleNames}
+            selectedUserId={selectedUserId}
+            onSelectUser={setSelectedUserId}
+            onToggleStatus={handleStatusToggle}
+            onToggleRole={handleRoleToggle}
+            currentUserId={currentUser?.id ?? null}
+            loading={loadingUsers}
           />
         </div>
+        <SidePanel
+          mode={selectedUser ? "edit" : "create"}
+          formValues={formState}
+          onFormChange={(patch) => setFormState((current) => ({ ...current, ...patch }))}
+          onFormSubmit={handleFormSubmit}
+          onFormReset={() => {
+            setSelectedUserId(null);
+            setFormState(DEFAULT_FORM_STATE);
+          }}
+          roles={sortedRoles}
+          stores={stores}
+          savingUser={savingUser}
+          permissionsMatrix={sortedPermissionsMatrix}
+          selectedRole={selectedRole}
+          permissions={currentPermissions}
+          onSelectRole={setSelectedRole}
+          onTogglePermission={handlePermissionToggle}
+          onResetPermissions={handlePermissionReset}
+          onSavePermissions={handlePermissionSave}
+          savingPermissions={savingPermissions}
+          loadingPermissions={loadingPermissions}
+          hasPermissionChanges={hasPermissionChanges}
+          onOpenRoleModal={() => setIsRoleModalOpen(true)}
+        />
       </div>
+      <RoleModal
+        open={isRoleModalOpen}
+        onClose={() => setIsRoleModalOpen(false)}
+        roles={sortedPermissionsMatrix}
+        selectedRole={selectedRole}
+        permissions={currentPermissions}
+        onSelectRole={setSelectedRole}
+        onToggle={handlePermissionToggle}
+        onReset={handlePermissionReset}
+        onSave={handlePermissionSave}
+        saving={savingPermissions}
+        loading={loadingPermissions}
+        hasChanges={hasPermissionChanges}
+      />
     </section>
   );
 }

@@ -9,7 +9,7 @@ import {
 } from "../../../../api";
 
 import { initialRepairForm } from "./repairOrdersBoardConstants";
-import type { RepairForm } from "./RepairOrdersTypes";
+import type { RepairForm } from "../../../../types/repairs";
 
 type RepairOrderActionsParams = {
   token: string;

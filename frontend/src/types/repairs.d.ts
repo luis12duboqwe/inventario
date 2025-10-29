@@ -1,4 +1,4 @@
-import type { Customer, Device, Store } from "../../../../api";
+import type { Customer, Device, Store } from "../api";
 
 type RepairPartForm = {
   deviceId: number | null;
@@ -18,4 +18,4 @@ type RepairForm = {
   parts: RepairPartForm[];
 };
 
-export type { Customer, Device, Store, RepairPartForm, RepairForm };
+export type { Customer, Device, Store, RepairForm, RepairPartForm };

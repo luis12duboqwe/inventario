@@ -14,6 +14,8 @@ type RepairRowRendererDependencies = {
   handleStatusChange: (order: RepairOrder, status: RepairOrder["status"]) => void;
   handleDownload: (order: RepairOrder) => void;
   handleDelete: (order: RepairOrder) => void;
+  onShowBudget?: (order: RepairOrder) => void;
+  onShowParts?: (order: RepairOrder) => void;
 };
 
 const createRepairRowRenderer = ({
@@ -23,6 +25,8 @@ const createRepairRowRenderer = ({
   handleStatusChange,
   handleDownload,
   handleDelete,
+  onShowBudget,
+  onShowParts,
 }: RepairRowRendererDependencies) => {
   return (order: RepairOrder): ReactNode => {
     const updatedAt = new Date(order.updated_at).toLocaleString("es-MX");
@@ -97,6 +101,16 @@ const createRepairRowRenderer = ({
         <td data-label="Inventario">{order.inventory_adjusted ? "Sí" : "Pendiente"}</td>
         <td data-label="Acciones">
           <div className="actions-row">
+            {onShowBudget ? (
+              <button type="button" className="btn btn--ghost" onClick={() => onShowBudget(order)}>
+                Presupuesto
+              </button>
+            ) : null}
+            {onShowParts ? (
+              <button type="button" className="btn btn--ghost" onClick={() => onShowParts(order)}>
+                Repuestos
+              </button>
+            ) : null}
             <button type="button" className="btn btn--ghost" onClick={() => handleDownload(order)}>
               PDF
             </button>

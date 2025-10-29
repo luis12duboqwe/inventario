@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { Sale } from "../../../../api";
-import { downloadPosReceipt, registerSaleReturn } from "../../../../api";
+import type { Sale } from "../../../api";
+import { downloadPosReceipt, registerSaleReturn } from "../../../api";
 
 type Props = {
   token: string;
@@ -8,7 +8,7 @@ type Props = {
   receiptUrl?: string | null;
 };
 
-function POSReceipt({ token, sale, receiptUrl }: Props) {
+function ReceiptPreview({ token, sale, receiptUrl }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -173,4 +173,4 @@ function POSReceipt({ token, sale, receiptUrl }: Props) {
   );
 }
 
-export default POSReceipt;
+export default ReceiptPreview;
