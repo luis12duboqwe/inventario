@@ -1,10 +1,12 @@
-import PurchasesFormModal from "../../../pages/operaciones/purchases/components/FormModal";
-import PurchasesFiltersPanel from "../../../pages/operaciones/purchases/components/FiltersPanel";
-import PurchasesOrdersPanel from "../../../pages/operaciones/purchases/components/OrdersPanel";
-import PurchasesSidePanel from "../../../pages/operaciones/purchases/components/SidePanel";
-import PurchasesSummaryCards from "../../../pages/operaciones/purchases/components/SummaryCards";
-import PurchasesTable from "../../../pages/operaciones/purchases/components/Table";
-import PurchasesToolbar from "../../../pages/operaciones/purchases/components/Toolbar";
+import {
+  PurchasesFiltersPanel,
+  PurchasesFormModal,
+  PurchasesOrdersPanel,
+  PurchasesSidePanel,
+  PurchasesSummaryCards,
+  PurchasesTable,
+  PurchasesToolbar,
+} from "./purchases";
 import type { PurchaseOrder } from "../../../api";
 import {
   usePurchasesController,
