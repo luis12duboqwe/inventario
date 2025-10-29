@@ -1,7 +1,11 @@
 import React from "react";
+import {
+  MOVEMENT_TYPE_OPTIONS,
+  type MovementType,
+} from "./constants";
 
 export type MovementCreatePayload = {
-  type: "IN" | "OUT" | "TRANSFER";
+  type: MovementType;
   productId: string;
   qty: number;
   fromStoreId?: string;
@@ -17,7 +21,7 @@ type Props = {
 };
 
 export default function CreateModal({ open, onClose, onCreate }: Props) {
-  const [type, setType] = React.useState<"IN" | "OUT" | "TRANSFER">("IN");
+  const [type, setType] = React.useState<MovementType>("entrada");
   const [productId, setProductId] = React.useState("");
   const [qty, setQty] = React.useState<string>("");
   const [fromStoreId, setFromStoreId] = React.useState("");
@@ -27,7 +31,7 @@ export default function CreateModal({ open, onClose, onCreate }: Props) {
 
   React.useEffect(() => {
     if (!open) {
-      setType("IN");
+      setType("entrada");
       setProductId("");
       setQty("");
       setFromStoreId("");
@@ -56,12 +60,14 @@ export default function CreateModal({ open, onClose, onCreate }: Props) {
         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(200px,1fr))" }}>
           <select
             value={type}
-            onChange={(e) => setType(e.target.value as "IN" | "OUT" | "TRANSFER")}
+            onChange={(e) => setType(e.target.value as MovementType)}
             style={{ padding: 8, borderRadius: 8 }}
           >
-            <option value="IN">Entrada</option>
-            <option value="OUT">Salida</option>
-            <option value="TRANSFER">Transferencia</option>
+            {MOVEMENT_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
           <input
             placeholder="Product ID"
@@ -76,31 +82,25 @@ export default function CreateModal({ open, onClose, onCreate }: Props) {
             onChange={(e) => setQty(e.target.value)}
             style={{ padding: 8, borderRadius: 8 }}
           />
-          {type === "TRANSFER" ? (
-            <>
-              <input
-                placeholder="De (fromStoreId)"
-                value={fromStoreId}
-                onChange={(e) => setFromStoreId(e.target.value)}
-                style={{ padding: 8, borderRadius: 8 }}
-              />
-              <input
-                placeholder="A (toStoreId)"
-                value={toStoreId}
-                onChange={(e) => setToStoreId(e.target.value)}
-                style={{ padding: 8, borderRadius: 8 }}
-              />
-            </>
+          {type !== "entrada" ? (
+            <input
+              placeholder="Sucursal origen (fromStoreId)"
+              value={fromStoreId}
+              onChange={(e) => setFromStoreId(e.target.value)}
+              style={{ padding: 8, borderRadius: 8 }}
+            />
           ) : (
-            <>
-              <input
-                placeholder="Sucursal (storeId)"
-                value={toStoreId}
-                onChange={(e) => setToStoreId(e.target.value)}
-                style={{ padding: 8, borderRadius: 8 }}
-              />
-              <div />
-            </>
+            <div />
+          )}
+          {type !== "salida" ? (
+            <input
+              placeholder="Sucursal destino (toStoreId)"
+              value={toStoreId}
+              onChange={(e) => setToStoreId(e.target.value)}
+              style={{ padding: 8, borderRadius: 8 }}
+            />
+          ) : (
+            <div />
           )}
           <input
             placeholder="Referencia (opcional)"
@@ -129,10 +129,10 @@ export default function CreateModal({ open, onClose, onCreate }: Props) {
                 reference,
                 note,
               };
-              if (type === "TRANSFER") {
+              if (type !== "entrada") {
                 payload.fromStoreId = fromStoreId;
-                payload.toStoreId = toStoreId;
-              } else {
+              }
+              if (type !== "salida") {
                 payload.toStoreId = toStoreId;
               }
               onCreate?.(payload);

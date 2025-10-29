@@ -13,6 +13,11 @@ import type {
   MovementFilters,
   MovementRow,
 } from "../components/movements";
+import {
+  MOVEMENT_TYPE_OPTIONS,
+  getMovementTypePluralLabel,
+  type MovementType,
+} from "../components/movements/constants";
 
 export default function InventoryMovements() {
   const [filters, setFilters] = React.useState<MovementFilters>({ type: "ALL" });
@@ -34,23 +39,25 @@ export default function InventoryMovements() {
   );
 
   const summaryItems = React.useMemo(() => {
-    const totalsByType = rows.reduce(
+    const totalsByType = rows.reduce<Record<MovementType, number>>(
       (acc, row) => {
-        acc[row.type] += 1;
+        acc[row.type] = (acc[row.type] ?? 0) + 1;
         return acc;
       },
-      { IN: 0, OUT: 0, TRANSFER: 0 } as Record<"IN" | "OUT" | "TRANSFER", number>,
+      { entrada: 0, salida: 0, ajuste: 0 },
     );
     const totalUnits = rows.reduce((acc, row) => acc + row.qty, 0);
+    const typeSummaries = MOVEMENT_TYPE_OPTIONS.map((option) => ({
+      label: getMovementTypePluralLabel(option.value),
+      value: totalsByType[option.value],
+    }));
     return [
       {
         label: "Movimientos",
         value: rows.length,
         hint: `${totalUnits} unidades registradas · ${activeFilters} filtros activos`,
       },
-      { label: "Entradas", value: totalsByType.IN },
-      { label: "Salidas", value: totalsByType.OUT },
-      { label: "Transferencias", value: totalsByType.TRANSFER },
+      ...typeSummaries,
     ];
   }, [activeFilters, rows]);
 
@@ -88,9 +95,7 @@ export default function InventoryMovements() {
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <h2 style={{ margin: 0 }}>Movimientos</h2>
-      <p style={{ margin: 0, color: "#9ca3af" }}>
-        Entradas, salidas, ajustes y transferencias entre tiendas.
-      </p>
+      <p style={{ margin: 0, color: "#9ca3af" }}>Entradas, salidas y ajustes sincronizados con inventario.</p>
 
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button

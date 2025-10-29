@@ -1,9 +1,10 @@
 import React from "react";
+import { getMovementTypeLabel, type MovementType } from "./constants";
 
 export type MovementRow = {
   id: string;
   date: string;
-  type: "IN" | "OUT" | "TRANSFER";
+  type: MovementType;
   product: string;
   sku?: string;
   qty: number;
@@ -56,7 +57,7 @@ export default function Table({ rows, loading, selectedIds, onToggleSelect, onTo
                 <input type="checkbox" checked={selected.includes(r.id)} onChange={() => onToggleSelect?.(r.id)} />
               </td>
               <td style={{ padding: 10 }}>{r.date}</td>
-              <td style={{ padding: 10 }}>{r.type}</td>
+              <td style={{ padding: 10 }}>{getMovementTypeLabel(r.type)}</td>
               <td style={{ padding: 10 }}>
                 {r.product}
                 {r.sku ? ` (${r.sku})` : ""}

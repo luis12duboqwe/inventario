@@ -1,4 +1,5 @@
 import React from "react";
+import { getMovementTypeLabel } from "./constants";
 import type { MovementRow } from "./Table";
 
 type Props = {
@@ -10,7 +11,7 @@ export default function SidePanel({ row, onClose }: Props) {
   if (!row) return null;
   const fields = [
     ["Fecha", row.date],
-    ["Tipo", row.type],
+    ["Tipo", getMovementTypeLabel(row.type)],
     ["Producto", row.product],
     ["SKU", row.sku || "-"],
     ["Cantidad", String(row.qty)],

@@ -1,8 +1,12 @@
 import React from "react";
+import {
+  MOVEMENT_FILTER_OPTIONS,
+  type MovementFilterType,
+} from "./constants";
 
 export type MovementFilters = {
   query?: string;
-  type?: "IN" | "OUT" | "TRANSFER" | "ALL";
+  type?: MovementFilterType;
   storeId?: string;
   fromStoreId?: string;
   toStoreId?: string;
@@ -27,13 +31,14 @@ export default function FiltersPanel({ value, onChange }: Props) {
       />
       <select
         value={v.type || "ALL"}
-        onChange={(e) => onChange({ ...v, type: e.target.value as MovementFilters["type"] })}
+        onChange={(e) => onChange({ ...v, type: e.target.value as MovementFilterType })}
         style={{ padding: 8, borderRadius: 8 }}
       >
-        <option value="ALL">Todos</option>
-        <option value="IN">Entrada</option>
-        <option value="OUT">Salida</option>
-        <option value="TRANSFER">Transferencia</option>
+        {MOVEMENT_FILTER_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
       </select>
       <input
         placeholder="Sucursal (storeId)"
