@@ -2,11 +2,11 @@ import { Suspense, lazy, memo, type ReactNode, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 const DashboardLayout = lazy(() => import("./layout/DashboardLayout"));
 
-const InventoryPage = lazy(() => import("../inventory/pages/InventoryPage"));
-const InventoryProductsPage = lazy(() => import("../inventory/pages/InventoryProductsPage"));
-const InventoryMovementsPage = lazy(() => import("../inventory/pages/InventoryMovementsPage"));
-const InventorySuppliersPage = lazy(() => import("../inventory/pages/InventorySuppliersPage"));
-const InventoryAlertsPage = lazy(() => import("../inventory/pages/InventoryAlertsPage"));
+const InventoryLayout = lazy(() => import("../inventory/pages/InventoryLayout"));
+const InventoryProducts = lazy(() => import("../inventory/pages/InventoryProducts"));
+const InventoryMoves = lazy(() => import("../inventory/pages/InventoryMovements"));
+const InventorySuppliers = lazy(() => import("../inventory/pages/InventorySuppliers"));
+const InventoryAlerts = lazy(() => import("../inventory/pages/InventoryAlerts"));
 const OperationsPage = lazy(() => import("../operations/pages/OperationsPage"));
 const VentasCajaPage = lazy(() => import("../operations/pages/ventas/CajaPage"));
 const VentasFacturacionPage = lazy(() => import("../operations/pages/ventas/FacturacionPage"));
@@ -89,15 +89,15 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="inventory/*"
           element={
             <ModuleBoundary>
-              <InventoryPage />
+              <InventoryLayout />
             </ModuleBoundary>
           }
         >
           <Route index element={<Navigate to="productos" replace />} />
-          <Route path="productos" element={<InventoryProductsPage />} />
-          <Route path="movimientos" element={<InventoryMovementsPage />} />
-          <Route path="proveedores" element={<InventorySuppliersPage />} />
-          <Route path="alertas" element={<InventoryAlertsPage />} />
+          <Route path="productos" element={<InventoryProducts />} />
+          <Route path="movimientos" element={<InventoryMoves />} />
+          <Route path="proveedores" element={<InventorySuppliers />} />
+          <Route path="alertas" element={<InventoryAlerts />} />
         </Route>
         <Route
           path="operations/*"
