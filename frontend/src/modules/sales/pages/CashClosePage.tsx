@@ -1,4 +1,7 @@
 import React, { useMemo, useState } from "react";
+// [PACK26-CASH-PERMS-START]
+import { DisableIfNoPerm, PERMS } from "../../../auth/useAuthz";
+// [PACK26-CASH-PERMS-END]
 
 type Totals = {
   cash: number;
@@ -68,14 +71,18 @@ export default function CashClosePage() {
         ))}
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button
-          style={{ padding: "8px 12px", borderRadius: 8 }}
-          onClick={() => {
-            // TODO(save+print)
-          }}
-        >
-          Cerrar caja
-        </button>
+        {/* [PACK26-CASH-PERMS-START] */}
+        <DisableIfNoPerm perm={PERMS.CASH_CLOSE}>
+          <button
+            style={{ padding: "8px 12px", borderRadius: 8 }}
+            onClick={() => {
+              // TODO(save+print)
+            }}
+          >
+            Cerrar caja
+          </button>
+        </DisableIfNoPerm>
+        {/* [PACK26-CASH-PERMS-END] */}
       </div>
     </div>
   );

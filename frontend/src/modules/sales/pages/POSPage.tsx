@@ -20,6 +20,10 @@ import { SalesProducts } from "../../../services/sales";
 import { usePOS } from "../hooks/usePOS";
 // [PACK22-POS-PAGE-IMPORTS-END]
 import { calcTotalsLocal } from "../utils/totals";
+// [PACK26-POS-PERMS-START]
+import { useAuthz, PERMS, RequirePerm, DisableIfNoPerm } from "../../../auth/useAuthz";
+import { logUI } from "../../../services/audit";
+// [PACK26-POS-PERMS-END]
 // [PACK27-PRINT-POS-IMPORT-START]
 import { openPrintable } from "@/lib/print";
 // [PACK27-PRINT-POS-IMPORT-END]
@@ -47,6 +51,9 @@ type Customer = {
 
 export default function POSPage() {
   type PaymentDraft = PaymentInput & { id: string };
+  // [PACK26-POS-AUTHZ-STATE-START]
+  const { user, can, hasAny } = useAuthz();
+  // [PACK26-POS-AUTHZ-STATE-END]
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [discountTarget, setDiscountTarget] = useState<string | null>(null);
   const [priceTarget, setPriceTarget] = useState<string | null>(null);
@@ -140,6 +147,24 @@ export default function POSPage() {
     ? lines.find((line) => String(line.productId) === priceTarget)?.price ?? 0
     : 0;
 
+  // [PACK26-POS-AUDIT-START]
+  async function onAfterCheckout(result: any){
+    await logUI({ ts: Date.now(), userId: user?.id, module: "POS", action: "checkout", entityId: result?.saleId, meta: { total: result?.totals?.grand, lines: lines.length } });
+  }
+
+  async function onApplyDiscount(lineId: string, value: number, type: "PERCENT"|"AMOUNT"){
+    await logUI({ ts: Date.now(), userId: user?.id, module: "POS", action: "discount.apply", entityId: lineId, meta: { value, type } });
+  }
+
+  async function onHeld(holdId: string){
+    await logUI({ ts: Date.now(), userId: user?.id, module: "POS", action: "hold.create", entityId: holdId });
+  }
+
+  async function onResumed(holdId: string){
+    await logUI({ ts: Date.now(), userId: user?.id, module: "POS", action: "hold.resume", entityId: holdId });
+  }
+  // [PACK26-POS-AUDIT-END]
+
   async function doSearch(extra?: Partial<ProductSearchParams>) {
     setLoadingSearch(true);
     try {
@@ -185,15 +210,18 @@ export default function POSPage() {
 
   const handleDiscountSubmit = (payload: { type: "PERCENT" | "AMOUNT"; value: number }) => {
     if (!discountTarget) return;
+    if (!can(PERMS.POS_DISCOUNT)) return;
     const normalized = payload.type === "PERCENT"
       ? Math.min(Math.max(payload.value, 0), 100)
       : Math.max(payload.value, 0);
     setDiscount(discountTarget, payload.type, normalized);
+    void onApplyDiscount(discountTarget, normalized, payload.type);
     setDiscountTarget(null);
   };
 
   const handlePriceOverride = (newPrice: number) => {
     if (!priceTarget) return;
+    if (!can(PERMS.POS_PRICE_OVERRIDE)) return;
     overridePrice(priceTarget, Math.max(newPrice, 0));
     setPriceTarget(null);
   };
@@ -203,10 +231,16 @@ export default function POSPage() {
   }
 
   const handlePaymentsSubmit = async (paymentDrafts: PaymentDraft[]) => {
+    if (!can(PERMS.POS_CHECKOUT)) return;
     const payload: PaymentInput[] = paymentDrafts.map(({ type, amount, ref }) => ({ type, amount, ref }));
     setPayments(payload);
     try {
       const result = await checkout();
+      await onAfterCheckout(result);
+      // [PACK22-POS-PRINT-START]
+      if (result?.printable?.pdfUrl) window.open(result.printable.pdfUrl, "_blank");
+      else if (result?.printable?.html) {
+        // TODO: implementar vista previa HTML
       // [PACK27-PRINT-POS-START]
       if (result?.printable) {
         openPrintable(result.printable, "ticket");
@@ -219,6 +253,7 @@ export default function POSPage() {
   };
 
   async function onHold() {
+    if (!can(PERMS.POS_HOLD)) return;
     try {
       const holdId = await holdSale();
       if (holdId) {
@@ -235,6 +270,7 @@ export default function POSPage() {
         clearCart();
         setCustomer(null);
         setHoldDrawerOpen(false);
+        await onHeld(holdId);
       }
     } catch (error) {
       // errores manejados por banner POS
@@ -242,10 +278,12 @@ export default function POSPage() {
   }
 
   async function onResumeHold(holdId: string) {
+    if (!can(PERMS.POS_RESUME)) return;
     try {
       await resumeHold(holdId);
       setHoldItems((prev) => prev.filter((item) => item.id !== holdId));
       setHoldDrawerOpen(false);
+      await onResumed(holdId);
     } catch (error) {
       // errores manejados por banner POS
     }
@@ -268,6 +306,12 @@ export default function POSPage() {
   // [PACK22-POS-SEARCH-INIT-START]
   useEffect(() => { doSearch(); /* carga inicial */ }, []);
   // [PACK22-POS-SEARCH-INIT-END]
+
+  // [PACK26-POS-GUARD-START]
+  if (!can(PERMS.POS_VIEW)) {
+    return <div>No autorizado</div>;
+  }
+  // [PACK26-POS-GUARD-END]
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -304,11 +348,15 @@ export default function POSPage() {
         }}
         onQuickNew={() => setFastCustomerOpen(true)}
       />
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={() => setHoldDrawerOpen(true)} style={{ padding: "6px 10px", borderRadius: 8 }}>
-          Ventas en espera
-        </button>
-      </div>
+      {/* [PACK26-POS-HOLD-BUTTON-START] */}
+      {hasAny([PERMS.POS_HOLD, PERMS.POS_RESUME]) ? (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setHoldDrawerOpen(true)} style={{ padding: "6px 10px", borderRadius: 8 }}>
+            Ventas en espera
+          </button>
+        </div>
+      ) : null}
+      {/* [PACK26-POS-HOLD-BUTTON-END] */}
       <POSLayout
         left={
           <>

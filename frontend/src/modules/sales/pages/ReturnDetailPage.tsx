@@ -8,6 +8,10 @@ import { linesToTable } from "../utils/adapters";
 // [PACK23-RETURNS-DETAIL-IMPORTS-END]
 import { ReturnEditor } from "../components/returns";
 import { Table } from "../components/common";
+// [PACK26-RETURNS-DETAIL-PERMS-START]
+import { useAuthz, PERMS, RequirePerm } from "../../../auth/useAuthz";
+import { logUI } from "../../../services/audit";
+// [PACK26-RETURNS-DETAIL-PERMS-END]
 // [PACK27-PRINT-IMPORT-RETURNS-START]
 import { openPrintable } from "@/lib/print";
 // [PACK27-PRINT-IMPORT-RETURNS-END]
@@ -45,6 +49,9 @@ function formatDate(value?: string) {
 }
 
 export function ReturnDetailPage() {
+  const { can, user } = useAuthz();
+  const canView = can(PERMS.RETURN_VIEW);
+  const canCreate = can(PERMS.RETURN_CREATE);
   // [PACK23-RETURNS-DETAIL-STATE-START]
   const { id } = useParams(); // si no hay id -> modo crear
   const [data, setData] = useState<ReturnDoc | null>(null);
@@ -60,11 +67,15 @@ export function ReturnDetailPage() {
   useEffect(() => {
     (async () => {
       if (!id) return;
+      if (!canView) {
+        setData(null);
+        return;
+      }
       setLoading(true);
       try { setData(await SalesReturns.getReturn(id)); }
       finally { setLoading(false); }
     })();
-  }, [id]);
+  }, [id, canView]);
   // [PACK23-RETURNS-DETAIL-FETCH-END]
 
   useEffect(() => {
@@ -79,10 +90,12 @@ export function ReturnDetailPage() {
 
   // [PACK23-RETURNS-DETAIL-SAVE-START]
   async function onCreate(payload: ReturnCreate) {
+    if (!canCreate) return;
     setSaving(true);
     try {
       const r = await SalesReturns.createReturn(payload);
       setData(r);
+      await logUI({ ts: Date.now(), userId: user?.id, module: "RETURNS", action: "create", entityId: r?.id ? String(r.id) : undefined });
       // [PACK27-PRINT-RETURN-CREATE-START]
       if (r.printable) {
         openPrintable(r.printable, "nota-devolucion");
@@ -128,6 +141,14 @@ export function ReturnDetailPage() {
     }))
   );
 
+  // [PACK26-RETURNS-DETAIL-GUARD-START]
+  if (id && !canView) {
+    return <div>No autorizado</div>;
+  }
+  if (!id && !canCreate) {
+    return <div>No autorizado</div>;
+  }
+  // [PACK26-RETURNS-DETAIL-GUARD-END]
   const headerSection = useMemo(() => {
     if (!isCreateMode && loading && !data) {
       return <Skeleton lines={6} />;
@@ -161,24 +182,26 @@ export function ReturnDetailPage() {
       {offlineNotice ? <div style={{ color: "#fbbf24", fontSize: 13 }}>{offlineNotice}</div> : null}
       {isCreateMode ? (
         <>
-          <ReturnEditor
-            onSubmit={(payload) => {
-              if (saving) return;
-              onCreate({
-                reason: payload.reason as ReturnDoc["reason"],
-                note: payload.note,
-                lines: payload.lines.map((line) => ({
-                  productId: line.id,
-                  name: line.name,
-                  qty: line.qty,
-                  price: line.price,
-                  imei: line.imei,
-                  restock: line.restock,
-                })),
-                ticketNumber: payload.lines[0]?.ticket,
-              });
-            }}
-          />
+          <RequirePerm perm={PERMS.RETURN_CREATE} fallback={<div>No autorizado</div>}>
+            <ReturnEditor
+              onSubmit={(payload) => {
+                if (saving) return;
+                onCreate({
+                  reason: payload.reason as ReturnDoc["reason"],
+                  note: payload.note,
+                  lines: payload.lines.map((line) => ({
+                    productId: line.id,
+                    name: line.name,
+                    qty: line.qty,
+                    price: line.price,
+                    imei: line.imei,
+                    restock: line.restock,
+                  })),
+                  ticketNumber: payload.lines[0]?.ticket,
+                });
+              }}
+            />
+          </RequirePerm>
           {data && (
             <div style={{ display: "grid", gap: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
