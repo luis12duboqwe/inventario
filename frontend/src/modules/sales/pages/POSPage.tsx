@@ -20,6 +20,9 @@ import { SalesProducts } from "../../../services/sales";
 import { usePOS } from "../hooks/usePOS";
 // [PACK22-POS-PAGE-IMPORTS-END]
 import { calcTotalsLocal } from "../utils/totals";
+// [PACK27-PRINT-POS-IMPORT-START]
+import { openPrintable } from "@/lib/print";
+// [PACK27-PRINT-POS-IMPORT-END]
 
 type HoldSale = {
   id: string;
@@ -204,12 +207,11 @@ export default function POSPage() {
     setPayments(payload);
     try {
       const result = await checkout();
-      // [PACK22-POS-PRINT-START]
-      if (result?.printable?.pdfUrl) window.open(result.printable.pdfUrl, "_blank");
-      else if (result?.printable?.html) {
-        // TODO: implementar vista previa HTML
+      // [PACK27-PRINT-POS-START]
+      if (result?.printable) {
+        openPrintable(result.printable, "ticket");
       }
-      // [PACK22-POS-PRINT-END]
+      // [PACK27-PRINT-POS-END]
       setCustomer(null);
     } finally {
       setPaymentsOpen(false);

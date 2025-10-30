@@ -51,13 +51,21 @@ export interface CheckoutRequest {
   note?: string;
 }
 
+// [PACK27-PRINT-TYPES-START]
+export interface PrintableResource {
+  pdfUrl?: string;
+  html?: string;
+  plain?: string;
+}
+// [PACK27-PRINT-TYPES-END]
+
 export interface CheckoutResponse {
   saleId: ID;
   number: string; // folio
   date: string;
   totals: Totals;
   // para impresión rápida
-  printable?: { pdfUrl?: string; html?: string } | null;
+  printable?: PrintableResource | null;
 }
 
 export interface Quote {
@@ -70,6 +78,7 @@ export interface Quote {
   totals: Totals;
   note?: string;
   status: "OPEN" | "APPROVED" | "EXPIRED" | "CONVERTED";
+  printable?: PrintableResource | null;
 }
 export interface QuoteListParams extends ListParams { dateFrom?: string; dateTo?: string; status?: Quote["status"]; }
 export type QuoteCreate = Omit<Quote, "id" | "number" | "date" | "status" | "totals"> & { note?: string };
@@ -82,6 +91,8 @@ export interface ReturnDoc {
   reason: "DEFECT" | "BUYER_REMORSE" | "WARRANTY" | "OTHER";
   lines: ReturnLine[];
   totalCredit: number;
+  customerName?: string;
+  printable?: PrintableResource | null;
 }
 export interface ReturnListParams extends ListParams { dateFrom?: string; dateTo?: string; reason?: ReturnDoc["reason"]; }
 export interface ReturnCreate { reason: ReturnDoc["reason"]; note?: string; lines: ReturnLine[]; ticketNumber?: string; }
@@ -95,6 +106,7 @@ export interface Customer {
   tags?: string[];
   notes?: string;
   lastSaleAt?: string;
+  createdAt?: string;
 }
 export interface CustomerListParams extends ListParams { tag?: string; tier?: string; }
 
