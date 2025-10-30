@@ -4,13 +4,45 @@ import type { CartLineInput, Product, PaymentInput, Totals } from "../../../serv
 import { calcTotalsLocal, asCheckoutRequest } from "../utils/totals";
 import { SalesPOS } from "../../../services/sales";
 
+const TAX_RATE_STORAGE_KEY = "sm_pos_tax_rate";
+const DEFAULT_TAX_RATE = 0.16;
+
+const readStoredTaxRate = (): number => {
+  try {
+    const raw = localStorage.getItem(TAX_RATE_STORAGE_KEY);
+    if (!raw) return DEFAULT_TAX_RATE;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_TAX_RATE;
+  } catch {
+    return DEFAULT_TAX_RATE;
+  }
+};
+
+const persistTaxRate = (rate: number) => {
+  try {
+    localStorage.setItem(TAX_RATE_STORAGE_KEY, rate.toString());
+  } catch {}
+};
+
+const deriveTaxRate = (totals: Totals): number | null => {
+  const withRate = totals as Totals & { taxRate?: number; tax_rate?: number };
+  const candidate = withRate.taxRate ?? withRate.tax_rate;
+  if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0) {
+    return candidate > 1 ? candidate / 100 : candidate;
+  }
+  const base = Math.max(totals.sub - totals.disc, 0);
+  if (base <= 0 || totals.tax < 0) return null;
+  const computed = totals.tax / base;
+  return Number.isFinite(computed) && computed >= 0 ? computed : null;
+};
+
 export type PosBanner = { type: "info"|"warn"|"error"|"success"; msg: string };
 
 export function usePOS() {
+  const initialTaxRate = readStoredTaxRate();
   const [lines, setLines] = useState<CartLineInput[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [payments, setPayments] = useState<PaymentInput[]>([]);
-  const [totals, setTotals] = useState<Totals>(() => calcTotalsLocal([]));
   const [loading, setLoading] = useState(false);
   const [banner, setBanner] = useState<PosBanner | null>(null);
   type OfflineItem = { ts: number; dto: any };
@@ -19,7 +51,17 @@ export function usePOS() {
     catch { return []; }
   });
 
-  const taxRateRef = useRef(0); // TODO(map): si backend devuelve impuesto, sincronizar
+  const taxRateRef = useRef(initialTaxRate);
+  const [totals, setTotals] = useState<Totals>(() => calcTotalsLocal([], initialTaxRate));
+
+  const syncTaxRate = (rate: number | null) => {
+    if (typeof rate !== "number" || !Number.isFinite(rate) || rate < 0) {
+      return;
+    }
+    const normalized = rate > 1 ? rate / 100 : rate;
+    taxRateRef.current = normalized;
+    persistTaxRate(normalized);
+  };
 
   const refreshTotalsLocal = useCallback(() => {
     setTotals(calcTotalsLocal(lines, taxRateRef.current));
@@ -65,6 +107,8 @@ export function usePOS() {
       const dto = asCheckoutRequest(lines, payments, customerId ?? undefined);
       const t = await SalesPOS.priceDraft(dto);
       setTotals(t);
+      const derived = deriveTaxRate(t);
+      if (derived !== null) syncTaxRate(derived);
     } catch (e: any) {
       // Silencioso: el cálculo local mantiene la UI operativa
       // eslint-disable-next-line no-console
@@ -114,6 +158,10 @@ export function usePOS() {
       clearCart();
       setPayments([]);
       setBanner({ type: "success", msg: `Venta #${r.number} realizada.` });
+      if (r?.totals) {
+        const derived = deriveTaxRate(r.totals);
+        if (derived !== null) syncTaxRate(derived);
+      }
       return r;
     } catch (e: any) {
       // Offline mínimo: guardar intento en localStorage para reintentar
