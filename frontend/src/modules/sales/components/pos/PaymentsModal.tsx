@@ -1,86 +1,118 @@
-import React from "react";
+import React, { useState } from "react";
 
-type PaymentMethod = "CASH" | "CARD" | "TRANSFER" | "MIXED";
+type Payment = {
+  id: string;
+  type: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+  amount: number;
+  ref?: string;
+};
 
 type Props = {
   open?: boolean;
-  amount: number;
+  total: number;
   onClose?: () => void;
-  onSubmit?: (payload: { method: PaymentMethod; paid: number; note?: string }) => void;
+  onSubmit?: (payments: Payment[]) => void;
 };
 
-const formatter = new Intl.NumberFormat("es-MX", {
-  style: "currency",
-  currency: "MXN",
-  maximumFractionDigits: 2,
-});
+export default function PaymentsModal({ open, total, onClose, onSubmit }: Props) {
+  const [payments, setPayments] = useState<Payment[]>([
+    { id: "1", type: "CASH", amount: total, ref: "" },
+  ]);
 
-export default function PaymentsModal({ open, amount, onClose, onSubmit }: Props) {
-  const [method, setMethod] = React.useState<PaymentMethod>("CASH");
-  const [paid, setPaid] = React.useState<string>("");
-  const [note, setNote] = React.useState("");
+  if (!open) {
+    return null;
+  }
 
-  React.useEffect(() => {
-    if (!open) {
-      setPaid("");
-      setNote("");
-      setMethod("CASH");
-    }
-  }, [open]);
+  const addPayment = () => {
+    setPayments((prev) => [
+      ...prev,
+      { id: String(Date.now()), type: "CASH", amount: 0, ref: "" },
+    ]);
+  };
 
-  if (!open) return null;
-  const paidNum = paid ? Number(paid) : NaN;
-  const valid = !Number.isNaN(paidNum) && paidNum >= 0;
+  const updatePayment = (id: string, payload: Partial<Payment>) => {
+    setPayments((prev) =>
+      prev.map((payment) => (payment.id === id ? { ...payment, ...payload } : payment)),
+    );
+  };
+
+  const removePayment = (id: string) => {
+    setPayments((prev) => prev.filter((payment) => payment.id !== id));
+  };
+
+  const paidAmount = payments.reduce((acc, payment) => acc + (payment.amount ?? 0), 0);
+  const valid = paidAmount >= total && payments.every((payment) => payment.amount >= 0);
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 50,
-      }}
-    >
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center" }}>
       <div
         style={{
-          width: 520,
-          maxWidth: "95vw",
+          width: 560,
           background: "#0b1220",
           borderRadius: 12,
           border: "1px solid rgba(255,255,255,0.08)",
           padding: 16,
         }}
       >
-        <h3 style={{ marginTop: 0 }}>
-          Cobrar — Total {formatter.format(amount)}
-        </h3>
-        <div style={{ display: "grid", gap: 8 }}>
-          <select
-            value={method}
-            onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-            style={{ padding: 8, borderRadius: 8 }}
-          >
-            <option value="CASH">Efectivo</option>
-            <option value="CARD">Tarjeta</option>
-            <option value="TRANSFER">Transferencia</option>
-            <option value="MIXED">Mixto</option>
-          </select>
-          <input
-            type="number"
-            placeholder="Monto pagado"
-            value={paid}
-            onChange={(e) => setPaid(e.target.value)}
-            style={{ padding: 8, borderRadius: 8 }}
-            min={0}
-          />
-          <input
-            placeholder="Nota (opcional)"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            style={{ padding: 8, borderRadius: 8 }}
-          />
+        <h3 style={{ marginTop: 0 }}>Cobros</h3>
+        <div style={{ display: "grid", gap: 8, maxHeight: 360, overflow: "auto" }}>
+          {payments.map((payment) => (
+            <div
+              key={payment.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 120px 1fr 28px",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <select
+                value={payment.type}
+                onChange={(event) =>
+                  updatePayment(payment.id, {
+                    type: event.target.value as Payment["type"],
+                  })
+                }
+                style={{ padding: 8, borderRadius: 8 }}
+              >
+                <option value="CASH">Efectivo</option>
+                <option value="CARD">Tarjeta</option>
+                <option value="TRANSFER">Transferencia</option>
+                <option value="OTHER">Otro</option>
+              </select>
+              <input
+                type="number"
+                value={payment.amount}
+                onChange={(event) =>
+                  updatePayment(payment.id, { amount: Number(event.target.value ?? 0) })
+                }
+                style={{ padding: 8, borderRadius: 8 }}
+              />
+              <input
+                placeholder="Ref/last4"
+                value={payment.ref ?? ""}
+                onChange={(event) => updatePayment(payment.id, { ref: event.target.value })}
+                style={{ padding: 8, borderRadius: 8 }}
+              />
+              <button
+                onClick={() => removePayment(payment.id)}
+                style={{ padding: "6px 8px", borderRadius: 8 }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button onClick={addPayment} style={{ padding: "8px 12px", borderRadius: 8 }}>
+            Agregar medio
+          </button>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+          <div>
+            Total: <b>{Intl.NumberFormat().format(total)}</b>
+          </div>
+          <div>
+            Pagado: <b>{Intl.NumberFormat().format(paidAmount)}</b>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
           <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
@@ -88,24 +120,10 @@ export default function PaymentsModal({ open, amount, onClose, onSubmit }: Props
           </button>
           <button
             disabled={!valid}
-            onClick={() =>
-              valid &&
-              onSubmit?.({
-                method,
-                paid: Number(paidNum),
-                note: note.trim() || undefined,
-              })
-            }
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: valid ? "#22c55e" : "rgba(255,255,255,0.08)",
-              color: valid ? "#0b1220" : "#e5e7eb",
-              border: 0,
-              fontWeight: 700,
-            }}
+            onClick={() => onSubmit?.(payments)}
+            style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
           >
-            Confirmar pago
+            Confirmar
           </button>
         </div>
       </div>
