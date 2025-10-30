@@ -11,7 +11,29 @@ import { CustomerDetailCard } from "../components/customers";
 import { Skeleton } from "@/ui/Skeleton";
 // [PACK25-SKELETON-USE-END]
 import { readQueue } from "@/services/offline";
+import type { ApiError } from "@/services/http";
 import { flushOffline, safeCreateCustomer, safeUpdateCustomer } from "../utils/offline";
+
+function resolveRemoteErrorMessage(error: unknown): string {
+  if (!error) {
+    return "Ocurrió un error al guardar. Revisa la información e inténtalo de nuevo.";
+  }
+  const apiError = error as ApiError | undefined;
+  const detail = apiError?.details as { detail?: string; message?: string } | undefined;
+  if (typeof detail?.detail === "string" && detail.detail.trim().length > 0) {
+    return detail.detail;
+  }
+  if (typeof detail?.message === "string" && detail.message.trim().length > 0) {
+    return detail.message;
+  }
+  if (apiError && typeof apiError.message === "string" && apiError.message.trim().length > 0) {
+    return apiError.message;
+  }
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return "Ocurrió un error al guardar. Revisa la información e inténtalo de nuevo.";
+}
 
 type CustomerProfile = {
   id?: string;
@@ -38,6 +60,7 @@ export function CustomerDetailPage() {
   const [flushing, setFlushing] = useState(false);
   const [flushMessage, setFlushMessage] = useState<string | null>(null);
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -95,22 +118,26 @@ export function CustomerDetailPage() {
     if (Object.keys(e).length) return;
 
     setSaving(true);
+    setRemoteError(null);
+    setOfflineNotice(null);
     try {
       if (id) {
-        const updated = await safeUpdateCustomer(id, partial);
-        if (updated) {
-          setData(updated);
-          setOfflineNotice(null);
-        } else {
+        const result = await safeUpdateCustomer(id, partial);
+        if (result.status === "ok") {
+          setData(result.data);
+        } else if (result.status === "queued") {
           setOfflineNotice("Cambios guardados offline. Reintenta cuando vuelvas a tener conexión.");
+        } else {
+          setRemoteError(resolveRemoteErrorMessage(result.error));
         }
       } else {
-        const created = await safeCreateCustomer(partial as Omit<Customer, "id">);
-        if (created) {
-          setData(created);
-          setOfflineNotice(null);
-        } else {
+        const result = await safeCreateCustomer(partial as Omit<Customer, "id">);
+        if (result.status === "ok") {
+          setData(result.data);
+        } else if (result.status === "queued") {
           setOfflineNotice("Cliente encolado offline. Reintenta sincronizar más tarde.");
+        } else {
+          setRemoteError(resolveRemoteErrorMessage(result.error));
         }
         // TODO: navegar a detalle created.id si el router lo soporta
       }
@@ -178,6 +205,7 @@ export function CustomerDetailPage() {
       ) : null}
       {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
       {offlineNotice ? <div style={{ color: "#fbbf24", fontSize: 13 }}>{offlineNotice}</div> : null}
+      {remoteError ? <div style={{ color: "#f87171", fontSize: 13 }}>{remoteError}</div> : null}
       {headerSection}
       <form
         onSubmit={(event) => {
