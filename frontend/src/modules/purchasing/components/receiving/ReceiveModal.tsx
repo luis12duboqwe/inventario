@@ -67,11 +67,24 @@ export default function ReceiveModal({ open, poNumber, lines, onClose, onSubmit 
     setSerials((prev) => ({ ...prev, [id]: arr }));
   };
 
-  const isValid = data.every((line) => {
+  const isQtyValid = data.every((line) => {
     const currentQty = qtys[line.id] ?? 0;
     const alreadyReceived = line.qtyReceived ?? 0;
     return currentQty + alreadyReceived <= line.qtyOrdered;
   });
+
+  const isSerialsValid = data.every((line) => {
+    if (!line.allowSerial) {
+      return true;
+    }
+
+    const expectedQty = qtys[line.id] ?? 0;
+    const capturedSerials = (serials[line.id] ?? []).filter((serial) => serial.trim().length > 0);
+
+    return capturedSerials.length === expectedQty;
+  });
+
+  const isValid = isQtyValid && isSerialsValid;
 
   return (
     <div style={overlayStyle}>
