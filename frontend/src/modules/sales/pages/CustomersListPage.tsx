@@ -6,6 +6,9 @@ import { SalesCustomers } from "../../../services/sales";
 import type { Customer, CustomerListParams } from "../../../services/sales";
 // [PACK23-CUSTOMERS-LIST-IMPORTS-END]
 import { CustomersFiltersBar, CustomersTable } from "../components/customers";
+// [PACK27-INJECT-EXPORT-CUSTOMERS-START]
+import ExportDropdown from "@/components/ExportDropdown";
+// [PACK27-INJECT-EXPORT-CUSTOMERS-END]
 // [PACK25-SKELETON-USE-START]
 import { Skeleton } from "@/ui/Skeleton";
 // [PACK25-SKELETON-USE-END]
@@ -97,19 +100,37 @@ export function CustomersListPage() {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <CustomersFiltersBar
-        value={{ query: filters.query ?? "", tag: filters.tag ?? "", tier: filters.tier ?? "" }}
-        onChange={(value) => {
-          setFilters({
-            query: value.query ?? "",
-            tag: value.tag ?? "",
-            tier: value.tier ?? "",
-          });
-          setQ(value.query ?? "");
-          setTier(value.tier ? value.tier : undefined);
-          setTag(value.tag ? value.tag : undefined);
-          setPage(1);
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          justifyContent: "space-between",
+          alignItems: "center",
         }}
+      >
+        <div style={{ flex: "1 1 320px" }}>
+          <CustomersFiltersBar
+            value={{ query: filters.query ?? "", tag: filters.tag ?? "", tier: filters.tier ?? "" }}
+            onChange={(value) => {
+              setFilters({
+                query: value.query ?? "",
+                tag: value.tag ?? "",
+                tier: value.tier ?? "",
+              });
+              setQ(value.query ?? "");
+              setTier(value.tier ? value.tier : undefined);
+              setTag(value.tag ? value.tag : undefined);
+              setPage(1);
+            }}
+          />
+        </div>
+        <ExportDropdown entity="customers" currentItems={items} />
+      </div>
+      <CustomersTable
+        rows={rows}
+        onRowClick={(row) => navigate(`/sales/customers/${row.id}`)}
+      />
       />
       {pendingOffline > 0 ? (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

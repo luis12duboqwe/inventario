@@ -8,6 +8,9 @@ import { linesToTable } from "../utils/adapters";
 // [PACK23-RETURNS-DETAIL-IMPORTS-END]
 import { ReturnEditor } from "../components/returns";
 import { Table } from "../components/common";
+// [PACK27-PRINT-IMPORT-RETURNS-START]
+import { openPrintable } from "@/lib/print";
+// [PACK27-PRINT-IMPORT-RETURNS-END]
 // [PACK25-SKELETON-USE-START]
 import { Skeleton } from "@/ui/Skeleton";
 // [PACK25-SKELETON-USE-END]
@@ -78,6 +81,13 @@ export function ReturnDetailPage() {
   async function onCreate(payload: ReturnCreate) {
     setSaving(true);
     try {
+      const r = await SalesReturns.createReturn(payload);
+      setData(r);
+      // [PACK27-PRINT-RETURN-CREATE-START]
+      if (r.printable) {
+        openPrintable(r.printable, "nota-devolucion");
+      }
+      // [PACK27-PRINT-RETURN-CREATE-END]
       const r = await safeCreateReturn(payload);
       if (r) {
         setData(r);
@@ -171,6 +181,21 @@ export function ReturnDetailPage() {
           />
           {data && (
             <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <h2 style={{ margin: 0 }}>Devolución #{data.number}</h2>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "#9ca3af" }}>{formatDate(data.date)}</span>
+                  {/* [PACK27-PRINT-BUTTON-START] */}
+                  <button
+                    style={{ padding: "6px 12px", borderRadius: 8, background: "#1f2937", color: "#e0f2fe", border: "1px solid #334155" }}
+                    onClick={() => openPrintable(data.printable, "documento")}
+                    disabled={!data.printable}
+                  >
+                    Imprimir
+                  </button>
+                  {/* [PACK27-PRINT-BUTTON-END] */}
+                </div>
+              </div>
               {headerSection}
               <div style={{ display: "grid", gap: 4, color: "#9ca3af" }}>
                 <span>
@@ -184,6 +209,23 @@ export function ReturnDetailPage() {
         </>
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <h2 style={{ margin: 0 }}>Devolución #{data?.number ?? "—"}</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "#9ca3af" }}>
+                {data ? formatDate(data.date) : loading ? "Cargando…" : "—"}
+              </span>
+              {/* [PACK27-PRINT-BUTTON-START] */}
+              <button
+                style={{ padding: "6px 12px", borderRadius: 8, background: "#1f2937", color: "#e0f2fe", border: "1px solid #334155" }}
+                onClick={() => openPrintable(data?.printable, "documento")}
+                disabled={!data?.printable}
+              >
+                Imprimir
+              </button>
+              {/* [PACK27-PRINT-BUTTON-END] */}
+            </div>
+          </div>
           {headerSection}
           <div style={{ display: "grid", gap: 4, color: "#9ca3af" }}>
             <span>

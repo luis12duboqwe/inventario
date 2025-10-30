@@ -6,6 +6,9 @@ import { SalesQuotes } from "../../../services/sales";
 import type { Quote, QuoteListParams } from "../../../services/sales";
 // [PACK23-QUOTES-LIST-IMPORTS-END]
 import { FiltersBar, SidePanel, SummaryCards, Table } from "../components/common";
+// [PACK27-INJECT-EXPORT-QUOTES-START]
+import ExportDropdown from "@/components/ExportDropdown";
+// [PACK27-INJECT-EXPORT-QUOTES-END]
 // [PACK25-SKELETON-USE-START]
 import { Skeleton } from "@/ui/Skeleton";
 // [PACK25-SKELETON-USE-END]
@@ -140,6 +143,54 @@ export function QuotesListPage() {
           { label: "Abiertas", value: items.filter((item) => item.status === "OPEN").length.toString() },
           { label: "Convertidas", value: items.filter((item) => item.status === "CONVERTED").length.toString() },
         ]}
+      />
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <form onSubmit={onSearch} style={{ flex: "1 1 320px" }}>
+          <FiltersBar>
+            <input
+              placeholder="#Q/Cliente"
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              style={{ padding: 8, borderRadius: 8 }}
+            />
+            <select
+              value={status ?? ""}
+              onChange={(event) => onStatusChange(event.target.value ? (event.target.value as Quote["status"]) : undefined)}
+              style={{ padding: 8, borderRadius: 8 }}
+            >
+              {statusOptions.map((option) => (
+                <option key={option.label} value={option.value ?? ""}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              style={{ padding: "8px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none" }}
+              disabled={loading}
+            >
+              Buscar
+            </button>
+          </FiltersBar>
+        </form>
+        <ExportDropdown entity="quotes" currentItems={items} />
+      </div>
+      <Table
+        cols={columns}
+        rows={rows}
+        onRowClick={(row) => {
+          const rowId = String((row as QuoteRow).id ?? "");
+          const found = items.find((item) => String(item.id) === rowId);
+          setSelectedRow(found ?? null);
+        }}
       />
       <form onSubmit={onSearch}>
         <FiltersBar>

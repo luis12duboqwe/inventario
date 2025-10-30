@@ -8,6 +8,9 @@ import { linesToTable } from "../utils/adapters";
 // [PACK23-QUOTES-DETAIL-IMPORTS-END]
 import { QuoteEditor } from "../components/quotes";
 import { Table } from "../components/common";
+// [PACK27-PRINT-IMPORT-START]
+import { openPrintable } from "@/lib/print";
+// [PACK27-PRINT-IMPORT-END]
 // [PACK25-SKELETON-USE-START]
 import { Skeleton } from "@/ui/Skeleton";
 // [PACK25-SKELETON-USE-END]
@@ -93,12 +96,11 @@ export function QuoteDetailPage() {
     setConverting(true);
     try {
       const r = await SalesQuotes.convertQuoteToSale(id);
-      // Opcional: abrir ticket r.printable o navegar a ventas
-      // window.open(r.printable?.pdfUrl ?? "", "_blank");
-      // [PACK23-PRINT-START]
-      // if (r.printable?.pdfUrl) window.open(r.printable.pdfUrl, "_blank");
-      // else if (r.printable?.html) openPrintablePreview(r.printable.html); // TODO implementar modal
-      // [PACK23-PRINT-END]
+      // [PACK27-PRINT-QUOTE-CONVERT-START]
+      if (r.printable) {
+        openPrintable(r.printable, "factura");
+      }
+      // [PACK27-PRINT-QUOTE-CONVERT-END]
       await load();
       return r;
     } finally {
@@ -188,6 +190,15 @@ export function QuoteDetailPage() {
         >
           {saving ? "Guardando…" : "Guardar"}
         </button>
+        {/* [PACK27-PRINT-BUTTON-START] */}
+        <button
+          style={{ padding: "8px 12px", borderRadius: 8, background: "#1f2937", color: "#e0f2fe", border: "1px solid #334155" }}
+          onClick={() => openPrintable(data?.printable, "documento")}
+          disabled={!data?.printable}
+        >
+          Imprimir
+        </button>
+        {/* [PACK27-PRINT-BUTTON-END] */}
         <button
           style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
           disabled={loading || converting}
