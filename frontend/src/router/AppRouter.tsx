@@ -11,10 +11,12 @@ import { ReportsRoutes } from "../modules/reports";
 export { ReportsRoutes as __Pack29ReportsRoutesKeep };
 import Loader from "../shared/components/Loader";
 import Button from "../shared/components/ui/Button";
+import AppErrorBoundary from "../shared/components/AppErrorBoundary"; // [PACK36-router]
 // [PACK28-router-guards]
 import RequireAuth from "./guards/RequireAuth";
 // [PACK28-router-guards]
 import RequireRole from "./guards/RequireRole";
+import RouteErrorElement from "./RouteErrorElement"; // [PACK36-router]
 import {
   bootstrapAdmin,
   getBootstrapStatus,
@@ -71,17 +73,25 @@ const AppRouter = memo(function AppRouter({
         {
           path: "/login",
           element: (
-            <Suspense fallback={<AuthFallback />}>
-              <LoginScene
-                theme={theme}
-                themeLabel={themeLabel}
-                onToggleTheme={onToggleTheme}
-                loading={loading}
-                error={error}
-                onLogin={onLogin}
-              />
-            </Suspense>
+            <AppErrorBoundary
+              // [PACK36-router]
+              variant="inline"
+              title="Inicio de sesión no disponible"
+              description="Reintenta ingresar; si el problema persiste contacta a soporte."
+            >
+              <Suspense fallback={<AuthFallback />}>
+                <LoginScene
+                  theme={theme}
+                  themeLabel={themeLabel}
+                  onToggleTheme={onToggleTheme}
+                  loading={loading}
+                  error={error}
+                  onLogin={onLogin}
+                />
+              </Suspense>
+            </AppErrorBoundary>
           ),
+          errorElement: <RouteErrorElement scope="/login" />,
         },
         {
           path: "*",
@@ -99,14 +109,22 @@ const AppRouter = memo(function AppRouter({
         path: "/dashboard/*",
         element: (
           <RequireAuth>
-            <DashboardScene
-              token={token}
-              theme={theme}
-              onToggleTheme={onToggleTheme}
-              onLogout={onLogout}
-            />
+            <AppErrorBoundary
+              // [PACK36-router]
+              variant="inline"
+              title="Panel principal con inconvenientes"
+              description="Intentaremos recuperar la vista. Si el error continúa, actualiza la página."
+            >
+              <DashboardScene
+                token={token}
+                theme={theme}
+                onToggleTheme={onToggleTheme}
+                onLogout={onLogout}
+              />
+            </AppErrorBoundary>
           </RequireAuth>
         ),
+        errorElement: <RouteErrorElement scope="/dashboard" />,
       },
       // [PACK20-SALES-MOUNT-START]
       {
@@ -114,28 +132,44 @@ const AppRouter = memo(function AppRouter({
         element: (
           <RequireAuth>
             <RequireRole roles={["ADMIN", "GERENTE"]}>
-              <DashboardScene
-                token={token}
-                theme={theme}
-                onToggleTheme={onToggleTheme}
-                onLogout={onLogout}
-              />
+              <AppErrorBoundary
+                // [PACK36-router]
+                variant="inline"
+                title="Ventas no disponibles"
+                description="Revisa la conexión y vuelve a intentar abrir el módulo de ventas."
+              >
+                <DashboardScene
+                  token={token}
+                  theme={theme}
+                  onToggleTheme={onToggleTheme}
+                  onLogout={onLogout}
+                />
+              </AppErrorBoundary>
             </RequireRole>
           </RequireAuth>
         ),
+        errorElement: <RouteErrorElement scope="/sales" />,
       },
       // [PACK20-SALES-MOUNT-END]
       // [PACK29-*] Montaje de la ruta de reportes de ventas
       {
         path: "/reports/*",
         element: (
-          <DashboardScene
-            token={token}
-            theme={theme}
-            onToggleTheme={onToggleTheme}
-            onLogout={onLogout}
-          />
+          <AppErrorBoundary
+            // [PACK36-router]
+            variant="inline"
+            title="Reportes en mantenimiento"
+            description="Intenta refrescar la vista; si se mantiene, contacta a soporte corporativo."
+          >
+            <DashboardScene
+              token={token}
+              theme={theme}
+              onToggleTheme={onToggleTheme}
+              onLogout={onLogout}
+            />
+          </AppErrorBoundary>
         ),
+        errorElement: <RouteErrorElement scope="/reports" />,
       },
       {
         path: "*",
@@ -369,6 +403,7 @@ export function createAppRouter(props: AppRouterProps) {
     {
       path: "*",
       element: <AppRouter {...props} />,
+      errorElement: <RouteErrorElement scope="router" />, // [PACK36-router]
     },
   ]);
 }
