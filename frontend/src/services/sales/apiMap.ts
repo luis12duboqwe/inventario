@@ -33,7 +33,13 @@ export const apiMap = {
   cash: {
     summary:    `${ROOT}/cash/summary`,                  // GET ?date=YYYY-MM-DD
     close:      `${ROOT}/cash/close`,                    // POST
-  }
+  },
+  // [PACK26-AUDIT-APIMAP-START]
+  audit: {
+    bulk: `${ROOT}/audit/ui/bulk`,
+    list: `${ROOT}/audit/ui`,
+  } as any,
+  // [PACK26-AUDIT-APIMAP-END]
 } as const;
 
 export type ApiMap = typeof apiMap;

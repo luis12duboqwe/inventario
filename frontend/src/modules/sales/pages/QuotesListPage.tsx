@@ -6,6 +6,9 @@ import { SalesQuotes } from "../../../services/sales";
 import type { Quote, QuoteListParams } from "../../../services/sales";
 // [PACK23-QUOTES-LIST-IMPORTS-END]
 import { FiltersBar, SidePanel, SummaryCards, Table } from "../components/common";
+// [PACK26-LIST-PERMS-START]
+import { useAuthz, PERMS } from "../../../auth/useAuthz";
+// [PACK26-LIST-PERMS-END]
 
 const columns = [
   { key: "date", label: "Fecha" },
@@ -50,6 +53,8 @@ function formatDate(value?: string) {
 }
 
 export function QuotesListPage() {
+  const { can } = useAuthz();
+  const canList = can(PERMS.QUOTE_LIST);
   // [PACK23-QUOTES-LIST-STATE-START]
   const [items, setItems] = useState<Quote[]>([]);
   const [total, setTotal] = useState(0);
@@ -63,6 +68,12 @@ export function QuotesListPage() {
 
   // [PACK23-QUOTES-LIST-FETCH-START]
   async function fetchQuotes(extra?: Partial<QuoteListParams>) {
+    if (!canList) {
+      setItems([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await SalesQuotes.listQuotes({ page, pageSize, q, status, ...extra });
@@ -73,7 +84,7 @@ export function QuotesListPage() {
     }
   }
 
-  useEffect(() => { fetchQuotes(); }, [page, pageSize, status]);
+  useEffect(() => { fetchQuotes(); }, [page, pageSize, status, canList]);
   // [PACK23-QUOTES-LIST-FETCH-END]
 
   // [PACK23-QUOTES-LIST-UI-START]
@@ -100,6 +111,12 @@ export function QuotesListPage() {
     { value: "EXPIRED", label: statusLabels.EXPIRED },
     { value: "CONVERTED", label: statusLabels.CONVERTED },
   ];
+
+  // [PACK26-QUOTES-GUARD-START]
+  if (!canList) {
+    return <div>No autorizado</div>;
+  }
+  // [PACK26-QUOTES-GUARD-END]
 
   return (
     <div style={{ display: "grid", gap: 12 }}>

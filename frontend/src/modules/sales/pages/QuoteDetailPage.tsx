@@ -8,6 +8,10 @@ import { linesToTable } from "../utils/adapters";
 // [PACK23-QUOTES-DETAIL-IMPORTS-END]
 import { QuoteEditor } from "../components/quotes";
 import { Table } from "../components/common";
+// [PACK26-QUOTES-PERMS-START]
+import { useAuthz, PERMS, RequirePerm } from "../../../auth/useAuthz";
+import { logUI } from "../../../services/audit";
+// [PACK26-QUOTES-PERMS-END]
 
 type QuoteValue = {
   customer?: string;
@@ -29,6 +33,12 @@ function formatCurrency(value?: number) {
 }
 
 export function QuoteDetailPage() {
+  const { can, user } = useAuthz();
+  // [PACK26-QUOTES-DETAIL-GUARD-START]
+  if (!can(PERMS.QUOTE_LIST)) {
+    return <div>No autorizado</div>;
+  }
+  // [PACK26-QUOTES-DETAIL-GUARD-END]
   // [PACK23-QUOTES-DETAIL-STATE-START]
   const { id } = useParams();
   const [data, setData] = useState<Quote | null>(null);
@@ -65,6 +75,7 @@ export function QuoteDetailPage() {
   // [PACK23-QUOTES-DETAIL-ACTIONS-START]
   async function onSave(partial: Partial<QuoteCreate>) {
     if (!id) return;
+    if (!can(PERMS.QUOTE_EDIT)) return;
     setSaving(true);
     try { const updated = await SalesQuotes.updateQuote(id, partial); setData(updated); }
     finally { setSaving(false); }
@@ -72,9 +83,11 @@ export function QuoteDetailPage() {
 
   async function onConvert() {
     if (!id) return;
+    if (!can(PERMS.QUOTE_CONVERT)) return;
     setConverting(true);
     try {
       const r = await SalesQuotes.convertQuoteToSale(id);
+      await logUI({ ts: Date.now(), userId: user?.id, module: "QUOTES", action: "convert", entityId: id });
       // Opcional: abrir ticket r.printable o navegar a ventas
       // window.open(r.printable?.pdfUrl ?? "", "_blank");
       // [PACK23-PRINT-START]
@@ -110,37 +123,41 @@ export function QuoteDetailPage() {
         <div style={{ marginRight: "auto", color: "#9ca3af" }}>
           Total: <strong>{formatCurrency(totals?.grand)}</strong>
         </div>
-        <button
-          style={{ padding: "8px 12px", borderRadius: 8 }}
-          disabled={!canSave}
-          onClick={async () => {
-            if (!data) return;
-            const mappedLines = (data.lines || []).map((line) => {
-              const updated = value.lines.find((item) => item.id === String(line.productId));
-              if (!updated) return line;
-              return {
-                ...line,
-                name: updated.name,
-                qty: updated.qty,
-                price: updated.price,
-              };
-            });
-            await onSave({
-              note: value.note,
-              customerName: value.customer,
-              lines: mappedLines,
-            });
-          }}
-        >
-          {saving ? "Guardando…" : "Guardar"}
-        </button>
-        <button
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
-          disabled={loading || converting}
-          onClick={onConvert}
-        >
-          {converting ? "Convirtiendo…" : "Convertir a venta"}
-        </button>
+        <RequirePerm perm={PERMS.QUOTE_EDIT} fallback={null}>
+          <button
+            style={{ padding: "8px 12px", borderRadius: 8 }}
+            disabled={!canSave}
+            onClick={async () => {
+              if (!data) return;
+              const mappedLines = (data.lines || []).map((line) => {
+                const updated = value.lines.find((item) => item.id === String(line.productId));
+                if (!updated) return line;
+                return {
+                  ...line,
+                  name: updated.name,
+                  qty: updated.qty,
+                  price: updated.price,
+                };
+              });
+              await onSave({
+                note: value.note,
+                customerName: value.customer,
+                lines: mappedLines,
+              });
+            }}
+          >
+            {saving ? "Guardando…" : "Guardar"}
+          </button>
+        </RequirePerm>
+        <RequirePerm perm={PERMS.QUOTE_CONVERT} fallback={null}>
+          <button
+            style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
+            disabled={loading || converting}
+            onClick={onConvert}
+          >
+            {converting ? "Convirtiendo…" : "Convertir a venta"}
+          </button>
+        </RequirePerm>
       </div>
     </div>
   );

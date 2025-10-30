@@ -1,4 +1,7 @@
 import React from "react";
+// [PACK26-POS-CART-PERMS-START]
+import { RequirePerm, PERMS } from "../../../../auth/useAuthz";
+// [PACK26-POS-CART-PERMS-END]
 
 type Discount = { type: "PERCENT" | "AMOUNT"; value: number } | null;
 
@@ -73,20 +76,24 @@ export default function CartPanel({
               <div style={{ textAlign: "right" }}>
                 {Intl.NumberFormat().format(line.price)}
               </div>
-              <button
-                title="Desc."
-                onClick={() => onDiscount(line.id)}
-                style={{ padding: "6px 8px", borderRadius: 8 }}
-              >
-                %
-              </button>
-              <button
-                title="Precio"
-                onClick={() => onOverridePrice(line.id)}
-                style={{ padding: "6px 8px", borderRadius: 8 }}
-              >
-                $
-              </button>
+              <RequirePerm perm={PERMS.POS_DISCOUNT} fallback={null}>
+                <button
+                  title="Desc."
+                  onClick={() => onDiscount(line.id)}
+                  style={{ padding: "6px 8px", borderRadius: 8 }}
+                >
+                  %
+                </button>
+              </RequirePerm>
+              <RequirePerm perm={PERMS.POS_PRICE_OVERRIDE} fallback={null}>
+                <button
+                  title="Precio"
+                  onClick={() => onOverridePrice(line.id)}
+                  style={{ padding: "6px 8px", borderRadius: 8 }}
+                >
+                  $
+                </button>
+              </RequirePerm>
               <button
                 title="Quitar"
                 onClick={() => onRemove(line.id)}

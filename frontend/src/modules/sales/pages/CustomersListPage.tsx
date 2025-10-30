@@ -6,6 +6,9 @@ import { SalesCustomers } from "../../../services/sales";
 import type { Customer, CustomerListParams } from "../../../services/sales";
 // [PACK23-CUSTOMERS-LIST-IMPORTS-END]
 import { CustomersFiltersBar, CustomersTable } from "../components/customers";
+// [PACK26-CUSTOMERS-PERMS-START]
+import { useAuthz, PERMS, RequirePerm } from "../../../auth/useAuthz";
+// [PACK26-CUSTOMERS-PERMS-END]
 
 type CustomerRow = {
   id: string;
@@ -18,6 +21,8 @@ type CustomerRow = {
 
 export function CustomersListPage() {
   const navigate = useNavigate();
+  const { can } = useAuthz();
+  const canList = can(PERMS.CUSTOMER_LIST);
   const [filters, setFilters] = useState<Record<string, string>>({});
   // [PACK23-CUSTOMERS-LIST-STATE-START]
   const [items, setItems] = useState<Customer[]>([]);
@@ -32,6 +37,12 @@ export function CustomersListPage() {
 
   // [PACK23-CUSTOMERS-LIST-FETCH-START]
   async function fetchCustomers(extra?: Partial<CustomerListParams>) {
+    if (!canList) {
+      setItems([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await SalesCustomers.listCustomers({ page, pageSize, q, tier, tag, ...extra });
@@ -41,7 +52,7 @@ export function CustomersListPage() {
       setLoading(false);
     }
   }
-  useEffect(() => { fetchCustomers(); }, [page, pageSize, tier, tag, q]);
+  useEffect(() => { fetchCustomers(); }, [page, pageSize, tier, tag, q, canList]);
   // [PACK23-CUSTOMERS-LIST-FETCH-END]
 
   const rows: CustomerRow[] = items.map((customer) => ({
@@ -55,7 +66,12 @@ export function CustomersListPage() {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <CustomersFiltersBar
+      {/* [PACK26-CUSTOMERS-LIST-GUARD-START] */}
+      {!canList ? (
+        <div>No autorizado</div>
+      ) : (
+        <>
+          <CustomersFiltersBar
         value={{ query: filters.query ?? "", tag: filters.tag ?? "", tier: filters.tier ?? "" }}
         onChange={(value) => {
           setFilters({
@@ -69,13 +85,26 @@ export function CustomersListPage() {
           setPage(1);
         }}
       />
-      <CustomersTable
-        rows={rows}
-        onRowClick={(row) => navigate(`/sales/customers/${row.id}`)}
-      />
-      <div style={{ color: "#9ca3af", fontSize: 12 }}>
-        {loading ? "Cargando clientes…" : `${total} clientes encontrados`}
-      </div>
+          <RequirePerm perm={PERMS.CUSTOMER_CREATE} fallback={null}>
+            <div>
+              <button
+                style={{ padding: "6px 10px", borderRadius: 8 }}
+                onClick={() => navigate("/sales/customers/new")}
+              >
+                Nuevo cliente
+              </button>
+            </div>
+          </RequirePerm>
+          <CustomersTable
+            rows={rows}
+            onRowClick={(row) => navigate(`/sales/customers/${row.id}`)}
+          />
+          <div style={{ color: "#9ca3af", fontSize: 12 }}>
+            {loading ? "Cargando clientes…" : `${total} clientes encontrados`}
+          </div>
+        </>
+      )}
+      {/* [PACK26-CUSTOMERS-LIST-GUARD-END] */}
     </div>
   );
 }

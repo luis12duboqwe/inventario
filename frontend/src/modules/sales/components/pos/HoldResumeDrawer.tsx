@@ -1,4 +1,7 @@
 import React from "react";
+// [PACK26-POS-RESUME-PERMS-START]
+import { RequirePerm, PERMS } from "../../../../auth/useAuthz";
+// [PACK26-POS-RESUME-PERMS-END]
 
 type HoldSale = {
   id: string;
@@ -69,9 +72,11 @@ export default function HoldResumeDrawer({ open, items, onClose, onResume, onDel
                 {item.customer ?? "Mostrador"}
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
-                <button onClick={() => onResume?.(item.id)} style={{ padding: "6px 10px", borderRadius: 8 }}>
-                  Reanudar
-                </button>
+                <RequirePerm perm={PERMS.POS_RESUME} fallback={null}>
+                  <button onClick={() => onResume?.(item.id)} style={{ padding: "6px 10px", borderRadius: 8 }}>
+                    Reanudar
+                  </button>
+                </RequirePerm>
                 <button
                   onClick={() => onDelete?.(item.id)}
                   style={{ padding: "6px 10px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}

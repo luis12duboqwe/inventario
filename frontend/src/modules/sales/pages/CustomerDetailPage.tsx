@@ -7,6 +7,10 @@ import type { Customer } from "../../../services/sales";
 import { required, emailish, phoneish } from "../utils/forms";
 // [PACK23-CUSTOMERS-DETAIL-IMPORTS-END]
 import { CustomerDetailCard } from "../components/customers";
+// [PACK26-CUSTOMERS-DETAIL-PERMS-START]
+import { useAuthz, PERMS, RequirePerm } from "../../../auth/useAuthz";
+import { logUI } from "../../../services/audit";
+// [PACK26-CUSTOMERS-DETAIL-PERMS-END]
 
 type CustomerProfile = {
   id?: string;
@@ -21,6 +25,10 @@ type CustomerProfile = {
 const emptyProfile: CustomerProfile = { id: undefined, name: "", email: "", phone: "", tier: "", notes: "" };
 
 export function CustomerDetailPage() {
+  const { can, user } = useAuthz();
+  const canView = can(PERMS.CUSTOMER_LIST);
+  const canCreate = can(PERMS.CUSTOMER_CREATE);
+  const canEdit = can(PERMS.CUSTOMER_EDIT);
   // [PACK23-CUSTOMERS-DETAIL-STATE-START]
   const { id } = useParams(); // si no hay id -> crear
   const [data, setData] = useState<Customer | null>(null);
@@ -37,6 +45,10 @@ export function CustomerDetailPage() {
       return;
     }
     (async () => {
+      if (!canView) {
+        setData(null);
+        return;
+      }
       setLoading(true);
       try {
         const customer = await SalesCustomers.getCustomer(id);
@@ -45,7 +57,7 @@ export function CustomerDetailPage() {
         setLoading(false);
       }
     })();
-  }, [id]);
+  }, [id, canView]);
 
   useEffect(() => {
     if (data) {
@@ -71,6 +83,8 @@ export function CustomerDetailPage() {
   }
 
   async function onSave(partial: Partial<Customer>) {
+    if (id && !canEdit) return;
+    if (!id && !canCreate) return;
     const e = validate(partial);
     setErrors(e);
     if (Object.keys(e).length) return;
@@ -80,9 +94,11 @@ export function CustomerDetailPage() {
       if (id) {
         const updated = await SalesCustomers.updateCustomer(id, partial);
         setData(updated);
+        await logUI({ ts: Date.now(), userId: user?.id, module: "CUSTOMERS", action: "update", entityId: id });
       } else {
         const created = await SalesCustomers.createCustomer(partial as Omit<Customer, "id">);
         setData(created);
+        await logUI({ ts: Date.now(), userId: user?.id, module: "CUSTOMERS", action: "create", entityId: created?.id ? String(created.id) : undefined });
         // TODO: navegar a detalle created.id si el router lo soporta
       }
     } finally {
@@ -92,10 +108,20 @@ export function CustomerDetailPage() {
   // [PACK23-CUSTOMERS-DETAIL-SAVE-END]
 
   const isCreateMode = !id;
+  const actionPerm = isCreateMode ? PERMS.CUSTOMER_CREATE : PERMS.CUSTOMER_EDIT;
   const detailCardValue: CustomerProfile = data ?? {
     ...form,
     id: form.id ?? "nuevo",
   };
+
+  // [PACK26-CUSTOMERS-DETAIL-GUARD-START]
+  if (id && !canView) {
+    return <div>No autorizado</div>;
+  }
+  if (!id && !canCreate) {
+    return <div>No autorizado</div>;
+  }
+  // [PACK26-CUSTOMERS-DETAIL-GUARD-END]
 
   return (
     <div style={{ display: "grid", gap: 16, maxWidth: 600 }}>
@@ -173,13 +199,15 @@ export function CustomerDetailPage() {
             disabled={loading || saving}
           />
         </div>
-        <button
-          type="submit"
-          style={{ padding: "10px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none", fontWeight: 600 }}
-          disabled={saving || loading}
-        >
-          {saving ? "Guardando…" : isCreateMode ? "Crear cliente" : "Actualizar cliente"}
-        </button>
+        <RequirePerm perm={actionPerm} fallback={null}>
+          <button
+            type="submit"
+            style={{ padding: "10px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none", fontWeight: 600 }}
+            disabled={saving || loading}
+          >
+            {saving ? "Guardando…" : isCreateMode ? "Crear cliente" : "Actualizar cliente"}
+          </button>
+        </RequirePerm>
       </form>
       <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12 }}>
         <div style={{ fontWeight: 700 }}>Historial de compras</div>

@@ -6,6 +6,9 @@ import { SalesReturns } from "../../../services/sales";
 import type { ReturnDoc, ReturnListParams } from "../../../services/sales";
 // [PACK23-RETURNS-LIST-IMPORTS-END]
 import { FiltersBar, SidePanel, SummaryCards, Table } from "../components/common";
+// [PACK26-RETURNS-PERMS-START]
+import { useAuthz, PERMS } from "../../../auth/useAuthz";
+// [PACK26-RETURNS-PERMS-END]
 
 type ReturnRow = {
   id: string;
@@ -46,6 +49,8 @@ function formatDate(value?: string) {
 }
 
 export function ReturnsListPage() {
+  const { can } = useAuthz();
+  const canList = can(PERMS.RETURN_LIST);
   // [PACK23-RETURNS-LIST-STATE-START]
   const [items, setItems] = useState<ReturnDoc[]>([]);
   const [total, setTotal] = useState(0);
@@ -59,6 +64,12 @@ export function ReturnsListPage() {
 
   // [PACK23-RETURNS-LIST-FETCH-START]
   async function fetchReturns(extra?: Partial<ReturnListParams>) {
+    if (!canList) {
+      setItems([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await SalesReturns.listReturns({ page, pageSize, q, reason, ...extra });
@@ -68,7 +79,7 @@ export function ReturnsListPage() {
       setLoading(false);
     }
   }
-  useEffect(() => { fetchReturns(); }, [page, pageSize, reason]);
+  useEffect(() => { fetchReturns(); }, [page, pageSize, reason, canList]);
   // [PACK23-RETURNS-LIST-FETCH-END]
 
   const rows: ReturnRow[] = items.map((doc) => ({
@@ -83,6 +94,12 @@ export function ReturnsListPage() {
 
   const creditTotal = items.reduce((sum, item) => sum + (item.totalCredit || 0), 0);
   const pages = Math.max(1, Math.ceil(total / pageSize) || 1);
+
+  // [PACK26-RETURNS-GUARD-START]
+  if (!canList) {
+    return <div>No autorizado</div>;
+  }
+  // [PACK26-RETURNS-GUARD-END]
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
