@@ -2,11 +2,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from io import BytesIO
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -16,6 +12,7 @@ from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import pos_receipts
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -51,15 +48,43 @@ def register_pos_sale_endpoint(
             )
             return schemas.POSSaleResponse(status="draft", draft=draft, warnings=[])
 
+        # // [PACK34-endpoints]
+        normalized_items: list[schemas.POSCartItem] = []
+        for item in payload.items:
+            try:
+                resolved_device = crud.resolve_device_for_pos(
+                    db,
+                    store_id=payload.store_id,
+                    device_id=item.device_id,
+                    imei=item.imei,
+                )
+            except LookupError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Dispositivo no encontrado para la venta.",
+                ) from exc
+            normalized_items.append(
+                item.model_copy(
+                    update={
+                        "device_id": resolved_device.id,
+                        "imei": resolved_device.imei or item.imei,
+                    }
+                )
+            )
+        normalized_payload = payload.model_copy(update={"items": normalized_items})
+
         sale, warnings = crud.register_pos_sale(
             db,
-            payload,
+            normalized_payload,
             performed_by_id=current_user.id if current_user else None,
             reason=reason,
         )
+        sale_detail = crud.get_sale(db, sale.id)
+        config = crud.get_pos_config(db, sale_detail.store_id)
+        receipt_pdf = pos_receipts.render_receipt_base64(sale_detail, config)
         return schemas.POSSaleResponse(
             status="registered",
-            sale=sale,
+            sale=sale_detail,
             warnings=warnings,
             receipt_url=f"/pos/receipt/{sale.id}",
             cash_session_id=sale.cash_session_id,
@@ -70,6 +95,7 @@ def register_pos_sale_endpoint(
             }
             if payload.payment_breakdown
             else {},
+            receipt_pdf_base64=receipt_pdf,
         )
     except LookupError as exc:
         raise HTTPException(
@@ -124,75 +150,7 @@ def download_pos_receipt(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venta no encontrada") from exc
 
     config = crud.get_pos_config(db, sale.store_id)
-    buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    store_name = sale.store.name if sale.store else "Sucursal"
-    pdf.setTitle(f"Recibo_{config.invoice_prefix}_{sale.id}")
-    y_position = height - 40
-
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(40, y_position, store_name)
-    y_position -= 18
-    pdf.setFont("Helvetica", 10)
-    if sale.store and sale.store.location:
-        pdf.drawString(40, y_position, sale.store.location)
-        y_position -= 14
-
-    pdf.drawString(40, y_position, f"Factura: {config.invoice_prefix}-{sale.id:06d}")
-    y_position -= 14
-    pdf.drawString(40, y_position, f"Fecha: {sale.created_at.strftime('%Y-%m-%d %H:%M')}")
-    y_position -= 14
-    if sale.customer_name:
-        pdf.drawString(40, y_position, f"Cliente: {sale.customer_name}")
-        y_position -= 14
-    pdf.drawString(40, y_position, f"Método: {sale.payment_method.value}")
-    y_position -= 20
-
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(40, y_position, "Detalle")
-    y_position -= 16
-    pdf.setFont("Helvetica", 10)
-
-    def _ensure_space(current: float, lines: int = 1) -> float:
-        required = 12 * lines
-        if current - required < 40:
-            pdf.showPage()
-            pdf.setFont("Helvetica", 10)
-            return height - 40
-        return current
-
-    for item in sale.items:
-        y_position = _ensure_space(y_position, 2)
-        device_label = item.device.name if item.device else f"ID {item.device_id}"
-        pdf.drawString(40, y_position, f"{device_label} · Cant: {item.quantity}")
-        pdf.drawRightString(
-            width - 40,
-            y_position,
-            f"${item.total_line:.2f}",
-        )
-        y_position -= 14
-        pdf.drawString(
-            60,
-            y_position,
-            f"Precio: ${item.unit_price:.2f}  Descuento: ${item.discount_amount:.2f}",
-        )
-        y_position -= 14
-
-    y_position = _ensure_space(y_position, 4)
-    pdf.line(40, y_position, width - 40, y_position)
-    y_position -= 14
-    pdf.drawRightString(width - 40, y_position, f"Subtotal: ${sale.subtotal_amount:.2f}")
-    y_position -= 14
-    pdf.drawRightString(width - 40, y_position, f"Impuestos ({float(config.tax_rate):.2f}%): ${sale.tax_amount:.2f}")
-    y_position -= 14
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawRightString(width - 40, y_position, f"Total: ${sale.total_amount:.2f}")
-
-    pdf.showPage()
-    pdf.save()
-    buffer.seek(0)
+    pdf_bytes = pos_receipts.render_receipt_pdf(sale, config)  # // [PACK34-receipt]
     filename = f"recibo_{config.invoice_prefix}_{sale.id}.pdf"
 
     with transactional_session(db):
@@ -208,9 +166,214 @@ def download_pos_receipt(
         media_type="application/pdf",
     )
     return Response(
-        content=buffer.getvalue(),
+        content=pdf_bytes,
         media_type=metadata.media_type,
         headers=metadata.content_disposition(disposition="inline"),
+    )
+
+
+# // [PACK34-endpoints]
+@router.post(
+    "/sessions/open",
+    response_model=schemas.POSSessionSummary,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def open_pos_session_endpoint(
+    payload: schemas.POSSessionOpenPayload,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    open_payload = schemas.CashSessionOpenRequest(
+        store_id=payload.branch_id,
+        opening_amount=payload.opening_amount,
+        notes=payload.notes,
+    )
+    session = crud.open_cash_session(
+        db,
+        open_payload,
+        opened_by_id=current_user.id if current_user else None,
+        reason=reason,
+    )
+    return schemas.POSSessionSummary.from_model(session)
+
+
+# // [PACK34-endpoints]
+@router.post(
+    "/sessions/close",
+    response_model=schemas.POSSessionSummary,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def close_pos_session_endpoint(
+    payload: schemas.POSSessionClosePayload,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    close_payload = schemas.CashSessionCloseRequest(
+        session_id=payload.session_id,
+        closing_amount=payload.closing_amount,
+        notes=payload.notes,
+        payment_breakdown=payload.payments,
+    )
+    session = crud.close_cash_session(
+        db,
+        close_payload,
+        closed_by_id=current_user.id if current_user else None,
+        reason=reason,
+    )
+    return schemas.POSSessionSummary.from_model(session)
+
+
+# // [PACK34-endpoints]
+@router.get(
+    "/sessions/last",
+    response_model=schemas.POSSessionSummary,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def read_last_pos_session_endpoint(
+    branch_id: int = Query(..., alias="branchId", ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        session = crud.get_last_cash_session_for_store(db, store_id=branch_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existe una sesión previa en la sucursal.",
+        ) from exc
+    return schemas.POSSessionSummary.from_model(session)
+
+
+# // [PACK34-endpoints]
+@router.get(
+    "/taxes",
+    response_model=list[schemas.POSTaxInfo],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def list_pos_taxes_endpoint(
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    return crud.list_pos_taxes(db)
+
+
+# // [PACK34-endpoints]
+@router.post(
+    "/return",
+    response_model=schemas.POSReturnResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def register_pos_return_endpoint(
+    payload: schemas.POSReturnRequest,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        sale = crud.get_sale(db, payload.original_sale_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Venta original no encontrada.",
+        ) from exc
+
+    normalized_reason = payload.reason or "Devolución POS"
+    normalized_items: list[schemas.SaleReturnItem] = []
+    for item in payload.items:
+        try:
+            device = crud.resolve_device_for_pos(
+                db,
+                store_id=sale.store_id,
+                device_id=item.product_id,
+                imei=item.imei,
+            )
+        except LookupError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dispositivo no localizado en la venta.",
+            ) from exc
+        normalized_items.append(
+            schemas.SaleReturnItem(
+                device_id=device.id,
+                quantity=item.qty,
+                reason=normalized_reason,
+            )
+        )
+
+    request_payload = schemas.SaleReturnCreate(
+        sale_id=sale.id,
+        items=normalized_items,
+    )
+    try:
+        returns = crud.register_sale_return(
+            db,
+            request_payload,
+            processed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Artículo de venta no encontrado para devolución.",
+        ) from exc
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "sale_return_items_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Debes indicar artículos a devolver.",
+            ) from exc
+        if detail == "sale_return_invalid_quantity":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cantidad de devolución inválida.",
+            ) from exc
+        raise
+
+    return schemas.POSReturnResponse(
+        sale_id=sale.id,
+        return_ids=[sale_return.id for sale_return in returns],
+        notes=payload.reason,
+    )
+
+
+# // [PACK34-endpoints]
+@router.get(
+    "/sale/{sale_id}",
+    response_model=schemas.POSSaleDetailResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def read_pos_sale_detail_endpoint(
+    sale_id: int,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        sale = crud.get_sale(db, sale_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Venta no encontrada.",
+        ) from exc
+    config = crud.get_pos_config(db, sale.store_id)
+    receipt_pdf = pos_receipts.render_receipt_base64(sale, config)
+    return schemas.POSSaleDetailResponse(
+        sale=sale,
+        receipt_url=f"/pos/receipt/{sale.id}",
+        receipt_pdf_base64=receipt_pdf,
     )
 
 

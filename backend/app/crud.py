@@ -5131,6 +5131,44 @@ def get_device_global(db: Session, device_id: int) -> models.Device:
     return device
 
 
+# // [PACK34-lookup]
+def resolve_device_for_pos(
+    db: Session,
+    *,
+    store_id: int,
+    device_id: int | None = None,
+    imei: str | None = None,
+) -> models.Device:
+    if device_id:
+        return get_device(db, store_id, device_id)
+    if imei:
+        normalized = imei.strip()
+        if not normalized:
+            raise LookupError("device_not_found")
+        statement = select(models.Device).where(
+            models.Device.store_id == store_id,
+            func.lower(models.Device.imei) == normalized.lower(),
+        )
+        device = db.scalars(statement).first()
+        if device is not None:
+            return device
+        identifier_stmt = (
+            select(models.Device)
+            .join(models.DeviceIdentifier)
+            .where(models.Device.store_id == store_id)
+            .where(
+                or_(
+                    func.lower(models.DeviceIdentifier.imei_1) == normalized.lower(),
+                    func.lower(models.DeviceIdentifier.imei_2) == normalized.lower(),
+                )
+            )
+        )
+        device = db.scalars(identifier_stmt).first()
+        if device is not None:
+            return device
+    raise LookupError("device_not_found")
+
+
 def find_device_for_import(
     db: Session,
     *,
@@ -10334,9 +10372,16 @@ def _preview_sale_totals(
             device, item.quantity, reserved_quantity=reserved_quantity
         )
 
-        line_unit_price = _to_decimal(device.unit_price).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
+        # // [PACK34-pricing]
+        override_price = getattr(item, "unit_price_override", None)
+        if override_price is not None:
+            line_unit_price = _to_decimal(override_price).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            line_unit_price = _to_decimal(device.unit_price).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
         quantity_decimal = _to_decimal(item.quantity)
         line_total = (line_unit_price * quantity_decimal).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -10392,9 +10437,16 @@ def _apply_sale_items(
         device = get_device(db, sale.store_id, item.device_id)
         _ensure_device_available_for_sale(device, item.quantity)
 
-        line_unit_price = _to_decimal(device.unit_price).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
+        # // [PACK34-pricing]
+        override_price = getattr(item, "unit_price_override", None)
+        if override_price is not None:
+            line_unit_price = _to_decimal(override_price).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            line_unit_price = _to_decimal(device.unit_price).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
         quantity_decimal = _to_decimal(item.quantity)
         line_total = (line_unit_price * quantity_decimal).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -11280,6 +11332,21 @@ def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession
         raise LookupError("cash_session_not_found") from exc
 
 
+# // [PACK34-lookup]
+def get_last_cash_session_for_store(
+    db: Session, *, store_id: int
+) -> models.CashRegisterSession:
+    statement = (
+        select(models.CashRegisterSession)
+        .where(models.CashRegisterSession.store_id == store_id)
+        .order_by(models.CashRegisterSession.opened_at.desc())
+    )
+    session = db.scalars(statement).first()
+    if session is None:
+        raise LookupError("cash_session_not_found")
+    return session
+
+
 def open_cash_session(
     db: Session,
     payload: schemas.CashSessionOpenRequest,
@@ -11457,6 +11524,42 @@ def update_pos_config(
     return config
 
 
+# // [PACK34-taxes]
+def list_pos_taxes(db: Session) -> list[schemas.POSTaxInfo]:
+    statement = (
+        select(models.POSConfig.tax_rate, models.POSConfig.store_id, models.Store.name)
+        .join(models.Store, models.Store.id == models.POSConfig.store_id)
+        .order_by(models.POSConfig.tax_rate.desc())
+    )
+    taxes: list[schemas.POSTaxInfo] = []
+    seen_rates: set[str] = set()
+    for tax_rate, store_id, store_name in db.execute(statement):
+        normalized_rate = _to_decimal(tax_rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        rate_key = f"{normalized_rate:.2f}"
+        if rate_key in seen_rates:
+            continue
+        seen_rates.add(rate_key)
+        label = store_name or f"Sucursal #{store_id}"
+        taxes.append(
+            schemas.POSTaxInfo(
+                code=f"POS-{rate_key.replace('.', '')}",
+                name=f"IVA {rate_key}% ({label})",
+                rate=normalized_rate,
+            )
+        )
+    if not taxes:
+        taxes.append(
+            schemas.POSTaxInfo(
+                code="POS-DEFAULT",
+                name="Impuesto estándar",
+                rate=Decimal("0"),
+            )
+        )
+    return taxes
+
+
 def register_pos_config_access(
     db: Session,
     *,
@@ -11578,6 +11681,7 @@ def register_pos_sale(
                 device_id=item.device_id,
                 quantity=item.quantity,
                 discount_percent=item.discount_percent,
+                unit_price_override=getattr(item, "unit_price_override", None),  # // [PACK34-pricing]
             )
             for item in payload.items
         ],
