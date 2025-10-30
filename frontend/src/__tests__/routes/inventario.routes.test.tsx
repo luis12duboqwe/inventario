@@ -84,6 +84,26 @@ vi.mock("../../modules/inventory/pages/InventoryAlertsPage", () => ({
   default: createLazyStub("Inventario: Alertas"),
 }));
 
+vi.mock("../../modules/inventory/pages/InventoryAdjustments", () => ({
+  __esModule: true,
+  default: createLazyStub("Inventario: Ajustes"),
+}));
+
+vi.mock("../../modules/inventory/pages/InventoryTransfers", () => ({
+  __esModule: true,
+  default: createLazyStub("Inventario: Transferencias"),
+}));
+
+vi.mock("../../modules/inventory/pages/InventoryCycleCount", () => ({
+  __esModule: true,
+  default: createLazyStub("Inventario: Conteos"),
+}));
+
+vi.mock("../../modules/inventory/pages/TransferDetailPage", () => ({
+  __esModule: true,
+  default: createLazyStub("Inventario: Transferencia detalle"),
+}));
+
 const mockInventoryState = {
   contextValue: {
     module: {},
@@ -171,6 +191,9 @@ const mockInventoryState = {
     { id: "movimientos", label: "Movimientos", icon: <span aria-hidden="true" /> },
     { id: "proveedores", label: "Proveedores", icon: <span aria-hidden="true" /> },
     { id: "alertas", label: "Alertas", icon: <span aria-hidden="true" /> },
+    { id: "ajustes", label: "Ajustes", icon: <span aria-hidden="true" /> },
+    { id: "transferencias", label: "Transferencias", icon: <span aria-hidden="true" /> },
+    { id: "conteos", label: "Conteos", icon: <span aria-hidden="true" /> },
   ],
   activeTab: "productos",
   handleTabChange: vi.fn(),
@@ -261,6 +284,9 @@ describe("Rutas de inventario", () => {
     ["movimientos", "Inventario: Movimientos"],
     ["proveedores", "Inventario: Proveedores"],
     ["alertas", "Inventario: Alertas"],
+    ["ajustes", "Inventario: Ajustes"],
+    ["transferencias", "Inventario: Transferencias"],
+    ["conteos", "Inventario: Conteos"],
   ])("renderiza /dashboard/inventory/%s", async (segmento, textoEsperado) => {
     renderDashboardRoute(`/dashboard/inventory/${segmento}`);
 
@@ -315,5 +341,14 @@ describe("Rutas de inventario", () => {
       resolveInventoryChild["Inventario: Movimientos"]?.();
     });
     await expect(screen.findByText("Inventario: Movimientos")).resolves.toBeInTheDocument();
+  });
+
+  it("carga el detalle de transferencias cuando se indica un identificador", async () => {
+    renderDashboardRoute("/dashboard/inventory/transferencias/TR-001");
+
+    await resolveInventoryRoute("Inventario: Transferencia detalle");
+    await expect(
+      screen.findByText("Inventario: Transferencia detalle"),
+    ).resolves.toBeInTheDocument();
   });
 });

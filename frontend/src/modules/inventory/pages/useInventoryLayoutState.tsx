@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AlertTriangle,
+  ArrowLeftRight,
   Boxes,
   Building2,
+  ClipboardCheck,
   Cog,
   DollarSign,
+  QrCode,
   RefreshCcw,
   ShieldCheck,
   Smartphone,
@@ -24,7 +27,14 @@ import { useSmartImportManager } from "./hooks/useSmartImportManager";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import type { InventoryLayoutContextValue, StatusCard } from "./context/InventoryLayoutContext";
 
-export type InventoryTabId = "productos" | "movimientos" | "proveedores" | "alertas";
+export type InventoryTabId =
+  | "productos"
+  | "movimientos"
+  | "proveedores"
+  | "alertas"
+  | "ajustes"
+  | "transferencias"
+  | "conteos";
 
 const INVENTORY_TABS: Array<{
   id: InventoryTabId;
@@ -36,6 +46,14 @@ const INVENTORY_TABS: Array<{
   { id: "movimientos", label: "Movimientos", icon: <RefreshCcw size={16} aria-hidden="true" />, path: "movimientos" },
   { id: "proveedores", label: "Proveedores", icon: <Building2 size={16} aria-hidden="true" />, path: "proveedores" },
   { id: "alertas", label: "Alertas", icon: <AlertTriangle size={16} aria-hidden="true" />, path: "alertas" },
+  { id: "ajustes", label: "Ajustes", icon: <ClipboardCheck size={16} aria-hidden="true" />, path: "ajustes" },
+  {
+    id: "transferencias",
+    label: "Transferencias",
+    icon: <ArrowLeftRight size={16} aria-hidden="true" />,
+    path: "transferencias",
+  },
+  { id: "conteos", label: "Conteos cíclicos", icon: <QrCode size={16} aria-hidden="true" />, path: "conteos" },
 ];
 
 export type InventoryLayoutState = {
@@ -53,6 +71,15 @@ export type InventoryLayoutState = {
 };
 
 function resolveActiveTab(pathname: string): InventoryTabId {
+  if (pathname.includes("/ajustes")) {
+    return "ajustes";
+  }
+  if (pathname.includes("/transferencias")) {
+    return "transferencias";
+  }
+  if (pathname.includes("/conteos")) {
+    return "conteos";
+  }
   if (pathname.includes("/movimientos")) {
     return "movimientos";
   }
