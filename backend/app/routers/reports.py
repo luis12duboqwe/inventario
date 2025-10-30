@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
 from typing import Literal
 
@@ -39,6 +39,29 @@ def _coerce_datetime(value: datetime | date | None) -> datetime | None:
     if isinstance(value, datetime):
         return value
     return datetime.combine(value, datetime.min.time())
+
+
+# // [PACK29-*] Normalización de rangos para reportes de ventas
+def _normalize_sales_range(
+    date_from: datetime | date | None,
+    date_to: datetime | date | None,
+) -> tuple[datetime | None, datetime | None]:
+    normalized_from = _coerce_datetime(date_from)
+    normalized_to = _coerce_datetime(date_to)
+    if isinstance(date_to, date) and not isinstance(date_to, datetime):
+        normalized_to = normalized_to + timedelta(days=1) if normalized_to else None
+    elif isinstance(date_to, datetime) and normalized_to is not None:
+        normalized_to = normalized_to + timedelta(microseconds=1)
+    return normalized_from, normalized_to
+
+
+# // [PACK29-*] Normaliza fechas para construir nombres de archivo
+def _format_range_value(value: datetime | date | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    return value.isoformat()
 
 
 @router.get(
@@ -158,6 +181,124 @@ def export_global_report(
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de exportación no soportado"
+    )
+
+
+
+# // [PACK29-*] Reporte resumen de ventas con filtros de fecha y sucursal
+@router.get(
+    "/sales/summary",
+    response_model=schemas.SalesSummaryReport,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def get_sales_summary_report(
+    date_from: datetime | date | None = Query(default=None, alias="from"),
+    date_to: datetime | date | None = Query(default=None, alias="to"),
+    branch_id: int | None = Query(default=None, alias="branchId", ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    _ensure_analytics_enabled()
+    normalized_from, normalized_to = _normalize_sales_range(date_from, date_to)
+    if normalized_from and normalized_to and normalized_from >= normalized_to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El rango de fechas es inválido.",
+        )
+    return crud.build_sales_summary_report(
+        db,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        store_id=branch_id,
+    )
+
+
+# // [PACK29-*] Reporte de top de productos vendidos
+@router.get(
+    "/sales/by-product",
+    response_model=list[schemas.SalesByProductItem],
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def get_sales_by_product_report(
+    date_from: datetime | date | None = Query(default=None, alias="from"),
+    date_to: datetime | date | None = Query(default=None, alias="to"),
+    branch_id: int | None = Query(default=None, alias="branchId", ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    format: Literal["json", "csv"] = Query(default="json"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    _ensure_analytics_enabled()
+    normalized_from, normalized_to = _normalize_sales_range(date_from, date_to)
+    if normalized_from and normalized_to and normalized_from >= normalized_to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El rango de fechas es inválido.",
+        )
+    items = crud.build_sales_by_product_report(
+        db,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        store_id=branch_id,
+        limit=limit,
+    )
+    if format == "csv":
+        buffer = StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["SKU", "Producto", "Cantidad", "Ventas brutas", "Ventas netas"])
+        for item in items:
+            writer.writerow([
+                item.sku,
+                item.name,
+                item.quantity,
+                f"{item.gross:.2f}",
+                f"{item.net:.2f}",
+            ])
+        filename_parts: list[str] = []
+        from_label = _format_range_value(date_from)
+        to_label = _format_range_value(date_to)
+        if from_label:
+            filename_parts.append(from_label)
+        if to_label:
+            filename_parts.append(to_label)
+        if branch_id is not None:
+            filename_parts.append(f"sucursal-{branch_id}")
+        suffix = "_al_".join(filename_parts)
+        filename = "top-productos.csv" if not suffix else f"top-productos_{suffix}.csv"
+        metadata = schemas.BinaryFileResponse(
+            filename=filename,
+            media_type="text/csv;charset=utf-8",
+        )
+        buffer.seek(0)
+        return StreamingResponse(
+            iter([buffer.getvalue()]),
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
+        )
+    return items
+
+
+# // [PACK29-*] Sugerencia de cierre de caja considerando ventas y devoluciones
+@router.get(
+    "/cash-close",
+    response_model=schemas.CashCloseReport,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def get_cash_close_report(
+    target_date: date | None = Query(default=None, alias="date"),
+    branch_id: int | None = Query(default=None, alias="branchId", ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    _ensure_analytics_enabled()
+    report_date = target_date or datetime.utcnow().date()
+    start_of_day = datetime.combine(report_date, datetime.min.time())
+    end_of_day = start_of_day + timedelta(days=1)
+    return crud.build_cash_close_report(
+        db,
+        date_from=start_of_day,
+        date_to=end_of_day,
+        store_id=branch_id,
     )
 
 
