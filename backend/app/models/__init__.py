@@ -1640,6 +1640,59 @@ class SyncOutbox(Base):
     )
 
 
+# // [PACK35-backend]
+class SyncQueueStatus(str, enum.Enum):
+    """Estados posibles dentro de la cola híbrida de sincronización."""
+
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
+# // [PACK35-backend]
+class SyncQueue(Base):
+    __tablename__ = "sync_queue"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True)
+    status: Mapped[SyncQueueStatus] = mapped_column(
+        Enum(SyncQueueStatus, name="sync_queue_status"),
+        nullable=False,
+        default=SyncQueueStatus.PENDING,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    attempt_logs: Mapped[list["SyncAttempt"]] = relationship(
+        "SyncAttempt",
+        back_populates="queue_entry",
+        cascade="all, delete-orphan",
+    )
+
+
+# // [PACK35-backend]
+class SyncAttempt(Base):
+    __tablename__ = "sync_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    queue_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sync_queue.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    queue_entry: Mapped[SyncQueue] = relationship("SyncQueue", back_populates="attempt_logs")
+
+
 __all__ = [
     "CashRegisterSession",
     "CashSessionStatus",
@@ -1675,6 +1728,9 @@ __all__ = [
     "Supplier",
     "SyncOutbox",
     "SyncOutboxPriority",
+    "SyncQueue",
+    "SyncQueueStatus",
+    "SyncAttempt",
     "TransferOrder",
     "TransferOrderItem",
     "TransferStatus",

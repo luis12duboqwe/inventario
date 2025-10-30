@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { syncClient } from "../../sync/services/syncClient"; // [PACK35-frontend]
 import {
   NETWORK_EVENT,
   NETWORK_RECOVERY_EVENT,
@@ -26,6 +27,10 @@ import {
   triggerSync,
   runBackup,
   getSyncOutboxStats,
+  getSyncQueueSummary,
+  getSyncHybridProgress,
+  getSyncHybridForecast,
+  getSyncHybridBreakdown,
   updateDevice,
 } from "../../../api";
 import type {
@@ -40,6 +45,10 @@ import type {
   Summary,
   SyncOutboxEntry,
   SyncOutboxStatsEntry,
+  SyncQueueSummary,
+  SyncHybridProgress,
+  SyncHybridForecast,
+  SyncHybridModuleBreakdownItem,
   SyncStoreHistory,
   UpdateStatus,
 } from "../../../api";
@@ -76,6 +85,10 @@ type DashboardContextValue = {
   outbox: SyncOutboxEntry[];
   outboxError: string | null;
   outboxStats: SyncOutboxStatsEntry[];
+  syncQueueSummary: SyncQueueSummary | null;
+  syncHybridProgress: SyncHybridProgress | null; // [PACK35-frontend]
+  syncHybridForecast: SyncHybridForecast | null; // [PACK35-frontend]
+  syncHybridBreakdown: SyncHybridModuleBreakdownItem[]; // [PACK35-frontend]
   currentUser: UserAccount | null;
   syncHistory: SyncStoreHistory[];
   syncHistoryError: string | null;
@@ -98,6 +111,7 @@ type DashboardContextValue = {
   handleRetryOutbox: () => Promise<void>;
   downloadInventoryReport: (reason: string) => Promise<void>;
   refreshOutboxStats: () => Promise<void>;
+  refreshSyncQueueSummary: () => Promise<void>;
   refreshSyncHistory: () => Promise<void>;
   toasts: ToastMessage[];
   pushToast: (toast: Omit<ToastMessage, "id">) => void;
@@ -161,6 +175,13 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const [outbox, setOutbox] = useState<SyncOutboxEntry[]>([]);
   const [outboxError, setOutboxError] = useState<string | null>(null);
   const [outboxStats, setOutboxStats] = useState<SyncOutboxStatsEntry[]>([]);
+  const [syncQueueSummary, setSyncQueueSummary] = useState<SyncQueueSummary | null>(null);
+  const [syncHybridProgress, setSyncHybridProgress] =
+    useState<SyncHybridProgress | null>(null); // [PACK35-frontend]
+  const [syncHybridForecast, setSyncHybridForecast] =
+    useState<SyncHybridForecast | null>(null); // [PACK35-frontend]
+  const [syncHybridBreakdown, setSyncHybridBreakdown] =
+    useState<SyncHybridModuleBreakdownItem[]>([]); // [PACK35-frontend]
   const [syncHistory, setSyncHistory] = useState<SyncStoreHistory[]>([]);
   const [syncHistoryError, setSyncHistoryError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -368,20 +389,27 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       if (!enableHybridPrep) {
         setOutbox([]);
         setOutboxStats([]);
+        setSyncQueueSummary(null);
+        setSyncHybridProgress(null); // [PACK35-frontend]
         return;
       }
       try {
-        const [entries, statsData] = await Promise.all([
+        const [entries, statsData, summaryData, hybridData] = await Promise.all([
           listSyncOutbox(token),
           getSyncOutboxStats(token),
+          getSyncQueueSummary(token),
+          getSyncHybridProgress(token),
         ]);
         setOutbox(entries);
         setOutboxStats(statsData);
+        setSyncQueueSummary(summaryData);
+        setSyncHybridProgress(hybridData);
         setOutboxError(null);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "No fue posible consultar la cola de sincronización";
         setOutboxError(friendlyErrorMessage(message));
+        setSyncHybridProgress(null);
       }
     };
 
@@ -421,6 +449,16 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     return () => window.clearInterval(interval);
   }, [friendlyErrorMessage, refreshSummary, selectedStoreId, token]);
 
+  useEffect(() => {
+    syncClient.init(); // [PACK35-frontend]
+    syncClient.setToken(token);
+    return () => {
+      if (!token) {
+        syncClient.setToken(null);
+      }
+    };
+  }, [token]);
+
   const handleMovement = async (payload: MovementInput) => {
     if (!selectedStoreId) {
       return;
@@ -445,6 +483,21 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       const friendly = friendlyErrorMessage(message);
       setError(friendly);
       pushToast({ message: friendly, variant: "error" });
+      if (typeof navigator === "undefined" || !navigator.onLine) {
+        try {
+          await syncClient.enqueue({
+            eventType: "inventory.movement", // [PACK35-frontend]
+            payload: {
+              store_id: selectedStoreId,
+              movement: payload,
+            },
+            idempotencyKey: `inventory-movement-${selectedStoreId}-${Date.now()}`,
+          });
+          pushToast({ message: "Movimiento guardado en cola local.", variant: "info" });
+        } catch (syncError) {
+          console.warn("No fue posible guardar el movimiento en la cola local", syncError);
+        }
+      }
     }
   };
 
@@ -535,18 +588,76 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     [friendlyErrorMessage, pushToast, setError, token],
   );
 
-  const refreshOutboxStats = useCallback(async () => {
+  const refreshSyncQueueSummary = useCallback(async () => {
     if (!enableHybridPrep) {
-      setOutboxStats([]);
+      setSyncQueueSummary(null);
+      setSyncHybridProgress(null);
+      setSyncHybridForecast(null);
+      setSyncHybridBreakdown([]);
       return;
     }
     try {
-      const statsData = await getSyncOutboxStats(token);
-      setOutboxStats(statsData);
+      const [summaryData, forecastData, breakdownData] = await Promise.all([
+        getSyncQueueSummary(token),
+        getSyncHybridForecast(token),
+        getSyncHybridBreakdown(token),
+      ]);
+      setSyncQueueSummary(summaryData);
+      setSyncHybridForecast(forecastData);
+      setSyncHybridProgress(forecastData.progress);
+      setSyncHybridBreakdown(breakdownData);
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "No se pudo consultar las estadísticas de la cola";
+        err instanceof Error
+          ? err.message
+          : "No se pudo consultar el progreso de la cola híbrida";
       setOutboxError(friendlyErrorMessage(message));
+      setSyncHybridForecast(null);
+      setSyncHybridBreakdown([]);
+      try {
+        const fallback = await getSyncHybridProgress(token);
+        setSyncHybridProgress(fallback);
+      } catch {
+        setSyncHybridProgress(null);
+      }
+    }
+  }, [enableHybridPrep, friendlyErrorMessage, token]);
+
+  const refreshOutboxStats = useCallback(async () => {
+    if (!enableHybridPrep) {
+      setOutboxStats([]);
+      setSyncQueueSummary(null);
+      setSyncHybridProgress(null);
+      setSyncHybridForecast(null);
+      setSyncHybridBreakdown([]);
+      return;
+    }
+    try {
+      const [statsData, summaryData, forecastData, breakdownData] = await Promise.all([
+        getSyncOutboxStats(token),
+        getSyncQueueSummary(token),
+        getSyncHybridForecast(token),
+        getSyncHybridBreakdown(token),
+      ]);
+      setOutboxStats(statsData);
+      setSyncQueueSummary(summaryData);
+      setSyncHybridForecast(forecastData);
+      setSyncHybridProgress(forecastData.progress);
+      setSyncHybridBreakdown(breakdownData);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No se pudo consultar las estadísticas de la cola";
+      setOutboxError(friendlyErrorMessage(message));
+      setSyncHybridForecast(null);
+      setSyncHybridBreakdown([]);
+      try {
+        const fallback = await getSyncHybridProgress(token);
+        setSyncHybridProgress(fallback);
+      } catch {
+        setSyncHybridProgress(null);
+      }
     }
   }, [enableHybridPrep, friendlyErrorMessage, token]);
 
@@ -566,21 +677,41 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     if (!enableHybridPrep) {
       setOutbox([]);
       setOutboxStats([]);
+      setSyncQueueSummary(null);
+      setSyncHybridProgress(null);
+      setSyncHybridForecast(null);
+      setSyncHybridBreakdown([]);
       return;
     }
     try {
-      const [entries, statsData] = await Promise.all([
+      const [entries, statsData, summaryData, forecastData, breakdownData] = await Promise.all([
         listSyncOutbox(token),
         getSyncOutboxStats(token),
+        getSyncQueueSummary(token),
+        getSyncHybridForecast(token),
+        getSyncHybridBreakdown(token),
       ]);
       setOutbox(entries);
       setOutboxStats(statsData);
+      setSyncQueueSummary(summaryData);
+      setSyncHybridForecast(forecastData);
+      setSyncHybridProgress(forecastData.progress);
+      setSyncHybridBreakdown(breakdownData);
       setOutboxError(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo actualizar la cola local";
+      const message =
+        err instanceof Error ? err.message : "No se pudo consultar la cola de sincronización";
       const friendly = friendlyErrorMessage(message);
       setOutboxError(friendly);
       pushToast({ message: friendly, variant: "error" });
+      setSyncHybridForecast(null);
+      setSyncHybridBreakdown([]);
+      try {
+        const fallback = await getSyncHybridProgress(token);
+        setSyncHybridProgress(fallback);
+      } catch {
+        setSyncHybridProgress(null);
+      }
     }
   }, [enableHybridPrep, friendlyErrorMessage, pushToast, token]);
 
@@ -699,6 +830,10 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       outbox,
       outboxError,
       outboxStats,
+      syncQueueSummary,
+      syncHybridProgress,
+      syncHybridForecast,
+      syncHybridBreakdown,
       currentUser,
       syncHistory,
       syncHistoryError,
@@ -720,6 +855,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       handleRetryOutbox,
       downloadInventoryReport,
       refreshOutboxStats,
+      refreshSyncQueueSummary,
       refreshSyncHistory,
       toasts,
       pushToast,
@@ -759,6 +895,11 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       outbox,
       outboxError,
       outboxStats,
+      syncHybridForecast,
+      syncHybridBreakdown,
+      syncHybridProgress,
+      refreshSyncQueueSummary,
+      syncQueueSummary,
       pushToast,
       refreshInventoryAfterTransfer,
       refreshOutbox,

@@ -7742,7 +7742,361 @@ def enqueue_sync_outbox(
                 entry.priority = resolved_priority
         flush_session(db)
         db.refresh(entry)
+    # // [PACK35-backend]
+    try:
+        queue_event = schemas.SyncQueueEvent(
+            event_type=f"{entity_type}.{operation}",
+            payload={
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "operation": operation,
+                "payload": payload,
+            },
+            idempotency_key=f"outbox:{entity_type}:{entity_id}:{operation}",
+        )
+        enqueue_sync_queue_events(db, [queue_event])
+    except Exception as exc:  # pragma: no cover - no interrumpir flujo principal
+        logger.warning(
+            "No se pudo reflejar el evento en sync_queue", entity_type=entity_type, error=str(exc)
+        )
     return entry
+
+
+# // [PACK35-backend]
+def enqueue_sync_queue_events(
+    db: Session,
+    events: Sequence[schemas.SyncQueueEvent],
+) -> tuple[list[models.SyncQueue], list[models.SyncQueue]]:
+    """Registra eventos en la nueva cola híbrida respetando la idempotencia."""
+
+    queued: list[models.SyncQueue] = []
+    reused: list[models.SyncQueue] = []
+    if not events:
+        return queued, reused
+
+    now = datetime.utcnow()
+    with transactional_session(db):
+        for event in events:
+            existing: models.SyncQueue | None = None
+            if event.idempotency_key:
+                statement = select(models.SyncQueue).where(
+                    models.SyncQueue.idempotency_key == event.idempotency_key
+                )
+                existing = db.scalars(statement).first()
+
+            if existing is not None:
+                existing.payload = event.payload
+                existing.status = models.SyncQueueStatus.PENDING
+                existing.attempts = 0
+                existing.last_error = None
+                existing.updated_at = now
+                reused.append(existing)
+                continue
+
+            entry = models.SyncQueue(
+                event_type=event.event_type,
+                payload=event.payload,
+                idempotency_key=event.idempotency_key,
+                status=models.SyncQueueStatus.PENDING,
+            )
+            db.add(entry)
+            queued.append(entry)
+
+        flush_session(db)
+        for entry in (*queued, *reused):
+            db.refresh(entry)
+
+    return queued, reused
+
+
+# // [PACK35-backend]
+def list_sync_queue_entries(
+    db: Session,
+    *,
+    statuses: Iterable[models.SyncQueueStatus] | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.SyncQueue]:
+    statement = (
+        select(models.SyncQueue)
+        .order_by(models.SyncQueue.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    if statuses is not None:
+        status_tuple = tuple(statuses)
+        if status_tuple:
+            statement = statement.where(models.SyncQueue.status.in_(status_tuple))
+    return list(db.scalars(statement))
+
+
+# // [PACK35-backend]
+def get_sync_queue_entry(db: Session, entry_id: int) -> models.SyncQueue:
+    entry = db.get(models.SyncQueue, entry_id)
+    if entry is None:
+        raise LookupError("Entrada de cola no encontrada")
+    return entry
+
+
+# // [PACK35-backend]
+def list_sync_attempts(
+    db: Session,
+    *,
+    queue_id: int,
+    limit: int = 20,
+    offset: int = 0,
+) -> list[models.SyncAttempt]:
+    statement = (
+        select(models.SyncAttempt)
+        .where(models.SyncAttempt.queue_id == queue_id)
+        .order_by(models.SyncAttempt.attempted_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return list(db.scalars(statement))
+
+
+# // [PACK35-backend]
+def record_sync_attempt(
+    db: Session,
+    *,
+    queue_entry: models.SyncQueue,
+    success: bool,
+    error_message: str | None = None,
+) -> models.SyncAttempt:
+    with transactional_session(db):
+        attempt = models.SyncAttempt(
+            queue_id=queue_entry.id,
+            success=success,
+            error_message=error_message,
+        )
+        db.add(attempt)
+        flush_session(db)
+        db.refresh(attempt)
+    return attempt
+
+
+# // [PACK35-backend]
+def update_sync_queue_entry(
+    db: Session,
+    entry: models.SyncQueue,
+    *,
+    status: models.SyncQueueStatus,
+    error_message: str | None = None,
+    increment_attempt: bool = False,
+) -> models.SyncQueue:
+    with transactional_session(db):
+        if increment_attempt:
+            entry.attempts += 1
+        entry.status = status
+        entry.last_error = error_message
+        entry.updated_at = datetime.utcnow()
+        flush_session(db)
+        db.refresh(entry)
+    return entry
+
+
+# // [PACK35-backend]
+def resolve_sync_queue_entry(
+    db: Session,
+    entry: models.SyncQueue,
+) -> models.SyncQueue:
+    with transactional_session(db):
+        entry.status = models.SyncQueueStatus.SENT
+        entry.last_error = None
+        entry.updated_at = datetime.utcnow()
+        flush_session(db)
+        db.refresh(entry)
+    return entry
+
+
+# // [PACK35-backend]
+def fetch_sync_queue_candidates(
+    db: Session,
+    *,
+    limit: int = 50,
+) -> list[models.SyncQueue]:
+    statement = (
+        select(models.SyncQueue)
+        .where(
+            models.SyncQueue.status.in_(
+                (models.SyncQueueStatus.PENDING, models.SyncQueueStatus.FAILED)
+            )
+        )
+        .order_by(models.SyncQueue.updated_at.asc())
+        .limit(limit)
+    )
+    return list(db.scalars(statement))
+
+
+# // [PACK35-backend]
+def count_sync_queue_processed_since(db: Session, since: datetime) -> int:
+    """Cuenta eventos marcados como enviados en `sync_queue` desde una fecha."""
+
+    statement = (
+        select(func.count())
+        .select_from(models.SyncQueue)
+        .where(
+            models.SyncQueue.status == models.SyncQueueStatus.SENT,
+            models.SyncQueue.updated_at >= since,
+        )
+    )
+    return int(db.scalar(statement) or 0)
+
+
+# // [PACK35-backend]
+def summarize_sync_queue_statuses(
+    db: Session,
+) -> dict[models.SyncQueueStatus, int]:
+    statement = (
+        select(models.SyncQueue.status, func.count())
+        .group_by(models.SyncQueue.status)
+        .order_by(models.SyncQueue.status)
+    )
+    totals: dict[models.SyncQueueStatus, int] = {
+        status: 0 for status in models.SyncQueueStatus
+    }
+    for status, amount in db.execute(statement):
+        if isinstance(status, models.SyncQueueStatus):
+            totals[status] = int(amount or 0)
+    return totals
+
+
+# // [PACK35-backend]
+def summarize_sync_queue_by_event_type(
+    db: Session,
+) -> dict[str, dict[models.SyncQueueStatus, int]]:
+    """Agrupa la cola híbrida por tipo de evento y estado."""
+
+    statement = (
+        select(models.SyncQueue.event_type, models.SyncQueue.status, func.count())
+        .group_by(models.SyncQueue.event_type, models.SyncQueue.status)
+        .order_by(models.SyncQueue.event_type, models.SyncQueue.status)
+    )
+    results: dict[str, dict[models.SyncQueueStatus, int]] = {}
+    for event_type, status, amount in db.execute(statement):
+        if not event_type:
+            continue
+        module_totals = results.setdefault(
+            event_type,
+            {status_key: 0 for status_key in models.SyncQueueStatus},
+        )
+        if isinstance(status, models.SyncQueueStatus):
+            module_totals[status] = module_totals.get(status, 0) + int(amount or 0)
+    return results
+
+
+# // [PACK35-backend]
+def get_latest_sync_queue_update(db: Session) -> datetime | None:
+    statement = select(func.max(models.SyncQueue.updated_at))
+    return db.scalar(statement)
+
+
+# // [PACK35-backend]
+def get_oldest_pending_sync_queue_update(db: Session) -> datetime | None:
+    statement = (
+        select(models.SyncQueue.updated_at)
+        .where(models.SyncQueue.status == models.SyncQueueStatus.PENDING)
+        .order_by(models.SyncQueue.updated_at.asc())
+        .limit(1)
+    )
+    return db.scalar(statement)
+
+
+# // [PACK35-backend]
+def summarize_sync_outbox_statuses(db: Session) -> dict[models.SyncOutboxStatus, int]:
+    statement = (
+        select(models.SyncOutbox.status, func.count())
+        .group_by(models.SyncOutbox.status)
+        .order_by(models.SyncOutbox.status)
+    )
+    totals: dict[models.SyncOutboxStatus, int] = {
+        status: 0 for status in models.SyncOutboxStatus
+    }
+    for status, amount in db.execute(statement):
+        if isinstance(status, models.SyncOutboxStatus):
+            totals[status] = int(amount or 0)
+    return totals
+
+
+# // [PACK35-backend]
+def summarize_sync_outbox_by_entity_type(
+    db: Session,
+) -> dict[str, dict[models.SyncOutboxStatus, int]]:
+    """Agrupa el outbox por tipo de entidad y estado."""
+
+    statement = (
+        select(models.SyncOutbox.entity_type, models.SyncOutbox.status, func.count())
+        .group_by(models.SyncOutbox.entity_type, models.SyncOutbox.status)
+        .order_by(models.SyncOutbox.entity_type, models.SyncOutbox.status)
+    )
+    results: dict[str, dict[models.SyncOutboxStatus, int]] = {}
+    for entity_type, status, amount in db.execute(statement):
+        if not entity_type:
+            continue
+        module_totals = results.setdefault(
+            entity_type,
+            {status_key: 0 for status_key in models.SyncOutboxStatus},
+        )
+        if isinstance(status, models.SyncOutboxStatus):
+            module_totals[status] = module_totals.get(status, 0) + int(amount or 0)
+    return results
+
+
+# // [PACK35-backend]
+def get_latest_sync_outbox_update(db: Session) -> datetime | None:
+    statement = select(func.max(models.SyncOutbox.updated_at))
+    return db.scalar(statement)
+
+
+# // [PACK35-backend]
+def get_oldest_pending_sync_outbox_update(db: Session) -> datetime | None:
+    statement = (
+        select(models.SyncOutbox.updated_at)
+        .where(models.SyncOutbox.status == models.SyncOutboxStatus.PENDING)
+        .order_by(models.SyncOutbox.updated_at.asc())
+        .limit(1)
+    )
+    return db.scalar(statement)
+
+
+# // [PACK35-backend]
+def count_sync_outbox_processed_since(db: Session, since: datetime) -> int:
+    """Cuenta eventos del outbox marcados como enviados desde una fecha."""
+
+    statement = (
+        select(func.count())
+        .select_from(models.SyncOutbox)
+        .where(
+            models.SyncOutbox.status == models.SyncOutboxStatus.SENT,
+            models.SyncOutbox.updated_at >= since,
+        )
+    )
+    return int(db.scalar(statement) or 0)
+
+
+# // [PACK35-backend]
+def count_sync_attempts_since(db: Session, since: datetime) -> tuple[int, int]:
+    """Obtiene intentos totales y exitosos en la ventana indicada."""
+
+    statement = select(
+        func.count(models.SyncAttempt.id),
+        func.coalesce(
+            func.sum(
+                case(
+                    (models.SyncAttempt.success.is_(True), 1),
+                    else_=0,
+                )
+            ),
+            0,
+        ),
+    ).where(models.SyncAttempt.attempted_at >= since)
+
+    result = db.execute(statement).first()
+    if result is None:
+        return 0, 0
+    total, successful = result
+    return int(total or 0), int(successful or 0)
 
 
 def list_sync_outbox(
