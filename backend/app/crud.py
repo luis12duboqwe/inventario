@@ -23,7 +23,7 @@ from backend.core.logging import logger as core_logger
 from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .core.transactions import flush_session, transactional_session
-from .services import inventory_audit
+from .services import inventory_accounting, inventory_audit  # // [PACK30-31-BACKEND]
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
@@ -5322,6 +5322,13 @@ def create_inventory_movement(
     previous_sale_price = device.unit_price
     with transactional_session(db):
         movement_unit_cost: Decimal | None = None
+        stock_move_type: models.StockMoveType | None = None
+        stock_move_quantity: Decimal | None = None
+        stock_move_branch_id: int | None = None
+        ledger_quantity: Decimal | None = None
+        ledger_branch_id: int | None = None
+        ledger_unit_cost: Decimal | None = None
+
         if payload.tipo_movimiento == models.MovementType.IN:
             if payload.unit_cost is not None:
                 incoming_cost = _to_decimal(payload.unit_cost)
@@ -5348,19 +5355,49 @@ def create_inventory_movement(
             ):
                 device.unit_price = _to_decimal(previous_sale_price)
                 device.precio_venta = device.unit_price
+            stock_move_type = models.StockMoveType.IN  # // [PACK30-31-BACKEND]
+            stock_move_quantity = _to_decimal(payload.cantidad)
+            stock_move_branch_id = store_id
         elif payload.tipo_movimiento == models.MovementType.OUT:
+            branch_for_cost = source_store_id or store_id
+            computed_cost = inventory_accounting.compute_unit_cost(
+                db,
+                product_id=device.id,
+                branch_id=branch_for_cost,
+                quantity_out=payload.cantidad,
+            )
+            movement_unit_cost = _quantize_currency(computed_cost)
             device.quantity -= payload.cantidad
-            movement_unit_cost = _quantize_currency(previous_cost)
             if source_store_id is None:
                 source_store_id = store_id
             if device.quantity <= 0:
                 device.costo_unitario = Decimal("0.00")
+            stock_move_type = models.StockMoveType.OUT
+            stock_move_quantity = _to_decimal(payload.cantidad)
+            stock_move_branch_id = branch_for_cost
+            ledger_quantity = _to_decimal(payload.cantidad)
+            ledger_branch_id = branch_for_cost
+            ledger_unit_cost = movement_unit_cost
         elif payload.tipo_movimiento == models.MovementType.ADJUST:
             _ensure_adjustment_authorized(db, performed_by_id)
             if source_store_id is None:
                 source_store_id = store_id
-            device.quantity = payload.cantidad
-            if payload.unit_cost is not None and device.quantity > 0:
+            adjustment_difference = payload.cantidad - previous_quantity
+            adjustment_decimal = _to_decimal(adjustment_difference)
+            branch_for_cost = store_id
+            if adjustment_difference < 0:
+                removal_qty = abs(adjustment_difference)
+                computed_cost = inventory_accounting.compute_unit_cost(
+                    db,
+                    product_id=device.id,
+                    branch_id=branch_for_cost,
+                    quantity_out=removal_qty,
+                )
+                movement_unit_cost = _quantize_currency(computed_cost)
+                ledger_quantity = _to_decimal(removal_qty)
+                ledger_branch_id = branch_for_cost
+                ledger_unit_cost = movement_unit_cost
+            elif payload.unit_cost is not None and payload.cantidad > 0:
                 updated_cost = _to_decimal(payload.unit_cost)
                 device.costo_unitario = _quantize_currency(updated_cost)
                 movement_unit_cost = _quantize_currency(updated_cost)
@@ -5371,8 +5408,12 @@ def create_inventory_movement(
                     if previous_cost > Decimal("0")
                     else Decimal("0.00")
                 )
+            device.quantity = payload.cantidad
             if device.quantity <= 0:
                 device.costo_unitario = Decimal("0.00")
+            stock_move_type = models.StockMoveType.ADJUST
+            stock_move_quantity = adjustment_decimal
+            stock_move_branch_id = branch_for_cost
         else:
             raise ValueError("movement_type_not_supported")
 
@@ -5399,6 +5440,46 @@ def create_inventory_movement(
         flush_session(db)
         db.refresh(device)
         db.refresh(movement)
+        reference_segments: list[str] = []
+        if reference_type:
+            reference_segments.append(reference_type)
+        if reference_id:
+            reference_segments.append(reference_id)
+        accounting_reference = ":".join(reference_segments) if reference_segments else None
+        stock_move_record: models.StockMove | None = None
+        zero_decimal = Decimal("0")
+        if (
+            stock_move_type is not None
+            and stock_move_quantity is not None
+            and (
+                stock_move_type != models.StockMoveType.ADJUST
+                or stock_move_quantity != zero_decimal
+            )
+        ):
+            stock_move_record = inventory_accounting.record_move(
+                db,
+                product_id=device.id,
+                branch_id=stock_move_branch_id,
+                quantity=stock_move_quantity,
+                move_type=stock_move_type,
+                reference=accounting_reference,
+                occurred_at=movement.created_at,
+            )
+        if (
+            stock_move_record is not None
+            and ledger_quantity is not None
+            and ledger_unit_cost is not None
+            and ledger_quantity > zero_decimal
+        ):
+            cost_entry = models.CostLedgerEntry(
+                product_id=device.id,
+                move_id=stock_move_record.id,
+                branch_id=ledger_branch_id or stock_move_branch_id,
+                quantity=_to_decimal(ledger_quantity).quantize(Decimal("0.0001")),
+                unit_cost=_to_decimal(ledger_unit_cost).quantize(Decimal("0.01")),
+                method=models.CostingMethod(settings.cost_method),
+            )
+            db.add(cost_entry)
         # Aseguramos que las relaciones necesarias estén disponibles para la respuesta serializada.
         if movement.store is not None:
             _ = movement.store.name
