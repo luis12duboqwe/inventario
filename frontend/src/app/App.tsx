@@ -1,13 +1,50 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
 import { createAppRouter, type ThemeMode } from "../router";
 import Loader from "../shared/components/Loader";
-import { login, logout, type Credentials, UNAUTHORIZED_EVENT } from "../services/api/auth";
+import {
+  getCurrentUser as fetchCurrentUser,
+  login,
+  logout,
+  type Credentials,
+  UNAUTHORIZED_EVENT,
+  type UserAccount,
+} from "../services/api/auth";
 import { getAuthToken } from "../services/api/http";
 import ErrorBoundary from "../components/boundaries/ErrorBoundary";
 import SkipLink from "../components/a11y/SkipLink";
 import { startWebVitalsLite } from "../lib/metrics/webVitalsLite";
+import { AuthzProvider, type CurrentUser } from "../auth/useAuthz";
+
+const AUTHZ_ROLE_NAMES: CurrentUser["role"][] = ["ADMIN", "GERENTE", "OPERADOR", "INVITADO"];
+
+function normalizeRoleName(value?: string | null): CurrentUser["role"] | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.toUpperCase() as CurrentUser["role"];
+  return AUTHZ_ROLE_NAMES.includes(normalized) ? normalized : null;
+}
+
+function mapAccountToCurrentUser(account: UserAccount): CurrentUser {
+  let resolvedRole: CurrentUser["role"] | null = null;
+  for (const role of account.roles ?? []) {
+    resolvedRole = normalizeRoleName(role.name);
+    if (resolvedRole) {
+      break;
+    }
+  }
+  if (!resolvedRole) {
+    resolvedRole = normalizeRoleName(account.rol) ?? "INVITADO";
+  }
+
+  return {
+    id: String(account.id),
+    name: account.full_name?.trim() || account.username,
+    role: resolvedRole,
+  };
+}
 
 function resolveInitialTheme(): ThemeMode {
   if (typeof window === "undefined") {
@@ -28,6 +65,7 @@ function App() {
   const [token, setToken] = useState<string | null>(() => getAuthToken());
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<ThemeMode>(() => resolveInitialTheme());
+  const queryClient = useQueryClient();
 
   const loginMutation = useMutation({
     mutationFn: login,
@@ -36,6 +74,7 @@ function App() {
     },
     onSuccess: (response) => {
       setToken(response.access_token);
+      queryClient.invalidateQueries({ queryKey: ["auth", "current-user"] });
     },
     onError: (mutationError: unknown) => {
       const message =
@@ -71,7 +110,22 @@ function App() {
   const handleLogout = useCallback(() => {
     logout();
     setToken(null);
-  }, []);
+    queryClient.removeQueries({ queryKey: ["auth", "current-user"] });
+  }, [queryClient]);
+
+  const { data: currentUserAccount } = useQuery({
+    queryKey: ["auth", "current-user"],
+    queryFn: fetchCurrentUser,
+    enabled: Boolean(token),
+    staleTime: 60_000,
+  });
+
+  const authzUser = useMemo<CurrentUser | null>(() => {
+    if (!token || !currentUserAccount) {
+      return null;
+    }
+    return mapAccountToCurrentUser(currentUserAccount);
+  }, [currentUserAccount, token]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -113,14 +167,16 @@ function App() {
   );
 
   return (
-    <ErrorBoundary>
-      <div className={`app-root${!token ? " login-mode" : ""}`}>
-        <SkipLink />
-        <Suspense fallback={<Loader variant="overlay" message="Cargando interfaz…" />}>
-          <RouterProvider router={router} />
-        </Suspense>
-      </div>
-    </ErrorBoundary>
+    <AuthzProvider user={authzUser}>
+      <ErrorBoundary>
+        <div className={`app-root${!token ? " login-mode" : ""}`}>
+          <SkipLink />
+          <Suspense fallback={<Loader variant="overlay" message="Cargando interfaz…" />}>
+            <RouterProvider router={router} />
+          </Suspense>
+        </div>
+      </ErrorBoundary>
+    </AuthzProvider>
   );
 }
 
