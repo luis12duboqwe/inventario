@@ -9,10 +9,10 @@ export const apiMap = {
     byId:       (id: string) => `${ROOT}/products/${id}`,
   },
   pos: {
-    price:      `${ROOT}/sales/price`,                   // POST CheckoutRequest -> Totals (simula totales)
-    hold:       `${ROOT}/sales/hold`,                    // POST -> {holdId}
-    resume:     (holdId: string) => `${ROOT}/sales/hold/${holdId}`, // GET
-    checkout:   `${ROOT}/sales/checkout`,                // POST CheckoutRequest -> CheckoutResponse
+    price:      (saleId: string | number) => `${ROOT}/pos/sales/${saleId}/price`,           // POST CheckoutRequest -> Totals (simula totales)
+    hold:       (saleId: string | number) => `${ROOT}/pos/sales/${saleId}/hold`,             // POST -> {holdId}
+    resume:     (saleId: string | number) => `${ROOT}/pos/sales/${saleId}/resume`,           // POST
+    checkout:   (saleId: string | number) => `${ROOT}/pos/sales/${saleId}/checkout`,         // POST CheckoutRequest -> CheckoutResponse
   },
   quotes: {
     list:       `${ROOT}/quotes`,                        // GET
