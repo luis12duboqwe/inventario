@@ -14,6 +14,7 @@ const repairStatusLabels: Record<RepairOrder["status"], string> = {
   EN_PROCESO: "🟠 En proceso",
   LISTO: "🟢 Listo",
   ENTREGADO: "⚪ Entregado",
+  CANCELADO: "🔴 Cancelado", // [PACK37-frontend]
 };
 
 const repairStatusOptions: Array<RepairOrder["status"]> = [
@@ -21,14 +22,19 @@ const repairStatusOptions: Array<RepairOrder["status"]> = [
   "EN_PROCESO",
   "LISTO",
   "ENTREGADO",
+  "CANCELADO", // [PACK37-frontend]
 ];
 
 const initialRepairForm: RepairForm = {
   storeId: null,
   customerId: null,
   customerName: "",
+  customerContact: "",
   technicianName: "",
   damageType: "",
+  diagnosis: "",
+  deviceModel: "",
+  imei: "",
   deviceDescription: "",
   notes: "",
   laborCost: 0,

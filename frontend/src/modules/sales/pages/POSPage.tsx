@@ -241,6 +241,7 @@ export default function POSPage() {
       if (result?.printable?.pdfUrl) window.open(result.printable.pdfUrl, "_blank");
       else if (result?.printable?.html) {
         // TODO: implementar vista previa HTML
+      }
       // [PACK27-PRINT-POS-START]
       if (result?.printable) {
         openPrintable(result.printable, "ticket");
