@@ -58,6 +58,11 @@ const AppRouter = memo(function AppRouter({
 }: AppRouterProps) {
   const location = useLocation();
 
+  const enablePurchasesSales = useMemo(
+    () => (import.meta.env.VITE_SOFTMOBILE_ENABLE_PURCHASES_SALES ?? "1") !== "0",
+    [],
+  );
+
   const routes = useMemo(() => {
     if (!token) {
       return [
@@ -83,7 +88,7 @@ const AppRouter = memo(function AppRouter({
       ];
     }
 
-    return [
+    const authenticatedRoutes = [
       {
         path: "/dashboard/*",
         element: (
@@ -95,8 +100,11 @@ const AppRouter = memo(function AppRouter({
           />
         ),
       },
+    ];
+
+    if (enablePurchasesSales) {
       // [PACK20-SALES-MOUNT-START]
-      {
+      authenticatedRoutes.push({
         path: "/sales/*",
         element: (
           <DashboardScene
@@ -106,14 +114,27 @@ const AppRouter = memo(function AppRouter({
             onLogout={onLogout}
           />
         ),
-      },
+      });
       // [PACK20-SALES-MOUNT-END]
-      {
-        path: "*",
-        element: <Navigate to="/dashboard/inventory" replace />,
-      },
-    ];
-  }, [error, loading, onLogin, onLogout, onToggleTheme, theme, themeLabel, token]);
+    }
+
+    authenticatedRoutes.push({
+      path: "*",
+      element: <Navigate to="/dashboard/inventory" replace />,
+    });
+
+    return authenticatedRoutes;
+  }, [
+    enablePurchasesSales,
+    error,
+    loading,
+    onLogin,
+    onLogout,
+    onToggleTheme,
+    theme,
+    themeLabel,
+    token,
+  ]);
 
   const element = useRoutes(routes);
 
