@@ -1506,9 +1506,11 @@ class MovementBase(BaseModel):
     sucursal_destino_id: int | None = Field(
         default=None,
         ge=1,
-        validation_alias=AliasChoices("sucursal_destino_id", "tienda_destino_id"),
+        validation_alias=AliasChoices(
+            "sucursal_destino_id", "tienda_destino_id", "branch_id"
+        ),
         serialization_alias="sucursal_destino_id",
-    )
+    )  # // [PACK30-31-BACKEND]
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
     @field_validator("comentario", mode="before")
@@ -2506,6 +2508,39 @@ class GlobalReportDashboard(BaseModel):
         return value.isoformat()
 
 
+# // [PACK29-*] DTOs de reportes de ventas (resumen, productos y cierre de caja)
+class SalesSummaryReport(BaseModel):
+    total_sales: float = Field(default=0.0, alias="totalSales")
+    total_orders: int = Field(default=0, alias="totalOrders")
+    avg_ticket: float = Field(default=0.0, alias="avgTicket")
+    returns_count: int = Field(default=0, alias="returnsCount")
+    net: float = Field(default=0.0, alias="net")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# // [PACK29-*] DTO para filas del top de productos vendidos
+class SalesByProductItem(BaseModel):
+    sku: str
+    name: str
+    quantity: int = Field(default=0, alias="qty", ge=0)
+    gross: float = Field(default=0.0)
+    net: float = Field(default=0.0)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# // [PACK29-*] DTO de sugerencia de cierre de caja diario
+class CashCloseReport(BaseModel):
+    opening: float = Field(default=0.0)
+    sales_gross: float = Field(default=0.0, alias="salesGross")
+    refunds: float = Field(default=0.0)
+    expenses: float = Field(default=0.0)
+    closing_suggested: float = Field(default=0.0, alias="closingSuggested")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class AuditReminderEntry(BaseModel):
     entity_type: str
     entity_id: str
@@ -2591,7 +2626,12 @@ class PurchaseOrderItemCreate(BaseModel):
 
 
 class PurchaseOrderCreate(BaseModel):
-    store_id: int = Field(..., ge=1)
+    store_id: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("store_id", "branch_id"),
+        serialization_alias="store_id",
+    )  # // [PACK30-31-BACKEND]
     supplier: str = Field(..., max_length=120)
     notes: str | None = Field(default=None, max_length=255)
     items: list[PurchaseOrderItemCreate]
@@ -3145,7 +3185,12 @@ class SaleItemCreate(BaseModel):
 
 
 class SaleCreate(BaseModel):
-    store_id: int = Field(..., ge=1)
+    store_id: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("store_id", "branch_id"),
+        serialization_alias="store_id",
+    )  # // [PACK30-31-BACKEND]
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
@@ -3764,6 +3809,9 @@ __all__ = [
     "GlobalReportOverview",
     "GlobalReportSeriesPoint",
     "GlobalReportDashboard",
+    "SalesSummaryReport",
+    "SalesByProductItem",
+    "CashCloseReport",
     "AuditReminderEntry",
     "AuditReminderSummary",
     "DashboardAuditAlerts",

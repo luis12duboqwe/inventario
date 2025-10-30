@@ -1877,6 +1877,32 @@ button.link:hover:not(:disabled) {
   justify-content: flex-end;
 }
 
+/* [PACK29-*] Disposición de KPIs para reportes de ventas */
+.sales-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.sales-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.25rem;
+}
+
+.sales-kpi-card h3 {
+  font-size: 1rem;
+  color: var(--color-text-secondary);
+}
+
+.sales-kpi-value {
+  font-size: 1.85rem;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
 .reports-chart-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

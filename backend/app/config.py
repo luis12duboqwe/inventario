@@ -179,6 +179,10 @@ class Settings(BaseSettings):
             "SOFTMOBILE_ADJUSTMENT_VARIANCE_THRESHOLD",
         ),
     )
+    cost_method: str = Field(
+        default="FIFO",
+        validation_alias=AliasChoices("COST_METHOD", "SOFTMOBILE_COST_METHOD"),
+    )  # // [PACK30-31-BACKEND]
     backup_interval_seconds: int = Field(
         default=43200,
         validation_alias=AliasChoices(
@@ -278,6 +282,14 @@ class Settings(BaseSettings):
         if value < 0:
             raise ValueError(f"{info.field_name} debe ser mayor o igual que cero")
         return value
+
+    @field_validator("cost_method", mode="before")
+    @classmethod
+    def _normalize_cost_method(cls, value: str | None) -> str:
+        normalized = (value or "FIFO").strip().upper()
+        if normalized not in {"FIFO", "AVG"}:
+            return "FIFO"
+        return normalized  # // [PACK30-31-BACKEND]
 
     @field_validator(
         "enable_background_scheduler",

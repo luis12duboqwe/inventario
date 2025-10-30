@@ -63,6 +63,11 @@ vi.mock("../components/InventoryMovementFormSection", () => ({
   default: () => <div data-testid="inventory-movement-form" />,
 }));
 
+vi.mock("../components/InventoryTransferFormSection", () => ({
+  __esModule: true,
+  default: () => <div data-testid="inventory-transfer-form" />, // [PACK30-31-FRONTEND]
+}));
+
 vi.mock("../components/InventoryMovementsTimelineSection", () => ({
   __esModule: true,
   default: () => <div data-testid="inventory-movements-timeline" />,

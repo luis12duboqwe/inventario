@@ -23,6 +23,8 @@ const RepairsCompleted = lazy(() => import("../repairs/pages/RepairsCompleted"))
 const RepairsParts = lazy(() => import("../repairs/pages/RepairsParts"));
 const RepairsBudgets = lazy(() => import("../repairs/pages/RepairsBudgets"));
 const GlobalReportsPage = lazy(() => import("../reports/pages/GlobalReportsPage"));
+// [PACK29-*] Ruta autónoma de reportes operativos
+const SalesReportsRoutes = lazy(() => import("../reports/routes"));
 const SalesModuleRoutes = lazy(() => import("../sales/routes"));
 
 type DashboardRoutesProps = {
@@ -115,6 +117,15 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           element={
             <ModuleBoundary>
               <SalesModuleRoutes />
+            </ModuleBoundary>
+          }
+        />
+        {/* // [PACK29-*] Soporte para /reports/* fuera del dashboard principal */}
+        <Route
+          path="/reports/*"
+          element={
+            <ModuleBoundary>
+              <SalesReportsRoutes />
             </ModuleBoundary>
           }
         />

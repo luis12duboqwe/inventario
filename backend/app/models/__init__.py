@@ -33,6 +33,24 @@ class MovementType(str, enum.Enum):
     ADJUST = "ajuste"
 
 
+# // [PACK30-31-BACKEND]
+class StockMoveType(str, enum.Enum):
+    """Clasificación de movimientos contables por sucursal."""
+
+    IN = "IN"
+    OUT = "OUT"
+    ADJUST = "ADJ"
+    TRANSFER = "TRANSFER"
+
+
+# // [PACK30-31-BACKEND]
+class CostingMethod(str, enum.Enum):
+    """Métodos de costeo soportados en la bitácora contable."""
+
+    FIFO = "FIFO"
+    AVG = "AVG"
+
+
 class SyncStatus(str, enum.Enum):
     """Estados posibles de una sesión de sincronización."""
 
@@ -486,6 +504,67 @@ class InventoryMovement(Base):
     @property
     def sucursal_destino(self) -> str | None:
         return self.tienda_destino
+
+
+# // [PACK30-31-BACKEND]
+class StockMove(Base):
+    __tablename__ = "stock_moves"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    product_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    movement_type: Mapped[StockMoveType] = mapped_column(
+        Enum(StockMoveType, name="stock_move_type"), nullable=False
+    )
+    reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+    )
+
+    product: Mapped["Device"] = relationship("Device")
+    branch: Mapped[Store | None] = relationship("Store")
+    ledger_entries: Mapped[list["CostLedgerEntry"]] = relationship(
+        "CostLedgerEntry", back_populates="move", cascade="all, delete-orphan"
+    )
+
+
+# // [PACK30-31-BACKEND]
+class CostLedgerEntry(Base):
+    __tablename__ = "cost_ledger"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    product_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    move_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("stock_moves.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    branch_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    quantity: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    method: Mapped[CostingMethod] = mapped_column(
+        Enum(CostingMethod, name="costing_method"), nullable=False
+    )
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+    )
+
+    move: Mapped[StockMove] = relationship("StockMove", back_populates="ledger_entries")
+    product: Mapped["Device"] = relationship("Device")
+    branch: Mapped[Store | None] = relationship("Store")
 
 
 class SyncSession(Base):
