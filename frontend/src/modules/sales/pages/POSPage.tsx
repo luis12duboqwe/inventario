@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React from "react";
 import {
   CartPanel,
   CustomerBar,
@@ -13,33 +13,13 @@ import {
   ProductGrid,
   ProductSearchBar,
 } from "../components/pos";
-
-type CartLine = {
-  id: string;
-  sku?: string;
-  name: string;
-  qty: number;
-  price: number;
-  discount?: { type: "PERCENT" | "AMOUNT"; value: number } | null;
-  imei?: string;
-};
-
-type Totals = {
-  sub: number;
-  disc: number;
-  tax: number;
-  grand: number;
-};
-
-type ProductRecord = {
-  id: string;
-  sku?: string;
-  name: string;
-  price: number;
-  stock?: number;
-  image?: string;
-  imei?: string;
-};
+// [PACK22-POS-PAGE-IMPORTS-START]
+import { useEffect, useMemo, useState } from "react";
+import type { Product, ProductSearchParams, PaymentInput } from "../../../services/sales";
+import { SalesProducts } from "../../../services/sales";
+import { usePOS } from "../hooks/usePOS";
+// [PACK22-POS-PAGE-IMPORTS-END]
+import { calcTotalsLocal } from "../utils/totals";
 
 type HoldSale = {
   id: string;
@@ -62,32 +42,8 @@ type Customer = {
   phone?: string;
 };
 
-const TAX_RATE = 0.16;
-
-const computeTotals = (items: CartLine[]): Totals => {
-  const subtotal = items.reduce((acc, line) => acc + line.price * line.qty, 0);
-  const discountTotal = items.reduce((acc, line) => {
-    if (!line.discount) return acc;
-    if (line.discount.type === "PERCENT") {
-      return acc + (line.price * line.qty * Math.min(Math.max(line.discount.value, 0), 100)) / 100;
-    }
-    return acc + Math.max(line.discount.value, 0);
-  }, 0);
-  const taxableBase = Math.max(subtotal - discountTotal, 0);
-  const taxTotal = taxableBase * TAX_RATE;
-  return {
-    sub: subtotal,
-    disc: discountTotal,
-    tax: taxTotal,
-    grand: taxableBase + taxTotal,
-  };
-};
-
 export default function POSPage() {
-  const [query, setQuery] = useState<string>("");
-  const [products] = useState<ProductRecord[]>([]); // TODO(wire)
-  const [lines, setLines] = useState<CartLine[]>([]);
-  const totals = useMemo(() => computeTotals(lines), [lines]);
+  type PaymentDraft = PaymentInput & { id: string };
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [discountTarget, setDiscountTarget] = useState<string | null>(null);
   const [priceTarget, setPriceTarget] = useState<string | null>(null);
@@ -95,77 +51,250 @@ export default function POSPage() {
   const [holdDrawerOpen, setHoldDrawerOpen] = useState<boolean>(false);
   const [fastCustomerOpen, setFastCustomerOpen] = useState<boolean>(false);
   const [offlineDrawerOpen, setOfflineDrawerOpen] = useState<boolean>(false);
-  const [holdItems] = useState<HoldSale[]>([]); // TODO(wire)
-  const [offlineQueue] = useState<OfflineSale[]>([]); // TODO(wire)
+  const [holdItems, setHoldItems] = useState<HoldSale[]>([]);
+  // [PACK22-POS-SEARCH-STATE-START]
+  const [q, setQ] = useState("");
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [page, setPage] = useState(1);
+  const pageSize = 24; // ajusta a tu grid
+  // [PACK22-POS-SEARCH-STATE-END]
+  // [PACK22-POS-HOOK-USE-START]
+  const pos = usePOS();
 
-  const pickProduct = (product: ProductRecord) => {
-    if (product.stock !== undefined && product.stock <= 0) {
-      return; // TODO(alerta stock)
-    }
-    if (product.imei && lines.some((line) => line.imei === product.imei)) {
-      return; // TODO(notificar duplicado IMEI)
-    }
-    setLines((prev) => {
-      const existing = prev.find((line) => line.id === product.id);
-      if (existing) {
-        return prev.map((line) =>
-          line.id === product.id
-            ? { ...line, qty: line.qty + 1 }
-            : line,
-        );
-      }
-      return [
-        ...prev,
-        {
-          id: product.id,
-          sku: product.sku,
-          name: product.name,
-          qty: 1,
-          price: product.price,
-          imei: product.imei,
-        },
-      ];
+  const {
+    lines,
+    totals,
+    payments,
+    banner,
+    pendingOffline,
+    addProduct,
+    updateQty,
+    removeLine,
+    setDiscount,
+    overridePrice,
+    clearCart,
+    priceDraft,
+    checkout,
+    holdSale,
+    resumeHold,
+    retryOffline,
+    setCustomerId,
+    setPayments,
+    purgeOffline,
+  } = pos;
+
+  useEffect(() => {
+    priceDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, payments]);
+  // [PACK22-POS-HOOK-USE-END]
+
+  useEffect(() => {
+    setCustomerId(customer?.id ?? null);
+  }, [customer, setCustomerId]);
+
+  const productCards = useMemo(
+    () =>
+      products.map((product) => ({
+        id: String(product.id),
+        sku: product.sku,
+        name: product.name,
+        price: product.price,
+        stock: product.stock,
+        image: product.imageUrl,
+      })),
+    [products],
+  );
+
+  const offlineQueue = useMemo<OfflineSale[]>(() => {
+    return (pendingOffline as Array<{ ts: number; dto: any }>).map((item) => {
+      const totalsDraft = calcTotalsLocal(item.dto?.lines ?? []);
+      return {
+        id: String(item.ts),
+        when: new Date(item.ts).toISOString(),
+        total: totalsDraft.grand,
+        status: "QUEUED" as const,
+      };
     });
-  };
+  }, [pendingOffline]);
 
-  const updateQty = (id: string, qty: number) => {
-    const safeQty = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1;
-    setLines((prev) => prev.map((line) => (line.id === id ? { ...line, qty: safeQty } : line)));
-  };
+  const cartLines = useMemo(
+    () =>
+      lines.map((line) => ({
+        id: String(line.productId),
+        sku: line.sku,
+        name: line.name ?? "Producto",
+        qty: line.qty,
+        price: line.price,
+        discount: line.discount ?? null,
+        imei: line.imei,
+      })),
+    [lines],
+  );
 
-  const removeLine = (id: string) => {
-    setLines((prev) => prev.filter((line) => line.id !== id));
-  };
+  const currentPrice = priceTarget
+    ? lines.find((line) => String(line.productId) === priceTarget)?.price ?? 0
+    : 0;
 
-  const applyDiscount = (payload: { type: "PERCENT" | "AMOUNT"; value: number }) => {
+  async function doSearch(extra?: Partial<ProductSearchParams>) {
+    setLoadingSearch(true);
+    try {
+      const params: ProductSearchParams = {
+        q,
+        page,
+        pageSize,
+        onlyInStock: true,
+        ...extra,
+      } as ProductSearchParams;
+      if (extra?.q !== undefined) {
+        params.q = extra.q;
+      }
+      if (extra?.page !== undefined) {
+        params.page = extra.page;
+      }
+      const res = await SalesProducts.searchProducts(params);
+      setProducts(res.items ?? []);
+    } catch (error) {
+      // TODO(wire): manejar error de búsqueda
+    } finally {
+      setLoadingSearch(false);
+    }
+  }
+
+  function handleSearch(value: string) {
+    setQ(value);
+    setPage(1);
+    doSearch({ q: value, page: 1 });
+  }
+
+  function onAddToCart(product: Product) {
+    addProduct(product, 1);
+  }
+
+  function handleQty(id: string, qty: number) {
+    updateQty(id, Math.max(1, qty));
+  }
+
+  function handleRemove(id: string) {
+    removeLine(id);
+  }
+
+  const handleDiscountSubmit = (payload: { type: "PERCENT" | "AMOUNT"; value: number }) => {
     if (!discountTarget) return;
-    setLines((prev) =>
-      prev.map((line) =>
-        line.id === discountTarget
-          ? {
-              ...line,
-              discount: {
-                type: payload.type,
-                value: payload.type === "PERCENT" ? Math.min(Math.max(payload.value, 0), 100) : Math.max(payload.value, 0),
-              },
-            }
-          : line,
-      ),
-    );
+    const normalized = payload.type === "PERCENT"
+      ? Math.min(Math.max(payload.value, 0), 100)
+      : Math.max(payload.value, 0);
+    setDiscount(discountTarget, payload.type, normalized);
     setDiscountTarget(null);
   };
 
-  const applyPriceOverride = (newPrice: number) => {
+  const handlePriceOverride = (newPrice: number) => {
     if (!priceTarget) return;
-    const safePrice = Math.max(newPrice, 0);
-    setLines((prev) => prev.map((line) => (line.id === priceTarget ? { ...line, price: safePrice } : line)));
+    overridePrice(priceTarget, Math.max(newPrice, 0));
     setPriceTarget(null);
   };
 
-  const currentPrice = priceTarget ? lines.find((line) => line.id === priceTarget)?.price ?? 0 : 0;
+  function onOpenPayments() {
+    setPaymentsOpen(true);
+  }
+
+  const handlePaymentsSubmit = async (paymentDrafts: PaymentDraft[]) => {
+    const payload: PaymentInput[] = paymentDrafts.map(({ type, amount, ref }) => ({ type, amount, ref }));
+    setPayments(payload);
+    try {
+      const result = await checkout();
+      // [PACK22-POS-PRINT-START]
+      if (result?.printable?.pdfUrl) window.open(result.printable.pdfUrl, "_blank");
+      else if (result?.printable?.html) {
+        // TODO: implementar vista previa HTML
+      }
+      // [PACK22-POS-PRINT-END]
+      setCustomer(null);
+    } finally {
+      setPaymentsOpen(false);
+    }
+  };
+
+  async function onHold() {
+    try {
+      const holdId = await holdSale();
+      if (holdId) {
+        setHoldItems((prev) => [
+          ...prev,
+          {
+            id: holdId,
+            number: holdId,
+            date: new Date().toISOString(),
+            customer: customer?.name,
+            total: totals.grand,
+          },
+        ]);
+        clearCart();
+        setCustomer(null);
+        setHoldDrawerOpen(false);
+      }
+    } catch (error) {
+      // errores manejados por banner POS
+    }
+  }
+
+  async function onResumeHold(holdId: string) {
+    try {
+      await resumeHold(holdId);
+      setHoldItems((prev) => prev.filter((item) => item.id !== holdId));
+      setHoldDrawerOpen(false);
+    } catch (error) {
+      // errores manejados por banner POS
+    }
+  }
+
+  const handleOfflineRetry = async () => {
+    await retryOffline();
+  };
+
+  const handleOfflinePurge = (id?: string) => {
+    purgeOffline(id);
+  };
+
+  function handleCancelSale() {
+    clearCart();
+    setPayments([]);
+    setCustomer(null);
+  }
+
+  // [PACK22-POS-SEARCH-INIT-START]
+  useEffect(() => { doSearch(); /* carga inicial */ }, []);
+  // [PACK22-POS-SEARCH-INIT-END]
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
+      {/* [PACK22-POS-BANNER-START] */}
+      {banner && (
+        <div
+          style={{
+            borderRadius: 12,
+            padding: 12,
+            border: "1px solid rgba(255,255,255,0.08)",
+            background:
+              banner.type === "error"
+                ? "rgba(248,113,113,0.12)"
+                : banner.type === "warn"
+                ? "rgba(250,204,21,0.12)"
+                : banner.type === "success"
+                ? "rgba(34,197,94,0.12)"
+                : "rgba(59,130,246,0.12)",
+          }}
+        >
+          <div>{banner.msg}</div>
+          {pendingOffline.length > 0 && (
+            <button onClick={handleOfflineRetry} style={{ marginTop: 8, padding: "6px 10px", borderRadius: 8 }}>
+              Reintentar ventas offline ({pendingOffline.length})
+            </button>
+          )}
+        </div>
+      )}
+      {/* [PACK22-POS-BANNER-END] */}
       <CustomerBar
         customer={customer}
         onPick={() => {
@@ -173,44 +302,52 @@ export default function POSPage() {
         }}
         onQuickNew={() => setFastCustomerOpen(true)}
       />
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={() => setHoldDrawerOpen(true)} style={{ padding: "6px 10px", borderRadius: 8 }}>
+          Ventas en espera
+        </button>
+      </div>
       <POSLayout
         left={
           <>
-            <ProductSearchBar
-              value={query}
-              onChange={setQuery}
-              onSearch={() => {
-                // TODO(wire)
-              }}
-            />
+            <ProductSearchBar value={q} onChange={setQ} onSearch={handleSearch} />
+            {loadingSearch && (
+              <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8" }}>Buscando productos…</div>
+            )}
             <div style={{ marginTop: 10 }}>
-              <ProductGrid items={products} onPick={pickProduct} />
+              <ProductGrid
+                items={productCards}
+                onPick={(card) => {
+                  const original = products.find((item) => String(item.id) === card.id);
+                  if (original) {
+                    onAddToCart(original);
+                  }
+                }}
+              />
             </div>
           </>
         }
         right={
           <>
             <CartPanel
-              lines={lines}
+              lines={cartLines}
               totals={totals}
-              onQty={updateQty}
-              onRemove={removeLine}
+              onQty={handleQty}
+              onRemove={handleRemove}
               onDiscount={(id) => setDiscountTarget(id)}
               onOverridePrice={(id) => setPriceTarget(id)}
             />
             <div style={{ marginTop: 10 }}>
               <POSActionsBar
-                onHold={() => setHoldDrawerOpen(true)}
-                onPay={() => setPaymentsOpen(true)}
+                onHold={() => {
+                  void onHold();
+                }}
+                onPay={onOpenPayments}
                 onPrint={() => {
-                  // TODO(print)
+                  // TODO(wire): impresión directa
                 }}
                 onOffline={() => setOfflineDrawerOpen(true)}
-                onCancel={() => {
-                  setLines([]);
-                  setCustomer(null);
-                  // TODO(reset adicional)
-                }}
+                onCancel={handleCancelSale}
               />
             </div>
           </>
@@ -219,33 +356,30 @@ export default function POSPage() {
       <DiscountModal
         open={!!discountTarget}
         onClose={() => setDiscountTarget(null)}
-        onSubmit={applyDiscount}
+        onSubmit={handleDiscountSubmit}
       />
       <PriceOverrideModal
         open={!!priceTarget}
         price={currentPrice}
         onClose={() => setPriceTarget(null)}
-        onSubmit={applyPriceOverride}
+        onSubmit={handlePriceOverride}
       />
       <PaymentsModal
         open={paymentsOpen}
         total={totals.grand}
         onClose={() => setPaymentsOpen(false)}
-        onSubmit={() => {
-          // TODO(checkout)
-          setPaymentsOpen(false);
+        onSubmit={(paymentsDraft) => {
+          void handlePaymentsSubmit(paymentsDraft as PaymentDraft[]);
         }}
       />
       <HoldResumeDrawer
         open={holdDrawerOpen}
         items={holdItems}
         onClose={() => setHoldDrawerOpen(false)}
-        onResume={() => {
-          // TODO(resume)
+        onResume={(id) => {
+          void onResumeHold(id);
         }}
-        onDelete={() => {
-          // TODO(delete)
-        }}
+        onDelete={(id) => setHoldItems((prev) => prev.filter((item) => item.id !== id))}
       />
       <FastCustomerModal
         open={fastCustomerOpen}
@@ -253,7 +387,7 @@ export default function POSPage() {
         onSubmit={(payload) => {
           setCustomer({ id: `fast-${Date.now()}`, name: payload.name, phone: payload.phone });
           setFastCustomerOpen(false);
-          // TODO(create/pick)
+          // TODO(wire): creación inmediata de cliente
         }}
       />
       <OfflineQueueDrawer
@@ -261,11 +395,9 @@ export default function POSPage() {
         items={offlineQueue}
         onClose={() => setOfflineDrawerOpen(false)}
         onRetry={() => {
-          // TODO(retry)
+          void handleOfflineRetry();
         }}
-        onPurge={() => {
-          // TODO(purge)
-        }}
+        onPurge={(id) => handleOfflinePurge(id)}
       />
     </div>
   );

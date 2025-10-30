@@ -1,6 +1,6 @@
 // src/services/sales/returns.ts
-import { httpGet, httpPost } from "@/services/http";
-import { Page } from "@/services/types/common";
+import { httpGet, httpPost } from "../http";
+import { Page } from "../types/common";
 import { ReturnDoc, ReturnListParams, ReturnCreate } from "./types";
 import { apiMap } from "./apiMap";
 

@@ -1,5 +1,5 @@
 // src/services/sales/types.ts
-import { ID, Page, ListParams } from "@/services/types/common";
+import { ID, Page, ListParams } from "../types/common";
 
 export interface Money { currency?: string; amount: number; }
 

@@ -1,5 +1,5 @@
 // src/services/sales/cash.ts
-import { httpGet, httpPost } from "@/services/http";
+import { httpGet, httpPost } from "../http";
 import { CashSummary, CashClosePayload } from "./types";
 import { apiMap } from "./apiMap";
 

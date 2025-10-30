@@ -1,5 +1,5 @@
 // src/services/sales/pos.ts
-import { httpPost, httpGet } from "@/services/http";
+import { httpPost, httpGet } from "../http";
 import { Totals, CheckoutRequest, CheckoutResponse } from "./types";
 import { apiMap } from "./apiMap";
 
