@@ -4,16 +4,18 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import secrets
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
 from ..config import settings
-from ..core.roles import ADMIN, GERENTE, normalize_roles
+from ..core.roles import ADMIN, GERENTE, INVITADO, OPERADOR, normalize_roles
+from ..core.transactions import flush_session, transactional_session
 from ..database import get_db
 from ..security import (
     create_access_token,
+    create_refresh_token,
     decode_token,
     get_current_user,
     hash_password,
@@ -81,6 +83,67 @@ def _authenticate_user(
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+# // [PACK28-auth]
+_REFRESH_COOKIE_NAME = "softmobile_refresh_token"
+
+
+# // [PACK28-auth]
+_ROLE_PRIORITY = (ADMIN, GERENTE, OPERADOR, INVITADO)
+
+
+# // [PACK28-auth]
+def _collect_user_roles(user) -> set[str]:
+    assignments = {
+        (assignment.role.name if assignment.role else None)
+        for assignment in getattr(user, "roles", [])
+    }
+    normalized = {value for value in assignments if value}
+    stored_role = getattr(user, "rol", None)
+    if stored_role:
+        normalized.add(str(stored_role).upper())
+    return normalized
+
+
+# // [PACK28-auth]
+def _resolve_primary_role(user) -> str:
+    roles = _collect_user_roles(user)
+    for candidate in _ROLE_PRIORITY:
+        if candidate in roles:
+            return candidate
+    if roles:
+        return sorted(roles)[0]
+    return INVITADO
+
+
+# // [PACK28-auth]
+def _resolve_display_name(user) -> str:
+    full_name = getattr(user, "full_name", None) or getattr(user, "nombre", None)
+    if full_name:
+        stripped = str(full_name).strip()
+        if stripped:
+            return stripped
+    return str(getattr(user, "username", "")).strip()
+
+
+# // [PACK28-auth]
+def _build_pack28_claims(user) -> dict[str, str]:
+    return {"name": _resolve_display_name(user), "role": _resolve_primary_role(user)}
+
+
+# // [PACK28-auth]
+def _set_refresh_cookie(response: Response, token: str, expires_at: datetime) -> None:
+    max_age_seconds = settings.refresh_token_expire_days * 24 * 60 * 60
+    response.set_cookie(
+        key=_REFRESH_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite=settings.session_cookie_samesite,
+        max_age=max_age_seconds,
+        expires=expires_at,
+    )
+
+
 @router.get(
     "/bootstrap/status",
     response_model=schemas.BootstrapStatusResponse,
@@ -119,6 +182,48 @@ def bootstrap_admin(payload: schemas.UserCreate, db: Session = Depends(get_db)):
     return user
 
 
+# // [PACK28-auth]
+@router.post(
+    "/login",
+    response_model=schemas.AuthLoginResponse,
+    dependencies=[Depends(get_current_user)],
+)
+def login_with_jwt(
+    response: Response,
+    payload: schemas.AuthLoginRequest,
+    db: Session = Depends(get_db),
+):
+    user = _authenticate_user(
+        db,
+        username=payload.username,
+        password=payload.password,
+        otp=payload.otp or "",
+    )
+    claims = _build_pack28_claims(user)
+    access_token, session_token, _ = create_access_token(
+        subject=user.username,
+        claims=claims,
+    )
+    refresh_expires = datetime.now(timezone.utc) + timedelta(
+        days=settings.refresh_token_expire_days
+    )
+    session = crud.create_active_session(
+        db,
+        user_id=user.id,
+        session_token=session_token,
+        expires_at=refresh_expires,
+    )
+    crud.register_successful_login(db, user, session_token=session.session_token)
+    refresh_token, refresh_expiration = create_refresh_token(
+        subject=user.username,
+        session_token=session.session_token,
+        claims=claims,
+        expires_days=settings.refresh_token_expire_days,
+    )
+    _set_refresh_cookie(response, refresh_token, refresh_expiration)
+    return schemas.AuthLoginResponse(access_token=access_token)
+
+
 class OAuth2PasswordRequestFormWithOTP(OAuth2PasswordRequestForm):
     def __init__(
         self,
@@ -152,7 +257,11 @@ def login(form_data: OAuth2PasswordRequestFormWithOTP = Depends(), db: Session =
         password=form_data.password,
         otp=form_data.otp,
     )
-    token, session_token, expires_at = create_access_token(subject=user.username)
+    claims = _build_pack28_claims(user)
+    token, session_token, expires_at = create_access_token(
+        subject=user.username,
+        claims=claims,
+    )
     session = crud.create_active_session(
         db,
         user_id=user.id,
@@ -205,6 +314,72 @@ def login_with_session(
     )
 
 
+# // [PACK28-auth]
+@router.post(
+    "/refresh",
+    response_model=schemas.AuthLoginResponse,
+    dependencies=[Depends(get_current_user)],
+)
+def refresh_access_token(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    refresh_token_cookie = request.cookies.get(_REFRESH_COOKIE_NAME)
+    if not refresh_token_cookie:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de refresco ausente.",
+        )
+    payload = decode_token(refresh_token_cookie)
+    if payload.token_type != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tipo de token inválido para refrescar.",
+        )
+    session_token = payload.sid or payload.jti
+    if not session_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de refresco sin sesión asociada.",
+        )
+    session = crud.mark_session_used(db, session_token)
+    if session is None or crud.is_session_expired(session.expires_at):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sesión expirada o revocada.",
+        )
+    user = session.user or crud.get_user_by_username(db, payload.sub)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario no encontrado para el token.",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuario inactivo.",
+        )
+    claims = _build_pack28_claims(user)
+    access_token, _, _ = create_access_token(
+        subject=user.username,
+        session_token=session.session_token,
+        claims=claims,
+    )
+    new_refresh_token, refresh_expires = create_refresh_token(
+        subject=user.username,
+        session_token=session.session_token,
+        claims=claims,
+        expires_days=settings.refresh_token_expire_days,
+    )
+    with transactional_session(db):
+        session.expires_at = refresh_expires
+        flush_session(db)
+    db.refresh(session)
+    _set_refresh_cookie(response, new_refresh_token, refresh_expires)
+    return schemas.AuthLoginResponse(access_token=access_token)
+
+
 @router.post(
     "/verify",
     response_model=schemas.TokenVerificationResponse,
@@ -242,13 +417,22 @@ def verify_access_token(
     )
 
 
+# // [PACK28-auth]
 @router.get(
     "/me",
-    response_model=schemas.UserResponse,
+    response_model=schemas.AuthProfileResponse,
     dependencies=[Depends(get_current_user)],
 )
 async def read_current_user(current_user=Depends(require_active_user)):
-    return current_user
+    base_payload = schemas.UserResponse.model_validate(current_user).model_dump()
+    base_payload.update(
+        {
+            "name": _resolve_display_name(current_user),
+            "email": getattr(current_user, "username", None),
+            "role": _resolve_primary_role(current_user),
+        }
+    )
+    return schemas.AuthProfileResponse(**base_payload)
 
 
 @router.post(

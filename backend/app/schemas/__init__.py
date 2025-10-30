@@ -1405,6 +1405,26 @@ class UserDashboardMetrics(BaseModel):
     audit_alerts: DashboardAuditAlerts
 
 
+# // [PACK28-schemas]
+class AuthLoginRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=120)
+    password: str = Field(..., min_length=3, max_length=128)
+    otp: str | None = Field(default=None, min_length=6, max_length=6)
+
+
+# // [PACK28-schemas]
+class AuthLoginResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
+# // [PACK28-schemas]
+class AuthProfileResponse(UserResponse):
+    name: str
+    email: str | None = Field(default=None)
+    role: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     session_id: int
@@ -1431,9 +1451,15 @@ class PasswordResetResponse(BaseModel):
 
 
 class TokenPayload(BaseModel):
+    # // [PACK28-schemas]
     sub: str
+    name: str | None = None
+    role: str | None = None
+    iat: int
     exp: int
     jti: str
+    sid: str | None = None
+    token_type: str = Field(default="access")
 
 
 class TokenVerificationRequest(BaseModel):

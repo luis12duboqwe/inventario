@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import uuid
+from typing import Any, Mapping
 
 import jwt
 import pyotp
@@ -49,15 +50,75 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
+# // [PACK28-tokens]
+def _build_token_payload(
+    *,
+    subject: str,
+    session_token: str,
+    expires_at: datetime,
+    issued_at: datetime,
+    token_type: str,
+    extra_claims: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "exp": int(expires_at.timestamp()),
+        "iat": int(issued_at.timestamp()),
+        "jti": session_token,
+        "token_type": token_type,
+    }
+    if token_type == "access":  # // [PACK28-tokens]
+        payload["nonce"] = uuid.uuid4().hex
+    if extra_claims:
+        payload.update({key: value for key, value in extra_claims.items() if value is not None})
+    return payload
+
+
+# // [PACK28-tokens]
 def create_access_token(
-    *, subject: str, expires_minutes: int | None = None
+    *,
+    subject: str,
+    expires_minutes: int | None = None,
+    session_token: str | None = None,
+    claims: Mapping[str, Any] | None = None,
 ) -> tuple[str, str, datetime]:
     expire_minutes = expires_minutes or settings.access_token_expire_minutes
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
-    session_id = uuid.uuid4().hex
-    payload = {"sub": subject, "exp": int(expire.timestamp()), "jti": session_id}
+    issued_at = datetime.now(timezone.utc)
+    expires_at = issued_at + timedelta(minutes=expire_minutes)
+    session_id = session_token or uuid.uuid4().hex
+    payload = _build_token_payload(
+        subject=subject,
+        session_token=session_id,
+        expires_at=expires_at,
+        issued_at=issued_at,
+        token_type="access",
+        extra_claims=claims,
+    )
     token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
-    return token, session_id, expire
+    return token, session_id, expires_at
+
+
+# // [PACK28-tokens]
+def create_refresh_token(
+    *,
+    subject: str,
+    session_token: str,
+    expires_days: int | None = None,
+    claims: Mapping[str, Any] | None = None,
+) -> tuple[str, datetime]:
+    expire_days = expires_days or settings.refresh_token_expire_days
+    issued_at = datetime.now(timezone.utc)
+    expires_at = issued_at + timedelta(days=expire_days)
+    refresh_payload = _build_token_payload(
+        subject=subject,
+        session_token=uuid.uuid4().hex,
+        expires_at=expires_at,
+        issued_at=issued_at,
+        token_type="refresh",
+        extra_claims={"sid": session_token, **(claims or {})},
+    )
+    token = jwt.encode(refresh_payload, settings.secret_key, algorithm=ALGORITHM)
+    return token, expires_at
 
 
 def decode_token(token: str) -> schemas.TokenPayload:
@@ -65,6 +126,10 @@ def decode_token(token: str) -> schemas.TokenPayload:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
         if "jti" not in payload:
             raise jwt.PyJWTError("missing jti")
+        if "exp" not in payload:
+            raise jwt.PyJWTError("missing exp")
+        if "iat" not in payload:
+            raise jwt.PyJWTError("missing iat")
         return schemas.TokenPayload(**payload)
     except jwt.ExpiredSignatureError as exc:  # pragma: no cover - error path
         raise HTTPException(
@@ -91,6 +156,11 @@ async def get_current_user(
     session_token: str | None = None
     if token:
         token_payload = decode_token(token)
+        if token_payload.token_type != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Tipo de token inválido.",
+            )
         session_token = token_payload.jti
         session = crud.get_active_session_by_token(db, session_token)
         if session is None or session.revoked_at is not None:

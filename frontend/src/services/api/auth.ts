@@ -1,5 +1,6 @@
-import type { AxiosResponse } from "axios";
 import type {
+  AuthProfile,
+  AuthSession,
   BootstrapRequest,
   BootstrapStatus,
   Credentials,
@@ -8,7 +9,6 @@ import type {
 import httpClient, {
   UNAUTHORIZED_EVENT,
   clearAuthToken,
-  getAuthToken,
   setAuthToken,
 } from "./http";
 
@@ -38,28 +38,40 @@ export async function bootstrapAdmin(payload: BootstrapRequest): Promise<UserAcc
   return response.data;
 }
 
-export async function login(credentials: Credentials): Promise<{ access_token: string }> {
-  const formData = new URLSearchParams();
-  formData.set("username", credentials.username);
-  formData.set("password", credentials.password);
-
-  const response: AxiosResponse<{ access_token: string }> = await httpClient.post(
-    "/auth/token",
-    formData,
-    {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    },
-  );
-
+// [PACK28-auth-service]
+export async function login(credentials: Credentials): Promise<AuthSession> {
+  const payload: Record<string, string> = {
+    username: credentials.username,
+    password: credentials.password,
+  };
+  if (credentials.otp) {
+    payload.otp = credentials.otp;
+  }
+  const response = await httpClient.post<AuthSession>("/auth/login", payload);
   setAuthToken(response.data.access_token);
-
   return response.data;
 }
 
-export async function getCurrentUser(): Promise<UserAccount> {
-  const response = await httpClient.get<UserAccount>("/auth/me");
+// [PACK28-auth-service]
+export async function refreshAccessToken(): Promise<AuthSession | null> {
+  try {
+    const response = await httpClient.post<AuthSession>("/auth/refresh", {});
+    const session = response.data;
+    if (session?.access_token) {
+      setAuthToken(session.access_token);
+      return session;
+    }
+    clearAuthToken();
+    return null;
+  } catch (error) {
+    clearAuthToken();
+    throw error;
+  }
+}
+
+// [PACK28-auth-service]
+export async function getCurrentUser(): Promise<AuthProfile> {
+  const response = await httpClient.get<AuthProfile>("/auth/me");
   return response.data;
 }
 
@@ -67,8 +79,11 @@ export function logout(): void {
   clearAuthToken();
 }
 
-export function isAuthenticated(): boolean {
-  return Boolean(getAuthToken());
-}
-
-export type { Credentials, BootstrapStatus, BootstrapRequest, UserAccount } from "../../api";
+export type {
+  AuthProfile,
+  AuthSession,
+  Credentials,
+  BootstrapStatus,
+  BootstrapRequest,
+  UserAccount,
+} from "../../api";
