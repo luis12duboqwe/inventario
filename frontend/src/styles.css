@@ -6688,3 +6688,223 @@ ol {
     min-width: 100%;
   }
 }
+
+/* // [PACK34-UI] POS layout */
+.pos-layout {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  align-items: start;
+}
+
+.pos-layout__column {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.operations-pos-disabled {
+  display: grid;
+  gap: 0.75rem;
+  padding: 2rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.75), rgba(30, 41, 59, 0.75));
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.1);
+}
+
+.pos-page {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.pos-page__intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pos-cash-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pos-cash-store-selector {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.pos-cash-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: rgba(15, 118, 110, 0.12);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(34, 211, 238, 0.15);
+}
+
+.pos-cash-status strong {
+  font-size: 1.1rem;
+}
+
+.pos-cash-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.pos-cash-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.pos-cart-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  align-items: end;
+}
+
+.pos-cart-form__description {
+  grid-column: 1 / -2;
+}
+
+.pos-cart-table input {
+  width: 100%;
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #e2e8f0;
+  padding: 0.45rem 0.5rem;
+  border-radius: 0.5rem;
+}
+
+.pos-cart-table small {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.pos-totals {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1rem 0;
+}
+
+.pos-totals div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+}
+
+.pos-totals__highlight {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.pos-note-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.pos-note-field textarea,
+.pos-note-field input {
+  width: 100%;
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #e2e8f0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+}
+
+.pos-payments-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
+.pos-payments-summary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  margin-bottom: 0.35rem;
+}
+
+.pos-payments-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pos-payments-list__item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.pos-payments-list__item div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pos-history-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
+.pos-history-detail {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.pos-history-detail__items {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pos-history-detail__items li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+
+.pos-return-form {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: end;
+}
+
+.pos-return-form__reason {
+  grid-column: 1 / -1;
+}
+
+.pos-receipt-preview {
+  width: 100%;
+  min-height: 420px;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.35);
+}

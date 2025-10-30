@@ -846,9 +846,15 @@ export type OperationsHistoryResponse = {
 };
 
 export type PosCartItemInput = {
-  device_id: number;
-  quantity: number;
+  device_id?: number;
+  productId?: number;
+  imei?: string;
+  quantity?: number;
+  qty?: number;
   discount_percent?: number;
+  discount?: number;
+  price?: number | string;
+  taxCode?: string;
 };
 
 export type PaymentBreakdown = Partial<Record<PaymentMethod, number>>;
@@ -867,6 +873,15 @@ export type PosSalePayload = {
   apply_taxes?: boolean;
   cash_session_id?: number | null;
   payment_breakdown?: PaymentBreakdown;
+  payments?: PosSalePaymentEntry[];
+  branchId?: number;
+  sessionId?: number;
+  note?: string;
+};
+
+export type PosSalePaymentEntry = {
+  method: PaymentMethod | string;
+  amount: number;
 };
 
 export type PosDraft = {
@@ -885,6 +900,7 @@ export type PosSaleResponse = {
   warnings: string[];
   cash_session_id?: number | null;
   payment_breakdown?: PaymentBreakdown;
+  receipt_pdf_base64?: string | null;
 };
 
 export type PosConfig = {
@@ -904,6 +920,81 @@ export type PosConfigUpdateInput = {
   printer_name?: string | null;
   printer_profile?: string | null;
   quick_product_ids: number[];
+};
+
+export type PosSessionSummary = {
+  session_id: number;
+  branch_id: number;
+  status: CashSession["status"];
+  opened_at: string;
+  closing_at?: string | null;
+  opening_amount?: number | null;
+  closing_amount?: number | null;
+  expected_amount?: number | null;
+  difference_amount?: number | null;
+  payment_breakdown: Record<string, number>;
+};
+
+export type PosSessionOpenInput = {
+  branchId: number;
+  openingAmount: number;
+  notes?: string;
+};
+
+export type PosSessionCloseInput = {
+  sessionId: number;
+  closingAmount: number;
+  notes?: string;
+  payments?: Record<string, number>;
+};
+
+export type PosTaxInfo = {
+  code: string;
+  name: string;
+  rate: number;
+};
+
+export type PosSaleItemRequest = {
+  productId?: number;
+  device_id?: number;
+  imei?: string;
+  qty: number;
+  price?: number | string;
+  discount?: number;
+  taxCode?: string;
+};
+
+export type PosSaleOperationPayload = {
+  branchId: number;
+  sessionId?: number;
+  customerId?: number;
+  customerName?: string;
+  note?: string;
+  confirm?: boolean;
+  items: PosSaleItemRequest[];
+  payments: PosSalePaymentEntry[];
+};
+
+export type PosReturnPayload = {
+  originalSaleId: number;
+  reason?: string;
+  items: Array<{
+    productId?: number;
+    imei?: string;
+    qty: number;
+  }>;
+};
+
+export type PosReturnResponse = {
+  sale_id: number;
+  return_ids: number[];
+  notes?: string | null;
+};
+
+export type PosSaleDetailResponse = {
+  sale: Sale;
+  receipt_url: string;
+  receipt_pdf_base64?: string | null;
 };
 
 export type DeviceSearchFilters = {
@@ -4509,6 +4600,50 @@ export function submitPosSale(
   );
 }
 
+export function submitPosSaleOperation(
+  token: string,
+  payload: PosSaleOperationPayload,
+  reason: string
+): Promise<PosSaleResponse> {
+  const primaryMethod = (payload.payments[0]?.method as PaymentMethod) ?? PaymentMethod.EFECTIVO;
+  const bodyPayload = {
+    branchId: payload.branchId,
+    store_id: payload.branchId,
+    sessionId: payload.sessionId,
+    cash_session_id: payload.sessionId,
+    customer_id: payload.customerId,
+    customer_name: payload.customerName,
+    note: payload.note,
+    notes: payload.note,
+    confirm: payload.confirm ?? true,
+    payment_method: primaryMethod,
+    payments: payload.payments.map((payment) => ({
+      method: payment.method,
+      amount: payment.amount,
+    })),
+    items: payload.items.map((item) => ({
+      productId: item.productId ?? item.device_id,
+      device_id: item.productId ?? item.device_id,
+      imei: item.imei,
+      qty: item.qty,
+      quantity: item.qty,
+      price: item.price,
+      discount: item.discount,
+      taxCode: item.taxCode,
+    })),
+  };
+
+  return request<PosSaleResponse>(
+    "/pos/sale",
+    {
+      method: "POST",
+      body: JSON.stringify(bodyPayload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
 export function getPosConfig(token: string, storeId: number): Promise<PosConfig> {
   return request<PosConfig>(`/pos/config?store_id=${storeId}`, { method: "GET" }, token);
 }
@@ -4548,6 +4683,88 @@ export function closeCashSession(
 ): Promise<CashSession> {
   return request<CashSession>(
     "/pos/cash/close",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function openPosSession(
+  token: string,
+  payload: PosSessionOpenInput,
+  reason: string
+): Promise<PosSessionSummary> {
+  const body = {
+    branchId: payload.branchId,
+    opening_amount: payload.openingAmount,
+    notes: payload.notes,
+  };
+  return request<PosSessionSummary>(
+    "/pos/sessions/open",
+    { method: "POST", body: JSON.stringify(body), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function closePosSession(
+  token: string,
+  payload: PosSessionCloseInput,
+  reason: string
+): Promise<PosSessionSummary> {
+  const body = {
+    session_id: payload.sessionId,
+    closing_amount: payload.closingAmount,
+    notes: payload.notes,
+    payments: payload.payments,
+  };
+  return request<PosSessionSummary>(
+    "/pos/sessions/close",
+    { method: "POST", body: JSON.stringify(body), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function getLastPosSession(
+  token: string,
+  branchId: number,
+  reason: string
+): Promise<PosSessionSummary> {
+  return request<PosSessionSummary>(
+    `/pos/sessions/last?branchId=${branchId}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listPosTaxes(
+  token: string,
+  reason: string
+): Promise<PosTaxInfo[]> {
+  return requestCollection<PosTaxInfo>(
+    "/pos/taxes",
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function getPosSaleDetail(
+  token: string,
+  saleId: number,
+  reason: string
+): Promise<PosSaleDetailResponse> {
+  return request<PosSaleDetailResponse>(
+    `/pos/sale/${saleId}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function registerPosReturn(
+  token: string,
+  payload: PosReturnPayload,
+  reason: string
+): Promise<PosReturnResponse> {
+  return request<PosReturnResponse>(
+    "/pos/return",
     { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
     token
   );
