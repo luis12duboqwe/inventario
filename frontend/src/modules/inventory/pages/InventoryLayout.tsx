@@ -5,11 +5,14 @@ import { PageToolbar } from "../../../components/layout/PageToolbar";
 
 export default function InventoryLayout() {
   const { pathname } = useLocation();
-  const tabs = [
+  const tabs: Array<{ to: string; label: string; exact?: boolean }> = [
     { to: "productos", label: "Productos" },
     { to: "movimientos", label: "Movimientos" },
     { to: "proveedores", label: "Proveedores" },
     { to: "alertas", label: "Alertas" },
+    { to: "ajustes", label: "Ajustes" },
+    { to: "transferencias", label: "Transferencias", exact: false },
+    { to: "conteos", label: "Conteos cíclicos" },
   ];
   return (
     <section style={{ display: "grid", gap: 16 }}>
@@ -21,7 +24,7 @@ export default function InventoryLayout() {
             <NavLink
               key={t.to}
               to={t.to}
-              end
+              end={t.exact ?? true}
               style={({ isActive }) => ({
                 padding: "8px 12px",
                 borderRadius: 8,

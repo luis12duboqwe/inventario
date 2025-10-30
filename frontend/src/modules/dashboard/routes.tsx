@@ -8,6 +8,10 @@ const InventoryProducts = lazy(() => import("../inventory/pages/InventoryProduct
 const InventoryMoves = lazy(() => import("../inventory/pages/InventoryMovements"));
 const InventorySuppliers = lazy(() => import("../inventory/pages/InventorySuppliers"));
 const InventoryAlerts = lazy(() => import("../inventory/pages/InventoryAlerts"));
+const InventoryAdjustments = lazy(() => import("../inventory/pages/InventoryAdjustments"));
+const InventoryTransfers = lazy(() => import("../inventory/pages/InventoryTransfers"));
+const InventoryCycleCount = lazy(() => import("../inventory/pages/InventoryCycleCount"));
+const InventoryTransferDetail = lazy(() => import("../inventory/pages/TransferDetailPage"));
 const OperationsLayout = lazy(() => import("../operations/pages/OperationsLayout"));
 const OperationsPOS = lazy(() => import("../operations/pages/OperationsPOS"));
 const OperationsPurchases = lazy(() => import("../operations/pages/OperationsPurchases"));
@@ -94,6 +98,10 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           <Route path="movimientos" element={<InventoryMoves />} />
           <Route path="proveedores" element={<InventorySuppliers />} />
           <Route path="alertas" element={<InventoryAlerts />} />
+          <Route path="ajustes" element={<InventoryAdjustments />} />
+          <Route path="transferencias" element={<InventoryTransfers />} />
+          <Route path="transferencias/:transferId" element={<InventoryTransferDetail />} />
+          <Route path="conteos" element={<InventoryCycleCount />} />
         </Route>
         <Route
           path="operations/*"
