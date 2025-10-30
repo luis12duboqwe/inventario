@@ -12,6 +12,7 @@ type SidebarMenuItem = {
   icon?: ReactNode;
   description?: string;
   children?: SidebarMenuChild[];
+  onMouseEnter?: () => void;
 };
 
 type SidebarMenuProps = {
@@ -38,6 +39,7 @@ function SidebarMenu({ items, collapsed = false, onNavigate }: SidebarMenuProps)
                   .join(" ")
               }
               aria-label={collapsed ? item.label : undefined}
+              onMouseEnter={item.onMouseEnter}
             >
               {item.icon ? (
                 <span className="sidebar-menu__icon" aria-hidden="true">
@@ -69,6 +71,7 @@ function SidebarMenu({ items, collapsed = false, onNavigate }: SidebarMenuProps)
               }
               aria-label={collapsed ? item.label : undefined}
               aria-expanded={!collapsed}
+              onMouseEnter={item.onMouseEnter}
             >
               {item.icon ? (
                 <span className="sidebar-menu__icon" aria-hidden="true">
