@@ -1,78 +1,67 @@
 import React from "react";
 
-export type ProductCard = {
+type Product = {
   id: string;
+  sku?: string;
   name: string;
-  sku: string;
   price: number;
-  thumbnail?: string;
   stock?: number;
+  image?: string;
 };
 
 type Props = {
-  items?: ProductCard[];
-  loading?: boolean;
-  onPick?: (id: string) => void;
+  items: Product[];
+  onPick?: (product: Product) => void;
 };
 
-const formatter = new Intl.NumberFormat("es-MX", {
-  style: "currency",
-  currency: "MXN",
-  maximumFractionDigits: 2,
-});
-
-export default function ProductGrid({ items, loading, onPick }: Props) {
+export default function ProductGrid({ items, onPick }: Props) {
   const data = Array.isArray(items) ? items : [];
-  if (loading) return <div style={{ padding: 12 }}>Cargando…</div>;
-  if (!data.length) return <div style={{ padding: 12, color: "#9ca3af" }}>Sin productos</div>;
-
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-        gap: 12,
+        gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+        gap: 10,
       }}
     >
-      {data.map((p) => (
+      {data.map((product) => (
         <button
-          key={p.id}
-          onClick={() => onPick?.(p.id)}
+          key={product.id}
+          onClick={() => onPick?.(product)}
           style={{
             textAlign: "left",
             padding: 10,
             borderRadius: 12,
-            background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.08)",
+            background: "rgba(255,255,255,0.02)",
           }}
         >
           <div
             style={{
-              height: 96,
-              background: "rgba(255,255,255,0.03)",
-              borderRadius: 10,
+              height: 110,
+              borderRadius: 8,
+              background: "#0f172a",
               marginBottom: 8,
               display: "grid",
               placeItems: "center",
+              overflow: "hidden",
             }}
           >
-            {p.thumbnail ? (
+            {product.image ? (
               <img
-                src={p.thumbnail}
-                alt={p.name}
-                style={{ maxHeight: "100%", maxWidth: "100%", borderRadius: 8 }}
+                src={product.image}
+                alt={product.name}
+                style={{ maxWidth: "100%", maxHeight: "100%" }}
               />
             ) : (
-              <span style={{ color: "#94a3b8" }}>Imagen</span>
+              <span style={{ color: "#64748b", fontSize: 12 }}>Sin imagen</span>
             )}
           </div>
-          <div style={{ fontWeight: 600 }}>{p.name}</div>
-          <div style={{ color: "#94a3b8", fontSize: 12 }}>{p.sku}</div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-            <span>{formatter.format(p.price)}</span>
-            <span style={{ color: "#94a3b8", fontSize: 12 }}>
-              Stock: {p.stock ?? "-"}
-            </span>
+          <div style={{ fontWeight: 700 }}>{product.name}</div>
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>{product.sku ?? "—"}</div>
+          <div style={{ marginTop: 4 }}>{Intl.NumberFormat().format(product.price)}</div>
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>
+            Stock: {product.stock ?? "—"}
           </div>
         </button>
       ))}
