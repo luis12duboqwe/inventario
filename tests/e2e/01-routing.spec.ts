@@ -4,13 +4,19 @@ import { test, expect } from '@playwright/test';
 test.describe('Ventas: routing/render', () => {
   test('Dashboard Ventas', async ({ page }) => {
     await page.goto('/sales');
-    await expect(page.locator('text=Ventas')).toBeVisible({ timeout: 3000 }).catch(() => {});
-    // fallback por data-testid si existe
-    const ok = await page
-      .locator('[data-testid="sales-dashboard"]').first()
-      .isVisible()
+    const heading = page.getByRole('heading', { name: /ventas/i });
+    const dashboard = page.locator('[data-testid="sales-dashboard"]').first();
+
+    const headingVisible = await heading
+      .waitFor({ state: 'visible', timeout: 3000 })
+      .then(() => true)
       .catch(() => false);
-    expect(ok || true).toBeTruthy();
+
+    if (!headingVisible) {
+      await expect(dashboard).toBeVisible({ timeout: 3000 });
+    } else {
+      expect(headingVisible).toBeTruthy();
+    }
   });
 
   test('POS', async ({ page }) => {

@@ -53,17 +53,21 @@ test.describe('POS happy path', () => {
 
     // abrir pagos (busca botón común)
     const payBtn = page.locator('button:has-text("Pagar"), button:has-text("Checkout")').first();
-    await payBtn.click().catch(() => {});
+    await expect(payBtn).toBeVisible({ timeout: 3000 });
+    await payBtn.click();
 
     // simular confirmar pagos (si hay modal personalizado, busca el botón confirmar)
     const confirm = page.locator(
       'button:has-text("Confirmar"), button:has-text("Cobrar"), button:has-text("Completar")'
     ).first();
-    await confirm.click().catch(() => {});
+    await expect(confirm).toBeVisible({ timeout: 3000 });
+    await confirm.click();
 
     // verificar banner/éxito
-    const ok = await page.locator('text=Venta #').first().isVisible().catch(() => false);
-    expect(ok || true).toBeTruthy();
+    const successBanner = page
+      .locator('[data-testid="pos-sale-success"], text=Venta #, text=Venta completada')
+      .first();
+    await expect(successBanner).toBeVisible({ timeout: 5000 });
   });
 });
 // [PACK24-E2E-POS-END]
