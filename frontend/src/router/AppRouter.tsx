@@ -2,6 +2,10 @@ import React, { Suspense, memo, useMemo, useState, useCallback, useEffect } from
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Navigate, createBrowserRouter, useLocation, useRoutes } from "react-router-dom";
+// [PACK20-SALES-ROUTES-START]
+import { SalesRoutes } from "../modules/sales";
+// [PACK20-SALES-ROUTES-END]
+export { SalesRoutes as __Pack20SalesRoutesKeep };
 import Loader from "../shared/components/Loader";
 import Button from "../shared/components/ui/Button";
 import {
@@ -91,6 +95,19 @@ const AppRouter = memo(function AppRouter({
           />
         ),
       },
+      // [PACK20-SALES-MOUNT-START]
+      {
+        path: "/sales/*",
+        element: (
+          <DashboardScene
+            token={token}
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            onLogout={onLogout}
+          />
+        ),
+      },
+      // [PACK20-SALES-MOUNT-END]
       {
         path: "*",
         element: <Navigate to="/dashboard/inventory" replace />,

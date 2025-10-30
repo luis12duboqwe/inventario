@@ -3,10 +3,16 @@ import { ChevronLeft, ChevronRight, PanelsTopLeft } from "lucide-react";
 
 import SidebarMenu, { type SidebarMenuItem } from "../../../shared/components/ui/SidebarMenu";
 
+export type SidebarNavChild = {
+  to: string;
+  label: string;
+};
+
 export type SidebarNavItem = {
   to: string;
   label: string;
   icon: ReactNode;
+  children?: SidebarNavChild[];
 };
 
 type SidebarProps = {
@@ -57,6 +63,10 @@ function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: Sidebar
         to: item.to,
         label: item.label,
         icon: item.icon,
+        children: item.children?.map((child) => ({
+          to: child.to,
+          label: child.label,
+        })),
       })),
     [items],
   );
