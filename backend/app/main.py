@@ -16,6 +16,7 @@ from .core.transactions import transactional_session
 from .database import Base, SessionLocal, engine, get_db
 from .routers import (
     audit,
+    audit_ui,
     auth,
     backups,
     customers,
@@ -382,6 +383,7 @@ def create_app() -> FastAPI:
     app.include_router(system_logs.router)
     app.include_router(monitoring.router)
     app.include_router(audit.router)
+    app.include_router(audit_ui.router)  # // [PACK32-33-BE] Registro de bitácora UI
     return app
 
 

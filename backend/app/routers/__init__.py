@@ -1,6 +1,7 @@
 """Colección de routers disponibles."""
 from . import (  # noqa: F401
     audit,
+    audit_ui,
     auth,
     backups,
     customers,
@@ -25,6 +26,7 @@ from . import (  # noqa: F401
 
 __all__ = [
     "audit",
+    "audit_ui",
     "auth",
     "backups",
     "customers",

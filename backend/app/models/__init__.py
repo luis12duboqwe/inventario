@@ -512,6 +512,21 @@ class SyncSession(Base):
     triggered_by: Mapped[User | None] = relationship("User", back_populates="sync_sessions")
 
 
+class AuditUI(Base):
+    """Eventos de interacción registrados desde la interfaz de usuario."""
+
+    __tablename__ = "audit_ui"
+
+    # // [PACK32-33-BE] Retención sugerida: conservar 180 días y depurar con job programado.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    user_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    module: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    entity_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
