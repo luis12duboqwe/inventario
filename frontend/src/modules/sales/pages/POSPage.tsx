@@ -24,6 +24,9 @@ import { calcTotalsLocal } from "../utils/totals";
 import { useAuthz, PERMS, RequirePerm, DisableIfNoPerm } from "../../../auth/useAuthz";
 import { logUI } from "../../../services/audit";
 // [PACK26-POS-PERMS-END]
+// [PACK27-PRINT-POS-IMPORT-START]
+import { openPrintable } from "@/lib/print";
+// [PACK27-PRINT-POS-IMPORT-END]
 
 type HoldSale = {
   id: string;
@@ -238,8 +241,11 @@ export default function POSPage() {
       if (result?.printable?.pdfUrl) window.open(result.printable.pdfUrl, "_blank");
       else if (result?.printable?.html) {
         // TODO: implementar vista previa HTML
+      // [PACK27-PRINT-POS-START]
+      if (result?.printable) {
+        openPrintable(result.printable, "ticket");
       }
-      // [PACK22-POS-PRINT-END]
+      // [PACK27-PRINT-POS-END]
       setCustomer(null);
     } finally {
       setPaymentsOpen(false);

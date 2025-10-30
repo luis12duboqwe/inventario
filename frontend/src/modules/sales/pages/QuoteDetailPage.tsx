@@ -1,6 +1,6 @@
 import React from "react";
 // [PACK23-QUOTES-DETAIL-IMPORTS-START]
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { SalesQuotes } from "../../../services/sales";
 import type { Quote, QuoteCreate } from "../../../services/sales";
@@ -12,6 +12,14 @@ import { Table } from "../components/common";
 import { useAuthz, PERMS, RequirePerm } from "../../../auth/useAuthz";
 import { logUI } from "../../../services/audit";
 // [PACK26-QUOTES-PERMS-END]
+// [PACK27-PRINT-IMPORT-START]
+import { openPrintable } from "@/lib/print";
+// [PACK27-PRINT-IMPORT-END]
+// [PACK25-SKELETON-USE-START]
+import { Skeleton } from "@/ui/Skeleton";
+// [PACK25-SKELETON-USE-END]
+import { readQueue } from "@/services/offline";
+import { flushOffline } from "../utils/offline";
 
 type QuoteValue = {
   customer?: string;
@@ -47,6 +55,9 @@ export function QuoteDetailPage() {
   // [PACK23-QUOTES-DETAIL-STATE-END]
   const [converting, setConverting] = useState(false);
   const [value, setValue] = useState<QuoteValue>({ lines: [] });
+  const [pendingOffline, setPendingOffline] = useState(0);
+  const [flushing, setFlushing] = useState(false);
+  const [flushMessage, setFlushMessage] = useState<string | null>(null);
 
   // [PACK23-QUOTES-DETAIL-FETCH-START]
   async function load() {
@@ -57,6 +68,16 @@ export function QuoteDetailPage() {
   }
   useEffect(() => { load(); }, [id]);
   // [PACK23-QUOTES-DETAIL-FETCH-END]
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingOffline(readQueue().length);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingOffline(readQueue().length);
+  }, [data]);
 
   useEffect(() => {
     if (!data) return;
@@ -94,6 +115,11 @@ export function QuoteDetailPage() {
       // if (r.printable?.pdfUrl) window.open(r.printable.pdfUrl, "_blank");
       // else if (r.printable?.html) openPrintablePreview(r.printable.html); // TODO implementar modal
       // [PACK23-PRINT-END]
+      // [PACK27-PRINT-QUOTE-CONVERT-START]
+      if (r.printable) {
+        openPrintable(r.printable, "factura");
+      }
+      // [PACK27-PRINT-QUOTE-CONVERT-END]
       await load();
       return r;
     } finally {
@@ -106,13 +132,49 @@ export function QuoteDetailPage() {
   const lineRows = linesToTable(data?.lines || []);
   const totals = data?.totals;
 
+  const handleFlush = useCallback(async () => {
+    setFlushing(true);
+    try {
+      const result = await flushOffline();
+      setPendingOffline(result.pending);
+      setFlushMessage(`Reintentadas: ${result.flushed}. Pendientes: ${result.pending}.`);
+    } catch {
+      setFlushMessage("No fue posible sincronizar. Intenta nuevamente más tarde.");
+    } finally {
+      setFlushing(false);
+    }
+  }, []);
+
+  const headerSection = useMemo(() => {
+    if (loading && !data) {
+      return <Skeleton lines={5} />;
+    }
+    return (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2 style={{ margin: 0 }}>Cotización #{data?.number ?? "—"}</h2>
+        <span style={{ color: "#9ca3af" }}>{data ? new Date(data.date).toLocaleString() : loading ? "Cargando…" : "—"}</span>
+      </div>
+    );
+  }, [data, loading]);
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>Cotización #{data?.number ?? "—"}</h2>
-          <span style={{ color: "#9ca3af" }}>{data ? new Date(data.date).toLocaleString() : loading ? "Cargando…" : "—"}</span>
+      {pendingOffline > 0 ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
+          <button
+            type="button"
+            onClick={handleFlush}
+            disabled={flushing}
+            style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
+          >
+            {flushing ? "Reintentando…" : "Reintentar pendientes"}
+          </button>
         </div>
+      ) : null}
+      {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
+      <div style={{ display: "grid", gap: 12 }}>
+        {headerSection}
         <QuoteEditor value={value} onChange={setValue} />
       </div>
       <div>
@@ -158,6 +220,46 @@ export function QuoteDetailPage() {
             {converting ? "Convirtiendo…" : "Convertir a venta"}
           </button>
         </RequirePerm>
+        <button
+          style={{ padding: "8px 12px", borderRadius: 8 }}
+          disabled={!canSave}
+          onClick={async () => {
+            if (!data) return;
+            const mappedLines = (data.lines || []).map((line) => {
+              const updated = value.lines.find((item) => item.id === String(line.productId));
+              if (!updated) return line;
+              return {
+                ...line,
+                name: updated.name,
+                qty: updated.qty,
+                price: updated.price,
+              };
+            });
+            await onSave({
+              note: value.note,
+              customerName: value.customer,
+              lines: mappedLines,
+            });
+          }}
+        >
+          {saving ? "Guardando…" : "Guardar"}
+        </button>
+        {/* [PACK27-PRINT-BUTTON-START] */}
+        <button
+          style={{ padding: "8px 12px", borderRadius: 8, background: "#1f2937", color: "#e0f2fe", border: "1px solid #334155" }}
+          onClick={() => openPrintable(data?.printable, "documento")}
+          disabled={!data?.printable}
+        >
+          Imprimir
+        </button>
+        {/* [PACK27-PRINT-BUTTON-END] */}
+        <button
+          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
+          disabled={loading || converting}
+          onClick={onConvert}
+        >
+          {converting ? "Convirtiendo…" : "Convertir a venta"}
+        </button>
       </div>
     </div>
   );

@@ -9,6 +9,9 @@ import { FiltersBar, SidePanel, SummaryCards, Table } from "../components/common
 // [PACK26-RETURNS-PERMS-START]
 import { useAuthz, PERMS } from "../../../auth/useAuthz";
 // [PACK26-RETURNS-PERMS-END]
+// [PACK27-INJECT-EXPORT-RETURNS-START]
+import ExportDropdown from "@/components/ExportDropdown";
+// [PACK27-INJECT-EXPORT-RETURNS-END]
 
 type ReturnRow = {
   id: string;
@@ -109,45 +112,57 @@ export function ReturnsListPage() {
           { label: "Crédito listado", value: formatCurrency(creditTotal) },
         ]}
       />
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          setPage(1);
-          fetchReturns({ page: 1 });
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
-        <FiltersBar>
-          <input
-            placeholder="#RET/Cliente/IMEI"
-            value={q}
-            onChange={(event) => setQ(event.target.value)}
-            style={{ padding: 8, borderRadius: 8 }}
-          />
-          <select
-            value={reason ?? ""}
-            onChange={(event) => {
-              const value = event.target.value as ReturnDoc["reason"] | "";
-              setPage(1);
-              setReason(value ? (value as ReturnDoc["reason"]) : undefined);
-            }}
-            style={{ padding: 8, borderRadius: 8 }}
-          >
-            <option value="">Todos los motivos</option>
-            {Object.entries(reasonLabels).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            style={{ padding: "8px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none" }}
-            disabled={loading}
-          >
-            Buscar
-          </button>
-        </FiltersBar>
-      </form>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setPage(1);
+            fetchReturns({ page: 1 });
+          }}
+          style={{ flex: "1 1 320px" }}
+        >
+          <FiltersBar>
+            <input
+              placeholder="#RET/Cliente/IMEI"
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              style={{ padding: 8, borderRadius: 8 }}
+            />
+            <select
+              value={reason ?? ""}
+              onChange={(event) => {
+                const value = event.target.value as ReturnDoc["reason"] | "";
+                setPage(1);
+                setReason(value ? (value as ReturnDoc["reason"]) : undefined);
+              }}
+              style={{ padding: 8, borderRadius: 8 }}
+            >
+              <option value="">Todos los motivos</option>
+              {Object.entries(reasonLabels).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              style={{ padding: "8px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none" }}
+              disabled={loading}
+            >
+              Buscar
+            </button>
+          </FiltersBar>
+        </form>
+        <ExportDropdown entity="returns" currentItems={items} />
+      </div>
       <Table
         cols={columns}
         rows={rows}

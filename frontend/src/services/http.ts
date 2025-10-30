@@ -11,6 +11,10 @@ export interface HttpOptions {
   withAuth?: boolean;
   signal?: AbortSignal;
   timeoutMs?: number;
+  // [PACK25-HTTP-OPTS-EXT-START]
+  cacheTtlMs?: number;
+  cacheKey?: string;
+  // [PACK25-HTTP-OPTS-EXT-END]
 }
 
 export interface ApiError {
@@ -21,6 +25,11 @@ export interface ApiError {
 
 const BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || "";
 const DEFAULT_TIMEOUT = Number((import.meta as any)?.env?.VITE_API_TIMEOUT_MS ?? 18000);
+// [PACK25-HTTP-CACHE-START]
+const __memCache = new Map<string, { at:number; data:any; ttl:number }>();
+function readCache(key:string){ const v = __memCache.get(key); if(!v) return null; if(Date.now()-v.at > v.ttl) { __memCache.delete(key); return null; } return v.data; }
+function writeCache(key:string, data:any, ttl:number){ __memCache.set(key, { at: Date.now(), data, ttl }); }
+// [PACK25-HTTP-CACHE-END]
 
 function toQuery(q?: Record<string, any>) {
   if (!q) return "";
@@ -42,6 +51,13 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 export async function http<T>(path: string, opts: HttpOptions = {}): Promise<T> {
   const url = `${BASE}${path}${toQuery(opts.query)}`;
+  // [PACK25-HTTP-READCACHE-START]
+  const cacheKey = opts.cacheKey || (opts.method === "GET" || !opts.method ? url : undefined);
+  if (opts.cacheTtlMs && cacheKey){
+    const hit = readCache(cacheKey);
+    if (hit) return hit as T;
+  }
+  // [PACK25-HTTP-READCACHE-END]
   const headers: Record<string, string> = {
     "Accept": "application/json",
     ...(opts.body && !(opts.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
@@ -74,11 +90,18 @@ export async function http<T>(path: string, opts: HttpOptions = {}): Promise<T> 
       const err: ApiError = { status: res.status, message, details };
       throw err;
     }
+    let payload: any;
     if (!isJson) {
-      // @ts-ignore
-      return (await res.text()) as T;
+      payload = await res.text();
+    } else {
+      payload = await res.json();
     }
-    return (await res.json()) as T;
+    // [PACK25-HTTP-WRITECACHE-START]
+    if (opts.cacheTtlMs && cacheKey){
+      writeCache(cacheKey, payload, opts.cacheTtlMs);
+    }
+    // [PACK25-HTTP-WRITECACHE-END]
+    return payload as T;
   };
 
   return withTimeout(doFetch(), opts.timeoutMs ?? DEFAULT_TIMEOUT);
