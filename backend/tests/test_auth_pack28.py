@@ -71,3 +71,24 @@ def test_refresh_requires_cookie(client):
     response = client.post("/auth/refresh")
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.json()["detail"] == "Token de refresco ausente."
+
+
+def test_logout_revokes_refresh_cookie(client):
+    credentials = _bootstrap_admin(client)
+    login_response = client.post(
+        "/auth/login",
+        json={"username": credentials["username"], "password": credentials["password"]},
+    )
+    assert login_response.status_code == status.HTTP_200_OK
+    assert login_response.cookies.get(REFRESH_COOKIE_NAME) is not None
+
+    logout_response = client.post("/auth/logout")
+    assert logout_response.status_code == status.HTTP_204_NO_CONTENT
+    assert logout_response.cookies.get(REFRESH_COOKIE_NAME) is None
+
+    refresh_response = client.post("/auth/refresh")
+    assert refresh_response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert refresh_response.json()["detail"] in {
+        "Token de refresco ausente.",
+        "Sesión expirada o revocada.",
+    }

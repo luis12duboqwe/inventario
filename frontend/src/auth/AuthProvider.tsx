@@ -96,7 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleUnauthorized = (event: Event) => {
       const message = (event as CustomEvent<string | undefined>).detail;
       setLastError(message ?? "Tu sesión expiró. Inicia sesión nuevamente.");
-      logoutRequest();
+      void logoutRequest().catch(() => {
+        /* ignoramos errores al cerrar sesión forzada */
+      });
       setUser(null);
       syncAccessToken(null);
     };
@@ -135,7 +137,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
-    logoutRequest();
+    void logoutRequest().catch(() => {
+      /* ignoramos errores al cerrar sesión manual */
+    });
     setUser(null);
     syncAccessToken(null);
   }, [syncAccessToken]);
