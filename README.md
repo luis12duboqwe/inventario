@@ -34,6 +34,14 @@ Para continuar con la evolución ordenada del proyecto, utiliza las siguientes e
 
 > Mantén la versión corporativa **v2.2.0**, respeta los *feature flags* activos (`SOFTMOBILE_ENABLE_*`) y documenta cualquier ajuste significativo en esta sección para conservar la trazabilidad del roadmap.
 
+### Auditoría de UI persistente y orquestación en contenedores <!-- // [PACK32-33-OPS] -->
+
+- **Bitácora de interfaz**: el backend expone `POST /api/audit/ui/bulk` para recibir lotes `{ts, userId, module, action, entityId?, meta?}`, almacenarlos en la tabla `audit_ui` y confirmar la cantidad insertada. Los listados se consultan con `GET /api/audit/ui?from=...&to=...&userId=...&module=...&limit=...` (respuesta paginada con `items`, `total`, `limit`, `offset`, `has_more`). Las exportaciones se descargan desde `GET /api/audit/ui/export?format=csv|json`, reutilizando los mismos filtros.
+- **Retención sugerida**: la tabla `audit_ui` conserva eventos por 180 días y el servicio `backend/app/services/audit_ui.py` incorpora `cleanup_expired_entries` para programar la depuración cuando se habilite un scheduler corporativo.
+- **Docker Compose**: el archivo `docker-compose.yml` levanta `postgres:15` y el backend FastAPI (`backend/Dockerfile`). Ejecuta `docker compose --profile dev up -d` para iniciar y `docker compose --profile dev down` para detener. El backend queda accesible en `http://localhost:8000` con `DATABASE_URL` apuntando al contenedor `db`.
+- **Respaldos operativos**: los scripts `./ops/backup.sh` y `./ops/restore.sh` usan `pg_dump`/`psql` para generar y restaurar respaldos. Para ambientes dockerizados utiliza `./ops/backup.sh docker` y `./ops/restore.sh <archivo.sql> docker`; en entornos locales omite el segundo parámetro o personaliza `DB_HOST`, `DB_USER`, `DB_NAME` mediante variables de entorno.
+- **Frontend conectado**: la página de Auditoría (`frontend/src/modules/audit/pages/AuditPage.tsx`) consulta los endpoints reales cuando están disponibles y mantiene el fallback a la cola local si la API no responde, permitiendo descargar CSV/JSON desde la interfaz.
+
 ## Actualización funcional — POS multipago y observabilidad (05/11/2025)
 
 - 🔁 **Ventas multipago en el POS corporativo**: `backend/models/pos.py` incorpora las entidades `Sale`, `SaleItem` y `Payment` con estados `OPEN/HELD/COMPLETED/VOID` y totales calculados automáticamente. El router `backend/routes/pos.py` publica `POST /pos/sales`, `POST /pos/sales/{id}/items`, `POST /pos/sales/{id}/checkout`, `POST /pos/sales/{id}/hold`, `POST /pos/sales/{id}/resume`, `POST /pos/sales/{id}/void` y `GET /pos/receipt/{id}`, habilitando combinaciones de pago `CASH`, `CARD` y `TRANSFER` sin perder compatibilidad con `/pos/sale` ni con los recibos PDF históricos.

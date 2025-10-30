@@ -23,6 +23,8 @@ from backend.core.logging import logger as core_logger
 from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .core.transactions import flush_session, transactional_session
+from .services import audit_ui as audit_ui_service
+from .services import inventory_audit
 from .services import inventory_accounting, inventory_audit  # // [PACK30-31-BACKEND]
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
@@ -1781,6 +1783,105 @@ def _resolve_part_unit_cost(device: models.Device, provided: Decimal | float | i
         else:
             candidate = _to_decimal(device.unit_price)
     return candidate.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _normalize_audit_ui_boundary(value: date | datetime | None, *, end: bool = False) -> datetime | None:
+    """Convierte fechas en límites de búsqueda compatibles con timestamps."""
+
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    boundary = datetime.combine(value, datetime.max.time() if end else datetime.min.time())
+    return boundary.replace(tzinfo=timezone.utc)
+
+
+# // [PACK32-33-BE] CRUD especializado para audit_ui.
+def create_audit_ui_entries(
+    db: Session,
+    *,
+    items: Sequence[schemas.AuditUIBulkItem],
+) -> int:
+    records = [
+        models.AuditUI(
+            ts=item.ts,
+            user_id=item.user_id,
+            module=item.module,
+            action=item.action,
+            entity_id=item.entity_id,
+            meta=item.meta,
+        )
+        for item in items
+    ]
+    db.add_all(records)
+    flush_session(db)
+    return len(records)
+
+
+def list_audit_ui_entries(
+    db: Session,
+    *,
+    limit: int,
+    offset: int,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+    user_id: str | None = None,
+    module: str | None = None,
+) -> tuple[list[models.AuditUI], int]:
+    stmt = select(models.AuditUI).order_by(desc(models.AuditUI.ts)).limit(limit).offset(offset)
+    count_stmt = select(func.count()).select_from(models.AuditUI)
+
+    normalized_from = _normalize_audit_ui_boundary(date_from)
+    normalized_to = _normalize_audit_ui_boundary(date_to, end=True)
+
+    if normalized_from is not None:
+        stmt = stmt.where(models.AuditUI.ts >= normalized_from)
+        count_stmt = count_stmt.where(models.AuditUI.ts >= normalized_from)
+    if normalized_to is not None:
+        stmt = stmt.where(models.AuditUI.ts <= normalized_to)
+        count_stmt = count_stmt.where(models.AuditUI.ts <= normalized_to)
+    if user_id:
+        stmt = stmt.where(models.AuditUI.user_id == user_id)
+        count_stmt = count_stmt.where(models.AuditUI.user_id == user_id)
+    if module:
+        stmt = stmt.where(models.AuditUI.module == module)
+        count_stmt = count_stmt.where(models.AuditUI.module == module)
+
+    entries = list(db.scalars(stmt))
+    total = db.scalar(count_stmt) or 0
+    return entries, int(total)
+
+
+def export_audit_ui_entries(
+    db: Session,
+    *,
+    export_format: schemas.AuditUIExportFormat,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
+    user_id: str | None = None,
+    module: str | None = None,
+    limit: int | None = None,
+) -> str:
+    stmt = select(models.AuditUI).order_by(desc(models.AuditUI.ts))
+
+    normalized_from = _normalize_audit_ui_boundary(date_from)
+    normalized_to = _normalize_audit_ui_boundary(date_to, end=True)
+
+    if normalized_from is not None:
+        stmt = stmt.where(models.AuditUI.ts >= normalized_from)
+    if normalized_to is not None:
+        stmt = stmt.where(models.AuditUI.ts <= normalized_to)
+    if user_id:
+        stmt = stmt.where(models.AuditUI.user_id == user_id)
+    if module:
+        stmt = stmt.where(models.AuditUI.module == module)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    entries = list(db.scalars(stmt))
+    return audit_ui_service.serialize_entries(entries, export_format)
 
 
 def list_audit_logs(

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import enum
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -1904,6 +1904,98 @@ class InventoryValueReport(BaseModel):
     totals: InventoryValueTotals
 
 
+class AuditUIExportFormat(str, enum.Enum):
+    """Formatos válidos para exportar la bitácora de UI."""
+
+    CSV = "csv"
+    JSON = "json"
+
+
+class AuditUIBulkItem(BaseModel):
+    ts: datetime = Field(..., description="Marca de tiempo del evento en formato ISO 8601")
+    user_id: str | None = Field(
+        default=None,
+        max_length=120,
+        alias=AliasChoices("userId", "user_id"),
+        description="Identificador del usuario que generó la acción",
+    )
+    module: str = Field(..., max_length=80, description="Módulo de la interfaz donde ocurrió")
+    action: str = Field(..., max_length=120, description="Acción específica realizada")
+    entity_id: str | None = Field(
+        default=None,
+        max_length=120,
+        alias=AliasChoices("entityId", "entity_id"),
+        description="Identificador de la entidad relacionada",
+    )
+    meta: dict[str, Any] | None = Field(
+        default=None,
+        description="Metadatos adicionales serializados como JSON",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("ts", mode="before")
+    @classmethod
+    def _coerce_timestamp(cls, value: Any) -> Any:
+        # // [PACK32-33-BE] Acepta números en ms o segundos para compatibilidad con la cola local.
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value
+        if isinstance(value, (int, float)):
+            numeric = float(value)
+            if numeric > 10**12:
+                numeric /= 1000.0
+            return datetime.fromtimestamp(numeric, tz=timezone.utc)
+        if isinstance(value, str):
+            try:
+                numeric = float(value)
+            except ValueError:
+                return value
+            if numeric > 10**12:
+                numeric /= 1000.0
+            return datetime.fromtimestamp(numeric, tz=timezone.utc)
+        return value
+
+
+class AuditUIBulkRequest(BaseModel):
+    items: list[AuditUIBulkItem] = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Eventos a persistir en la bitácora",
+    )
+
+
+class AuditUIBulkResponse(BaseModel):
+    inserted: int = Field(..., ge=0, description="Cantidad de registros insertados")
+
+
+class AuditUIRecord(BaseModel):
+    id: int
+    ts: datetime
+    user_id: str | None = None
+    module: str
+    action: str
+    entity_id: str | None = None
+    meta: dict[str, Any] | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("ts")
+    @classmethod
+    def _serialize_ts(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AuditUIListResponse(BaseModel):
+    items: list[AuditUIRecord] = Field(default_factory=list)
+    total: int = Field(..., ge=0)
+    limit: int = Field(..., ge=1)
+    offset: int = Field(..., ge=0)
+    has_more: bool = Field(default=False)
+
+
 class AuditHighlight(BaseModel):
     id: int
     action: str
@@ -3699,6 +3791,12 @@ __all__ = [
     "AuditAcknowledgedEntity",
     "AuditAcknowledgementCreate",
     "AuditAcknowledgementResponse",
+    "AuditUIExportFormat",
+    "AuditUIBulkItem",
+    "AuditUIBulkRequest",
+    "AuditUIBulkResponse",
+    "AuditUIRecord",
+    "AuditUIListResponse",
     "AuditHighlight",
     "AuditTrailInfo",
     "AuditLogResponse",
