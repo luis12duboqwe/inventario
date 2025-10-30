@@ -131,7 +131,9 @@ export function QuoteDetailPage() {
           disabled={!canSave}
           onClick={async () => {
             if (!data) return;
-            const mappedLines = (data.lines || []).map((line) => {
+            const existingLines = data.lines || [];
+            const existingIds = new Set(existingLines.map((line) => String(line.productId)));
+            const mappedExisting = existingLines.map((line) => {
               const updated = value.lines.find((item) => item.id === String(line.productId));
               if (!updated) return line;
               return {
@@ -141,6 +143,15 @@ export function QuoteDetailPage() {
                 price: updated.price,
               };
             });
+            const createdLines = value.lines
+              .filter((line) => !existingIds.has(line.id))
+              .map((line) => ({
+                productId: line.id,
+                name: line.name,
+                qty: line.qty,
+                price: line.price,
+              }));
+            const mappedLines = [...mappedExisting, ...createdLines];
             await onSave({
               note: value.note,
               customerName: value.customer,
