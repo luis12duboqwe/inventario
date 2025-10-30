@@ -1,6 +1,6 @@
 // src/services/sales/customers.ts
-import { httpGet, httpPost, httpPut } from "@/services/http";
-import { Page } from "@/services/types/common";
+import { httpGet, httpPost, httpPut } from "../http";
+import { Page } from "../types/common";
 import { Customer, CustomerListParams } from "./types";
 import { apiMap } from "./apiMap";
 

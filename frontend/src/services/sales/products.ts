@@ -1,6 +1,6 @@
 // src/services/sales/products.ts
-import { httpGet } from "@/services/http";
-import { Page } from "@/services/types/common";
+import { httpGet } from "../http";
+import { Page } from "../types/common";
 import { Product, ProductSearchParams } from "./types";
 import { apiMap } from "./apiMap";
 

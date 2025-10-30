@@ -1,6 +1,6 @@
 // src/services/sales/quotes.ts
-import { httpGet, httpPost, httpPut } from "@/services/http";
-import { Page } from "@/services/types/common";
+import { httpGet, httpPost, httpPut } from "../http";
+import { Page } from "../types/common";
 import { Quote, QuoteListParams, QuoteCreate, CheckoutResponse } from "./types";
 import { apiMap } from "./apiMap";
 
