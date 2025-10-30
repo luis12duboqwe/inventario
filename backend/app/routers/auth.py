@@ -147,7 +147,6 @@ def _set_refresh_cookie(response: Response, token: str, expires_at: datetime) ->
 def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(
         key=_REFRESH_COOKIE_NAME,
-        path="/auth",
         httponly=True,
         secure=settings.session_cookie_secure,
         samesite=settings.session_cookie_samesite,
