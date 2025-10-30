@@ -26,6 +26,7 @@ const GlobalReportsPage = lazy(() => import("../reports/pages/GlobalReportsPage"
 // [PACK29-*] Ruta autónoma de reportes operativos
 const SalesReportsRoutes = lazy(() => import("../reports/routes"));
 const SalesModuleRoutes = lazy(() => import("../sales/routes"));
+import AppErrorBoundary from "../../shared/components/AppErrorBoundary"; // [PACK36-dashboard-routes]
 
 type DashboardRoutesProps = {
   theme: "dark" | "light";
@@ -76,10 +77,17 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
 
   return (
     <Routes>
-      <Route
-        element={
-          <ModuleBoundary>
-            <DashboardLayout theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />
+        <Route
+          element={
+            <ModuleBoundary>
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Dashboard no disponible"
+              description="Actualiza la página o vuelve más tarde mientras restablecemos el panel."
+            >
+              <DashboardLayout theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />
+            </AppErrorBoundary>
           </ModuleBoundary>
         }
       >
@@ -88,7 +96,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="inventory/*"
           element={
             <ModuleBoundary>
-              <InventoryLayout />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Inventario no disponible"
+                description="Revisa tu conexión y vuelve a intentarlo en unos momentos."
+              >
+                <InventoryLayout />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         >
@@ -102,7 +117,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="operations/*"
           element={
             <ModuleBoundary>
-              <OperationsLayout />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Operaciones con inconvenientes"
+                description="Estamos recuperando el módulo de operaciones, intenta de nuevo pronto."
+              >
+                <OperationsLayout />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         >
@@ -116,7 +138,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="/sales/*"
           element={
             <ModuleBoundary>
-              <SalesModuleRoutes />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Ventas corporativas en pausa"
+                description="Recarga el módulo de ventas o intenta más tarde."
+              >
+                <SalesModuleRoutes />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         />
@@ -125,7 +154,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="/reports/*"
           element={
             <ModuleBoundary>
-              <SalesReportsRoutes />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Reportes de ventas no disponibles"
+                description="Revisamos el módulo de reportes, vuelve a intentarlo más tarde."
+              >
+                <SalesReportsRoutes />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         />
@@ -133,7 +169,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="analytics"
           element={
             <ModuleBoundary>
-              <AnalyticsPage />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Analítica momentáneamente fuera de línea"
+                description="Vuelve a intentarlo en breve mientras restablecemos las métricas."
+              >
+                <AnalyticsPage />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         />
@@ -141,7 +184,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="reports"
           element={
             <ModuleBoundary>
-              <GlobalReportsPage />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Reportes globales no disponibles"
+                description="Estamos restableciendo los reportes corporativos, inténtalo nuevamente."
+              >
+                <GlobalReportsPage />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         />
@@ -149,7 +199,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="security"
           element={
             <ModuleBoundary>
-              <SecurityPage />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Seguridad temporalmente inactiva"
+                description="Recarga la vista de seguridad o intenta más tarde."
+              >
+                <SecurityPage />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         />
@@ -157,7 +214,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="sync"
           element={
             <ModuleBoundary>
-              <SyncPage />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Sincronización en revisión"
+                description="Vuelve a intentar abrir el módulo de sincronización en unos segundos."
+              >
+                <SyncPage />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         />
@@ -165,7 +229,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="users"
           element={
             <ModuleBoundary>
-              <UsersPage />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Usuarios no disponibles"
+                description="Recarga para volver a gestionar usuarios cuando el módulo se recupere."
+              >
+                <UsersPage />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         />
@@ -173,7 +244,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           path="repairs/*"
           element={
             <ModuleBoundary>
-              <RepairsLayout />
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Reparaciones no disponibles"
+                description="Espera un momento e intenta nuevamente ingresar a reparaciones."
+              >
+                <RepairsLayout />
+              </AppErrorBoundary>
             </ModuleBoundary>
           }
         >

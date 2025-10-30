@@ -1,5 +1,7 @@
 import { Activity, RefreshCcw, ShieldAlert, Users as UsersIcon } from "lucide-react";
 
+import { Skeleton } from "@/ui/Skeleton"; // [PACK36-users-dashboard]
+import { safeArray, safeNumber, safeString } from "@/utils/safeValues"; // [PACK36-users-dashboard]
 import type { UserDashboardMetrics } from "../../../api";
 import LoadingOverlay from "../../../shared/components/LoadingOverlay";
 
@@ -25,10 +27,26 @@ export type SummaryCardsProps = {
 };
 
 function SummaryCards({ dashboard, loading, onRefresh }: SummaryCardsProps) {
-  const totals = dashboard?.totals ?? { total: 0, active: 0, inactive: 0, locked: 0 };
-  const recentActivity = dashboard?.recent_activity?.slice(0, 5) ?? [];
-  const recentSessions = dashboard?.active_sessions?.slice(0, 5) ?? [];
-  const alerts = dashboard?.audit_alerts;
+  const totals = {
+    total: safeNumber(dashboard?.totals?.total),
+    active: safeNumber(dashboard?.totals?.active),
+    inactive: safeNumber(dashboard?.totals?.inactive),
+    locked: safeNumber(dashboard?.totals?.locked),
+  }; // [PACK36-users-dashboard]
+  const recentActivity = safeArray(dashboard?.recent_activity).slice(0, 5); // [PACK36-users-dashboard]
+  const recentSessions = safeArray(dashboard?.active_sessions).slice(0, 5); // [PACK36-users-dashboard]
+  const alerts = dashboard?.audit_alerts
+    ? {
+        critical: safeNumber(dashboard.audit_alerts.critical),
+        warning: safeNumber(dashboard.audit_alerts.warning),
+        info: safeNumber(dashboard.audit_alerts.info),
+        pending_count: safeNumber(dashboard.audit_alerts.pending_count),
+      }
+    : null; // [PACK36-users-dashboard]
+
+  const showActivitySkeleton = loading && recentActivity.length === 0; // [PACK36-users-dashboard]
+  const showSessionsSkeleton = loading && recentSessions.length === 0; // [PACK36-users-dashboard]
+  const showAlertsSkeleton = loading && !alerts; // [PACK36-users-dashboard]
 
   return (
     <section className="user-dashboard card-section">
@@ -79,17 +97,19 @@ function SummaryCards({ dashboard, loading, onRefresh }: SummaryCardsProps) {
               <Activity size={16} aria-hidden="true" />
               <h4>Actividad reciente</h4>
             </div>
-            {recentActivity.length === 0 ? (
+            {showActivitySkeleton ? (
+              <Skeleton lines={5} />
+            ) : recentActivity.length === 0 ? (
               <p className="muted-text">Sin movimientos relevantes en las últimas horas.</p>
             ) : (
               <ul className="user-dashboard__list">
                 {recentActivity.map((item) => (
-                  <li key={item.id}>
+                  <li key={item.id ?? `${item.action}-${item.created_at}`}> 
                     <div className={`badge badge-${item.severity}`} aria-label={`Severidad ${item.severity}`} />
                     <div>
-                      <p className="user-dashboard__list-title">{item.action}</p>
+                      <p className="user-dashboard__list-title">{safeString(item.action, "Actividad corporativa")}</p>
                       <p className="user-dashboard__list-meta">
-                        {formatDateTime(item.created_at)} · {item.performed_by_name ?? "Sistema"}
+                        {formatDateTime(item.created_at)} · {safeString(item.performed_by_name, "Sistema")}
                       </p>
                     </div>
                   </li>
@@ -102,7 +122,9 @@ function SummaryCards({ dashboard, loading, onRefresh }: SummaryCardsProps) {
               <UsersIcon size={16} aria-hidden="true" />
               <h4>Sesiones activas</h4>
             </div>
-            {recentSessions.length === 0 ? (
+            {showSessionsSkeleton ? (
+              <Skeleton lines={5} />
+            ) : recentSessions.length === 0 ? (
               <p className="muted-text">No hay sesiones corporativas activas.</p>
             ) : (
               <ul className="user-dashboard__list">
@@ -110,7 +132,7 @@ function SummaryCards({ dashboard, loading, onRefresh }: SummaryCardsProps) {
                   <li key={session.session_id}>
                     <div className={`status-indicator status-${session.status}`} aria-hidden="true" />
                     <div>
-                      <p className="user-dashboard__list-title">{session.username}</p>
+                      <p className="user-dashboard__list-title">{safeString(session.username, "Usuario corporativo")}</p>
                       <p className="user-dashboard__list-meta">Inicio: {formatDateTime(session.created_at)}</p>
                     </div>
                   </li>
@@ -123,7 +145,9 @@ function SummaryCards({ dashboard, loading, onRefresh }: SummaryCardsProps) {
               <ShieldAlert size={16} aria-hidden="true" />
               <h4>Alertas</h4>
             </div>
-            {alerts ? (
+            {showAlertsSkeleton ? (
+              <Skeleton lines={4} />
+            ) : alerts ? (
               <div className="user-dashboard__alerts">
                 <p>
                   <strong>Críticas:</strong> {alerts.critical}
