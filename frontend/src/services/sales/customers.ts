@@ -12,10 +12,20 @@ export async function getCustomer(id: string): Promise<Customer> {
   return httpGet<Customer>(apiMap.customers.byId(id), { withAuth: true });
 }
 
-export async function createCustomer(dto: Omit<Customer, "id">): Promise<Customer> {
-  return httpPost<Customer>(apiMap.customers.create, dto, { withAuth: true });
+export async function createCustomer(dto: Omit<Customer, "id">, reason: string): Promise<Customer> {
+  return httpPost<Customer>(apiMap.customers.create, dto, {
+    withAuth: true,
+    headers: { "X-Reason": reason },
+  });
 }
 
-export async function updateCustomer(id: string, dto: Partial<Omit<Customer, "id">>): Promise<Customer> {
-  return httpPut<Customer>(apiMap.customers.byId(id), dto, { withAuth: true });
+export async function updateCustomer(
+  id: string,
+  dto: Partial<Omit<Customer, "id">>,
+  reason: string,
+): Promise<Customer> {
+  return httpPut<Customer>(apiMap.customers.byId(id), dto, {
+    withAuth: true,
+    headers: { "X-Reason": reason },
+  });
 }

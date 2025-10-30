@@ -1,6 +1,8 @@
 // src/services/http.ts
 // Ligero wrapper sobre fetch con baseURL, timeout, auth opcional y manejo uniforme de errores.
 
+import { getAuthToken } from "./api/http";
+
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export interface HttpOptions {
@@ -49,7 +51,7 @@ export async function http<T>(path: string, opts: HttpOptions = {}): Promise<T> 
   };
 
   if (opts.withAuth) {
-    const token = localStorage.getItem("access_token");
+    const token = getAuthToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
