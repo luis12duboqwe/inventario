@@ -144,6 +144,16 @@ def _set_refresh_cookie(response: Response, token: str, expires_at: datetime) ->
     )
 
 
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=_REFRESH_COOKIE_NAME,
+        path="/auth",
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite=settings.session_cookie_samesite,
+    )
+
+
 @router.get(
     "/bootstrap/status",
     response_model=schemas.BootstrapStatusResponse,
@@ -378,6 +388,33 @@ def refresh_access_token(
     db.refresh(session)
     _set_refresh_cookie(response, new_refresh_token, refresh_expires)
     return schemas.AuthLoginResponse(access_token=access_token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(  # type: ignore[override]
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> Response:
+    refresh_token_cookie = request.cookies.get(_REFRESH_COOKIE_NAME)
+    if refresh_token_cookie:
+        try:
+            payload = decode_token(refresh_token_cookie)
+        except HTTPException:
+            payload = None
+        if payload is not None:
+            session_token = payload.sid or payload.jti
+            if session_token:
+                session = crud.get_active_session_by_token(db, session_token)
+                if session is not None and session.revoked_at is None:
+                    with transactional_session(db):
+                        session.revoked_at = datetime.utcnow()
+                        session.revoke_reason = session.revoke_reason or "logout"
+                        flush_session(db)
+                    db.refresh(session)
+    _clear_refresh_cookie(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 @router.post(

@@ -75,8 +75,12 @@ export async function getCurrentUser(): Promise<AuthProfile> {
   return response.data;
 }
 
-export function logout(): void {
-  clearAuthToken();
+export async function logout(): Promise<void> {
+  try {
+    await httpClient.post("/auth/logout", {});
+  } finally {
+    clearAuthToken();
+  }
 }
 
 export type {
