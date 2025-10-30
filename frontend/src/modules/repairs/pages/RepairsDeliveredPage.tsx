@@ -3,14 +3,14 @@ import PageToolbar from "../../../components/layout/PageToolbar";
 import RepairOrdersBoard from "./components/RepairOrdersBoard";
 import { useRepairsLayout } from "./context/RepairsLayoutContext";
 
-function RepairsFinalizedPage() {
+function RepairsDeliveredPage() {
   const { token, stores, selectedStoreId, setSelectedStoreId, setModuleStatus } = useRepairsLayout();
 
   return (
     <div className="repairs-subpage">
       <PageHeader
-        title="Órdenes listas"
-        subtitle="Revisa reparaciones listas para entrega y confirma pendientes con el cliente." // [PACK37-frontend]
+        title="Órdenes entregadas"
+        subtitle="Consulta el historial de reparaciones entregadas y descarga comprobantes." // [PACK37-frontend]
       />
 
       <RepairOrdersBoard
@@ -19,8 +19,8 @@ function RepairsFinalizedPage() {
         selectedStoreId={selectedStoreId}
         onSelectedStoreChange={setSelectedStoreId}
         onModuleStatusChange={setModuleStatus}
-        initialStatusFilter="LISTO"
-        statusFilterOptions={["TODOS", "LISTO", "EN_PROCESO", "ENTREGADO", "CANCELADO"]} // [PACK37-frontend]
+        initialStatusFilter="ENTREGADO"
+        statusFilterOptions={["TODOS", "ENTREGADO", "LISTO", "CANCELADO"]} // [PACK37-frontend]
         renderToolbar={({ filters, actions }) => <PageToolbar actions={actions}>{filters}</PageToolbar>}
         showCreateForm={false}
       />
@@ -28,4 +28,4 @@ function RepairsFinalizedPage() {
   );
 }
 
-export default RepairsFinalizedPage;
+export default RepairsDeliveredPage;

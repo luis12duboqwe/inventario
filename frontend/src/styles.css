@@ -4823,6 +4823,22 @@ button.ghost {
   margin-top: 1.5rem;
 }
 
+.parts-modal__content {
+  display: grid;
+  gap: 1.5rem;
+} /* [PACK37-frontend] */
+
+.parts-modal__content section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+} /* [PACK37-frontend] */
+
+.parts-modal__content table th,
+.parts-modal__content table td {
+  white-space: nowrap;
+} /* [PACK37-frontend] */
+
 .toolbar-inline-fields {
   display: flex;
   flex-wrap: wrap;

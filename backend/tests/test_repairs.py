@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from fastapi import status
 from typing import Any, Iterable
 
@@ -94,18 +95,34 @@ def test_repair_order_flow(client):
     repair_payload = {
         "store_id": store_id,
         "customer_id": customer_id,
+        "customer_contact": "+52 555 000 1122",
         "technician_name": "Isaac Técnico",
         "damage_type": "Pantalla rota",
+        "diagnosis": "Pantalla fracturada sin daño estructural",
+        "device_model": "Galaxy S22",
+        "imei": "123456789012345",
         "device_description": "Smartphone Azul",
         "labor_cost": 200.0,
-        "parts": [{"device_id": device_id, "quantity": 2, "unit_cost": 95.0}],
+        "parts": [
+            {
+                "device_id": device_id,
+                "quantity": 2,
+                "unit_cost": 95.0,
+                "source": "STOCK",
+            }
+        ],
     }
     repair_response = client.post("/repairs", json=repair_payload, headers=reason_headers)
     assert repair_response.status_code == status.HTTP_201_CREATED
     repair_data = repair_response.json()
+    assert repair_data["customer_contact"] == "+52 555 000 1122"
+    assert repair_data["diagnosis"] == "Pantalla fracturada sin daño estructural"
+    assert repair_data["device_model"] == "Galaxy S22"
+    assert repair_data["imei"] == "123456789012345"
     assert repair_data["parts_cost"] == 190.0
     assert repair_data["total_cost"] == 390.0
     assert repair_data["status"] == "PENDIENTE"
+    assert repair_data["parts"][0]["source"] == "STOCK"
 
     devices_after = client.get(
         f"/stores/{store_id}/devices",
@@ -125,9 +142,17 @@ def test_repair_order_flow(client):
     assert update_response.json()["status"] == "LISTO"
     assert update_response.json()["labor_cost"] == 210.0
 
+    opened_at = datetime.fromisoformat(repair_data["opened_at"].replace("Z", "+00:00"))
     list_response = client.get(
         "/repairs",
-        params={"store_id": store_id, "status": "LISTO", "limit": 200, "offset": 0},
+        params={
+            "branchId": store_id,
+            "status": "LISTO",
+            "from": opened_at.isoformat(),
+            "to": (opened_at + timedelta(days=1)).isoformat(),
+            "limit": 200,
+            "offset": 0,
+        },
         headers=auth_headers,
     )
     assert list_response.status_code == status.HTTP_200_OK
@@ -155,6 +180,115 @@ def test_repair_order_flow(client):
     )
     assert part_final["quantity"] == 10
 
+
+def test_repair_parts_management_and_close(client):  # // [PACK37-backend]
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Pack37 cierre"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Pack37", "location": "MX", "timezone": "America/Mexico_City"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payloads = [
+        {"sku": "REP-P37-01", "name": "Batería", "quantity": 5, "unit_price": 80.0, "costo_unitario": 40.0},
+        {"sku": "REP-P37-02", "name": "Flex", "quantity": 6, "unit_price": 60.0, "costo_unitario": 35.0},
+    ]
+    device_ids = []
+    for payload in device_payloads:
+        response = client.post(
+            f"/stores/{store_id}/devices",
+            json=payload,
+            headers=reason_headers,
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        device_ids.append(response.json()["id"])
+
+    repair_response = client.post(
+        "/repairs",
+        json={
+            "store_id": store_id,
+            "customer_contact": "contacto@sucursal.mx",
+            "technician_name": "Técnico Pack37",
+            "damage_type": "Diagnóstico inicial",
+            "labor_cost": 120.0,
+            "parts": [
+                {
+                    "device_id": device_ids[0],
+                    "quantity": 1,
+                    "unit_cost": 45.0,
+                    "source": "STOCK",
+                }
+            ],
+        },
+        headers=reason_headers,
+    )
+    assert repair_response.status_code == status.HTTP_201_CREATED
+    repair_id = repair_response.json()["id"]
+
+    append_response = client.post(
+        f"/repairs/{repair_id}/parts",
+        json={
+            "parts": [
+                {
+                    "device_id": device_ids[1],
+                    "quantity": 2,
+                    "unit_cost": 38.0,
+                    "source": "STOCK",
+                },
+                {
+                    "part_name": "Pegamento UV",
+                    "quantity": 1,
+                    "unit_cost": 30.0,
+                    "source": "EXTERNAL",
+                },
+            ]
+        },
+        headers=reason_headers,
+    )
+    assert append_response.status_code == status.HTTP_200_OK
+    appended = append_response.json()
+    assert appended["parts_cost"] == 151.0
+    assert any(part["device_id"] == device_ids[1] for part in appended["parts"])
+    assert any(part["source"] == "EXTERNAL" for part in appended["parts"])
+
+    parts_after_append = client.get(
+        f"/repairs/{repair_id}",
+        headers=auth_headers,
+    )
+    part_to_remove = next(
+        part for part in parts_after_append.json()["parts"] if part["device_id"] == device_ids[0]
+    )
+
+    remove_response = client.delete(
+        f"/repairs/{repair_id}/parts/{part_to_remove['id']}",
+        headers=reason_headers,
+    )
+    assert remove_response.status_code == status.HTTP_200_OK
+    removed_payload = remove_response.json()
+    assert all(part["device_id"] != device_ids[0] for part in removed_payload["parts"])
+    assert any(part["source"] == "EXTERNAL" for part in removed_payload["parts"])
+
+    close_response = client.post(
+        f"/repairs/{repair_id}/close",
+        json={"labor_cost": 150.0},
+        headers=reason_headers,
+    )
+    assert close_response.status_code == status.HTTP_200_OK
+    assert close_response.headers["content-type"] == "application/pdf"
+
+    final_order = client.get(f"/repairs/{repair_id}", headers=auth_headers)
+    assert final_order.status_code == status.HTTP_200_OK
+    final_payload = final_order.json()
+    assert final_payload["status"] == "ENTREGADO"
+    assert final_payload["labor_cost"] == 150.0
+    assert final_payload["delivered_at"] is not None
+    assert final_payload["parts_cost"] == 106.0
+    assert any(part["source"] == "EXTERNAL" for part in final_payload["parts"])
 
 def test_repair_requires_auth_and_reason(client):
     payload = {

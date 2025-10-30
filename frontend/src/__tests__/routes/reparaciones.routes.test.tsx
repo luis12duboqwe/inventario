@@ -84,9 +84,19 @@ vi.mock("../../modules/repairs/pages/RepairsPendingPage", () => ({
   default: createLazyStub("Reparaciones: Pendientes"),
 }));
 
-vi.mock("../../modules/repairs/pages/RepairsFinalizedPage", () => ({
+vi.mock("../../modules/repairs/pages/RepairsInProgressPage", () => ({
   __esModule: true,
-  default: createLazyStub("Reparaciones: Finalizadas"),
+  default: createLazyStub("Reparaciones: En proceso"),
+}));
+
+vi.mock("../../modules/repairs/pages/RepairsReadyPage", () => ({
+  __esModule: true,
+  default: createLazyStub("Reparaciones: Listas"),
+}));
+
+vi.mock("../../modules/repairs/pages/RepairsDeliveredPage", () => ({
+  __esModule: true,
+  default: createLazyStub("Reparaciones: Entregadas"),
 }));
 
 vi.mock("../../modules/repairs/pages/RepairsPartsPage", () => ({
@@ -169,7 +179,9 @@ const renderDashboardRoute = (initialPath: string) =>
 
 const renderRepairsLayout = (initialPath: string) => {
   const PendingStub = createLazyStub("Reparaciones: Pendientes");
-  const FinalizedStub = createLazyStub("Reparaciones: Finalizadas");
+  const InProgressStub = createLazyStub("Reparaciones: En proceso");
+  const ReadyStub = createLazyStub("Reparaciones: Listas");
+  const DeliveredStub = createLazyStub("Reparaciones: Entregadas");
   const PartsStub = createLazyStub("Reparaciones: Repuestos");
   const BudgetsStub = createLazyStub("Reparaciones: Presupuestos");
 
@@ -178,7 +190,9 @@ const renderRepairsLayout = (initialPath: string) => {
       <Routes>
         <Route path="/" element={<ReparacionesLayout />}>
           <Route path="pendientes" element={<PendingStub />} />
-          <Route path="finalizadas" element={<FinalizedStub />} />
+          <Route path="en-proceso" element={<InProgressStub />} />
+          <Route path="listas" element={<ReadyStub />} />
+          <Route path="entregadas" element={<DeliveredStub />} />
           <Route path="repuestos" element={<PartsStub />} />
           <Route path="presupuestos" element={<BudgetsStub />} />
         </Route>
@@ -198,7 +212,9 @@ describe("Rutas de reparaciones", () => {
 
   it.each([
     ["pendientes", "Reparaciones: Pendientes"],
-    ["finalizadas", "Reparaciones: Finalizadas"],
+    ["en-proceso", "Reparaciones: En proceso"],
+    ["listas", "Reparaciones: Listas"],
+    ["entregadas", "Reparaciones: Entregadas"],
     ["repuestos", "Reparaciones: Repuestos"],
     ["presupuestos", "Reparaciones: Presupuestos"],
   ])("renderiza /dashboard/repairs/%s", async (segmento, textoEsperado) => {
@@ -252,18 +268,18 @@ describe("Rutas de reparaciones", () => {
   });
 
   it("usa Suspense en el layout de reparaciones", async () => {
-    renderRepairsLayout("/finalizadas");
+    renderRepairsLayout("/listas");
 
     await expect(
       screen.findByText("Cargando módulo de reparaciones…"),
     ).resolves.toBeInTheDocument();
 
-    await waitFor(() => expect(repairsResolvers.has("Reparaciones: Finalizadas")).toBe(true));
+    await waitFor(() => expect(repairsResolvers.has("Reparaciones: Listas")).toBe(true));
 
     await act(async () => {
-      repairsResolvers.get("Reparaciones: Finalizadas")?.();
+      repairsResolvers.get("Reparaciones: Listas")?.();
     });
-    await expect(screen.findByText("Reparaciones: Finalizadas")).resolves.toBeInTheDocument();
+    await expect(screen.findByText("Reparaciones: Listas")).resolves.toBeInTheDocument();
   });
 
   it("renderiza las pestañas de navegación del módulo", async () => {
@@ -274,7 +290,9 @@ describe("Rutas de reparaciones", () => {
       repairsModuleResolvers.get("repairs")?.();
     });
     await expect(screen.findByRole("link", { name: "Pendientes" })).resolves.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Finalizadas" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "En proceso" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Listas" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Entregadas" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Repuestos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Presupuestos" })).toBeInTheDocument();
   });

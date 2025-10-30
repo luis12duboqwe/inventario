@@ -7,6 +7,7 @@ type BudgetModalProps = {
   order: RepairOrder | null;
   open: boolean;
   onClose: () => void;
+  onConfirmClose?: (() => Promise<void> | void) | undefined; // [PACK37-frontend]
 };
 
 function getPartsTotal(parts: RepairOrder["parts"], fallbackParts: RepairPartForm[] = []) {
@@ -17,7 +18,7 @@ function getPartsTotal(parts: RepairOrder["parts"], fallbackParts: RepairPartFor
   return activeParts.reduce((acc, part) => acc + Number(part.unit_cost ?? part.unitCost ?? 0) * Number(part.quantity ?? 0), 0);
 }
 
-function BudgetModal({ order, open, onClose }: BudgetModalProps) {
+function BudgetModal({ order, open, onClose, onConfirmClose }: BudgetModalProps) {
   if (!order) {
     return null;
   }
@@ -41,12 +42,32 @@ function BudgetModal({ order, open, onClose }: BudgetModalProps) {
             <li>
               Cliente: <strong>{order.customer_name ?? "Mostrador"}</strong>
             </li>
+            {order.customer_contact ? (
+              <li>
+                Contacto: <strong>{order.customer_contact}</strong>
+              </li>
+            ) : null}
             <li>
               Técnico: <strong>{order.technician_name}</strong>
             </li>
             <li>
               Diagnóstico: <strong>{order.damage_type}</strong>
             </li>
+            {order.diagnosis ? (
+              <li>
+                Evaluación técnica: <strong>{order.diagnosis}</strong>
+              </li>
+            ) : null}
+            {order.device_model ? (
+              <li>
+                Modelo: <strong>{order.device_model}</strong>
+              </li>
+            ) : null}
+            {order.imei ? (
+              <li>
+                IMEI/Serie: <strong>{order.imei}</strong>
+              </li>
+            ) : null}
           </ul>
         </section>
         <section>
@@ -70,6 +91,16 @@ function BudgetModal({ order, open, onClose }: BudgetModalProps) {
           <h3>Notas registradas</h3>
           {order.notes ? <p>{order.notes}</p> : <p className="muted-text">Sin notas adicionales.</p>}
         </section>
+        {onConfirmClose ? (
+          <div className="actions-row">
+            <button type="button" className="btn btn--primary" onClick={() => void onConfirmClose()}>
+              Cerrar orden y descargar PDF
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={onClose}>
+              Volver
+            </button>
+          </div>
+        ) : null}
       </div>
     </Modal>
   );

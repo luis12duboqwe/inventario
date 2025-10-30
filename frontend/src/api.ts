@@ -595,7 +595,9 @@ export type PurchaseStatistics = {
 export type RepairOrderPart = {
   id: number;
   repair_order_id: number;
-  device_id: number;
+  device_id: number | null;
+  part_name?: string | null;
+  source: "STOCK" | "EXTERNAL"; // [PACK37-frontend]
   quantity: number;
   unit_cost: number;
 };
@@ -605,11 +607,15 @@ export type RepairOrder = {
   store_id: number;
   customer_id?: number | null;
   customer_name?: string | null;
+  customer_contact?: string | null; // [PACK37-frontend]
   technician_name: string;
   damage_type: string;
+  diagnosis?: string | null; // [PACK37-frontend]
+  device_model?: string | null; // [PACK37-frontend]
+  imei?: string | null; // [PACK37-frontend]
   device_description?: string | null;
   notes?: string | null;
-  status: "PENDIENTE" | "EN_PROCESO" | "LISTO" | "ENTREGADO";
+  status: "PENDIENTE" | "EN_PROCESO" | "LISTO" | "ENTREGADO" | "CANCELADO"; // [PACK37-frontend]
   labor_cost: number;
   parts_cost: number;
   total_cost: number;
@@ -625,17 +631,41 @@ export type RepairOrderPayload = {
   store_id: number;
   customer_id?: number | null;
   customer_name?: string | null;
+  customer_contact?: string | null; // [PACK37-frontend]
   technician_name: string;
   damage_type: string;
+  diagnosis?: string;
+  device_model?: string;
+  imei?: string;
   device_description?: string;
   notes?: string;
   labor_cost?: number;
-  parts?: { device_id: number; quantity: number; unit_cost?: number }[];
+  parts?: {
+    device_id?: number;
+    part_name?: string;
+    source?: "STOCK" | "EXTERNAL";
+    quantity: number;
+    unit_cost?: number;
+  }[];
 };
+
+export type RepairOrderInput = RepairOrderPayload; // [PACK37-frontend]
 
 export type RepairOrderUpdatePayload = Partial<RepairOrderPayload> & {
   status?: RepairOrder["status"];
 };
+
+export type RepairOrderPartsPayload = {  // [PACK37-frontend]
+  parts: {
+    device_id?: number;
+    part_name?: string;
+    source?: "STOCK" | "EXTERNAL";
+    quantity: number;
+    unit_cost?: number;
+  }[];
+};
+
+export type RepairOrderClosePayload = Partial<Pick<RepairOrderPayload, "labor_cost" | "parts">>; // [PACK37-frontend]
 
 export type CashSession = {
   id: number;
@@ -3205,11 +3235,23 @@ export function deleteSupplierBatch(token: string, batchId: number, reason: stri
 
 export function listRepairOrders(
   token: string,
-  params: { store_id?: number; status?: string; q?: string; limit?: number }
+  params: {
+    store_id?: number;
+    branchId?: number;
+    status?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  }
 ): Promise<RepairOrder[]> {
   const searchParams = new URLSearchParams();
   if (params.store_id) {
     searchParams.append("store_id", String(params.store_id));
+  }
+  if (params.branchId) {
+    searchParams.append("branchId", String(params.branchId));
   }
   if (params.status) {
     searchParams.append("status", params.status);
@@ -3217,8 +3259,17 @@ export function listRepairOrders(
   if (params.q) {
     searchParams.append("q", params.q);
   }
+  if (params.from) {
+    searchParams.append("from", params.from);
+  }
+  if (params.to) {
+    searchParams.append("to", params.to);
+  }
   if (params.limit) {
     searchParams.append("limit", String(params.limit));
+  }
+  if (typeof params.offset === "number") {
+    searchParams.append("offset", String(params.offset));
   }
   const query = searchParams.toString();
   const suffix = query ? `?${query}` : "";
@@ -3250,10 +3301,53 @@ export function updateRepairOrder(
   );
 }
 
+export function appendRepairOrderParts(  // [PACK37-frontend]
+  token: string,
+  repairId: number,
+  payload: RepairOrderPartsPayload,
+  reason: string
+): Promise<RepairOrder> {
+  return request<RepairOrder>(
+    `/repairs/${repairId}/parts`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function removeRepairOrderPart(  // [PACK37-frontend]
+  token: string,
+  repairId: number,
+  partId: number,
+  reason: string
+): Promise<RepairOrder> {
+  return request<RepairOrder>(
+    `/repairs/${repairId}/parts/${partId}`,
+    { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
 export function deleteRepairOrder(token: string, repairId: number, reason: string): Promise<void> {
   return request<void>(
     `/repairs/${repairId}`,
     { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function closeRepairOrder(  // [PACK37-frontend]
+  token: string,
+  repairId: number,
+  payload: RepairOrderClosePayload | undefined,
+  reason: string
+): Promise<Blob> {
+  return request<Blob>(
+    `/repairs/${repairId}/close`,
+    {
+      method: "POST",
+      body: payload ? JSON.stringify(payload) : undefined,
+      headers: { "X-Reason": reason },
+    },
     token
   );
 }

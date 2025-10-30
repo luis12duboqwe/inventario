@@ -18,10 +18,12 @@ const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazy(() => import("../users/pages/UsersPage"));
 const RepairsLayout = lazy(() => import("../repairs/pages/RepairsLayout"));
-const RepairsPending = lazy(() => import("../repairs/pages/RepairsPending"));
-const RepairsCompleted = lazy(() => import("../repairs/pages/RepairsCompleted"));
-const RepairsParts = lazy(() => import("../repairs/pages/RepairsParts"));
-const RepairsBudgets = lazy(() => import("../repairs/pages/RepairsBudgets"));
+const RepairsPending = lazy(() => import("../repairs/pages/RepairsPendingPage"));
+const RepairsInProgress = lazy(() => import("../repairs/pages/RepairsInProgressPage"));
+const RepairsReady = lazy(() => import("../repairs/pages/RepairsReadyPage"));
+const RepairsDelivered = lazy(() => import("../repairs/pages/RepairsDeliveredPage"));
+const RepairsParts = lazy(() => import("../repairs/pages/RepairsPartsPage"));
+const RepairsBudgets = lazy(() => import("../repairs/pages/RepairsBudgetsPage"));
 const GlobalReportsPage = lazy(() => import("../reports/pages/GlobalReportsPage"));
 // [PACK29-*] Ruta autónoma de reportes operativos
 const SalesReportsRoutes = lazy(() => import("../reports/routes"));
@@ -179,7 +181,9 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
         >
           <Route index element={<Navigate to="pendientes" replace />} />
           <Route path="pendientes" element={<RepairsPending />} />
-          <Route path="finalizadas" element={<RepairsCompleted />} />
+          <Route path="en-proceso" element={<RepairsInProgress />} />
+          <Route path="listas" element={<RepairsReady />} />
+          <Route path="entregadas" element={<RepairsDelivered />} />
           <Route path="repuestos" element={<RepairsParts />} />
           <Route path="presupuestos" element={<RepairsBudgets />} />
         </Route>

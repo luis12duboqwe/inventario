@@ -1,9 +1,7 @@
 """Router para órdenes de reparación técnica."""
-from io import BytesIO
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -11,6 +9,7 @@ from ..core.roles import GESTION_ROLES
 from ..database import get_db
 from ..models import RepairStatus
 from ..routers.dependencies import require_reason
+from ..services.repair_documents import render_repair_pdf  # // [PACK37-backend]
 from ..security import require_roles
 
 router = APIRouter(prefix="/repairs", tags=["repairs"])
@@ -19,8 +18,11 @@ router = APIRouter(prefix="/repairs", tags=["repairs"])
 @router.get("/", response_model=list[schemas.RepairOrderResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_repairs_endpoint(
     store_id: int | None = Query(default=None, ge=1),
+    branch_id: int | None = Query(default=None, ge=1, alias="branchId"),  # // [PACK37-backend]
     status_filter: str | None = Query(default=None, alias="status"),
     q: str | None = Query(default=None),
+    from_date: datetime | date | None = Query(default=None, alias="from"),  # // [PACK37-backend]
+    to_date: datetime | date | None = Query(default=None, alias="to"),  # // [PACK37-backend]
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -32,11 +34,19 @@ def list_repairs_endpoint(
             status_enum = RepairStatus(status_filter.upper())
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Estado inválido") from exc
+    effective_store_id = store_id or branch_id
+    if store_id and branch_id and store_id != branch_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Los parámetros store_id y branchId deben coincidir.",
+        )
     return crud.list_repair_orders(
         db,
-        store_id=store_id,
+        store_id=effective_store_id,
         status=status_enum,
         query=q,
+        date_from=from_date,
+        date_to=to_date,
         limit=limit,
         offset=offset,
     )
@@ -67,6 +77,16 @@ def create_repair_order_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Cantidad inválida de piezas.",
+            ) from exc
+        if detail == "repair_part_device_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Selecciona un dispositivo válido para las piezas de inventario.",
+            ) from exc
+        if detail == "repair_part_name_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Describe el repuesto externo antes de registrarlo.",
             ) from exc
         raise
 
@@ -113,7 +133,146 @@ def update_repair_order_endpoint(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Cantidad inválida de piezas.",
             ) from exc
+        if detail == "repair_part_device_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Selecciona un dispositivo válido para las piezas de inventario.",
+            ) from exc
+        if detail == "repair_part_name_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Describe el repuesto externo antes de registrarlo.",
+            ) from exc
         raise
+
+
+@router.post(  # // [PACK37-backend]
+    "/{order_id}/parts",
+    response_model=schemas.RepairOrderResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def append_repair_parts_endpoint(
+    order_id: int,
+    payload: schemas.RepairOrderPartsRequest,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.append_repair_parts(
+            db,
+            order_id,
+            payload.parts,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Orden no encontrada") from exc
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "repair_insufficient_stock":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Inventario insuficiente para la reparación.",
+            ) from exc
+        if detail == "repair_invalid_quantity":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cantidad inválida de piezas.",
+            ) from exc
+        if detail == "repair_part_device_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Selecciona un dispositivo válido para las piezas de inventario.",
+            ) from exc
+        if detail == "repair_part_name_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Describe el repuesto externo antes de registrarlo.",
+            ) from exc
+        raise
+
+
+@router.delete(  # // [PACK37-backend]
+    "/{order_id}/parts/{part_id}",
+    response_model=schemas.RepairOrderResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def remove_repair_part_endpoint(
+    order_id: int,
+    part_id: int,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.remove_repair_part(
+            db,
+            order_id,
+            part_id,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pieza no encontrada") from exc
+
+
+@router.post(  # // [PACK37-backend]
+    "/{order_id}/close",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def close_repair_order_endpoint(
+    order_id: int,
+    payload: schemas.RepairOrderCloseRequest | None = None,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        order = crud.close_repair_order(
+            db,
+            order_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Orden no encontrada") from exc
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "repair_insufficient_stock":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Inventario insuficiente para la reparación.",
+            ) from exc
+        if detail == "repair_invalid_quantity":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cantidad inválida de piezas.",
+            ) from exc
+        if detail == "repair_part_device_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Selecciona un dispositivo válido para las piezas de inventario.",
+            ) from exc
+        if detail == "repair_part_name_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Describe el repuesto externo antes de registrarlo.",
+            ) from exc
+        raise
+
+    pdf_bytes = render_repair_pdf(order)
+    metadata = schemas.BinaryFileResponse(
+        filename=f"orden_reparacion_{order.id}.pdf",
+        media_type="application/pdf",
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(disposition="inline"),
+    )
 
 
 @router.delete(
@@ -151,93 +310,13 @@ def download_repair_order_pdf(
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Orden no encontrada") from exc
 
-    buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    pdf.setTitle(f"Orden_Reparacion_{order.id}")
-    y_position = height - 40
-
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(40, y_position, f"Orden de reparación #{order.id}")
-    y_position -= 20
-
-    pdf.setFont("Helvetica", 11)
-    pdf.drawString(40, y_position, f"Sucursal: {order.store_id}")
-    y_position -= 14
-    pdf.drawString(40, y_position, f"Estado: {order.status.value}")
-    y_position -= 14
-    if order.customer_name:
-        pdf.drawString(40, y_position, f"Cliente: {order.customer_name}")
-        y_position -= 14
-    pdf.drawString(40, y_position, f"Técnico: {order.technician_name}")
-    y_position -= 14
-    pdf.drawString(40, y_position, f"Daño reportado: {order.damage_type}")
-    y_position -= 14
-    if order.device_description:
-        pdf.drawString(40, y_position, f"Equipo: {order.device_description}")
-        y_position -= 14
-    if order.notes:
-        pdf.drawString(40, y_position, "Notas:")
-        y_position -= 12
-        pdf.setFont("Helvetica", 10)
-        for line in order.notes.splitlines():
-            pdf.drawString(60, y_position, line)
-            y_position -= 12
-        pdf.setFont("Helvetica", 11)
-
-    y_position -= 10
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(40, y_position, "Piezas utilizadas")
-    y_position -= 16
-    pdf.setFont("Helvetica", 10)
-    if not order.parts:
-        pdf.drawString(40, y_position, "Sin registros de piezas.")
-        y_position -= 14
-    else:
-        for part in order.parts:
-            pdf.drawString(40, y_position, f"ID pieza: {part.device_id}")
-            pdf.drawRightString(
-                width - 40,
-                y_position,
-                f"Cantidad: {part.quantity}",
-            )
-            y_position -= 12
-            pdf.drawString(
-                60,
-                y_position,
-                f"Costo unitario: ${float(part.unit_cost):.2f}",
-            )
-            y_position -= 16
-            if y_position < 80:
-                pdf.showPage()
-                pdf.setFont("Helvetica", 10)
-                y_position = height - 60
-
-    if y_position < 120:
-        pdf.showPage()
-        y_position = height - 60
-        pdf.setFont("Helvetica", 11)
-
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(40, y_position, "Resumen de costos")
-    y_position -= 16
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(40, y_position, f"Mano de obra: ${float(order.labor_cost):.2f}")
-    y_position -= 14
-    pdf.drawString(40, y_position, f"Piezas: ${float(order.parts_cost):.2f}")
-    y_position -= 14
-    pdf.drawString(40, y_position, f"Total: ${float(order.total_cost):.2f}")
-
-    pdf.showPage()
-    pdf.save()
-    buffer.seek(0)
+    pdf_bytes = render_repair_pdf(order)  # // [PACK37-backend]
     metadata = schemas.BinaryFileResponse(
         filename=f"orden_reparacion_{order.id}.pdf",
         media_type="application/pdf",
     )
     return Response(
-        content=buffer.getvalue(),
+        content=pdf_bytes,
         media_type=metadata.media_type,
         headers=metadata.content_disposition(disposition="inline"),
     )

@@ -1,10 +1,17 @@
 import { useCallback, type FormEvent } from "react";
 
-import type { RepairOrder } from "../../../../api";
+import type {
+  RepairOrder,
+  RepairOrderClosePayload,
+  RepairOrderPartsPayload,
+} from "../../../../api"; // [PACK37-frontend]
 import {
+  appendRepairOrderParts,
+  closeRepairOrder,
   createRepairOrder,
   deleteRepairOrder,
   downloadRepairOrderPdf,
+  removeRepairOrderPart,
   updateRepairOrder,
 } from "../../../../api";
 
@@ -18,12 +25,20 @@ type RepairOrderActionsParams = {
   formatError: (err: unknown, fallback: string) => string;
   setError: (value: string | null) => void;
   setMessage: (value: string | null) => void;
-  refreshOrders: (storeId?: number | null, query?: string, status?: RepairOrder["status"] | "TODOS") => Promise<void>;
+  refreshOrders: (
+    storeId?: number | null,
+    query?: string,
+    status?: RepairOrder["status"] | "TODOS",
+    from?: string | null,
+    to?: string | null,
+  ) => Promise<void>;
   onInventoryRefresh?: () => void;
   localStoreId: number | null;
   search: string;
   statusFilter: RepairOrder["status"] | "TODOS";
   orders: RepairOrder[];
+  dateFrom: string;
+  dateTo: string;
 };
 
 type RepairOrderActionsResult = {
@@ -32,6 +47,15 @@ type RepairOrderActionsResult = {
   handleDelete: (order: RepairOrder) => Promise<void>;
   handleDownload: (order: RepairOrder) => Promise<void>;
   handleExportCsv: () => void;
+  handleAppendParts: (
+    order: RepairOrder,
+    parts: RepairOrderPartsPayload["parts"],
+  ) => Promise<boolean>; // [PACK37-frontend]
+  handleRemovePart: (order: RepairOrder, partId: number) => Promise<boolean>; // [PACK37-frontend]
+  handleCloseOrder: (
+    order: RepairOrder,
+    payload?: RepairOrderClosePayload | undefined,
+  ) => Promise<boolean>; // [PACK37-frontend]
 };
 
 const useRepairOrderActions = ({
@@ -47,6 +71,8 @@ const useRepairOrderActions = ({
   search,
   statusFilter,
   orders,
+  dateFrom,
+  dateTo,
 }: RepairOrderActionsParams): RepairOrderActionsResult => {
   const askReason = useCallback(
     (promptText: string): string | null => {
@@ -79,19 +105,43 @@ const useRepairOrderActions = ({
       if (!reason) {
         return;
       }
-      const partsPayload = form.parts
-        .filter((part) => part.deviceId && part.quantity > 0)
-        .map((part) => ({
-          device_id: part.deviceId as number,
+      const partsPayload: RepairOrderPartsPayload["parts"] = [];
+      for (const part of form.parts) {
+        const source = part.source ?? "STOCK";
+        const trimmedName = part.partName?.trim() ?? "";
+        if (source === "STOCK" && !part.deviceId) {
+          setError("Selecciona un dispositivo para cada repuesto tomado del inventario.");
+          return;
+        }
+        if (source === "EXTERNAL" && trimmedName.length === 0) {
+          setError("Describe el repuesto externo para registrar su compra.");
+          return;
+        }
+        const payloadPart: RepairOrderPartsPayload["parts"][number] = {
+          source,
           quantity: Math.max(1, part.quantity),
           unit_cost: Number.isFinite(part.unitCost) ? Math.max(0, part.unitCost) : 0,
-        }));
+        };
+        if (source === "STOCK" && part.deviceId) {
+          payloadPart.device_id = part.deviceId;
+        }
+        if (source === "EXTERNAL") {
+          payloadPart.part_name = trimmedName;
+        } else if (trimmedName) {
+          payloadPart.part_name = trimmedName;
+        }
+        partsPayload.push(payloadPart);
+      }
       const payload = {
         store_id: form.storeId,
         customer_id: form.customerId ?? undefined,
         customer_name: form.customerName.trim() || undefined,
+        customer_contact: form.customerContact.trim() || undefined,
         technician_name: form.technicianName.trim(),
         damage_type: form.damageType.trim(),
+        diagnosis: form.diagnosis.trim() || undefined,
+        device_model: form.deviceModel.trim() || undefined,
+        imei: form.imei.trim() || undefined,
         device_description: form.deviceDescription.trim() || undefined,
         notes: form.notes.trim() || undefined,
         labor_cost: Number.isFinite(form.laborCost) ? Math.max(0, form.laborCost) : 0,
@@ -102,7 +152,13 @@ const useRepairOrderActions = ({
         await createRepairOrder(token, payload, reason);
         setMessage("Orden de reparación registrada correctamente.");
         setForm((current) => ({ ...initialRepairForm, storeId: current.storeId }));
-        await refreshOrders(form.storeId, search.trim(), statusFilter);
+        await refreshOrders(
+          form.storeId,
+          search.trim(),
+          statusFilter,
+          dateFrom.trim() || null,
+          dateTo.trim() || null,
+        );
         void onInventoryRefresh?.();
       } catch (err) {
         setError(formatError(err, "No fue posible registrar la orden de reparación."));
@@ -135,7 +191,13 @@ const useRepairOrderActions = ({
       try {
         await updateRepairOrder(token, order.id, { status }, reason);
         setMessage("Estado de reparación actualizado.");
-        await refreshOrders(localStoreId, search.trim(), statusFilter);
+        await refreshOrders(
+          localStoreId,
+          search.trim(),
+          statusFilter,
+          dateFrom.trim() || null,
+          dateTo.trim() || null,
+        );
         void onInventoryRefresh?.();
       } catch (err) {
         setError(formatError(err, "No fue posible actualizar la reparación."));
@@ -167,7 +229,13 @@ const useRepairOrderActions = ({
       try {
         await deleteRepairOrder(token, order.id, reason);
         setMessage("Orden de reparación eliminada.");
-        await refreshOrders(localStoreId, search.trim(), statusFilter);
+        await refreshOrders(
+          localStoreId,
+          search.trim(),
+          statusFilter,
+          dateFrom.trim() || null,
+          dateTo.trim() || null,
+        );
         void onInventoryRefresh?.();
       } catch (err) {
         setError(formatError(err, "No fue posible eliminar la orden de reparación."));
@@ -229,7 +297,147 @@ const useRepairOrderActions = ({
     URL.revokeObjectURL(url);
   }, [orders]);
 
-  return { handleCreate, handleStatusChange, handleDelete, handleDownload, handleExportCsv };
+  const handleAppendParts = useCallback(
+    async (order: RepairOrder, parts: RepairOrderPartsPayload["parts"]) => {
+      if (parts.length === 0) {
+        return false;
+      }
+      const reason = askReason("Motivo corporativo para agregar repuestos a la reparación");
+      if (!reason) {
+        return false;
+      }
+      try {
+        await appendRepairOrderParts(token, order.id, { parts }, reason);
+        setMessage("Repuestos agregados correctamente.");
+        await refreshOrders(
+          localStoreId,
+          search.trim(),
+          statusFilter,
+          dateFrom.trim() || null,
+          dateTo.trim() || null,
+        );
+        void onInventoryRefresh?.();
+        return true;
+      } catch (err) {
+        setError(formatError(err, "No fue posible agregar los repuestos."));
+        return false;
+      }
+    },
+    [
+      askReason,
+      dateFrom,
+      dateTo,
+      formatError,
+      localStoreId,
+      onInventoryRefresh,
+      refreshOrders,
+      search,
+      setError,
+      setMessage,
+      statusFilter,
+      token,
+    ],
+  );
+
+  const handleRemovePart = useCallback(
+    async (order: RepairOrder, partId: number) => {
+      if (!window.confirm(`¿Quitar el repuesto seleccionado de la reparación #${order.id}?`)) {
+        return false;
+      }
+      const reason = askReason("Motivo corporativo para quitar el repuesto de la reparación");
+      if (!reason) {
+        return false;
+      }
+      try {
+        await removeRepairOrderPart(token, order.id, partId, reason);
+        setMessage("Repuesto eliminado correctamente.");
+        await refreshOrders(
+          localStoreId,
+          search.trim(),
+          statusFilter,
+          dateFrom.trim() || null,
+          dateTo.trim() || null,
+        );
+        void onInventoryRefresh?.();
+        return true;
+      } catch (err) {
+        setError(formatError(err, "No fue posible quitar el repuesto."));
+        return false;
+      }
+    },
+    [
+      askReason,
+      dateFrom,
+      dateTo,
+      formatError,
+      localStoreId,
+      onInventoryRefresh,
+      refreshOrders,
+      search,
+      setError,
+      setMessage,
+      statusFilter,
+      token,
+    ],
+  );
+
+  const handleCloseOrder = useCallback(
+    async (order: RepairOrder, payload?: RepairOrderClosePayload) => {
+      const reason = askReason("Motivo corporativo para cerrar la reparación y generar el PDF");
+      if (!reason) {
+        return false;
+      }
+      try {
+        const blob = await closeRepairOrder(token, order.id, payload, reason);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `orden_reparacion_${order.id}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        setMessage("Reparación cerrada y PDF generado correctamente.");
+        await refreshOrders(
+          localStoreId,
+          search.trim(),
+          statusFilter,
+          dateFrom.trim() || null,
+          dateTo.trim() || null,
+        );
+        void onInventoryRefresh?.();
+        return true;
+      } catch (err) {
+        setError(formatError(err, "No fue posible cerrar la reparación."));
+        return false;
+      }
+    },
+    [
+      askReason,
+      dateFrom,
+      dateTo,
+      formatError,
+      localStoreId,
+      onInventoryRefresh,
+      refreshOrders,
+      search,
+      setError,
+      setMessage,
+      statusFilter,
+      token,
+    ],
+  );
+
+  return {
+    handleCreate,
+    handleStatusChange,
+    handleDelete,
+    handleDownload,
+    handleExportCsv,
+    handleAppendParts,
+    handleRemovePart,
+    handleCloseOrder,
+  };
 };
 
 export type { RepairOrderActionsParams, RepairOrderActionsResult };

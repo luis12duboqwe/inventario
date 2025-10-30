@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { RepairOrder, Store } from "../../../../api";
 import type { ModuleStatus } from "../../../../shared/components/ModuleHeader";
@@ -42,6 +42,21 @@ function RepairOrdersBoard({
   const [selectedBudgetOrder, setSelectedBudgetOrder] = useState<RepairOrder | null>(null);
   const [selectedPartsOrder, setSelectedPartsOrder] = useState<RepairOrder | null>(null);
 
+  useEffect(() => {
+    if (selectedBudgetOrder) {
+      const refreshed = orders.find((order) => order.id === selectedBudgetOrder.id);
+      if (refreshed && refreshed !== selectedBudgetOrder) {
+        setSelectedBudgetOrder(refreshed);
+      }
+    }
+    if (selectedPartsOrder) {
+      const refreshed = orders.find((order) => order.id === selectedPartsOrder.id);
+      if (refreshed && refreshed !== selectedPartsOrder) {
+        setSelectedPartsOrder(refreshed);
+      }
+    }
+  }, [orders, selectedBudgetOrder, selectedPartsOrder]); // [PACK37-frontend]
+
   const {
     localStoreId,
     handleStoreChange,
@@ -61,6 +76,9 @@ function RepairOrdersBoard({
     devices,
     handleCreate,
     handleExportCsv,
+    handleAppendParts,
+    handleRemovePart,
+    handleCloseOrder,
     renderRepairRow,
     statusFilter,
     handleStatusFilterChange,
@@ -68,6 +86,10 @@ function RepairOrdersBoard({
     getStatusLabel,
     search,
     handleSearchChange,
+    dateFrom,
+    dateTo,
+    handleDateFromChange,
+    handleDateToChange,
     showCreateForm: showCreateFormEnabled,
   } = useRepairOrdersBoard({
     token,
@@ -103,6 +125,10 @@ function RepairOrdersBoard({
       searchPlaceholder={searchPlaceholder}
       totalOrders={orders.length}
       getStatusLabel={getStatusLabel}
+      dateFrom={dateFrom}
+      dateTo={dateTo}
+      onDateFromChange={handleDateFromChange}
+      onDateToChange={handleDateToChange}
     />
   );
 
@@ -172,6 +198,16 @@ function RepairOrdersBoard({
         order={selectedBudgetOrder}
         open={selectedBudgetOrder !== null}
         onClose={() => setSelectedBudgetOrder(null)}
+        onConfirmClose={
+          selectedBudgetOrder
+            ? async () => {
+                const success = await handleCloseOrder(selectedBudgetOrder); // [PACK37-frontend]
+                if (success) {
+                  setSelectedBudgetOrder(null);
+                }
+              }
+            : undefined
+        }
       />
 
       <PartsModal
@@ -179,6 +215,9 @@ function RepairOrdersBoard({
         open={selectedPartsOrder !== null}
         onClose={() => setSelectedPartsOrder(null)}
         resolveDeviceLabel={resolveDeviceLabel}
+        devices={devices}
+        onAppendParts={handleAppendParts}
+        onRemovePart={handleRemovePart}
       />
     </section>
   );
