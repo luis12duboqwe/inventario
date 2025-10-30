@@ -13,7 +13,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 from typing import Literal
 
-from sqlalchemy import case, desc, func, literal, or_, select, tuple_
+from sqlalchemy import and_, case, desc, func, literal, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement, Select
@@ -1054,6 +1054,263 @@ def build_global_report_dashboard(
         activity_series=activity_series,
         module_distribution=module_distribution,
         severity_distribution=severity_distribution,
+    )
+
+
+# // [PACK29-*] Filtros comunes para reportes de ventas por rango y sucursal
+def _apply_sales_base_filters(
+    statement,
+    *,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    store_id: int | None,
+):
+    statement = statement.where(func.upper(models.Sale.status) != "CANCELADA")
+    if store_id is not None:
+        statement = statement.where(models.Sale.store_id == store_id)
+    if date_from is not None:
+        statement = statement.where(models.Sale.created_at >= date_from)
+    if date_to is not None:
+        statement = statement.where(models.Sale.created_at < date_to)
+    return statement
+
+
+# // [PACK29-*] Totales de devoluciones para reutilizar en reportes de ventas
+def _sales_returns_totals(
+    db: Session,
+    *,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    store_id: int | None,
+):
+    returns_stmt = (
+        select(
+            func.coalesce(
+                func.sum(
+                    (models.SaleItem.total_line / func.nullif(models.SaleItem.quantity, 0))
+                    * models.SaleReturn.quantity
+                ),
+                0,
+            ).label("refund_total"),
+            func.count(models.SaleReturn.id).label("return_count"),
+        )
+        .select_from(models.SaleReturn)
+        .join(models.Sale, models.Sale.id == models.SaleReturn.sale_id)
+        .join(
+            models.SaleItem,
+            and_(
+                models.SaleItem.sale_id == models.SaleReturn.sale_id,
+                models.SaleItem.device_id == models.SaleReturn.device_id,
+            ),
+        )
+        .where(func.upper(models.Sale.status) != "CANCELADA")
+    )
+    if store_id is not None:
+        returns_stmt = returns_stmt.where(models.Sale.store_id == store_id)
+    if date_from is not None:
+        returns_stmt = returns_stmt.where(models.SaleReturn.created_at >= date_from)
+    if date_to is not None:
+        returns_stmt = returns_stmt.where(models.SaleReturn.created_at < date_to)
+    row = db.execute(returns_stmt).first()
+    refund_total = _to_decimal(row.refund_total if row else Decimal("0"))
+    return_count = int(row.return_count or 0) if row else 0
+    return (
+        refund_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        return_count,
+    )
+
+
+# // [PACK29-*] Índice sugerido: CREATE INDEX IF NOT EXISTS ix_ventas_store_created_at ON ventas (sucursal_id, fecha)
+def build_sales_summary_report(
+    db: Session,
+    *,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    store_id: int | None = None,
+) -> schemas.SalesSummaryReport:
+    sales_stmt = (
+        select(
+            func.coalesce(func.sum(models.Sale.total_amount), 0).label("total_sales"),
+            func.count(models.Sale.id).label("orders"),
+        )
+        .select_from(models.Sale)
+    )
+    sales_stmt = _apply_sales_base_filters(
+        sales_stmt,
+        date_from=date_from,
+        date_to=date_to,
+        store_id=store_id,
+    )
+    row = db.execute(sales_stmt).first()
+    total_sales = _to_decimal(row.total_sales if row else Decimal("0"))
+    total_sales = total_sales.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total_orders = int(row.orders or 0) if row else 0
+    avg_ticket = Decimal("0")
+    if total_orders > 0:
+        avg_ticket = (total_sales / Decimal(total_orders)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    refund_total, returns_count = _sales_returns_totals(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        store_id=store_id,
+    )
+    net_sales = (total_sales - refund_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return schemas.SalesSummaryReport(
+        total_sales=float(total_sales),
+        total_orders=total_orders,
+        avg_ticket=float(avg_ticket),
+        returns_count=returns_count,
+        net=float(net_sales),
+    )
+
+
+# // [PACK29-*] Índice sugerido: CREATE INDEX IF NOT EXISTS ix_detalle_ventas_store_fecha ON detalle_ventas (venta_id)
+def build_sales_by_product_report(
+    db: Session,
+    *,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    store_id: int | None = None,
+    limit: int = 20,
+) -> list[schemas.SalesByProductItem]:
+    items_stmt = (
+        select(
+            models.Device.id.label("device_id"),
+            models.Device.sku,
+            models.Device.name,
+            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("quantity"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("gross"),
+        )
+        .select_from(models.SaleItem)
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .where(func.upper(models.Sale.status) != "CANCELADA")
+        .group_by(models.Device.id, models.Device.sku, models.Device.name)
+        .order_by(func.coalesce(func.sum(models.SaleItem.total_line), 0).desc())
+        .limit(limit)
+    )
+    if store_id is not None:
+        items_stmt = items_stmt.where(models.Sale.store_id == store_id)
+    if date_from is not None:
+        items_stmt = items_stmt.where(models.Sale.created_at >= date_from)
+    if date_to is not None:
+        items_stmt = items_stmt.where(models.Sale.created_at < date_to)
+    product_rows = db.execute(items_stmt).all()
+
+    returns_stmt = (
+        select(
+            models.SaleReturn.device_id,
+            func.coalesce(
+                func.sum(
+                    (models.SaleItem.total_line / func.nullif(models.SaleItem.quantity, 0))
+                    * models.SaleReturn.quantity
+                ),
+                0,
+            ).label("refund_total"),
+        )
+        .select_from(models.SaleReturn)
+        .join(models.Sale, models.Sale.id == models.SaleReturn.sale_id)
+        .join(
+            models.SaleItem,
+            and_(
+                models.SaleItem.sale_id == models.SaleReturn.sale_id,
+                models.SaleItem.device_id == models.SaleReturn.device_id,
+            ),
+        )
+        .where(func.upper(models.Sale.status) != "CANCELADA")
+        .group_by(models.SaleReturn.device_id)
+    )
+    if store_id is not None:
+        returns_stmt = returns_stmt.where(models.Sale.store_id == store_id)
+    if date_from is not None:
+        returns_stmt = returns_stmt.where(models.SaleReturn.created_at >= date_from)
+    if date_to is not None:
+        returns_stmt = returns_stmt.where(models.SaleReturn.created_at < date_to)
+    refund_rows = db.execute(returns_stmt).all()
+    refunds_by_device = {
+        row.device_id: _to_decimal(row.refund_total or Decimal("0")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        for row in refund_rows
+    }
+
+    items: list[schemas.SalesByProductItem] = []
+    for row in product_rows:
+        gross_total = _to_decimal(row.gross or Decimal("0")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        net_total = (gross_total - refunds_by_device.get(row.device_id, Decimal("0"))).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        quantity = int(row.quantity or 0)
+        items.append(
+            schemas.SalesByProductItem(
+                sku=row.sku,
+                name=row.name,
+                quantity=quantity,
+                gross=float(gross_total),
+                net=float(net_total),
+            )
+        )
+    return items
+
+
+# // [PACK29-*] Resumen sugerido para cierre de caja diario
+def build_cash_close_report(
+    db: Session,
+    *,
+    date_from: datetime,
+    date_to: datetime,
+    store_id: int | None = None,
+) -> schemas.CashCloseReport:
+    opening_stmt = select(
+        func.coalesce(func.sum(models.CashRegisterSession.opening_amount), 0).label("opening")
+    ).where(
+        models.CashRegisterSession.opened_at >= date_from,
+        models.CashRegisterSession.opened_at < date_to,
+    )
+    if store_id is not None:
+        opening_stmt = opening_stmt.where(models.CashRegisterSession.store_id == store_id)
+    opening_row = db.execute(opening_stmt).first()
+    opening_total = _to_decimal(opening_row.opening if opening_row else Decimal("0")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    sales_stmt = (
+        select(func.coalesce(func.sum(models.Sale.total_amount), 0).label("total_sales"))
+        .select_from(models.Sale)
+    )
+    sales_stmt = _apply_sales_base_filters(
+        sales_stmt,
+        date_from=date_from,
+        date_to=date_to,
+        store_id=store_id,
+    )
+    sales_row = db.execute(sales_stmt).first()
+    sales_total = _to_decimal(sales_row.total_sales if sales_row else Decimal("0")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    refund_total, _ = _sales_returns_totals(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        store_id=store_id,
+    )
+
+    expenses_total = Decimal("0.00")
+    closing_suggested = (
+        opening_total + sales_total - refund_total - expenses_total
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    return schemas.CashCloseReport(
+        opening=float(opening_total),
+        sales_gross=float(sales_total),
+        refunds=float(refund_total),
+        expenses=float(expenses_total),
+        closing_suggested=float(closing_suggested),
     )
 
 

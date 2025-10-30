@@ -6,6 +6,9 @@ import { Navigate, createBrowserRouter, useLocation, useRoutes } from "react-rou
 import { SalesRoutes } from "../modules/sales";
 // [PACK20-SALES-ROUTES-END]
 export { SalesRoutes as __Pack20SalesRoutesKeep };
+// [PACK29-*] Ruta dedicada a reportes operativos
+import { ReportsRoutes } from "../modules/reports";
+export { ReportsRoutes as __Pack29ReportsRoutesKeep };
 import Loader from "../shared/components/Loader";
 import Button from "../shared/components/ui/Button";
 import {
@@ -108,6 +111,18 @@ const AppRouter = memo(function AppRouter({
         ),
       },
       // [PACK20-SALES-MOUNT-END]
+      // [PACK29-*] Montaje de la ruta de reportes de ventas
+      {
+        path: "/reports/*",
+        element: (
+          <DashboardScene
+            token={token}
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            onLogout={onLogout}
+          />
+        ),
+      },
       {
         path: "*",
         element: <Navigate to="/dashboard/inventory" replace />,
