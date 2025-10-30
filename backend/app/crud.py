@@ -1815,8 +1815,9 @@ def create_audit_ui_entries(
         )
         for item in items
     ]
-    db.add_all(records)
-    flush_session(db)
+    with transactional_session(db):
+        db.add_all(records)
+        flush_session(db)
     return len(records)
 
 
