@@ -12,6 +12,7 @@ import {
   Repeat,
   Search,
   ShieldCheck,
+  ShoppingBag,
   SunMoon,
   UserCog,
   Wrench,
@@ -184,6 +185,21 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         isEnabled: enablePurchasesSales || enableTransfers,
       },
       {
+        to: "/sales",
+        label: "Ventas",
+        description: "POS, cotizaciones, devoluciones y clientes corporativos.",
+        icon: <ShoppingBag className="icon" aria-hidden="true" />,
+        isEnabled: enablePurchasesSales,
+        children: [
+          { to: "/sales", label: "Resumen" },
+          { to: "/sales/pos", label: "POS" },
+          { to: "/sales/quotes", label: "Cotizaciones" },
+          { to: "/sales/returns", label: "Devoluciones" },
+          { to: "/sales/customers", label: "Clientes" },
+          { to: "/sales/cash-close", label: "Cierre de caja" },
+        ],
+      },
+      {
         to: "/dashboard/analytics",
         label: "Analítica",
         description: "Indicadores avanzados de rotación, aging y proyecciones.",
@@ -230,10 +246,11 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
   );
 
   const availableNavItems = navItems.filter((item) => item.isEnabled);
-  const sidebarItems: SidebarNavItem[] = availableNavItems.map(({ to, label, icon }) => ({
+  const sidebarItems: SidebarNavItem[] = availableNavItems.map(({ to, label, icon, children }) => ({
     to,
     label,
     icon,
+    children,
   }));
 
   const activeNav =

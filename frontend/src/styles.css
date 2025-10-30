@@ -754,6 +754,48 @@ button.link:hover:not(:disabled) {
   border: 1px solid transparent;
 }
 
+.sidebar-menu__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sidebar-menu__group.is-collapsed {
+  gap: 0;
+}
+
+.sidebar-menu__children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-left: 3rem;
+}
+
+.sidebar-menu__child {
+  display: block;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-menu__child:hover,
+.sidebar-menu__child.is-active {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--color-text-primary);
+}
+
+.sidebar-menu__child-label {
+  display: block;
+  line-height: 1.35;
+}
+
+.sidebar-menu__group.is-collapsed .sidebar-menu__children {
+  display: none;
+}
+
 .sidebar-menu__item .sidebar-menu__label {
   font-weight: 600;
   color: inherit;

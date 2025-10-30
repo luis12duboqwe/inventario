@@ -23,6 +23,7 @@ const RepairsCompleted = lazy(() => import("../repairs/pages/RepairsCompleted"))
 const RepairsParts = lazy(() => import("../repairs/pages/RepairsParts"));
 const RepairsBudgets = lazy(() => import("../repairs/pages/RepairsBudgets"));
 const GlobalReportsPage = lazy(() => import("../reports/pages/GlobalReportsPage"));
+const SalesModuleRoutes = lazy(() => import("../sales/routes"));
 
 type DashboardRoutesProps = {
   theme: "dark" | "light";
@@ -109,6 +110,14 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           <Route path="devoluciones" element={<OperationsReturns />} />
           <Route path="transferencias" element={<OperationsTransfers />} />
         </Route>
+        <Route
+          path="/sales/*"
+          element={
+            <ModuleBoundary>
+              <SalesModuleRoutes />
+            </ModuleBoundary>
+          }
+        />
         <Route
           path="analytics"
           element={
