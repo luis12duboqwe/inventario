@@ -24,7 +24,15 @@ export function useAuthz(){
     const perms = user ? ROLE_MATRIX[user.role] ?? [] : [];
     return (list: Perm[]) => list.some((p)=>perms.includes(p));
   }, [user]);
-  return { user, can, hasAny };
+  // [PACK28-authz]
+  const hasRole = useMemo(() => {
+    return (roles: Role | Role[]) => {
+      const currentRole = user?.role ?? null;
+      const roleList = Array.isArray(roles) ? roles : [roles];
+      return currentRole ? roleList.includes(currentRole) : false;
+    };
+  }, [user?.role]);
+  return { user, can, hasAny, hasRole };
 }
 
 // Guardas de UI

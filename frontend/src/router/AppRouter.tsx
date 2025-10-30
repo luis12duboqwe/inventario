@@ -8,6 +8,10 @@ import { SalesRoutes } from "../modules/sales";
 export { SalesRoutes as __Pack20SalesRoutesKeep };
 import Loader from "../shared/components/Loader";
 import Button from "../shared/components/ui/Button";
+// [PACK28-router-guards]
+import RequireAuth from "./guards/RequireAuth";
+// [PACK28-router-guards]
+import RequireRole from "./guards/RequireRole";
 import {
   bootstrapAdmin,
   getBootstrapStatus,
@@ -85,26 +89,36 @@ const AppRouter = memo(function AppRouter({
 
     return [
       {
+        path: "/login",
+        element: <Navigate to="/dashboard/inventory" replace />,
+      },
+      {
         path: "/dashboard/*",
         element: (
-          <DashboardScene
-            token={token}
-            theme={theme}
-            onToggleTheme={onToggleTheme}
-            onLogout={onLogout}
-          />
+          <RequireAuth>
+            <DashboardScene
+              token={token}
+              theme={theme}
+              onToggleTheme={onToggleTheme}
+              onLogout={onLogout}
+            />
+          </RequireAuth>
         ),
       },
       // [PACK20-SALES-MOUNT-START]
       {
         path: "/sales/*",
         element: (
-          <DashboardScene
-            token={token}
-            theme={theme}
-            onToggleTheme={onToggleTheme}
-            onLogout={onLogout}
-          />
+          <RequireAuth>
+            <RequireRole roles={["ADMIN", "GERENTE"]}>
+              <DashboardScene
+                token={token}
+                theme={theme}
+                onToggleTheme={onToggleTheme}
+                onLogout={onLogout}
+              />
+            </RequireRole>
+          </RequireAuth>
         ),
       },
       // [PACK20-SALES-MOUNT-END]

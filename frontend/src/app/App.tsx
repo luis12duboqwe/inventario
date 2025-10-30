@@ -1,10 +1,9 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
 import { createAppRouter, type ThemeMode } from "../router";
 import Loader from "../shared/components/Loader";
-import { login, logout, type Credentials, UNAUTHORIZED_EVENT } from "../services/api/auth";
-import { getAuthToken } from "../services/api/http";
+import type { Credentials } from "../api";
+import { useAuth } from "../auth/useAuth"; // [PACK28-app]
 import ErrorBoundary from "../components/boundaries/ErrorBoundary";
 import SkipLink from "../components/a11y/SkipLink";
 import { startWebVitalsLite } from "../lib/metrics/webVitalsLite";
@@ -25,26 +24,11 @@ function resolveInitialTheme(): ThemeMode {
 }
 
 function App() {
-  const [token, setToken] = useState<string | null>(() => getAuthToken());
+  const { user, accessToken, isLoading: authLoading, login: authLogin, logout: authLogout, lastError, clearError } =
+    useAuth(); // [PACK28-app]
   const [error, setError] = useState<string | null>(null);
+  const [loginPending, setLoginPending] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => resolveInitialTheme());
-
-  const loginMutation = useMutation({
-    mutationFn: login,
-    onMutate: () => {
-      setError(null);
-    },
-    onSuccess: (response) => {
-      setToken(response.access_token);
-    },
-    onError: (mutationError: unknown) => {
-      const message =
-        mutationError instanceof Error ? mutationError.message : "Error desconocido";
-      setError(message);
-    },
-  });
-
-  const { mutateAsync: executeLogin, reset: resetLoginMutation, isPending: loading } = loginMutation;
 
   useEffect(() => {
     startWebVitalsLite();
@@ -61,40 +45,40 @@ function App() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }, []);
 
+  useEffect(() => {
+    if (lastError) {
+      setError(lastError);
+      clearError();
+    }
+  }, [clearError, lastError]);
+
   const handleLogin = useCallback(
     async (credentials: Credentials) => {
-      await executeLogin(credentials);
+      setLoginPending(true);
+      setError(null);
+      try {
+        await authLogin(credentials);
+      } catch (loginError) {
+        const message =
+          loginError instanceof Error ? loginError.message : "Error desconocido";
+        setError(message);
+        throw loginError;
+      } finally {
+        setLoginPending(false);
+      }
     },
-    [executeLogin],
+    [authLogin],
   );
 
   const handleLogout = useCallback(() => {
-    logout();
-    setToken(null);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const handleUnauthorized = (event: Event) => {
-      const customEvent = event as CustomEvent<string | undefined>;
-      const message = customEvent.detail ?? "Tu sesión expiró. Inicia sesión nuevamente.";
-      setError(message);
-      resetLoginMutation();
-      handleLogout();
-    };
-    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
-    return () => {
-      window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
-    };
-  }, [handleLogout, resetLoginMutation]);
+    authLogout();
+  }, [authLogout]);
 
   const router = useMemo(
     () =>
       createAppRouter({
-        token,
-        loading,
+        token: accessToken,
+        loading: authLoading || loginPending,
         error,
         theme,
         themeLabel,
@@ -102,7 +86,17 @@ function App() {
         onLogin: handleLogin,
         onLogout: handleLogout,
       }),
-    [error, handleLogin, handleLogout, loading, theme, themeLabel, toggleTheme, token],
+    [
+      accessToken,
+      authLoading,
+      error,
+      handleLogin,
+      handleLogout,
+      loginPending,
+      theme,
+      themeLabel,
+      toggleTheme,
+    ],
   );
 
   useEffect(
@@ -112,9 +106,11 @@ function App() {
     [router],
   );
 
+  const isAuthenticated = Boolean(user && accessToken);
+
   return (
     <ErrorBoundary>
-      <div className={`app-root${!token ? " login-mode" : ""}`}>
+      <div className={`app-root${!isAuthenticated ? " login-mode" : ""}`}>
         <SkipLink />
         <Suspense fallback={<Loader variant="overlay" message="Cargando interfaz…" />}>
           <RouterProvider router={router} />

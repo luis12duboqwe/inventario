@@ -63,6 +63,14 @@ class Settings(BaseSettings):
             "SOFTMOBILE_TOKEN_MINUTES",
         ),
     )
+    # // [PACK28-config]
+    refresh_token_expire_days: int = Field(
+        ...,
+        validation_alias=AliasChoices(
+            "REFRESH_TOKEN_EXPIRE_DAYS",
+            "SOFTMOBILE_REFRESH_TOKEN_DAYS",
+        ),
+    )
     session_cookie_expire_minutes: int = Field(
         default=480,
         validation_alias=AliasChoices(
@@ -243,6 +251,8 @@ class Settings(BaseSettings):
         "max_failed_login_attempts",
         "account_lock_minutes",
         "password_reset_token_minutes",
+        # // [PACK28-config]
+        "refresh_token_expire_days",
     )
     @classmethod
     def _ensure_positive(cls, value: int, info: ValidationInfo) -> int:

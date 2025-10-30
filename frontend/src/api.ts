@@ -3,6 +3,22 @@ import { getApiBaseUrl } from "./config/api";
 export type Credentials = {
   username: string;
   password: string;
+  // [PACK28-api]
+  otp?: string;
+};
+
+// [PACK28-api]
+export type AuthSession = {
+  access_token: string;
+  token_type: "bearer";
+};
+
+// [PACK28-api]
+export type AuthProfile = {
+  id: number;
+  name: string;
+  email?: string | null;
+  role: string;
 };
 
 export type BootstrapStatus = {
