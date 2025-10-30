@@ -1506,9 +1506,11 @@ class MovementBase(BaseModel):
     sucursal_destino_id: int | None = Field(
         default=None,
         ge=1,
-        validation_alias=AliasChoices("sucursal_destino_id", "tienda_destino_id"),
+        validation_alias=AliasChoices(
+            "sucursal_destino_id", "tienda_destino_id", "branch_id"
+        ),
         serialization_alias="sucursal_destino_id",
-    )
+    )  # // [PACK30-31-BACKEND]
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
     @field_validator("comentario", mode="before")
@@ -2532,7 +2534,12 @@ class PurchaseOrderItemCreate(BaseModel):
 
 
 class PurchaseOrderCreate(BaseModel):
-    store_id: int = Field(..., ge=1)
+    store_id: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("store_id", "branch_id"),
+        serialization_alias="store_id",
+    )  # // [PACK30-31-BACKEND]
     supplier: str = Field(..., max_length=120)
     notes: str | None = Field(default=None, max_length=255)
     items: list[PurchaseOrderItemCreate]
@@ -3086,7 +3093,12 @@ class SaleItemCreate(BaseModel):
 
 
 class SaleCreate(BaseModel):
-    store_id: int = Field(..., ge=1)
+    store_id: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("store_id", "branch_id"),
+        serialization_alias="store_id",
+    )  # // [PACK30-31-BACKEND]
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)

@@ -6,11 +6,31 @@ import type { Device } from "../../../../api";
 
 function InventoryProductsFilters() {
   const {
+    module: { stores, selectedStoreId, setSelectedStoreId }, // [PACK30-31-FRONTEND]
     search: { inventoryQuery, setInventoryQuery, estadoFilter, setEstadoFilter },
   } = useInventoryLayout();
 
   return (
     <div className="inventory-toolbar">
+      <label className="select-inline">{/* [PACK30-31-FRONTEND] */}
+        <span>Sucursal</span>
+        <select
+          value={selectedStoreId ?? ""}
+          onChange={(event) =>
+            setSelectedStoreId(event.target.value ? Number(event.target.value) : null)
+          }
+        >
+          {stores.length === 0 ? (
+            <option value="">Sin sucursales</option>
+          ) : (
+            stores.map((store) => (
+              <option key={store.id} value={store.id}>
+                {store.name}
+              </option>
+            ))
+          )}
+        </select>
+      </label>
       <TextField
         className="inventory-controls__search"
         type="search"

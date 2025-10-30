@@ -1,5 +1,7 @@
 import React from "react";
 
+type StoreOption = { id: number; name: string }; // [PACK30-31-FRONTEND]
+
 export type ProductFilters = {
   query?: string;
   status?: "ACTIVE" | "INACTIVE" | "ALL";
@@ -7,21 +9,23 @@ export type ProductFilters = {
   lowStock?: boolean;
   priceMin?: number;
   priceMax?: number;
+  storeId?: number | null;
 };
 
 type Props = {
   value: ProductFilters;
   onChange: (next: ProductFilters) => void;
+  stores?: StoreOption[];
 };
 
-export default function FiltersBar({ value, onChange }: Props) {
+export default function FiltersBar({ value, onChange, stores = [] }: Props) {
   const v = value || {};
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr",
+        gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr",
         gap: 8,
       }}
     >
@@ -48,6 +52,23 @@ export default function FiltersBar({ value, onChange }: Props) {
         onChange={(event) => onChange({ ...v, categoryId: event.target.value })}
         style={{ padding: 8, borderRadius: 8 }}
       />
+      <select
+        value={v.storeId ?? ""}
+        onChange={(event) =>
+          onChange({
+            ...v,
+            storeId: event.target.value ? Number(event.target.value) : null,
+          })
+        }
+        style={{ padding: 8, borderRadius: 8 }}
+      >
+        <option value="">Todas las sucursales</option>
+        {stores.map((store) => (
+          <option key={store.id} value={store.id}>
+            {store.name}
+          </option>
+        ))}
+      </select>
       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <input
           type="checkbox"

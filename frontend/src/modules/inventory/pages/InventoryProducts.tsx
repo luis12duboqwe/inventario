@@ -15,6 +15,7 @@ import {
   ProductsViewSwitch,
 } from "../components/products-list";
 import type { ProductFilters, ProductCardData, ProductRow } from "../components/products-list";
+import { useInventoryLayout } from "./context/InventoryLayoutContext"; // [PACK30-31-FRONTEND]
 
 type MovePayload = { categoryId: string };
 type TagPayload = { tags: string[] };
@@ -26,7 +27,10 @@ type SummaryCard = {
 };
 
 export default function InventoryProducts() {
-  const [filters, setFilters] = React.useState<ProductFilters>({ status: "ALL" });
+  const {
+    module: { stores },
+  } = useInventoryLayout(); // [PACK30-31-FRONTEND]
+  const [filters, setFilters] = React.useState<ProductFilters>({ status: "ALL", storeId: null });
   const [mode, setMode] = React.useState<"grid" | "table">("grid");
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [side, setSide] = React.useState<ProductRow | null>(null);
@@ -183,7 +187,7 @@ export default function InventoryProducts() {
         </p>
       </div>
 
-      <ProductsFiltersBar value={filters} onChange={setFilters} />
+      <ProductsFiltersBar value={filters} onChange={setFilters} stores={stores} />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <ProductsSummaryCards items={summaryItems} />
