@@ -31,6 +31,7 @@ def test_pack34_pos_end_to_end(client, db_session):
     assert store_response.status_code == status.HTTP_201_CREATED
     store_id = store_response.json()["id"]
 
+    # // [PACK34-test]
     device_response = client.post(
         f"/stores/{store_id}/devices",
         json={
@@ -48,6 +49,21 @@ def test_pack34_pos_end_to_end(client, db_session):
     device_id = device_data["id"]
     imei_value = device_data.get("imei") or "353001159753462"
 
+    # // [PACK34-test]
+    accessory_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "PACK34-ACC",
+            "name": "Cargador POS",
+            "quantity": 5,
+            "unit_price": 25.5,
+            "costo_unitario": 10.0,
+        },
+        headers=headers,
+    )
+    assert accessory_response.status_code == status.HTTP_201_CREATED
+    accessory_id = accessory_response.json()["id"]
+
     open_response = client.post(
         "/pos/sessions/open",
         json={"branchId": store_id, "opening_amount": 500.0},
@@ -56,19 +72,35 @@ def test_pack34_pos_end_to_end(client, db_session):
     assert open_response.status_code == status.HTTP_201_CREATED
     session_id = open_response.json()["session_id"]
 
+    # // [PACK34-test]
+    last_open_response = client.get(
+        f"/pos/sessions/last?branchId={store_id}",
+        headers={**headers, **_reason_header("Consultar ultima sesion")},
+    )
+    assert last_open_response.status_code == status.HTTP_200_OK
+    last_open_data = last_open_response.json()
+    assert last_open_data["session_id"] == session_id
+    assert last_open_data["status"].upper() == "ABIERTO"
+
     sale_payload = {
         "branchId": store_id,
         "sessionId": session_id,
         "confirm": True,
         "items": [
             {
-                "productId": device_id,
+                "imei": imei_value,
                 "qty": 1,
-                "price": "199.99",
-                "discount": 5.0,
-            }
+                "price": "219.99",
+                "discount": 10.0,
+            },
+            {
+                "productId": accessory_id,
+                "qty": 1,
+                "price": "25.50",
+                "discount": 0.0,
+            },
         ],
-        "payments": [{"method": "EFECTIVO", "amount": 199.99}],
+        "payments": [{"method": "EFECTIVO", "amount": 245.49}],
         "note": "Venta mostrador pack34",
     }
     sale_response = client.post(
@@ -110,9 +142,19 @@ def test_pack34_pos_end_to_end(client, db_session):
     assert close_response.status_code == status.HTTP_200_OK
     assert close_response.json()["status"] == "CERRADO"
 
+    # // [PACK34-test]
+    last_closed_response = client.get(
+        f"/pos/sessions/last?branchId={store_id}",
+        headers={**headers, **_reason_header("Consultar sesion cerrada")},
+    )
+    assert last_closed_response.status_code == status.HTTP_200_OK
+    last_closed_data = last_closed_response.json()
+    assert last_closed_data["session_id"] == session_id
+    assert last_closed_data["status"].upper() == "CERRADO"
+
     return_payload = {
         "originalSaleId": sale_id,
-        "reason": "Cliente devolvio accesorio",
+        "reason": "Cliente devolvio equipo principal",
         "items": [{"imei": imei_value, "qty": 1}],
     }
     return_response = client.post(
@@ -124,4 +166,13 @@ def test_pack34_pos_end_to_end(client, db_session):
     return_data = return_response.json()
     assert return_data["sale_id"] == sale_id
     assert isinstance(return_data["return_ids"], list) and return_data["return_ids"]
+
+    # // [PACK34-test]
+    remaining_detail = client.get(
+        f"/pos/sale/{sale_id}",
+        headers={**headers, **_reason_header("Consultar venta POS tras devolucion")},
+    )
+    assert remaining_detail.status_code == status.HTTP_200_OK
+    remaining_items = remaining_detail.json()["sale"].get("items", [])
+    assert len(remaining_items) >= 1
 
