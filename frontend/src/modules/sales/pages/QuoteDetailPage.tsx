@@ -100,7 +100,23 @@ export function QuoteDetailPage() {
           <h2 style={{ margin: 0 }}>Cotización #{data?.number ?? "—"}</h2>
           <span style={{ color: "#9ca3af" }}>{data ? new Date(data.date).toLocaleString() : loading ? "Cargando…" : "—"}</span>
         </div>
-        <QuoteEditor value={value} onChange={setValue} />
+        <QuoteEditor
+          value={value}
+          onChange={setValue}
+          onAddLine={() => {
+            setValue((current) => {
+              const base = current ?? { lines: [] };
+              const nextId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              return {
+                ...base,
+                lines: [
+                  ...(base.lines ?? []),
+                  { id: nextId, name: "", qty: 1, price: 0 },
+                ],
+              };
+            });
+          }}
+        />
       </div>
       <div>
         <h3 style={{ marginBottom: 8 }}>Líneas</h3>

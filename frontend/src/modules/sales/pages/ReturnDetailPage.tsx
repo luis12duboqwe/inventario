@@ -80,26 +80,33 @@ export function ReturnDetailPage() {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      {isCreateMode ? (
-        <>
-          <ReturnEditor
-            onSubmit={(payload) => {
-              if (saving) return;
-              onCreate({
-                reason: payload.reason as ReturnDoc["reason"],
-                note: payload.note,
-                lines: payload.lines.map((line) => ({
-                  productId: line.id,
-                  name: line.name,
-                  qty: line.qty,
-                  price: line.price,
-                  imei: line.imei,
-                  restock: line.restock,
-                })),
-                ticketNumber: payload.lines[0]?.ticket,
-              });
-            }}
-          />
+        {isCreateMode ? (
+          <>
+            <ReturnEditor
+              onSubmit={(payload) => {
+                if (saving) return;
+                const missingProduct = payload.lines.find((line) => !line.productId);
+                if (missingProduct) {
+                  window.alert(
+                    "Selecciona un producto válido para cada línea antes de generar la devolución.",
+                  );
+                  return;
+                }
+                onCreate({
+                  reason: payload.reason as ReturnDoc["reason"],
+                  note: payload.note,
+                  lines: payload.lines.map((line) => ({
+                    productId: line.productId!,
+                    name: line.name,
+                    qty: line.qty,
+                    price: line.price,
+                    imei: line.imei,
+                    restock: line.restock,
+                  })),
+                  ticketNumber: payload.lines[0]?.ticket,
+                });
+              }}
+            />
           {data && (
             <div style={{ display: "grid", gap: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

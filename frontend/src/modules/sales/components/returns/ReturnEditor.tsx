@@ -2,6 +2,7 @@ import React, { useState } from "react";
 
 type ReturnLine = {
   id: string;
+  productId?: string;
   ticket?: string;
   imei?: string;
   name: string;
@@ -30,6 +31,7 @@ export default function ReturnEditor({ onSubmit }: Props) {
       ...prev,
       {
         id: String(Date.now()),
+        productId: "",
         name: "",
         qty: 1,
         price: 0,
@@ -46,7 +48,8 @@ export default function ReturnEditor({ onSubmit }: Props) {
     setLines((prev) => prev.filter((line) => line.id !== id));
   };
 
-  const valid = lines.length > 0 && lines.every((line) => line.qty > 0);
+  const valid =
+    lines.length > 0 && lines.every((line) => line.qty > 0 && Boolean(line.productId));
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
@@ -78,7 +81,7 @@ export default function ReturnEditor({ onSubmit }: Props) {
             key={line.id}
             style={{
               display: "grid",
-              gridTemplateColumns: "140px 160px 1fr 90px 90px 100px 28px",
+              gridTemplateColumns: "140px 160px 140px 1fr 90px 90px 100px 28px",
               gap: 8,
               alignItems: "center",
             }}
@@ -93,6 +96,12 @@ export default function ReturnEditor({ onSubmit }: Props) {
               placeholder="IMEI/serial"
               value={line.imei ?? ""}
               onChange={(event) => updateLine(line.id, { imei: event.target.value })}
+              style={{ padding: 8, borderRadius: 8 }}
+            />
+            <input
+              placeholder="ID producto"
+              value={line.productId ?? ""}
+              onChange={(event) => updateLine(line.id, { productId: event.target.value })}
               style={{ padding: 8, borderRadius: 8 }}
             />
             <input
