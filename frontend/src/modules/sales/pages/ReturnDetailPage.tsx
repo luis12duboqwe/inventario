@@ -1,6 +1,6 @@
 import React from "react";
 // [PACK23-RETURNS-DETAIL-IMPORTS-START]
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { SalesReturns } from "../../../services/sales";
 import type { ReturnDoc, ReturnCreate } from "../../../services/sales";
@@ -11,6 +11,11 @@ import { Table } from "../components/common";
 // [PACK27-PRINT-IMPORT-RETURNS-START]
 import { openPrintable } from "@/lib/print";
 // [PACK27-PRINT-IMPORT-RETURNS-END]
+// [PACK25-SKELETON-USE-START]
+import { Skeleton } from "@/ui/Skeleton";
+// [PACK25-SKELETON-USE-END]
+import { readQueue } from "@/services/offline";
+import { flushOffline, safeCreateReturn } from "../utils/offline";
 
 const lineColumns = [
   { key: "name", label: "Producto" },
@@ -46,6 +51,10 @@ export function ReturnDetailPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   // [PACK23-RETURNS-DETAIL-STATE-END]
+  const [pendingOffline, setPendingOffline] = useState(0);
+  const [flushing, setFlushing] = useState(false);
+  const [flushMessage, setFlushMessage] = useState<string | null>(null);
+  const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
 
   // [PACK23-RETURNS-DETAIL-FETCH-START]
   useEffect(() => {
@@ -58,6 +67,16 @@ export function ReturnDetailPage() {
   }, [id]);
   // [PACK23-RETURNS-DETAIL-FETCH-END]
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingOffline(readQueue().length);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingOffline(readQueue().length);
+  }, [data]);
+
   // [PACK23-RETURNS-DETAIL-SAVE-START]
   async function onCreate(payload: ReturnCreate) {
     setSaving(true);
@@ -69,12 +88,35 @@ export function ReturnDetailPage() {
         openPrintable(r.printable, "nota-devolucion");
       }
       // [PACK27-PRINT-RETURN-CREATE-END]
+      const r = await safeCreateReturn(payload);
+      if (r) {
+        setData(r);
+        setOfflineNotice(null);
+      } else {
+        setOfflineNotice("Devolución registrada offline. Reintenta sincronizar más tarde.");
+      }
+      if (typeof window !== "undefined") {
+        setPendingOffline(readQueue().length);
+      }
       // TODO: navegar a detalle r.id si tu router lo soporta
     } finally {
       setSaving(false);
     }
   }
   // [PACK23-RETURNS-DETAIL-SAVE-END]
+
+  const handleFlush = useCallback(async () => {
+    setFlushing(true);
+    try {
+      const result = await flushOffline();
+      setPendingOffline(result.pending);
+      setFlushMessage(`Reintentadas: ${result.flushed}. Pendientes: ${result.pending}.`);
+    } catch {
+      setFlushMessage("No fue posible sincronizar. Intenta de nuevo más tarde.");
+    } finally {
+      setFlushing(false);
+    }
+  }, []);
 
   const isCreateMode = !id;
   const lineRows = linesToTable(
@@ -86,8 +128,37 @@ export function ReturnDetailPage() {
     }))
   );
 
+  const headerSection = useMemo(() => {
+    if (!isCreateMode && loading && !data) {
+      return <Skeleton lines={6} />;
+    }
+    return (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2 style={{ margin: 0 }}>Devolución #{data?.number ?? "—"}</h2>
+        <span style={{ color: "#9ca3af" }}>
+          {data ? formatDate(data.date) : loading ? "Cargando…" : "—"}
+        </span>
+      </div>
+    );
+  }, [data, isCreateMode, loading]);
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {pendingOffline > 0 ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
+          <button
+            type="button"
+            onClick={handleFlush}
+            disabled={flushing}
+            style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
+          >
+            {flushing ? "Reintentando…" : "Reintentar pendientes"}
+          </button>
+        </div>
+      ) : null}
+      {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
+      {offlineNotice ? <div style={{ color: "#fbbf24", fontSize: 13 }}>{offlineNotice}</div> : null}
       {isCreateMode ? (
         <>
           <ReturnEditor
@@ -125,6 +196,7 @@ export function ReturnDetailPage() {
                   {/* [PACK27-PRINT-BUTTON-END] */}
                 </div>
               </div>
+              {headerSection}
               <div style={{ display: "grid", gap: 4, color: "#9ca3af" }}>
                 <span>
                   Motivo: <strong>{reasonLabels[data.reason] ?? data.reason}</strong>
@@ -154,6 +226,7 @@ export function ReturnDetailPage() {
               {/* [PACK27-PRINT-BUTTON-END] */}
             </div>
           </div>
+          {headerSection}
           <div style={{ display: "grid", gap: 4, color: "#9ca3af" }}>
             <span>
               Motivo: <strong>{data ? reasonLabels[data.reason] ?? data.reason : "—"}</strong>

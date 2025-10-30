@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useCallback, useMemo } from "react";
+import { Row } from "../Row";
 
 type Column = { key: string; label: string; align?: "left" | "right" | "center" };
 type Row = Record<string, unknown>;
@@ -10,53 +11,69 @@ type Props = {
 };
 
 export default function Table({ cols, rows, onRowClick }: Props) {
-  const data = Array.isArray(rows) ? rows : [];
+  const data = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
+
+  const headerCells = useMemo(
+    () => cols.map((column) => <strong key={column.key}>{column.label}</strong>),
+    [cols],
+  );
+
+  const mappedRows = useMemo(
+    () =>
+      data.map((row, index) => ({
+        key: (row?.id as string | number | undefined) ?? index,
+        row,
+        cells: cols.map((column) => (
+          <span
+            key={column.key}
+            style={{
+              display: "block",
+              textAlign: column.align ?? "left",
+            }}
+          >
+            {row[column.key] ?? "—"}
+          </span>
+        )),
+      })),
+    [cols, data],
+  );
+
+  const handleClick = useCallback(
+    (row: Row) => {
+      onRowClick?.(row);
+    },
+    [onRowClick],
+  );
+
   return (
     <div
       style={{
-        overflow: "auto",
+        overflow: "hidden",
         borderRadius: 12,
         border: "1px solid rgba(255,255,255,0.08)",
       }}
     >
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-        <thead>
-          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-            {cols.map((column) => (
-              <th
-                key={column.key}
-                style={{ textAlign: column.align ?? "left", padding: 10 }}
+      <div role="table" style={{ width: "100%", fontSize: 14 }}>
+        <div role="row" style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+          <Row cells={headerCells} />
+        </div>
+        <div>
+          {mappedRows.length ? (
+            mappedRows.map(({ key, cells, row }) => (
+              <div
+                key={key}
+                role="row"
+                onClick={() => handleClick(row)}
+                style={{ cursor: onRowClick ? "pointer" : "default", borderBottom: "1px solid rgba(255,255,255,0.04)" }}
               >
-                {column.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.length ? (
-            data.map((row, index) => (
-              <tr
-                key={index}
-                onClick={() => onRowClick?.(row)}
-                style={{ cursor: onRowClick ? "pointer" : "default" }}
-              >
-                {cols.map((column) => (
-                  <td
-                    key={column.key}
-                    style={{ textAlign: column.align ?? "left", padding: 10 }}
-                  >
-                    {row[column.key] ?? "—"}
-                  </td>
-                ))}
-              </tr>
+                <Row cells={cells} />
+              </div>
             ))
           ) : (
-            <tr>
-              <td style={{ padding: 12, color: "#9ca3af" }}>Sin resultados</td>
-            </tr>
+            <div style={{ padding: 12, color: "#9ca3af" }}>Sin resultados</div>
           )}
-        </tbody>
-      </table>
+        </div>
+      </div>
     </div>
   );
 }

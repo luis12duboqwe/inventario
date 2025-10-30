@@ -1,7 +1,10 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, PanelsTopLeft } from "lucide-react";
 
 import SidebarMenu, { type SidebarMenuItem } from "../../../shared/components/ui/SidebarMenu";
+// [PACK25-PREFETCH-WIRE-START]
+import { preimport, prefetchJson } from "@/lib/prefetch";
+// [PACK25-PREFETCH-WIRE-END]
 
 export type SidebarNavChild = {
   to: string;
@@ -13,6 +16,7 @@ export type SidebarNavItem = {
   label: string;
   icon: ReactNode;
   children?: SidebarNavChild[];
+  onMouseEnter?: () => void;
 };
 
 type SidebarProps = {
@@ -23,6 +27,7 @@ type SidebarProps = {
 };
 
 const STORAGE_KEY = "softmobile_sidebar_collapsed";
+const BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || "";
 
 function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -53,6 +58,15 @@ function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: Sidebar
     onNavigate?.();
   };
 
+  const onHoverSales = useCallback(() => {
+    preimport(() => import("@/modules/sales/pages/POSPage"));
+    preimport(() => import("@/modules/sales/pages/QuotesListPage"));
+    preimport(() => import("@/modules/sales/pages/CustomersListPage"));
+
+    prefetchJson(`${BASE}/api/products/search?page=1&pageSize=12`);
+    prefetchJson(`${BASE}/api/customers?page=1&pageSize=20`);
+  }, []);
+
   const sidebarClassName = ["app-sidebar", collapsed ? "is-collapsed" : "", mobileOpen ? "is-mobile-open" : ""]
     .filter(Boolean)
     .join(" ");
@@ -63,12 +77,13 @@ function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: Sidebar
         to: item.to,
         label: item.label,
         icon: item.icon,
+        onMouseEnter: item.onMouseEnter ?? (item.label === "Ventas" ? onHoverSales : undefined),
         children: item.children?.map((child) => ({
           to: child.to,
           label: child.label,
         })),
       })),
-    [items],
+    [items, onHoverSales],
   );
 
   return (

@@ -1,6 +1,6 @@
 import React from "react";
 // [PACK23-CUSTOMERS-LIST-IMPORTS-START]
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { SalesCustomers } from "../../../services/sales";
 import type { Customer, CustomerListParams } from "../../../services/sales";
@@ -9,6 +9,11 @@ import { CustomersFiltersBar, CustomersTable } from "../components/customers";
 // [PACK27-INJECT-EXPORT-CUSTOMERS-START]
 import ExportDropdown from "@/components/ExportDropdown";
 // [PACK27-INJECT-EXPORT-CUSTOMERS-END]
+// [PACK25-SKELETON-USE-START]
+import { Skeleton } from "@/ui/Skeleton";
+// [PACK25-SKELETON-USE-END]
+import { readQueue } from "@/services/offline";
+import { flushOffline } from "../utils/offline";
 
 type CustomerRow = {
   id: string;
@@ -32,6 +37,9 @@ export function CustomersListPage() {
   const [loading, setLoading] = useState(false);
   // [PACK23-CUSTOMERS-LIST-STATE-END]
   const [tag, setTag] = useState<string | undefined>(undefined);
+  const [pendingOffline, setPendingOffline] = useState(0);
+  const [flushing, setFlushing] = useState(false);
+  const [flushMessage, setFlushMessage] = useState<string | null>(null);
 
   // [PACK23-CUSTOMERS-LIST-FETCH-START]
   async function fetchCustomers(extra?: Partial<CustomerListParams>) {
@@ -47,14 +55,48 @@ export function CustomersListPage() {
   useEffect(() => { fetchCustomers(); }, [page, pageSize, tier, tag, q]);
   // [PACK23-CUSTOMERS-LIST-FETCH-END]
 
-  const rows: CustomerRow[] = items.map((customer) => ({
-    id: String(customer.id),
-    name: customer.name,
-    phone: customer.phone,
-    email: customer.email,
-    tier: customer.tier,
-    lastSale: customer.lastSaleAt ? new Date(customer.lastSaleAt).toLocaleDateString() : "—",
-  }));
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingOffline(readQueue().length);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingOffline(readQueue().length);
+  }, [items]);
+
+  const rows: CustomerRow[] = useMemo(
+    () =>
+      items.map((customer) => ({
+        id: String(customer.id),
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        tier: customer.tier,
+        lastSale: customer.lastSaleAt ? new Date(customer.lastSaleAt).toLocaleDateString() : "—",
+      })),
+    [items],
+  );
+
+  const handleRowClick = useCallback(
+    (row: CustomerRow) => {
+      navigate(`/sales/customers/${row.id}`);
+    },
+    [navigate],
+  );
+
+  const handleFlush = useCallback(async () => {
+    setFlushing(true);
+    try {
+      const result = await flushOffline();
+      setPendingOffline(result.pending);
+      setFlushMessage(`Reintentadas: ${result.flushed}. Pendientes: ${result.pending}.`);
+    } catch (error) {
+      setFlushMessage("No fue posible sincronizar. Intenta más tarde.");
+    } finally {
+      setFlushing(false);
+    }
+  }, []);
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -89,6 +131,27 @@ export function CustomersListPage() {
         rows={rows}
         onRowClick={(row) => navigate(`/sales/customers/${row.id}`)}
       />
+      />
+      {pendingOffline > 0 ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
+          <button
+            type="button"
+            onClick={handleFlush}
+            disabled={flushing}
+            style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
+          >
+            {flushing ? "Reintentando…" : "Reintentar pendientes"}
+          </button>
+        </div>
+      ) : null}
+      {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
+      {loading ? <Skeleton lines={8} /> : (
+        <CustomersTable
+          rows={rows}
+          onRowClick={handleRowClick}
+        />
+      )}
       <div style={{ color: "#9ca3af", fontSize: 12 }}>
         {loading ? "Cargando clientes…" : `${total} clientes encontrados`}
       </div>

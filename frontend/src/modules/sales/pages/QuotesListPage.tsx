@@ -1,6 +1,6 @@
 import React from "react";
 // [PACK23-QUOTES-LIST-IMPORTS-START]
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { SalesQuotes } from "../../../services/sales";
 import type { Quote, QuoteListParams } from "../../../services/sales";
@@ -9,6 +9,11 @@ import { FiltersBar, SidePanel, SummaryCards, Table } from "../components/common
 // [PACK27-INJECT-EXPORT-QUOTES-START]
 import ExportDropdown from "@/components/ExportDropdown";
 // [PACK27-INJECT-EXPORT-QUOTES-END]
+// [PACK25-SKELETON-USE-START]
+import { Skeleton } from "@/ui/Skeleton";
+// [PACK25-SKELETON-USE-END]
+import { readQueue } from "@/services/offline";
+import { flushOffline } from "../utils/offline";
 
 const columns = [
   { key: "date", label: "Fecha" },
@@ -63,6 +68,9 @@ export function QuotesListPage() {
   const [loading, setLoading] = useState(false);
   // [PACK23-QUOTES-LIST-STATE-END]
   const [selectedRow, setSelectedRow] = useState<Quote | null>(null);
+  const [pendingOffline, setPendingOffline] = useState(0);
+  const [flushing, setFlushing] = useState(false);
+  const [flushMessage, setFlushMessage] = useState<string | null>(null);
 
   // [PACK23-QUOTES-LIST-FETCH-START]
   async function fetchQuotes(extra?: Partial<QuoteListParams>) {
@@ -79,21 +87,44 @@ export function QuotesListPage() {
   useEffect(() => { fetchQuotes(); }, [page, pageSize, status]);
   // [PACK23-QUOTES-LIST-FETCH-END]
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingOffline(readQueue().length);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingOffline(readQueue().length);
+  }, [items]);
+
   // [PACK23-QUOTES-LIST-UI-START]
   function onSearch(e: React.FormEvent) { e.preventDefault(); setPage(1); fetchQuotes({ page: 1 }); }
   function onStatusChange(s: Quote["status"] | undefined) { setStatus(s); setPage(1); fetchQuotes({ page: 1, status: s }); }
   // [PACK23-QUOTES-LIST-UI-END]
 
-  const rows: QuoteRow[] = items.map((quote) => ({
-    id: String(quote.id),
-    date: formatDate(quote.date),
-    number: quote.number,
-    customer: quote.customerName ?? "—",
-    items: quote.lines?.length ?? 0,
-    total: formatCurrency(quote.totals?.grand),
-    status: statusLabels[quote.status] ?? quote.status,
-    actions: <Link to={`/sales/quotes/${quote.id}`} style={{ color: "#38bdf8" }}>Ver</Link>,
-  }));
+  const rows: QuoteRow[] = useMemo(
+    () =>
+      items.map((quote) => ({
+        id: String(quote.id),
+        date: formatDate(quote.date),
+        number: quote.number,
+        customer: quote.customerName ?? "—",
+        items: quote.lines?.length ?? 0,
+        total: formatCurrency(quote.totals?.grand),
+        status: statusLabels[quote.status] ?? quote.status,
+        actions: <Link to={`/sales/quotes/${quote.id}`} style={{ color: "#38bdf8" }}>Ver</Link>,
+      })),
+    [items],
+  );
+
+  const handleRowSelect = useCallback(
+    (row: QuoteRow | Record<string, unknown>) => {
+      const rowId = String((row as QuoteRow).id ?? "");
+      const found = items.find((item) => String(item.id) === rowId);
+      setSelectedRow(found ?? null);
+    },
+    [items],
+  );
 
   const pages = Math.max(1, Math.ceil(total / pageSize) || 1);
   const statusOptions: Array<{ value: Quote["status"] | undefined; label: string }> = [
@@ -161,6 +192,68 @@ export function QuotesListPage() {
           setSelectedRow(found ?? null);
         }}
       />
+      <form onSubmit={onSearch}>
+        <FiltersBar>
+          <input
+            placeholder="#Q/Cliente"
+            value={q}
+            onChange={(event) => setQ(event.target.value)}
+            style={{ padding: 8, borderRadius: 8 }}
+          />
+          <select
+            value={status ?? ""}
+            onChange={(event) => onStatusChange(event.target.value ? (event.target.value as Quote["status"]) : undefined)}
+            style={{ padding: 8, borderRadius: 8 }}
+          >
+            {statusOptions.map((option) => (
+              <option key={option.label} value={option.value ?? ""}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            style={{ padding: "8px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none" }}
+            disabled={loading}
+          >
+            Buscar
+          </button>
+        </FiltersBar>
+      </form>
+      {pendingOffline > 0 ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
+          <button
+            type="button"
+            onClick={async () => {
+              setFlushing(true);
+              try {
+                const result = await flushOffline();
+                setPendingOffline(result.pending);
+                setFlushMessage(`Reintentadas: ${result.flushed}. Pendientes: ${result.pending}.`);
+              } catch {
+                setFlushMessage("No fue posible sincronizar. Intenta nuevamente.");
+              } finally {
+                setFlushing(false);
+              }
+            }}
+            disabled={flushing}
+            style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
+          >
+            {flushing ? "Reintentando…" : "Reintentar pendientes"}
+          </button>
+        </div>
+      ) : null}
+      {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
+      {loading ? (
+        <Skeleton lines={10} />
+      ) : (
+        <Table
+          cols={columns}
+          rows={rows}
+          onRowClick={handleRowSelect}
+        />
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ color: "#9ca3af" }}>
           Página {page} de {pages}
