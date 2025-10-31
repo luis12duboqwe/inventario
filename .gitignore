@@ -1,25 +1,29 @@
 # Python
 __pycache__/
-*.py[cod]
-*.sqlite3
-*.db
-*.db-journal
-.env
-!frontend/.env.production
+*.pyc
 .venv/
-
-# VSCode
-.vscode/
-
-# Pytest cache
+.mypy_cache/
 .pytest_cache/
 
-# virtual environment for windows
-Scripts/
+# Node
+node_modules/
+dist/
+build/
 
-# Backups generados por el sistema
-backups/
+# Logs
+logs/
+*.log
+backend/logs/
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
+# Env files (keep only .example)
+.env
+.env.*
+frontend/.env.local
+frontend/.env.production
+frontend/.env.codespace
+backend/.env
+
+# Misc
+.DS_Store
+.idea/
+.vscode/
