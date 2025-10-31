@@ -5,6 +5,10 @@ import {
   retrySyncOutbox,
   getSyncOutboxStats,
   getSyncHistory,
+  enqueueSyncQueueEvents,
+  dispatchSyncQueueEvents,
+  listSyncQueueStatus,
+  resolveSyncQueueEvent,
 } from "../../../api";
 
 export const syncService = {
@@ -14,4 +18,8 @@ export const syncService = {
   retrySyncOutbox,
   getSyncOutboxStats,
   getSyncHistory,
+  enqueueSyncQueueEvents, // [PACK35-frontend]
+  dispatchSyncQueueEvents,
+  listSyncQueueStatus,
+  resolveSyncQueueEvent,
 };

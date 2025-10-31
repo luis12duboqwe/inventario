@@ -4,7 +4,9 @@ import type { ModuleStatus } from "../../../shared/components/ModuleHeader";
 import SyncSummary from "../../../pages/sync/components/SyncSummary";
 import SyncActions from "../../../pages/sync/components/SyncActions";
 import LogsTable from "../../../pages/sync/components/LogsTable";
+import HybridQueuePanel from "../components/HybridQueuePanel"; // [PACK35-frontend]
 import { useSyncModule } from "../hooks/useSyncModule";
+import { useSyncQueue } from "../hooks/useSyncQueue"; // [PACK35-frontend]
 import {
   exportSyncConflictsExcel,
   exportSyncConflictsPdf,
@@ -54,6 +56,78 @@ type OutboxRow = {
   updatedAt: string;
 };
 
+type HybridModuleBreakdown = {
+  module: string;
+  label: string;
+  percent: number;
+  total: number;
+  processed: number;
+  pending: number;
+  failed: number;
+  queue: { total: number; processed: number; pending: number; failed: number };
+  outbox: { total: number; processed: number; pending: number; failed: number };
+}; // [PACK35-frontend]
+
+type HybridProgressSnapshot = {
+  percent: number;
+  total: number;
+  processed: number;
+  pending: number;
+  failed: number;
+  server: {
+    percent: number;
+    total: number;
+    processed: number;
+    pending: number;
+    failed: number;
+  }; // [PACK35-frontend]
+  breakdown: {
+    local: { total: number; processed: number; pending: number; failed: number };
+    remote: {
+      total: number;
+      processed: number;
+      pending: number;
+      failed: number;
+      lastUpdated: string | null;
+      oldestPending: string | null;
+    };
+    outbox: {
+      total: number;
+      processed: number;
+      pending: number;
+      failed: number;
+      lastUpdated: string | null;
+      oldestPending: string | null;
+    };
+  };
+  forecast: {
+    lookbackMinutes: number;
+    eventsPerMinute: number;
+    successRate: number;
+    processedRecent: number;
+    backlogPending: number;
+    backlogFailed: number;
+    backlogTotal: number;
+    estimatedMinutesRemaining: number | null;
+    estimatedCompletion: string | null;
+    generatedAt: string | null;
+  };
+  overview: {
+    percent: number;
+    generatedAt: string | null;
+    remaining: {
+      total: number;
+      pending: number;
+      failed: number;
+      remotePending: number;
+      outboxPending: number;
+      estimatedMinutesRemaining: number | null;
+      estimatedCompletion: string | null;
+    };
+  } | null;
+  modules: HybridModuleBreakdown[];
+}; // [PACK35-frontend]
+
 function formatDateTime(value?: string | null): string {
   if (!value) {
     return "—";
@@ -85,6 +159,11 @@ function SyncPage() {
     refreshOutbox,
     handleRetryOutbox,
     outboxStats,
+    syncQueueSummary,
+    syncHybridProgress,
+    syncHybridForecast,
+    syncHybridBreakdown,
+    syncHybridOverview,
     syncHistory,
     syncHistoryError,
     refreshSyncHistory,
@@ -95,7 +174,35 @@ function SyncPage() {
     setError,
     selectedStore,
     formatCurrency,
+    refreshSyncQueueSummary,
   } = useSyncModule();
+
+  const {
+    pending: queuePending,
+    history: queueHistory,
+    loading: queueLoading,
+    online: queueOnline,
+    lastSummary: queueSummary,
+    progress: queueProgress,
+    enqueueDemo,
+    flush,
+    resetSummary: resetQueueSummary,
+  } = useSyncQueue(token);
+
+  const handleQueueFlush = useCallback(async () => {
+    const summary = await flush();
+    if (summary.sent > 0) {
+      pushToast({ message: `${summary.sent} evento(s) enviados desde la cola local.`, variant: "success" });
+    } else if (summary.failed > 0) {
+      pushToast({ message: "Revisa tu conexión: algunos eventos no se enviaron.", variant: "error" });
+    }
+    return summary;
+  }, [flush, pushToast]);
+
+  const handleQueueDemo = useCallback(async () => {
+    await enqueueDemo();
+    pushToast({ message: "Evento demo agregado a la cola local.", variant: "info" });
+  }, [enqueueDemo, pushToast]);
 
   const [branchOverview, setBranchOverview] = useState<SyncBranchOverview[]>([]);
   const [overviewLoading, setOverviewLoading] = useState<boolean>(false);
@@ -232,6 +339,10 @@ function SyncPage() {
   useEffect(() => {
     void refreshConflicts();
   }, [refreshConflicts]);
+
+  useEffect(() => {
+    void refreshSyncQueueSummary();
+  }, [refreshSyncQueueSummary]);
 
   const handleDownloadInventoryPdf = async () => {
     const defaultReason = selectedStore
@@ -392,6 +503,209 @@ function SyncPage() {
   const currentSyncLabel = syncStatus ?? moduleStatusLabel;
   const totalPendingOutbox = outbox.length;
 
+  const hybridProgress = useMemo<HybridProgressSnapshot>(
+    () => {
+      const fallbackOutboxTotals = outboxStats.reduce<{
+        total: number;
+        pending: number;
+        failed: number;
+        latest_update: string | null;
+        oldest_pending: string | null;
+      }>((acc, stat) => {
+        const latestUpdate = stat.latest_update ?? null;
+        const oldestPending = stat.oldest_pending ?? null;
+        const nextLatest =
+          latestUpdate && (!acc.latest_update || latestUpdate > acc.latest_update)
+            ? latestUpdate
+            : acc.latest_update;
+        const nextOldest =
+          oldestPending && (!acc.oldest_pending || oldestPending < acc.oldest_pending)
+            ? oldestPending
+            : acc.oldest_pending;
+        return {
+          total: acc.total + stat.total,
+          pending: acc.pending + stat.pending,
+          failed: acc.failed + stat.failed,
+          latest_update: nextLatest,
+          oldest_pending: nextOldest,
+        };
+      }, { total: 0, pending: 0, failed: 0, latest_update: null, oldest_pending: null });
+
+      const fallbackQueueComponent = syncQueueSummary
+        ? {
+            total: syncQueueSummary.total,
+            processed: syncQueueSummary.processed,
+            pending: syncQueueSummary.pending,
+            failed: syncQueueSummary.failed,
+            latest_update: syncQueueSummary.last_updated,
+            oldest_pending: syncQueueSummary.oldest_pending,
+          }
+        : {
+            total: 0,
+            processed: 0,
+            pending: 0,
+            failed: 0,
+            latest_update: null,
+            oldest_pending: null,
+          };
+
+      const fallbackOutboxComponent = {
+        total: fallbackOutboxTotals.total,
+        processed: Math.max(
+          fallbackOutboxTotals.total - fallbackOutboxTotals.pending - fallbackOutboxTotals.failed,
+          0,
+        ),
+        pending: fallbackOutboxTotals.pending,
+        failed: fallbackOutboxTotals.failed,
+        latest_update: fallbackOutboxTotals.latest_update,
+        oldest_pending: fallbackOutboxTotals.oldest_pending,
+      };
+
+      const progressSource =
+        syncHybridOverview?.progress ?? syncHybridForecast?.progress ?? syncHybridProgress;
+      const queueComponent = progressSource?.components.queue ?? fallbackQueueComponent;
+      const outboxComponent = progressSource?.components.outbox ?? fallbackOutboxComponent;
+
+      const serverTotal = queueComponent.total + outboxComponent.total;
+      const serverProcessed = queueComponent.processed + outboxComponent.processed;
+      const serverPending = queueComponent.pending + outboxComponent.pending;
+      const serverFailed = queueComponent.failed + outboxComponent.failed;
+      const rawServerPercent =
+        serverTotal === 0 ? 100 : (serverProcessed / Math.max(serverTotal, 1)) * 100;
+      const overviewPercent =
+        syncHybridOverview?.percent !== undefined
+          ? Math.round(syncHybridOverview.percent * 100) / 100
+          : Math.round(rawServerPercent * 100) / 100;
+
+      const localTotal = queueProgress.total;
+      const localProcessed = queueProgress.sent;
+      const localFailed = queueProgress.failed;
+      const localPendingActive = queueHistory.filter(
+        (item) => item.status !== "sent" && item.status !== "failed",
+      ).length;
+
+      const combinedTotal = localTotal + serverTotal;
+      const combinedProcessed = localProcessed + serverProcessed;
+      const combinedPending = localPendingActive + serverPending;
+      const combinedFailed = localFailed + serverFailed;
+
+      const percent =
+        combinedTotal === 0
+          ? 100
+          : Math.round(
+              (combinedProcessed / Math.max(combinedTotal, 1)) * 100 * 100,
+            ) / 100;
+
+      const forecastSource = syncHybridOverview?.forecast ?? syncHybridForecast;
+      const forecast = forecastSource
+        ? {
+            lookbackMinutes: forecastSource.lookback_minutes,
+            eventsPerMinute: forecastSource.events_per_minute,
+            successRate: forecastSource.success_rate,
+            processedRecent: forecastSource.processed_recent,
+            backlogPending: forecastSource.backlog_pending,
+            backlogFailed: forecastSource.backlog_failed,
+            backlogTotal: forecastSource.backlog_total,
+            estimatedMinutesRemaining: forecastSource.estimated_minutes_remaining,
+            estimatedCompletion: forecastSource.estimated_completion,
+            generatedAt: forecastSource.generated_at,
+          }
+        : {
+            lookbackMinutes: 0,
+            eventsPerMinute: 0,
+            successRate: 0,
+            processedRecent: 0,
+            backlogPending: combinedPending,
+            backlogFailed: combinedFailed,
+            backlogTotal: combinedPending + combinedFailed,
+            estimatedMinutesRemaining: null,
+            estimatedCompletion: null,
+            generatedAt: null,
+          };
+
+      const modulesSource = syncHybridOverview?.breakdown ?? syncHybridBreakdown;
+      const modules = modulesSource.map((item) => ({
+        module: item.module,
+        label: item.label,
+        percent: item.percent,
+        total: item.total,
+        processed: item.processed,
+        pending: item.pending,
+        failed: item.failed,
+        queue: item.queue,
+        outbox: item.outbox,
+      }));
+
+      const overview = syncHybridOverview
+        ? {
+            percent: Math.round(syncHybridOverview.percent * 100) / 100,
+            generatedAt: syncHybridOverview.generated_at,
+            remaining: {
+              total: syncHybridOverview.remaining.total,
+              pending: syncHybridOverview.remaining.pending,
+              failed: syncHybridOverview.remaining.failed,
+              remotePending: syncHybridOverview.remaining.remote_pending,
+              outboxPending: syncHybridOverview.remaining.outbox_pending,
+              estimatedMinutesRemaining: syncHybridOverview.remaining.estimated_minutes_remaining,
+              estimatedCompletion: syncHybridOverview.remaining.estimated_completion,
+            },
+          }
+        : null;
+
+      return {
+        percent,
+        total: combinedTotal,
+        processed: combinedProcessed,
+        pending: combinedPending,
+        failed: combinedFailed,
+        server: {
+          percent: overviewPercent,
+          total: serverTotal,
+          processed: serverProcessed,
+          pending: serverPending,
+          failed: serverFailed,
+        },
+        breakdown: {
+          local: {
+            total: localTotal,
+            processed: localProcessed,
+            pending: localPendingActive,
+            failed: localFailed,
+          },
+          remote: {
+            total: queueComponent.total,
+            processed: queueComponent.processed,
+            pending: queueComponent.pending,
+            failed: queueComponent.failed,
+            lastUpdated: queueComponent.latest_update ?? null,
+            oldestPending: queueComponent.oldest_pending ?? null,
+          },
+          outbox: {
+            total: outboxComponent.total,
+            processed: outboxComponent.processed,
+            pending: outboxComponent.pending,
+            failed: outboxComponent.failed,
+            lastUpdated: outboxComponent.latest_update ?? null,
+            oldestPending: outboxComponent.oldest_pending ?? null,
+          },
+        },
+        forecast,
+        overview,
+        modules,
+      } satisfies HybridProgressSnapshot;
+    },
+    [
+      outboxStats,
+      queueProgress,
+      queueHistory,
+      syncHybridProgress,
+      syncHybridForecast,
+      syncHybridOverview,
+      syncQueueSummary,
+      syncHybridBreakdown,
+    ],
+  ); // [PACK35-frontend]
+
   const topConflicts = useMemo(() => conflicts.slice(0, 6), [conflicts]);
   const outboxEntries = useMemo<OutboxRow[]>(() => {
     return outbox.map((entry) => ({
@@ -435,8 +749,22 @@ function SyncPage() {
           void refreshOutbox();
         }}
         formatDateTime={formatDateTime}
+        hybridProgress={hybridProgress}
       />
       <div className="section-scroll">
+        <HybridQueuePanel
+          pending={queuePending}
+          history={queueHistory}
+          loading={queueLoading}
+          online={queueOnline}
+          onFlush={handleQueueFlush}
+          onGenerateDemo={handleQueueDemo}
+          lastSummary={queueSummary}
+          resetSummary={resetQueueSummary}
+          progress={queueProgress}
+          forecast={hybridProgress.forecast}
+          modules={hybridProgress.modules}
+        />
         <div className="section-grid">
 
           <section className="card">

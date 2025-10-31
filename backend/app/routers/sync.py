@@ -19,6 +19,7 @@ from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import sync as sync_service
 from ..services import sync_conflict_reports
+from ..services import sync_queue
 
 logger = core_logger.bind(component=__name__)
 
@@ -85,6 +86,150 @@ def trigger_sync(
     if status is models.SyncStatus.FAILED:
         raise HTTPException(status_code=500, detail="No fue posible completar la sincronización")
     return session
+
+
+# // [PACK35-backend]
+@router.post(
+    "/events",
+    response_model=schemas.SyncQueueEnqueueResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def enqueue_queue_events(
+    payload: schemas.SyncQueueEnqueueRequest,
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    queued, reused = crud.enqueue_sync_queue_events(db, payload.events)
+    return schemas.SyncQueueEnqueueResponse(
+        queued=[schemas.SyncQueueEntryResponse.model_validate(item) for item in queued],
+        reused=[schemas.SyncQueueEntryResponse.model_validate(item) for item in reused],
+    )
+
+
+# // [PACK35-backend]
+@router.post(
+    "/dispatch",
+    response_model=schemas.SyncQueueDispatchResult,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def dispatch_queue_events(
+    limit: int = Query(default=25, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    return sync_queue.dispatch_pending_events(db, limit=limit)
+
+
+# // [PACK35-backend]
+@router.get(
+    "/status",
+    response_model=list[schemas.SyncQueueEntryResponse],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def list_queue_status(
+    limit: int = Query(default=50, ge=1, le=200),
+    status_filter: models.SyncQueueStatus | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    statuses: tuple[models.SyncQueueStatus, ...] | None = (
+        (status_filter,)
+        if status_filter is not None
+        else None
+    )
+    return sync_queue.list_queue_status(db, limit=limit, statuses=statuses)
+
+
+# // [PACK35-backend]
+@router.get(
+    "/status/summary",
+    response_model=schemas.SyncQueueProgressSummary,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def queue_progress_summary(
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    return sync_queue.queue_progress_summary(db)
+
+
+# // [PACK35-backend]
+@router.get(
+    "/status/hybrid",
+    response_model=schemas.SyncHybridProgressSummary,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def hybrid_progress_summary(
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    return sync_queue.calculate_hybrid_progress(db)
+
+
+# // [PACK35-backend]
+@router.get(
+    "/status/forecast",
+    response_model=schemas.SyncHybridForecast,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def hybrid_progress_forecast(
+    lookback_minutes: int = Query(default=60, ge=5, le=360),
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    return sync_queue.calculate_hybrid_forecast(db, lookback_minutes=lookback_minutes)
+
+
+# // [PACK35-backend]
+@router.get(
+    "/status/breakdown",
+    response_model=list[schemas.SyncHybridModuleBreakdownItem],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def hybrid_progress_breakdown(
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    return sync_queue.calculate_hybrid_breakdown(db)
+
+
+# // [PACK35-backend]
+@router.get(
+    "/status/overview",
+    response_model=schemas.SyncHybridOverview,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def hybrid_progress_overview(
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    return sync_queue.calculate_hybrid_overview(db)
+
+
+# // [PACK35-backend]
+@router.post(
+    "/resolve/{queue_id}",
+    response_model=schemas.SyncQueueEntryResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def resolve_queue_entry(
+    queue_id: int,
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    try:
+        return sync_queue.mark_entry_resolved(db, queue_id)
+    except LookupError as exc:  # pragma: no cover - protección extra
+        raise HTTPException(status_code=404, detail="Evento no encontrado") from exc
 
 
 @router.get("/sessions", response_model=list[schemas.SyncSessionResponse], dependencies=[Depends(require_roles(ADMIN))])
