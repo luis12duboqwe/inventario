@@ -1,1 +1,0 @@
-"""Paquete backend para Softmobile."""
