@@ -1,9 +1,0 @@
-export { default as ProductHeader } from "./Header";
-export { default as ProductMediaGallery } from "./MediaGallery";
-export { default as ProductAttributes } from "./Attributes";
-export { default as ProductPricingCard } from "./PricingCard";
-export { default as ProductVariantsTable } from "./VariantsTable";
-export { default as ProductStockPerStore } from "./StockPerStore";
-export { default as ProductActivityTimeline } from "./ActivityTimeline";
-export { default as ProductRelatedProducts } from "./RelatedProducts";
-export { default as ProductNotes } from "./Notes";
