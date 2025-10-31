@@ -98,6 +98,7 @@ def enqueue_queue_events(
     payload: schemas.SyncQueueEnqueueRequest,
     db: Session = Depends(get_db),
     _current_user=Depends(require_roles(*GESTION_ROLES)),
+    _reason: str = Depends(require_reason),
 ):
     _ensure_hybrid_enabled()
     queued, reused = crud.enqueue_sync_queue_events(db, payload.events)
@@ -117,6 +118,7 @@ def dispatch_queue_events(
     limit: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db),
     _current_user=Depends(require_roles(*GESTION_ROLES)),
+    _reason: str = Depends(require_reason),
 ):
     _ensure_hybrid_enabled()
     return sync_queue.dispatch_pending_events(db, limit=limit)
@@ -224,6 +226,7 @@ def resolve_queue_entry(
     queue_id: int,
     db: Session = Depends(get_db),
     _current_user=Depends(require_roles(*GESTION_ROLES)),
+    _reason: str = Depends(require_reason),
 ):
     _ensure_hybrid_enabled()
     try:

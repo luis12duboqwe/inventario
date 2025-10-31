@@ -563,6 +563,7 @@ function SyncPage() {
 
       const progressSource =
         syncHybridOverview?.progress ?? syncHybridForecast?.progress ?? syncHybridProgress;
+      const progressSource = syncHybridForecast?.progress ?? syncHybridProgress;
       const queueComponent = progressSource?.components.queue ?? fallbackQueueComponent;
       const outboxComponent = progressSource?.components.outbox ?? fallbackOutboxComponent;
 
@@ -576,6 +577,8 @@ function SyncPage() {
         syncHybridOverview?.percent !== undefined
           ? Math.round(syncHybridOverview.percent * 100) / 100
           : Math.round(rawServerPercent * 100) / 100;
+      const serverPercent =
+        serverTotal === 0 ? 100 : Math.round((serverProcessed / serverTotal) * 100);
 
       const localTotal = queueProgress.total;
       const localProcessed = queueProgress.sent;
@@ -609,6 +612,20 @@ function SyncPage() {
             estimatedMinutesRemaining: forecastSource.estimated_minutes_remaining,
             estimatedCompletion: forecastSource.estimated_completion,
             generatedAt: forecastSource.generated_at,
+        combinedTotal === 0 ? 100 : Math.round((combinedProcessed / combinedTotal) * 100);
+
+      const forecast = syncHybridForecast
+        ? {
+            lookbackMinutes: syncHybridForecast.lookback_minutes,
+            eventsPerMinute: syncHybridForecast.events_per_minute,
+            successRate: syncHybridForecast.success_rate,
+            processedRecent: syncHybridForecast.processed_recent,
+            backlogPending: syncHybridForecast.backlog_pending,
+            backlogFailed: syncHybridForecast.backlog_failed,
+            backlogTotal: syncHybridForecast.backlog_total,
+            estimatedMinutesRemaining: syncHybridForecast.estimated_minutes_remaining,
+            estimatedCompletion: syncHybridForecast.estimated_completion,
+            generatedAt: syncHybridForecast.generated_at,
           }
         : {
             lookbackMinutes: 0,
@@ -625,6 +642,7 @@ function SyncPage() {
 
       const modulesSource = syncHybridOverview?.breakdown ?? syncHybridBreakdown;
       const modules = modulesSource.map((item) => ({
+      const modules = syncHybridBreakdown.map((item) => ({
         module: item.module,
         label: item.label,
         percent: item.percent,
@@ -660,6 +678,7 @@ function SyncPage() {
         failed: combinedFailed,
         server: {
           percent: overviewPercent,
+          percent: serverPercent,
           total: serverTotal,
           processed: serverProcessed,
           pending: serverPending,

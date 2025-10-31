@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Skeleton } from "@/ui/Skeleton"; // [PACK36-operations-history]
+import { safeArray, safeDate, safeNumber, safeString } from "@/utils/safeValues"; // [PACK36-operations-history]
 import type {
   OperationsHistoryRecord,
   OperationsTechnicianSummary,
@@ -31,7 +33,7 @@ type Props = {
 const formatDateInput = (date: Date): string => date.toISOString().slice(0, 10);
 
 function OperationsHistoryPanel({ stores, token }: Props) {
-  const { formatCurrency } = useDashboard();
+  const { formatCurrency, pushToast } = useDashboard(); // [PACK36-operations-history]
   const today = new Date();
   const start = new Date();
   start.setDate(start.getDate() - 14);
@@ -48,6 +50,23 @@ function OperationsHistoryPanel({ stores, token }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const normalizedStores = useMemo(() => safeArray(stores), [stores]); // [PACK36-operations-history]
+
+  const formatOccurredAt = (value: unknown) => { // [PACK36-operations-history]
+    const parsed = safeDate(value);
+    if (!parsed) {
+      return "Fecha desconocida";
+    }
+    return parsed.toLocaleString("es-MX");
+  };
+
+  const friendlyErrorMessage = (message: string) => { // [PACK36-operations-history]
+    if (message.toLowerCase().includes("failed to fetch")) {
+      return "No fue posible conectar con el servicio Softmobile. Intenta nuevamente en unos segundos.";
+    }
+    return message;
+  };
+
   useEffect(() => {
     let cancelled = false;
     const fetchHistory = async () => {
@@ -61,16 +80,18 @@ function OperationsHistoryPanel({ stores, token }: Props) {
           endDate: filters.endDate,
         });
         if (!cancelled) {
-          setRecords(response.records);
-          setTechnicians(response.technicians);
+          setRecords(safeArray(response?.records)); // [PACK36-operations-history]
+          setTechnicians(safeArray(response?.technicians)); // [PACK36-operations-history]
         }
       } catch (err) {
         if (!cancelled) {
-          setError(
+          const message =
             err instanceof Error
               ? err.message
-              : "No fue posible cargar el historial de operaciones",
-          );
+              : "No fue posible cargar el historial de operaciones";
+          const friendly = friendlyErrorMessage(message);
+          setError(friendly);
+          pushToast({ message: friendly, variant: "error" }); // [PACK36-operations-history]
         }
       } finally {
         if (!cancelled) {
@@ -83,11 +104,20 @@ function OperationsHistoryPanel({ stores, token }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [token, filters.storeId, filters.technicianId, filters.startDate, filters.endDate]);
+  }, [
+    token,
+    filters.storeId,
+    filters.technicianId,
+    filters.startDate,
+    filters.endDate,
+    pushToast,
+  ]);
 
   const filteredRecords = useMemo(() => {
-    return records.filter((record) => filters.type === "all" || record.operation_type === filters.type);
-  }, [records, filters.type]);
+    return safeArray(records).filter(
+      (record) => filters.type === "all" || record.operation_type === filters.type,
+    );
+  }, [records, filters.type]); // [PACK36-operations-history]
 
   return (
     <section className="card">
@@ -111,7 +141,7 @@ function OperationsHistoryPanel({ stores, token }: Props) {
             }}
           >
             <option value="all">Todas</option>
-            {stores.map((store) => (
+            {normalizedStores.map((store) => (
               <option key={store.id} value={store.id}>
                 {store.name}
               </option>
@@ -188,11 +218,14 @@ function OperationsHistoryPanel({ stores, token }: Props) {
       {error ? <div className="alert error">{error}</div> : null}
       <div className="section-divider">
         <h3>Últimos movimientos</h3>
-        {loading ? <p className="muted-text">Cargando historial…</p> : null}
         {filteredRecords.length === 0 && !loading ? (
           <p className="muted-text">No hay operaciones que coincidan con los filtros seleccionados.</p>
         ) : null}
-        {filteredRecords.length > 0 ? (
+        {loading ? (
+          <div className="table-wrapper" role="status" aria-busy="true">{/* [PACK36-operations-history] */}
+            <Skeleton lines={6} />
+          </div>
+        ) : filteredRecords.length > 0 ? (
           <div className="table-wrapper">
             <table>
               <thead>
@@ -209,22 +242,26 @@ function OperationsHistoryPanel({ stores, token }: Props) {
               <tbody>
                 {filteredRecords.map((record) => {
                   const storeName = record.store_id
-                    ? stores.find((store) => store.id === record.store_id)?.name ?? "Desconocida"
+                    ? normalizedStores.find((store) => store.id === record.store_id)?.name ?? "Desconocida"
                     : "Corporativo";
                   const typeLabel =
                     OPERATION_TYPES.find((option) => option.id === record.operation_type)?.label ??
-                    record.operation_type;
-                  const technicianName = record.technician_name ?? "Sin asignar";
-                  const formattedAmount =
-                    record.amount != null ? formatCurrency(record.amount) : "—";
+                    safeString(record.operation_type, "—");
+                  const technicianName = safeString(record.technician_name, "Sin asignar");
+                  const formattedAmount = (() => {
+                    const amount = safeNumber(record.amount, NaN);
+                    return Number.isNaN(amount) ? "—" : formatCurrency(amount);
+                  })(); // [PACK36-operations-history]
+                  const description = safeString(record.description, "Sin descripción");
+                  const reference = safeString(record.reference, "—");
                   return (
                     <tr key={record.id}>
-                      <td data-label="Fecha">{new Date(record.occurred_at).toLocaleString("es-MX")}</td>
+                      <td data-label="Fecha">{formatOccurredAt(record.occurred_at)}</td>
                       <td data-label="Sucursal">{storeName}</td>
                       <td data-label="Tipo">{typeLabel}</td>
                       <td data-label="Técnico">{technicianName}</td>
-                      <td data-label="Referencia">{record.reference ?? "—"}</td>
-                      <td data-label="Descripción">{record.description}</td>
+                      <td data-label="Referencia">{reference}</td>
+                      <td data-label="Descripción">{description}</td>
                       <td data-label="Total">{formattedAmount}</td>
                     </tr>
                   );

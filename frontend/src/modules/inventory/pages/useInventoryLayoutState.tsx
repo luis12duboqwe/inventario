@@ -22,6 +22,7 @@ import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
 import { useSmartImportManager } from "./hooks/useSmartImportManager";
 import { promptCorporateReason } from "../../../utils/corporateReason";
+import { safeArray } from "@/utils/safeValues"; // [PACK36-inventory-state]
 import type { InventoryLayoutContextValue, StatusCard } from "./context/InventoryLayoutContext";
 
 export type InventoryTabId = "productos" | "movimientos" | "proveedores" | "alertas";
@@ -242,10 +243,12 @@ export function useInventoryLayoutState(): InventoryLayoutState {
 
   const categoryChartData = useMemo(
     () =>
-      stockByCategory.slice(0, 6).map((entry) => ({
-        label: entry.label || "Sin categoría",
-        value: entry.value,
-      })),
+      safeArray(stockByCategory)
+        .slice(0, 6)
+        .map((entry) => ({
+          label: entry.label || "Sin categoría",
+          value: entry.value,
+        })), // [PACK36-inventory-state]
     [stockByCategory],
   );
 

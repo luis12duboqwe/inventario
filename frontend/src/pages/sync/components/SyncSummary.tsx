@@ -94,6 +94,12 @@ type SyncSummaryProps = {
         estimatedCompletion: string | null;
       };
     } | null;
+      backlogPending: number;
+      backlogFailed: number;
+      backlogTotal: number;
+      estimatedMinutesRemaining: number | null;
+      estimatedCompletion: string | null;
+    };
   }; // [PACK35-frontend]
 };
 
@@ -149,6 +155,18 @@ function SyncSummary({
 
     progressSegments.push(`Pendientes ${hybridProgress.pending}`, `Fallidos ${hybridProgress.failed}`);
 
+  const progressSegments =
+    hybridProgress.total === 0
+      ? []
+      : [
+          `Local ${hybridProgress.breakdown.local.processed}/${hybridProgress.breakdown.local.total}`,
+          `Servidor ${hybridProgress.server.processed}/${hybridProgress.server.total}`,
+          `Pendientes ${hybridProgress.pending}`,
+          `Fallidos ${hybridProgress.failed}`,
+          `Central ${hybridProgress.server.percent}%`,
+        ];
+
+  if (hybridProgress.total !== 0) {
     if (forecast.processedRecent > 0) {
       progressSegments.push(
         `Procesados ${forecast.processedRecent} ev en ${forecast.lookbackMinutes} min`,
@@ -177,6 +195,7 @@ function SyncSummary({
       );
     }
     if (!hybridProgress.overview?.remaining.estimatedCompletion && forecast.estimatedCompletion) {
+    if (forecast.estimatedCompletion) {
       progressSegments.push(`Final estimado ${formatDateTime(forecast.estimatedCompletion)}`);
     }
 
@@ -267,6 +286,12 @@ function SyncSummary({
                 : progressSegments.length > 0
                 ? progressSegments.join(" · ")
                 : "Sin métricas recientes"}
+            <span>Porcentaje para finalizar</span>
+            <strong>{hybridProgress.percent}%</strong>
+            <small>
+              {hybridProgress.total === 0
+                ? "Sin eventos en la cola híbrida"
+                : progressSegments.join(" · ")}
             </small>
           </div>
           <div className="sync-metric">

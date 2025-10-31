@@ -93,25 +93,21 @@ export function ReturnDetailPage() {
     if (!canCreate) return;
     setSaving(true);
     try {
-      const r = await SalesReturns.createReturn(payload);
-      setData(r);
-      await logUI({ ts: Date.now(), userId: user?.id, module: "RETURNS", action: "create", entityId: r?.id ? String(r.id) : undefined });
-      // [PACK27-PRINT-RETURN-CREATE-START]
-      if (r.printable) {
-        openPrintable(r.printable, "nota-devolucion");
-      }
-      // [PACK27-PRINT-RETURN-CREATE-END]
-      const r = await safeCreateReturn(payload);
-      if (r) {
-        setData(r);
-        setOfflineNotice(null);
+      const created = await safeCreateReturn(payload); // [PACK37-frontend]
+      if (created) {
+        setData(created);
+        await logUI({ ts: Date.now(), userId: user?.id, module: "RETURNS", action: "create", entityId: created?.id ? String(created.id) : undefined }); // [PACK37-frontend]
+        if (created.printable) {
+          openPrintable(created.printable, "nota-devolucion"); // [PACK37-frontend]
+        }
+        setOfflineNotice(null); // [PACK37-frontend]
       } else {
-        setOfflineNotice("Devolución registrada offline. Reintenta sincronizar más tarde.");
+        setOfflineNotice("Devolución registrada offline. Reintenta sincronizar más tarde."); // [PACK37-frontend]
       }
       if (typeof window !== "undefined") {
-        setPendingOffline(readQueue().length);
+        setPendingOffline(readQueue().length); // [PACK37-frontend]
       }
-      // TODO: navegar a detalle r.id si tu router lo soporta
+      // TODO: navegar a detalle created.id si tu router lo soporta
     } finally {
       setSaving(false);
     }

@@ -14,6 +14,7 @@ type RepairRowRendererDependencies = {
   handleStatusChange: (order: RepairOrder, status: RepairOrder["status"]) => void;
   handleDownload: (order: RepairOrder) => void;
   handleDelete: (order: RepairOrder) => void;
+  handleClose: (order: RepairOrder) => Promise<boolean | void> | void; // [PACK37-frontend]
   onShowBudget?: (order: RepairOrder) => void;
   onShowParts?: (order: RepairOrder) => void;
 };
@@ -25,6 +26,7 @@ const createRepairRowRenderer = ({
   handleStatusChange,
   handleDownload,
   handleDelete,
+  handleClose,
   onShowBudget,
   onShowParts,
 }: RepairRowRendererDependencies) => {
@@ -64,10 +66,17 @@ const createRepairRowRenderer = ({
               {order.parts.length > 0 ? (
                 <ul className="muted-text">
                   {order.parts.map((part) => {
-                    const device = devicesById.get(part.device_id);
+                    const device = part.device_id ? devicesById.get(part.device_id) : undefined;
+                    const label = part.part_name
+                      ? part.part_name
+                      : device
+                      ? `${device.sku} · ${device.name}`
+                      : part.device_id
+                      ? `Dispositivo #${part.device_id}`
+                      : "Repuesto externo";
                     return (
                       <li key={`${order.id}-${part.id}`}>
-                        {part.quantity} × {device ? `${device.sku} · ${device.name}` : `Dispositivo #${part.device_id}`} (
+                        {part.quantity} × {label} — {part.source === "EXTERNAL" ? "Compra externa" : "Inventario"} (
                         {part.unit_cost.toLocaleString("es-MX", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
@@ -109,6 +118,11 @@ const createRepairRowRenderer = ({
             {onShowParts ? (
               <button type="button" className="btn btn--ghost" onClick={() => onShowParts(order)}>
                 Repuestos
+              </button>
+            ) : null}
+            {order.status !== "ENTREGADO" && order.status !== "CANCELADO" ? (
+              <button type="button" className="btn btn--ghost" onClick={() => void handleClose(order)}>
+                Cerrar y PDF
               </button>
             ) : null}
             <button type="button" className="btn btn--ghost" onClick={() => handleDownload(order)}>

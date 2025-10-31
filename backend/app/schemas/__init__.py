@@ -26,6 +26,7 @@ from ..models import (
     MovementType,
     PaymentMethod,
     PurchaseStatus,
+    RepairPartSource,
     RepairStatus,
     SyncMode,
     SyncOutboxPriority,
@@ -3268,7 +3269,9 @@ class OperationsHistoryResponse(BaseModel):
 
 
 class RepairOrderPartPayload(BaseModel):
-    device_id: int = Field(..., ge=1)
+    device_id: int | None = Field(default=None, ge=1)
+    part_name: str | None = Field(default=None, max_length=120)
+    source: RepairPartSource = Field(default=RepairPartSource.STOCK)  # // [PACK37-backend]
     quantity: int = Field(..., ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
@@ -3279,20 +3282,45 @@ class RepairOrderPartPayload(BaseModel):
             return Decimal("0")
         return value
 
+    @field_validator("part_name")
+    @classmethod
+    def _normalize_part_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
 
 class RepairOrderCreate(BaseModel):
     store_id: int = Field(..., ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
+    customer_contact: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
     technician_name: str = Field(..., max_length=120)
-    damage_type: str = Field(..., max_length=120)
+    damage_type: str = Field(
+        ...,
+        max_length=120,
+        validation_alias=AliasChoices("damage_type", "issue"),
+        serialization_alias="damage_type",
+    )
+    diagnosis: str | None = Field(default=None, max_length=500)  # // [PACK37-backend]
+    device_model: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
+    imei: str | None = Field(default=None, max_length=40)  # // [PACK37-backend]
     device_description: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=500)
     labor_cost: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     parts: list[RepairOrderPartPayload] = Field(default_factory=list)
 
     @field_validator(
-        "customer_name", "technician_name", "damage_type", "device_description", "notes"
+        "customer_name",
+        "customer_contact",
+        "technician_name",
+        "damage_type",
+        "diagnosis",
+        "device_model",
+        "imei",
+        "device_description",
+        "notes",
     )
     @classmethod
     def _normalize_text(cls, value: str | None) -> str | None:
@@ -3305,8 +3333,17 @@ class RepairOrderCreate(BaseModel):
 class RepairOrderUpdate(BaseModel):
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
+    customer_contact: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
     technician_name: str | None = Field(default=None, max_length=120)
-    damage_type: str | None = Field(default=None, max_length=120)
+    damage_type: str | None = Field(
+        default=None,
+        max_length=120,
+        validation_alias=AliasChoices("damage_type", "issue"),
+        serialization_alias="damage_type",
+    )
+    diagnosis: str | None = Field(default=None, max_length=500)  # // [PACK37-backend]
+    device_model: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
+    imei: str | None = Field(default=None, max_length=40)  # // [PACK37-backend]
     device_description: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=500)
     status: RepairStatus | None = None
@@ -3315,8 +3352,12 @@ class RepairOrderUpdate(BaseModel):
 
     @field_validator(
         "customer_name",
+        "customer_contact",
         "technician_name",
         "damage_type",
+        "diagnosis",
+        "device_model",
+        "imei",
         "device_description",
         "notes",
         mode="before",
@@ -3329,10 +3370,21 @@ class RepairOrderUpdate(BaseModel):
         return normalized or None
 
 
+class RepairOrderPartsRequest(BaseModel):  # // [PACK37-backend]
+    parts: list[RepairOrderPartPayload] = Field(default_factory=list)
+
+
+class RepairOrderCloseRequest(BaseModel):  # // [PACK37-backend]
+    labor_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+    parts: list[RepairOrderPartPayload] | None = None
+
+
 class RepairOrderPartResponse(BaseModel):
     id: int
     repair_order_id: int
-    device_id: int
+    device_id: int | None
+    part_name: str | None = None  # // [PACK37-backend]
+    source: RepairPartSource = Field(default=RepairPartSource.STOCK)  # // [PACK37-backend]
     quantity: int
     unit_cost: Decimal
 
@@ -3349,8 +3401,12 @@ class RepairOrderResponse(BaseModel):
     store_id: int
     customer_id: int | None
     customer_name: str | None
+    customer_contact: str | None = None  # // [PACK37-backend]
     technician_name: str
     damage_type: str
+    diagnosis: str | None = None  # // [PACK37-backend]
+    device_model: str | None = None  # // [PACK37-backend]
+    imei: str | None = None  # // [PACK37-backend]
     device_description: str | None
     notes: str | None
     status: RepairStatus
@@ -3372,6 +3428,7 @@ class RepairOrderResponse(BaseModel):
             RepairStatus.EN_PROCESO: "🟠",
             RepairStatus.LISTO: "🟢",
             RepairStatus.ENTREGADO: "⚪",
+            RepairStatus.CANCELADO: "🔴",  # // [PACK37-backend]
         }
         return mapping.get(self.status, "⬜")
 
@@ -3387,6 +3444,11 @@ class SaleItemCreate(BaseModel):
     discount_percent: Decimal | None = Field(
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
     )
+    unit_price_override: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        validation_alias=AliasChoices("unit_price_override", "price"),
+    )  # // [PACK34-schema]
 
     @field_validator("discount_percent")
     @classmethod
@@ -3706,11 +3768,42 @@ class SalesReport(BaseModel):
 
 
 class POSCartItem(BaseModel):
-    device_id: int = Field(..., ge=1)
-    quantity: int = Field(..., ge=1)
-    discount_percent: Decimal | None = Field(
-        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
+    """Elemento del carrito POS aceptando identificadores flexibles."""
+
+    # // [PACK34-schema]
+    device_id: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("device_id", "productId", "product_id"),
     )
+    imei: str | None = Field(
+        default=None,
+        max_length=18,
+        validation_alias=AliasChoices("imei", "imei_1", "imei1"),
+    )
+    quantity: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("quantity", "qty"),
+    )
+    discount_percent: Decimal | None = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        le=Decimal("100"),
+        validation_alias=AliasChoices("discount_percent", "discount"),
+    )
+    unit_price_override: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        validation_alias=AliasChoices("unit_price_override", "price"),
+    )
+    tax_code: str | None = Field(
+        default=None,
+        max_length=50,
+        validation_alias=AliasChoices("tax_code", "taxCode"),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("discount_percent")
     @classmethod
@@ -3720,22 +3813,54 @@ class POSCartItem(BaseModel):
         return value
 
 
+class POSSalePaymentInput(BaseModel):
+    """Definición de pago para registrar montos por método."""
+
+    # // [PACK34-schema]
+    method: PaymentMethod = Field(
+        ..., validation_alias=AliasChoices("method", "paymentMethod")
+    )
+    amount: Decimal = Field(..., ge=Decimal("0"))
+
+
 class POSSaleRequest(BaseModel):
-    store_id: int = Field(..., ge=1)
+    store_id: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("store_id", "branchId", "branch_id"),
+    )
     customer_id: int | None = Field(default=None, ge=1)
-    customer_name: str | None = Field(default=None, max_length=120)
-    payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
+    customer_name: str | None = Field(
+        default=None,
+        max_length=120,
+        validation_alias=AliasChoices("customer_name", "customer"),
+    )
+    payment_method: PaymentMethod = Field(
+        default=PaymentMethod.EFECTIVO,
+        validation_alias=AliasChoices("payment_method", "defaultPaymentMethod"),
+    )
     discount_percent: Decimal | None = Field(
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
     )
-    notes: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(
+        default=None,
+        max_length=255,
+        validation_alias=AliasChoices("notes", "note"),
+    )
     items: list[POSCartItem]
     draft_id: int | None = Field(default=None, ge=1)
     save_as_draft: bool = Field(default=False)
     confirm: bool = Field(default=False)
     apply_taxes: bool = Field(default=True)
-    cash_session_id: int | None = Field(default=None, ge=1)
+    cash_session_id: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("cash_session_id", "sessionId"),
+    )
     payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
+    payments: list[POSSalePaymentInput] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("customer_name")
     @classmethod
@@ -3775,6 +3900,20 @@ class POSSaleRequest(BaseModel):
             normalized[method] = Decimal(str(amount))
         return normalized
 
+    @model_validator(mode="after")
+    def _sync_pos_payments(self) -> "POSSaleRequest":
+        # // [PACK34-schema]
+        if self.payments:
+            breakdown: dict[str, Decimal] = {}
+            for payment in self.payments:
+                method_key = payment.method.value
+                breakdown[method_key] = (
+                    breakdown.get(method_key, Decimal("0"))
+                    + Decimal(str(payment.amount))
+                )
+            self.payment_breakdown = breakdown
+        return self
+
 
 class POSDraftResponse(BaseModel):
     id: int
@@ -3794,6 +3933,7 @@ class POSSaleResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     cash_session_id: int | None = None
     payment_breakdown: dict[str, float] = Field(default_factory=dict)
+    receipt_pdf_base64: str | None = Field(default=None)
 
     @field_serializer("payment_breakdown")
     @classmethod
@@ -3807,6 +3947,69 @@ class POSSaleResponse(BaseModel):
         if self.payment_breakdown:
             return float(sum(self.payment_breakdown.values()))
         return 0.0
+
+
+class POSReturnItemRequest(BaseModel):
+    """Item devuelto desde el POS identificable por producto o IMEI."""
+
+    # // [PACK34-schema]
+    product_id: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("product_id", "productId", "device_id"),
+    )
+    imei: str | None = Field(
+        default=None,
+        max_length=18,
+        validation_alias=AliasChoices("imei", "imei_1"),
+    )
+    qty: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("quantity", "qty"),
+    )
+
+
+class POSReturnRequest(BaseModel):
+    """Solicitud de devolución rápida en POS."""
+
+    # // [PACK34-schema]
+    original_sale_id: int = Field(..., ge=1, validation_alias=AliasChoices("originalSaleId", "sale_id"))
+    items: list[POSReturnItemRequest]
+    reason: str | None = Field(default=None, max_length=255)
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_return_items(cls, value: list[POSReturnItemRequest]) -> list[POSReturnItemRequest]:
+        if not value:
+            raise ValueError("Debes indicar artículos a devolver.")
+        return value
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_reason(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class POSReturnResponse(BaseModel):
+    """Respuesta estandarizada tras registrar devoluciones POS."""
+
+    # // [PACK34-schema]
+    sale_id: int
+    return_ids: list[int]
+    notes: str | None = None
+
+
+class POSSaleDetailResponse(BaseModel):
+    """Detalle completo de ventas POS con acceso a recibo."""
+
+    # // [PACK34-schema]
+    sale: SaleResponse
+    receipt_url: str
+    receipt_pdf_base64: str | None = None
 
 
 class CashSessionOpenRequest(BaseModel):
@@ -3884,6 +4087,132 @@ class CashSessionResponse(BaseModel):
     @classmethod
     def _serialize_breakdown(cls, value: dict[str, float]) -> dict[str, float]:
         return {key: float(amount) for key, amount in value.items()}
+
+
+class POSSessionOpenPayload(BaseModel):
+    """Carga útil para aperturas de caja rápidas desde POS."""
+
+    # // [PACK34-schema]
+    branch_id: int = Field(
+        ..., ge=1, validation_alias=AliasChoices("branchId", "branch_id", "store_id")
+    )
+    opening_amount: Decimal = Field(..., ge=Decimal("0"))
+    notes: str | None = Field(default=None, max_length=255)
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_pos_session_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class POSSessionClosePayload(BaseModel):
+    """Datos requeridos para cerrar sesiones POS."""
+
+    # // [PACK34-schema]
+    session_id: int = Field(..., ge=1)
+    closing_amount: Decimal = Field(..., ge=Decimal("0"))
+    notes: str | None = Field(default=None, max_length=255)
+    payments: dict[str, Decimal] = Field(default_factory=dict)
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_close_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("payments", mode="before")
+    @classmethod
+    def _normalize_payments(
+        cls, value: dict[str, Decimal] | list[dict[str, Decimal | str]] | None
+    ) -> dict[str, Decimal]:
+        normalized: dict[str, Decimal] = {}
+        if value is None:
+            return normalized
+        if isinstance(value, dict):
+            source = value.items()
+        else:
+            source = []
+            for entry in value:
+                method = str(entry.get("method") or entry.get("paymentMethod") or "").strip()
+                amount = entry.get("amount") or entry.get("value")
+                if not method:
+                    continue
+                source.append((method, amount))
+        for raw_method, raw_amount in source:
+            method_key = str(raw_method).strip().upper()
+            try:
+                PaymentMethod(method_key)
+            except ValueError as exc:
+                raise ValueError("Método de pago inválido.") from exc
+            normalized[method_key] = Decimal(str(raw_amount))
+        return normalized
+
+
+class POSSessionSummary(BaseModel):
+    """Resumen compacto de sesiones POS para la UI."""
+
+    # // [PACK34-schema]
+    session_id: int
+    branch_id: int
+    status: CashSessionStatus
+    opened_at: datetime
+    closing_at: datetime | None = None
+    opening_amount: Decimal | None = None
+    closing_amount: Decimal | None = None
+    expected_amount: Decimal | None = None
+    difference_amount: Decimal | None = None
+    payment_breakdown: dict[str, float] = Field(default_factory=dict)
+
+    @classmethod
+    def from_model(cls, session: "models.CashRegisterSession") -> "POSSessionSummary":
+        from .. import models  # Importación tardía para evitar ciclos
+
+        # // [PACK34-schema]
+        return cls(
+            session_id=session.id,
+            branch_id=session.store_id,
+            status=session.status,
+            opened_at=session.opened_at,
+            closing_at=session.closed_at,
+            opening_amount=getattr(session, "opening_amount", None),
+            closing_amount=getattr(session, "closing_amount", None),
+            expected_amount=getattr(session, "expected_amount", None),
+            difference_amount=getattr(session, "difference_amount", None),
+            payment_breakdown={
+                key: float(value) for key, value in (session.payment_breakdown or {}).items()
+            },
+        )
+
+    @field_serializer(
+        "opening_amount",
+        "closing_amount",
+        "expected_amount",
+        "difference_amount",
+    )
+    @classmethod
+    def _serialize_optional_amount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class POSTaxInfo(BaseModel):
+    """Catálogo simple de impuestos POS."""
+
+    # // [PACK34-schema]
+    code: str
+    name: str
+    rate: Decimal = Field(..., ge=Decimal("0"), le=Decimal("100"))
+
+    @field_serializer("rate")
+    @classmethod
+    def _serialize_tax_rate(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class POSConfigResponse(BaseModel):
@@ -4067,6 +4396,18 @@ __all__ = [
     "PurchaseReceiveItem",
     "PurchaseReceiveRequest",
     "PurchaseImportResponse",
+    "POSCartItem",
+    "POSSalePaymentInput",
+    "POSSaleRequest",
+    "POSSaleResponse",
+    "POSSessionOpenPayload",
+    "POSSessionClosePayload",
+    "POSSessionSummary",
+    "POSTaxInfo",
+    "POSReturnItemRequest",
+    "POSReturnRequest",
+    "POSReturnResponse",
+    "POSSaleDetailResponse",
     "PurchaseVendorBase",
     "PurchaseVendorCreate",
     "PurchaseVendorUpdate",
@@ -4111,9 +4452,6 @@ __all__ = [
     "SalesReportGroup",
     "SalesReportProduct",
     "SalesReport",
-    "POSCartItem",
-    "POSSaleRequest",
-    "POSSaleResponse",
     "POSDraftResponse",
     "POSConfigResponse",
     "POSConfigUpdate",

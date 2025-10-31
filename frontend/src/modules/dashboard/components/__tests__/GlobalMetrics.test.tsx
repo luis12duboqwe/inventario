@@ -7,12 +7,14 @@ import type { InventoryMetrics } from "../../../../api";
 type DashboardStub = {
   metrics: InventoryMetrics | null;
   formatCurrency: (value: number) => string;
+  loading: boolean;
 };
 
 const dashboardState: DashboardStub = {
   metrics: null,
   formatCurrency: (value: number) =>
     new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value),
+  loading: false,
 };
 
 vi.mock("../../context/DashboardContext", () => ({
@@ -87,6 +89,7 @@ const sampleMetrics: InventoryMetrics = {
 describe("GlobalMetrics", () => {
   beforeEach(() => {
     dashboardState.metrics = sampleMetrics;
+    dashboardState.loading = false;
   });
 
   it("presenta resumen de alertas y acceso rápido a Seguridad", () => {
@@ -104,14 +107,32 @@ describe("GlobalMetrics", () => {
     );
   });
 
-  it("no renderiza contenido cuando no hay métricas disponibles", () => {
+  it("muestra estado vacío cuando no hay métricas disponibles", () => {
+    // [PACK36-tests]
     dashboardState.metrics = null;
+    dashboardState.loading = false;
     const { container } = render(
       <MemoryRouter>
         <GlobalMetrics />
       </MemoryRouter>
     );
 
-    expect(container.firstChild).toBeNull();
+    expect(screen.getByText(/Sin métricas disponibles por el momento/i)).toBeInTheDocument();
+    expect(container.querySelector(".metric-empty")).not.toBeNull();
+  });
+
+  it("renderiza skeleton de carga mientras se solicitan métricas", () => {
+    // [PACK36-tests]
+    dashboardState.metrics = null;
+    dashboardState.loading = true;
+    const { container } = render(
+      <MemoryRouter>
+        <GlobalMetrics />
+      </MemoryRouter>
+    );
+
+    const busyElements = container.querySelectorAll("[aria-busy='true']");
+    expect(busyElements.length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".metric-card").length).toBeGreaterThan(0);
   });
 });

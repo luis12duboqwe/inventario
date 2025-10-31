@@ -111,32 +111,33 @@ export function CustomerDetailPage() {
     setSaving(true);
     try {
       if (id) {
-        const updated = await SalesCustomers.updateCustomer(id, partial);
-        setData(updated);
-        await logUI({ ts: Date.now(), userId: user?.id, module: "CUSTOMERS", action: "update", entityId: id });
-      } else {
-        const created = await SalesCustomers.createCustomer(partial as Omit<Customer, "id">);
-        setData(created);
-        await logUI({ ts: Date.now(), userId: user?.id, module: "CUSTOMERS", action: "create", entityId: created?.id ? String(created.id) : undefined });
-        const updated = await safeUpdateCustomer(id, partial);
+        const updated = await safeUpdateCustomer(id, partial); // [PACK37-frontend]
         if (updated) {
           setData(updated);
           setOfflineNotice(null);
+          await logUI({ ts: Date.now(), userId: user?.id, module: "CUSTOMERS", action: "update", entityId: id }); // [PACK37-frontend]
         } else {
-          setOfflineNotice("Cambios guardados offline. Reintenta cuando vuelvas a tener conexión.");
+          setOfflineNotice("Cambios guardados offline. Reintenta cuando vuelvas a tener conexión."); // [PACK37-frontend]
         }
       } else {
-        const created = await safeCreateCustomer(partial as Omit<Customer, "id">);
+        const created = await safeCreateCustomer(partial as Omit<Customer, "id">); // [PACK37-frontend]
         if (created) {
           setData(created);
           setOfflineNotice(null);
+          await logUI({
+            ts: Date.now(),
+            userId: user?.id,
+            module: "CUSTOMERS",
+            action: "create",
+            entityId: created?.id ? String(created.id) : undefined,
+          }); // [PACK37-frontend]
+          // TODO: navegar a detalle created.id si el router lo soporta
         } else {
-          setOfflineNotice("Cliente encolado offline. Reintenta sincronizar más tarde.");
+          setOfflineNotice("Cliente encolado offline. Reintenta sincronizar más tarde."); // [PACK37-frontend]
         }
-        // TODO: navegar a detalle created.id si el router lo soporta
       }
       if (typeof window !== "undefined") {
-        setPendingOffline(readQueue().length);
+        setPendingOffline(readQueue().length); // [PACK37-frontend]
       }
     } finally {
       setSaving(false);
@@ -160,8 +161,7 @@ export function CustomerDetailPage() {
   }
   // [PACK26-CUSTOMERS-DETAIL-GUARD-END]
 
-  return (
-    <div style={{ display: "grid", gap: 16, maxWidth: 600 }}>
+
   const handleFlush = useCallback(async () => {
     setFlushing(true);
     try {

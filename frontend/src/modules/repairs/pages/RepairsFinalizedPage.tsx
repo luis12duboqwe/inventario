@@ -9,8 +9,8 @@ function RepairsFinalizedPage() {
   return (
     <div className="repairs-subpage">
       <PageHeader
-        title="Órdenes finalizadas"
-        subtitle="Consulta las reparaciones listas o entregadas y descarga sus comprobantes."
+        title="Órdenes listas"
+        subtitle="Revisa reparaciones listas para entrega y confirma pendientes con el cliente." // [PACK37-frontend]
       />
 
       <RepairOrdersBoard
@@ -20,7 +20,7 @@ function RepairsFinalizedPage() {
         onSelectedStoreChange={setSelectedStoreId}
         onModuleStatusChange={setModuleStatus}
         initialStatusFilter="LISTO"
-        statusFilterOptions={["TODOS", "LISTO", "ENTREGADO"]}
+        statusFilterOptions={["TODOS", "LISTO", "EN_PROCESO", "ENTREGADO", "CANCELADO"]} // [PACK37-frontend]
         renderToolbar={({ filters, actions }) => <PageToolbar actions={actions}>{filters}</PageToolbar>}
         showCreateForm={false}
       />

@@ -17,6 +17,8 @@ import {
 } from "recharts";
 import { useDashboard } from "../context/DashboardContext";
 import { colors } from "../../../theme/designTokens";
+import { Skeleton } from "@/ui/Skeleton"; // [PACK36-metrics]
+import { safeArray, safeNumber, safeString } from "@/utils/safeValues"; // [PACK36-metrics]
 
 const PIE_COLORS = [colors.chartCyan, colors.accentBright, colors.accent, colors.chartSky, colors.chartTeal];
 
@@ -28,67 +30,130 @@ function resolveStatusTone(value: number, threshold: number, inverse = false): "
 }
 
 function GlobalMetrics() {
-  const { metrics, formatCurrency } = useDashboard();
+  const { metrics, formatCurrency, loading } = useDashboard();
 
-  if (!metrics) {
-    return null;
+  if (!metrics && loading) {
+    // [PACK36-metrics]
+    return (
+      <section className="global-metrics" aria-busy="true">
+        <div className="metric-cards">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <article key={`metric-skeleton-${index}`} className="metric-card metric-info">
+              <Skeleton lines={3} />
+            </article>
+          ))}
+        </div>
+        <div className="metric-charts">
+          <div className="chart-card" style={{ padding: 24 }}>
+            <Skeleton lines={10} />
+          </div>
+        </div>
+      </section>
+    );
   }
 
-  const performance = metrics.global_performance;
-  const auditAlerts = metrics.audit_alerts;
-  const formatHighlightDate = (isoString: string) =>
-    new Date(isoString).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+  if (!metrics) {
+    // [PACK36-metrics]
+    return (
+      <section className="global-metrics">
+        <div className="metric-empty" role="status">
+          <p className="muted-text">Sin métricas disponibles por el momento.</p>
+          <p className="muted-text">Actualiza la vista cuando los servicios vuelvan a responder.</p>
+        </div>
+      </section>
+    );
+  }
+
+  const performance = metrics.global_performance ?? {
+    // [PACK36-metrics]
+    total_sales: 0,
+    sales_count: 0,
+    total_stock: 0,
+    open_repairs: 0,
+    gross_profit: 0,
+  };
+  const auditAlerts = metrics.audit_alerts ?? {
+    // [PACK36-metrics]
+    total: 0,
+    critical: 0,
+    warning: 0,
+    info: 0,
+    has_alerts: false,
+    pending_count: 0,
+    acknowledged_count: 0,
+    highlights: [],
+    acknowledged_entities: [],
+  };
+  const totalAlerts = safeNumber(auditAlerts.total);
+  const criticalCount = safeNumber(auditAlerts.critical);
+  const warningCount = safeNumber(auditAlerts.warning);
+  const infoCount = safeNumber(auditAlerts.info);
+  const pendingCount = safeNumber(auditAlerts.pending_count);
+  const acknowledgedCount = safeNumber(auditAlerts.acknowledged_count);
+  const highlights = safeArray(auditAlerts.highlights);
+  const formatHighlightDate = (isoString: string) => {
+    const normalized = safeString(isoString, "");
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Fecha desconocida";
+    }
+    return parsed.toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+  };
   const severityLabels: Record<"critical" | "warning" | "info", string> = {
     critical: "Crítica",
     warning: "Preventiva",
     info: "Informativa",
   };
   const alertsTone = useMemo(() => {
-    if (auditAlerts.pending_count > 0 || auditAlerts.critical > 0) {
+    if (pendingCount > 0 || criticalCount > 0) {
       return "alert" as const;
     }
-    if (auditAlerts.warning > 0) {
+    if (warningCount > 0) {
       return "info" as const;
     }
     return "good" as const;
-  }, [auditAlerts.critical, auditAlerts.pending_count, auditAlerts.warning]);
+  }, [criticalCount, pendingCount, warningCount]);
 
   const alertsValue = useMemo(() => {
-    if (auditAlerts.total === 0) {
+    if (totalAlerts === 0) {
       return "Sin eventos";
     }
-    return `${auditAlerts.pending_count} pendientes · ${auditAlerts.acknowledged_count} atendidas`;
-  }, [auditAlerts.acknowledged_count, auditAlerts.pending_count, auditAlerts.total]);
+    return `${pendingCount} pendientes · ${acknowledgedCount} atendidas`;
+  }, [acknowledgedCount, pendingCount, totalAlerts]);
 
   const cards = useMemo(
     () => [
       {
         id: "sales",
         title: "Ventas netas",
-        value: formatCurrency(performance.total_sales),
-        caption: `${performance.sales_count} operaciones cerradas`,
-        tone: resolveStatusTone(performance.total_sales, 1),
+        value: formatCurrency(safeNumber(performance.total_sales)), // [PACK36-metrics]
+        caption: `${safeNumber(performance.sales_count)} operaciones cerradas`,
+        tone: resolveStatusTone(safeNumber(performance.total_sales), 1),
       },
       {
         id: "profit",
         title: "Ganancia bruta",
-        value: formatCurrency(performance.gross_profit),
-        caption: performance.gross_profit >= 0 ? "Margen positivo" : "Atiende descuentos excesivos",
-        tone: resolveStatusTone(performance.gross_profit, 0),
+        value: formatCurrency(safeNumber(performance.gross_profit)),
+        caption:
+          safeNumber(performance.gross_profit) >= 0
+            ? "Margen positivo"
+            : "Atiende descuentos excesivos",
+        tone: resolveStatusTone(safeNumber(performance.gross_profit), 0),
       },
       {
         id: "stock",
         title: "Inventario total",
-        value: `${performance.total_stock.toLocaleString("es-MX")} uds`,
+        value: `${safeNumber(performance.total_stock).toLocaleString("es-MX")} uds`,
         caption: "Unidades disponibles en tiendas",
         tone: "info" as const,
       },
       {
         id: "repairs",
         title: "Reparaciones abiertas",
-        value: `${performance.open_repairs}`,
-        caption: performance.open_repairs === 0 ? "Sin pendientes" : "Coordina cierres con taller",
-        tone: resolveStatusTone(performance.open_repairs, 0, true),
+        value: `${safeNumber(performance.open_repairs)}`,
+        caption:
+          safeNumber(performance.open_repairs) === 0 ? "Sin pendientes" : "Coordina cierres con taller",
+        tone: resolveStatusTone(safeNumber(performance.open_repairs), 0, true),
       },
       {
         id: "audit-alerts",
@@ -103,21 +168,28 @@ function GlobalMetrics() {
         tone: alertsTone,
       },
     ],
-    [alertsTone, alertsValue, auditAlerts.has_alerts, auditAlerts.pending_count, formatCurrency, performance]
+    [alertsTone, alertsValue, auditAlerts.has_alerts, pendingCount, formatCurrency, performance]
   );
 
   const salesTrend = useMemo(
-    () => metrics.sales_trend.map((entry) => ({ ...entry, value: Number(entry.value.toFixed(2)) })),
+    () =>
+      safeArray(metrics.sales_trend).map((entry) => ({
+        ...entry,
+        value: Number(safeNumber(entry.value).toFixed(2)),
+      })),
     [metrics.sales_trend]
   );
-  const stockBreakdown = metrics.stock_breakdown;
+  const stockBreakdown = safeArray(metrics.stock_breakdown);
   const profitSlices = useMemo(
-    () => (metrics.profit_breakdown.length > 0 ? metrics.profit_breakdown : metrics.stock_breakdown),
-    [metrics.profit_breakdown, metrics.stock_breakdown]
+    () => {
+      const profit = safeArray(metrics.profit_breakdown);
+      return profit.length > 0 ? profit : stockBreakdown;
+    },
+    [metrics.profit_breakdown, stockBreakdown]
   );
-  const repairMix = metrics.repair_mix;
+  const repairMix = safeArray(metrics.repair_mix);
   const acknowledgedEntities = useMemo(
-    () => auditAlerts.acknowledged_entities.slice(0, 3),
+    () => safeArray(auditAlerts.acknowledged_entities).slice(0, 3),
     [auditAlerts.acknowledged_entities]
   );
   const latestAcknowledgement = acknowledgedEntities.length > 0 ? acknowledgedEntities[0] : null;
@@ -142,30 +214,31 @@ function GlobalMetrics() {
           </header>
           <div className="alerts-summary" role="list">
             <div className="summary-item critical" role="listitem">
-              <span className="summary-value">{auditAlerts.critical}</span>
+              <span className="summary-value">{criticalCount}</span>
               <span className="summary-label">Críticas</span>
             </div>
             <div className="summary-item warning" role="listitem">
-              <span className="summary-value">{auditAlerts.warning}</span>
+              <span className="summary-value">{warningCount}</span>
               <span className="summary-label">Preventivas</span>
             </div>
             <div className="summary-item info" role="listitem">
-              <span className="summary-value">{auditAlerts.info}</span>
+              <span className="summary-value">{infoCount}</span>
               <span className="summary-label">Informativas</span>
             </div>
             <div className="summary-item pending" role="listitem">
-              <span className="summary-value">{auditAlerts.pending_count}</span>
+              <span className="summary-value">{pendingCount}</span>
               <span className="summary-label">Pendientes</span>
             </div>
             <div className="summary-item acknowledged" role="listitem">
-              <span className="summary-value">{auditAlerts.acknowledged_count}</span>
+              <span className="summary-value">{acknowledgedCount}</span>
               <span className="summary-label">Atendidas</span>
             </div>
           </div>
           <div className="acknowledgement-meta">
             {latestAcknowledgement ? (
               <p className="muted-text">
-                Último acuse: {latestAcknowledgement.entity_type} #{latestAcknowledgement.entity_id} ·
+                Último acuse: {safeString(latestAcknowledgement.entity_type, "Entidad")} #
+                {safeString(latestAcknowledgement.entity_id, "-")} ·
                 {" "}
                 {formatHighlightDate(latestAcknowledgement.acknowledged_at)}
                 {latestAcknowledgement.acknowledged_by_name
@@ -177,7 +250,7 @@ function GlobalMetrics() {
               <p className="muted-text">Aún no se registran acuses corporativos.</p>
             )}
           </div>
-          {auditAlerts.highlights.length === 0 ? (
+          {highlights.length === 0 ? (
             <p className="muted-text">
               {auditAlerts.has_alerts
                 ? "Hay incidencias registradas, revisa el módulo de Seguridad para más contexto."
@@ -185,7 +258,7 @@ function GlobalMetrics() {
             </p>
           ) : (
             <ul className="alerts-list">
-              {auditAlerts.highlights.map((highlight) => (
+              {highlights.map((highlight) => (
                 <li key={highlight.id}>
                   <span className={`severity-pill severity-${highlight.severity}`}>
                     {severityLabels[highlight.severity]}
@@ -205,17 +278,19 @@ function GlobalMetrics() {
               {acknowledgedEntities.map((entity) => (
                 <li key={`${entity.entity_type}-${entity.entity_id}`}>
                   <span className="acknowledged-entity">
-                    {entity.entity_type} #{entity.entity_id}
+                    {safeString(entity.entity_type, "Entidad")} #{safeString(entity.entity_id, "-")}
                   </span>
                   <span className="acknowledged-meta">
-                    {entity.acknowledged_by_name ?? "Usuario corporativo"} · {formatHighlightDate(entity.acknowledged_at)}
+                    {entity.acknowledged_by_name ?? "Usuario corporativo"} ·
+                    {" "}
+                    {formatHighlightDate(entity.acknowledged_at)}
                     {entity.note ? ` — ${entity.note}` : ""}
                   </span>
                 </li>
               ))}
             </ul>
           ) : null}
-          {auditAlerts.pending_count > 0 ? (
+          {pendingCount > 0 ? (
             <Link to="/dashboard/security" className="btn btn--link audit-shortcut">
               Abrir módulo de Seguridad
             </Link>

@@ -2,8 +2,8 @@
 import { lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import { SuspenseGate } from "@/ui/SuspenseGate";
-import { ErrorBoundary } from "@/ui/ErrorBoundary";
+import { SuspenseGate } from "@/ui/SuspenseGate"; // [PACK37-frontend]
+import { ErrorBoundary } from "@/ui/ErrorBoundary"; // [PACK37-frontend]
 
 const SalesReportsPage = lazy(() => import("./pages/SalesReportsPage"));
 

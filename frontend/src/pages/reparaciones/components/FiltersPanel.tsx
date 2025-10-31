@@ -9,6 +9,10 @@ type FiltersPanelProps = {
   searchPlaceholder?: string;
   totalOrders: number;
   getStatusLabel: (status: RepairOrder["status"]) => string;
+  dateFrom: string;
+  dateTo: string;
+  onDateFromChange: (value: string) => void;
+  onDateToChange: (value: string) => void;
 };
 
 function FiltersPanel({
@@ -20,6 +24,10 @@ function FiltersPanel({
   searchPlaceholder = "Cliente, técnico, daño o folio",
   totalOrders,
   getStatusLabel,
+  dateFrom,
+  dateTo,
+  onDateFromChange,
+  onDateToChange,
 }: FiltersPanelProps) {
   return (
     <div className="repair-orders-toolbar">
@@ -49,6 +57,22 @@ function FiltersPanel({
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder={searchPlaceholder}
+          />
+        </label>
+        <label>
+          Desde
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => onDateFromChange(event.target.value)}
+          />
+        </label>
+        <label>
+          Hasta
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(event) => onDateToChange(event.target.value)}
           />
         </label>
       </div>
