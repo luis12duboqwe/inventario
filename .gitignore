@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Logs
+logs/
+*.log
+backend/logs/
+
+# Env files (keep only .example)
+.env
+.env.*
+frontend/.env.local
+frontend/.env.production
+frontend/.env.codespace
+backend/.env
+
+# Misc
+.DS_Store
+.idea/
+.vscode/
