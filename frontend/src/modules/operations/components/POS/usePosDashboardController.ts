@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { syncClient } from "../../../sync/services/syncClient"; // [PACK35-frontend]
 
 import type {
   CashSession,
@@ -574,6 +575,23 @@ export function usePosDashboardController({
           ? err.message
           : "No fue posible registrar la venta POS.",
       );
+      if (typeof navigator === "undefined" || !navigator.onLine) {
+        try {
+          await syncClient.enqueue({
+            eventType: "pos.sale", // [PACK35-frontend]
+            payload: {
+              store_id: selectedStoreId,
+              items: payload.items,
+              total: totals.total,
+              draft: mode === "draft",
+            },
+            idempotencyKey: `pos-sale-${selectedStoreId}-${Date.now()}`,
+          });
+          setMessage("Venta almacenada en la cola local para sincronización.");
+        } catch (syncError) {
+          console.warn("No fue posible guardar la venta en la cola local", syncError);
+        }
+      }
     } finally {
       setSubmittingMode(null);
     }

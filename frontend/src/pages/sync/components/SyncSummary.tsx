@@ -27,6 +27,61 @@ type SyncSummaryProps = {
   enableHybridPrep: boolean;
   onRefreshOutbox: () => void;
   formatDateTime: (value?: string | null) => string;
+  hybridProgress: {
+    percent: number;
+    total: number;
+    processed: number;
+    pending: number;
+    failed: number;
+    server: {
+      percent: number;
+      total: number;
+      processed: number;
+      pending: number;
+      failed: number;
+    };
+    breakdown: {
+      local: { total: number; processed: number; pending: number; failed: number };
+      remote: {
+        total: number;
+        processed: number;
+        pending: number;
+        failed: number;
+        lastUpdated: string | null;
+        oldestPending: string | null;
+      };
+      outbox: {
+        total: number;
+        processed: number;
+        pending: number;
+        failed: number;
+        lastUpdated: string | null;
+        oldestPending: string | null;
+      };
+    };
+    modules: Array<{
+      module: string;
+      label: string;
+      percent: number;
+      total: number;
+      processed: number;
+      pending: number;
+      failed: number;
+      queue: { total: number; processed: number; pending: number; failed: number };
+      outbox: { total: number; processed: number; pending: number; failed: number };
+    }>;
+    forecast: {
+      lookbackMinutes: number;
+      eventsPerMinute: number;
+      successRate: number;
+      processedRecent: number;
+      backlogPending: number;
+      backlogFailed: number;
+      backlogTotal: number;
+      estimatedMinutesRemaining: number | null;
+      estimatedCompletion: string | null;
+    };
+  }; // [PACK35-frontend]
 };
 
 function SyncSummary({
@@ -45,7 +100,80 @@ function SyncSummary({
   enableHybridPrep,
   onRefreshOutbox,
   formatDateTime,
+  hybridProgress,
 }: SyncSummaryProps) {
+  const remoteBreakdown = hybridProgress.breakdown.remote;
+  const outboxBreakdown = hybridProgress.breakdown.outbox;
+  const moduleBreakdown = hybridProgress.modules ?? [];
+  const forecast = hybridProgress.forecast;
+  const progressSegments =
+    hybridProgress.total === 0
+      ? []
+      : [
+          `Local ${hybridProgress.breakdown.local.processed}/${hybridProgress.breakdown.local.total}`,
+          `Servidor ${hybridProgress.server.processed}/${hybridProgress.server.total}`,
+          `Pendientes ${hybridProgress.pending}`,
+          `Fallidos ${hybridProgress.failed}`,
+          `Central ${hybridProgress.server.percent}%`,
+        ];
+
+  if (hybridProgress.total !== 0) {
+    if (forecast.processedRecent > 0) {
+      progressSegments.push(
+        `Procesados ${forecast.processedRecent} ev en ${forecast.lookbackMinutes} min`,
+      );
+    }
+    if (forecast.eventsPerMinute > 0) {
+      progressSegments.push(`Ritmo ${forecast.eventsPerMinute.toFixed(2)} ev/min`);
+    }
+    if (forecast.estimatedMinutesRemaining !== null) {
+      progressSegments.push(
+        `ETA ${Math.max(0, Math.round(forecast.estimatedMinutesRemaining))} min`,
+      );
+    }
+    if (remoteBreakdown.lastUpdated) {
+      progressSegments.push(`Último envío remoto ${formatDateTime(remoteBreakdown.lastUpdated)}`);
+    }
+    if (remoteBreakdown.oldestPending) {
+      progressSegments.push(`Pendiente remoto más antiguo ${formatDateTime(remoteBreakdown.oldestPending)}`);
+    }
+    if (outboxBreakdown.lastUpdated) {
+      progressSegments.push(`Outbox actualizado ${formatDateTime(outboxBreakdown.lastUpdated)}`);
+    }
+    if (outboxBreakdown.oldestPending) {
+      progressSegments.push(
+        `Outbox pendiente más antiguo ${formatDateTime(outboxBreakdown.oldestPending)}`,
+      );
+    }
+    if (forecast.estimatedCompletion) {
+      progressSegments.push(`Final estimado ${formatDateTime(forecast.estimatedCompletion)}`);
+    }
+
+    if (moduleBreakdown.length > 0) {
+      const sortedByBacklog = [...moduleBreakdown]
+        .filter((module) => module.total > 0)
+        .sort(
+          (a, b) => b.pending + b.failed - (a.pending + a.failed) || b.percent - a.percent,
+        )
+        .slice(0, 2);
+      const highlighted = new Set<string>();
+      sortedByBacklog.forEach((module) => {
+        highlighted.add(module.module);
+        progressSegments.push(
+          `${module.label}: ${module.processed}/${module.total} (${module.percent}% · Pend ${module.pending})`,
+        );
+      });
+      const failedHighlight = moduleBreakdown.find(
+        (module) => module.failed > 0 && !highlighted.has(module.module),
+      );
+      if (failedHighlight) {
+        progressSegments.push(
+          `Fallidos ${failedHighlight.label}: ${failedHighlight.failed} evento(s)`,
+        );
+      }
+    }
+  }
+
   return (
     <>
       <ModuleHeader
@@ -98,6 +226,15 @@ function SyncSummary({
             <span>Cola local pendiente</span>
             <strong>{totalPendingOutbox}</strong>
             <small>{enableHybridPrep ? "Eventos por replicar" : "Habilita el modo híbrido"}</small>
+          </div>
+          <div className="sync-metric">
+            <span>Porcentaje para finalizar</span>
+            <strong>{hybridProgress.percent}%</strong>
+            <small>
+              {hybridProgress.total === 0
+                ? "Sin eventos en la cola híbrida"
+                : progressSegments.join(" · ")}
+            </small>
           </div>
           <div className="sync-metric">
             <span>Conflictos abiertos</span>

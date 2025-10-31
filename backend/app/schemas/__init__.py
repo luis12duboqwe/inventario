@@ -31,6 +31,7 @@ from ..models import (
     SyncMode,
     SyncOutboxPriority,
     SyncOutboxStatus,
+    SyncQueueStatus,
     SyncStatus,
     TransferStatus,
     CustomerLedgerEntryType,
@@ -2203,6 +2204,163 @@ class SyncOutboxStatsEntry(BaseModel):
     oldest_pending: datetime | None
 
 
+# // [PACK35-backend]
+class SyncQueueProgressSummary(BaseModel):
+    percent: float
+    total: int
+    processed: int
+    pending: int
+    failed: int
+    last_updated: datetime | None
+    oldest_pending: datetime | None
+
+
+# // [PACK35-backend]
+class SyncHybridComponentSummary(BaseModel):
+    total: int
+    processed: int
+    pending: int
+    failed: int
+    latest_update: datetime | None
+    oldest_pending: datetime | None
+
+
+# // [PACK35-backend]
+class SyncHybridProgressComponents(BaseModel):
+    queue: SyncHybridComponentSummary
+    outbox: SyncHybridComponentSummary
+
+
+# // [PACK35-backend]
+class SyncHybridProgressSummary(BaseModel):
+    percent: float
+    total: int
+    processed: int
+    pending: int
+    failed: int
+    components: SyncHybridProgressComponents
+
+
+# // [PACK35-backend]
+class SyncHybridForecast(BaseModel):
+    lookback_minutes: int
+    processed_recent: int
+    processed_queue: int
+    processed_outbox: int
+    attempts_total: int
+    attempts_successful: int
+    success_rate: float
+    events_per_minute: float
+    backlog_pending: int
+    backlog_failed: int
+    backlog_total: int
+    estimated_minutes_remaining: float | None
+    estimated_completion: datetime | None
+    generated_at: datetime
+    progress: SyncHybridProgressSummary
+
+
+# // [PACK35-backend]
+class SyncHybridModuleBreakdownComponent(BaseModel):
+    total: int
+    processed: int
+    pending: int
+    failed: int
+
+
+# // [PACK35-backend]
+class SyncHybridModuleBreakdownItem(BaseModel):
+    module: str
+    label: str
+    total: int
+    processed: int
+    pending: int
+    failed: int
+    percent: float
+    queue: SyncHybridModuleBreakdownComponent
+    outbox: SyncHybridModuleBreakdownComponent
+
+
+# // [PACK35-backend]
+class SyncQueueEvent(BaseModel):
+    event_type: str = Field(..., min_length=3, max_length=120)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = Field(default=None, max_length=120)
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "event_type": "inventory.movement",
+            "payload": {"store_id": 1, "device_id": 42, "quantity": -1},
+            "idempotency_key": "inventory-movement-42-20250301",
+        }
+    })
+
+
+# // [PACK35-backend]
+class SyncQueueEntryResponse(BaseModel):
+    id: int
+    event_type: str
+    payload: dict[str, Any]
+    idempotency_key: str | None
+    status: SyncQueueStatus
+    attempts: int
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _normalize_payload(cls, value: Any) -> dict[str, Any]:
+        if isinstance(value, str):
+            try:
+                import json
+
+                return json.loads(value)
+            except Exception:  # pragma: no cover - fallback to empty payload
+                return {}
+        if isinstance(value, dict):
+            return value
+        return {}
+
+
+# // [PACK35-backend]
+class SyncQueueAttemptResponse(BaseModel):
+    id: int
+    queue_id: int
+    attempted_at: datetime
+    success: bool
+    error_message: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# // [PACK35-backend]
+class SyncQueueEnqueueRequest(BaseModel):
+    events: list[SyncQueueEvent]
+
+    @model_validator(mode="after")
+    def _ensure_events(self) -> "SyncQueueEnqueueRequest":
+        if not self.events:
+            raise ValueError("Debes proporcionar al menos un evento para encolar")
+        return self
+
+
+# // [PACK35-backend]
+class SyncQueueEnqueueResponse(BaseModel):
+    queued: list[SyncQueueEntryResponse]
+    reused: list[SyncQueueEntryResponse] = Field(default_factory=list)
+
+
+# // [PACK35-backend]
+class SyncQueueDispatchResult(BaseModel):
+    processed: int
+    sent: int
+    failed: int
+    retried: int
+
+
 class SyncSessionCompact(BaseModel):
     id: int
     mode: SyncMode
@@ -4291,6 +4449,19 @@ __all__ = [
     "SyncOutboxEntryResponse",
     "SyncOutboxPriority",
     "SyncOutboxStatsEntry",
+    "SyncQueueProgressSummary",
+    "SyncHybridComponentSummary",
+    "SyncHybridProgressComponents",
+    "SyncHybridProgressSummary",
+    "SyncHybridForecast",
+    "SyncHybridModuleBreakdownComponent",
+    "SyncHybridModuleBreakdownItem",
+    "SyncQueueEvent",
+    "SyncQueueEntryResponse",
+    "SyncQueueAttemptResponse",
+    "SyncQueueEnqueueRequest",
+    "SyncQueueEnqueueResponse",
+    "SyncQueueDispatchResult",
     "SyncBranchHealth",
     "SyncBranchOverview",
     "SyncBranchStoreDetail",

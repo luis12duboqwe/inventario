@@ -120,6 +120,14 @@ class Settings(BaseSettings):
             "SOFTMOBILE_SYNC_MAX_ATTEMPTS",
         ),
     )
+    # // [PACK35-backend]
+    sync_remote_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "SYNC_REMOTE_URL",
+            "SOFTMOBILE_SYNC_REMOTE_URL",
+        ),
+    )
     enable_background_scheduler: bool = Field(
         default=True,
         validation_alias=AliasChoices(

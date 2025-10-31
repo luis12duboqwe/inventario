@@ -1746,6 +1746,112 @@ export type SyncOutboxStatsEntry = {
   oldest_pending?: string | null;
 };
 
+// [PACK35-frontend]
+export type SyncQueueStatus = "PENDING" | "SENT" | "FAILED";
+
+export type SyncQueueEntry = {
+  id: number;
+  event_type: string;
+  payload: Record<string, unknown>;
+  idempotency_key: string | null;
+  status: SyncQueueStatus;
+  attempts: number;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SyncQueueSummary = {
+  percent: number;
+  total: number;
+  processed: number;
+  pending: number;
+  failed: number;
+  last_updated: string | null;
+  oldest_pending: string | null;
+}; // [PACK35-frontend]
+
+// [PACK35-frontend]
+export type SyncHybridComponent = {
+  total: number;
+  processed: number;
+  pending: number;
+  failed: number;
+  latest_update: string | null;
+  oldest_pending: string | null;
+};
+
+// [PACK35-frontend]
+export type SyncHybridProgress = {
+  percent: number;
+  total: number;
+  processed: number;
+  pending: number;
+  failed: number;
+  components: {
+    queue: SyncHybridComponent;
+    outbox: SyncHybridComponent;
+  };
+};
+
+// [PACK35-frontend]
+export type SyncHybridForecast = {
+  lookback_minutes: number;
+  processed_recent: number;
+  processed_queue: number;
+  processed_outbox: number;
+  attempts_total: number;
+  attempts_successful: number;
+  success_rate: number;
+  events_per_minute: number;
+  backlog_pending: number;
+  backlog_failed: number;
+  backlog_total: number;
+  estimated_minutes_remaining: number | null;
+  estimated_completion: string | null;
+  generated_at: string;
+  progress: SyncHybridProgress;
+};
+
+// [PACK35-frontend]
+export type SyncHybridModuleBreakdownComponent = {
+  total: number;
+  processed: number;
+  pending: number;
+  failed: number;
+};
+
+// [PACK35-frontend]
+export type SyncHybridModuleBreakdownItem = {
+  module: string;
+  label: string;
+  total: number;
+  processed: number;
+  pending: number;
+  failed: number;
+  percent: number;
+  queue: SyncHybridModuleBreakdownComponent;
+  outbox: SyncHybridModuleBreakdownComponent;
+};
+
+export type SyncQueueEnqueueResponse = {
+  queued: SyncQueueEntry[];
+  reused: SyncQueueEntry[];
+};
+
+export type SyncQueueDispatchResult = {
+  processed: number;
+  sent: number;
+  failed: number;
+  retried: number;
+};
+
+export type SyncQueueEventInput = {
+  event_type: string;
+  payload: Record<string, unknown>;
+  idempotency_key?: string | null;
+};
+
 export type SyncSessionCompact = {
   id: number;
   mode: string;
@@ -3763,6 +3869,44 @@ export function triggerSync(token: string, storeId?: number) {
   }, token);
 }
 
+// [PACK35-frontend]
+export function enqueueSyncQueueEvents(
+  token: string,
+  events: SyncQueueEventInput[],
+): Promise<SyncQueueEnqueueResponse> {
+  return request(`/sync/events`, { method: "POST", body: JSON.stringify({ events }) }, token);
+}
+
+// [PACK35-frontend]
+export function dispatchSyncQueueEvents(
+  token: string,
+  limit = 25,
+): Promise<SyncQueueDispatchResult> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request(`/sync/dispatch?${params.toString()}`, { method: "POST" }, token);
+}
+
+// [PACK35-frontend]
+export function listSyncQueueStatus(
+  token: string,
+  params: { limit?: number; status?: SyncQueueStatus } = {},
+): Promise<SyncQueueEntry[]> {
+  const query = new URLSearchParams();
+  if (params.limit != null) {
+    query.set("limit", String(params.limit));
+  }
+  if (params.status) {
+    query.set("status_filter", params.status);
+  }
+  const suffix = query.toString();
+  return request(`/sync/status${suffix ? `?${suffix}` : ""}`, { method: "GET" }, token);
+}
+
+// [PACK35-frontend]
+export function resolveSyncQueueEvent(token: string, queueId: number): Promise<SyncQueueEntry> {
+  return request(`/sync/resolve/${queueId}`, { method: "POST" }, token);
+}
+
 export function runBackup(token: string, reason: string, note?: string): Promise<BackupJob> {
   return request<BackupJob>("/backups/run", {
     method: "POST",
@@ -4536,6 +4680,34 @@ export function retrySyncOutbox(token: string, ids: number[], reason: string): P
 export function getSyncOutboxStats(token: string): Promise<SyncOutboxStatsEntry[]> {
   return requestCollection<SyncOutboxStatsEntry>("/sync/outbox/stats", { method: "GET" }, token);
 }
+
+export function getSyncQueueSummary(token: string): Promise<SyncQueueSummary> {
+  return request<SyncQueueSummary>("/sync/status/summary", { method: "GET" }, token);
+} // [PACK35-frontend]
+
+// [PACK35-frontend]
+export function getSyncHybridBreakdown(
+  token: string,
+): Promise<SyncHybridModuleBreakdownItem[]> {
+  return requestCollection<SyncHybridModuleBreakdownItem>(
+    "/sync/status/breakdown",
+    { method: "GET" },
+    token,
+  );
+}
+
+export function getSyncHybridProgress(token: string): Promise<SyncHybridProgress> {
+  return request<SyncHybridProgress>("/sync/status/hybrid", { method: "GET" }, token);
+} // [PACK35-frontend]
+
+// [PACK35-frontend]
+export function getSyncHybridForecast(
+  token: string,
+  lookbackMinutes?: number,
+): Promise<SyncHybridForecast> {
+  const search = typeof lookbackMinutes === "number" ? `?lookback_minutes=${lookbackMinutes}` : "";
+  return request<SyncHybridForecast>(`/sync/status/forecast${search}`, { method: "GET" }, token);
+} // [PACK35-frontend]
 
 export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncStoreHistory[]> {
   return requestCollection<SyncStoreHistory>(
