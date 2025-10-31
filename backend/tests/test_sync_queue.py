@@ -52,6 +52,7 @@ def test_sync_queue_lifecycle(client):
                     }
                 ]
             },
+            headers=headers,
             headers=secure_headers,
         )
         assert enqueue_response.status_code == status.HTTP_200_OK
@@ -71,6 +72,7 @@ def test_sync_queue_lifecycle(client):
                     }
                 ]
             },
+            headers=headers,
             headers=secure_headers,
         )
         assert second_enqueue.status_code == status.HTTP_200_OK
@@ -96,6 +98,7 @@ def test_sync_queue_lifecycle(client):
 
         dispatch_response = client.post(
             "/sync/dispatch",
+            headers=headers,
             headers=secure_headers,
             params={"limit": 5},
         )
@@ -132,11 +135,13 @@ def test_sync_queue_lifecycle(client):
                     }
                 ]
             },
+            headers=headers,
             headers=secure_headers,
         )
         assert manual_enqueue.status_code == status.HTTP_200_OK
         pending_id = manual_enqueue.json()["queued"][0]["id"]
 
+        resolve_response = client.post(f"/sync/resolve/{pending_id}", headers=headers)
         resolve_response = client.post(
             f"/sync/resolve/{pending_id}", headers=secure_headers
         )
@@ -315,6 +320,108 @@ def test_sync_hybrid_breakdown_by_module(client, db_session):
         settings.enable_hybrid_prep = original_hybrid
         db_session.query(models.SyncQueue).delete()
         db_session.query(models.SyncOutbox).delete()
+        db_session.commit()
+
+# // [PACK35-backend]
+def test_sync_hybrid_overview_reports_final_percentage(client, db_session):
+    original_hybrid = settings.enable_hybrid_prep
+    settings.enable_hybrid_prep = True
+
+    try:
+        now = datetime.utcnow()
+        queue_entries = [
+            models.SyncQueue(
+                event_type="inventory.restock",
+                payload={"sku": "INV-1"},
+                idempotency_key="overview-inv-1",
+                status=models.SyncQueueStatus.SENT,
+                attempts=1,
+                created_at=now - timedelta(minutes=20),
+                updated_at=now - timedelta(minutes=5),
+            ),
+            models.SyncQueue(
+                event_type="sales.invoice",
+                payload={"order_id": 200},
+                idempotency_key="overview-sales-1",
+                status=models.SyncQueueStatus.PENDING,
+                attempts=0,
+                created_at=now - timedelta(minutes=10),
+                updated_at=now - timedelta(minutes=10),
+            ),
+            models.SyncQueue(
+                event_type="customers.profile",
+                payload={"customer_id": 300},
+                idempotency_key="overview-customer-1",
+                status=models.SyncQueueStatus.FAILED,
+                attempts=3,
+                last_error="network",  # type: ignore[arg-type]
+                created_at=now - timedelta(minutes=40),
+                updated_at=now - timedelta(minutes=15),
+            ),
+        ]
+        db_session.add_all(queue_entries)
+
+        outbox_entries = [
+            models.SyncOutbox(
+                entity_type="inventory.device",
+                entity_id="500",
+                operation="update",
+                payload=json.dumps({"id": 500}),
+                status=models.SyncOutboxStatus.PENDING,
+                created_at=now - timedelta(minutes=25),
+                updated_at=now - timedelta(minutes=25),
+            ),
+            models.SyncOutbox(
+                entity_type="pos.sale",
+                entity_id="800",
+                operation="create",
+                payload=json.dumps({"id": 800}),
+                status=models.SyncOutboxStatus.SENT,
+                created_at=now - timedelta(minutes=50),
+                updated_at=now - timedelta(minutes=8),
+            ),
+        ]
+        db_session.add_all(outbox_entries)
+        db_session.flush()
+
+        attempt = models.SyncAttempt(
+            queue_id=queue_entries[0].id,
+            success=True,
+            error_message=None,
+            attempted_at=now - timedelta(minutes=5),
+        )
+        db_session.add(attempt)
+        db_session.commit()
+
+        token = _bootstrap_manager(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        response = client.get("/sync/status/overview", headers=headers)
+        assert response.status_code == status.HTTP_200_OK
+        payload = response.json()
+
+        assert payload["percent"] == pytest.approx(40.0, abs=0.1)
+        assert payload["total"] == 5
+        assert payload["processed"] == 2
+        assert payload["pending"] == 2
+        assert payload["failed"] == 1
+
+        remaining = payload["remaining"]
+        assert remaining["total"] == 3
+        assert remaining["pending"] == 2
+        assert remaining["failed"] == 1
+        assert remaining["remote_pending"] == 1
+        assert remaining["outbox_pending"] == 1
+
+        assert payload["queue_summary"]["total"] == 3
+        assert payload["progress"]["total"] == 5
+        assert payload["forecast"]["backlog_total"] == 3
+        assert isinstance(payload["breakdown"], list)
+        assert any(item["module"] == "inventory" for item in payload["breakdown"])
+    finally:
+        settings.enable_hybrid_prep = original_hybrid
+        db_session.query(models.SyncQueue).delete()
+        db_session.query(models.SyncOutbox).delete()
+        db_session.query(models.SyncAttempt).delete()
         db_session.commit()
 
 # // [PACK35-backend]

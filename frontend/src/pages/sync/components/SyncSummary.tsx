@@ -75,6 +75,25 @@ type SyncSummaryProps = {
       eventsPerMinute: number;
       successRate: number;
       processedRecent: number;
+    backlogPending: number;
+    backlogFailed: number;
+    backlogTotal: number;
+    estimatedMinutesRemaining: number | null;
+    estimatedCompletion: string | null;
+    }; 
+    overview: {
+      percent: number;
+      generatedAt: string | null;
+      remaining: {
+        total: number;
+        pending: number;
+        failed: number;
+        remotePending: number;
+        outboxPending: number;
+        estimatedMinutesRemaining: number | null;
+        estimatedCompletion: string | null;
+      };
+    } | null;
       backlogPending: number;
       backlogFailed: number;
       backlogTotal: number;
@@ -106,6 +125,36 @@ function SyncSummary({
   const outboxBreakdown = hybridProgress.breakdown.outbox;
   const moduleBreakdown = hybridProgress.modules ?? [];
   const forecast = hybridProgress.forecast;
+  const progressSegments: string[] = [];
+
+  if (hybridProgress.total !== 0) {
+    progressSegments.push(
+      `Local ${hybridProgress.breakdown.local.processed}/${hybridProgress.breakdown.local.total}`,
+      `Procesados totales ${hybridProgress.processed}/${hybridProgress.total}`,
+    );
+
+    if (hybridProgress.overview) {
+      progressSegments.push(
+        `Servidor ${hybridProgress.overview.percent.toFixed(2)}%`,
+        `Pendientes totales ${hybridProgress.overview.remaining.total}`,
+        `Remotos ${hybridProgress.overview.remaining.remotePending} · Outbox ${hybridProgress.overview.remaining.outboxPending}`,
+      );
+      if (hybridProgress.overview.remaining.failed > 0) {
+        progressSegments.push(`Fallidos críticos ${hybridProgress.overview.remaining.failed}`);
+      }
+      if (hybridProgress.overview.remaining.estimatedCompletion) {
+        progressSegments.push(
+          `Final estimado ${formatDateTime(hybridProgress.overview.remaining.estimatedCompletion)}`,
+        );
+      } else if (hybridProgress.overview.generatedAt) {
+        progressSegments.push(`Actualizado ${formatDateTime(hybridProgress.overview.generatedAt)}`);
+      }
+    } else {
+      progressSegments.push(`Central ${hybridProgress.server.percent.toFixed(2)}%`);
+    }
+
+    progressSegments.push(`Pendientes ${hybridProgress.pending}`, `Fallidos ${hybridProgress.failed}`);
+
   const progressSegments =
     hybridProgress.total === 0
       ? []
@@ -145,6 +194,7 @@ function SyncSummary({
         `Outbox pendiente más antiguo ${formatDateTime(outboxBreakdown.oldestPending)}`,
       );
     }
+    if (!hybridProgress.overview?.remaining.estimatedCompletion && forecast.estimatedCompletion) {
     if (forecast.estimatedCompletion) {
       progressSegments.push(`Final estimado ${formatDateTime(forecast.estimatedCompletion)}`);
     }
@@ -228,6 +278,14 @@ function SyncSummary({
             <small>{enableHybridPrep ? "Eventos por replicar" : "Habilita el modo híbrido"}</small>
           </div>
           <div className="sync-metric">
+            <span>Porcentaje para finalizar todo</span>
+            <strong>{hybridProgress.percent.toFixed(2)}%</strong>
+            <small>
+              {hybridProgress.total === 0
+                ? "Sin eventos en la cola híbrida"
+                : progressSegments.length > 0
+                ? progressSegments.join(" · ")
+                : "Sin métricas recientes"}
             <span>Porcentaje para finalizar</span>
             <strong>{hybridProgress.percent}%</strong>
             <small>

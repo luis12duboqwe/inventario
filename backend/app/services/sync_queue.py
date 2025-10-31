@@ -411,3 +411,42 @@ def calculate_hybrid_breakdown(
         )
     )
     return breakdown
+
+
+# // [PACK35-backend]
+def calculate_hybrid_overview(db: Session) -> schemas.SyncHybridOverview:
+    """Consolida el estado híbrido destacando el porcentaje total para finalizar."""
+
+    queue_summary = queue_progress_summary(db)
+    forecast = calculate_hybrid_forecast(db)
+    progress = forecast.progress
+    breakdown = calculate_hybrid_breakdown(db)
+
+    queue_component = progress.components.queue
+    outbox_component = progress.components.outbox
+
+    remaining = schemas.SyncHybridRemainingBreakdown(
+        total=progress.pending + progress.failed,
+        pending=progress.pending,
+        failed=progress.failed,
+        remote_pending=queue_component.pending,
+        remote_failed=queue_component.failed,
+        outbox_pending=outbox_component.pending,
+        outbox_failed=outbox_component.failed,
+        estimated_minutes_remaining=forecast.estimated_minutes_remaining,
+        estimated_completion=forecast.estimated_completion,
+    )
+
+    return schemas.SyncHybridOverview(
+        generated_at=forecast.generated_at,
+        percent=progress.percent,
+        total=progress.total,
+        processed=progress.processed,
+        pending=progress.pending,
+        failed=progress.failed,
+        remaining=remaining,
+        queue_summary=queue_summary,
+        progress=progress,
+        forecast=forecast,
+        breakdown=breakdown,
+    )

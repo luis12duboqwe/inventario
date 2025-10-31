@@ -31,6 +31,7 @@ import {
   getSyncHybridProgress,
   getSyncHybridForecast,
   getSyncHybridBreakdown,
+  getSyncHybridOverview,
   updateDevice,
 } from "../../../api";
 import { safeArray, safeNumber } from "../../../utils/safeValues"; // [PACK36-dashboard-guards]
@@ -50,6 +51,7 @@ import type {
   SyncHybridProgress,
   SyncHybridForecast,
   SyncHybridModuleBreakdownItem,
+  SyncHybridOverview,
   SyncStoreHistory,
   UpdateStatus,
 } from "../../../api";
@@ -90,6 +92,7 @@ type DashboardContextValue = {
   syncHybridProgress: SyncHybridProgress | null; // [PACK35-frontend]
   syncHybridForecast: SyncHybridForecast | null; // [PACK35-frontend]
   syncHybridBreakdown: SyncHybridModuleBreakdownItem[]; // [PACK35-frontend]
+  syncHybridOverview: SyncHybridOverview | null; // [PACK35-frontend]
   currentUser: UserAccount | null;
   syncHistory: SyncStoreHistory[];
   syncHistoryError: string | null;
@@ -183,6 +186,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     useState<SyncHybridForecast | null>(null); // [PACK35-frontend]
   const [syncHybridBreakdown, setSyncHybridBreakdown] =
     useState<SyncHybridModuleBreakdownItem[]>([]); // [PACK35-frontend]
+  const [syncHybridOverview, setSyncHybridOverview] =
+    useState<SyncHybridOverview | null>(null); // [PACK35-frontend]
   const [syncHistory, setSyncHistory] = useState<SyncStoreHistory[]>([]);
   const [syncHistoryError, setSyncHistoryError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -403,6 +408,26 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         setOutboxStats([]);
         setSyncQueueSummary(null);
         setSyncHybridProgress(null); // [PACK35-frontend]
+        setSyncHybridForecast(null); // [PACK35-frontend]
+        setSyncHybridBreakdown([]); // [PACK35-frontend]
+        setSyncHybridOverview(null); // [PACK35-frontend]
+        return;
+      }
+      try {
+        const [entries, statsData, summaryData, overviewData] = await Promise.all([
+          listSyncOutbox(token),
+          getSyncOutboxStats(token),
+          getSyncQueueSummary(token),
+          getSyncHybridOverview(token),
+        ]);
+        setOutbox(entries);
+        setOutboxStats(statsData);
+        const normalizedSummary = overviewData.queue_summary ?? summaryData;
+        setSyncQueueSummary(normalizedSummary);
+        setSyncHybridOverview(overviewData);
+        setSyncHybridProgress(overviewData.progress);
+        setSyncHybridForecast(overviewData.forecast);
+        setSyncHybridBreakdown(overviewData.breakdown);
         return;
       }
       try {
@@ -424,6 +449,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
           err instanceof Error ? err.message : "No fue posible consultar la cola de sincronización";
         setOutboxError(friendlyErrorMessage(message));
         setSyncHybridProgress(null);
+        setSyncHybridForecast(null);
+        setSyncHybridBreakdown([]);
+        setSyncHybridOverview(null);
       }
     };
 
@@ -610,6 +638,20 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(null);
       setSyncHybridForecast(null);
       setSyncHybridBreakdown([]);
+      setSyncHybridOverview(null);
+      return;
+    }
+    try {
+      const [summaryData, overviewData] = await Promise.all([
+        getSyncQueueSummary(token),
+        getSyncHybridOverview(token),
+      ]);
+      const normalizedSummary = overviewData.queue_summary ?? summaryData;
+      setSyncQueueSummary(normalizedSummary);
+      setSyncHybridOverview(overviewData);
+      setSyncHybridForecast(overviewData.forecast);
+      setSyncHybridProgress(overviewData.progress);
+      setSyncHybridBreakdown(overviewData.breakdown);
       return;
     }
     try {
@@ -630,6 +672,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setOutboxError(friendlyErrorMessage(message));
       setSyncHybridForecast(null);
       setSyncHybridBreakdown([]);
+      setSyncHybridOverview(null);
       try {
         const fallback = await getSyncHybridProgress(token);
         setSyncHybridProgress(fallback);
@@ -646,6 +689,22 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(null);
       setSyncHybridForecast(null);
       setSyncHybridBreakdown([]);
+      setSyncHybridOverview(null);
+      return;
+    }
+    try {
+      const [statsData, summaryData, overviewData] = await Promise.all([
+        getSyncOutboxStats(token),
+        getSyncQueueSummary(token),
+        getSyncHybridOverview(token),
+      ]);
+      setOutboxStats(statsData);
+      const normalizedSummary = overviewData.queue_summary ?? summaryData;
+      setSyncQueueSummary(normalizedSummary);
+      setSyncHybridOverview(overviewData);
+      setSyncHybridForecast(overviewData.forecast);
+      setSyncHybridProgress(overviewData.progress);
+      setSyncHybridBreakdown(overviewData.breakdown);
       return;
     }
     try {
@@ -668,6 +727,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setOutboxError(friendlyErrorMessage(message));
       setSyncHybridForecast(null);
       setSyncHybridBreakdown([]);
+      setSyncHybridOverview(null);
       try {
         const fallback = await getSyncHybridProgress(token);
         setSyncHybridProgress(fallback);
@@ -697,6 +757,24 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(null);
       setSyncHybridForecast(null);
       setSyncHybridBreakdown([]);
+      setSyncHybridOverview(null);
+      return;
+    }
+    try {
+      const [entries, statsData, summaryData, overviewData] = await Promise.all([
+        listSyncOutbox(token),
+        getSyncOutboxStats(token),
+        getSyncQueueSummary(token),
+        getSyncHybridOverview(token),
+      ]);
+      setOutbox(entries);
+      setOutboxStats(statsData);
+      const normalizedSummary = overviewData.queue_summary ?? summaryData;
+      setSyncQueueSummary(normalizedSummary);
+      setSyncHybridOverview(overviewData);
+      setSyncHybridForecast(overviewData.forecast);
+      setSyncHybridProgress(overviewData.progress);
+      setSyncHybridBreakdown(overviewData.breakdown);
       return;
     }
     try {
@@ -722,6 +800,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       pushToast({ message: friendly, variant: "error" });
       setSyncHybridForecast(null);
       setSyncHybridBreakdown([]);
+      setSyncHybridOverview(null);
       try {
         const fallback = await getSyncHybridProgress(token);
         setSyncHybridProgress(fallback);
@@ -850,6 +929,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       syncHybridProgress,
       syncHybridForecast,
       syncHybridBreakdown,
+      syncHybridOverview,
       currentUser,
       syncHistory,
       syncHistoryError,
@@ -914,6 +994,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       syncHybridForecast,
       syncHybridBreakdown,
       syncHybridProgress,
+      syncHybridOverview,
       refreshSyncQueueSummary,
       syncQueueSummary,
       pushToast,

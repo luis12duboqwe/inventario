@@ -203,6 +203,20 @@ def hybrid_progress_breakdown(
 
 
 # // [PACK35-backend]
+@router.get(
+    "/status/overview",
+    response_model=schemas.SyncHybridOverview,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def hybrid_progress_overview(
+    db: Session = Depends(get_db),
+    _current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_hybrid_enabled()
+    return sync_queue.calculate_hybrid_overview(db)
+
+
+# // [PACK35-backend]
 @router.post(
     "/resolve/{queue_id}",
     response_model=schemas.SyncQueueEntryResponse,

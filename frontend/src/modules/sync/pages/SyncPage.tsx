@@ -112,6 +112,19 @@ type HybridProgressSnapshot = {
     estimatedCompletion: string | null;
     generatedAt: string | null;
   };
+  overview: {
+    percent: number;
+    generatedAt: string | null;
+    remaining: {
+      total: number;
+      pending: number;
+      failed: number;
+      remotePending: number;
+      outboxPending: number;
+      estimatedMinutesRemaining: number | null;
+      estimatedCompletion: string | null;
+    };
+  } | null;
   modules: HybridModuleBreakdown[];
 }; // [PACK35-frontend]
 
@@ -150,6 +163,7 @@ function SyncPage() {
     syncHybridProgress,
     syncHybridForecast,
     syncHybridBreakdown,
+    syncHybridOverview,
     syncHistory,
     syncHistoryError,
     refreshSyncHistory,
@@ -547,6 +561,8 @@ function SyncPage() {
         oldest_pending: fallbackOutboxTotals.oldest_pending,
       };
 
+      const progressSource =
+        syncHybridOverview?.progress ?? syncHybridForecast?.progress ?? syncHybridProgress;
       const progressSource = syncHybridForecast?.progress ?? syncHybridProgress;
       const queueComponent = progressSource?.components.queue ?? fallbackQueueComponent;
       const outboxComponent = progressSource?.components.outbox ?? fallbackOutboxComponent;
@@ -555,6 +571,12 @@ function SyncPage() {
       const serverProcessed = queueComponent.processed + outboxComponent.processed;
       const serverPending = queueComponent.pending + outboxComponent.pending;
       const serverFailed = queueComponent.failed + outboxComponent.failed;
+      const rawServerPercent =
+        serverTotal === 0 ? 100 : (serverProcessed / Math.max(serverTotal, 1)) * 100;
+      const overviewPercent =
+        syncHybridOverview?.percent !== undefined
+          ? Math.round(syncHybridOverview.percent * 100) / 100
+          : Math.round(rawServerPercent * 100) / 100;
       const serverPercent =
         serverTotal === 0 ? 100 : Math.round((serverProcessed / serverTotal) * 100);
 
@@ -571,6 +593,25 @@ function SyncPage() {
       const combinedFailed = localFailed + serverFailed;
 
       const percent =
+        combinedTotal === 0
+          ? 100
+          : Math.round(
+              (combinedProcessed / Math.max(combinedTotal, 1)) * 100 * 100,
+            ) / 100;
+
+      const forecastSource = syncHybridOverview?.forecast ?? syncHybridForecast;
+      const forecast = forecastSource
+        ? {
+            lookbackMinutes: forecastSource.lookback_minutes,
+            eventsPerMinute: forecastSource.events_per_minute,
+            successRate: forecastSource.success_rate,
+            processedRecent: forecastSource.processed_recent,
+            backlogPending: forecastSource.backlog_pending,
+            backlogFailed: forecastSource.backlog_failed,
+            backlogTotal: forecastSource.backlog_total,
+            estimatedMinutesRemaining: forecastSource.estimated_minutes_remaining,
+            estimatedCompletion: forecastSource.estimated_completion,
+            generatedAt: forecastSource.generated_at,
         combinedTotal === 0 ? 100 : Math.round((combinedProcessed / combinedTotal) * 100);
 
       const forecast = syncHybridForecast
@@ -599,6 +640,8 @@ function SyncPage() {
             generatedAt: null,
           };
 
+      const modulesSource = syncHybridOverview?.breakdown ?? syncHybridBreakdown;
+      const modules = modulesSource.map((item) => ({
       const modules = syncHybridBreakdown.map((item) => ({
         module: item.module,
         label: item.label,
@@ -611,6 +654,22 @@ function SyncPage() {
         outbox: item.outbox,
       }));
 
+      const overview = syncHybridOverview
+        ? {
+            percent: Math.round(syncHybridOverview.percent * 100) / 100,
+            generatedAt: syncHybridOverview.generated_at,
+            remaining: {
+              total: syncHybridOverview.remaining.total,
+              pending: syncHybridOverview.remaining.pending,
+              failed: syncHybridOverview.remaining.failed,
+              remotePending: syncHybridOverview.remaining.remote_pending,
+              outboxPending: syncHybridOverview.remaining.outbox_pending,
+              estimatedMinutesRemaining: syncHybridOverview.remaining.estimated_minutes_remaining,
+              estimatedCompletion: syncHybridOverview.remaining.estimated_completion,
+            },
+          }
+        : null;
+
       return {
         percent,
         total: combinedTotal,
@@ -618,6 +677,7 @@ function SyncPage() {
         pending: combinedPending,
         failed: combinedFailed,
         server: {
+          percent: overviewPercent,
           percent: serverPercent,
           total: serverTotal,
           processed: serverProcessed,
@@ -649,6 +709,7 @@ function SyncPage() {
           },
         },
         forecast,
+        overview,
         modules,
       } satisfies HybridProgressSnapshot;
     },
@@ -658,6 +719,7 @@ function SyncPage() {
       queueHistory,
       syncHybridProgress,
       syncHybridForecast,
+      syncHybridOverview,
       syncQueueSummary,
       syncHybridBreakdown,
     ],

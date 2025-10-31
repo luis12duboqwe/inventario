@@ -2282,6 +2282,34 @@ class SyncHybridModuleBreakdownItem(BaseModel):
 
 
 # // [PACK35-backend]
+class SyncHybridRemainingBreakdown(BaseModel):
+    total: int
+    pending: int
+    failed: int
+    remote_pending: int
+    remote_failed: int
+    outbox_pending: int
+    outbox_failed: int
+    estimated_minutes_remaining: float | None
+    estimated_completion: datetime | None
+
+
+# // [PACK35-backend]
+class SyncHybridOverview(BaseModel):
+    generated_at: datetime
+    percent: float
+    total: int
+    processed: int
+    pending: int
+    failed: int
+    remaining: SyncHybridRemainingBreakdown
+    queue_summary: SyncQueueProgressSummary | None
+    progress: SyncHybridProgressSummary
+    forecast: SyncHybridForecast
+    breakdown: list[SyncHybridModuleBreakdownItem]
+
+
+# // [PACK35-backend]
 class SyncQueueEvent(BaseModel):
     event_type: str = Field(..., min_length=3, max_length=120)
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -4456,6 +4484,8 @@ __all__ = [
     "SyncHybridForecast",
     "SyncHybridModuleBreakdownComponent",
     "SyncHybridModuleBreakdownItem",
+    "SyncHybridRemainingBreakdown",
+    "SyncHybridOverview",
     "SyncQueueEvent",
     "SyncQueueEntryResponse",
     "SyncQueueAttemptResponse",

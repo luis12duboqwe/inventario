@@ -1834,6 +1834,34 @@ export type SyncHybridModuleBreakdownItem = {
   outbox: SyncHybridModuleBreakdownComponent;
 };
 
+// [PACK35-frontend]
+export type SyncHybridRemainingBreakdown = {
+  total: number;
+  pending: number;
+  failed: number;
+  remote_pending: number;
+  remote_failed: number;
+  outbox_pending: number;
+  outbox_failed: number;
+  estimated_minutes_remaining: number | null;
+  estimated_completion: string | null;
+};
+
+// [PACK35-frontend]
+export type SyncHybridOverview = {
+  generated_at: string;
+  percent: number;
+  total: number;
+  processed: number;
+  pending: number;
+  failed: number;
+  remaining: SyncHybridRemainingBreakdown;
+  queue_summary: SyncQueueSummary | null;
+  progress: SyncHybridProgress;
+  forecast: SyncHybridForecast;
+  breakdown: SyncHybridModuleBreakdownItem[];
+};
+
 export type SyncQueueEnqueueResponse = {
   queued: SyncQueueEntry[];
   reused: SyncQueueEntry[];
@@ -4708,6 +4736,11 @@ export function getSyncHybridForecast(
   const search = typeof lookbackMinutes === "number" ? `?lookback_minutes=${lookbackMinutes}` : "";
   return request<SyncHybridForecast>(`/sync/status/forecast${search}`, { method: "GET" }, token);
 } // [PACK35-frontend]
+
+// [PACK35-frontend]
+export function getSyncHybridOverview(token: string): Promise<SyncHybridOverview> {
+  return request<SyncHybridOverview>("/sync/status/overview", { method: "GET" }, token);
+}
 
 export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncStoreHistory[]> {
   return requestCollection<SyncStoreHistory>(

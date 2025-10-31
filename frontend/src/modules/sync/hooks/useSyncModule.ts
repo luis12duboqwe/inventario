@@ -21,6 +21,7 @@ export function useSyncModule() {
     syncHybridProgress: dashboard.syncHybridProgress,
     syncHybridForecast: dashboard.syncHybridForecast,
     syncHybridBreakdown: dashboard.syncHybridBreakdown,
+    syncHybridOverview: dashboard.syncHybridOverview,
     syncHistory: dashboard.syncHistory,
     syncHistoryError: dashboard.syncHistoryError,
     refreshSyncHistory: dashboard.refreshSyncHistory,
