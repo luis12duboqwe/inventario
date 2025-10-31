@@ -181,7 +181,6 @@ export function CustomersListPage() {
         rows={rows}
         onRowClick={(row) => navigate(`/sales/customers/${row.id}`)}
       />
-      />
       {pendingOffline > 0 ? (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>

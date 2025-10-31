@@ -12,10 +12,12 @@ import type { ModuleStatus } from "../../shared/components/ModuleHeader";
 
 const REPARACIONES_TABS = [
   { id: "pendientes", label: "Pendientes", path: "pendientes" },
-  { id: "finalizadas", label: "Finalizadas", path: "finalizadas" },
+  { id: "en-proceso", label: "En proceso", path: "en-proceso" },
+  { id: "listas", label: "Listas", path: "listas" },
+  { id: "entregadas", label: "Entregadas", path: "entregadas" },
   { id: "repuestos", label: "Repuestos", path: "repuestos" },
   { id: "presupuestos", label: "Presupuestos", path: "presupuestos" },
-] as const;
+] as const; // [PACK37-frontend]
 
 type ReparacionesTabId = (typeof REPARACIONES_TABS)[number]["id"];
 

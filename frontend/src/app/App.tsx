@@ -4,9 +4,10 @@ import { createAppRouter, type ThemeMode } from "../router";
 import Loader from "../shared/components/Loader";
 import type { Credentials } from "../api";
 import { useAuth } from "../auth/useAuth"; // [PACK28-app]
-import ErrorBoundary from "../components/boundaries/ErrorBoundary";
+import AppErrorBoundary from "../shared/components/AppErrorBoundary"; // [PACK36-app-boundary]
 import SkipLink from "../components/a11y/SkipLink";
 import { startWebVitalsLite } from "../lib/metrics/webVitalsLite";
+import { logUI } from "../services/audit"; // [PACK36-app-boundary]
 
 function resolveInitialTheme(): ThemeMode {
   if (typeof window === "undefined") {
@@ -32,6 +33,50 @@ function App() {
 
   useEffect(() => {
     startWebVitalsLite();
+  }, []);
+
+  useEffect(() => {
+    const handleWindowError = (event: ErrorEvent) => {
+      const meta = {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error ? String(event.error) : undefined,
+      };
+      void logUI({
+        ts: Date.now(),
+        module: "OTHER",
+        action: "window.error", // [PACK36-app-boundary]
+        meta,
+      }).catch(() => {
+        console.error("[App] error global", meta);
+      });
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+      const meta = {
+        reason,
+        stack: event.reason?.stack,
+      };
+      void logUI({
+        ts: Date.now(),
+        module: "OTHER",
+        action: "window.unhandledrejection", // [PACK36-app-boundary]
+        meta,
+      }).catch(() => {
+        console.error("[App] rechazo no controlado", meta);
+      });
+    };
+
+    window.addEventListener("error", handleWindowError);
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener("error", handleWindowError);
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+    };
   }, []);
 
   useEffect(() => {
@@ -109,14 +154,14 @@ function App() {
   const isAuthenticated = Boolean(user && accessToken);
 
   return (
-    <ErrorBoundary>
+    <AppErrorBoundary>
       <div className={`app-root${!isAuthenticated ? " login-mode" : ""}`}>
         <SkipLink />
         <Suspense fallback={<Loader variant="overlay" message="Cargando interfaz…" />}>
           <RouterProvider router={router} />
         </Suspense>
       </div>
-    </ErrorBoundary>
+    </AppErrorBoundary>
   );
 }
 

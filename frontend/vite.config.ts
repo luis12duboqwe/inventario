@@ -1,8 +1,14 @@
 import { defineConfig } from "vite";
+import { fileURLToPath, URL } from "node:url"; // [PACK37-frontend]
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)), // [PACK37-frontend]
+    },
+  },
   test: {
     environment: "jsdom",
     globals: true,

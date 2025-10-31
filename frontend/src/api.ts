@@ -595,7 +595,9 @@ export type PurchaseStatistics = {
 export type RepairOrderPart = {
   id: number;
   repair_order_id: number;
-  device_id: number;
+  device_id: number | null;
+  part_name?: string | null;
+  source: "STOCK" | "EXTERNAL"; // [PACK37-frontend]
   quantity: number;
   unit_cost: number;
 };
@@ -605,11 +607,15 @@ export type RepairOrder = {
   store_id: number;
   customer_id?: number | null;
   customer_name?: string | null;
+  customer_contact?: string | null; // [PACK37-frontend]
   technician_name: string;
   damage_type: string;
+  diagnosis?: string | null; // [PACK37-frontend]
+  device_model?: string | null; // [PACK37-frontend]
+  imei?: string | null; // [PACK37-frontend]
   device_description?: string | null;
   notes?: string | null;
-  status: "PENDIENTE" | "EN_PROCESO" | "LISTO" | "ENTREGADO";
+  status: "PENDIENTE" | "EN_PROCESO" | "LISTO" | "ENTREGADO" | "CANCELADO"; // [PACK37-frontend]
   labor_cost: number;
   parts_cost: number;
   total_cost: number;
@@ -625,17 +631,41 @@ export type RepairOrderPayload = {
   store_id: number;
   customer_id?: number | null;
   customer_name?: string | null;
+  customer_contact?: string | null; // [PACK37-frontend]
   technician_name: string;
   damage_type: string;
+  diagnosis?: string;
+  device_model?: string;
+  imei?: string;
   device_description?: string;
   notes?: string;
   labor_cost?: number;
-  parts?: { device_id: number; quantity: number; unit_cost?: number }[];
+  parts?: {
+    device_id?: number;
+    part_name?: string;
+    source?: "STOCK" | "EXTERNAL";
+    quantity: number;
+    unit_cost?: number;
+  }[];
 };
+
+export type RepairOrderInput = RepairOrderPayload; // [PACK37-frontend]
 
 export type RepairOrderUpdatePayload = Partial<RepairOrderPayload> & {
   status?: RepairOrder["status"];
 };
+
+export type RepairOrderPartsPayload = {  // [PACK37-frontend]
+  parts: {
+    device_id?: number;
+    part_name?: string;
+    source?: "STOCK" | "EXTERNAL";
+    quantity: number;
+    unit_cost?: number;
+  }[];
+};
+
+export type RepairOrderClosePayload = Partial<Pick<RepairOrderPayload, "labor_cost" | "parts">>; // [PACK37-frontend]
 
 export type CashSession = {
   id: number;
@@ -846,9 +876,15 @@ export type OperationsHistoryResponse = {
 };
 
 export type PosCartItemInput = {
-  device_id: number;
-  quantity: number;
+  device_id?: number;
+  productId?: number;
+  imei?: string;
+  quantity?: number;
+  qty?: number;
   discount_percent?: number;
+  discount?: number;
+  price?: number | string;
+  taxCode?: string;
 };
 
 export type PaymentBreakdown = Partial<Record<PaymentMethod, number>>;
@@ -867,6 +903,15 @@ export type PosSalePayload = {
   apply_taxes?: boolean;
   cash_session_id?: number | null;
   payment_breakdown?: PaymentBreakdown;
+  payments?: PosSalePaymentEntry[];
+  branchId?: number;
+  sessionId?: number;
+  note?: string;
+};
+
+export type PosSalePaymentEntry = {
+  method: PaymentMethod | string;
+  amount: number;
 };
 
 export type PosDraft = {
@@ -885,6 +930,7 @@ export type PosSaleResponse = {
   warnings: string[];
   cash_session_id?: number | null;
   payment_breakdown?: PaymentBreakdown;
+  receipt_pdf_base64?: string | null;
 };
 
 export type PosConfig = {
@@ -904,6 +950,81 @@ export type PosConfigUpdateInput = {
   printer_name?: string | null;
   printer_profile?: string | null;
   quick_product_ids: number[];
+};
+
+export type PosSessionSummary = {
+  session_id: number;
+  branch_id: number;
+  status: CashSession["status"];
+  opened_at: string;
+  closing_at?: string | null;
+  opening_amount?: number | null;
+  closing_amount?: number | null;
+  expected_amount?: number | null;
+  difference_amount?: number | null;
+  payment_breakdown: Record<string, number>;
+};
+
+export type PosSessionOpenInput = {
+  branchId: number;
+  openingAmount: number;
+  notes?: string;
+};
+
+export type PosSessionCloseInput = {
+  sessionId: number;
+  closingAmount: number;
+  notes?: string;
+  payments?: Record<string, number>;
+};
+
+export type PosTaxInfo = {
+  code: string;
+  name: string;
+  rate: number;
+};
+
+export type PosSaleItemRequest = {
+  productId?: number;
+  device_id?: number;
+  imei?: string;
+  qty: number;
+  price?: number | string;
+  discount?: number;
+  taxCode?: string;
+};
+
+export type PosSaleOperationPayload = {
+  branchId: number;
+  sessionId?: number;
+  customerId?: number;
+  customerName?: string;
+  note?: string;
+  confirm?: boolean;
+  items: PosSaleItemRequest[];
+  payments: PosSalePaymentEntry[];
+};
+
+export type PosReturnPayload = {
+  originalSaleId: number;
+  reason?: string;
+  items: Array<{
+    productId?: number;
+    imei?: string;
+    qty: number;
+  }>;
+};
+
+export type PosReturnResponse = {
+  sale_id: number;
+  return_ids: number[];
+  notes?: string | null;
+};
+
+export type PosSaleDetailResponse = {
+  sale: Sale;
+  receipt_url: string;
+  receipt_pdf_base64?: string | null;
 };
 
 export type DeviceSearchFilters = {
@@ -3311,11 +3432,23 @@ export function deleteSupplierBatch(token: string, batchId: number, reason: stri
 
 export function listRepairOrders(
   token: string,
-  params: { store_id?: number; status?: string; q?: string; limit?: number }
+  params: {
+    store_id?: number;
+    branchId?: number;
+    status?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  }
 ): Promise<RepairOrder[]> {
   const searchParams = new URLSearchParams();
   if (params.store_id) {
     searchParams.append("store_id", String(params.store_id));
+  }
+  if (params.branchId) {
+    searchParams.append("branchId", String(params.branchId));
   }
   if (params.status) {
     searchParams.append("status", params.status);
@@ -3323,8 +3456,17 @@ export function listRepairOrders(
   if (params.q) {
     searchParams.append("q", params.q);
   }
+  if (params.from) {
+    searchParams.append("from", params.from);
+  }
+  if (params.to) {
+    searchParams.append("to", params.to);
+  }
   if (params.limit) {
     searchParams.append("limit", String(params.limit));
+  }
+  if (typeof params.offset === "number") {
+    searchParams.append("offset", String(params.offset));
   }
   const query = searchParams.toString();
   const suffix = query ? `?${query}` : "";
@@ -3356,10 +3498,53 @@ export function updateRepairOrder(
   );
 }
 
+export function appendRepairOrderParts(  // [PACK37-frontend]
+  token: string,
+  repairId: number,
+  payload: RepairOrderPartsPayload,
+  reason: string
+): Promise<RepairOrder> {
+  return request<RepairOrder>(
+    `/repairs/${repairId}/parts`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function removeRepairOrderPart(  // [PACK37-frontend]
+  token: string,
+  repairId: number,
+  partId: number,
+  reason: string
+): Promise<RepairOrder> {
+  return request<RepairOrder>(
+    `/repairs/${repairId}/parts/${partId}`,
+    { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
 export function deleteRepairOrder(token: string, repairId: number, reason: string): Promise<void> {
   return request<void>(
     `/repairs/${repairId}`,
     { method: "DELETE", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function closeRepairOrder(  // [PACK37-frontend]
+  token: string,
+  repairId: number,
+  payload: RepairOrderClosePayload | undefined,
+  reason: string
+): Promise<Blob> {
+  return request<Blob>(
+    `/repairs/${repairId}/close`,
+    {
+      method: "POST",
+      body: payload ? JSON.stringify(payload) : undefined,
+      headers: { "X-Reason": reason },
+    },
     token
   );
 }
@@ -4681,6 +4866,50 @@ export function submitPosSale(
   );
 }
 
+export function submitPosSaleOperation(
+  token: string,
+  payload: PosSaleOperationPayload,
+  reason: string
+): Promise<PosSaleResponse> {
+  const primaryMethod = (payload.payments[0]?.method as PaymentMethod) ?? PaymentMethod.EFECTIVO;
+  const bodyPayload = {
+    branchId: payload.branchId,
+    store_id: payload.branchId,
+    sessionId: payload.sessionId,
+    cash_session_id: payload.sessionId,
+    customer_id: payload.customerId,
+    customer_name: payload.customerName,
+    note: payload.note,
+    notes: payload.note,
+    confirm: payload.confirm ?? true,
+    payment_method: primaryMethod,
+    payments: payload.payments.map((payment) => ({
+      method: payment.method,
+      amount: payment.amount,
+    })),
+    items: payload.items.map((item) => ({
+      productId: item.productId ?? item.device_id,
+      device_id: item.productId ?? item.device_id,
+      imei: item.imei,
+      qty: item.qty,
+      quantity: item.qty,
+      price: item.price,
+      discount: item.discount,
+      taxCode: item.taxCode,
+    })),
+  };
+
+  return request<PosSaleResponse>(
+    "/pos/sale",
+    {
+      method: "POST",
+      body: JSON.stringify(bodyPayload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
 export function getPosConfig(token: string, storeId: number): Promise<PosConfig> {
   return request<PosConfig>(`/pos/config?store_id=${storeId}`, { method: "GET" }, token);
 }
@@ -4720,6 +4949,88 @@ export function closeCashSession(
 ): Promise<CashSession> {
   return request<CashSession>(
     "/pos/cash/close",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function openPosSession(
+  token: string,
+  payload: PosSessionOpenInput,
+  reason: string
+): Promise<PosSessionSummary> {
+  const body = {
+    branchId: payload.branchId,
+    opening_amount: payload.openingAmount,
+    notes: payload.notes,
+  };
+  return request<PosSessionSummary>(
+    "/pos/sessions/open",
+    { method: "POST", body: JSON.stringify(body), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function closePosSession(
+  token: string,
+  payload: PosSessionCloseInput,
+  reason: string
+): Promise<PosSessionSummary> {
+  const body = {
+    session_id: payload.sessionId,
+    closing_amount: payload.closingAmount,
+    notes: payload.notes,
+    payments: payload.payments,
+  };
+  return request<PosSessionSummary>(
+    "/pos/sessions/close",
+    { method: "POST", body: JSON.stringify(body), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function getLastPosSession(
+  token: string,
+  branchId: number,
+  reason: string
+): Promise<PosSessionSummary> {
+  return request<PosSessionSummary>(
+    `/pos/sessions/last?branchId=${branchId}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listPosTaxes(
+  token: string,
+  reason: string
+): Promise<PosTaxInfo[]> {
+  return requestCollection<PosTaxInfo>(
+    "/pos/taxes",
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function getPosSaleDetail(
+  token: string,
+  saleId: number,
+  reason: string
+): Promise<PosSaleDetailResponse> {
+  return request<PosSaleDetailResponse>(
+    `/pos/sale/${saleId}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function registerPosReturn(
+  token: string,
+  payload: PosReturnPayload,
+  reason: string
+): Promise<PosReturnResponse> {
+  return request<PosReturnResponse>(
+    "/pos/return",
     { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
     token
   );

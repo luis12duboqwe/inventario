@@ -64,6 +64,10 @@ type RepairOrdersBoardHookResult = {
   getStatusLabel: (status: RepairOrder["status"]) => string;
   search: string;
   handleSearchChange: (value: string) => void;
+  dateFrom: string;
+  dateTo: string;
+  handleDateFromChange: (value: string) => void;
+  handleDateToChange: (value: string) => void;
   showCreateForm: boolean;
 };
 
@@ -89,6 +93,8 @@ function useRepairOrdersBoard({
   const [localStoreId, setLocalStoreId] = useState<number | null>(selectedStoreId);
   const [statusFilter, setStatusFilter] = useState<RepairOrder["status"] | "TODOS">(initialStatusFilter);
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +137,13 @@ function useRepairOrdersBoard({
   }, []);
 
   const refreshOrders = useCallback(
-    async (storeId?: number | null, query?: string, status?: RepairOrder["status"] | "TODOS") => {
+    async (
+      storeId?: number | null,
+      query?: string,
+      status?: RepairOrder["status"] | "TODOS",
+      from?: string | null,
+      to?: string | null,
+    ) => {
       if (!storeId) {
         setOrders([]);
         setLoading(false);
@@ -141,7 +153,14 @@ function useRepairOrdersBoard({
       try {
         setLoading(true);
         setError(null);
-        const params: { store_id?: number; status?: string; q?: string; limit?: number } = { limit: 100 };
+        const params: {
+          store_id?: number;
+          status?: string;
+          q?: string;
+          from?: string;
+          to?: string;
+          limit?: number;
+        } = { limit: 100 };
         params.store_id = storeId;
         if (status && status !== "TODOS") {
           params.status = status;
@@ -149,6 +168,12 @@ function useRepairOrdersBoard({
         const trimmed = query?.trim();
         if (trimmed) {
           params.q = trimmed;
+        }
+        if (from) {
+          params.from = from;
+        }
+        if (to) {
+          params.to = to;
         }
         const data = await listRepairOrders(token, params);
         setOrders(data);
@@ -199,13 +224,15 @@ function useRepairOrdersBoard({
       return;
     }
     const trimmed = search.trim();
+    const normalizedFrom = dateFrom.trim() || null;
+    const normalizedTo = dateTo.trim() || null;
     const storeChanged = previousStoreIdRef.current !== localStoreId;
     const handler = window.setTimeout(() => {
-      void refreshOrders(localStoreId, trimmed, statusFilter);
+      void refreshOrders(localStoreId, trimmed, statusFilter, normalizedFrom, normalizedTo);
     }, storeChanged ? 0 : 350);
     previousStoreIdRef.current = localStoreId;
     return () => window.clearTimeout(handler);
-  }, [search, statusFilter, localStoreId, refreshOrders]);
+  }, [search, statusFilter, localStoreId, refreshOrders, dateFrom, dateTo]);
 
   useEffect(() => {
     const trimmed = customerSearch.trim();
@@ -273,14 +300,29 @@ function useRepairOrdersBoard({
   const updatePart = (index: number, updates: Partial<RepairPartForm>) => {
     setForm((current) => ({
       ...current,
-      parts: current.parts.map((part, position) => (position === index ? { ...part, ...updates } : part)),
+      parts: current.parts.map((part, position) => {
+        if (position !== index) {
+          return part;
+        }
+        const nextPart: RepairPartForm = { ...part, ...updates };
+        if (updates.source === "EXTERNAL") {
+          nextPart.deviceId = null;
+        }
+        if (updates.source === "STOCK" && !nextPart.partName) {
+          nextPart.partName = "";
+        }
+        return nextPart;
+      }),
     }));
   };
 
   const addPart = () => {
     setForm((current) => ({
       ...current,
-      parts: [...current.parts, { deviceId: null, quantity: 1, unitCost: 0 }],
+      parts: [
+        ...current.parts,
+        { deviceId: null, quantity: 1, unitCost: 0, source: "STOCK", partName: "" },
+      ],
     }));
   };
 
@@ -295,8 +337,16 @@ function useRepairOrdersBoard({
     setForm((current) => ({ ...initialRepairForm, storeId: current.storeId }));
   };
 
-  const { handleCreate, handleStatusChange, handleDelete, handleDownload, handleExportCsv } =
-    useRepairOrderActions({
+  const {
+    handleCreate,
+    handleStatusChange,
+    handleDelete,
+    handleDownload,
+    handleExportCsv,
+    handleAppendParts,
+    handleRemovePart,
+    handleCloseOrder,
+  } = useRepairOrderActions({
       token,
       form,
       setForm: (updater) => setForm((current) => updater(current)),
@@ -309,6 +359,8 @@ function useRepairOrdersBoard({
       search,
       statusFilter,
       orders,
+      dateFrom,
+      dateTo,
     });
 
   const getVisual = (order: RepairOrder): RepairVisual => {
@@ -357,6 +409,7 @@ function useRepairOrdersBoard({
       handleStatusChange,
       handleDownload,
       handleDelete,
+      handleClose: handleCloseOrder,
       onShowBudget,
       onShowParts,
     });
@@ -367,6 +420,7 @@ function useRepairOrdersBoard({
     handleStatusChange,
     handleDownload,
     handleDelete,
+    handleCloseOrder,
     onShowBudget,
     onShowParts,
   ]);
@@ -384,12 +438,40 @@ function useRepairOrdersBoard({
 
   const handleStatusFilterChange = (value: RepairOrder["status"] | "TODOS") => {
     setStatusFilter(value);
-    void refreshOrders(localStoreId, search.trim(), value);
+    void refreshOrders(
+      localStoreId,
+      search.trim(),
+      value,
+      dateFrom.trim() || null,
+      dateTo.trim() || null,
+    );
   };
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
     setGlobalSearchTerm(value);
+  };
+
+  const handleDateFromChange = (value: string) => {
+    setDateFrom(value);
+    void refreshOrders(
+      localStoreId,
+      search.trim(),
+      statusFilter,
+      value.trim() || null,
+      dateTo.trim() || null,
+    );
+  };
+
+  const handleDateToChange = (value: string) => {
+    setDateTo(value);
+    void refreshOrders(
+      localStoreId,
+      search.trim(),
+      statusFilter,
+      dateFrom.trim() || null,
+      value.trim() || null,
+    );
   };
 
   const getStatusLabel = (status: RepairOrder["status"]) => repairStatusLabels[status];
@@ -418,6 +500,9 @@ function useRepairOrdersBoard({
     devices,
     handleCreate,
     handleExportCsv,
+    handleAppendParts,
+    handleRemovePart,
+    handleCloseOrder,
     renderRepairRow,
     statusFilter,
     handleStatusFilterChange,
@@ -425,6 +510,10 @@ function useRepairOrdersBoard({
     getStatusLabel,
     search,
     handleSearchChange,
+    dateFrom,
+    dateTo,
+    handleDateFromChange,
+    handleDateToChange,
     showCreateForm,
   };
 }

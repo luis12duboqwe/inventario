@@ -1,3 +1,5 @@
+import { Skeleton } from "@/ui/Skeleton"; // [PACK36-pos]
+import { safeArray } from "@/utils/safeValues"; // [PACK36-pos]
 import Button from "../../../../shared/components/ui/Button";
 import Modal from "../../../../shared/components/ui/Modal";
 import CartPanel from "../../../../pages/pos/components/CartPanel";
@@ -26,6 +28,7 @@ function POSDashboard(props: Props) {
     settings,
     configReasonModal,
   } = usePosDashboardController(props);
+  const sessions = safeArray(cashHistory.sessions); // [PACK36-pos]
 
   return (
     <div className="section-grid pos-touch-area">
@@ -70,7 +73,11 @@ function POSDashboard(props: Props) {
             Actualizar historial
           </button>
         </div>
-        {cashHistory.sessions.length === 0 ? (
+        {cashHistory.loading ? (
+          <div className="table-wrapper" role="status" aria-busy="true">{/* [PACK36-pos] */}
+            <Skeleton lines={6} />
+          </div>
+        ) : sessions.length === 0 ? (
           <p className="muted-text">
             Registra una apertura de caja para iniciar el historial de arqueos de esta sucursal.
           </p>
@@ -91,7 +98,7 @@ function POSDashboard(props: Props) {
                 </tr>
               </thead>
               <tbody>
-                {cashHistory.sessions.slice(0, 8).map((session) => {
+                {sessions.slice(0, 8).map((session) => {
                   const breakdownEntries = Object.entries(
                     session.payment_breakdown ?? {},
                   )

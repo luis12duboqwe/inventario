@@ -105,6 +105,7 @@ function SidePanel({
             onFormChange({
               customerId: value,
               customerName: selected?.name ?? form.customerName,
+              customerContact: selected?.phone ?? form.customerContact,
             });
           }}
         >
@@ -127,6 +128,15 @@ function SidePanel({
         />
       </label>
 
+      <label>
+        Contacto del cliente
+        <input
+          value={form.customerContact}
+          onChange={(event) => onFormChange({ customerContact: event.target.value })}
+          placeholder="Teléfono o correo de contacto"
+        />
+      </label>
+
       <label className="wide">
         Descripción del dispositivo
         <textarea
@@ -134,6 +144,34 @@ function SidePanel({
           onChange={(event) => onFormChange({ deviceDescription: event.target.value })}
           rows={2}
           placeholder="Modelo, color, accesorios recibidos"
+        />
+      </label>
+
+      <label>
+        Modelo del dispositivo
+        <input
+          value={form.deviceModel}
+          onChange={(event) => onFormChange({ deviceModel: event.target.value })}
+          placeholder="Marca y modelo reportado"
+        />
+      </label>
+
+      <label>
+        IMEI / Serie
+        <input
+          value={form.imei}
+          onChange={(event) => onFormChange({ imei: event.target.value })}
+          placeholder="Identificador del equipo"
+        />
+      </label>
+
+      <label className="wide">
+        Diagnóstico técnico
+        <textarea
+          value={form.diagnosis}
+          onChange={(event) => onFormChange({ diagnosis: event.target.value })}
+          rows={2}
+          placeholder="Resultado de la evaluación técnica"
         />
       </label>
 
@@ -161,7 +199,9 @@ function SidePanel({
             <table>
               <thead>
                 <tr>
+                  <th>Origen</th>
                   <th>Dispositivo</th>
+                  <th>Descripción</th>
                   <th>Cantidad</th>
                   <th>Costo unitario</th>
                   <th></th>
@@ -173,12 +213,26 @@ function SidePanel({
                     <tr>
                       <td>
                         <select
+                          value={part.source}
+                          onChange={(event) =>
+                            onPartChange(index, {
+                              source: event.target.value as "STOCK" | "EXTERNAL",
+                            })
+                          }
+                        >
+                          <option value="STOCK">Inventario</option>
+                          <option value="EXTERNAL">Compra externa</option>
+                        </select>
+                      </td>
+                      <td>
+                        <select
                           value={part.deviceId ?? ""}
                           onChange={(event) =>
                             onPartChange(index, {
                               deviceId: event.target.value ? Number(event.target.value) : null,
                             })
                           }
+                          disabled={part.source === "EXTERNAL"}
                         >
                           <option value="">Selecciona dispositivo</option>
                           {devices.map((device) => (
@@ -187,6 +241,13 @@ function SidePanel({
                             </option>
                           ))}
                         </select>
+                      </td>
+                      <td>
+                        <input
+                          value={part.partName}
+                          onChange={(event) => onPartChange(index, { partName: event.target.value })}
+                          placeholder={part.source === "EXTERNAL" ? "Nombre del repuesto" : "Etiqueta opcional"}
+                        />
                       </td>
                       <td>
                         <input

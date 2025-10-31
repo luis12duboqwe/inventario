@@ -1522,10 +1522,16 @@ def _repair_payload(order: models.RepairOrder) -> dict[str, object]:
         "technician_name": order.technician_name,
         "customer_id": order.customer_id,
         "customer_name": order.customer_name,
+        "customer_contact": order.customer_contact,
+        "damage_type": order.damage_type,
+        "diagnosis": order.diagnosis,
+        "device_model": order.device_model,
+        "imei": order.imei,
         "labor_cost": float(order.labor_cost),
         "parts_cost": float(order.parts_cost),
         "total_cost": float(order.total_cost),
         "updated_at": order.updated_at.isoformat(),
+        "parts_snapshot": order.parts_snapshot,
     }
 
 
@@ -5129,6 +5135,44 @@ def get_device_global(db: Session, device_id: int) -> models.Device:
     if device is None:
         raise LookupError("device_not_found")
     return device
+
+
+# // [PACK34-lookup]
+def resolve_device_for_pos(
+    db: Session,
+    *,
+    store_id: int,
+    device_id: int | None = None,
+    imei: str | None = None,
+) -> models.Device:
+    if device_id:
+        return get_device(db, store_id, device_id)
+    if imei:
+        normalized = imei.strip()
+        if not normalized:
+            raise LookupError("device_not_found")
+        statement = select(models.Device).where(
+            models.Device.store_id == store_id,
+            func.lower(models.Device.imei) == normalized.lower(),
+        )
+        device = db.scalars(statement).first()
+        if device is not None:
+            return device
+        identifier_stmt = (
+            select(models.Device)
+            .join(models.DeviceIdentifier)
+            .where(models.Device.store_id == store_id)
+            .where(
+                or_(
+                    func.lower(models.DeviceIdentifier.imei_1) == normalized.lower(),
+                    func.lower(models.DeviceIdentifier.imei_2) == normalized.lower(),
+                )
+            )
+        )
+        device = db.scalars(identifier_stmt).first()
+        if device is not None:
+            return device
+    raise LookupError("device_not_found")
 
 
 def find_device_for_import(
@@ -10199,20 +10243,28 @@ def list_repair_orders(
     store_id: int | None = None,
     status: models.RepairStatus | None = None,
     query: str | None = None,
+    date_from: date | datetime | None = None,
+    date_to: date | datetime | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[models.RepairOrder]:
     statement = (
         select(models.RepairOrder)
-        .options(joinedload(models.RepairOrder.parts))
+        .options(
+            joinedload(models.RepairOrder.parts).joinedload(models.RepairOrderPart.device)
+        )
         .order_by(models.RepairOrder.opened_at.desc())
-        .offset(offset)
-        .limit(limit)
     )
     if store_id is not None:
         statement = statement.where(models.RepairOrder.store_id == store_id)
     if status is not None:
         statement = statement.where(models.RepairOrder.status == status)
+    if date_from is not None or date_to is not None:
+        start_dt, end_dt = _normalize_date_range(date_from, date_to)
+        statement = statement.where(
+            models.RepairOrder.opened_at >= start_dt,
+            models.RepairOrder.opened_at <= end_dt,
+        )
     if query:
         normalized = f"%{query.lower()}%"
         statement = statement.where(
@@ -10220,8 +10272,14 @@ def list_repair_orders(
                 func.lower(models.RepairOrder.customer_name).like(normalized),
                 func.lower(models.RepairOrder.technician_name).like(normalized),
                 func.lower(models.RepairOrder.damage_type).like(normalized),
+                func.lower(models.RepairOrder.device_model).like(normalized),
+                func.lower(models.RepairOrder.imei).like(normalized),
             )
         )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
 
 
@@ -10230,7 +10288,7 @@ def get_repair_order(db: Session, order_id: int) -> models.RepairOrder:
         select(models.RepairOrder)
         .where(models.RepairOrder.id == order_id)
         .options(
-            joinedload(models.RepairOrder.parts),
+            joinedload(models.RepairOrder.parts).joinedload(models.RepairOrderPart.device),
             joinedload(models.RepairOrder.customer),
         )
     )
@@ -10240,7 +10298,7 @@ def get_repair_order(db: Session, order_id: int) -> models.RepairOrder:
         raise LookupError("repair_order_not_found") from exc
 
 
-def _apply_repair_parts(
+def _apply_repair_parts(  # // [PACK37-backend]
     db: Session,
     order: models.RepairOrder,
     parts_payload: list[schemas.RepairOrderPartPayload],
@@ -10248,74 +10306,136 @@ def _apply_repair_parts(
     performed_by_id: int | None,
     reason: str | None,
 ) -> Decimal:
-    existing_parts = {part.device_id: part for part in order.parts}
+    def _part_key(
+        device_id: int | None,
+        part_name: str | None,
+        source: models.RepairPartSource,
+    ) -> tuple[int, str, str]:
+        normalized_name = (part_name or "").strip().lower()
+        return (device_id or 0, normalized_name, source.value)
+
+    existing_parts: dict[tuple[int, str, str], models.RepairOrderPart] = {}
+    for part in order.parts:
+        part_source = part.source if part.source else models.RepairPartSource.STOCK
+        existing_parts[_part_key(part.device_id, part.part_name, part_source)] = part
+
+    aggregated: dict[tuple[int, str, str], dict[str, object]] = {}
+    for payload in parts_payload:
+        normalized = schemas.RepairOrderPartPayload(
+            device_id=payload.device_id,
+            part_name=payload.part_name,
+            source=payload.source,
+            quantity=payload.quantity,
+            unit_cost=payload.unit_cost,
+        )
+        if normalized.quantity <= 0:
+            raise ValueError("repair_invalid_quantity")
+        source = models.RepairPartSource(normalized.source)
+        part_name = normalized.part_name
+        device_id = normalized.device_id
+        if source == models.RepairPartSource.STOCK and not device_id:
+            raise ValueError("repair_part_device_required")
+        if source == models.RepairPartSource.EXTERNAL and not part_name:
+            raise ValueError("repair_part_name_required")
+        unit_cost = _to_decimal(normalized.unit_cost or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        key = _part_key(device_id, part_name, source)
+        entry = aggregated.get(key)
+        if entry:
+            entry["quantity"] = int(entry["quantity"]) + normalized.quantity
+            if unit_cost > Decimal("0"):
+                entry["unit_cost"] = unit_cost
+            if part_name and not entry.get("part_name"):
+                entry["part_name"] = part_name
+        else:
+            aggregated[key] = {
+                "device_id": device_id,
+                "part_name": part_name,
+                "source": source,
+                "quantity": normalized.quantity,
+                "unit_cost": unit_cost,
+            }
+
+    processed_keys: set[tuple[int, str, str]] = set()
     processed_devices: set[int] = set()
     total_cost = Decimal("0")
     snapshot: list[dict[str, object]] = []
-    for payload in parts_payload:
-        if payload.quantity <= 0:
-            raise ValueError("repair_invalid_quantity")
-        device = get_device(db, order.store_id, payload.device_id)
-        unit_cost = _resolve_part_unit_cost(device, getattr(payload, "unit_cost", None))
-        previous_part = existing_parts.get(device.id)
+
+    for key, data in aggregated.items():
+        device_id = data.get("device_id")
+        part_name = data.get("part_name")
+        source = data["source"]
+        quantity = int(data["quantity"])
+        unit_cost = _to_decimal(data["unit_cost"]).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        device = None
+        if source == models.RepairPartSource.STOCK and device_id:
+            device = get_device(db, order.store_id, int(device_id))
+        previous_part = existing_parts.get(key)
         previous_quantity = previous_part.quantity if previous_part else 0
-        delta = payload.quantity - previous_quantity
-        if delta > 0:
-            if device.quantity < delta:
+        delta = quantity - previous_quantity
+
+        if device and delta != 0:
+            movement_type = (
+                models.MovementType.OUT
+                if delta > 0
+                else models.MovementType.IN
+            )
+            adjust_quantity = abs(delta)
+            if movement_type == models.MovementType.OUT and device.quantity < adjust_quantity:
                 raise ValueError("repair_insufficient_stock")
             _register_inventory_movement(
                 db,
                 store_id=order.store_id,
                 device_id=device.id,
-                movement_type=models.MovementType.OUT,
-                quantity=delta,
+                movement_type=movement_type,
+                quantity=adjust_quantity,
                 comment=reason or f"Reparación #{order.id}",
                 performed_by_id=performed_by_id,
                 source_store_id=order.store_id,
                 reference_type="repair_order",
                 reference_id=str(order.id),
             )
-        elif delta < 0:
-            _register_inventory_movement(
-                db,
-                store_id=order.store_id,
-                device_id=device.id,
-                movement_type=models.MovementType.IN,
-                quantity=abs(delta),
-                comment=reason or f"Ajuste reparación #{order.id}",
-                performed_by_id=performed_by_id,
-                reference_type="repair_order",
-                reference_id=str(order.id),
-            )
+            processed_devices.add(device.id)
 
-        if previous_part is None:
-            part = models.RepairOrderPart(
-                repair_order_id=order.id,
-                device_id=device.id,
-                quantity=payload.quantity,
-                unit_cost=unit_cost,
-            )
-            db.add(part)
-            order.parts.append(part)
-        else:
-            previous_part.quantity = payload.quantity
+        if previous_part:
+            previous_part.quantity = quantity
             previous_part.unit_cost = unit_cost
-        processed_devices.add(device.id)
+            previous_part.part_name = part_name
+            previous_part.source = source
+            previous_part.device_id = device.id if device else None
+            db.add(previous_part)
+            part_record = previous_part
+        else:
+            part_record = models.RepairOrderPart(
+                repair_order_id=order.id,
+                device_id=device.id if device else None,
+                part_name=part_name,
+                quantity=quantity,
+                unit_cost=unit_cost,
+                source=source,
+            )
+            order.parts.append(part_record)
 
-        line_total = (unit_cost * Decimal(payload.quantity)).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        total_cost += line_total
         snapshot.append(
             {
-                "device_id": device.id,
-                "quantity": payload.quantity,
+                "device_id": part_record.device_id,
+                "part_name": part_name,
+                "source": source.value,
+                "quantity": quantity,
                 "unit_cost": float(unit_cost),
             }
         )
+        total_cost += unit_cost * Decimal(quantity)
+        processed_keys.add(key)
 
-    for part in list(order.parts):
-        if part.device_id not in processed_devices:
+    for key, part in list(existing_parts.items()):
+        if key in processed_keys:
+            continue
+        if part.source == models.RepairPartSource.STOCK and part.device_id:
             device = get_device(db, order.store_id, part.device_id)
             _register_inventory_movement(
                 db,
@@ -10325,16 +10445,19 @@ def _apply_repair_parts(
                 quantity=part.quantity,
                 comment=reason or f"Reverso reparación #{order.id}",
                 performed_by_id=performed_by_id,
+                source_store_id=order.store_id,
                 reference_type="repair_order",
                 reference_id=str(order.id),
             )
-            db.delete(part)
+            processed_devices.add(device.id)
+        order.parts.remove(part)
+        db.delete(part)
 
-    order.parts_cost = total_cost
+    order.parts_cost = total_cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     order.parts_snapshot = snapshot
     order.inventory_adjusted = bool(processed_devices)
     _recalculate_store_inventory_value(db, order.store_id)
-    return total_cost
+    return order.parts_cost
 
 
 def create_repair_order(
@@ -10354,8 +10477,12 @@ def create_repair_order(
         store_id=payload.store_id,
         customer_id=payload.customer_id,
         customer_name=customer_name,
+        customer_contact=payload.customer_contact,
         technician_name=payload.technician_name,
         damage_type=payload.damage_type,
+        diagnosis=payload.diagnosis,
+        device_model=payload.device_model,
+        imei=payload.imei,
         device_description=payload.device_description,
         notes=payload.notes,
         labor_cost=labor_cost,
@@ -10428,12 +10555,24 @@ def update_repair_order(
     if payload.customer_name is not None:
         order.customer_name = payload.customer_name
         updated_fields["customer_name"] = payload.customer_name
+    if payload.customer_contact is not None:
+        order.customer_contact = payload.customer_contact
+        updated_fields["customer_contact"] = payload.customer_contact
     if payload.technician_name is not None:
         order.technician_name = payload.technician_name
         updated_fields["technician_name"] = payload.technician_name
     if payload.damage_type is not None:
         order.damage_type = payload.damage_type
         updated_fields["damage_type"] = payload.damage_type
+    if payload.diagnosis is not None:
+        order.diagnosis = payload.diagnosis
+        updated_fields["diagnosis"] = payload.diagnosis
+    if payload.device_model is not None:
+        order.device_model = payload.device_model
+        updated_fields["device_model"] = payload.device_model
+    if payload.imei is not None:
+        order.imei = payload.imei
+        updated_fields["imei"] = payload.imei
     if payload.device_description is not None:
         order.device_description = payload.device_description
         updated_fields["device_description"] = payload.device_description
@@ -10443,7 +10582,10 @@ def update_repair_order(
     if payload.status is not None and payload.status != order.status:
         order.status = payload.status
         updated_fields["status"] = payload.status.value
-        if payload.status == models.RepairStatus.ENTREGADO:
+        if payload.status in {
+            models.RepairStatus.ENTREGADO,
+            models.RepairStatus.CANCELADO,
+        }:  # // [PACK37-backend]
             order.delivered_at = datetime.utcnow()
         elif payload.status in {models.RepairStatus.PENDIENTE, models.RepairStatus.EN_PROCESO}:
             order.delivered_at = None
@@ -10485,6 +10627,127 @@ def update_repair_order(
             payload=_repair_payload(order),
         )
     return order
+
+
+def append_repair_parts(  # // [PACK37-backend]
+    db: Session,
+    order_id: int,
+    parts_payload: list[schemas.RepairOrderPartPayload],
+    *,
+    performed_by_id: int | None,
+    reason: str | None,
+) -> models.RepairOrder:
+    order = get_repair_order(db, order_id)
+    if not parts_payload:
+        return order
+
+    def _payload_key(value: schemas.RepairOrderPartPayload) -> tuple[int, str, str]:
+        source = models.RepairPartSource(value.source)
+        part_name = (value.part_name or "").strip().lower()
+        return (value.device_id or 0, part_name, source.value)
+
+    existing_payloads: dict[tuple[int, str, str], schemas.RepairOrderPartPayload] = {}
+    for part in order.parts:
+        source = part.source or models.RepairPartSource.STOCK
+        existing_payloads[(part.device_id or 0, (part.part_name or "").strip().lower(), source.value)] = (
+            schemas.RepairOrderPartPayload(
+                device_id=part.device_id,
+                part_name=part.part_name,
+                source=source,
+                quantity=part.quantity,
+                unit_cost=Decimal(part.unit_cost),
+            )
+        )
+
+    for payload in parts_payload:
+        normalized = schemas.RepairOrderPartPayload(
+            device_id=payload.device_id,
+            part_name=payload.part_name,
+            source=payload.source,
+            quantity=payload.quantity,
+            unit_cost=payload.unit_cost,
+        )
+        key = _payload_key(normalized)
+        previous = existing_payloads.get(key)
+        if previous:
+            quantity = previous.quantity + normalized.quantity
+            unit_cost = normalized.unit_cost or previous.unit_cost
+            part_name = normalized.part_name or previous.part_name
+            existing_payloads[key] = schemas.RepairOrderPartPayload(
+                device_id=previous.device_id,
+                part_name=part_name,
+                source=previous.source,
+                quantity=quantity,
+                unit_cost=unit_cost,
+            )
+        else:
+            existing_payloads[key] = normalized
+
+    merged = list(existing_payloads.values())
+    update_payload = schemas.RepairOrderUpdate(parts=merged)
+    return update_repair_order(
+        db,
+        order_id,
+        update_payload,
+        performed_by_id=performed_by_id,
+        reason=reason,
+    )
+
+
+def remove_repair_part(  # // [PACK37-backend]
+    db: Session,
+    order_id: int,
+    part_id: int,
+    *,
+    performed_by_id: int | None,
+    reason: str | None,
+) -> models.RepairOrder:
+    order = get_repair_order(db, order_id)
+    target = next((part for part in order.parts if part.id == part_id), None)
+    if target is None:
+        raise LookupError("repair_part_not_found")
+
+    remaining = [
+        schemas.RepairOrderPartPayload(
+            device_id=part.device_id,
+            part_name=part.part_name,
+            source=part.source or models.RepairPartSource.STOCK,
+            quantity=part.quantity,
+            unit_cost=Decimal(part.unit_cost),
+        )
+        for part in order.parts
+        if part.id != part_id
+    ]
+    update_payload = schemas.RepairOrderUpdate(parts=remaining)
+    return update_repair_order(
+        db,
+        order_id,
+        update_payload,
+        performed_by_id=performed_by_id,
+        reason=reason,
+    )
+
+
+def close_repair_order(  # // [PACK37-backend]
+    db: Session,
+    order_id: int,
+    close_payload: schemas.RepairOrderCloseRequest | None,
+    *,
+    performed_by_id: int | None,
+    reason: str | None,
+) -> models.RepairOrder:
+    payload = schemas.RepairOrderUpdate(
+        status=models.RepairStatus.ENTREGADO,
+        labor_cost=close_payload.labor_cost if close_payload else None,
+        parts=close_payload.parts if close_payload else None,
+    )
+    return update_repair_order(
+        db,
+        order_id,
+        payload,
+        performed_by_id=performed_by_id,
+        reason=reason,
+    )
 
 
 def delete_repair_order(
@@ -10688,9 +10951,16 @@ def _preview_sale_totals(
             device, item.quantity, reserved_quantity=reserved_quantity
         )
 
-        line_unit_price = _to_decimal(device.unit_price).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
+        # // [PACK34-pricing]
+        override_price = getattr(item, "unit_price_override", None)
+        if override_price is not None:
+            line_unit_price = _to_decimal(override_price).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            line_unit_price = _to_decimal(device.unit_price).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
         quantity_decimal = _to_decimal(item.quantity)
         line_total = (line_unit_price * quantity_decimal).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -10746,9 +11016,16 @@ def _apply_sale_items(
         device = get_device(db, sale.store_id, item.device_id)
         _ensure_device_available_for_sale(device, item.quantity)
 
-        line_unit_price = _to_decimal(device.unit_price).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
+        # // [PACK34-pricing]
+        override_price = getattr(item, "unit_price_override", None)
+        if override_price is not None:
+            line_unit_price = _to_decimal(override_price).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            line_unit_price = _to_decimal(device.unit_price).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
         quantity_decimal = _to_decimal(item.quantity)
         line_total = (line_unit_price * quantity_decimal).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -11634,6 +11911,21 @@ def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession
         raise LookupError("cash_session_not_found") from exc
 
 
+# // [PACK34-lookup]
+def get_last_cash_session_for_store(
+    db: Session, *, store_id: int
+) -> models.CashRegisterSession:
+    statement = (
+        select(models.CashRegisterSession)
+        .where(models.CashRegisterSession.store_id == store_id)
+        .order_by(models.CashRegisterSession.opened_at.desc())
+    )
+    session = db.scalars(statement).first()
+    if session is None:
+        raise LookupError("cash_session_not_found")
+    return session
+
+
 def open_cash_session(
     db: Session,
     payload: schemas.CashSessionOpenRequest,
@@ -11811,6 +12103,42 @@ def update_pos_config(
     return config
 
 
+# // [PACK34-taxes]
+def list_pos_taxes(db: Session) -> list[schemas.POSTaxInfo]:
+    statement = (
+        select(models.POSConfig.tax_rate, models.POSConfig.store_id, models.Store.name)
+        .join(models.Store, models.Store.id == models.POSConfig.store_id)
+        .order_by(models.POSConfig.tax_rate.desc())
+    )
+    taxes: list[schemas.POSTaxInfo] = []
+    seen_rates: set[str] = set()
+    for tax_rate, store_id, store_name in db.execute(statement):
+        normalized_rate = _to_decimal(tax_rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        rate_key = f"{normalized_rate:.2f}"
+        if rate_key in seen_rates:
+            continue
+        seen_rates.add(rate_key)
+        label = store_name or f"Sucursal #{store_id}"
+        taxes.append(
+            schemas.POSTaxInfo(
+                code=f"POS-{rate_key.replace('.', '')}",
+                name=f"IVA {rate_key}% ({label})",
+                rate=normalized_rate,
+            )
+        )
+    if not taxes:
+        taxes.append(
+            schemas.POSTaxInfo(
+                code="POS-DEFAULT",
+                name="Impuesto estándar",
+                rate=Decimal("0"),
+            )
+        )
+    return taxes
+
+
 def register_pos_config_access(
     db: Session,
     *,
@@ -11932,6 +12260,7 @@ def register_pos_sale(
                 device_id=item.device_id,
                 quantity=item.quantity,
                 discount_percent=item.discount_percent,
+                unit_price_override=getattr(item, "unit_price_override", None),  # // [PACK34-pricing]
             )
             for item in payload.items
         ],

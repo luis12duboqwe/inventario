@@ -33,6 +33,7 @@ import {
   getSyncHybridBreakdown,
   updateDevice,
 } from "../../../api";
+import { safeArray, safeNumber } from "../../../utils/safeValues"; // [PACK36-dashboard-guards]
 import type {
   BackupJob,
   Device,
@@ -281,7 +282,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     const fetchInitial = async () => {
       try {
         setLoading(true);
-        const [storesData, summaryData, metricsData, backupData, statusData, releasesData] = await Promise.all([
+        const [storesRaw, summaryRaw, metricsData, backupRaw, statusData, releasesRaw] = await Promise.all([
           getStores(token),
           getSummary(token),
           getInventoryMetrics(token),
@@ -289,6 +290,11 @@ export function DashboardProvider({ token, children }: ProviderProps) {
           getUpdateStatus(token),
           getReleaseHistory(token),
         ]);
+        // [PACK36-guards]
+        const storesData = safeArray(storesRaw);
+        const summaryData = safeArray(summaryRaw);
+        const backupData = safeArray(backupRaw);
+        const releasesData = safeArray(releasesRaw);
         setStores(storesData);
         setLowStockThresholds((current) => {
           const next = { ...current };
@@ -317,7 +323,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         }
         try {
           const historyData = await getSyncHistory(token);
-          setSyncHistory(historyData);
+          setSyncHistory(safeArray(historyData));
           setSyncHistoryError(null);
         } catch (historyErr) {
           setSyncHistory([]);
@@ -331,12 +337,14 @@ export function DashboardProvider({ token, children }: ProviderProps) {
           const firstStoreId = storesData[0].id;
           setSelectedStoreId(firstStoreId);
           const devicesData = await getDevices(token, firstStoreId);
-          setDevices(devicesData);
+          setDevices(safeArray(devicesData));
           setLastInventoryRefresh(new Date());
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "No fue posible cargar los datos iniciales";
-        setError(friendlyErrorMessage(message));
+        const friendly = friendlyErrorMessage(message);
+        setError(friendly);
+        pushToast({ message: friendly, variant: "error" }); // [PACK36-guards]
       } finally {
         setLoading(false);
       }
@@ -358,7 +366,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
           err instanceof Error
             ? err.message
             : "No fue posible obtener las métricas de inventario";
-        setError(friendlyErrorMessage(message));
+        const friendly = friendlyErrorMessage(message);
+        setError(friendly);
+        pushToast({ message: friendly, variant: "error" }); // [PACK36-guards]
       }
     };
 
@@ -373,11 +383,13 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       }
       try {
         const devicesData = await getDevices(token, selectedStoreId);
-        setDevices(devicesData);
+        setDevices(safeArray(devicesData));
         setLastInventoryRefresh(new Date());
       } catch (err) {
         const message = err instanceof Error ? err.message : "No fue posible cargar los dispositivos";
-        setError(friendlyErrorMessage(message));
+        const friendly = friendlyErrorMessage(message);
+        setError(friendly);
+        pushToast({ message: friendly, variant: "error" }); // [PACK36-guards]
       }
     };
 
@@ -404,6 +416,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         setOutboxStats(statsData);
         setSyncQueueSummary(summaryData);
         setSyncHybridProgress(hybridData);
+        setOutbox(safeArray(entries)); // [PACK36-guards]
+        setOutboxStats(safeArray(statsData)); // [PACK36-guards]
         setOutboxError(null);
       } catch (err) {
         const message =
@@ -418,11 +432,11 @@ export function DashboardProvider({ token, children }: ProviderProps) {
 
   const refreshSummary = useCallback(async () => {
     const threshold = getThresholdForStore(selectedStoreId);
-    const [summaryData, metricsData] = await Promise.all([
+    const [summaryRaw, metricsData] = await Promise.all([
       getSummary(token),
       getInventoryMetrics(token, threshold),
     ]);
-    setSummary(summaryData);
+    setSummary(safeArray(summaryRaw)); // [PACK36-guards]
     setMetrics(metricsData);
   }, [getThresholdForStore, selectedStoreId, token]);
 
@@ -433,7 +447,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
           await refreshSummary();
           if (selectedStoreId) {
             const refreshedDevices = await getDevices(token, selectedStoreId);
-            setDevices(refreshedDevices);
+            setDevices(safeArray(refreshedDevices)); // [PACK36-guards]
             setLastInventoryRefresh(new Date());
           }
         } catch (err) {
@@ -441,7 +455,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
             err instanceof Error
               ? err.message
               : "No fue posible actualizar el inventario en tiempo real";
-          setError(friendlyErrorMessage(message));
+          const friendly = friendlyErrorMessage(message);
+          setError(friendly);
+          pushToast({ message: friendly, variant: "error" }); // [PACK36-guards]
         }
       })();
     }, 30000);
@@ -475,7 +491,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       pushToast({ message: "Movimiento registrado", variant: "success" });
       await Promise.all([
         refreshSummary(),
-        getDevices(token, selectedStoreId).then(setDevices),
+        getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
       ]);
       setLastInventoryRefresh(new Date());
     } catch (err) {
@@ -525,7 +541,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       pushToast({ message: "Ficha de dispositivo actualizada", variant: "success" });
       await Promise.all([
         refreshSummary(),
-        getDevices(token, selectedStoreId).then(setDevices),
+        getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
       ]);
       setLastInventoryRefresh(new Date());
     } catch (err) {
@@ -541,7 +557,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     await refreshSummary();
     if (selectedStoreId) {
       const devicesData = await getDevices(token, selectedStoreId);
-      setDevices(devicesData);
+      setDevices(safeArray(devicesData)); // [PACK36-guards]
       setLastInventoryRefresh(new Date());
     }
   }, [refreshSummary, selectedStoreId, token]);

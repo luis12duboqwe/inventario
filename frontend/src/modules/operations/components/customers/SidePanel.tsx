@@ -1,3 +1,5 @@
+import { Skeleton } from "@/ui/Skeleton"; // [PACK36-customers]
+import { safeArray, safeDate, safeString } from "@/utils/safeValues"; // [PACK36-customers]
 import type {
   ContactHistoryEntry,
   Customer,
@@ -32,6 +34,25 @@ const CustomersSidePanel = ({
   resolveDetails,
   formatCurrency,
 }: CustomersSidePanelProps) => {
+  const notes = safeArray(customerNotes); // [PACK36-customers]
+  const historyEntries = safeArray(customerHistory); // [PACK36-customers]
+  const invoices = safeArray(recentInvoices); // [PACK36-customers]
+  const summarySales = safeArray(summary?.sales); // [PACK36-customers]
+  const summaryPayments = safeArray(summary?.payments); // [PACK36-customers]
+  const summaryLedger = safeArray(summary?.ledger); // [PACK36-customers]
+  const summaryTotals = summary?.totals ?? { // [PACK36-customers]
+    outstanding_debt: 0,
+    available_credit: 0,
+    credit_limit: 0,
+  };
+  const formatDateTime = (value: unknown) => { // [PACK36-customers]
+    const parsed = safeDate(value);
+    if (!parsed) {
+      return "Fecha desconocida";
+    }
+    return parsed.toLocaleString("es-MX");
+  };
+
   return (
     <div className="panel">
       <div className="panel__header">
@@ -42,30 +63,40 @@ const CustomersSidePanel = ({
       </div>
 
       {summaryLoading ? (
-        <p className="muted-text">Cargando información del cliente...</p>
+        <div className="customer-summary__skeleton" role="status" aria-live="polite">
+          {/* [PACK36-customers] */}
+          <Skeleton lines={4} />
+          <div className="summary-columns" aria-hidden>
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={`summary-skeleton-${index}`} className="summary-card">
+                <Skeleton lines={index === 3 ? 6 : 4} />
+              </div>
+            ))}
+          </div>
+        </div>
       ) : summaryError ? (
         <p className="error-text">{summaryError}</p>
       ) : summary && selectedCustomer ? (
         <div className="customer-summary">
           <div className="summary-header">
             <div>
-              <h4>{summary.customer.name}</h4>
+              <h4>{summary.customer.name ?? "Cliente sin nombre"}</h4>
               <p className="muted-text">
-                Tipo {summary.customer.customer_type} · Estado {summary.customer.status}
+                Tipo {safeString(summary.customer.customer_type, "—")} · Estado {safeString(summary.customer.status, "—")}
               </p>
             </div>
             <div className="summary-financial">
               <div>
                 <span className="muted-text">Saldo pendiente</span>
-                <strong>${formatCurrency(summary.totals.outstanding_debt)}</strong>
+                <strong>${formatCurrency(summaryTotals.outstanding_debt)}</strong>
               </div>
               <div>
                 <span className="muted-text">Crédito disponible</span>
-                <strong>${formatCurrency(summary.totals.available_credit)}</strong>
+                <strong>${formatCurrency(summaryTotals.available_credit)}</strong>
               </div>
               <div>
                 <span className="muted-text">Límite</span>
-                <strong>${formatCurrency(summary.totals.credit_limit)}</strong>
+                <strong>${formatCurrency(summaryTotals.credit_limit)}</strong>
               </div>
             </div>
           </div>
@@ -73,15 +104,15 @@ const CustomersSidePanel = ({
           <div className="summary-columns">
             <div>
               <h5>Ventas recientes</h5>
-              {summary.sales.length === 0 ? (
+              {summarySales.length === 0 ? (
                 <p className="muted-text">Sin ventas registradas.</p>
               ) : (
                 <ul className="summary-list">
-                  {summary.sales.slice(0, 5).map((sale) => (
+                  {summarySales.slice(0, 5).map((sale) => (
                     <li key={sale.sale_id}>
                       <strong>Venta #{sale.sale_id}</strong>
                       <span className="muted-text">
-                        {new Date(sale.created_at).toLocaleString("es-MX")} · {sale.status}
+                        {formatDateTime(sale.created_at)} · {safeString(sale.status, "—")}
                       </span>
                       <span className="summary-amount">
                         Total ${formatCurrency(sale.total_amount)}
@@ -93,16 +124,16 @@ const CustomersSidePanel = ({
             </div>
             <div>
               <h5>Pagos</h5>
-              {summary.payments.length === 0 ? (
+              {summaryPayments.length === 0 ? (
                 <p className="muted-text">Sin pagos recientes.</p>
               ) : (
                 <ul className="summary-list">
-                  {summary.payments.slice(0, 5).map((payment) => (
+                  {summaryPayments.slice(0, 5).map((payment) => (
                     <li key={payment.id}>
                       <div>
                         <strong>{ledgerLabels[payment.entry_type]}</strong>
                         <span className="muted-text small">
-                          {new Date(payment.created_at).toLocaleString("es-MX")}
+                          {formatDateTime(payment.created_at)}
                         </span>
                       </div>
                       <span className="summary-amount">
@@ -115,16 +146,16 @@ const CustomersSidePanel = ({
             </div>
             <div>
               <h5>Facturas emitidas</h5>
-              {recentInvoices.length === 0 ? (
+              {invoices.length === 0 ? (
                 <p className="muted-text">Sin facturas generadas.</p>
               ) : (
                 <ul className="summary-list">
-                  {recentInvoices.map((invoice) => (
+                  {invoices.map((invoice) => (
                     <li key={invoice.invoice_number}>
                       <div>
                         <strong>{invoice.invoice_number}</strong>
                         <span className="muted-text small">
-                          {new Date(invoice.created_at).toLocaleString("es-MX")}
+                          {formatDateTime(invoice.created_at)}
                           {invoice.store_id ? ` · Sucursal ${invoice.store_id}` : ""}
                         </span>
                       </div>
@@ -138,20 +169,20 @@ const CustomersSidePanel = ({
             </div>
             <div>
               <h5>Notas y seguimiento</h5>
-              {customerNotes.length === 0 && customerHistory.length === 0 ? (
+              {notes.length === 0 && historyEntries.length === 0 ? (
                 <p className="muted-text">Sin notas registradas.</p>
               ) : (
                 <ul className="notes-stack">
-                  {customerNotes.map((note, index) => (
+                  {notes.map((note, index) => (
                     <li key={`note-${index}`}>
                       <span className="note-chip">Nota interna</span>
                       <p>{note}</p>
                     </li>
                   ))}
-                  {customerHistory.map((entry) => (
+                  {historyEntries.map((entry) => (
                     <li key={`history-${entry.timestamp}`}>
                       <span className="note-chip">
-                        Seguimiento · {new Date(entry.timestamp).toLocaleString("es-MX")}
+                        Seguimiento · {formatDateTime(entry.timestamp)}
                       </span>
                       <p>{entry.note}</p>
                     </li>
@@ -163,14 +194,14 @@ const CustomersSidePanel = ({
 
           <div>
             <h5>Historial de contacto</h5>
-            {customerHistory.length === 0 ? (
+            {historyEntries.length === 0 ? (
               <p className="muted-text">Sin interacciones registradas.</p>
             ) : (
               <ul className="history-stack">
-                {customerHistory.map((entry) => (
+                {historyEntries.map((entry) => (
                   <li key={`history-card-${entry.timestamp}`}>
                     <div>
-                      <strong>{new Date(entry.timestamp).toLocaleString("es-MX")}</strong>
+                      <strong>{formatDateTime(entry.timestamp)}</strong>
                       <span className="muted-text small">Bitácora de seguimiento</span>
                     </div>
                     <p>{entry.note}</p>
@@ -182,7 +213,7 @@ const CustomersSidePanel = ({
 
           <div>
             <h5>Bitácora reciente</h5>
-            {summary.ledger.length === 0 ? (
+            {summaryLedger.length === 0 ? (
               <p className="muted-text">Aún no hay movimientos registrados.</p>
             ) : (
               <div className="table-wrapper">
@@ -197,11 +228,11 @@ const CustomersSidePanel = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {summary.ledger.slice(0, 10).map((entry) => {
+                    {summaryLedger.slice(0, 10).map((entry) => {
                       const enriched = resolveDetails(entry);
                       return (
                         <tr key={entry.id}>
-                          <td>{new Date(entry.created_at).toLocaleString("es-MX")}</td>
+                          <td>{formatDateTime(entry.created_at)}</td>
                           <td>{ledgerLabels[entry.entry_type]}</td>
                           <td>
                             {entry.note ?? enriched.detailsLabel ?? "—"}

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { BarChart3, Download, FileSpreadsheet, FileText, RefreshCcw } from "lucide-react";
+import { Skeleton } from "@/ui/Skeleton"; // [PACK36-inventory-reports]
+import { safeArray, safeNumber } from "@/utils/safeValues"; // [PACK36-inventory-reports]
 
 import type {
   InventoryCurrentFilters,
@@ -91,6 +93,7 @@ function InventoryReportsPanel({
   downloadTopProductsXlsx,
 }: InventoryReportsPanelProps) {
   const dashboard = useDashboard();
+  const normalizedStores = useMemo(() => safeArray(stores), [stores]); // [PACK36-inventory-reports]
 
   const [storeFilter, setStoreFilter] = useState<number | "ALL">(selectedStoreId ?? "ALL");
   const [{ from: dateFrom, to: dateTo }, setDateRange] = useState(createDefaultDateRange);
@@ -129,6 +132,41 @@ function InventoryReportsPanel({
     }),
     [filters, dateFrom, dateTo],
   );
+  const currentStores = useMemo( // [PACK36-inventory-reports]
+    () => safeArray(currentReport?.stores),
+    [currentReport],
+  );
+  const valueStores = useMemo( // [PACK36-inventory-reports]
+    () => safeArray(valueReport?.stores),
+    [valueReport],
+  );
+  const movementByType = useMemo( // [PACK36-inventory-reports]
+    () => safeArray(movementsReport?.resumen?.por_tipo),
+    [movementsReport],
+  );
+  const topProductItems = useMemo( // [PACK36-inventory-reports]
+    () => safeArray(topProductsReport?.items),
+    [topProductsReport],
+  );
+  const currentTotals = { // [PACK36-inventory-reports]
+    total_units: safeNumber(currentReport?.totals?.total_units),
+    total_value: safeNumber(currentReport?.totals?.total_value),
+    devices: safeNumber(currentReport?.totals?.devices),
+  };
+  const valueTotals = { // [PACK36-inventory-reports]
+    valor_total: safeNumber(valueReport?.totals?.valor_total),
+    valor_costo: safeNumber(valueReport?.totals?.valor_costo),
+    margen_total: safeNumber(valueReport?.totals?.margen_total),
+  };
+  const movementSummary = { // [PACK36-inventory-reports]
+    total_movimientos: safeNumber(movementsReport?.resumen?.total_movimientos),
+    total_unidades: safeNumber(movementsReport?.resumen?.total_unidades),
+  };
+  const topProductsTotals = { // [PACK36-inventory-reports]
+    total_unidades: safeNumber(topProductsReport?.total_unidades),
+    total_ingresos: safeNumber(topProductsReport?.total_ingresos),
+  };
+  const hasTopProducts = topProductsReport !== null && topProductItems.length > 0; // [PACK36-inventory-reports]
 
   useEffect(() => {
     let active = true;
@@ -283,7 +321,7 @@ function InventoryReportsPanel({
               }}
             >
               <option value="ALL">Todas las sucursales</option>
-              {stores.map((store) => (
+              {normalizedStores.map((store) => (
                 <option key={store.id} value={store.id}>
                   {store.name}
                 </option>
@@ -311,9 +349,23 @@ function InventoryReportsPanel({
         </div>
       </header>
       {loading ? (
-        <p className="muted-text">
-          <RefreshCcw className="spin" size={18} aria-hidden /> Cargando reportes…
-        </p>
+        <div className="reports-loading" role="status" aria-busy="true">
+          <p className="muted-text">
+            <RefreshCcw className="spin" size={18} aria-hidden /> Cargando reportes…
+          </p>
+          <div className="section-grid reports-grid" aria-hidden>
+            {Array.from({ length: 4 }).map((_, index) => (
+              <section key={`report-skeleton-${index}`} className="card report-card">
+                <header className="card-header">
+                  <Skeleton lines={2} />
+                </header>
+                <div className="card-content">
+                  <Skeleton lines={5} />
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
       ) : (
         <div className="section-grid reports-grid">
           <section className="card report-card">
@@ -340,31 +392,35 @@ function InventoryReportsPanel({
               </span>
             </div>
           </header>
-            {currentReport ? (
-              <div className="card-content">
-                <p className="report-highlight">
-                  {currentReport.totals.total_units.toLocaleString("es-MX")}
-                  <small>unidades</small>
-                </p>
-                <p className="muted-text">
-                  Valor corporativo: {formatCurrency(currentReport.totals.total_value)} · Dispositivos catalogados: {currentReport.totals.devices}
-                </p>
-                <ul className="report-list">
-                  {currentReport.stores.slice(0, 4).map((store) => (
+          {currentReport ? (
+            <div className="card-content">
+              <p className="report-highlight">
+                {currentTotals.total_units.toLocaleString("es-MX")}
+                <small>unidades</small>
+              </p>
+              <p className="muted-text">
+                Valor corporativo: {formatCurrency(currentTotals.total_value)} · Dispositivos catalogados: {currentTotals.devices}
+              </p>
+              <ul className="report-list">
+                {currentStores.slice(0, 4).map((store) => {
+                  const totalUnits = safeNumber(store?.total_units); // [PACK36-inventory-reports]
+                  const totalValue = safeNumber(store?.total_value); // [PACK36-inventory-reports]
+                  return (
                     <li key={store.store_id}>
                       <strong>{store.store_name}</strong>
                       <span>
-                        {store.total_units.toLocaleString("es-MX")}
+                        {totalUnits.toLocaleString("es-MX")}
                         <small> unidades</small>
                       </span>
-                      <span className="muted-text">{formatCurrency(store.total_value)}</span>
+                      <span className="muted-text">{formatCurrency(totalValue)}</span>
                     </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <p className="muted-text">Aún no hay existencias registradas con los filtros seleccionados.</p>
-            )}
+                  );
+                })}
+              </ul>
+            </div>
+          ) : (
+            <p className="muted-text">Aún no hay existencias registradas con los filtros seleccionados.</p>
+          )}
           </section>
 
           <section className="card report-card">
@@ -390,18 +446,22 @@ function InventoryReportsPanel({
             </header>
             {valueReport ? (
               <div className="card-content">
-                <p className="report-highlight">{formatCurrency(valueReport.totals.valor_total)}</p>
+                <p className="report-highlight">{formatCurrency(valueTotals.valor_total)}</p>
                 <p className="muted-text">
-                  Costo estimado: {formatCurrency(valueReport.totals.valor_costo)} · Margen proyectado: {formatCurrency(valueReport.totals.margen_total)}
+                  Costo estimado: {formatCurrency(valueTotals.valor_costo)} · Margen proyectado: {formatCurrency(valueTotals.margen_total)}
                 </p>
                 <ul className="report-list">
-                  {valueReport.stores.slice(0, 4).map((store) => (
-                    <li key={store.store_id}>
-                      <strong>{store.store_name}</strong>
-                      <span>{formatCurrency(store.valor_total)}</span>
-                      <span className="muted-text">Margen: {formatCurrency(store.margen_total)}</span>
-                    </li>
-                  ))}
+                  {valueStores.slice(0, 4).map((store) => {
+                    const totalValue = safeNumber(store?.valor_total); // [PACK36-inventory-reports]
+                    const totalMargin = safeNumber(store?.margen_total); // [PACK36-inventory-reports]
+                    return (
+                      <li key={store.store_id}>
+                        <strong>{store.store_name}</strong>
+                        <span>{formatCurrency(totalValue)}</span>
+                        <span className="muted-text">Margen: {formatCurrency(totalMargin)}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : (
@@ -433,20 +493,24 @@ function InventoryReportsPanel({
             {movementsReport ? (
               <div className="card-content">
                 <p className="report-highlight">
-                  {movementsReport.resumen.total_movimientos.toLocaleString("es-MX")}
+                  {movementSummary.total_movimientos.toLocaleString("es-MX")}
                   <small>registros</small>
                 </p>
                 <p className="muted-text">
-                  Unidades movilizadas: {movementsReport.resumen.total_unidades.toLocaleString("es-MX")}
+                  Unidades movilizadas: {movementSummary.total_unidades.toLocaleString("es-MX")}
                 </p>
                 <ul className="report-list">
-                  {movementsReport.resumen.por_tipo.map((entry) => (
-                    <li key={entry.tipo_movimiento}>
-                      <strong>{entry.tipo_movimiento.toUpperCase()}</strong>
-                      <span>{entry.total_cantidad.toLocaleString("es-MX")}</span>
-                      <span className="muted-text">{formatCurrency(entry.total_valor)}</span>
-                    </li>
-                  ))}
+                  {movementByType.map((entry) => {
+                    const totalQuantity = safeNumber(entry?.total_cantidad); // [PACK36-inventory-reports]
+                    const totalValue = safeNumber(entry?.total_valor); // [PACK36-inventory-reports]
+                    return (
+                      <li key={entry.tipo_movimiento}>
+                        <strong>{entry.tipo_movimiento.toUpperCase()}</strong>
+                        <span>{totalQuantity.toLocaleString("es-MX")}</span>
+                        <span className="muted-text">{formatCurrency(totalValue)}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : (
@@ -475,23 +539,26 @@ function InventoryReportsPanel({
                 </button>
               </div>
             </header>
-            {topProductsReport && topProductsReport.items.length > 0 ? (
+            {hasTopProducts ? (
               <div className="card-content">
                 <p className="report-highlight">
-                  {topProductsReport.total_unidades.toLocaleString("es-MX")}
+                  {topProductsTotals.total_unidades.toLocaleString("es-MX")}
                   <small>unidades</small>
                 </p>
                 <p className="muted-text">
-                  Ingresos estimados: {formatCurrency(topProductsReport.total_ingresos)}
+                  Ingresos estimados: {formatCurrency(topProductsTotals.total_ingresos)}
                 </p>
                 <ul className="report-list">
-                  {topProductsReport.items.slice(0, 5).map((item) => (
-                    <li key={`${item.store_id}-${item.device_id}`}>
-                      <strong>{item.nombre}</strong>
-                      <span>{item.unidades_vendidas.toLocaleString("es-MX")} unidades</span>
-                      <span className="muted-text">{item.store_name}</span>
-                    </li>
-                  ))}
+                  {topProductItems.slice(0, 5).map((item) => {
+                    const soldUnits = safeNumber(item?.unidades_vendidas); // [PACK36-inventory-reports]
+                    return (
+                      <li key={`${item.store_id}-${item.device_id}`}>
+                        <strong>{item.nombre}</strong>
+                        <span>{soldUnits.toLocaleString("es-MX")} unidades</span>
+                        <span className="muted-text">{item.store_name}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : (

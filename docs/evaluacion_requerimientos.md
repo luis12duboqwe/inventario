@@ -35,6 +35,7 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 | Inventario (gestión, búsqueda, reportes) | ✅ Implementado en la API central. |
 | Central (sincronización y control global) | ✅ Implementado con scheduler y sesiones de sincronización. |
 | Seguridad (usuarios, permisos, logs) | ✅ Cumplido | Auditoría con recordatorios, acuses y PDF conectados al panel de Seguridad y cubiertos por pruebas backend/frontend.【F:backend/app/routers/audit.py†L15-L140】【F:backend/app/routers/reports.py†L190-L248】【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L242】 |
+| Reparaciones (órdenes, repuestos, PDF) | ✅ Implementado | API `/repairs` con piezas, cierre corporativo y PDF; frontend Pack37 con tabs Pendientes/En proceso/Listas/Entregadas, filtros y exportación CSV.【F:backend/app/routers/repairs.py†L12-L364】【F:backend/app/services/repair_documents.py†L1-L120】【F:frontend/src/pages/reparaciones/ReparacionesLayout.tsx†L1-L120】 |
 | Instalación (creación de carpetas, bases de datos, accesos directos) | ✅ Plantillas disponibles en `installers/`. |
 | Actualización (verificación de nuevas versiones) | ✅ Cumplido | Endpoint `/updates/*`, feed `docs/releases.json` y avisos en el frontend. |
 
