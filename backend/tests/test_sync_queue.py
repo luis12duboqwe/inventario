@@ -39,6 +39,7 @@ def test_sync_queue_lifecycle(client):
     try:
         token = _bootstrap_manager(client)
         headers = {"Authorization": f"Bearer {token}"}
+        secure_headers = {**headers, "X-Reason": "Motivo QA"}
 
         enqueue_response = client.post(
             "/sync/events",
@@ -51,7 +52,7 @@ def test_sync_queue_lifecycle(client):
                     }
                 ]
             },
-            headers=headers,
+            headers=secure_headers,
         )
         assert enqueue_response.status_code == status.HTTP_200_OK
         payload = enqueue_response.json()
@@ -70,7 +71,7 @@ def test_sync_queue_lifecycle(client):
                     }
                 ]
             },
-            headers=headers,
+            headers=secure_headers,
         )
         assert second_enqueue.status_code == status.HTTP_200_OK
         assert second_enqueue.json()["reused"][0]["id"] == queue_id
@@ -95,7 +96,7 @@ def test_sync_queue_lifecycle(client):
 
         dispatch_response = client.post(
             "/sync/dispatch",
-            headers=headers,
+            headers=secure_headers,
             params={"limit": 5},
         )
         assert dispatch_response.status_code == status.HTTP_200_OK
@@ -131,12 +132,14 @@ def test_sync_queue_lifecycle(client):
                     }
                 ]
             },
-            headers=headers,
+            headers=secure_headers,
         )
         assert manual_enqueue.status_code == status.HTTP_200_OK
         pending_id = manual_enqueue.json()["queued"][0]["id"]
 
-        resolve_response = client.post(f"/sync/resolve/{pending_id}", headers=headers)
+        resolve_response = client.post(
+            f"/sync/resolve/{pending_id}", headers=secure_headers
+        )
         assert resolve_response.status_code == status.HTTP_200_OK
         assert resolve_response.json()["status"] == "SENT"
     finally:
