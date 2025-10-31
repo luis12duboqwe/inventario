@@ -1,0 +1,541 @@
+{
+  "generado": "2025-10-28T06:45:44.622569Z",
+  "endpoints": {
+    "total": 198,
+    "sin_response_model": [],
+    "sin_auth_dep": []
+  },
+  "prints": [],
+  "todos": [],
+  "settings": [
+    {
+      "env": "ACCESS_TOKEN_EXPIRE_MINUTES",
+      "default": null,
+      "required": false,
+      "descriptions": [
+        "Minutos de vigencia para cada token de acceso."
+      ],
+      "sources": [
+        "backend/app/config.py",
+        "backend/core/settings.py",
+        "backend/main.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_TOKEN_MINUTES"
+      ]
+    },
+    {
+      "env": "ACCOUNT_LOCK_MINUTES",
+      "default": 15,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ACCOUNT_LOCK_MINUTES"
+      ]
+    },
+    {
+      "env": "API_PORT",
+      "default": 8000,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/main.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "BACKUP_DIR",
+      "default": "./backups",
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_BACKUP_DIR"
+      ]
+    },
+    {
+      "env": "BACKUP_INTERVAL_SECONDS",
+      "default": 43200,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_BACKUP_INTERVAL_SECONDS"
+      ]
+    },
+    {
+      "env": "CORS_ORIGINS",
+      "default": null,
+      "required": true,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ALLOWED_ORIGINS"
+      ]
+    },
+    {
+      "env": "DATABASE_URL",
+      "default": null,
+      "required": false,
+      "descriptions": [
+        "Cadena de conexión proporcionada por el entorno."
+      ],
+      "sources": [
+        "backend/app/config.py",
+        "backend/app/core/config.py",
+        "backend/main.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_DATABASE_URL",
+        "softmobile_database_url"
+      ]
+    },
+    {
+      "env": "DB_PATH",
+      "default": "database/softmobile.db",
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/main.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "DEBUG",
+      "default": true,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/main.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "ENABLE_2FA",
+      "default": false,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ENABLE_2FA"
+      ]
+    },
+    {
+      "env": "ENABLE_ANALYTICS_ADV",
+      "default": true,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ENABLE_ANALYTICS_ADV"
+      ]
+    },
+    {
+      "env": "ENABLE_BACKGROUND_SCHEDULER",
+      "default": true,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ENABLE_SCHEDULER"
+      ]
+    },
+    {
+      "env": "ENABLE_BACKUP_SCHEDULER",
+      "default": true,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ENABLE_BACKUP_SCHEDULER"
+      ]
+    },
+    {
+      "env": "ENABLE_CATALOG_PRO",
+      "default": true,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ENABLE_CATALOG_PRO"
+      ]
+    },
+    {
+      "env": "ENABLE_HYBRID_PREP",
+      "default": true,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ENABLE_HYBRID_PREP"
+      ]
+    },
+    {
+      "env": "ENABLE_PURCHASES_SALES",
+      "default": true,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ENABLE_PURCHASES_SALES"
+      ]
+    },
+    {
+      "env": "ENABLE_TRANSFERS",
+      "default": true,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ENABLE_TRANSFERS"
+      ]
+    },
+    {
+      "env": "INVENTORY_ADJUSTMENT_VARIANCE_THRESHOLD",
+      "default": 3,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_ADJUSTMENT_VARIANCE_THRESHOLD"
+      ]
+    },
+    {
+      "env": "INVENTORY_LOW_STOCK_THRESHOLD",
+      "default": 5,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_LOW_STOCK_THRESHOLD"
+      ]
+    },
+    {
+      "env": "JWT_SECRET_KEY",
+      "default": null,
+      "required": true,
+      "descriptions": [
+        "Clave usada para firmar y verificar los tokens JWT."
+      ],
+      "sources": [
+        "backend/app/config.py",
+        "backend/core/settings.py"
+      ],
+      "aliases": [
+        "SECRET_KEY",
+        "SOFTMOBILE_SECRET_KEY"
+      ]
+    },
+    {
+      "env": "MAX_FAILED_LOGIN_ATTEMPTS",
+      "default": 5,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_MAX_FAILED_LOGIN_ATTEMPTS"
+      ]
+    },
+    {
+      "env": "PASSWORD_RESET_TOKEN_MINUTES",
+      "default": 30,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_PASSWORD_RESET_MINUTES"
+      ]
+    },
+    {
+      "env": "REFRESH_TOKEN_EXPIRE_DAYS",
+      "default": 7,
+      "required": false,
+      "descriptions": [
+        "Días de vigencia para cada token de refresco."
+      ],
+      "sources": [
+        "backend/core/settings.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SECRET_KEY",
+      "default": null,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/main.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SESSION_COOKIE_EXPIRE_MINUTES",
+      "default": 480,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_SESSION_COOKIE_MINUTES"
+      ]
+    },
+    {
+      "env": "SESSION_COOKIE_NAME",
+      "default": "softmobile_session",
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_SESSION_COOKIE_NAME"
+      ]
+    },
+    {
+      "env": "SESSION_COOKIE_SAMESITE",
+      "default": "lax",
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_SESSION_COOKIE_SAMESITE"
+      ]
+    },
+    {
+      "env": "SESSION_COOKIE_SECURE",
+      "default": false,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_SESSION_COOKIE_SECURE"
+      ]
+    },
+    {
+      "env": "SMTP_FROM",
+      "default": null,
+      "required": false,
+      "descriptions": [
+        "Correo electrónico remitente por defecto para notificaciones."
+      ],
+      "sources": [
+        "backend/core/settings.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SMTP_HOST",
+      "default": null,
+      "required": false,
+      "descriptions": [
+        "Servidor SMTP utilizado para notificaciones por correo."
+      ],
+      "sources": [
+        "backend/core/settings.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SMTP_PASS",
+      "default": null,
+      "required": false,
+      "descriptions": [
+        "Contraseña del usuario SMTP configurado."
+      ],
+      "sources": [
+        "backend/core/settings.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SMTP_PORT",
+      "default": null,
+      "required": false,
+      "descriptions": [
+        "Puerto del servidor SMTP."
+      ],
+      "sources": [
+        "backend/core/settings.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SMTP_USER",
+      "default": null,
+      "required": false,
+      "descriptions": [
+        "Usuario para autenticarse en el servidor SMTP."
+      ],
+      "sources": [
+        "backend/core/settings.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SOFTMOBILE_API_V1_STR",
+      "default": "/api/v1",
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/core/config.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SOFTMOBILE_BOOTSTRAP_TOKEN",
+      "default": null,
+      "required": false,
+      "descriptions": [
+        "Token maestro opcional que habilita el bootstrap inicial cuando aún no existen usuarios registrados."
+      ],
+      "sources": [
+        "backend/app/config.py",
+        "backend/core/settings.py",
+        "backend/main.py"
+      ],
+      "aliases": [
+        "BOOTSTRAP_TOKEN"
+      ]
+    },
+    {
+      "env": "SOFTMOBILE_PROJECT_NAME",
+      "default": "Softmobile Inventory API",
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/core/config.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SOFTMOBILE_SQLITE_DB_FILE",
+      "default": "softmobile.db",
+      "required": false,
+      "descriptions": [
+        "Archivo SQLite local"
+      ],
+      "sources": [
+        "backend/app/core/config.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "SOFTMOBILE_TEST_MODE",
+      "default": false,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "TESTING_MODE"
+      ]
+    },
+    {
+      "env": "SYNC_INTERVAL_SECONDS",
+      "default": 1800,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_SYNC_INTERVAL_SECONDS"
+      ]
+    },
+    {
+      "env": "SYNC_MAX_ATTEMPTS",
+      "default": 5,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_SYNC_MAX_ATTEMPTS"
+      ]
+    },
+    {
+      "env": "SYNC_RETRY_INTERVAL_SECONDS",
+      "default": 600,
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_SYNC_RETRY_INTERVAL_SECONDS"
+      ]
+    },
+    {
+      "env": "TITLE",
+      "default": "Softmobile Central",
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": []
+    },
+    {
+      "env": "UPDATE_FEED_PATH",
+      "default": "./docs/releases.json",
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": [
+        "SOFTMOBILE_UPDATE_FEED_PATH"
+      ]
+    },
+    {
+      "env": "VERSION",
+      "default": "2.2.0",
+      "required": false,
+      "descriptions": [],
+      "sources": [
+        "backend/app/config.py"
+      ],
+      "aliases": []
+    }
+  ]
+}

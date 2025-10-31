@@ -1,0 +1,12 @@
+# Creado por Codex el 2025-10-20
+Estructura base Softmobile 2025 v2.2.0 inicializada.
+- Backend preparado con main.py, .env y base de datos SQLite.
+- Directorios models, routes, database y logs verificados.
+- Configuración lista para montar frontend/dist si existe.
+Creado por Codex el 2025-10-20 — Resumen de preparación Softmobile 2025 v2.2.0.
+
+1. Se generó `backend/main.py` con FastAPI, CORS habilitado, ruta `/api` y montaje opcional de `frontend/dist`.
+2. Se añadieron carpetas base (`backend/models`, `backend/routes`, `backend/database`, `backend/logs`) con archivos `__init__.py` para importación explícita.
+3. Se preparó `backend/.env` con variables `DB_PATH=database/softmobile.db`, `API_PORT=8000` y `DEBUG=True`.
+4. Se creó la base `backend/database/softmobile.db` y los artefactos de empaquetado Windows (`build/start_softmobile.bat`, `build/SoftmobileInstaller.iss`).
+5. La documentación del README incluye la sección «Preparación rápida del entorno base — 20/10/2025».
