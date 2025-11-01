@@ -10,8 +10,23 @@ type Props = {
 };
 
 export default function MediaGallery({ images }: Props) {
-  const data = Array.isArray(images) ? images : [];
+  const data = React.useMemo(() => (Array.isArray(images) ? images : []), [images]);
   const [active, setActive] = React.useState<string>(data[0]?.id || "");
+
+  React.useEffect(() => {
+    if (!data.length) {
+      if (active !== "") {
+        setActive("");
+      }
+      return;
+    }
+
+    const hasActiveImage = data.some((image) => image.id === active);
+    if (!hasActiveImage) {
+      setActive(data[0].id);
+    }
+  }, [data, active]);
+
   const activeUrl = data.find((image) => image.id === active)?.url || data[0]?.url;
 
   return (

@@ -240,6 +240,7 @@ def create_app() -> FastAPI:
             if origin:
                 response.headers["Access-Control-Allow-Origin"] = origin
                 response.headers["Vary"] = "Origin"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
             allow_headers = request.headers.get("access-control-request-headers")
             if allow_headers:
                 response.headers["Access-Control-Allow-Headers"] = allow_headers
