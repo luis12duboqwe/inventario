@@ -529,8 +529,12 @@ def restore_backup(
     metadata_file = Path(job.metadata_path)
     critical_source = Path(job.critical_directory)
 
-    target_base = Path(target_directory) if target_directory else archive_file.parent
+    safe_restore_root = Path(app_settings.backup_directory).resolve()
+    target_base = Path(target_directory).resolve() if target_directory else safe_restore_root
     restore_dir = target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    restore_dir = restore_dir.resolve()
+    if not str(restore_dir).startswith(str(safe_restore_root)):
+        raise ValueError("Directorio de restauración no permitido")
     restore_dir.mkdir(parents=True, exist_ok=True)
 
     results: dict[str, str] = {}
