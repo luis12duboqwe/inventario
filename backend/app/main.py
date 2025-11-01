@@ -238,9 +238,20 @@ def create_app() -> FastAPI:
             response = Response(status_code=200)
             origin = request.headers.get("origin")
             if origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Vary"] = "Origin"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
+                normalized_origin = origin.rstrip("/")
+                allowed_origins = {value.rstrip("/") for value in settings.allowed_origins}
+                if "*" in settings.allowed_origins or normalized_origin in allowed_origins:
+                    response.headers["Access-Control-Allow-Origin"] = origin
+                    response.headers["Vary"] = "Origin"
+                    if "*" not in settings.allowed_origins:
+                        response.headers["Access-Control-Allow-Credentials"] = "true"
+                else:
+                    return JSONResponse(
+                        status_code=403,
+                        content={
+                            "detail": "El origen especificado no está autorizado para solicitudes con credenciales.",
+                        },
+                    )
             allow_headers = request.headers.get("access-control-request-headers")
             if allow_headers:
                 response.headers["Access-Control-Allow-Headers"] = allow_headers
