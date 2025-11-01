@@ -20,6 +20,6 @@ apscheduler==3.10.4
 alembic==1.17.1
 apscheduler==3.11.1
 alembic==1.13.2
-packaging==24.1
+packaging==25.0
 pyotp==2.9.0
 prometheus-client==0.20.0
