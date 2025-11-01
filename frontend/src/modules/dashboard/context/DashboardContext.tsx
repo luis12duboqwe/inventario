@@ -429,6 +429,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         setSyncHybridForecast(overviewData.forecast);
         setSyncHybridBreakdown(overviewData.breakdown);
         return;
+      } catch (primaryError) {
+        console.warn("Fallback a API híbrida previa por error en overview", primaryError);
       }
       try {
         const [entries, statsData, summaryData, hybridData] = await Promise.all([
@@ -653,6 +655,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(overviewData.progress);
       setSyncHybridBreakdown(overviewData.breakdown);
       return;
+    } catch (_err) {
+      // Si la API avanzada falla, se recurre a las solicitudes individuales.
     }
     try {
       const [summaryData, forecastData, breakdownData] = await Promise.all([
@@ -706,6 +710,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(overviewData.progress);
       setSyncHybridBreakdown(overviewData.breakdown);
       return;
+    } catch (_err) {
+      // Si falla la vista combinada se consulta cada recurso por separado.
     }
     try {
       const [statsData, summaryData, forecastData, breakdownData] = await Promise.all([
@@ -776,6 +782,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(overviewData.progress);
       setSyncHybridBreakdown(overviewData.breakdown);
       return;
+    } catch (_err) {
+      // Se recurre al flujo degradado cuando la API avanzada no está disponible.
     }
     try {
       const [entries, statsData, summaryData, forecastData, breakdownData] = await Promise.all([
