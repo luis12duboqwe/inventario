@@ -482,8 +482,6 @@ def _prepare_environment(target_app: FastAPI) -> None:
                 )
         _ENVIRONMENT_READY = True
 
-    _mount_frontend(target_app)
-
 
 @app.get("/api", tags=["estado"])
 async def read_status() -> dict[str, str]:
@@ -522,6 +520,8 @@ _prepare_environment(app)
 
 
 _include_routers(app)
+
+_mount_frontend(app)
 
 __all__ = ["app", "get_application", "settings"]
 
