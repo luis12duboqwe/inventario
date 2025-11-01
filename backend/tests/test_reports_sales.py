@@ -157,3 +157,36 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
     finally:
         settings.enable_analytics_adv = previous_analytics_flag
         settings.enable_purchases_sales = previous_sales_flag
+
+
+def test_sales_daily_report_default_payload(client) -> None:
+    previous_analytics_flag = settings.enable_analytics_adv
+    previous_sales_flag = settings.enable_purchases_sales
+    settings.enable_analytics_adv = True
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        target_date = date.today().isoformat()
+
+        response = client.get(
+            "/reports/sales/daily",
+            params={"date": target_date},
+            headers=headers,
+        )
+        assert response.status_code == status.HTTP_200_OK
+        payload = response.json()
+        assert payload["date"] == target_date
+        assert payload["totals"]["gross"] == pytest.approx(0.0)
+
+        csv_response = client.get(
+            "/reports/sales/daily/export.csv",
+            params={"date": target_date},
+            headers=headers,
+        )
+        assert csv_response.status_code == status.HTTP_200_OK
+        assert "text/csv" in csv_response.headers["content-type"].lower()
+        assert target_date in csv_response.text
+    finally:
+        settings.enable_analytics_adv = previous_analytics_flag
+        settings.enable_purchases_sales = previous_sales_flag

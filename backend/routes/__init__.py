@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 __all__ = [
+    "audit",
+    "audit_ui",
     "auth",
     "backups",
     "customers",
@@ -10,6 +12,7 @@ __all__ = [
     "jobs",
     "pos",
     "reports",
+    "reports_sales",
     "stores",
     "updates",
     "purchases",
