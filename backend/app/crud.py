@@ -2388,6 +2388,38 @@ def _select_primary_role(role_names: Iterable[str]) -> str:
     return min(ordered_roles, key=ROLE_PRIORITY.__getitem__)
 
 
+def _normalize_role_names(role_names: Iterable[str]) -> list[str]:
+    """Normaliza la colección de roles removiendo duplicados y espacios."""
+
+    unique_roles: list[str] = []
+    seen: set[str] = set()
+    for role_name in role_names:
+        if not isinstance(role_name, str):
+            continue
+        normalized = role_name.strip().upper()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_roles.append(normalized)
+    return unique_roles
+
+
+def _build_role_assignments(
+    db: Session, role_names: Iterable[str]
+) -> list[models.UserRole]:
+    """Crea las asociaciones de roles a partir de los nombres únicos provistos."""
+
+    assignments: list[models.UserRole] = []
+    for role_name in role_names:
+        role = ensure_role(db, role_name)
+        role_id = role.id
+        if role_id is None:
+            flush_session(db)
+            role_id = role.id
+        assignments.append(models.UserRole(role_id=role_id))
+    return assignments
+
+
 def create_user(
     db: Session,
     payload: schemas.UserCreate,
@@ -2397,7 +2429,10 @@ def create_user(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.User:
-    role_names = list(role_names)
+    normalized_roles = _normalize_role_names(role_names)
+    primary_role = _select_primary_role(normalized_roles)
+    if primary_role not in normalized_roles:
+        normalized_roles.append(primary_role)
     store_id: int | None = None
     if payload.store_id is not None:
         try:
@@ -2405,7 +2440,6 @@ def create_user(
         except LookupError as exc:
             raise ValueError("store_not_found") from exc
         store_id = store.id
-    primary_role = _select_primary_role(role_names)
     user = models.User(
         username=payload.username,
         full_name=payload.full_name,
@@ -2422,17 +2456,13 @@ def create_user(
         except IntegrityError as exc:
             raise ValueError("user_already_exists") from exc
 
-        assigned_roles: list[models.UserRole] = []
-        for role_name in role_names:
-            role = ensure_role(db, role_name)
-            assigned_roles.append(models.UserRole(user=user, role=role))
-        if assigned_roles:
-            db.add_all(assigned_roles)
+        assignments = _build_role_assignments(db, normalized_roles)
+        user.roles.extend(assignments)
 
         log_details: dict[str, object] = {
             "description": f"Usuario creado: {user.username}",
             "metadata": {
-                "roles": sorted({role for role in role_names}),
+                "roles": sorted(normalized_roles),
             },
         }
         if store_id is not None:
@@ -2525,19 +2555,21 @@ def set_user_roles(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.User:
-    role_names = list(role_names)
-    log_payload: dict[str, object] = {"roles": sorted(role_names)}
+    normalized_roles = _normalize_role_names(role_names)
+    primary_role = _select_primary_role(normalized_roles)
+    if primary_role not in normalized_roles:
+        normalized_roles.append(primary_role)
+    log_payload: dict[str, object] = {"roles": sorted(normalized_roles)}
     if reason:
         log_payload["reason"] = reason
 
     with transactional_session(db):
         user.roles.clear()
         flush_session(db)
-        for role_name in role_names:
-            role = ensure_role(db, role_name)
-            db.add(models.UserRole(user=user, role=role))
+        assignments = _build_role_assignments(db, normalized_roles)
+        user.roles.extend(assignments)
 
-        user.rol = _select_primary_role(role_names)
+        user.rol = primary_role
 
         _log_action(
             db,
