@@ -1,1 +1,6 @@
-PLACEHOLDER
+# Equipo de mantenimiento Softmobile 2025
+* @softmobile-core/plataforma
+backend/ @softmobile-core/backend
+frontend/ @softmobile-core/frontend
+docs/ @softmobile-core/documentacion
+ops/ @softmobile-core/operaciones
