@@ -42,21 +42,6 @@ function RepairOrdersBoard({
   const [selectedBudgetOrder, setSelectedBudgetOrder] = useState<RepairOrder | null>(null);
   const [selectedPartsOrder, setSelectedPartsOrder] = useState<RepairOrder | null>(null);
 
-  useEffect(() => {
-    if (selectedBudgetOrder) {
-      const refreshed = orders.find((order) => order.id === selectedBudgetOrder.id);
-      if (refreshed && refreshed !== selectedBudgetOrder) {
-        setSelectedBudgetOrder(refreshed);
-      }
-    }
-    if (selectedPartsOrder) {
-      const refreshed = orders.find((order) => order.id === selectedPartsOrder.id);
-      if (refreshed && refreshed !== selectedPartsOrder) {
-        setSelectedPartsOrder(refreshed);
-      }
-    }
-  }, [orders, selectedBudgetOrder, selectedPartsOrder]); // [PACK37-frontend]
-
   const {
     localStoreId,
     handleStoreChange,
@@ -103,6 +88,21 @@ function RepairOrdersBoard({
     onShowBudget: (order) => setSelectedBudgetOrder(order),
     onShowParts: (order) => setSelectedPartsOrder(order),
   });
+
+  useEffect(() => {
+    if (selectedBudgetOrder) {
+      const refreshed = orders.find((order) => order.id === selectedBudgetOrder.id);
+      if (refreshed && refreshed !== selectedBudgetOrder) {
+        setSelectedBudgetOrder(refreshed);
+      }
+    }
+    if (selectedPartsOrder) {
+      const refreshed = orders.find((order) => order.id === selectedPartsOrder.id);
+      if (refreshed && refreshed !== selectedPartsOrder) {
+        setSelectedPartsOrder(refreshed);
+      }
+    }
+  }, [orders, selectedBudgetOrder, selectedPartsOrder]); // [PACK37-frontend]
 
   const deviceLabelById = useMemo(() => {
     const mapping = new Map<number, string>();
