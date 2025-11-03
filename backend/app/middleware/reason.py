@@ -30,7 +30,6 @@ READ_SENSITIVE_PREFIXES: tuple[str, ...] = ("/pos", "/reports", "/customers")
 
 _MAX_REASON_LENGTH = 200
 _INVALID_REASON_PATTERN = re.compile(r"[\r\n\t]")
-_ALPHANUMERIC_PATTERN = re.compile(r"[A-Za-zÁÉÍÓÚáéíóúÜüÑñ0-9]")
 
 
 class ReasonHeaderError(ValueError):
@@ -67,7 +66,7 @@ def _validate_content(reason: str) -> None:
         raise ReasonHeaderError(
             "El encabezado X-Reason no debe contener saltos de línea ni tabulaciones."
         )
-    if not _ALPHANUMERIC_PATTERN.search(reason):
+    if not any(char.isalnum() for char in reason):
         raise ReasonHeaderError(
             "El encabezado X-Reason debe incluir caracteres alfanuméricos descriptivos."
         )
