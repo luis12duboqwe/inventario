@@ -11,9 +11,9 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
-from typing import Literal
+from typing import Any, Literal
 
-from sqlalchemy import and_, case, desc, func, literal, or_, select, tuple_
+from sqlalchemy import and_, case, cast, desc, func, literal, or_, select, tuple_, String
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import ColumnElement, Select
@@ -4017,6 +4017,362 @@ def register_customer_payment(
 
         db.refresh(customer)
         db.refresh(ledger_entry)
+
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
+        )
+        _sync_customer_ledger_entry(db, ledger_entry)
+    return ledger_entry
+
+
+def list_payment_center_transactions(
+    db: Session,
+    *,
+    limit: int = 50,
+    query: str | None = None,
+    method: str | None = None,
+    type_filter: Literal["PAYMENT", "REFUND", "CREDIT_NOTE"] | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> list[schemas.PaymentCenterTransaction]:
+    stmt = (
+        select(
+            models.CustomerLedgerEntry.id,
+            models.CustomerLedgerEntry.entry_type,
+            models.CustomerLedgerEntry.amount,
+            models.CustomerLedgerEntry.created_at,
+            models.CustomerLedgerEntry.note,
+            models.Customer.id.label("customer_id"),
+            models.Customer.name.label("customer_name"),
+            models.CustomerLedgerEntry.reference_id,
+            models.CustomerLedgerEntry.details,
+        )
+        .join(
+            models.Customer,
+            models.Customer.id == models.CustomerLedgerEntry.customer_id,
+        )
+        .where(
+            models.CustomerLedgerEntry.entry_type.in_(
+                [
+                    models.CustomerLedgerEntryType.PAYMENT,
+                    models.CustomerLedgerEntryType.ADJUSTMENT,
+                ]
+            )
+        )
+        .order_by(models.CustomerLedgerEntry.created_at.desc())
+        .limit(limit)
+    )
+
+    if date_from is not None:
+        stmt = stmt.where(models.CustomerLedgerEntry.created_at >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(models.CustomerLedgerEntry.created_at <= date_to)
+
+    if query:
+        search = f"%{query.lower()}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(models.Customer.name).like(search),
+                func.lower(models.CustomerLedgerEntry.reference_id).like(search),
+            )
+        )
+
+    rows = db.execute(stmt).all()
+    transactions: list[schemas.PaymentCenterTransaction] = []
+    for row in rows:
+        entry_type: models.CustomerLedgerEntryType = row.entry_type
+        details_payload: dict[str, Any]
+        if isinstance(row.details, dict):
+            details_payload = row.details
+        else:
+            details_payload = {}
+            if isinstance(row.details, str):
+                try:
+                    details_payload = json.loads(row.details)
+                except json.JSONDecodeError:
+                    details_payload = {}
+
+        event = str(details_payload.get("event", "")).strip().lower()
+        method_name = str(details_payload.get("method", "")).strip()
+        if entry_type == models.CustomerLedgerEntryType.PAYMENT:
+            tx_type = "PAYMENT"
+        elif entry_type == models.CustomerLedgerEntryType.ADJUSTMENT:
+            if event in {"sale_return", "manual_refund"}:
+                tx_type = "REFUND"
+            elif event == "credit_note":
+                tx_type = "CREDIT_NOTE"
+            else:
+                continue
+        else:
+            continue
+
+        if type_filter and tx_type != type_filter:
+            continue
+        if method and method_name.lower() != method.lower():
+            continue
+
+        amount_value = float(abs(row.amount or Decimal("0")))
+        sale_reference = details_payload.get("sale_id") or row.reference_id
+        order_id: int | None = None
+        order_number: str | None = None
+        if sale_reference:
+            order_number = str(sale_reference)
+            try:
+                order_id = int(str(sale_reference))
+            except (TypeError, ValueError):
+                order_id = None
+
+        transactions.append(
+            schemas.PaymentCenterTransaction(
+                id=row.id,
+                type=tx_type,
+                amount=amount_value,
+                created_at=row.created_at,
+                order_id=order_id,
+                order_number=order_number,
+                customer_id=row.customer_id,
+                customer_name=row.customer_name,
+                method=method_name or None,
+                note=row.note,
+            )
+        )
+    return transactions
+
+
+def get_payment_center_summary(
+    db: Session,
+    *,
+    reference: datetime | None = None,
+) -> schemas.PaymentCenterSummary:
+    reference = reference or datetime.utcnow()
+    tzinfo = reference.tzinfo
+    today_start = datetime(reference.year, reference.month, reference.day, tzinfo=tzinfo)
+    tomorrow_start = today_start + timedelta(days=1)
+    month_start = datetime(reference.year, reference.month, 1, tzinfo=tzinfo)
+    if reference.month == 12:
+        next_month_start = datetime(reference.year + 1, 1, 1, tzinfo=tzinfo)
+    else:
+        next_month_start = datetime(reference.year, reference.month + 1, 1, tzinfo=tzinfo)
+
+    payments_today_stmt = select(
+        func.coalesce(-func.sum(models.CustomerLedgerEntry.amount), Decimal("0"))
+    ).where(
+        models.CustomerLedgerEntry.entry_type
+        == models.CustomerLedgerEntryType.PAYMENT,
+        models.CustomerLedgerEntry.created_at >= today_start,
+        models.CustomerLedgerEntry.created_at < tomorrow_start,
+    )
+
+    payments_month_stmt = select(
+        func.coalesce(-func.sum(models.CustomerLedgerEntry.amount), Decimal("0"))
+    ).where(
+        models.CustomerLedgerEntry.entry_type
+        == models.CustomerLedgerEntryType.PAYMENT,
+        models.CustomerLedgerEntry.created_at >= month_start,
+        models.CustomerLedgerEntry.created_at < next_month_start,
+    )
+
+    pending_balance_stmt = select(
+        func.coalesce(func.sum(models.Customer.outstanding_debt), Decimal("0"))
+    ).where(models.Customer.outstanding_debt > 0)
+
+    collections_today = db.scalar(payments_today_stmt) or Decimal("0")
+    collections_month = db.scalar(payments_month_stmt) or Decimal("0")
+    refunds_month_total = Decimal("0")
+    refunds_stmt = (
+        select(
+            models.CustomerLedgerEntry.amount,
+            models.CustomerLedgerEntry.details,
+        )
+        .where(
+            models.CustomerLedgerEntry.entry_type
+            == models.CustomerLedgerEntryType.ADJUSTMENT,
+            models.CustomerLedgerEntry.created_at >= month_start,
+            models.CustomerLedgerEntry.created_at < next_month_start,
+        )
+    )
+    for amount_value, details in db.execute(refunds_stmt):
+        details_payload: dict[str, Any]
+        if isinstance(details, dict):
+            details_payload = details
+        else:
+            details_payload = {}
+            if isinstance(details, str):
+                try:
+                    details_payload = json.loads(details)
+                except json.JSONDecodeError:
+                    details_payload = {}
+        event_name = str(details_payload.get("event", "")).strip()
+        if event_name in {"sale_return", "manual_refund"}:
+            refunds_month_total += -_to_decimal(amount_value)
+    refunds_month_total = refunds_month_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    pending_balance = db.scalar(pending_balance_stmt) or Decimal("0")
+
+    return schemas.PaymentCenterSummary(
+        collections_today=float(collections_today),
+        collections_month=float(collections_month),
+        refunds_month=float(refunds_month_total),
+        pending_balance=float(pending_balance),
+    )
+
+
+def register_payment_center_refund(
+    db: Session,
+    payload: schemas.PaymentCenterRefundCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.CustomerLedgerEntry:
+    customer = get_customer(db, payload.customer_id)
+    amount = _to_decimal(payload.amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if amount <= Decimal("0"):
+        raise ValueError("payment_center_refund_invalid_amount")
+
+    normalized_note = (payload.note or f"Reembolso {payload.reason}").strip()
+    if not normalized_note:
+        normalized_note = f"Reembolso {payload.reason}"
+
+    with transactional_session(db):
+        current_debt = _to_decimal(customer.outstanding_debt).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        new_debt = (current_debt - amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if new_debt < Decimal("0"):
+            new_debt = Decimal("0")
+        customer.outstanding_debt = new_debt
+        _append_customer_history(
+            customer,
+            f"Reembolso registrado por ${float(amount):.2f}",
+        )
+        db.add(customer)
+
+        details: dict[str, object] = {
+            "event": "manual_refund",
+            "method": payload.method,
+            "reason": payload.reason,
+        }
+        if payload.sale_id is not None:
+            details["sale_id"] = payload.sale_id
+
+        ledger_entry = _create_customer_ledger_entry(
+            db,
+            customer=customer,
+            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
+            amount=-amount,
+            note=normalized_note,
+            reference_type="sale" if payload.sale_id is not None else "refund",
+            reference_id=str(payload.sale_id) if payload.sale_id is not None else None,
+            details=details,
+            created_by_id=performed_by_id,
+        )
+
+        _log_action(
+            db,
+            action="customer_refund_registered",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "amount": float(amount),
+                    "method": payload.method,
+                    "reason": payload.reason,
+                    "sale_id": payload.sale_id,
+                }
+            ),
+        )
+
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
+        )
+        _sync_customer_ledger_entry(db, ledger_entry)
+    return ledger_entry
+
+
+def register_payment_center_credit_note(
+    db: Session,
+    payload: schemas.PaymentCenterCreditNoteCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.CustomerLedgerEntry:
+    customer = get_customer(db, payload.customer_id)
+    amount = _to_decimal(payload.total).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if amount <= Decimal("0"):
+        raise ValueError("payment_center_credit_note_invalid_amount")
+
+    note = (payload.note or "Nota de crédito aplicada").strip()
+    if not note:
+        note = "Nota de crédito aplicada"
+
+    details: dict[str, object] = {
+        "event": "credit_note",
+        "lines": [
+            {
+                "description": line.description,
+                "quantity": line.quantity,
+                "amount": float(line.amount),
+            }
+            for line in payload.lines
+        ],
+    }
+    if payload.sale_id is not None:
+        details["sale_id"] = payload.sale_id
+
+    with transactional_session(db):
+        current_debt = _to_decimal(customer.outstanding_debt).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        new_debt = (current_debt - amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if new_debt < Decimal("0"):
+            new_debt = Decimal("0")
+        customer.outstanding_debt = new_debt
+        _append_customer_history(
+            customer,
+            f"Nota de crédito registrada por ${float(amount):.2f}",
+        )
+        db.add(customer)
+
+        ledger_entry = _create_customer_ledger_entry(
+            db,
+            customer=customer,
+            entry_type=models.CustomerLedgerEntryType.ADJUSTMENT,
+            amount=-amount,
+            note=note,
+            reference_type="sale" if payload.sale_id is not None else "credit_note",
+            reference_id=str(payload.sale_id) if payload.sale_id is not None else None,
+            details=details,
+            created_by_id=performed_by_id,
+        )
+
+        _log_action(
+            db,
+            action="customer_credit_note_registered",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "amount": float(amount),
+                    "sale_id": payload.sale_id,
+                    "lines": details["lines"],
+                }
+            ),
+        )
 
         enqueue_sync_outbox(
             db,

@@ -876,6 +876,97 @@ class CustomerSummaryResponse(BaseModel):
     ledger: list[CustomerLedgerEntryResponse]
 
 
+class PaymentCenterSummary(BaseModel):
+    collections_today: float = 0.0
+    collections_month: float = 0.0
+    pending_balance: float = 0.0
+    refunds_month: float = 0.0
+
+
+class PaymentCenterTransaction(BaseModel):
+    id: int
+    type: Literal["PAYMENT", "REFUND", "CREDIT_NOTE"]
+    amount: float
+    created_at: datetime
+    order_id: int | None = None
+    order_number: str | None = None
+    customer_id: int
+    customer_name: str
+    method: str | None = None
+    note: str | None = None
+    status: Literal["POSTED", "VOID"] = "POSTED"
+
+
+class PaymentCenterResponse(BaseModel):
+    summary: PaymentCenterSummary
+    transactions: list[PaymentCenterTransaction]
+
+
+class PaymentCenterPaymentCreate(CustomerPaymentCreate):
+    customer_id: int = Field(gt=0)
+
+
+class PaymentCenterRefundCreate(BaseModel):
+    customer_id: int = Field(gt=0)
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    method: str = Field(min_length=3, max_length=40)
+    reason: str = Field(min_length=3, max_length=120)
+    note: str | None = Field(default=None, max_length=255)
+    sale_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("method", "reason", mode="before")
+    @classmethod
+    def _normalize_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El campo es obligatorio")
+        return normalized
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _normalize_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class PaymentCenterCreditNoteLine(BaseModel):
+    description: str = Field(min_length=1, max_length=160)
+    quantity: int = Field(default=1, ge=0)
+    amount: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("La descripción es obligatoria")
+        return normalized
+
+
+class PaymentCenterCreditNoteCreate(BaseModel):
+    customer_id: int = Field(gt=0)
+    lines: list[PaymentCenterCreditNoteLine]
+    total: Decimal = Field(..., gt=Decimal("0"))
+    note: str | None = Field(default=None, max_length=255)
+    sale_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("lines")
+    @classmethod
+    def _ensure_lines(cls, value: list[PaymentCenterCreditNoteLine]) -> list[PaymentCenterCreditNoteLine]:
+        if not value:
+            raise ValueError("La nota de crédito requiere al menos un concepto")
+        return value
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _normalize_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
 class CustomerPortfolioFilters(BaseModel):
     category: Literal["delinquent", "frequent"]
     date_from: date | None = None

@@ -9,6 +9,7 @@ type PaymentModalPayload = {
   cashAmount?: number;
   cardAmount?: number;
   reference?: string;
+  reason: string;
 };
 
 type PaymentModalProps = {
@@ -26,6 +27,7 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
   const [cashAmount, setCashAmount] = useState<number>(0);
   const [cardAmount, setCardAmount] = useState<number>(0);
   const [reference, setReference] = useState<string>("");
+  const [reason, setReason] = useState<string>("");
 
   useEffect(() => {
     if (!open) {
@@ -34,16 +36,17 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
       setCashAmount(0);
       setCardAmount(0);
       setReference("");
+      setReason("");
     }
   }, [open]);
 
   const isValid = useMemo(() => {
     if (method === "MIXED") {
       const totalMixed = (cashAmount ?? 0) + (cardAmount ?? 0);
-      return totalMixed > 0;
+      return totalMixed > 0 && reason.trim().length >= 5;
     }
-    return amount > 0;
-  }, [amount, cardAmount, cashAmount, method]);
+    return amount > 0 && reason.trim().length >= 5;
+  }, [amount, cardAmount, cashAmount, method, reason]);
 
   const totalDisplayed = method === "MIXED" ? cashAmount + cardAmount : amount;
 
@@ -58,6 +61,7 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
       cashAmount: method === "MIXED" ? cashAmount : undefined,
       cardAmount: method === "MIXED" ? cardAmount : undefined,
       reference: reference.trim() || undefined,
+      reason: reason.trim(),
     };
     onSubmit?.(payload);
   };
@@ -121,6 +125,15 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
               value={reference}
               onChange={(event) => setReference(event.target.value)}
               style={{ width: "100%", padding: 8, borderRadius: 8 }}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span>Motivo corporativo (mín. 5 caracteres)</span>
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              style={{ width: "100%", padding: 8, borderRadius: 8, minHeight: 72 }}
+              placeholder="Describe el motivo corporativo"
             />
           </label>
           <div style={{ textAlign: "right", fontSize: 14, color: "#38bdf8" }}>
