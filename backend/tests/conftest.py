@@ -13,6 +13,12 @@ os.environ.setdefault("REFRESH_TOKEN_EXPIRE_DAYS", "7")
 os.environ.setdefault("SOFTMOBILE_BOOTSTRAP_TOKEN", "test-bootstrap-token")
 
 import pytest
+
+pytest.importorskip(
+    "fastapi",
+    reason="La suite backend requiere fastapi para instanciar la aplicación de pruebas.",
+)
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 

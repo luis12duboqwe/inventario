@@ -64,15 +64,20 @@ _database_module = _import_module_with_fallback(
 )
 
 # Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``users``.
-db_utils = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
+db_module = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
 core_main_module = _import_module_with_fallback(
     "backend.app.main", CURRENT_DIR / "app" / "main.py"
 )
-from backend import db as db_utils
-from backend.app.main import create_app as create_core_app
 
-init_db = getattr(db_utils, "init_db")
-create_core_app = getattr(core_main_module, "create_app")
+try:
+    init_db = getattr(db_module, "init_db")
+except AttributeError as exc:  # pragma: no cover - protección ante refactors futuros
+    raise RuntimeError("backend.db debe exponer la función init_db") from exc
+
+try:
+    create_core_app = getattr(core_main_module, "create_app")
+except AttributeError as exc:  # pragma: no cover - protección ante refactors futuros
+    raise RuntimeError("backend.app.main debe exponer la función create_app") from exc
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger("softmobile.bootstrap")

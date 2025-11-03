@@ -1,6 +1,15 @@
 from collections.abc import Iterator
-
 import pytest
+
+pytest.importorskip(
+    "fastapi",
+    reason="Las pruebas de autenticación requieren la librería fastapi instalada.",
+)
+pytest.importorskip(
+    "fastapi_limiter",
+    reason="Las pruebas de autenticación requieren fastapi-limiter para emular el rate limiter.",
+)
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

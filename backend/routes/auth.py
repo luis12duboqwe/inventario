@@ -71,8 +71,14 @@ EMAIL_VERIFICATION_TOKEN_MINUTES = 60 * 24
 router = APIRouter(prefix="/auth", tags=["auth"])
 _auth_scheme = HTTPBearer(auto_error=False)
 
-# Garantizamos que las tablas estén listas al cargar el módulo.
-init_db()
+
+async def _initialize_auth_tables() -> None:
+    """Asegura la preparación de tablas requeridas por los endpoints de autenticación."""
+
+    init_db()
+
+
+router.add_event_handler("startup", _initialize_auth_tables)
 
 
 async def _configure_rate_limiter() -> None:
