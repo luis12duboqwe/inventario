@@ -23,6 +23,15 @@ export type AdminControlPanelProps = {
   notificationItems: NotificationCenterItem[];
 };
 
+/**
+ * Panel central del dashboard que agrupa accesos rápidos y el centro de alertas.
+ *
+ * El componente mantiene sincronizado el resumen de notificaciones con
+ * `NotificationCenter` y respeta los requisitos de accesibilidad del mandato
+ * Softmobile (por ejemplo, `aria-current`, `srHint`). Las pruebas en
+ * `AdminControlPanel.test.tsx` verifican los diferentes estados de tarjetas y
+ * badges para evitar regresiones.
+ */
 function AdminControlPanel({
   modules,
   roleVariant,

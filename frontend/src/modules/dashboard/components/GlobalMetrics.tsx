@@ -29,6 +29,14 @@ function resolveStatusTone(value: number, threshold: number, inverse = false): "
   return value >= threshold ? "good" : "alert";
 }
 
+/**
+ * Tablero global con tarjetas, gráficos y resúmenes auditables del backend.
+ *
+ * El hook `useDashboard` aporta métricas normalizadas por el servicio de
+ * analítica. Los estados de carga y vacíos están cubiertos por
+ * `GlobalMetrics.test.tsx`, asegurando que los escenarios descritos en la nueva
+ * documentación respondan de forma consistente ante datos incompletos.
+ */
 function GlobalMetrics() {
   const { metrics, formatCurrency, loading } = useDashboard();
 

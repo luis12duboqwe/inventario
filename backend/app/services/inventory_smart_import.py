@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+"""Herramientas para la importación inteligente de inventario.
+
+Este módulo concentra la lectura flexible de archivos tabulares, la detección de
+encabezados y la persistencia segura de dispositivos con tolerancia a datos
+incompletos. La intención de los docstrings añadidos es documentar los pasos del
+análisis y los puntos de extensión usados por los equipos de catálogo y
+sincronización híbrida.
+"""
+
 import csv
 import re
 import unicodedata
@@ -96,6 +105,21 @@ def process_smart_import(
     username: str | None,
     reason: str,
 ) -> schemas.InventorySmartImportResponse:
+    """Analiza o persiste un archivo tabular de inventario.
+
+    El flujo se compone de tres pasos principales:
+
+    1. ``_read_tabular_file`` interpreta CSV o Excel (con *fallback* a CSV si el
+       archivo está dañado) y genera una estructura homogénea ``ParsedFile``.
+    2. ``_analyze_dataset`` cruza encabezados con sinónimos conocidos y
+       aprendizaje previo para construir la vista previa consumida por la UI.
+    3. ``_commit_import`` crea/actualiza dispositivos y registra historial sólo
+       cuando ``commit`` es ``True``. Esta fase se ejecuta dentro de una
+       transacción para mantener la consistencia entre dispositivos y bitácoras.
+
+    Los docstrings detallan dependencias y escenarios cubiertos por
+    ``tests/test_inventory_smart_import.py`` para facilitar extensiones futuras.
+    """
     overrides = overrides or {}
     parsed = _read_tabular_file(file_bytes, filename)
     learned_patterns = crud.get_known_import_column_patterns(db)
@@ -116,6 +140,11 @@ def process_smart_import(
 
 
 def _parse_csv_bytes(file_bytes: bytes) -> ParsedFile:
+    """Convierte ``bytes`` CSV en ``ParsedFile`` normalizado.
+
+    Asegura la limpieza de encabezados y descarta filas completamente vacías para
+    evitar falsos positivos durante el análisis y la escritura en base.
+    """
     decoded = file_bytes.decode("utf-8-sig")
     reader = csv.DictReader(StringIO(decoded))
     if reader.fieldnames is None:
@@ -131,6 +160,13 @@ def _parse_csv_bytes(file_bytes: bytes) -> ParsedFile:
 
 
 def _read_tabular_file(file_bytes: bytes, filename: str) -> ParsedFile:
+    """Lee archivos CSV/XLSX devolviendo filas homogéneas para el análisis.
+
+    La función intenta abrir Excel en modo de sólo lectura; si el contenedor ZIP
+    es inválido se vuelve a intentar como CSV. Los encabezados vacíos provocan un
+    ``ValueError`` que es propagado hasta la capa API para mostrar mensajes en la
+    UI de importaciones inteligentes.
+    """
     if filename.lower().endswith(".csv"):
         return _parse_csv_bytes(file_bytes)
     # default excel
@@ -164,6 +200,18 @@ def _analyze_dataset(
     overrides: dict[str, str],
     learned_patterns: dict[str, str],
 ) -> schemas.InventorySmartImportPreview:
+    """Construye la vista previa de importación con base en sinónimos y muestras.
+
+    - Asocia encabezados a campos canónicos combinando sinónimos, *overrides* y
+      patrones aprendidos mediante ``crud.get_known_import_column_patterns``.
+    - Calcula advertencias de columnas faltantes o no mapeadas y estima registros
+      incompletos según ``CRITICAL_FIELDS`` y ``IMEI_IMPORTANT_FIELDS``.
+    - Prepara ``SmartImportColumnMatch`` consumidos por el frontend para mostrar
+      estados («ok»/«pendiente»/«falta»).
+
+    Las decisiones documentadas están cubiertas por ``test_inventory_smart_import_preview_and_commit``
+    y ``test_inventory_smart_import_handles_overrides_and_incomplete_records``.
+    """
     normalized_headers = {
         _normalize_header(header): header for header in parsed.headers if header
     }
@@ -266,6 +314,23 @@ def _commit_import(
     overrides: dict[str, str],
     reason: str,
 ) -> schemas.InventorySmartImportResult:
+    """Persiste dispositivos y registra historial cuando la importación es confirmada.
+
+    La rutina recorre ``canonical_rows`` y aplica la siguiente estrategia:
+
+    * Garantiza la existencia de la sucursal con ``crud.ensure_store_by_name``
+      antes de crear dispositivos.
+    * Calcula *payloads* a partir de campos canónicos, normalizando cantidades,
+      fechas y precios mediante los helpers ``_parse_int`` y ``_parse_decimal``.
+    * Identifica registros incompletos y agrega notas a ``import_validation`` para
+      que el endpoint ``/inventory/devices/incomplete`` pueda exhibirlos.
+    * Registra la operación en el historial con duración y advertencias para la
+      auditoría de inventario.
+
+    ``test_inventory_smart_import_preview_and_commit`` y
+    ``test_inventory_smart_import_handles_overrides_and_incomplete_records``
+    validan los escenarios críticos descritos en esta documentación.
+    """
     start_time = perf_counter()
     canonical_rows = _extract_canonical_rows(parsed.rows, preview.columnas_detectadas)
     total_processed = 0
