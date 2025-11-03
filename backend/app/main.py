@@ -17,6 +17,11 @@ from .config import settings
 from .core.roles import DEFAULT_ROLES
 from .core.transactions import transactional_session
 from .database import Base, SessionLocal, engine, get_db
+from .middleware import (
+    ReasonHeaderError,
+    ensure_reason_header,
+    requires_reason_header,
+)
 from .routers import (
     audit,
     audit_ui,
@@ -49,25 +54,6 @@ from .services.scheduler import BackgroundScheduler
 logger = logging.getLogger(__name__)
 
 _scheduler: BackgroundScheduler | None = None
-
-SENSITIVE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-SENSITIVE_PREFIXES = (
-    "/inventory",
-    "/purchases",
-    "/sales",
-    "/pos",
-    "/backups",
-    "/customers",
-    "/reports",
-    "/payments",
-    "/suppliers",
-    "/repairs",
-    "/transfers",
-    "/security",
-    "/sync/outbox",
-    "/operations",
-)
-READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers")
 
 
 
@@ -212,25 +198,14 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def enforce_reason_header(request: Request, call_next):
         method_upper = request.method.upper()
-        requires_reason = (
-            method_upper in SENSITIVE_METHODS
-            and any(request.url.path.startswith(prefix) for prefix in SENSITIVE_PREFIXES)
-        ) or (
-            method_upper == "GET"
-            and any(
-                request.url.path.startswith(prefix) for prefix in READ_SENSITIVE_PREFIXES
-            )
-        )
+        requires_reason = requires_reason_header(method_upper, request.url.path)
         if requires_reason:
-            reason = request.headers.get("X-Reason")
-            if not reason or len(reason.strip()) < 5:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "detail": "Proporciona el encabezado X-Reason con al menos 5 caracteres.",
-                    },
+            try:
+                request.state.x_reason = ensure_reason_header(
+                    request.headers.get("X-Reason")
                 )
-            request.state.x_reason = reason.strip()
+            except ReasonHeaderError as exc:
+                return JSONResponse(status_code=400, content={"detail": str(exc)})
         response = await call_next(request)
         return response
 
@@ -331,27 +306,15 @@ def create_app() -> FastAPI:
                     user = active_session.user
                 else:
                     method_upper = request.method.upper()
-                    requires_reason = (
-                        method_upper in SENSITIVE_METHODS
-                        and any(
-                            request.url.path.startswith(prefix)
-                            for prefix in SENSITIVE_PREFIXES
-                        )
-                    ) or (
-                        method_upper == "GET"
-                        and any(
-                            request.url.path.startswith(prefix)
-                            for prefix in READ_SENSITIVE_PREFIXES
-                        )
+                    requires_reason = requires_reason_header(
+                        method_upper, request.url.path
                     )
                     if requires_reason:
-                        reason = request.headers.get("X-Reason")
-                        if not reason or len(reason.strip()) < 5:
+                        try:
+                            ensure_reason_header(request.headers.get("X-Reason"))
+                        except ReasonHeaderError as exc:
                             return JSONResponse(
-                                status_code=400,
-                                content={
-                                    "detail": "Proporciona el encabezado X-Reason con al menos 5 caracteres.",
-                                },
+                                status_code=400, content={"detail": str(exc)}
                             )
                     return JSONResponse(
                         status_code=401,
