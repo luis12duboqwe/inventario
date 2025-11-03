@@ -1151,6 +1151,10 @@ export type TransferOrder = {
   received_at?: string | null;
   cancelled_at?: string | null;
   items: TransferOrderItem[];
+  ultima_accion?: {
+    usuario?: string | null;
+    timestamp: string;
+  } | null;
 };
 
 export type TransferOrderInput = {
@@ -1162,6 +1166,65 @@ export type TransferOrderInput = {
 
 export type TransferTransitionInput = {
   reason?: string;
+};
+
+export type PaymentCenterTransactionType = "PAYMENT" | "REFUND" | "CREDIT_NOTE";
+
+export type PaymentCenterTransaction = {
+  id: number;
+  type: PaymentCenterTransactionType;
+  amount: number;
+  created_at: string;
+  order_id?: number | null;
+  order_number?: string | null;
+  customer_id: number;
+  customer_name: string;
+  method?: string | null;
+  note?: string | null;
+  status: "POSTED" | "VOID";
+};
+
+export type PaymentCenterSummary = {
+  collections_today: number;
+  collections_month: number;
+  pending_balance: number;
+  refunds_month: number;
+};
+
+export type PaymentCenterResponse = {
+  summary: PaymentCenterSummary;
+  transactions: PaymentCenterTransaction[];
+};
+
+export type PaymentCenterPaymentInput = {
+  customer_id: number;
+  amount: number;
+  method: string;
+  reference?: string;
+  sale_id?: number;
+};
+
+export type PaymentCenterRefundInput = {
+  customer_id: number;
+  amount: number;
+  method: string;
+  reason: string;
+  note?: string;
+  sale_id?: number;
+};
+
+export type PaymentCenterCreditNoteLineInput = {
+  description: string;
+  quantity: number;
+  amount: number;
+};
+
+export type PaymentCenterCreditNoteInput = {
+  customer_id: number;
+  total: number;
+  lines: PaymentCenterCreditNoteLineInput[];
+  note?: string;
+  sale_id?: number;
 };
 
 export type TransferReportDevice = {
@@ -3697,6 +3760,74 @@ export function listTransfers(token: string, storeId?: number): Promise<Transfer
   const query = params.toString();
   const path = `/transfers${query ? `?${query}` : ""}`;
   return requestCollection<TransferOrder>(path, { method: "GET" }, token);
+}
+
+export function getPaymentCenter(
+  token: string,
+  filters: {
+    limit?: number;
+    query?: string;
+    method?: PaymentMethod | "ALL";
+    type?: PaymentCenterTransactionType | "ALL";
+    dateFrom?: string;
+    dateTo?: string;
+  } = {},
+): Promise<PaymentCenterResponse> {
+  const params = new URLSearchParams();
+  params.set("limit", String(filters.limit ?? 50));
+  if (filters.query) {
+    params.set("query", filters.query);
+  }
+  if (filters.method && filters.method !== "ALL") {
+    params.set("method", filters.method);
+  }
+  if (filters.type && filters.type !== "ALL") {
+    params.set("type", filters.type);
+  }
+  if (filters.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request<PaymentCenterResponse>(`/payments/center${suffix}`, { method: "GET" }, token);
+}
+
+export function registerPaymentCenterPayment(
+  token: string,
+  payload: PaymentCenterPaymentInput,
+  reason: string,
+): Promise<CustomerLedgerEntry> {
+  return request<CustomerLedgerEntry>(
+    "/payments/center/payment",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function registerPaymentCenterRefund(
+  token: string,
+  payload: PaymentCenterRefundInput,
+  reason: string,
+): Promise<CustomerLedgerEntry> {
+  return request<CustomerLedgerEntry>(
+    "/payments/center/refund",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function registerPaymentCenterCreditNote(
+  token: string,
+  payload: PaymentCenterCreditNoteInput,
+  reason: string,
+): Promise<CustomerLedgerEntry> {
+  return request<CustomerLedgerEntry>(
+    "/payments/center/credit-note",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
 }
 
 export function createTransferOrder(

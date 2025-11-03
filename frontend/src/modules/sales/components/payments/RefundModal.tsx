@@ -30,7 +30,7 @@ function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
     }
   }, [open]);
 
-  const isValid = useMemo(() => amount > 0, [amount]);
+  const isValid = useMemo(() => amount > 0 && notes.trim().length >= 5, [amount, notes]);
 
   const handleSubmit = () => {
     if (!isValid) {
@@ -88,12 +88,12 @@ function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
             </select>
           </label>
           <label style={{ display: "grid", gap: 4 }}>
-            <span>Notas</span>
+            <span>Motivo corporativo (mín. 5 caracteres)</span>
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               style={{ width: "100%", padding: 8, borderRadius: 8, minHeight: 96 }}
-              placeholder="Detalle la razón del reembolso"
+              placeholder="Describe el motivo corporativo"
             />
           </label>
         </div>

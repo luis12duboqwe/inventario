@@ -12,6 +12,7 @@ type CreditNotePayload = {
   orderId?: string;
   lines: CreditNoteLine[];
   total: number;
+  reason: string;
 };
 
 type CreditNoteModalProps = {
@@ -25,10 +26,12 @@ const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "
 
 function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalProps) {
   const [lines, setLines] = useState<CreditNoteLine[]>([]);
+  const [reason, setReason] = useState<string>("");
 
   useEffect(() => {
     if (!open) {
       setLines([]);
+      setReason("");
     }
   }, [open]);
 
@@ -68,15 +71,18 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
   const total = useMemo(() => lines.reduce((sum, line) => sum + (line.amount ?? 0), 0), [lines]);
 
   const isValid = useMemo(
-    () => lines.length > 0 && lines.every((line) => line.qty > 0 && line.amount >= 0),
-    [lines],
+    () =>
+      lines.length > 0 &&
+      lines.every((line) => line.qty > 0 && line.amount >= 0) &&
+      reason.trim().length >= 5,
+    [lines, reason],
   );
 
   const handleSubmit = () => {
     if (!isValid) {
       return;
     }
-    onSubmit?.({ orderId, lines, total });
+    onSubmit?.({ orderId, lines, total, reason: reason.trim() });
   };
 
   if (!open) {
@@ -135,6 +141,15 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
             </div>
           ))}
           <button onClick={handleAddLine} style={{ padding: "8px 12px", borderRadius: 8 }}>Agregar línea</button>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span>Motivo corporativo (mín. 5 caracteres)</span>
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              style={{ width: "100%", padding: 8, borderRadius: 8, minHeight: 96 }}
+              placeholder="Describe el motivo corporativo de la nota"
+            />
+          </label>
           <div style={{ textAlign: "right", fontWeight: 700 }}>Total NC: {currency.format(Math.max(0, total))}</div>
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>

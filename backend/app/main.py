@@ -28,6 +28,7 @@ from .routers import (
     inventory,
     monitoring,
     operations,
+    payments,
     pos,
     purchases,
     repairs,
@@ -57,6 +58,7 @@ SENSITIVE_PREFIXES = (
     "/pos",
     "/backups",
     "/customers",
+    "/payments",
     "/suppliers",
     "/repairs",
     "/transfers",
@@ -106,6 +108,7 @@ MODULE_PERMISSION_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/sales", "ventas"),
     ("/pos", "pos"),
     ("/customers", "clientes"),
+    ("/payments", "ventas"),
     ("/suppliers", "proveedores"),
     ("/repairs", "reparaciones"),
     ("/transfers", "transferencias"),
@@ -371,6 +374,7 @@ def create_app() -> FastAPI:
     app.include_router(pos.router)
     _mount_pos_extensions(app)
     app.include_router(purchases.router)
+    app.include_router(payments.router)
     app.include_router(customers.router)
     app.include_router(suppliers.router)
     app.include_router(repairs.router)

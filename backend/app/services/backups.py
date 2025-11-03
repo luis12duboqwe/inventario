@@ -530,10 +530,17 @@ def restore_backup(
     critical_source = Path(job.critical_directory)
 
     safe_restore_root = Path(app_settings.backup_directory).resolve()
+    allowed_roots: set[Path] = {safe_restore_root}
+    parent_root = safe_restore_root.parent.resolve()
+    if parent_root != safe_restore_root:
+        allowed_roots.add(parent_root)
+
     target_base = Path(target_directory).resolve() if target_directory else safe_restore_root
-    restore_dir = target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-    restore_dir = restore_dir.resolve()
-    if not str(restore_dir).startswith(str(safe_restore_root)):
+    if not any(target_base.is_relative_to(root) for root in allowed_roots):
+        raise ValueError("Directorio de restauración no permitido")
+
+    restore_dir = (target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}").resolve()
+    if not any(restore_dir.is_relative_to(root) for root in allowed_roots):
         raise ValueError("Directorio de restauración no permitido")
     restore_dir.mkdir(parents=True, exist_ok=True)
 
