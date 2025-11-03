@@ -1,3 +1,5 @@
+import { rememberReason } from "./reasonStorage";
+
 export function promptCorporateReason(defaultReason: string): string | null {
   const value = window.prompt(
     "Ingresa el motivo corporativo (X-Reason ≥ 5 caracteres)",
@@ -6,5 +8,9 @@ export function promptCorporateReason(defaultReason: string): string | null {
   if (value === null) {
     return null;
   }
-  return value.trim();
+  const trimmed = value.trim();
+  if (trimmed.length >= 5) {
+    rememberReason(trimmed);
+  }
+  return trimmed;
 }

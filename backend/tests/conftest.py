@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from urllib.parse import urlsplit
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
@@ -90,6 +91,20 @@ def client(db_session: Session) -> Iterator[TestClient]:
             test_client.headers.update({
                 "X-Bootstrap-Token": settings.bootstrap_token,
             })
+        sensitive_get_prefixes = ("/pos", "/reports", "/customers")
+        original_request = test_client.request
+
+        def request_with_reason(method: str, url: str, *args, **kwargs):
+            provided_headers = kwargs.pop("headers", None) or {}
+            merged_headers = {**test_client.headers, **provided_headers}
+            path = urlsplit(url).path
+            if method.upper() == "GET" and path.startswith(sensitive_get_prefixes):
+                if not any(key.lower() == "x-reason" for key in merged_headers):
+                    merged_headers["X-Reason"] = "Consulta automatizada pruebas"
+            kwargs["headers"] = merged_headers
+            return original_request(method, url, *args, **kwargs)
+
+        test_client.request = request_with_reason  # type: ignore[assignment]
         yield test_client
 
     app.dependency_overrides.clear()

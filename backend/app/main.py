@@ -58,6 +58,7 @@ SENSITIVE_PREFIXES = (
     "/pos",
     "/backups",
     "/customers",
+    "/reports",
     "/payments",
     "/suppliers",
     "/repairs",
@@ -66,6 +67,7 @@ SENSITIVE_PREFIXES = (
     "/sync/outbox",
     "/operations",
 )
+READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers")
 
 
 
@@ -209,9 +211,17 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def enforce_reason_header(request: Request, call_next):
-        if request.method.upper() in SENSITIVE_METHODS and any(
-            request.url.path.startswith(prefix) for prefix in SENSITIVE_PREFIXES
-        ):
+        method_upper = request.method.upper()
+        requires_reason = (
+            method_upper in SENSITIVE_METHODS
+            and any(request.url.path.startswith(prefix) for prefix in SENSITIVE_PREFIXES)
+        ) or (
+            method_upper == "GET"
+            and any(
+                request.url.path.startswith(prefix) for prefix in READ_SENSITIVE_PREFIXES
+            )
+        )
+        if requires_reason:
             reason = request.headers.get("X-Reason")
             if not reason or len(reason.strip()) < 5:
                 return JSONResponse(
@@ -320,10 +330,21 @@ def create_app() -> FastAPI:
                         )
                     user = active_session.user
                 else:
-                    if request.method.upper() in SENSITIVE_METHODS and any(
-                        request.url.path.startswith(prefix)
-                        for prefix in SENSITIVE_PREFIXES
-                    ):
+                    method_upper = request.method.upper()
+                    requires_reason = (
+                        method_upper in SENSITIVE_METHODS
+                        and any(
+                            request.url.path.startswith(prefix)
+                            for prefix in SENSITIVE_PREFIXES
+                        )
+                    ) or (
+                        method_upper == "GET"
+                        and any(
+                            request.url.path.startswith(prefix)
+                            for prefix in READ_SENSITIVE_PREFIXES
+                        )
+                    )
+                    if requires_reason:
                         reason = request.headers.get("X-Reason")
                         if not reason or len(reason.strip()) < 5:
                             return JSONResponse(

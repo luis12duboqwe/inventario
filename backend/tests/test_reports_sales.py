@@ -32,6 +32,25 @@ def _bootstrap_admin(client) -> str:
     return token_response.json()["access_token"]
 
 
+def test_reports_sales_summary_requires_reason(client):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        missing_reason_headers = {"Authorization": f"Bearer {token}", "X-Reason": ""}
+        response = client.get("/reports/sales/summary", headers=missing_reason_headers)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        valid_headers = {
+            "Authorization": f"Bearer {token}",
+            "X-Reason": "Consulta reportes QA",
+        }
+        ok_response = client.get("/reports/sales/summary", headers=valid_headers)
+        assert ok_response.status_code != status.HTTP_400_BAD_REQUEST
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
 # // [PACK29-*] Verifica resumen, top de productos y cierre sugerido
 def test_sales_reports_summary_products_and_cash_close(client, db_session: Session) -> None:
     previous_analytics_flag = settings.enable_analytics_adv

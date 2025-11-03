@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "./config/api";
+import { applyReasonHeader } from "./http/reasonInterceptor";
 
 export type Credentials = {
   username: string;
@@ -2148,6 +2149,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   }
 
   const method = (options.method ?? "GET").toUpperCase();
+  applyReasonHeader(path, method, headers);
   const shouldUseCache = method === "GET" && options.cache !== "no-store";
   const cacheKey = shouldUseCache ? buildCacheKey(path, headers, token) : null;
 
