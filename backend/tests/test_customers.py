@@ -98,6 +98,17 @@ def test_customer_crud_flow(client):
     assert all(item["id"] != customer_id for item in list_after_delete.json())
 
 
+def test_customers_list_requires_reason_header(client):
+    token = _bootstrap_admin(client)
+    unauthorized_headers = {"Authorization": f"Bearer {token}", "X-Reason": ""}
+    response = client.get("/customers", headers=unauthorized_headers)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    valid_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Consulta clientes QA"}
+    ok_response = client.get("/customers", headers=valid_headers)
+    assert ok_response.status_code == status.HTTP_200_OK
+
+
 def test_customers_require_reason_and_roles(client):
     token = _bootstrap_admin(client)
     auth_headers = {"Authorization": f"Bearer {token}"}

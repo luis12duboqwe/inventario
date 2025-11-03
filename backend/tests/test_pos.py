@@ -62,6 +62,18 @@ def _bootstrap_operator(client, admin_token: str | None = None) -> str:
     return token_response.json()["access_token"]
 
 
+def test_pos_config_requires_reason_header(client):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    headers = {"Authorization": f"Bearer {token}", "X-Reason": ""}
+    response = client.get("/pos/config", headers=headers)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    valid_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Consulta POS QA"}
+    ok_response = client.get("/pos/config", headers=valid_headers)
+    assert ok_response.status_code != status.HTTP_400_BAD_REQUEST
+
+
 def test_pos_sale_with_receipt_and_config(client, db_session):
     settings.enable_purchases_sales = True
     token = _bootstrap_admin(client)
