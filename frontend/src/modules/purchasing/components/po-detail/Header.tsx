@@ -8,6 +8,10 @@ type Props = {
   onInvoice?: () => void;
   onRTV?: () => void;
   onCancel?: () => void;
+  receiveDisabled?: boolean;
+  invoiceDisabled?: boolean;
+  rtvDisabled?: boolean;
+  cancelDisabled?: boolean;
 };
 
 const containerStyle: React.CSSProperties = {
@@ -35,7 +39,24 @@ const buttonStyle: React.CSSProperties = {
   border: "1px solid rgba(59, 130, 246, 0.4)",
 };
 
-export default function Header({ number, status, supplierName, onReceive, onInvoice, onRTV, onCancel }: Props) {
+export default function Header({
+  number,
+  status,
+  supplierName,
+  onReceive,
+  onInvoice,
+  onRTV,
+  onCancel,
+  receiveDisabled = false,
+  invoiceDisabled = false,
+  rtvDisabled = false,
+  cancelDisabled = false,
+}: Props) {
+  const receiveInactive = receiveDisabled || !onReceive;
+  const invoiceInactive = invoiceDisabled || !onInvoice;
+  const rtvInactive = rtvDisabled || !onRTV;
+  const cancelInactive = cancelDisabled || !onCancel;
+
   return (
     <div style={containerStyle}>
       <div>
@@ -46,19 +67,54 @@ export default function Header({ number, status, supplierName, onReceive, onInvo
         </div>
       </div>
       <div style={actionsStyle}>
-        <button type="button" onClick={onReceive} style={buttonStyle}>
+        <button
+          type="button"
+          disabled={receiveInactive}
+          onClick={receiveInactive ? undefined : onReceive}
+          style={{
+            ...buttonStyle,
+            opacity: receiveInactive ? 0.4 : 1,
+            cursor: receiveInactive ? "not-allowed" : "pointer",
+          }}
+        >
           Recibir
         </button>
-        <button type="button" onClick={onInvoice} style={buttonStyle}>
+        <button
+          type="button"
+          disabled={invoiceInactive}
+          onClick={invoiceInactive ? undefined : onInvoice}
+          style={{
+            ...buttonStyle,
+            opacity: invoiceInactive ? 0.4 : 1,
+            cursor: invoiceInactive ? "not-allowed" : "pointer",
+          }}
+        >
           Registrar factura
         </button>
-        <button type="button" onClick={onRTV} style={buttonStyle}>
+        <button
+          type="button"
+          disabled={rtvInactive}
+          onClick={rtvInactive ? undefined : onRTV}
+          style={{
+            ...buttonStyle,
+            opacity: rtvInactive ? 0.4 : 1,
+            cursor: rtvInactive ? "not-allowed" : "pointer",
+          }}
+        >
           Devolución
         </button>
         <button
           type="button"
-          onClick={onCancel}
-          style={{ ...buttonStyle, background: "#b91c1c", color: "#fff", border: "0" }}
+          disabled={cancelInactive}
+          onClick={cancelInactive ? undefined : onCancel}
+          style={{
+            ...buttonStyle,
+            background: cancelInactive ? "rgba(185, 28, 28, 0.3)" : "#b91c1c",
+            color: "#fff",
+            border: cancelInactive ? buttonStyle.border : "0",
+            opacity: cancelInactive ? 0.6 : 1,
+            cursor: cancelInactive ? "not-allowed" : "pointer",
+          }}
         >
           Cancelar
         </button>

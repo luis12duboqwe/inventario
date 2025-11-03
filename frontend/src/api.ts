@@ -782,6 +782,16 @@ export type PurchaseOrderItem = {
   unit_cost: number;
 };
 
+export type PurchaseReturn = {
+  id: number;
+  purchase_order_id: number;
+  device_id: number;
+  quantity: number;
+  reason: string;
+  processed_by_id: number | null;
+  created_at: string;
+};
+
 export type PurchaseOrder = {
   id: number;
   store_id: number;
@@ -793,6 +803,7 @@ export type PurchaseOrder = {
   created_by_id?: number | null;
   closed_at?: string | null;
   items: PurchaseOrderItem[];
+  returns: PurchaseReturn[];
 };
 
 export type PurchaseOrderCreateInput = {
@@ -2822,6 +2833,10 @@ export function listPurchaseOrders(token: string, storeId: number, limit = 50): 
     { method: "GET" },
     token,
   );
+}
+
+export function getPurchaseOrder(token: string, orderId: number): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(`/purchases/${orderId}`, { method: "GET" }, token);
 }
 
 export function createPurchaseOrder(

@@ -3,6 +3,8 @@ import React from "react";
 type Props = {
   open?: boolean;
   onClose?: () => void;
+  onExport?: () => void;
+  loading?: boolean;
 };
 
 const overlayStyle: React.CSSProperties = {
@@ -31,7 +33,7 @@ const buttonStyle: React.CSSProperties = {
   color: "#bfdbfe",
 };
 
-export default function ExportModal({ open, onClose }: Props) {
+export default function ExportModal({ open, onClose, onExport, loading = false }: Props) {
   if (!open) {
     return null;
   }
@@ -46,9 +48,17 @@ export default function ExportModal({ open, onClose }: Props) {
           </button>
           <button
             type="button"
-            style={{ ...buttonStyle, background: "#2563eb", color: "#fff", border: "0" }}
+            disabled={loading}
+            onClick={onExport}
+            style={{
+              ...buttonStyle,
+              background: loading ? "rgba(37, 99, 235, 0.2)" : "#2563eb",
+              color: "#fff",
+              border: loading ? buttonStyle.border : "0",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
           >
-            Exportar
+            {loading ? "Generando…" : "Exportar"}
           </button>
         </div>
       </div>
