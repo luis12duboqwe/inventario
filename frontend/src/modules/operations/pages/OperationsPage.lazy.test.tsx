@@ -6,20 +6,27 @@ import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import OperationsPage from "./OperationsPage";
 
+const moduleState = {
+  token: "token-demo",
+  stores: [
+    { id: 1, name: "Central", status: "activa", code: "SUC-001", timezone: "America/Mexico_City" },
+  ],
+  selectedStoreId: 1,
+  enablePurchasesSales: true,
+  enableTransfers: true,
+  refreshInventoryAfterTransfer: vi.fn(),
+};
+
 vi.mock("../hooks/useOperationsModule", () => ({
-  useOperationsModule: () => ({
-    token: "token-demo",
-    stores: [
-      { id: 1, name: "Central", status: "activa", code: "SUC-001", timezone: "America/Mexico_City" },
-    ],
-    selectedStoreId: 1,
-    enablePurchasesSales: true,
-    enableTransfers: true,
-    refreshInventoryAfterTransfer: vi.fn(),
-  }),
+  useOperationsModule: () => moduleState,
 }));
 
 describe("OperationsPage navegación", () => {
+  beforeEach(() => {
+    moduleState.enablePurchasesSales = true;
+    moduleState.enableTransfers = true;
+  });
+
   it("muestra paneles al navegar entre secciones", async () => {
     const user = userEvent.setup();
 
@@ -70,5 +77,34 @@ describe("OperationsPage navegación", () => {
 
     await user.click(screen.getByRole("link", { name: /transferencias/i }));
     expect(await screen.findByTestId("transfers-panel")).toBeInTheDocument();
+  });
+
+  it("deshabilita enlaces cuando los flags están apagados", async () => {
+    moduleState.enablePurchasesSales = false;
+    moduleState.enableTransfers = false;
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={["/dashboard/operations"]}>
+          <Routes>
+            <Route
+              path="/dashboard/operations/*"
+              element={
+                <Suspense fallback={<div data-testid="fallback" />}>
+                  <OperationsPage />
+                </Suspense>
+              }
+            >
+              <Route index element={<Navigate to="ventas/caja" replace />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+
+    const cajaLink = screen.getByRole("link", { name: /caja/i });
+    expect(cajaLink).toHaveAttribute("aria-disabled", "true");
+    expect(cajaLink).toHaveClass("operations-subnav__link--disabled");
+    expect(screen.getByText(/Operaciones deshabilitadas/i)).toBeInTheDocument();
   });
 });
