@@ -392,6 +392,26 @@ def test_pos_requires_auth_reason_and_roles(client):
         settings.enable_purchases_sales = original_flag
 
 
+def test_pos_sale_rejects_unknown_store(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        headers = {"Authorization": f"Bearer {token}", "X-Reason": "Validar sucursal"}
+        payload = {
+            "store_id": 9999,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": 1, "quantity": 1}],
+            "confirm": True,
+        }
+
+        response = client.post("/pos/sale", json=payload, headers=headers)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.json()["detail"] == "Sucursal no encontrada."
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
 def test_pos_config_requires_reason_and_audit(client, db_session):
     original_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
