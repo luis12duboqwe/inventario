@@ -3980,8 +3980,8 @@ def register_customer_payment(
 
     payment_details: dict[str, object] = {
         "method": payload.method,
-        "requested_amount": _format_currency(amount),
-        "applied_amount": _format_currency(applied_amount),
+        "requested_amount": float(amount),
+        "applied_amount": float(applied_amount),
     }
     if payload.reference:
         payment_details["reference"] = payload.reference
