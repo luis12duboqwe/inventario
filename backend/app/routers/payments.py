@@ -10,6 +10,37 @@ from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 
+_ERROR_MESSAGES = {
+    "customer_payment_no_debt": (
+        status.HTTP_409_CONFLICT,
+        "El cliente no tiene deuda pendiente.",
+    ),
+    "customer_payment_invalid_amount": (
+        status.HTTP_400_BAD_REQUEST,
+        "El monto del pago es inválido.",
+    ),
+    "customer_payment_sale_mismatch": (
+        status.HTTP_400_BAD_REQUEST,
+        "La venta seleccionada no pertenece al cliente.",
+    ),
+    "payment_center_refund_invalid_amount": (
+        status.HTTP_400_BAD_REQUEST,
+        "El monto del reembolso es inválido.",
+    ),
+    "payment_center_credit_note_invalid_amount": (
+        status.HTTP_400_BAD_REQUEST,
+        "El monto de la nota de crédito es inválido.",
+    ),
+}
+
+
+def _map_value_error(error: ValueError, default_message: str) -> HTTPException:
+    error_key = str(error)
+    status_code, detail = _ERROR_MESSAGES.get(
+        error_key, (status.HTTP_400_BAD_REQUEST, default_message)
+    )
+    return HTTPException(status_code=status_code, detail=detail)
+
 router = APIRouter(prefix="/payments", tags=["pagos"])
 
 
@@ -63,12 +94,16 @@ def register_payment_center_payment(
     current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ) -> schemas.CustomerLedgerEntryResponse:
     _ensure_feature_enabled()
-    ledger_entry = crud.register_customer_payment(
-        db,
-        payload.customer_id,
-        payload,
-        performed_by_id=getattr(current_user, "id", None),
-    )
+    _ = reason
+    try:
+        ledger_entry = crud.register_customer_payment(
+            db,
+            payload.customer_id,
+            payload,
+            performed_by_id=getattr(current_user, "id", None),
+        )
+    except ValueError as exc:
+        raise _map_value_error(exc, "No fue posible registrar el pago.") from exc
     return schemas.CustomerLedgerEntryResponse.model_validate(ledger_entry)
 
 
@@ -84,11 +119,15 @@ def register_payment_center_refund(
     current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ) -> schemas.CustomerLedgerEntryResponse:
     _ensure_feature_enabled()
-    ledger_entry = crud.register_payment_center_refund(
-        db,
-        payload,
-        performed_by_id=getattr(current_user, "id", None),
-    )
+    _ = reason
+    try:
+        ledger_entry = crud.register_payment_center_refund(
+            db,
+            payload,
+            performed_by_id=getattr(current_user, "id", None),
+        )
+    except ValueError as exc:
+        raise _map_value_error(exc, "No fue posible registrar el reembolso.") from exc
     return schemas.CustomerLedgerEntryResponse.model_validate(ledger_entry)
 
 
@@ -104,10 +143,16 @@ def register_payment_center_credit_note(
     current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ) -> schemas.CustomerLedgerEntryResponse:
     _ensure_feature_enabled()
-    ledger_entry = crud.register_payment_center_credit_note(
-        db,
-        payload,
-        performed_by_id=getattr(current_user, "id", None),
-    )
+    _ = reason
+    try:
+        ledger_entry = crud.register_payment_center_credit_note(
+            db,
+            payload,
+            performed_by_id=getattr(current_user, "id", None),
+        )
+    except ValueError as exc:
+        raise _map_value_error(
+            exc, "No fue posible registrar la nota de crédito."
+        ) from exc
     return schemas.CustomerLedgerEntryResponse.model_validate(ledger_entry)
 

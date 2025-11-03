@@ -7,16 +7,20 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import traceback
 
+import asyncio
+from collections.abc import Callable, Generator, Mapping
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
+from sqlalchemy.orm import Session
 
 from . import crud, security as security_core
 from .config import settings
 from .core.roles import DEFAULT_ROLES
 from .core.transactions import transactional_session
-from .database import Base, SessionLocal, engine, get_db
+from .database import SessionLocal, get_db
 from .routers import (
     audit,
     audit_ui,
@@ -146,9 +150,125 @@ def _bootstrap_defaults() -> None:
                 crud.ensure_role(session, role)
 
 
+def _authorize_request_sync(
+    dependency: Callable[[], Generator[Session, None, None]],
+    headers: Mapping[str, str],
+    cookies: Mapping[str, str],
+    method_upper: str,
+    path: str,
+    module: str | None,
+    required_roles: set[str],
+) -> Response | None:
+    db_generator = dependency()
+    try:
+        try:
+            db: Session = next(db_generator)
+        except StopIteration:  # pragma: no cover - defensive
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "No fue posible obtener la sesión de base de datos."},
+            )
+
+        auth_header = headers.get("Authorization") or headers.get("authorization")
+        session_cookie = cookies.get(settings.session_cookie_name)
+        session_token: str | None = None
+        user = None
+
+        if auth_header:
+            parts = auth_header.split(" ", 1)
+            if len(parts) != 2 or parts[0].lower() != "bearer":
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Esquema de autenticación inválido."},
+                )
+            token = parts[1].strip()
+            try:
+                token_payload = security_core.decode_token(token)
+            except HTTPException as exc:  # pragma: no cover - propagado
+                return JSONResponse(
+                    status_code=exc.status_code,
+                    content={"detail": exc.detail},
+                )
+            session_token = token_payload.jti
+            active_session = crud.get_active_session_by_token(db, session_token)
+            if active_session is None or active_session.revoked_at is not None:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Sesión inválida o revocada."},
+                )
+            if crud.is_session_expired(active_session.expires_at):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Sesión expirada."},
+                )
+            user = crud.get_user_by_username(db, token_payload.sub)
+        elif session_cookie:
+            session_token = session_cookie
+            active_session = crud.get_active_session_by_token(db, session_token)
+            if active_session is None or active_session.revoked_at is not None:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Sesión inválida o revocada."},
+                )
+            if crud.is_session_expired(active_session.expires_at):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Sesión expirada."},
+                )
+            user = active_session.user
+        else:
+            requires_reason = (
+                method_upper in SENSITIVE_METHODS
+                and any(path.startswith(prefix) for prefix in SENSITIVE_PREFIXES)
+            ) or (
+                method_upper == "GET"
+                and any(path.startswith(prefix) for prefix in READ_SENSITIVE_PREFIXES)
+            )
+            if requires_reason:
+                reason = headers.get("X-Reason") or headers.get("x-reason")
+                if not reason or len(reason.strip()) < 5:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "detail": "Proporciona el encabezado X-Reason con al menos 5 caracteres.",
+                        },
+                    )
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Autenticación requerida."},
+            )
+
+        if user is None or not user.is_active:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Usuario inactivo o inexistente."},
+            )
+
+        user_roles = {assignment.role.name for assignment in user.roles}
+        if required_roles and user_roles.isdisjoint(required_roles):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "No cuentas con permisos suficientes."},
+            )
+
+        if module and not crud.user_has_module_permission(db, user, module, _resolve_action(method_upper)):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "No cuentas con permisos para este módulo."},
+            )
+
+        if session_token:
+            crud.mark_session_used(db, session_token)
+    finally:
+        close_gen = getattr(db_generator, "close", None)
+        if callable(close_gen):
+            close_gen()
+
+    return None
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
     _bootstrap_defaults()
     global _scheduler
     if settings.enable_background_scheduler:
@@ -247,7 +367,8 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def enforce_route_permissions(request: Request, call_next):
-        if request.method.upper() == "OPTIONS":
+        method_upper = request.method.upper()
+        if method_upper == "OPTIONS":
             response = Response(status_code=200)
             origin = request.headers.get("origin")
             if origin:
@@ -269,119 +390,19 @@ def create_app() -> FastAPI:
                 break
 
         if module or required_roles:
-            auth_header = request.headers.get("Authorization")
-            session_cookie = request.cookies.get(settings.session_cookie_name)
-            token_payload = None
-            session_token: str | None = None
-
             dependency = request.app.dependency_overrides.get(get_db, get_db)
-            db_generator = dependency()
-            try:
-                db = next(db_generator)
-            except StopIteration:  # pragma: no cover - defensive
-                db = None
-            try:
-                if db is None:
-                    return JSONResponse(
-                        status_code=500,
-                        content={"detail": "No fue posible obtener la sesión de base de datos."},
-                    )
-
-                if auth_header:
-                    parts = auth_header.split(" ", 1)
-                    if len(parts) != 2 or parts[0].lower() != "bearer":
-                        return JSONResponse(
-                            status_code=401,
-                            content={"detail": "Esquema de autenticación inválido."},
-                        )
-                    token = parts[1].strip()
-                    try:
-                        token_payload = security_core.decode_token(token)
-                    except HTTPException as exc:  # pragma: no cover - error propagado
-                        return JSONResponse(
-                            status_code=exc.status_code,
-                            content={"detail": exc.detail},
-                        )
-                    session_token = token_payload.jti
-                    active_session = crud.get_active_session_by_token(db, session_token)
-                    if active_session is None or active_session.revoked_at is not None:
-                        return JSONResponse(
-                            status_code=401,
-                            content={"detail": "Sesión inválida o revocada."},
-                        )
-                    if crud.is_session_expired(active_session.expires_at):
-                        return JSONResponse(
-                            status_code=401,
-                            content={"detail": "Sesión expirada."},
-                        )
-                    user = crud.get_user_by_username(db, token_payload.sub)
-                elif session_cookie:
-                    session_token = session_cookie
-                    active_session = crud.get_active_session_by_token(db, session_token)
-                    if active_session is None or active_session.revoked_at is not None:
-                        return JSONResponse(
-                            status_code=401,
-                            content={"detail": "Sesión inválida o revocada."},
-                        )
-                    if crud.is_session_expired(active_session.expires_at):
-                        return JSONResponse(
-                            status_code=401,
-                            content={"detail": "Sesión expirada."},
-                        )
-                    user = active_session.user
-                else:
-                    method_upper = request.method.upper()
-                    requires_reason = (
-                        method_upper in SENSITIVE_METHODS
-                        and any(
-                            request.url.path.startswith(prefix)
-                            for prefix in SENSITIVE_PREFIXES
-                        )
-                    ) or (
-                        method_upper == "GET"
-                        and any(
-                            request.url.path.startswith(prefix)
-                            for prefix in READ_SENSITIVE_PREFIXES
-                        )
-                    )
-                    if requires_reason:
-                        reason = request.headers.get("X-Reason")
-                        if not reason or len(reason.strip()) < 5:
-                            return JSONResponse(
-                                status_code=400,
-                                content={
-                                    "detail": "Proporciona el encabezado X-Reason con al menos 5 caracteres.",
-                                },
-                            )
-                    return JSONResponse(
-                        status_code=401,
-                        content={"detail": "Autenticación requerida."},
-                    )
-
-                if user is None or not user.is_active:
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "Usuario inactivo o inexistente."},
-                    )
-                user_roles = {assignment.role.name for assignment in user.roles}
-                if required_roles and user_roles.isdisjoint(required_roles):
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "No cuentas con permisos suficientes."},
-                    )
-                if module:
-                    action = _resolve_action(request.method)
-                    if not crud.user_has_module_permission(db, user, module, action):
-                        return JSONResponse(
-                            status_code=403,
-                            content={"detail": "No cuentas con permisos para este módulo."},
-                        )
-                if session_token:
-                    crud.mark_session_used(db, session_token)
-            finally:
-                close_gen = getattr(db_generator, "close", None)
-                if callable(close_gen):
-                    close_gen()
+            auth_response = await asyncio.to_thread(
+                _authorize_request_sync,
+                dependency,
+                request.headers,
+                request.cookies,
+                method_upper,
+                request.url.path,
+                module,
+                set(required_roles),
+            )
+            if auth_response is not None:
+                return auth_response
 
         response = await call_next(request)
         return response
