@@ -3,14 +3,16 @@ import { vi } from "vitest";
 
 import OperationsPOS from "../../../pages/OperationsPOS";
 
+const moduleState = {
+  token: "token-123",
+  stores: [{ id: 1, name: "Sucursal Centro" }],
+  selectedStoreId: 1,
+  enablePurchasesSales: true,
+  enableTransfers: true,
+};
+
 vi.mock("../../../hooks/useOperationsModule", () => ({
-  useOperationsModule: () => ({
-    token: "token-123",
-    stores: [{ id: 1, name: "Sucursal Centro" }],
-    selectedStoreId: 1,
-    enablePurchasesSales: true,
-    enableTransfers: true,
-  }),
+  useOperationsModule: () => moduleState,
 }));
 
 vi.mock("../../../../../services/api/pos", () => ({
@@ -82,11 +84,24 @@ vi.mock("../../../../../services/api/pos", () => ({
 
 // [PACK34-UI]
 describe("OperationsPOS", () => {
+  beforeEach(() => {
+    moduleState.enablePurchasesSales = true;
+  });
+
   it("muestra la estructura principal del POS", async () => {
     render(<OperationsPOS />);
 
     expect(await screen.findByText(/POS \/ Caja/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/Totales/)).toBeInTheDocument());
+  });
+
+  it("informa cuando el flag de ventas y compras está desactivado", () => {
+    moduleState.enablePurchasesSales = false;
+
+    render(<OperationsPOS />);
+
+    expect(screen.getByText(/Activa el flag corporativo/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Totales/)).not.toBeInTheDocument();
   });
 });
 

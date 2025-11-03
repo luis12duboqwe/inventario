@@ -551,3 +551,25 @@ def test_credit_sale_rejected_when_limit_exceeded(client, db_session):
     assert device_record["quantity"] == 2
 
     settings.enable_purchases_sales = False
+
+
+def test_sales_endpoints_require_feature_flag(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    headers = {"Authorization": f"Bearer {token}", "X-Reason": "Verificar flag"}
+
+    try:
+        settings.enable_purchases_sales = False
+        list_response = client.get("/sales", headers=headers)
+        assert list_response.status_code == status.HTTP_404_NOT_FOUND
+
+        payload = {
+            "store_id": 1,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": 1, "quantity": 1}],
+        }
+        create_response = client.post("/sales", json=payload, headers=headers)
+        assert create_response.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_purchases_sales = previous_flag
