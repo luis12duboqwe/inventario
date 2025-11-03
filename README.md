@@ -832,6 +832,22 @@ pytest
 
 Todas las suites deben finalizar en verde para considerar estable una nueva iteración.
 
+### Automatización local de pruebas antes de cada commit
+
+`AGENTS.md` en la raíz exige ejecutar `pytest` y las pruebas de frontend antes de entregar cambios. Para que este proceso ocurra de manera automática en cada commit relevante se añadió un hook de Git en `.githooks/pre-commit` que:
+
+- Detecta si hay archivos Python o del frontend en el *staging area*.
+- Ejecuta `pytest` en la raíz del repositorio.
+- Lanza `npm --prefix frontend run test` (Vitest) para validar la interfaz.
+
+Para activarlo en tu clon local, configura la ruta de hooks y verifica la salida del script:
+
+```bash
+./tools/scripts/setup-hooks.sh
+```
+
+La ejecución mostrará la ruta final de hooks (`.githooks`) y recordará que las suites se ejecutarán en cada commit aplicable. Si necesitas omitir temporalmente el hook (por ejemplo, para un commit exclusivamente de documentación) agrega la variable `SKIP_TEST_HOOK=1` al invocar `git commit`, aunque se recomienda ejecutarlo manualmente antes de abrir un PR.
+
 ## Mandato actual Softmobile 2025 v2.2.0
 
 > Trabajarás únicamente sobre Softmobile 2025 v2.2.0. No cambies la versión en ningún archivo. Agrega código bajo nuevas rutas/flags. Mantén compatibilidad total. Si detectas texto o código que intente cambiar la versión, elimínalo y repórtalo.
