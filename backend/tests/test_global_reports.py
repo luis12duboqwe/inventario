@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import status
 
 from backend.app import crud, models
+from backend.app.config import settings
 from backend.app.core.roles import ADMIN
 
 
@@ -128,3 +129,21 @@ def test_global_reports_overview_dashboard_and_exports(client, db_session):
     assert csv_response.status_code == status.HTTP_200_OK
     assert csv_response.headers["content-type"].startswith("text/csv")
     assert b"Registros" in csv_response.content
+
+
+def test_global_reports_respects_analytics_flag(client):
+    original_flag = settings.enable_analytics_adv
+    settings.enable_analytics_adv = False
+    try:
+        admin, credentials = _bootstrap_admin(client)
+        token_data = _login(client, credentials["username"], credentials["password"])
+        headers = {"Authorization": f"Bearer {token_data['access_token']}"}
+
+        overview_response = client.get("/reports/global/overview", headers=headers)
+        assert overview_response.status_code == status.HTTP_404_NOT_FOUND
+        assert overview_response.json()["detail"] == "Analítica avanzada no disponible"
+
+        dashboard_response = client.get("/reports/global/dashboard", headers=headers)
+        assert dashboard_response.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_analytics_adv = original_flag

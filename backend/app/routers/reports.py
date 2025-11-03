@@ -30,7 +30,10 @@ router = APIRouter(prefix="/reports", tags=["reportes"])
 
 def _ensure_analytics_enabled() -> None:
     if not settings.enable_analytics_adv:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analítica avanzada no disponible",
+        )
 
 
 def _coerce_datetime(value: datetime | date | None) -> datetime | None:
@@ -66,8 +69,7 @@ def _format_range_value(value: datetime | date | None) -> str | None:
 
 @router.get(
     "/global/overview",
-    response_model=schemas.GlobalReportOverview,
-    dependencies=[Depends(require_roles(ADMIN))],
+    response_model=schemas.GlobalReportOverview
 )
 def global_report_overview(
     date_from: datetime | date | None = Query(default=None),
@@ -77,6 +79,7 @@ def global_report_overview(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
+    _ensure_analytics_enabled()
     normalized_from = _coerce_datetime(date_from)
     normalized_to = _coerce_datetime(date_to)
     return crud.build_global_report_overview(
@@ -90,8 +93,7 @@ def global_report_overview(
 
 @router.get(
     "/global/dashboard",
-    response_model=schemas.GlobalReportDashboard,
-    dependencies=[Depends(require_roles(ADMIN))],
+    response_model=schemas.GlobalReportDashboard
 )
 def global_report_dashboard(
     date_from: datetime | date | None = Query(default=None),
@@ -101,6 +103,7 @@ def global_report_dashboard(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
+    _ensure_analytics_enabled()
     normalized_from = _coerce_datetime(date_from)
     normalized_to = _coerce_datetime(date_to)
     return crud.build_global_report_dashboard(
@@ -114,8 +117,7 @@ def global_report_dashboard(
 
 @router.get(
     "/global/export",
-    response_model=schemas.BinaryFileResponse,
-    dependencies=[Depends(require_roles(ADMIN))],
+    response_model=schemas.BinaryFileResponse
 )
 def export_global_report(
     format: Literal["pdf", "xlsx", "csv"] = Query(default="pdf"),
@@ -188,8 +190,7 @@ def export_global_report(
 # // [PACK29-*] Reporte resumen de ventas con filtros de fecha y sucursal
 @router.get(
     "/sales/summary",
-    response_model=schemas.SalesSummaryReport,
-    dependencies=[Depends(require_roles(ADMIN))],
+    response_model=schemas.SalesSummaryReport
 )
 def get_sales_summary_report(
     date_from: datetime | date | None = Query(default=None, alias="from"),
@@ -216,8 +217,7 @@ def get_sales_summary_report(
 # // [PACK29-*] Reporte de top de productos vendidos
 @router.get(
     "/sales/by-product",
-    response_model=list[schemas.SalesByProductItem],
-    dependencies=[Depends(require_roles(ADMIN))],
+    response_model=list[schemas.SalesByProductItem]
 )
 def get_sales_by_product_report(
     date_from: datetime | date | None = Query(default=None, alias="from"),
@@ -281,8 +281,7 @@ def get_sales_by_product_report(
 # // [PACK29-*] Sugerencia de cierre de caja considerando ventas y devoluciones
 @router.get(
     "/cash-close",
-    response_model=schemas.CashCloseReport,
-    dependencies=[Depends(require_roles(ADMIN))],
+    response_model=schemas.CashCloseReport
 )
 def get_cash_close_report(
     target_date: date | None = Query(default=None, alias="date"),
@@ -302,7 +301,7 @@ def get_cash_close_report(
     )
 
 
-@router.get("/customers/portfolio", response_model=schemas.CustomerPortfolioReport, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/customers/portfolio", response_model=schemas.CustomerPortfolioReport)
 def customer_portfolio_report(
     request: Request,
     category: Literal["delinquent", "frequent"] = Query(default="delinquent"),
@@ -358,7 +357,7 @@ def customer_portfolio_report(
     )
 
 
-@router.get("/audit", response_model=Page[schemas.AuditLogResponse], dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/audit", response_model=Page[schemas.AuditLogResponse])
 def audit_logs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -397,7 +396,7 @@ def audit_logs(
     return Page.from_items(logs, page=page_number, size=page_size, total=total)
 
 
-@router.get("/audit/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/audit/pdf", response_model=schemas.BinaryFileResponse)
 def audit_logs_pdf(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -445,7 +444,7 @@ def audit_logs_pdf(
     )
 
 
-@router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/rotation", response_model=schemas.AnalyticsRotationResponse)
 def analytics_rotation(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -469,7 +468,7 @@ def analytics_rotation(
     return schemas.AnalyticsRotationResponse(items=[schemas.RotationMetric(**item) for item in data])
 
 
-@router.get("/analytics/aging", response_model=schemas.AnalyticsAgingResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/aging", response_model=schemas.AnalyticsAgingResponse)
 def analytics_aging(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -493,7 +492,7 @@ def analytics_aging(
     return schemas.AnalyticsAgingResponse(items=[schemas.AgingMetric(**item) for item in data])
 
 
-@router.get("/analytics/stockout_forecast", response_model=schemas.AnalyticsForecastResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/stockout_forecast", response_model=schemas.AnalyticsForecastResponse)
 def analytics_forecast(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -517,7 +516,7 @@ def analytics_forecast(
     return schemas.AnalyticsForecastResponse(items=[schemas.StockoutForecastMetric(**item) for item in data])
 
 
-@router.get("/analytics/comparative", response_model=schemas.AnalyticsComparativeResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/comparative", response_model=schemas.AnalyticsComparativeResponse)
 def analytics_comparative(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -543,7 +542,7 @@ def analytics_comparative(
     )
 
 
-@router.get("/analytics/profit_margin", response_model=schemas.AnalyticsProfitMarginResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/profit_margin", response_model=schemas.AnalyticsProfitMarginResponse)
 def analytics_profit_margin(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -569,7 +568,7 @@ def analytics_profit_margin(
     )
 
 
-@router.get("/analytics/sales_forecast", response_model=schemas.AnalyticsSalesProjectionResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/sales_forecast", response_model=schemas.AnalyticsSalesProjectionResponse)
 def analytics_sales_projection(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -595,7 +594,7 @@ def analytics_sales_projection(
     )
 
 
-@router.get("/analytics/categories", response_model=schemas.AnalyticsCategoriesResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/categories", response_model=schemas.AnalyticsCategoriesResponse)
 def analytics_categories(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -607,7 +606,7 @@ def analytics_categories(
     return schemas.AnalyticsCategoriesResponse(categories=categories)
 
 
-@router.get("/analytics/alerts", response_model=schemas.AnalyticsAlertsResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/alerts", response_model=schemas.AnalyticsAlertsResponse)
 def analytics_alerts(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -633,7 +632,7 @@ def analytics_alerts(
     )
 
 
-@router.get("/analytics/realtime", response_model=schemas.AnalyticsRealtimeResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/realtime", response_model=schemas.AnalyticsRealtimeResponse)
 def analytics_realtime(
     store_ids: list[int] | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
@@ -655,7 +654,7 @@ def analytics_realtime(
     )
 
 
-@router.get("/analytics/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/pdf", response_model=schemas.BinaryFileResponse)
 def analytics_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -741,7 +740,7 @@ def analytics_pdf(
     )
 
 
-@router.get("/analytics/export.csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/analytics/export.csv", response_model=schemas.BinaryFileResponse)
 def analytics_export_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -849,7 +848,7 @@ def analytics_export_csv(
     )
 
 
-@router.get("/inventory/current", response_model=schemas.InventoryCurrentReport, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/current", response_model=schemas.InventoryCurrentReport)
 def inventory_current(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -858,7 +857,7 @@ def inventory_current(
     return crud.get_inventory_current_report(db, store_ids=store_ids)
 
 
-@router.get("/inventory/current/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/current/csv", response_model=schemas.BinaryFileResponse)
 def inventory_current_csv(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -898,7 +897,7 @@ def inventory_current_csv(
     )
 
 
-@router.get("/inventory/current/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/current/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_current_pdf(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -919,7 +918,7 @@ def inventory_current_pdf(
     )
 
 
-@router.get("/inventory/current/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/current/xlsx", response_model=schemas.BinaryFileResponse)
 def inventory_current_excel(
     store_ids: list[int] | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -939,7 +938,7 @@ def inventory_current_excel(
     )
 
 
-@router.get("/inventory/value", response_model=schemas.InventoryValueReport, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/value", response_model=schemas.InventoryValueReport)
 def inventory_value(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
@@ -956,8 +955,7 @@ def inventory_value(
 
 @router.get(
     "/inventory/movements",
-    response_model=schemas.InventoryMovementsReport,
-    dependencies=[Depends(require_roles(ADMIN))],
+    response_model=schemas.InventoryMovementsReport
 )
 def inventory_movements(
     store_ids: list[int] | None = Query(default=None),
@@ -987,8 +985,7 @@ def inventory_movements(
 
 @router.get(
     "/inventory/top-products",
-    response_model=schemas.TopProductsReport,
-    dependencies=[Depends(require_roles(ADMIN))],
+    response_model=schemas.TopProductsReport
 )
 def inventory_top_products(
     store_ids: list[int] | None = Query(default=None),
@@ -1009,7 +1006,7 @@ def inventory_top_products(
     )
 
 
-@router.get("/inventory/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_pdf(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
@@ -1029,7 +1026,7 @@ def inventory_pdf(
     )
 
 
-@router.get("/inventory/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/csv", response_model=schemas.BinaryFileResponse)
 def inventory_csv(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
@@ -1160,7 +1157,7 @@ def inventory_csv(
     )
 
 
-@router.get("/inventory/value/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/value/csv", response_model=schemas.BinaryFileResponse)
 def inventory_value_csv(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
@@ -1211,7 +1208,7 @@ def inventory_value_csv(
     )
 
 
-@router.get("/inventory/value/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/value/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_value_pdf(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
@@ -1238,7 +1235,7 @@ def inventory_value_pdf(
     )
 
 
-@router.get("/inventory/value/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/value/xlsx", response_model=schemas.BinaryFileResponse)
 def inventory_value_excel(
     store_ids: list[int] | None = Query(default=None),
     categories: list[str] | None = Query(default=None),
@@ -1264,7 +1261,7 @@ def inventory_value_excel(
     )
 
 
-@router.get("/inventory/movements/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/movements/csv", response_model=schemas.BinaryFileResponse)
 def inventory_movements_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1382,7 +1379,7 @@ def inventory_movements_csv(
     )
 
 
-@router.get("/inventory/movements/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/movements/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_movements_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1422,7 +1419,7 @@ def inventory_movements_pdf(
     )
 
 
-@router.get("/inventory/movements/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/movements/xlsx", response_model=schemas.BinaryFileResponse)
 def inventory_movements_excel(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1461,7 +1458,7 @@ def inventory_movements_excel(
     )
 
 
-@router.get("/inventory/top-products/pdf", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/top-products/pdf", response_model=schemas.BinaryFileResponse)
 def inventory_top_products_pdf(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1493,7 +1490,7 @@ def inventory_top_products_pdf(
     )
 
 
-@router.get("/inventory/top-products/xlsx", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/top-products/xlsx", response_model=schemas.BinaryFileResponse)
 def inventory_top_products_excel(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1524,7 +1521,7 @@ def inventory_top_products_excel(
     )
 
 
-@router.get("/inventory/top-products/csv", response_model=schemas.BinaryFileResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/inventory/top-products/csv", response_model=schemas.BinaryFileResponse)
 def inventory_top_products_csv(
     store_ids: list[int] | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
@@ -1586,8 +1583,7 @@ def inventory_top_products_csv(
 
 @router.get(
     "/inventory/supplier-batches",
-    response_model=Page[schemas.SupplierBatchOverviewItem],
-    dependencies=[Depends(require_roles(ADMIN))],
+    response_model=Page[schemas.SupplierBatchOverviewItem]
 )
 def inventory_supplier_batches(
     store_id: int = Query(..., ge=1),
@@ -1614,7 +1610,7 @@ def inventory_supplier_batches(
     )
 
 
-@router.get("/metrics", response_model=schemas.InventoryMetricsResponse, dependencies=[Depends(require_roles(ADMIN))])
+@router.get("/metrics", response_model=schemas.InventoryMetricsResponse)
 def inventory_metrics(
     low_stock_threshold: int = Query(default=5, ge=0, le=100),
     db: Session = Depends(get_db),

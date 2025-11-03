@@ -28,8 +28,7 @@ def _ensure_feature_enabled() -> None:
 @router.post(
     "/sale",
     response_model=schemas.POSSaleResponse,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    status_code=status.HTTP_201_CREATED
 )
 def register_pos_sale_endpoint(
     payload: schemas.POSSaleRequest,
@@ -38,6 +37,13 @@ def register_pos_sale_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
+    try:
+        crud.get_store(db, payload.store_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sucursal no encontrada.",
+        ) from exc
     try:
         if payload.save_as_draft:
             draft = crud.save_pos_draft(
@@ -134,8 +140,7 @@ def register_pos_sale_endpoint(
 
 @router.get(
     "/receipt/{sale_id}",
-    response_model=schemas.BinaryFileResponse,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=schemas.BinaryFileResponse
 )
 def download_pos_receipt(
     sale_id: int,
@@ -176,8 +181,7 @@ def download_pos_receipt(
 @router.post(
     "/sessions/open",
     response_model=schemas.POSSessionSummary,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    status_code=status.HTTP_201_CREATED
 )
 def open_pos_session_endpoint(
     payload: schemas.POSSessionOpenPayload,
@@ -203,8 +207,7 @@ def open_pos_session_endpoint(
 # // [PACK34-endpoints]
 @router.post(
     "/sessions/close",
-    response_model=schemas.POSSessionSummary,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=schemas.POSSessionSummary
 )
 def close_pos_session_endpoint(
     payload: schemas.POSSessionClosePayload,
@@ -231,8 +234,7 @@ def close_pos_session_endpoint(
 # // [PACK34-endpoints]
 @router.get(
     "/sessions/last",
-    response_model=schemas.POSSessionSummary,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=schemas.POSSessionSummary
 )
 def read_last_pos_session_endpoint(
     branch_id: int = Query(..., alias="branchId", ge=1),
@@ -254,8 +256,7 @@ def read_last_pos_session_endpoint(
 # // [PACK34-endpoints]
 @router.get(
     "/taxes",
-    response_model=list[schemas.POSTaxInfo],
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=list[schemas.POSTaxInfo]
 )
 def list_pos_taxes_endpoint(
     db: Session = Depends(get_db),
@@ -270,8 +271,7 @@ def list_pos_taxes_endpoint(
 @router.post(
     "/return",
     response_model=schemas.POSReturnResponse,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    status_code=status.HTTP_201_CREATED
 )
 def register_pos_return_endpoint(
     payload: schemas.POSReturnRequest,
@@ -351,8 +351,7 @@ def register_pos_return_endpoint(
 # // [PACK34-endpoints]
 @router.get(
     "/sale/{sale_id}",
-    response_model=schemas.POSSaleDetailResponse,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=schemas.POSSaleDetailResponse
 )
 def read_pos_sale_detail_endpoint(
     sale_id: int,
@@ -379,8 +378,7 @@ def read_pos_sale_detail_endpoint(
 
 @router.get(
     "/config",
-    response_model=schemas.POSConfigResponse,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=schemas.POSConfigResponse
 )
 def read_pos_config(
     store_id: int = Query(..., ge=1),
@@ -405,8 +403,7 @@ def read_pos_config(
 
 @router.put(
     "/config",
-    response_model=schemas.POSConfigResponse,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=schemas.POSConfigResponse
 )
 def update_pos_config_endpoint(
     payload: schemas.POSConfigUpdate,
@@ -430,8 +427,7 @@ def update_pos_config_endpoint(
 @router.post(
     "/cash/open",
     response_model=schemas.CashSessionResponse,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    status_code=status.HTTP_201_CREATED
 )
 def open_cash_session_endpoint(
     payload: schemas.CashSessionOpenRequest,
@@ -458,8 +454,7 @@ def open_cash_session_endpoint(
 
 @router.post(
     "/cash/close",
-    response_model=schemas.CashSessionResponse,
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=schemas.CashSessionResponse
 )
 def close_cash_session_endpoint(
     payload: schemas.CashSessionCloseRequest,
@@ -488,8 +483,7 @@ def close_cash_session_endpoint(
 
 @router.get(
     "/cash/history",
-    response_model=list[schemas.CashSessionResponse],
-    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=list[schemas.CashSessionResponse]
 )
 def list_cash_sessions_endpoint(
     store_id: int = Query(..., ge=1),
