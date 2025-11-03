@@ -1,8 +1,14 @@
 import React from "react";
 
+export type PurchaseOrderStatusFilter =
+  | "PENDIENTE"
+  | "PARCIAL"
+  | "COMPLETADA"
+  | "CANCELADA";
+
 type Filters = {
   query?: string;
-  status?: "ALL" | "DRAFT" | "SENT" | "PARTIAL" | "RECEIVED" | "CANCELLED";
+  status?: "ALL" | PurchaseOrderStatusFilter;
   supplier?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -51,12 +57,11 @@ export default function FiltersBar({ value, onChange, onNew }: Props) {
         onChange={(event) => onChange({ ...v, status: event.target.value as Filters["status"] })}
         style={inputStyle}
       >
-        <option value="ALL">Estado</option>
-        <option value="DRAFT">Borrador</option>
-        <option value="SENT">Enviado</option>
-        <option value="PARTIAL">Parcial</option>
-        <option value="RECEIVED">Recibido</option>
-        <option value="CANCELLED">Cancelado</option>
+        <option value="ALL">Todos</option>
+        <option value="PENDIENTE">Pendiente</option>
+        <option value="PARCIAL">Recepción parcial</option>
+        <option value="COMPLETADA">Completada</option>
+        <option value="CANCELADA">Cancelada</option>
       </select>
       <input
         placeholder="Proveedor"
@@ -76,9 +81,20 @@ export default function FiltersBar({ value, onChange, onNew }: Props) {
         onChange={(event) => onChange({ ...v, dateTo: event.target.value })}
         style={inputStyle}
       />
-      <button type="button" onClick={onNew} style={buttonStyle}>
+      <button
+        type="button"
+        onClick={onNew}
+        disabled={!onNew}
+        style={{
+          ...buttonStyle,
+          opacity: onNew ? 1 : 0.5,
+          cursor: onNew ? "pointer" : "not-allowed",
+        }}
+      >
         Nueva PO
       </button>
     </div>
   );
 }
+
+export type { Filters as PurchaseOrderFilters };

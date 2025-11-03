@@ -1,8 +1,6 @@
 from decimal import Decimal
 from typing import Any, Iterable
 
-from decimal import Decimal
-
 from fastapi import status
 from sqlalchemy import select, text
 
@@ -39,6 +37,101 @@ def _bootstrap_admin(client, db_session):
         select(models.User).where(models.User.username == payload["username"])
     ).scalar_one()
     return token, user.id
+
+
+def _create_store(client, headers):
+    response = client.post(
+        "/stores",
+        json={"name": "Compras Centro", "location": "CDMX", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    return response.json()["id"]
+
+
+def _create_device(client, store_id: int, headers):
+    device_payload = {
+        "sku": "SKU-COMP-001",
+        "name": "Smartphone corporativo",
+        "quantity": 10,
+        "unit_price": 1500.0,
+        "costo_unitario": 1000.0,
+        "margen_porcentaje": 15.0,
+    }
+    response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=headers,
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    return response.json()["id"]
+
+
+def test_get_purchase_order_detail_includes_items_and_returns(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}"}
+    headers_with_reason = {**base_headers, "X-Reason": "Operación compras"}
+
+    try:
+        store_id = _create_store(client, headers_with_reason)
+        device_id = _create_device(client, store_id, headers_with_reason)
+
+        order_response = client.post(
+            "/purchases",
+            json={
+                "store_id": store_id,
+                "supplier": "Proveedor Mayorista",
+                "items": [
+                    {"device_id": device_id, "quantity_ordered": 6, "unit_cost": 820.0},
+                ],
+            },
+            headers=headers_with_reason,
+        )
+        assert order_response.status_code == status.HTTP_201_CREATED
+        order_id = order_response.json()["id"]
+
+        receive_response = client.post(
+            f"/purchases/{order_id}/receive",
+            json={"items": [{"device_id": device_id, "quantity": 4}]},
+            headers={**base_headers, "X-Reason": "Recepción parcial"},
+        )
+        assert receive_response.status_code == status.HTTP_200_OK
+
+        return_response = client.post(
+            f"/purchases/{order_id}/returns",
+            json={"device_id": device_id, "quantity": 1, "reason": "Equipo defectuoso"},
+            headers={**base_headers, "X-Reason": "Devolución proveedor"},
+        )
+        assert return_response.status_code == status.HTTP_200_OK
+
+        detail_response = client.get(f"/purchases/{order_id}", headers=base_headers)
+        assert detail_response.status_code == status.HTTP_200_OK
+        payload = detail_response.json()
+
+        assert payload["id"] == order_id
+        assert payload["supplier"] == "Proveedor Mayorista"
+        assert payload["items"], "La respuesta debe incluir artículos"
+        assert payload["items"][0]["quantity_ordered"] == 6
+        assert payload["items"][0]["quantity_received"] == 4
+        assert payload["returns"]
+        assert payload["returns"][0]["quantity"] == 1
+        assert payload["returns"][0]["reason"] == "Equipo defectuoso"
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_get_purchase_order_not_found_returns_404(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}"}
+    try:
+        response = client.get("/purchases/999999", headers=base_headers)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_purchases_sales = previous_flag
 
 
 def test_purchase_receipt_and_return_flow(client, db_session):

@@ -9,6 +9,7 @@ type Row = {
   total: number;
   received: number;
   status: string;
+  statusLabel?: string;
 };
 
 type Props = {
@@ -44,6 +45,11 @@ const closeButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(148, 163, 184, 0.4)",
 };
 
+const currencyFormatter = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+});
+
 export default function SidePanel({ row, onClose }: Props) {
   if (!row) {
     return null;
@@ -54,9 +60,9 @@ export default function SidePanel({ row, onClose }: Props) {
     ["#PO", row.number || "—"],
     ["Proveedor", row.supplier || "—"],
     ["Items", String(row.itemsCount)],
-    ["Total", Intl.NumberFormat().format(row.total)],
-    ["Recibido", Intl.NumberFormat().format(row.received)],
-    ["Estado", row.status],
+    ["Total", currencyFormatter.format(row.total)],
+    ["Recibido", currencyFormatter.format(row.received)],
+    ["Estado", row.statusLabel || row.status],
   ];
 
   return (

@@ -429,6 +429,26 @@ def list_purchase_orders_endpoint(
     return Page.from_items(orders, page=pagination.page, size=page_limit, total=total)
 
 
+@router.get(
+    "/{order_id}",
+    response_model=schemas.PurchaseOrderResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def get_purchase_order_endpoint(
+    order_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        return crud.get_purchase_order(db, order_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Orden no encontrada",
+        ) from exc
+
+
 @router.post("/", response_model=schemas.PurchaseOrderResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_purchase_order_endpoint(
     payload: schemas.PurchaseOrderCreate,
