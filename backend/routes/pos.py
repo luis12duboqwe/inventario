@@ -30,7 +30,13 @@ extended_router = APIRouter(prefix="/pos", tags=["pos"])
 logger = core_logger.bind(component="backend.routes.pos")
 
 
-init_db()
+async def _initialize_pos_tables() -> None:
+    """Prepara las tablas requeridas por el POS extendido en el arranque."""
+
+    init_db()
+
+
+extended_router.add_event_handler("startup", _initialize_pos_tables)
 
 
 _DECIMAL_ZERO = Decimal("0")
