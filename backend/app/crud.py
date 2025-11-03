@@ -201,6 +201,11 @@ def _quantize_currency(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _format_currency(value: Decimal | float | int) -> str:
+    normalized = _quantize_currency(_to_decimal(value))
+    return f"{normalized:.2f}"
+
+
 def _calculate_weighted_average_cost(
     current_quantity: int,
     current_cost: Decimal,
@@ -3969,14 +3974,14 @@ def register_customer_payment(
     )
     _append_customer_history(
         customer,
-        f"Pago registrado por ${float(applied_amount):.2f}",
+        f"Pago registrado por ${_format_currency(applied_amount)}",
     )
     db.add(customer)
 
     payment_details: dict[str, object] = {
         "method": payload.method,
-        "requested_amount": float(amount),
-        "applied_amount": float(applied_amount),
+        "requested_amount": _format_currency(amount),
+        "applied_amount": _format_currency(applied_amount),
     }
     if payload.reference:
         payment_details["reference"] = payload.reference
@@ -4007,7 +4012,7 @@ def register_customer_payment(
             performed_by_id=performed_by_id,
             details=json.dumps(
                 {
-                    "applied_amount": float(applied_amount),
+                    "applied_amount": _format_currency(applied_amount),
                     "method": payload.method,
                     "reference": payload.reference,
                     "sale_id": sale.id if sale is not None else None,
@@ -4249,7 +4254,7 @@ def register_payment_center_refund(
         customer.outstanding_debt = new_debt
         _append_customer_history(
             customer,
-            f"Reembolso registrado por ${float(amount):.2f}",
+            f"Reembolso registrado por ${_format_currency(amount)}",
         )
         db.add(customer)
 
@@ -4257,6 +4262,7 @@ def register_payment_center_refund(
             "event": "manual_refund",
             "method": payload.method,
             "reason": payload.reason,
+            "amount": _format_currency(amount),
         }
         if payload.sale_id is not None:
             details["sale_id"] = payload.sale_id
@@ -4281,7 +4287,7 @@ def register_payment_center_refund(
             performed_by_id=performed_by_id,
             details=json.dumps(
                 {
-                    "amount": float(amount),
+                    "amount": _format_currency(amount),
                     "method": payload.method,
                     "reason": payload.reason,
                     "sale_id": payload.sale_id,
@@ -4323,7 +4329,7 @@ def register_payment_center_credit_note(
             {
                 "description": line.description,
                 "quantity": line.quantity,
-                "amount": float(line.amount),
+                "amount": _format_currency(line.amount),
             }
             for line in payload.lines
         ],
@@ -4343,7 +4349,7 @@ def register_payment_center_credit_note(
         customer.outstanding_debt = new_debt
         _append_customer_history(
             customer,
-            f"Nota de crédito registrada por ${float(amount):.2f}",
+            f"Nota de crédito registrada por ${_format_currency(amount)}",
         )
         db.add(customer)
 
@@ -4367,7 +4373,7 @@ def register_payment_center_credit_note(
             performed_by_id=performed_by_id,
             details=json.dumps(
                 {
-                    "amount": float(amount),
+                    "amount": _format_currency(amount),
                     "sale_id": payload.sale_id,
                     "lines": details["lines"],
                 }
