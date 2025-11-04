@@ -238,10 +238,11 @@ class Settings(BaseSettings):
             "SOFTMOBILE_SESSION_COOKIE_SAMESITE",
         ),
     )
-    allowed_origins: list[str] = Field(
+    allowed_origins_str: str = Field(
         ...,
         validation_alias=AliasChoices("CORS_ORIGINS", "SOFTMOBILE_ALLOWED_ORIGINS"),
     )
+    allowed_origins: list[str] = Field(default_factory=list, exclude=True)
     testing_mode: bool = Field(
         default=False,
         validation_alias=AliasChoices("SOFTMOBILE_TEST_MODE", "TESTING_MODE"),
@@ -251,6 +252,21 @@ class Settings(BaseSettings):
     def _ensure_testing_flag(self) -> "Settings":
         if bool(os.getenv("PYTEST_CURRENT_TEST")):
             self.testing_mode = True
+        # Parse allowed_origins from allowed_origins_str
+        raw = self.allowed_origins_str
+        if isinstance(raw, str):
+            # Try to parse as JSON array first (for backwards compatibility)
+            if raw.startswith('['):
+                try:
+                    import json
+                    self.allowed_origins = [str(o).strip() for o in json.loads(raw) if str(o).strip()]
+                    return self
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            # Parse as comma-separated string
+            self.allowed_origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+        elif isinstance(raw, (list, tuple)):
+            self.allowed_origins = [str(origin).strip() for origin in raw if str(origin).strip()]
         return self
 
     @field_validator(
@@ -271,15 +287,6 @@ class Settings(BaseSettings):
         if value <= 0:
             raise ValueError(f"{info.field_name} debe ser mayor que cero")
         return value
-
-    @field_validator("allowed_origins", mode="before")
-    @classmethod
-    def _split_origins(cls, value: Any) -> list[str]:
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        if isinstance(value, (list, tuple)):
-            return [str(origin).strip() for origin in value if str(origin).strip()]
-        raise ValueError("allowed_origins debe ser una lista de orígenes válidos")
 
     @field_validator("session_cookie_samesite", mode="before")
     @classmethod
