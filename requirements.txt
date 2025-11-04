@@ -1,7 +1,7 @@
 # Actualizado por Codex el 2025-10-20
 fastapi==0.115.0
 fastapi-limiter==0.1.6
-uvicorn[standard]==0.30.6
+uvicorn[standard]==0.38.0
 sqlalchemy==2.0.34
 pydantic==2.6.4
 pydantic-settings==2.11.0
