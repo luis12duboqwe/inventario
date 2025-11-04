@@ -1,6 +1,18 @@
+# Por defecto, el owner del repo revisa los PRs
+
+- @luis12duboqwe
+
+# Áreas específicas (ajustables a futuro)
+
+/backend/ @luis12duboqwe
+/frontend/ @luis12duboqwe
+/docs/ @luis12duboqwe
+/\.github/ @luis12duboqwe
+
 # Equipo de mantenimiento Softmobile 2025
-* @softmobile-core/plataforma
-backend/ @softmobile-core/backend
-frontend/ @softmobile-core/frontend
-docs/ @softmobile-core/documentacion
-ops/ @softmobile-core/operaciones
+
+- @softmobile-core/plataforma
+  backend/ @softmobile-core/backend
+  frontend/ @softmobile-core/frontend
+  docs/ @softmobile-core/documentacion
+  ops/ @softmobile-core/operaciones
