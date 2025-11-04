@@ -1,3 +1,80 @@
+name: softmobile-v220-ci
+
+on:
+  push:
+    branches:
+      - main
+      - repara
+      - 'test/**'
+  pull_request:
+    branches:
+      - main
+      - repara
+
+jobs:
+  backend:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest (backend)
+        env:
+          SOFTMOBILE_ENABLE_CATALOG_PRO: '1'
+          SOFTMOBILE_ENABLE_TRANSFERS: '1'
+          SOFTMOBILE_ENABLE_PURCHASES_SALES: '1'
+          SOFTMOBILE_ENABLE_ANALYTICS_ADV: '1'
+          SOFTMOBILE_ENABLE_2FA: '0'
+          SOFTMOBILE_ENABLE_HYBRID_PREP: '1'
+        run: |
+          pytest -q backend/tests
+
+  frontend:
+    name: Frontend build & tests (Vite + Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm --prefix frontend install --legacy-peer-deps
+
+      - name: Run tests
+        env:
+          CI: true
+        run: |
+          npm --prefix frontend run test
+
+      - name: Build frontend
+        run: |
+          npm --prefix frontend run build
 name: CI Softmobile 2025
 
 on:
