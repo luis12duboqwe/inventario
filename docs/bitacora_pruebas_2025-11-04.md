@@ -22,6 +22,10 @@
 - Alineación de rutas de Dashboard con componentes _Page_ para Inventario y Reparaciones (permiten pruebas con Suspense y loaders controlados por mocks).
 - Corrección de prueba `OperationsPage.lazy.test.tsx` para desambiguar el enlace «Caja» cuando «Cajas» también está presente.
 - Corrección de prueba `RouteErrorElement.test.tsx` usando `vi.hoisted` para evitar problemas de hoisting al mockear `services/audit`.
+- CI agregado y extendido: `.github/workflows/ci.yml` (pytest + Vitest + build + comentario en PR).
+- Auto-etiquetado de PRs: `.github/labeler.yml` y workflow `pr-labeler` para asignar etiquetas por rutas.
+- Plantilla de PR: `.github/pull_request_template.md` con checklist de v2.2.0.
+- CODEOWNERS: `.github/CODEOWNERS` para solicitar revisión por defecto.
 
 ## Notas
 
