@@ -75,6 +75,31 @@ jobs:
       - name: Build frontend
         run: |
           npm --prefix frontend run build
+
+  summary:
+    if: ${{ github.event_name == 'pull_request' }}
+    name: Publicar resumen en PR
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - name: Comentar resultados en el PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const backend = '${{ needs.backend.result }}';
+            const frontend = '${{ needs.frontend.result }}';
+            const ok = (s) => s === 'success' ? '✅' : '❌';
+            const body = [
+              '## Resultado CI — Softmobile v2.2.0',
+              '',
+              `- Backend (pytest): ${ok(backend)} ${backend}`,
+              `- Frontend (tests+build): ${ok(frontend)} ${frontend}`,
+              '',
+              'Detalles en la pestaña Actions. Se respeta el modo estricto de versión (sin cambios de versión).'
+            ].join('\n');
+
+            const {owner, repo, number} = context.issue;
+            await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
 name: CI Softmobile 2025
 
 on:

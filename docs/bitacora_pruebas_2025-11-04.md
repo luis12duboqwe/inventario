@@ -14,6 +14,7 @@
 - npm --prefix frontend run build: OK (previa iteración)
 - npm --prefix frontend run test: OK — 18/18 suites, 58/58 tests
 - CI: agregado `.github/workflows/ci.yml` para correr pytest (backend) y Vitest + build (frontend) en cada push/PR.
+  - Incluye comentario automático en los PR con el estado de ambos jobs.
   - Advertencias esperadas: React Router «future flags», act() en POS (no bloqueante)
 
 ## Cambios relevantes en esta iteración
