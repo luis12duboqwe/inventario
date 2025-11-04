@@ -9,6 +9,7 @@ from datetime import date
 from backend.schemas.common import Page, PageParams
 
 from .. import crud, schemas
+from ..config import settings
 from ..core.roles import ADMIN, GESTION_ROLES
 from ..database import get_db
 from ..models import CommercialState
@@ -29,7 +30,8 @@ def create_store(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     try:
-        store = crud.create_store(db, payload, performed_by_id=current_user.id if current_user else None)
+        store = crud.create_store(
+            db, payload, performed_by_id=current_user.id if current_user else None)
     except ValueError as exc:
         if str(exc) == "store_already_exists":
             raise HTTPException(
@@ -59,7 +61,8 @@ def list_stores(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> Page[schemas.StoreResponse]:
-    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_offset = pagination.offset if (
+        pagination.page > 1 and offset == 0) else offset
     page_size = min(pagination.size, limit)
     total = crud.count_stores(db)
     stores = crud.list_stores(db, limit=page_size, offset=page_offset)
@@ -68,7 +71,8 @@ def list_stores(
 
 @router.get("/{store_id}", response_model=schemas.StoreResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def retrieve_store(
-    store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    store_id: int = Path(..., ge=1,
+                         description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
@@ -77,14 +81,16 @@ def retrieve_store(
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "store_not_found", "message": "La sucursal solicitada no existe."},
+            detail={"code": "store_not_found",
+                    "message": "La sucursal solicitada no existe."},
         ) from exc
 
 
 @router.put("/{store_id}", response_model=schemas.StoreResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def update_store(
     payload: schemas.StoreUpdate,
-    store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    store_id: int = Path(..., ge=1,
+                         description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
@@ -98,7 +104,8 @@ def update_store(
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "store_not_found", "message": "La sucursal solicitada no existe."},
+            detail={"code": "store_not_found",
+                    "message": "La sucursal solicitada no existe."},
         ) from exc
     except ValueError as exc:
         if str(exc) == "store_already_exists":
@@ -128,7 +135,8 @@ def update_store(
 )
 def create_device(
     payload: schemas.DeviceCreate,
-    store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    store_id: int = Path(..., ge=1,
+                         description="Identificador de la sucursal"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
@@ -142,7 +150,8 @@ def create_device(
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "store_not_found", "message": "La sucursal solicitada no existe."},
+            detail={"code": "store_not_found",
+                    "message": "La sucursal solicitada no existe."},
         ) from exc
     except ValueError as exc:
         if str(exc) == "device_already_exists":
@@ -167,9 +176,11 @@ def create_device(
 
 @router.get("/{store_id}/devices", response_model=Page[schemas.DeviceResponse], dependencies=[Depends(require_roles(ADMIN))])
 def list_devices(
-    store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    store_id: int = Path(..., ge=1,
+                         description="Identificador de la sucursal"),
     search: str | None = Query(default=None, min_length=1, max_length=120),
-    estado: str | None = Query(default=None, description="Filtra por estado comercial"),
+    estado: str | None = Query(
+        default=None, description="Filtra por estado comercial"),
     categoria: str | None = Query(default=None, max_length=80),
     condicion: str | None = Query(default=None, max_length=60),
     estado_inventario: str | None = Query(default=None, max_length=40),
@@ -183,6 +194,11 @@ def list_devices(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.DeviceResponse]:
+    if not settings.enable_catalog_pro:
+        # Compatibilidad retroactiva: cuando el catálogo pro está desactivado, ocultar la lista detallada
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Ruta no disponible")
+
     estado_enum: CommercialState | None = None
     if estado:
         normalized = estado.strip()
@@ -203,7 +219,8 @@ def list_devices(
                         },
                     ) from exc
     try:
-        page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+        page_offset = pagination.offset if (
+            pagination.page > 1 and offset == 0) else offset
         page_size = min(pagination.size, limit)
         total = crud.count_store_devices(
             db,
@@ -237,7 +254,8 @@ def list_devices(
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "store_not_found", "message": "La sucursal solicitada no existe."},
+            detail={"code": "store_not_found",
+                    "message": "La sucursal solicitada no existe."},
         ) from exc
 
 
@@ -257,8 +275,10 @@ def list_store_memberships(
     try:
         crud.get_store(db, store_id)
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La sucursal solicitada no existe.") from exc
-    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="La sucursal solicitada no existe.") from exc
+    page_offset = pagination.offset if (
+        pagination.page > 1 and offset == 0) else offset
     page_size = min(pagination.size, limit)
     total = crud.count_store_memberships(db, store_id)
     memberships = crud.list_store_memberships(
@@ -290,7 +310,8 @@ def upsert_membership(
     try:
         crud.get_store(db, store_id)
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La sucursal solicitada no existe.") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="La sucursal solicitada no existe.") from exc
     membership = crud.upsert_store_membership(
         db,
         user_id=user_id,

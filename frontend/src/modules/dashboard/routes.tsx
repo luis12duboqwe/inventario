@@ -4,10 +4,11 @@ import NotFound from "../../components/feedback/NotFound";
 const DashboardLayout = lazy(() => import("./layout/DashboardLayout"));
 
 const InventoryLayout = lazy(() => import("../inventory/pages/InventoryLayout"));
-const InventoryProducts = lazy(() => import("../inventory/pages/InventoryProducts"));
-const InventoryMoves = lazy(() => import("../inventory/pages/InventoryMovements"));
-const InventorySuppliers = lazy(() => import("../inventory/pages/InventorySuppliers"));
-const InventoryAlerts = lazy(() => import("../inventory/pages/InventoryAlerts"));
+// Usar las variantes *Page para permitir mocks de pruebas y loaders dedicados
+const InventoryProducts = lazy(() => import("../inventory/pages/InventoryProductsPage"));
+const InventoryMoves = lazy(() => import("../inventory/pages/InventoryMovementsPage"));
+const InventorySuppliers = lazy(() => import("../inventory/pages/InventorySuppliersPage"));
+const InventoryAlerts = lazy(() => import("../inventory/pages/InventoryAlertsPage"));
 const OperationsLayout = lazy(() => import("../operations/pages/OperationsLayout"));
 const OperationsPOS = lazy(() => import("../operations/pages/OperationsPOS"));
 const OperationsPurchases = lazy(() => import("../operations/pages/OperationsPurchases"));
@@ -17,7 +18,8 @@ const AnalyticsPage = lazy(() => import("../analytics/pages/AnalyticsPage"));
 const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazy(() => import("../users/pages/UsersPage"));
-const RepairsLayout = lazy(() => import("../repairs/pages/RepairsLayout"));
+// Reparaciones: usar el alias RepairsPage para permitir el control de Suspense en pruebas
+const RepairsPage = lazy(() => import("../repairs/pages/RepairsPage"));
 const RepairsPending = lazy(() => import("../repairs/pages/RepairsPendingPage"));
 const RepairsInProgress = lazy(() => import("../repairs/pages/RepairsInProgressPage"));
 const RepairsReady = lazy(() => import("../repairs/pages/RepairsReadyPage"));
@@ -252,7 +254,7 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
                 title="Reparaciones no disponibles"
                 description="Espera un momento e intenta nuevamente ingresar a reparaciones."
               >
-                <RepairsLayout />
+                <RepairsPage />
               </AppErrorBoundary>
             </ModuleBoundary>
           }

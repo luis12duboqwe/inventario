@@ -1,7 +1,7 @@
 import { Suspense, act } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import OperationsPage from "./OperationsPage";
@@ -102,7 +102,13 @@ describe("OperationsPage navegación", () => {
       );
     });
 
-    const cajaLink = screen.getByRole("link", { name: /caja/i });
+    // Seleccionar el enlace de Caja (ventas/caja) evitando colisión con "Cajas"
+    const cajaLink = screen
+      .getAllByRole("link", { name: /Caja/i })
+      .find((el) => el.getAttribute("href")?.includes("/ventas/caja"));
+    if (!cajaLink) {
+      throw new Error('No se encontró el enlace de "Caja" con href "/ventas/caja"');
+    }
     expect(cajaLink).toHaveAttribute("aria-disabled", "true");
     expect(cajaLink).toHaveClass("operations-subnav__link--disabled");
     expect(screen.getByText(/Operaciones deshabilitadas/i)).toBeInTheDocument();
