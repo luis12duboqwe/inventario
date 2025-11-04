@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import RouteErrorElement from "../RouteErrorElement";
 
-const logUISpy = vi.fn().mockResolvedValue(undefined);
+// Evitar problemas de hoisting al mockear módulos con dependencias al tope
+const { logUISpy } = vi.hoisted(() => ({
+  logUISpy: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("../../services/audit", () => ({
   __esModule: true,

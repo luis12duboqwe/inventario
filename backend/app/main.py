@@ -20,7 +20,7 @@ from . import crud, security as security_core
 from .config import settings
 from .core.roles import DEFAULT_ROLES
 from .core.transactions import transactional_session
-from .database import SessionLocal, get_db
+from .database import SessionLocal, get_db, Base, engine
 from .routers import (
     audit,
     audit_ui,
@@ -74,8 +74,6 @@ SENSITIVE_PREFIXES = (
 READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers")
 
 
-
-
 def _remove_route(target_app: FastAPI, path: str, method: str) -> None:
     """Elimina de la aplicación la ruta que coincida con el path y método."""
 
@@ -99,6 +97,7 @@ def _mount_pos_extensions(target_app: FastAPI) -> None:
 
     _remove_route(target_app, "/pos/receipt/{sale_id}", "GET")
     target_app.include_router(extended_router)
+
 
 ROLE_PROTECTED_PREFIXES: dict[str, set[str]] = {
     "/users": {"ADMIN"},
@@ -143,11 +142,23 @@ def _resolve_action(method: str) -> str:
     return "view"
 
 
-def _bootstrap_defaults() -> None:
-    with SessionLocal() as session:
+def _bootstrap_defaults(session: Session = None) -> None:
+    """Crea datos base requeridos (roles, etc.) usando la sesión provista.
+
+    En pruebas, esta sesión debe provenir del motor de pruebas para evitar
+    desincronizaciones entre motores en memoria.
+    """
+    created_local_session = False
+    if session is None:
+        session = SessionLocal()
+        created_local_session = True
+    try:
         with transactional_session(session):
             for role in DEFAULT_ROLES:
                 crud.ensure_role(session, role)
+    finally:
+        if created_local_session:
+            session.close()
 
 
 def _authorize_request_sync(
@@ -166,10 +177,12 @@ def _authorize_request_sync(
         except StopIteration:  # pragma: no cover - defensive
             return JSONResponse(
                 status_code=500,
-                content={"detail": "No fue posible obtener la sesión de base de datos."},
+                content={
+                    "detail": "No fue posible obtener la sesión de base de datos."},
             )
 
-        auth_header = headers.get("Authorization") or headers.get("authorization")
+        auth_header = headers.get(
+            "Authorization") or headers.get("authorization")
         session_cookie = cookies.get(settings.session_cookie_name)
         session_token: str | None = None
         user = None
@@ -190,7 +203,8 @@ def _authorize_request_sync(
                     content={"detail": exc.detail},
                 )
             session_token = token_payload.jti
-            active_session = crud.get_active_session_by_token(db, session_token)
+            active_session = crud.get_active_session_by_token(
+                db, session_token)
             if active_session is None or active_session.revoked_at is not None:
                 return JSONResponse(
                     status_code=401,
@@ -204,7 +218,8 @@ def _authorize_request_sync(
             user = crud.get_user_by_username(db, token_payload.sub)
         elif session_cookie:
             session_token = session_cookie
-            active_session = crud.get_active_session_by_token(db, session_token)
+            active_session = crud.get_active_session_by_token(
+                db, session_token)
             if active_session is None or active_session.revoked_at is not None:
                 return JSONResponse(
                     status_code=401,
@@ -217,21 +232,41 @@ def _authorize_request_sync(
                 )
             user = active_session.user
         else:
+            # Reglas de GET: solo exigir en exportaciones (csv/pdf/xlsx/export) y lecturas POS sensibles
+            def _requires_reason_get(p: str) -> bool:
+                if any(token in p for token in ("/csv", "/pdf", "/xlsx", "/export/")) and (
+                    p.startswith("/reports")
+                    or p.startswith("/purchases")
+                    or p.startswith("/sales")
+                    or p.startswith("/backups")
+                    or p.startswith("/users")
+                ):
+                    return True
+                if p.startswith("/pos/receipt") or p.startswith("/pos/config"):
+                    return True
+                return False
+
             requires_reason = (
                 method_upper in SENSITIVE_METHODS
                 and any(path.startswith(prefix) for prefix in SENSITIVE_PREFIXES)
-            ) or (
-                method_upper == "GET"
-                and any(path.startswith(prefix) for prefix in READ_SENSITIVE_PREFIXES)
-            )
+            ) or (method_upper == "GET" and _requires_reason_get(path))
             if requires_reason:
                 reason = headers.get("X-Reason") or headers.get("x-reason")
                 if not reason or len(reason.strip()) < 5:
                     return JSONResponse(
                         status_code=400,
                         content={
-                            "detail": "Proporciona el encabezado X-Reason con al menos 5 caracteres.",
+                            "detail": "X-Reason header required with at least 5 characters.",
                         },
+                    )
+            else:
+                # Si el cliente envía X-Reason pero es inválido, rechazar igualmente
+                reason_hdr = headers.get("X-Reason") or headers.get("x-reason")
+                if reason_hdr is not None and len(reason_hdr.strip()) < 5:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "detail": "X-Reason header required with at least 5 characters."},
                     )
             return JSONResponse(
                 status_code=401,
@@ -268,8 +303,38 @@ def _authorize_request_sync(
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
-    _bootstrap_defaults()
+async def lifespan(app: FastAPI):
+    # Obtiene la sesión a utilizar para bootstrap. En pruebas, usa el override
+    # de get_db para compartir el mismo motor que las fixtures.
+    override_dep = app.dependency_overrides.get(get_db)
+    created_local_session = False
+    session: Session | None = None
+    try:
+        if override_dep is not None:
+            # override_dep es un generador fastapi-style
+            gen = override_dep()
+            try:
+                session = next(gen)
+            except StopIteration:  # pragma: no cover - defensivo
+                session = None
+        if session is None:
+            session = SessionLocal()
+            created_local_session = True
+
+        # En modo pruebas, crea el esquema en el motor asociado a la sesión usada
+        # para que las consultas de bootstrap no fallen por tablas inexistentes.
+        if settings.testing_mode:
+            try:
+                bind = session.get_bind()
+                Base.metadata.create_all(bind=bind)
+            except Exception:  # pragma: no cover - defensivo en pruebas
+                logger.exception(
+                    "No se pudo crear el esquema en modo de pruebas")
+
+        _bootstrap_defaults(session)
+    finally:
+        if created_local_session and session is not None:
+            session.close()
     global _scheduler
     if settings.enable_background_scheduler:
         _scheduler = BackgroundScheduler()
@@ -282,7 +347,8 @@ async def lifespan(_: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title=settings.title, version=settings.version, lifespan=lifespan)
+    app = FastAPI(title=settings.title,
+                  version=settings.version, lifespan=lifespan)
     if settings.allowed_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -311,7 +377,8 @@ def create_app() -> FastAPI:
                         token = token_parts[1].strip()
                         try:
                             payload = security_core.decode_token(token)
-                            user = crud.get_user_by_username(session, payload.sub)
+                            user = crud.get_user_by_username(
+                                session, payload.sub)
                             if user is not None:
                                 username = user.username
                         except HTTPException:
@@ -332,25 +399,48 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def enforce_reason_header(request: Request, call_next):
         method_upper = request.method.upper()
+
+        path = request.url.path
+
+        # Para solicitudes GET, solo exigimos X-Reason en exportaciones y lecturas sensibles del POS
+        def _requires_reason_get(p: str) -> bool:
+            # Exportaciones de archivos (CSV/PDF/Excel) o rutas /export/ en módulos de reportes/ventas/compras/respaldos/usuarios
+            if any(token in p for token in ("/csv", "/pdf", "/xlsx", "/export/")) and (
+                p.startswith("/reports")
+                or p.startswith("/purchases")
+                or p.startswith("/sales")
+                or p.startswith("/backups")
+                or p.startswith("/users")
+            ):
+                return True
+            # Lecturas sensibles del POS (recibos/config)
+            if p.startswith("/pos/receipt") or p.startswith("/pos/config"):
+                return True
+            return False
+
         requires_reason = (
             method_upper in SENSITIVE_METHODS
-            and any(request.url.path.startswith(prefix) for prefix in SENSITIVE_PREFIXES)
-        ) or (
-            method_upper == "GET"
-            and any(
-                request.url.path.startswith(prefix) for prefix in READ_SENSITIVE_PREFIXES
-            )
-        )
+            and any(path.startswith(prefix) for prefix in SENSITIVE_PREFIXES)
+        ) or (method_upper == "GET" and _requires_reason_get(path))
+
         if requires_reason:
             reason = request.headers.get("X-Reason")
             if not reason or len(reason.strip()) < 5:
                 return JSONResponse(
                     status_code=400,
                     content={
-                        "detail": "Proporciona el encabezado X-Reason con al menos 5 caracteres.",
+                        "detail": "Reason header requerido",
                     },
                 )
             request.state.x_reason = reason.strip()
+        else:
+            # Si no es requerido por ruta, pero el cliente envía X-Reason y es inválido, rechazar
+            reason = request.headers.get("X-Reason")
+            if reason is not None and len(reason.strip()) < 5:
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "Reason header requerido"},
+                )
         response = await call_next(request)
         return response
 
@@ -375,7 +465,8 @@ def create_app() -> FastAPI:
                 response.headers["Access-Control-Allow-Origin"] = origin
                 response.headers["Vary"] = "Origin"
             response.headers["Access-Control-Allow-Credentials"] = "true"
-            allow_headers = request.headers.get("access-control-request-headers")
+            allow_headers = request.headers.get(
+                "access-control-request-headers")
             if allow_headers:
                 response.headers["Access-Control-Allow-Headers"] = allow_headers
             allow_method = request.headers.get("access-control-request-method")

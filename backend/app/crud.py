@@ -25,7 +25,8 @@ from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .core.transactions import flush_session, transactional_session
 from .services import audit_ui as audit_ui_service
 from .services import inventory_audit
-from .services import inventory_accounting, inventory_audit  # // [PACK30-31-BACKEND]
+# // [PACK30-31-BACKEND]
+from .services import inventory_accounting, inventory_audit
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
@@ -54,9 +55,12 @@ DEFAULT_SECURITY_MODULES: list[str] = [
     "actualizaciones",
 ]
 
-_RESTRICTED_DELETE_FOR_MANAGER = {"seguridad", "respaldos", "usuarios", "actualizaciones"}
-_RESTRICTED_EDIT_FOR_OPERATOR = {"seguridad", "respaldos", "usuarios", "actualizaciones", "auditoria"}
-_RESTRICTED_DELETE_FOR_OPERATOR = _RESTRICTED_EDIT_FOR_OPERATOR | {"reportes", "sincronizacion"}
+_RESTRICTED_DELETE_FOR_MANAGER = {"seguridad",
+                                  "respaldos", "usuarios", "actualizaciones"}
+_RESTRICTED_EDIT_FOR_OPERATOR = {
+    "seguridad", "respaldos", "usuarios", "actualizaciones", "auditoria"}
+_RESTRICTED_DELETE_FOR_OPERATOR = _RESTRICTED_EDIT_FOR_OPERATOR | {
+    "reportes", "sincronizacion"}
 
 ROLE_MODULE_PERMISSION_MATRIX: dict[str, dict[str, dict[str, bool]]] = {
     ADMIN: {
@@ -168,7 +172,8 @@ def _ensure_unique_identifier_payload(
             raise ValueError("device_identifier_conflict")
 
     if numero_serie:
-        statement = select(models.Device).where(models.Device.serial == numero_serie)
+        statement = select(models.Device).where(
+            models.Device.serial == numero_serie)
         if exclude_device_id:
             statement = statement.where(models.Device.id != exclude_device_id)
         if db.scalars(statement).first() is not None:
@@ -219,7 +224,8 @@ def _calculate_weighted_average_cost(
     if new_quantity <= Decimal("0"):
         return Decimal("0")
     existing_total = _to_decimal(current_cost) * existing_quantity
-    incoming_total = _to_decimal(incoming_cost) * _to_decimal(incoming_quantity)
+    incoming_total = _to_decimal(incoming_cost) * \
+        _to_decimal(incoming_quantity)
     return (existing_total + incoming_total) / new_quantity
 
 
@@ -231,7 +237,8 @@ def _normalize_date_range(
     if isinstance(date_from, datetime):
         start_dt = date_from
         if start_dt.time() == datetime.min.time():
-            start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_dt = start_dt.replace(
+                hour=0, minute=0, second=0, microsecond=0)
     elif isinstance(date_from, date):
         start_dt = datetime.combine(date_from, datetime.min.time())
     else:
@@ -240,7 +247,8 @@ def _normalize_date_range(
     if isinstance(date_to, datetime):
         end_dt = date_to
         if end_dt.time() == datetime.min.time():
-            end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+            end_dt = end_dt.replace(
+                hour=23, minute=59, second=59, microsecond=999999)
     elif isinstance(date_to, date):
         end_dt = datetime.combine(date_to, datetime.max.time())
     else:
@@ -252,7 +260,8 @@ def _normalize_date_range(
     return start_dt, end_dt
 
 
-_PERSISTENT_ALERTS_CACHE: TTLCache[list[dict[str, object]]] = TTLCache(ttl_seconds=60.0)
+_PERSISTENT_ALERTS_CACHE: TTLCache[list[dict[str, object]]] = TTLCache(
+    ttl_seconds=60.0)
 
 
 def _persistent_alerts_cache_key(
@@ -308,7 +317,8 @@ def _linear_regression(
     if denominator <= 0 or denominator_r <= 0:
         r_squared = 0.0
     else:
-        r_squared = ((n * sum_xy) - (sum_x * sum_y)) ** 2 / (denominator * denominator_r)
+        r_squared = ((n * sum_xy) - (sum_x * sum_y)) ** 2 / \
+            (denominator * denominator_r)
 
     return slope, intercept, r_squared
 
@@ -434,7 +444,8 @@ def _recalculate_sale_price(device: models.Device) -> None:
     base_cost = _to_decimal(device.costo_unitario)
     margin = _to_decimal(device.margen_porcentaje)
     sale_factor = Decimal("1") + (margin / Decimal("100"))
-    recalculated = (base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    recalculated = (
+        base_cost * sale_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     device.unit_price = recalculated
     device.precio_venta = recalculated
 
@@ -461,7 +472,8 @@ def log_audit_event(
             serialized_details = json.dumps(details, ensure_ascii=False)
         except TypeError:
             safe_details = {
-                key: value if isinstance(value, (str, int, float, bool, type(None))) else str(value)
+                key: value if isinstance(
+                    value, (str, int, float, bool, type(None))) else str(value)
                 for key, value in details.items()
             }
             serialized_details = json.dumps(safe_details, ensure_ascii=False)
@@ -469,7 +481,8 @@ def log_audit_event(
         serialized_details = details
     description_text: str | None = None
     if isinstance(serialized_details, str):
-        description_text, _ = audit_trail_utils.parse_audit_details(serialized_details)
+        description_text, _ = audit_trail_utils.parse_audit_details(
+            serialized_details)
     if description_text is None and isinstance(details, str):
         description_text = details
     if description_text is None:
@@ -589,7 +602,8 @@ def list_system_errors(
     if usuario:
         statement = statement.where(models.SystemError.usuario == usuario)
     if modulo:
-        statement = statement.where(models.SystemError.modulo == modulo.lower())
+        statement = statement.where(
+            models.SystemError.modulo == modulo.lower())
     if date_from:
         statement = statement.where(models.SystemError.fecha >= date_from)
     if date_to:
@@ -670,7 +684,8 @@ def build_global_report_overview(
     )
 
     if include_errors:
-        error_stmt = select(models.SystemError).order_by(models.SystemError.fecha.desc()).limit(10)
+        error_stmt = select(models.SystemError).order_by(
+            models.SystemError.fecha.desc()).limit(10)
         error_stmt = _apply_system_error_filters(
             error_stmt,
             module=module_filter,
@@ -746,7 +761,8 @@ def build_global_report_overview(
     )
     module_rows = db.execute(module_stmt).all()
     module_breakdown = [
-        schemas.GlobalReportBreakdownItem(name=row[0], total=int(row.total or 0))
+        schemas.GlobalReportBreakdownItem(
+            name=row[0], total=int(row.total or 0))
         for row in module_rows
     ]
 
@@ -766,7 +782,8 @@ def build_global_report_overview(
     severity_rows = db.execute(severity_stmt).all()
     severity_breakdown = [
         schemas.GlobalReportBreakdownItem(
-            name=(row[0].value if isinstance(row[0], models.SystemLogLevel) else str(row[0])),
+            name=(row[0].value if isinstance(
+                row[0], models.SystemLogLevel) else str(row[0])),
             total=int(row.total or 0),
         )
         for row in severity_rows
@@ -785,7 +802,8 @@ def build_global_report_overview(
     last_activity_candidates = [
         value for value in [latest_log_at, latest_error_at] if value is not None
     ]
-    last_activity_at = max(last_activity_candidates) if last_activity_candidates else None
+    last_activity_at = max(
+        last_activity_candidates) if last_activity_candidates else None
 
     sync_stats = get_sync_outbox_statistics(db)
     sync_pending = sum(
@@ -812,7 +830,8 @@ def build_global_report_overview(
         last_activity_at=last_activity_at,
     )
 
-    alerts_map: dict[tuple[str, str | None, str | None], schemas.GlobalReportAlert] = {}
+    alerts_map: dict[tuple[str, str | None, str | None],
+                     schemas.GlobalReportAlert] = {}
 
     for log in logs:
         if log.nivel not in (models.SystemLogLevel.ERROR, models.SystemLogLevel.CRITICAL):
@@ -855,7 +874,8 @@ def build_global_report_overview(
                 module=error.modulo,
                 message=error.mensaje,
                 occurred_at=error.fecha,
-                reference=str(error_reference) if error_reference is not None else None,
+                reference=str(
+                    error_reference) if error_reference is not None else None,
                 count=1,
             )
 
@@ -895,12 +915,15 @@ def build_global_report_overview(
 
     alerts = sorted(
         alerts_map.values(),
-        key=lambda alert: (_severity_weight(alert.level), alert.occurred_at or datetime.min),
+        key=lambda alert: (_severity_weight(alert.level),
+                           alert.occurred_at or datetime.min),
         reverse=True,
     )
 
-    recent_logs = [schemas.SystemLogEntry.model_validate(item) for item in logs]
-    recent_errors = [schemas.SystemErrorEntry.model_validate(item) for item in errors]
+    recent_logs = [schemas.SystemLogEntry.model_validate(
+        item) for item in logs]
+    recent_errors = [schemas.SystemErrorEntry.model_validate(
+        item) for item in errors]
 
     return schemas.GlobalReportOverview(
         generated_at=datetime.utcnow(),
@@ -973,7 +996,8 @@ def build_global_report_dashboard(
     if include_errors:
         error_date_expr = func.date(models.SystemError.fecha)
         error_stmt = (
-            select(error_date_expr.label("activity_date"), func.count(models.SystemError.id))
+            select(error_date_expr.label("activity_date"),
+                   func.count(models.SystemError.id))
             .group_by(error_date_expr)
             .order_by(error_date_expr)
         )
@@ -991,7 +1015,8 @@ def build_global_report_dashboard(
                 activity_date = raw_date
             entry = series_map.setdefault(
                 activity_date,
-                {"info": 0, "warning": 0, "error": 0, "critical": 0, "system_errors": 0},
+                {"info": 0, "warning": 0, "error": 0,
+                    "critical": 0, "system_errors": 0},
             )
             entry["system_errors"] = int(row[1] or 0)
 
@@ -1022,7 +1047,8 @@ def build_global_report_dashboard(
     )
     module_rows = db.execute(module_stmt).all()
     module_distribution = [
-        schemas.GlobalReportBreakdownItem(name=row[0], total=int(row.total or 0))
+        schemas.GlobalReportBreakdownItem(
+            name=row[0], total=int(row.total or 0))
         for row in module_rows
     ]
 
@@ -1042,7 +1068,8 @@ def build_global_report_dashboard(
     severity_rows = db.execute(severity_stmt).all()
     severity_distribution = [
         schemas.GlobalReportBreakdownItem(
-            name=(row[0].value if isinstance(row[0], models.SystemLogLevel) else str(row[0])),
+            name=(row[0].value if isinstance(
+                row[0], models.SystemLogLevel) else str(row[0])),
             total=int(row.total or 0),
         )
         for row in severity_rows
@@ -1094,7 +1121,8 @@ def _sales_returns_totals(
         select(
             func.coalesce(
                 func.sum(
-                    (models.SaleItem.total_line / func.nullif(models.SaleItem.quantity, 0))
+                    (models.SaleItem.total_line /
+                     func.nullif(models.SaleItem.quantity, 0))
                     * models.SaleReturn.quantity
                 ),
                 0,
@@ -1115,9 +1143,11 @@ def _sales_returns_totals(
     if store_id is not None:
         returns_stmt = returns_stmt.where(models.Sale.store_id == store_id)
     if date_from is not None:
-        returns_stmt = returns_stmt.where(models.SaleReturn.created_at >= date_from)
+        returns_stmt = returns_stmt.where(
+            models.SaleReturn.created_at >= date_from)
     if date_to is not None:
-        returns_stmt = returns_stmt.where(models.SaleReturn.created_at < date_to)
+        returns_stmt = returns_stmt.where(
+            models.SaleReturn.created_at < date_to)
     row = db.execute(returns_stmt).first()
     refund_total = _to_decimal(row.refund_total if row else Decimal("0"))
     return_count = int(row.return_count or 0) if row else 0
@@ -1137,7 +1167,8 @@ def build_sales_summary_report(
 ) -> schemas.SalesSummaryReport:
     sales_stmt = (
         select(
-            func.coalesce(func.sum(models.Sale.total_amount), 0).label("total_sales"),
+            func.coalesce(func.sum(models.Sale.total_amount),
+                          0).label("total_sales"),
             func.count(models.Sale.id).label("orders"),
         )
         .select_from(models.Sale)
@@ -1163,7 +1194,8 @@ def build_sales_summary_report(
         date_to=date_to,
         store_id=store_id,
     )
-    net_sales = (total_sales - refund_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    net_sales = (total_sales - refund_total).quantize(Decimal("0.01"),
+                                                      rounding=ROUND_HALF_UP)
     return schemas.SalesSummaryReport(
         total_sales=float(total_sales),
         total_orders=total_orders,
@@ -1187,8 +1219,10 @@ def build_sales_by_product_report(
             models.Device.id.label("device_id"),
             models.Device.sku,
             models.Device.name,
-            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("quantity"),
-            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("gross"),
+            func.coalesce(func.sum(models.SaleItem.quantity),
+                          0).label("quantity"),
+            func.coalesce(func.sum(models.SaleItem.total_line),
+                          0).label("gross"),
         )
         .select_from(models.SaleItem)
         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
@@ -1211,7 +1245,8 @@ def build_sales_by_product_report(
             models.SaleReturn.device_id,
             func.coalesce(
                 func.sum(
-                    (models.SaleItem.total_line / func.nullif(models.SaleItem.quantity, 0))
+                    (models.SaleItem.total_line /
+                     func.nullif(models.SaleItem.quantity, 0))
                     * models.SaleReturn.quantity
                 ),
                 0,
@@ -1232,9 +1267,11 @@ def build_sales_by_product_report(
     if store_id is not None:
         returns_stmt = returns_stmt.where(models.Sale.store_id == store_id)
     if date_from is not None:
-        returns_stmt = returns_stmt.where(models.SaleReturn.created_at >= date_from)
+        returns_stmt = returns_stmt.where(
+            models.SaleReturn.created_at >= date_from)
     if date_to is not None:
-        returns_stmt = returns_stmt.where(models.SaleReturn.created_at < date_to)
+        returns_stmt = returns_stmt.where(
+            models.SaleReturn.created_at < date_to)
     refund_rows = db.execute(returns_stmt).all()
     refunds_by_device = {
         row.device_id: _to_decimal(row.refund_total or Decimal("0")).quantize(
@@ -1273,20 +1310,23 @@ def build_cash_close_report(
     store_id: int | None = None,
 ) -> schemas.CashCloseReport:
     opening_stmt = select(
-        func.coalesce(func.sum(models.CashRegisterSession.opening_amount), 0).label("opening")
+        func.coalesce(
+            func.sum(models.CashRegisterSession.opening_amount), 0).label("opening")
     ).where(
         models.CashRegisterSession.opened_at >= date_from,
         models.CashRegisterSession.opened_at < date_to,
     )
     if store_id is not None:
-        opening_stmt = opening_stmt.where(models.CashRegisterSession.store_id == store_id)
+        opening_stmt = opening_stmt.where(
+            models.CashRegisterSession.store_id == store_id)
     opening_row = db.execute(opening_stmt).first()
     opening_total = _to_decimal(opening_row.opening if opening_row else Decimal("0")).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
     sales_stmt = (
-        select(func.coalesce(func.sum(models.Sale.total_amount), 0).label("total_sales"))
+        select(func.coalesce(
+            func.sum(models.Sale.total_amount), 0).label("total_sales"))
         .select_from(models.Sale)
     )
     sales_stmt = _apply_sales_base_filters(
@@ -1347,7 +1387,8 @@ def _recalculate_store_inventory_value(
         store_obj = get_store(db, int(store))
     flush_session(db)
     total_value = db.scalar(
-        select(func.coalesce(func.sum(models.Device.quantity * models.Device.unit_price), 0))
+        select(func.coalesce(
+            func.sum(models.Device.quantity * models.Device.unit_price), 0))
         .where(models.Device.store_id == store_obj.id)
     )
     normalized_total = _to_decimal(total_value).quantize(
@@ -1386,7 +1427,8 @@ def _customer_payload(customer: models.Customer) -> dict[str, object]:
 def _device_sync_payload(device: models.Device) -> dict[str, object]:
     """Construye el payload serializado de un dispositivo para sincronización."""
 
-    commercial_state = getattr(device.estado_comercial, "value", device.estado_comercial)
+    commercial_state = getattr(
+        device.estado_comercial, "value", device.estado_comercial)
     updated_at = getattr(device, "updated_at", None)
     store_name = device.store.name if getattr(device, "store", None) else None
     return {
@@ -1479,7 +1521,8 @@ def _hydrate_movement_references(
 ) -> None:
     """Asocia los metadatos de referencia a los movimientos recuperados."""
 
-    movement_ids = [movement.id for movement in movements if movement.id is not None]
+    movement_ids = [
+        movement.id for movement in movements if movement.id is not None]
     if not movement_ids:
         return
 
@@ -1504,8 +1547,10 @@ def _hydrate_movement_references(
         except json.JSONDecodeError:
             data = {}
         reference_map[log.entity_id] = (
-            str(data.get("reference_type")) if data.get("reference_type") else None,
-            str(data.get("reference_id")) if data.get("reference_id") else None,
+            str(data.get("reference_type")) if data.get(
+                "reference_type") else None,
+            str(data.get("reference_id")) if data.get(
+                "reference_id") else None,
         )
 
     for movement in movements:
@@ -1580,7 +1625,8 @@ def _history_to_json(
             parsed_timestamp = timestamp.isoformat()
         else:
             parsed_timestamp = datetime.utcnow().isoformat()
-        normalized.append({"timestamp": parsed_timestamp, "note": (note or "").strip()})
+        normalized.append({"timestamp": parsed_timestamp,
+                          "note": (note or "").strip()})
     return normalized
 
 
@@ -1607,7 +1653,8 @@ def _append_customer_history(customer: models.Customer, note: str) -> None:
     customer.last_interaction_at = datetime.utcnow()
 
 
-_ALLOWED_CUSTOMER_STATUSES = {"activo", "inactivo", "moroso", "vip", "bloqueado"}
+_ALLOWED_CUSTOMER_STATUSES = {
+    "activo", "inactivo", "moroso", "vip", "bloqueado"}
 _ALLOWED_CUSTOMER_TYPES = {"minorista", "mayorista", "corporativo"}
 
 
@@ -1626,7 +1673,8 @@ def _normalize_customer_type(value: str | None) -> str:
 
 
 def _ensure_non_negative_decimal(value: Decimal, error_code: str) -> Decimal:
-    normalized = _to_decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    normalized = _to_decimal(value).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP)
     if normalized < Decimal("0"):
         raise ValueError(error_code)
     return normalized
@@ -1696,7 +1744,8 @@ def _create_customer_ledger_entry(
         entry_type=entry_type,
         reference_type=reference_type,
         reference_id=reference_id,
-        amount=_to_decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        amount=_to_decimal(amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP),
         balance_after=_to_decimal(customer.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         ),
@@ -1715,7 +1764,8 @@ def get_last_audit_entries(
     entity_type: str,
     entity_ids: Iterable[int | str],
 ) -> dict[str, models.AuditLog]:
-    normalized_ids = [str(entity_id) for entity_id in entity_ids if str(entity_id)]
+    normalized_ids = [str(entity_id)
+                      for entity_id in entity_ids if str(entity_id)]
     if not normalized_ids:
         return {}
 
@@ -1805,7 +1855,8 @@ def _normalize_audit_ui_boundary(value: date | datetime | None, *, end: bool = F
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value
-    boundary = datetime.combine(value, datetime.max.time() if end else datetime.min.time())
+    boundary = datetime.combine(
+        value, datetime.max.time() if end else datetime.min.time())
     return boundary.replace(tzinfo=timezone.utc)
 
 
@@ -1841,7 +1892,8 @@ def list_audit_ui_entries(
     user_id: str | None = None,
     module: str | None = None,
 ) -> tuple[list[models.AuditUI], int]:
-    stmt = select(models.AuditUI).order_by(desc(models.AuditUI.ts)).limit(limit).offset(offset)
+    stmt = select(models.AuditUI).order_by(
+        desc(models.AuditUI.ts)).limit(limit).offset(offset)
     count_stmt = select(func.count()).select_from(models.AuditUI)
 
     normalized_from = _normalize_audit_ui_boundary(date_from)
@@ -1917,7 +1969,8 @@ def list_audit_logs(
     if entity_type:
         statement = statement.where(models.AuditLog.entity_type == entity_type)
     if performed_by_id is not None:
-        statement = statement.where(models.AuditLog.performed_by_id == performed_by_id)
+        statement = statement.where(
+            models.AuditLog.performed_by_id == performed_by_id)
     if date_from is not None or date_to is not None:
         start_dt, end_dt = _normalize_date_range(date_from, date_to)
         statement = statement.where(
@@ -1941,7 +1994,8 @@ def count_audit_logs(
     if entity_type:
         statement = statement.where(models.AuditLog.entity_type == entity_type)
     if performed_by_id is not None:
-        statement = statement.where(models.AuditLog.performed_by_id == performed_by_id)
+        statement = statement.where(
+            models.AuditLog.performed_by_id == performed_by_id)
     if date_from is not None or date_to is not None:
         start_dt, end_dt = _normalize_date_range(date_from, date_to)
         statement = statement.where(
@@ -2047,7 +2101,8 @@ def export_audit_logs_csv(
         if acknowledgement and acknowledgement.acknowledged_at >= log.created_at:
             display_name = _user_display_name(acknowledgement.acknowledged_by)
             status = "Atendida"
-            acknowledgement_text = acknowledgement.acknowledged_at.strftime("%Y-%m-%dT%H:%M:%S")
+            acknowledgement_text = acknowledgement.acknowledged_at.strftime(
+                "%Y-%m-%dT%H:%M:%S")
             if display_name:
                 acknowledgement_text += f" · {display_name}"
             acknowledgement_note = acknowledgement.note or ""
@@ -2093,7 +2148,8 @@ def acknowledge_audit_alert(
     recent_logs = list(db.scalars(recent_logs_stmt))
     last_critical: models.AuditLog | None = None
     for item in recent_logs:
-        severity = audit_utils.classify_severity(item.action or "", item.details)
+        severity = audit_utils.classify_severity(
+            item.action or "", item.details)
         if severity == "critical":
             last_critical = item
             break
@@ -2194,7 +2250,7 @@ def get_persistent_audit_alerts(
     )
     cached = _PERSISTENT_ALERTS_CACHE.get(cache_key)
     if cached is not None:
-        return copy.deepcopy(cached)[offset : offset + limit]
+        return copy.deepcopy(cached)[offset: offset + limit]
 
     now = datetime.utcnow()
     lookback_start = now - timedelta(hours=lookback_hours)
@@ -2214,8 +2270,10 @@ def get_persistent_audit_alerts(
         reference_time=now,
     )
 
-    keys = {(alert["entity_type"], alert["entity_id"]) for alert in persistent_alerts}
-    acknowledgements: dict[tuple[str, str], models.AuditAlertAcknowledgement] = {}
+    keys = {(alert["entity_type"], alert["entity_id"])
+            for alert in persistent_alerts}
+    acknowledgements: dict[tuple[str, str],
+                           models.AuditAlertAcknowledgement] = {}
     if keys:
         ack_stmt = (
             select(models.AuditAlertAcknowledgement)
@@ -2269,7 +2327,7 @@ def get_persistent_audit_alerts(
         )
 
     _PERSISTENT_ALERTS_CACHE.set(cache_key, copy.deepcopy(enriched))
-    return enriched[offset : offset + limit]
+    return enriched[offset: offset + limit]
 
 
 def ensure_role_permissions(db: Session, role_name: str) -> None:
@@ -2285,7 +2343,8 @@ def ensure_role_permissions(db: Session, role_name: str) -> None:
             )
             permission = db.scalars(statement).first()
             if permission is None:
-                permission = models.Permission(role_name=role_name, module=module)
+                permission = models.Permission(
+                    role_name=role_name, module=module)
                 permission.can_view = bool(flags.get("can_view", False))
                 permission.can_edit = bool(flags.get("can_edit", False))
                 permission.can_delete = bool(flags.get("can_delete", False))
@@ -2296,7 +2355,8 @@ def ensure_role_permissions(db: Session, role_name: str) -> None:
                 if permission.can_edit is None:
                     permission.can_edit = bool(flags.get("can_edit", False))
                 if permission.can_delete is None:
-                    permission.can_delete = bool(flags.get("can_delete", False))
+                    permission.can_delete = bool(
+                        flags.get("can_delete", False))
         flush_session(db)
 
 
@@ -2624,7 +2684,8 @@ def set_user_status(
 
 
 def get_role(db: Session, name: str) -> models.Role:
-    statement = select(models.Role).where(func.upper(models.Role.name) == name.strip().upper())
+    statement = select(models.Role).where(
+        func.upper(models.Role.name) == name.strip().upper())
     role = db.scalars(statement).first()
     if role is None:
         raise LookupError("role_not_found")
@@ -2645,14 +2706,16 @@ def update_user(
 
     if "full_name" in updates:
         raw_name = updates.get("full_name")
-        normalized_name = raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else None
+        normalized_name = raw_name.strip() if isinstance(
+            raw_name, str) and raw_name.strip() else None
         if user.full_name != normalized_name:
             user.full_name = normalized_name
             changes["full_name"] = normalized_name
 
     if "telefono" in updates:
         raw_phone = updates.get("telefono")
-        normalized_phone = raw_phone.strip() if isinstance(raw_phone, str) and raw_phone.strip() else None
+        normalized_phone = raw_phone.strip() if isinstance(
+            raw_phone, str) and raw_phone.strip() else None
         if user.telefono != normalized_phone:
             user.telefono = normalized_phone
             changes["telefono"] = normalized_phone
@@ -2723,7 +2786,8 @@ def list_role_permissions(
         role = get_role(db, role_name)
         role_names = [role.name]
     else:
-        role_names = [role.name for role in list_roles(db, limit=limit, offset=offset)]
+        role_names = [role.name for role in list_roles(
+            db, limit=limit, offset=offset)]
 
     if not role_names:
         return []
@@ -2741,7 +2805,8 @@ def list_role_permissions(
         )
         records = list(db.scalars(statement))
 
-    grouped: dict[str, list[schemas.RoleModulePermission]] = {name: [] for name in role_names}
+    grouped: dict[str, list[schemas.RoleModulePermission]] = {
+        name: [] for name in role_names}
     for permission in records:
         grouped.setdefault(permission.role_name, []).append(
             schemas.RoleModulePermission(
@@ -2754,8 +2819,10 @@ def list_role_permissions(
 
     matrices: list[schemas.RolePermissionMatrix] = []
     for name in role_names:
-        permissions = sorted(grouped.get(name, []), key=lambda item: item.module)
-        matrices.append(schemas.RolePermissionMatrix(role=name, permissions=permissions))
+        permissions = sorted(grouped.get(name, []),
+                             key=lambda item: item.module)
+        matrices.append(schemas.RolePermissionMatrix(
+            role=name, permissions=permissions))
     return matrices
 
 
@@ -2782,7 +2849,8 @@ def update_role_permissions(
             )
             permission = db.scalars(statement).first()
             if permission is None:
-                permission = models.Permission(role_name=role.name, module=module_key)
+                permission = models.Permission(
+                    role_name=role.name, module=module_key)
                 db.add(permission)
             permission.can_view = bool(entry.can_view)
             permission.can_edit = bool(entry.can_edit)
@@ -2842,7 +2910,8 @@ def build_user_directory(
         offset=0,
     )
 
-    user_ids = [user.id for user in users if getattr(user, "id", None) is not None]
+    user_ids = [user.id for user in users if getattr(
+        user, "id", None) is not None]
     audit_logs = get_last_audit_entries(
         db,
         entity_type="user",
@@ -2911,7 +2980,8 @@ def get_user_dashboard_metrics(
         .options(joinedload(models.AuditLog.performed_by))
         .where(
             or_(
-                models.AuditLog.entity_type.in_(["user", "usuarios", "security"]),
+                models.AuditLog.entity_type.in_(
+                    ["user", "usuarios", "security"]),
                 models.AuditLog.action.ilike("auth_%"),
                 models.AuditLog.action.ilike("user_%"),
             )
@@ -2961,7 +3031,8 @@ def get_user_dashboard_metrics(
                 id=log.id,
                 action=log.action,
                 created_at=log.created_at,
-                severity=audit_utils.classify_severity(log.action or "", log.details),
+                severity=audit_utils.classify_severity(
+                    log.action or "", log.details),
                 performed_by_id=log.performed_by_id,
                 performed_by_name=_user_display_name(log.performed_by),
                 target_user_id=target_user_id,
@@ -2982,7 +3053,8 @@ def get_user_dashboard_metrics(
             schemas.UserSessionSummary(
                 session_id=session.id,
                 user_id=session.user_id,
-                username=_user_display_name(session.user) or f"Usuario {session.user_id}",
+                username=_user_display_name(
+                    session.user) or f"Usuario {session.user_id}",
                 created_at=session.created_at,
                 last_used_at=session.last_used_at,
                 expires_at=session.expires_at,
@@ -3018,16 +3090,22 @@ def get_user_dashboard_metrics(
     summary = audit_utils.summarize_alerts(alert_logs, max_highlights=5)
 
     highlights: list[schemas.AuditHighlight] = []
-    acknowledged_entities: dict[tuple[str, str], schemas.AuditAcknowledgedEntity] = {}
+    acknowledged_entities: dict[tuple[str, str],
+                                schemas.AuditAcknowledgedEntity] = {}
     for highlight in summary.highlights:
         key = (highlight["entity_type"], highlight["entity_id"])
         alert_data = persistent_map.get(key)
-        raw_status = str(alert_data.get("status", "pending")) if alert_data else "pending"
+        raw_status = str(alert_data.get("status", "pending")
+                         ) if alert_data else "pending"
         status = "acknowledged" if raw_status.lower() == "acknowledged" else "pending"
-        acknowledged_at = alert_data.get("acknowledged_at") if alert_data else None
-        acknowledged_by_id = alert_data.get("acknowledged_by_id") if alert_data else None
-        acknowledged_by_name = alert_data.get("acknowledged_by_name") if alert_data else None
-        acknowledged_note = alert_data.get("acknowledged_note") if alert_data else None
+        acknowledged_at = alert_data.get(
+            "acknowledged_at") if alert_data else None
+        acknowledged_by_id = alert_data.get(
+            "acknowledged_by_id") if alert_data else None
+        acknowledged_by_name = alert_data.get(
+            "acknowledged_by_name") if alert_data else None
+        acknowledged_note = alert_data.get(
+            "acknowledged_note") if alert_data else None
 
         if status == "acknowledged" and acknowledged_at is not None:
             acknowledged_entities[key] = schemas.AuditAcknowledgedEntity(
@@ -3055,7 +3133,8 @@ def get_user_dashboard_metrics(
             )
         )
 
-    pending_count = len([item for item in highlights if item.status != "acknowledged"])
+    pending_count = len(
+        [item for item in highlights if item.status != "acknowledged"])
     acknowledged_list = list(acknowledged_entities.values())
 
     audit_alerts = schemas.DashboardAuditAlerts(
@@ -3077,8 +3156,10 @@ def get_user_dashboard_metrics(
         audit_alerts=audit_alerts,
     )
 
+
 def get_totp_secret(db: Session, user_id: int) -> models.UserTOTPSecret | None:
-    statement = select(models.UserTOTPSecret).where(models.UserTOTPSecret.user_id == user_id)
+    statement = select(models.UserTOTPSecret).where(
+        models.UserTOTPSecret.user_id == user_id)
     return db.scalars(statement).first()
 
 
@@ -3090,11 +3171,13 @@ def provision_totp_secret(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.UserTOTPSecret:
-    details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
+    details = json.dumps({"reason": reason},
+                         ensure_ascii=False) if reason else None
     with transactional_session(db):
         record = get_totp_secret(db, user_id)
         if record is None:
-            record = models.UserTOTPSecret(user_id=user_id, secret=secret, is_active=False)
+            record = models.UserTOTPSecret(
+                user_id=user_id, secret=secret, is_active=False)
             db.add(record)
         else:
             record.secret = secret
@@ -3121,7 +3204,8 @@ def activate_totp_secret(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.UserTOTPSecret:
-    details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
+    details = json.dumps({"reason": reason},
+                         ensure_ascii=False) if reason else None
     with transactional_session(db):
         record = get_totp_secret(db, user_id)
         if record is None:
@@ -3150,7 +3234,8 @@ def deactivate_totp_secret(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> None:
-    details = json.dumps({"reason": reason}, ensure_ascii=False) if reason else None
+    details = json.dumps({"reason": reason},
+                         ensure_ascii=False) if reason else None
     with transactional_session(db):
         record = get_totp_secret(db, user_id)
         if record is None:
@@ -3195,7 +3280,8 @@ def register_failed_login(
         user.failed_login_attempts += 1
         user.last_login_attempt_at = now
         if user.failed_login_attempts >= settings.max_failed_login_attempts:
-            locked_until = now + timedelta(minutes=settings.account_lock_minutes)
+            locked_until = now + \
+                timedelta(minutes=settings.account_lock_minutes)
             user.locked_until = locked_until
         details_payload: dict[str, object] = {
             "attempts": user.failed_login_attempts,
@@ -3408,7 +3494,8 @@ def revoke_session(
     revoked_by_id: int | None,
     reason: str,
 ) -> models.ActiveSession:
-    statement = select(models.ActiveSession).where(models.ActiveSession.id == session_id)
+    statement = select(models.ActiveSession).where(
+        models.ActiveSession.id == session_id)
     session = db.scalars(statement).first()
     if session is None:
         raise LookupError("session_not_found")
@@ -3593,10 +3680,12 @@ def list_customers(
     )
     if status:
         normalized_status = _normalize_customer_status(status)
-        statement = statement.where(models.Customer.status == normalized_status)
+        statement = statement.where(
+            models.Customer.status == normalized_status)
     if customer_type:
         normalized_type = _normalize_customer_type(customer_type)
-        statement = statement.where(models.Customer.customer_type == normalized_type)
+        statement = statement.where(
+            models.Customer.customer_type == normalized_type)
     if query:
         normalized = f"%{query.lower()}%"
         statement = statement.where(
@@ -3607,11 +3696,13 @@ def list_customers(
                 func.lower(models.Customer.phone).like(normalized),
                 func.lower(models.Customer.customer_type).like(normalized),
                 func.lower(models.Customer.status).like(normalized),
-                func.lower(func.coalesce(models.Customer.notes, "")).like(normalized),
+                func.lower(func.coalesce(models.Customer.notes, "")
+                           ).like(normalized),
             )
         )
     if status:
-        statement = statement.where(func.lower(models.Customer.status) == status.lower())
+        statement = statement.where(func.lower(
+            models.Customer.status) == status.lower())
     if customer_type:
         statement = statement.where(
             func.lower(models.Customer.customer_type) == customer_type.lower()
@@ -3624,7 +3715,8 @@ def list_customers(
 
 
 def get_customer(db: Session, customer_id: int) -> models.Customer:
-    statement = select(models.Customer).where(models.Customer.id == customer_id)
+    statement = select(models.Customer).where(
+        models.Customer.id == customer_id)
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:
@@ -3774,7 +3866,8 @@ def update_customer(
             customer.history = history
             customer.last_interaction_at = _last_history_timestamp(history)
             updated_fields["history"] = history
-        _ensure_debt_respects_limit(customer.credit_limit, customer.outstanding_debt)
+        _ensure_debt_respects_limit(
+            customer.credit_limit, customer.outstanding_debt)
         if pending_history_note:
             _append_customer_history(customer, pending_history_note)
             updated_fields.setdefault("history_note", pending_history_note)
@@ -3978,10 +4071,13 @@ def register_customer_payment(
     )
     db.add(customer)
 
+    # Mantener valores numéricos en detalles para facilitar cálculos en respuestas API.
+    # Esto permite que los consumidores de la API realicen operaciones aritméticas directamente,
+    # evitando la necesidad de convertir cadenas de texto formateadas como moneda a números.
     payment_details: dict[str, object] = {
         "method": payload.method,
-        "requested_amount": _format_currency(amount),
-        "applied_amount": _format_currency(applied_amount),
+        "requested_amount": float(amount),
+        "applied_amount": float(applied_amount),
     }
     if payload.reference:
         payment_details["reference"] = payload.reference
@@ -4082,7 +4178,8 @@ def list_payment_center_transactions(
         stmt = stmt.where(
             or_(
                 func.lower(models.Customer.name).like(search),
-                func.lower(models.CustomerLedgerEntry.reference_id).like(search),
+                func.lower(models.CustomerLedgerEntry.reference_id).like(
+                    search),
             )
         )
 
@@ -4155,16 +4252,19 @@ def get_payment_center_summary(
 ) -> schemas.PaymentCenterSummary:
     reference = reference or datetime.utcnow()
     tzinfo = reference.tzinfo
-    today_start = datetime(reference.year, reference.month, reference.day, tzinfo=tzinfo)
+    today_start = datetime(reference.year, reference.month,
+                           reference.day, tzinfo=tzinfo)
     tomorrow_start = today_start + timedelta(days=1)
     month_start = datetime(reference.year, reference.month, 1, tzinfo=tzinfo)
     if reference.month == 12:
         next_month_start = datetime(reference.year + 1, 1, 1, tzinfo=tzinfo)
     else:
-        next_month_start = datetime(reference.year, reference.month + 1, 1, tzinfo=tzinfo)
+        next_month_start = datetime(
+            reference.year, reference.month + 1, 1, tzinfo=tzinfo)
 
     payments_today_stmt = select(
-        func.coalesce(-func.sum(models.CustomerLedgerEntry.amount), Decimal("0"))
+        func.coalesce(-func.sum(models.CustomerLedgerEntry.amount),
+                      Decimal("0"))
     ).where(
         models.CustomerLedgerEntry.entry_type
         == models.CustomerLedgerEntryType.PAYMENT,
@@ -4173,7 +4273,8 @@ def get_payment_center_summary(
     )
 
     payments_month_stmt = select(
-        func.coalesce(-func.sum(models.CustomerLedgerEntry.amount), Decimal("0"))
+        func.coalesce(-func.sum(models.CustomerLedgerEntry.amount),
+                      Decimal("0"))
     ).where(
         models.CustomerLedgerEntry.entry_type
         == models.CustomerLedgerEntryType.PAYMENT,
@@ -4214,7 +4315,8 @@ def get_payment_center_summary(
         event_name = str(details_payload.get("event", "")).strip()
         if event_name in {"sale_return", "manual_refund"}:
             refunds_month_total += -_to_decimal(amount_value)
-    refunds_month_total = refunds_month_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    refunds_month_total = refunds_month_total.quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP)
     pending_balance = db.scalar(pending_balance_stmt) or Decimal("0")
 
     return schemas.PaymentCenterSummary(
@@ -4274,7 +4376,8 @@ def register_payment_center_refund(
             amount=-amount,
             note=normalized_note,
             reference_type="sale" if payload.sale_id is not None else "refund",
-            reference_id=str(payload.sale_id) if payload.sale_id is not None else None,
+            reference_id=str(
+                payload.sale_id) if payload.sale_id is not None else None,
             details=details,
             created_by_id=performed_by_id,
         )
@@ -4360,7 +4463,8 @@ def register_payment_center_credit_note(
             amount=-amount,
             note=note,
             reference_type="sale" if payload.sale_id is not None else "credit_note",
-            reference_id=str(payload.sale_id) if payload.sale_id is not None else None,
+            reference_id=str(
+                payload.sale_id) if payload.sale_id is not None else None,
             details=details,
             created_by_id=performed_by_id,
         )
@@ -4422,8 +4526,10 @@ def get_customer_summary(
     store_ids = {sale.store_id for sale in sales}
     configs: dict[int, models.POSConfig] = {}
     if store_ids:
-        config_stmt = select(models.POSConfig).where(models.POSConfig.store_id.in_(store_ids))
-        configs = {config.store_id: config for config in db.scalars(config_stmt)}
+        config_stmt = select(models.POSConfig).where(
+            models.POSConfig.store_id.in_(store_ids))
+        configs = {
+            config.store_id: config for config in db.scalars(config_stmt)}
 
     sales_summary = [
         schemas.CustomerSaleSummary(
@@ -4510,9 +4616,11 @@ def _customer_sales_stats_subquery(
         )
     )
     if date_from is not None:
-        statement = statement.where(func.date(models.Sale.created_at) >= date_from)
+        statement = statement.where(
+            func.date(models.Sale.created_at) >= date_from)
     if date_to is not None:
-        statement = statement.where(func.date(models.Sale.created_at) <= date_to)
+        statement = statement.where(
+            func.date(models.Sale.created_at) <= date_to)
     return statement.group_by(models.Sale.customer_id).subquery()
 
 
@@ -4525,7 +4633,8 @@ def build_customer_portfolio(
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> schemas.CustomerPortfolioReport:
-    sales_stats = _customer_sales_stats_subquery(date_from=date_from, date_to=date_to)
+    sales_stats = _customer_sales_stats_subquery(
+        date_from=date_from, date_to=date_to)
     base_statement = select(
         models.Customer,
         sales_stats.c.sales_count,
@@ -4535,7 +4644,8 @@ def build_customer_portfolio(
 
     if category == "frequent":
         statement = (
-            base_statement.join(sales_stats, sales_stats.c.customer_id == models.Customer.id)
+            base_statement.join(
+                sales_stats, sales_stats.c.customer_id == models.Customer.id)
             .order_by(desc(sales_stats.c.sales_total), models.Customer.name.asc())
             .offset(offset)
             .limit(limit)
@@ -4630,7 +4740,8 @@ def get_customer_dashboard_metrics(
         if current_month.month == 1:
             current_month = date(current_month.year - 1, 12, 1)
         else:
-            current_month = date(current_month.year, current_month.month - 1, 1)
+            current_month = date(current_month.year,
+                                 current_month.month - 1, 1)
     months_sequence.reverse()
     cutoff_month = months_sequence[0]
     cutoff_datetime = datetime.combine(cutoff_month, datetime.min.time())
@@ -4696,7 +4807,8 @@ def get_customer_dashboard_metrics(
     delinquent_summary = schemas.CustomerDelinquentSummary(
         customers_with_debt=int(delinquent_row.customers_with_debt or 0),
         moroso_flagged=int(delinquent_row.moroso_flagged or 0),
-        total_outstanding_debt=float(delinquent_row.total_outstanding_debt or 0),
+        total_outstanding_debt=float(
+            delinquent_row.total_outstanding_debt or 0),
     )
 
     return schemas.CustomerDashboardMetrics(
@@ -4734,7 +4846,8 @@ def list_suppliers(
 
 
 def get_supplier(db: Session, supplier_id: int) -> models.Supplier:
-    statement = select(models.Supplier).where(models.Supplier.id == supplier_id)
+    statement = select(models.Supplier).where(
+        models.Supplier.id == supplier_id)
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:
@@ -4868,8 +4981,10 @@ def list_purchase_vendors(
     statement = (
         select(
             models.Proveedor,
-            func.coalesce(func.sum(models.Compra.total), 0).label("total_compras"),
-            func.coalesce(func.sum(models.Compra.impuesto), 0).label("total_impuesto"),
+            func.coalesce(func.sum(models.Compra.total),
+                          0).label("total_compras"),
+            func.coalesce(func.sum(models.Compra.impuesto),
+                          0).label("total_impuesto"),
             func.count(models.Compra.id_compra).label("compras_registradas"),
             func.max(models.Compra.fecha).label("ultima_compra"),
         )
@@ -4881,9 +4996,11 @@ def list_purchase_vendors(
         statement = statement.where(models.Proveedor.id_proveedor == vendor_id)
     if query:
         normalized = f"%{query.lower()}%"
-        statement = statement.where(func.lower(models.Proveedor.nombre).like(normalized))
+        statement = statement.where(func.lower(
+            models.Proveedor.nombre).like(normalized))
     if estado:
-        statement = statement.where(func.lower(models.Proveedor.estado) == estado.lower())
+        statement = statement.where(func.lower(
+            models.Proveedor.estado) == estado.lower())
     if offset:
         statement = statement.offset(offset)
     if limit is not None:
@@ -4923,9 +5040,11 @@ def count_purchase_vendors(
         statement = statement.where(models.Proveedor.id_proveedor == vendor_id)
     if query:
         normalized = f"%{query.lower()}%"
-        statement = statement.where(func.lower(models.Proveedor.nombre).like(normalized))
+        statement = statement.where(func.lower(
+            models.Proveedor.nombre).like(normalized))
     if estado:
-        statement = statement.where(func.lower(models.Proveedor.estado) == estado.lower())
+        statement = statement.where(func.lower(
+            models.Proveedor.estado) == estado.lower())
     return int(db.scalar(statement) or 0)
 
 
@@ -4957,7 +5076,8 @@ def create_purchase_vendor(
             entity_type="purchase_vendor",
             entity_id=str(vendor.id_proveedor),
             performed_by_id=performed_by_id,
-            details=json.dumps({"nombre": vendor.nombre, "estado": vendor.estado}),
+            details=json.dumps(
+                {"nombre": vendor.nombre, "estado": vendor.estado}),
         )
         flush_session(db)
         db.refresh(vendor)
@@ -5241,7 +5361,8 @@ def create_supplier_batch(
             device_id=device.id if device else None,
             model_name=payload.model_name or (device.name if device else ""),
             batch_code=payload.batch_code,
-            unit_cost=_to_decimal(payload.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            unit_cost=_to_decimal(payload.unit_cost).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP),
             quantity=payload.quantity,
             purchase_date=payload.purchase_date,
             notes=payload.notes,
@@ -5271,7 +5392,8 @@ def create_supplier_batch(
             entity_type="supplier_batch",
             entity_id=str(batch.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"supplier_id": supplier.id, "batch_code": batch.batch_code}),
+            details=json.dumps({"supplier_id": supplier.id,
+                               "batch_code": batch.batch_code}),
         )
         flush_session(db)
         db.refresh(batch)
@@ -5285,7 +5407,8 @@ def update_supplier_batch(
     *,
     performed_by_id: int | None = None,
 ) -> models.SupplierBatch:
-    statement = select(models.SupplierBatch).where(models.SupplierBatch.id == batch_id)
+    statement = select(models.SupplierBatch).where(
+        models.SupplierBatch.id == batch_id)
     batch = db.scalars(statement).first()
     if batch is None:
         raise LookupError("supplier_batch_not_found")
@@ -5300,7 +5423,8 @@ def update_supplier_batch(
             batch.batch_code = payload.batch_code
             updated_fields["batch_code"] = payload.batch_code
         if payload.unit_cost is not None:
-            batch.unit_cost = _to_decimal(payload.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            batch.unit_cost = _to_decimal(payload.unit_cost).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP)
             updated_fields["unit_cost"] = float(batch.unit_cost)
         if payload.quantity is not None:
             batch.quantity = payload.quantity
@@ -5352,7 +5476,8 @@ def delete_supplier_batch(
     *,
     performed_by_id: int | None = None,
 ) -> None:
-    statement = select(models.SupplierBatch).where(models.SupplierBatch.id == batch_id)
+    statement = select(models.SupplierBatch).where(
+        models.SupplierBatch.id == batch_id)
     batch = db.scalars(statement).first()
     if batch is None:
         raise LookupError("supplier_batch_not_found")
@@ -5477,7 +5602,8 @@ def create_device(
     if payload_data.get("estado") is None:
         payload_data["estado"] = "disponible"
     if payload_data.get("fecha_ingreso") is None:
-        payload_data["fecha_ingreso"] = payload_data.get("fecha_compra") or date.today()
+        payload_data["fecha_ingreso"] = payload_data.get(
+            "fecha_compra") or date.today()
     with transactional_session(db):
         device = models.Device(store_id=store_id, **payload_data)
         if unit_price is None:
@@ -5558,8 +5684,10 @@ def resolve_device_for_pos(
             .where(models.Device.store_id == store_id)
             .where(
                 or_(
-                    func.lower(models.DeviceIdentifier.imei_1) == normalized.lower(),
-                    func.lower(models.DeviceIdentifier.imei_2) == normalized.lower(),
+                    func.lower(
+                        models.DeviceIdentifier.imei_1) == normalized.lower(),
+                    func.lower(
+                        models.DeviceIdentifier.imei_2) == normalized.lower(),
                 )
             )
         )
@@ -5654,7 +5782,8 @@ def update_device(
                 "proveedor": device.proveedor,
             }
             sensitive_changes = {
-                key: {"before": str(sensitive_before[key]), "after": str(value)}
+                key: {"before": str(
+                    sensitive_before[key]), "after": str(value)}
                 for key, value in sensitive_after.items()
                 if sensitive_before.get(key) != value
             }
@@ -5664,7 +5793,8 @@ def update_device(
                 entity_type="device",
                 entity_id=str(device.id),
                 performed_by_id=performed_by_id,
-                details=json.dumps({"fields": fields_changed, "sensitive": sensitive_changes}),
+                details=json.dumps(
+                    {"fields": fields_changed, "sensitive": sensitive_changes}),
             )
             flush_session(db)
             db.refresh(device)
@@ -5778,19 +5908,26 @@ def list_devices(
     if estado is not None:
         statement = statement.where(models.Device.estado_comercial == estado)
     if categoria:
-        statement = statement.where(models.Device.categoria.ilike(f"%{categoria}%"))
-    if condicion:
-        statement = statement.where(models.Device.condicion.ilike(f"%{condicion}%"))
-    if estado_inventario:
-        statement = statement.where(models.Device.estado.ilike(f"%{estado_inventario}%"))
-    if ubicacion:
-        statement = statement.where(models.Device.ubicacion.ilike(f"%{ubicacion}%"))
-    if proveedor:
-        statement = statement.where(models.Device.proveedor.ilike(f"%{proveedor}%"))
-    if fecha_ingreso_desde or fecha_ingreso_hasta:
-        start, end = _normalize_date_range(fecha_ingreso_desde, fecha_ingreso_hasta)
         statement = statement.where(
-            models.Device.fecha_ingreso >= start.date(), models.Device.fecha_ingreso <= end.date()
+            models.Device.categoria.ilike(f"%{categoria}%"))
+    if condicion:
+        statement = statement.where(
+            models.Device.condicion.ilike(f"%{condicion}%"))
+    if estado_inventario:
+        statement = statement.where(
+            models.Device.estado.ilike(f"%{estado_inventario}%"))
+    if ubicacion:
+        statement = statement.where(
+            models.Device.ubicacion.ilike(f"%{ubicacion}%"))
+    if proveedor:
+        statement = statement.where(
+            models.Device.proveedor.ilike(f"%{proveedor}%"))
+    if fecha_ingreso_desde or fecha_ingreso_hasta:
+        start, end = _normalize_date_range(
+            fecha_ingreso_desde, fecha_ingreso_hasta)
+        statement = statement.where(
+            models.Device.fecha_ingreso >= start.date(
+            ), models.Device.fecha_ingreso <= end.date()
         )
     if search:
         normalized = f"%{search.lower()}%"
@@ -5840,19 +5977,26 @@ def count_store_devices(
     if estado is not None:
         statement = statement.where(models.Device.estado_comercial == estado)
     if categoria:
-        statement = statement.where(models.Device.categoria.ilike(f"%{categoria}%"))
-    if condicion:
-        statement = statement.where(models.Device.condicion.ilike(f"%{condicion}%"))
-    if estado_inventario:
-        statement = statement.where(models.Device.estado.ilike(f"%{estado_inventario}%"))
-    if ubicacion:
-        statement = statement.where(models.Device.ubicacion.ilike(f"%{ubicacion}%"))
-    if proveedor:
-        statement = statement.where(models.Device.proveedor.ilike(f"%{proveedor}%"))
-    if fecha_ingreso_desde or fecha_ingreso_hasta:
-        start, end = _normalize_date_range(fecha_ingreso_desde, fecha_ingreso_hasta)
         statement = statement.where(
-            models.Device.fecha_ingreso >= start.date(), models.Device.fecha_ingreso <= end.date()
+            models.Device.categoria.ilike(f"%{categoria}%"))
+    if condicion:
+        statement = statement.where(
+            models.Device.condicion.ilike(f"%{condicion}%"))
+    if estado_inventario:
+        statement = statement.where(
+            models.Device.estado.ilike(f"%{estado_inventario}%"))
+    if ubicacion:
+        statement = statement.where(
+            models.Device.ubicacion.ilike(f"%{ubicacion}%"))
+    if proveedor:
+        statement = statement.where(
+            models.Device.proveedor.ilike(f"%{proveedor}%"))
+    if fecha_ingreso_desde or fecha_ingreso_hasta:
+        start, end = _normalize_date_range(
+            fecha_ingreso_desde, fecha_ingreso_hasta)
+        statement = statement.where(
+            models.Device.fecha_ingreso >= start.date(
+            ), models.Device.fecha_ingreso <= end.date()
         )
     if search:
         normalized = f"%{search.lower()}%"
@@ -5885,23 +6029,32 @@ def _apply_device_search_filters(
     if filters.serial:
         statement = statement.where(models.Device.serial == filters.serial)
     if filters.capacidad_gb is not None:
-        statement = statement.where(models.Device.capacidad_gb == filters.capacidad_gb)
+        statement = statement.where(
+            models.Device.capacidad_gb == filters.capacidad_gb)
     if filters.color:
-        statement = statement.where(models.Device.color.ilike(f"%{filters.color}%"))
+        statement = statement.where(
+            models.Device.color.ilike(f"%{filters.color}%"))
     if filters.marca:
-        statement = statement.where(models.Device.marca.ilike(f"%{filters.marca}%"))
+        statement = statement.where(
+            models.Device.marca.ilike(f"%{filters.marca}%"))
     if filters.modelo:
-        statement = statement.where(models.Device.modelo.ilike(f"%{filters.modelo}%"))
+        statement = statement.where(
+            models.Device.modelo.ilike(f"%{filters.modelo}%"))
     if filters.categoria:
-        statement = statement.where(models.Device.categoria.ilike(f"%{filters.categoria}%"))
+        statement = statement.where(
+            models.Device.categoria.ilike(f"%{filters.categoria}%"))
     if filters.condicion:
-        statement = statement.where(models.Device.condicion.ilike(f"%{filters.condicion}%"))
+        statement = statement.where(
+            models.Device.condicion.ilike(f"%{filters.condicion}%"))
     if filters.estado:
-        statement = statement.where(models.Device.estado.ilike(f"%{filters.estado}%"))
+        statement = statement.where(
+            models.Device.estado.ilike(f"%{filters.estado}%"))
     if filters.ubicacion:
-        statement = statement.where(models.Device.ubicacion.ilike(f"%{filters.ubicacion}%"))
+        statement = statement.where(
+            models.Device.ubicacion.ilike(f"%{filters.ubicacion}%"))
     if filters.proveedor:
-        statement = statement.where(models.Device.proveedor.ilike(f"%{filters.proveedor}%"))
+        statement = statement.where(
+            models.Device.proveedor.ilike(f"%{filters.proveedor}%"))
     if filters.fecha_ingreso_desde or filters.fecha_ingreso_hasta:
         start, end = _normalize_date_range(
             filters.fecha_ingreso_desde, filters.fecha_ingreso_hasta
@@ -5929,7 +6082,8 @@ def search_devices(
         .join(models.Store)
     )
     statement = _apply_device_search_filters(statement, filters)
-    statement = statement.order_by(models.Device.store_id.asc(), models.Device.sku.asc())
+    statement = statement.order_by(
+        models.Device.store_id.asc(), models.Device.sku.asc())
     if offset:
         statement = statement.offset(offset)
     if limit is not None:
@@ -5986,7 +6140,8 @@ def _ensure_adjustment_authorized(db: Session, performed_by_id: int | None) -> N
         # compatibilidad con flujos existentes donde no hay un usuario autenticado.
         return
     user = get_user(db, performed_by_id)
-    role_names = {membership.role.name for membership in user.roles if membership.role}
+    role_names = {
+        membership.role.name for membership in user.roles if membership.role}
     if not {ADMIN, GERENTE}.intersection(role_names):
         raise PermissionError("movement_adjust_requires_authorized_user")
 
@@ -6241,7 +6396,8 @@ def create_inventory_movement(
             reference_segments.append(reference_type)
         if reference_id:
             reference_segments.append(reference_id)
-        accounting_reference = ":".join(reference_segments) if reference_segments else None
+        accounting_reference = ":".join(
+            reference_segments) if reference_segments else None
         stock_move_record: models.StockMove | None = None
         zero_decimal = Decimal("0")
         if (
@@ -6271,8 +6427,10 @@ def create_inventory_movement(
                 product_id=device.id,
                 move_id=stock_move_record.id,
                 branch_id=ledger_branch_id or stock_move_branch_id,
-                quantity=_to_decimal(ledger_quantity).quantize(Decimal("0.0001")),
-                unit_cost=_to_decimal(ledger_unit_cost).quantize(Decimal("0.01")),
+                quantity=_to_decimal(ledger_quantity).quantize(
+                    Decimal("0.0001")),
+                unit_cost=_to_decimal(
+                    ledger_unit_cost).quantize(Decimal("0.01")),
                 method=models.CostingMethod(settings.cost_method),
             )
             db.add(cost_entry)
@@ -6457,9 +6615,12 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         total_sales_amount += sale.total_amount
         sale_cost = Decimal("0")
         for item in sale.items:
-            device_cost = _to_decimal(getattr(item.device, "costo_unitario", None) or item.unit_price)
-            sale_cost += (device_cost * item.quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        profit = (sale.total_amount - sale_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            device_cost = _to_decimal(
+                getattr(item.device, "costo_unitario", None) or item.unit_price)
+            sale_cost += (device_cost * item.quantity).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP)
+        profit = (sale.total_amount -
+                  sale_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total_profit += profit
 
         store_data = store_profit.setdefault(
@@ -6542,7 +6703,8 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     pending_highlights: list[audit_utils.HighlightEntry] = []
     acknowledged_highlights = 0
     for entry in alert_summary.highlights:
-        acknowledgement = ack_map.get((entry["entity_type"], entry["entity_id"]))
+        acknowledgement = ack_map.get(
+            (entry["entity_type"], entry["entity_id"]))
         status = "pending"
         acknowledged_at = None
         acknowledged_by_id = None
@@ -6614,7 +6776,8 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         else:
             pending_critical += 1
 
-    acknowledged_entities.sort(key=lambda item: item["acknowledged_at"], reverse=True)
+    acknowledged_entities.sort(
+        key=lambda item: item["acknowledged_at"], reverse=True)
 
     audit_alerts = {
         "total": alert_summary.total,
@@ -6725,17 +6888,22 @@ def get_inventory_movements_report(
     )
 
     if store_filter:
-        movement_stmt = movement_stmt.where(models.InventoryMovement.store_id.in_(store_filter))
-    movement_stmt = movement_stmt.where(models.InventoryMovement.created_at >= start_dt)
-    movement_stmt = movement_stmt.where(models.InventoryMovement.created_at <= end_dt)
+        movement_stmt = movement_stmt.where(
+            models.InventoryMovement.store_id.in_(store_filter))
+    movement_stmt = movement_stmt.where(
+        models.InventoryMovement.created_at >= start_dt)
+    movement_stmt = movement_stmt.where(
+        models.InventoryMovement.created_at <= end_dt)
     if movement_type is not None:
-        movement_stmt = movement_stmt.where(models.InventoryMovement.movement_type == movement_type)
+        movement_stmt = movement_stmt.where(
+            models.InventoryMovement.movement_type == movement_type)
 
     movements = list(db.scalars(movement_stmt).unique())
 
     _hydrate_movement_references(db, movements)
 
-    movement_ids = [movement.id for movement in movements if movement.id is not None]
+    movement_ids = [
+        movement.id for movement in movements if movement.id is not None]
     audit_logs = get_last_audit_entries(
         db,
         entity_type="inventory_movement",
@@ -6747,7 +6915,8 @@ def get_inventory_movements_report(
     }
 
     totals_by_type: dict[models.MovementType, dict[str, Decimal | int]] = {}
-    period_map: dict[tuple[date, models.MovementType], dict[str, Decimal | int]] = {}
+    period_map: dict[tuple[date, models.MovementType],
+                     dict[str, Decimal | int]] = {}
     total_units = 0
     total_value = Decimal("0")
     report_entries: list[schemas.MovementReportEntry] = []
@@ -6769,7 +6938,8 @@ def get_inventory_movements_report(
             period_key,
             {"quantity": 0, "value": Decimal("0")},
         )
-        period_data["quantity"] = int(period_data["quantity"]) + movement.quantity
+        period_data["quantity"] = int(
+            period_data["quantity"]) + movement.quantity
         period_data["value"] = _to_decimal(period_data["value"]) + value
 
         report_entries.append(
@@ -6804,8 +6974,10 @@ def get_inventory_movements_report(
     summary_by_type = [
         schemas.MovementTypeSummary(
             tipo_movimiento=movement_enum,
-            total_cantidad=int(totals_by_type.get(movement_enum, {}).get("quantity", 0)),
-            total_valor=_to_decimal(totals_by_type.get(movement_enum, {}).get("value", 0)),
+            total_cantidad=int(totals_by_type.get(
+                movement_enum, {}).get("quantity", 0)),
+            total_valor=_to_decimal(totals_by_type.get(
+                movement_enum, {}).get("value", 0)),
         )
         for movement_enum in models.MovementType
     ]
@@ -6938,7 +7110,8 @@ def get_inventory_value_report(
             entry.valor_costo_producto
         )
         store_entry["margen_total"] = _to_decimal(store_entry["margen_total"]) + (
-            _to_decimal(entry.valor_total_producto) - _to_decimal(entry.valor_costo_producto)
+            _to_decimal(entry.valor_total_producto) -
+            _to_decimal(entry.valor_costo_producto)
         )
 
     stores = [
@@ -6991,7 +7164,8 @@ def calculate_rotation_analytics(
         .order_by(models.Store.name.asc(), models.Device.name.asc())
     )
     if store_filter:
-        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
+        device_stmt = device_stmt.where(
+            models.Device.store_id.in_(store_filter))
     if category:
         device_stmt = device_stmt.where(category_expr == category)
     if offset:
@@ -7018,7 +7192,8 @@ def calculate_rotation_analytics(
     if store_filter:
         sale_stats = sale_stats.where(models.Sale.store_id.in_(store_filter))
     if device_ids:
-        sale_stats = sale_stats.where(models.SaleItem.device_id.in_(device_ids))
+        sale_stats = sale_stats.where(
+            models.SaleItem.device_id.in_(device_ids))
     if start_dt:
         sale_stats = sale_stats.where(models.Sale.created_at >= start_dt)
     if end_dt:
@@ -7029,7 +7204,8 @@ def calculate_rotation_analytics(
     purchase_stats = (
         select(
             models.PurchaseOrderItem.device_id,
-            func.sum(models.PurchaseOrderItem.quantity_received).label("received_units"),
+            func.sum(models.PurchaseOrderItem.quantity_received).label(
+                "received_units"),
             models.PurchaseOrder.store_id,
         )
         .join(models.PurchaseOrder, models.PurchaseOrder.id == models.PurchaseOrderItem.purchase_order_id)
@@ -7037,15 +7213,18 @@ def calculate_rotation_analytics(
         .group_by(models.PurchaseOrderItem.device_id, models.PurchaseOrder.store_id)
     )
     if store_filter:
-        purchase_stats = purchase_stats.where(models.PurchaseOrder.store_id.in_(store_filter))
+        purchase_stats = purchase_stats.where(
+            models.PurchaseOrder.store_id.in_(store_filter))
     if device_ids:
         purchase_stats = purchase_stats.where(
             models.PurchaseOrderItem.device_id.in_(device_ids)
         )
     if start_dt:
-        purchase_stats = purchase_stats.where(models.PurchaseOrder.created_at >= start_dt)
+        purchase_stats = purchase_stats.where(
+            models.PurchaseOrder.created_at >= start_dt)
     if end_dt:
-        purchase_stats = purchase_stats.where(models.PurchaseOrder.created_at <= end_dt)
+        purchase_stats = purchase_stats.where(
+            models.PurchaseOrder.created_at <= end_dt)
     if category:
         purchase_stats = purchase_stats.where(category_expr == category)
 
@@ -7061,7 +7240,8 @@ def calculate_rotation_analytics(
     for row in device_rows:
         sold_units = sold_map.get(row.id, 0)
         received_units = received_map.get(row.id, 0)
-        denominator = received_units if received_units > 0 else max(sold_units, 1)
+        denominator = received_units if received_units > 0 else max(
+            sold_units, 1)
         rotation_rate = sold_units / denominator if denominator else 0
         results.append(
             {
@@ -7108,9 +7288,11 @@ def calculate_aging_analytics(
         )
     )
     if store_filter:
-        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
+        device_stmt = device_stmt.where(
+            models.Device.store_id.in_(store_filter))
     if date_from:
-        device_stmt = device_stmt.where(models.Device.fecha_compra >= date_from)
+        device_stmt = device_stmt.where(
+            models.Device.fecha_compra >= date_from)
     if date_to:
         device_stmt = device_stmt.where(models.Device.fecha_compra <= date_to)
     if category:
@@ -7171,7 +7353,8 @@ def calculate_stockout_forecast(
         .order_by(models.Store.name.asc(), models.Device.name.asc())
     )
     if store_filter:
-        device_stmt = device_stmt.where(models.Device.store_id.in_(store_filter))
+        device_stmt = device_stmt.where(
+            models.Device.store_id.in_(store_filter))
     if category:
         device_stmt = device_stmt.where(category_expr == category)
     if offset:
@@ -7198,17 +7381,21 @@ def calculate_stockout_forecast(
         .group_by(models.SaleItem.device_id, models.Sale.store_id)
     )
     if store_filter:
-        sales_summary_stmt = sales_summary_stmt.where(models.Sale.store_id.in_(store_filter))
+        sales_summary_stmt = sales_summary_stmt.where(
+            models.Sale.store_id.in_(store_filter))
     if device_ids:
         sales_summary_stmt = sales_summary_stmt.where(
             models.SaleItem.device_id.in_(device_ids)
         )
     if start_dt:
-        sales_summary_stmt = sales_summary_stmt.where(models.Sale.created_at >= start_dt)
+        sales_summary_stmt = sales_summary_stmt.where(
+            models.Sale.created_at >= start_dt)
     if end_dt:
-        sales_summary_stmt = sales_summary_stmt.where(models.Sale.created_at <= end_dt)
+        sales_summary_stmt = sales_summary_stmt.where(
+            models.Sale.created_at <= end_dt)
     if category:
-        sales_summary_stmt = sales_summary_stmt.where(category_expr == category)
+        sales_summary_stmt = sales_summary_stmt.where(
+            category_expr == category)
 
     day_column = func.date(models.Sale.created_at)
     daily_sales_stmt = (
@@ -7222,15 +7409,18 @@ def calculate_stockout_forecast(
         .group_by(models.SaleItem.device_id, day_column)
     )
     if store_filter:
-        daily_sales_stmt = daily_sales_stmt.where(models.Sale.store_id.in_(store_filter))
+        daily_sales_stmt = daily_sales_stmt.where(
+            models.Sale.store_id.in_(store_filter))
     if device_ids:
         daily_sales_stmt = daily_sales_stmt.where(
             models.SaleItem.device_id.in_(device_ids)
         )
     if start_dt:
-        daily_sales_stmt = daily_sales_stmt.where(models.Sale.created_at >= start_dt)
+        daily_sales_stmt = daily_sales_stmt.where(
+            models.Sale.created_at >= start_dt)
     if end_dt:
-        daily_sales_stmt = daily_sales_stmt.where(models.Sale.created_at <= end_dt)
+        daily_sales_stmt = daily_sales_stmt.where(
+            models.Sale.created_at <= end_dt)
     if category:
         daily_sales_stmt = daily_sales_stmt.where(category_expr == category)
 
@@ -7243,12 +7433,14 @@ def calculate_stockout_forecast(
             "store_id": int(row.store_id),
         }
 
-    daily_sales_map: defaultdict[int, list[tuple[datetime, float]]] = defaultdict(list)
+    daily_sales_map: defaultdict[int,
+                                 list[tuple[datetime, float]]] = defaultdict(list)
     for row in db.execute(daily_sales_stmt):
         day: datetime | None = row.day
         if day is None:
             continue
-        daily_sales_map[row.device_id].append((day, float(row.sold_units or 0)))
+        daily_sales_map[row.device_id].append(
+            (day, float(row.sold_units or 0)))
 
     metrics: list[dict[str, object]] = []
     for row in device_rows:
@@ -7257,14 +7449,16 @@ def calculate_stockout_forecast(
         daily_points_raw = sorted(
             daily_sales_map.get(row.id, []), key=lambda item: item[0]
         )
-        points = [(float(index), value) for index, (_, value) in enumerate(daily_points_raw)]
+        points = [(float(index), value)
+                  for index, (_, value) in enumerate(daily_points_raw)]
         slope, intercept, r_squared = _linear_regression(points)
         historical_avg = (
             sum(value for _, value in daily_points_raw) / len(daily_points_raw)
             if daily_points_raw
             else 0.0
         )
-        predicted_next = max(0.0, slope * len(points) + intercept) if points else 0.0
+        predicted_next = max(0.0, slope * len(points) +
+                             intercept) if points else 0.0
         expected_daily = max(historical_avg, predicted_next)
 
         if stats is None:
@@ -7312,7 +7506,8 @@ def calculate_stockout_forecast(
             }
         )
 
-    metrics.sort(key=lambda item: (item["projected_days"] is None, item["projected_days"] or 0))
+    metrics.sort(key=lambda item: (
+        item["projected_days"] is None, item["projected_days"] or 0))
     return metrics
 
 
@@ -7334,8 +7529,10 @@ def calculate_store_comparatives(
         select(
             models.Store.id,
             models.Store.name,
-            func.coalesce(func.count(models.Device.id), 0).label("device_count"),
-            func.coalesce(func.sum(models.Device.quantity), 0).label("total_units"),
+            func.coalesce(func.count(models.Device.id),
+                          0).label("device_count"),
+            func.coalesce(func.sum(models.Device.quantity),
+                          0).label("total_units"),
             func.coalesce(
                 func.sum(models.Device.quantity * models.Device.unit_price),
                 0,
@@ -7346,7 +7543,8 @@ def calculate_store_comparatives(
         .order_by(models.Store.name.asc())
     )
     if store_filter:
-        inventory_stmt = inventory_stmt.where(models.Store.id.in_(store_filter))
+        inventory_stmt = inventory_stmt.where(
+            models.Store.id.in_(store_filter))
     if category:
         inventory_stmt = inventory_stmt.where(category_expr == category)
     if offset:
@@ -7385,7 +7583,8 @@ def calculate_store_comparatives(
     for item in rotation:
         store_id = int(item["store_id"])
         total, count = rotation_totals.get(store_id, (0.0, 0))
-        rotation_totals[store_id] = (total + float(item["rotation_rate"]), count + 1)
+        rotation_totals[store_id] = (
+            total + float(item["rotation_rate"]), count + 1)
 
     for item in aging:
         store_id_value = item.get("store_id")
@@ -7393,7 +7592,8 @@ def calculate_store_comparatives(
             continue
         store_id = int(store_id_value)
         total, count = aging_totals.get(store_id, (0.0, 0))
-        aging_totals[store_id] = (total + float(item["days_in_stock"]), count + 1)
+        aging_totals[store_id] = (
+            total + float(item["days_in_stock"]), count + 1)
 
     rotation_avg = {
         store_id: (total / count if count else 0.0)
@@ -7409,7 +7609,8 @@ def calculate_store_comparatives(
         select(
             models.Sale.store_id,
             func.coalesce(func.count(models.Sale.id), 0).label("orders"),
-            func.coalesce(func.sum(models.Sale.total_amount), 0).label("revenue"),
+            func.coalesce(func.sum(models.Sale.total_amount),
+                          0).label("revenue"),
         )
         .join(models.SaleItem, models.SaleItem.sale_id == models.Sale.id)
         .join(models.Device, models.Device.id == models.SaleItem.device_id)
@@ -7417,7 +7618,8 @@ def calculate_store_comparatives(
         .group_by(models.Sale.store_id)
     )
     if store_ids_window:
-        sales_stmt = sales_stmt.where(models.Sale.store_id.in_(store_ids_window))
+        sales_stmt = sales_stmt.where(
+            models.Sale.store_id.in_(store_ids_window))
     if end_dt:
         sales_stmt = sales_stmt.where(models.Sale.created_at <= end_dt)
     if category:
@@ -7433,7 +7635,8 @@ def calculate_store_comparatives(
     comparatives: list[dict[str, object]] = []
     for row in inventory_rows:
         store_id = int(row.id)
-        sales = sales_map.get(store_id, {"orders": Decimal(0), "revenue": Decimal(0)})
+        sales = sales_map.get(
+            store_id, {"orders": Decimal(0), "revenue": Decimal(0)})
         comparatives.append(
             {
                 "store_id": store_id,
@@ -7535,7 +7738,8 @@ def calculate_sales_projection(
     lookback_days = max(horizon_days, 30)
     since = start_dt or (datetime.utcnow() - timedelta(days=lookback_days))
 
-    store_stmt = select(models.Store.id, models.Store.name).order_by(models.Store.name.asc())
+    store_stmt = select(models.Store.id, models.Store.name).order_by(
+        models.Store.name.asc())
     if store_filter:
         store_stmt = store_stmt.where(models.Store.id.in_(store_filter))
     if offset:
@@ -7555,9 +7759,12 @@ def calculate_sales_projection(
             models.Store.id.label("store_id"),
             models.Store.name.label("store_name"),
             day_bucket.label("sale_day"),
-            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("units"),
-            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
-            func.coalesce(func.count(func.distinct(models.Sale.id)), 0).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity),
+                          0).label("units"),
+            func.coalesce(func.sum(models.SaleItem.total_line),
+                          0).label("revenue"),
+            func.coalesce(func.count(func.distinct(
+                models.Sale.id)), 0).label("orders"),
         )
         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
         .join(models.Store, models.Store.id == models.Sale.store_id)
@@ -7620,7 +7827,8 @@ def calculate_sales_projection(
             (float(index), item["revenue"])
             for index, item in enumerate(daily_points)
         ]
-        slope_units, intercept_units, r2_units = _linear_regression(unit_points)
+        slope_units, intercept_units, r2_units = _linear_regression(
+            unit_points)
         slope_revenue, intercept_revenue, r2_revenue = _linear_regression(
             revenue_points
         )
@@ -7768,10 +7976,11 @@ def generate_analytics_alerts(
                 }
             )
 
-    alerts.sort(key=lambda alert: (alert["level"] != "critical", alert["level"] != "warning"))
+    alerts.sort(key=lambda alert: (
+        alert["level"] != "critical", alert["level"] != "warning"))
     if limit is None:
         return alerts[offset:]
-    return alerts[offset : offset + limit]
+    return alerts[offset: offset + limit]
 
 
 def calculate_realtime_store_widget(
@@ -7785,9 +7994,11 @@ def calculate_realtime_store_widget(
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
     category_expr = _device_category_expr()
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.utcnow().replace(
+        hour=0, minute=0, second=0, microsecond=0)
 
-    stores_stmt = select(models.Store.id, models.Store.name, models.Store.inventory_value)
+    stores_stmt = select(models.Store.id, models.Store.name,
+                         models.Store.inventory_value)
     if store_filter:
         stores_stmt = stores_stmt.where(models.Store.id.in_(store_filter))
     stores_stmt = stores_stmt.order_by(models.Store.name.asc())
@@ -7803,7 +8014,8 @@ def calculate_realtime_store_widget(
     store_ids_window = [int(row.id) for row in store_rows]
 
     low_stock_stmt = (
-        select(models.Device.store_id, func.count(models.Device.id).label("low_stock"))
+        select(models.Device.store_id, func.count(
+            models.Device.id).label("low_stock"))
         .where(models.Device.quantity <= low_stock_threshold)
         .group_by(models.Device.store_id)
     )
@@ -7817,7 +8029,8 @@ def calculate_realtime_store_widget(
     sales_today_stmt = (
         select(
             models.Store.id.label("store_id"),
-            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.coalesce(func.sum(models.SaleItem.total_line),
+                          0).label("revenue"),
             func.max(models.Sale.created_at).label("last_sale_at"),
         )
         .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
@@ -7827,7 +8040,8 @@ def calculate_realtime_store_widget(
         .group_by(models.Store.id)
     )
     if store_ids_window:
-        sales_today_stmt = sales_today_stmt.where(models.Store.id.in_(store_ids_window))
+        sales_today_stmt = sales_today_stmt.where(
+            models.Store.id.in_(store_ids_window))
     if category:
         sales_today_stmt = sales_today_stmt.where(category_expr == category)
 
@@ -7892,7 +8106,8 @@ def calculate_realtime_store_widget(
     widgets: list[dict[str, object]] = []
     for row in store_rows:
         store_id = int(row.id)
-        sales_info = sales_today_map.get(store_id, {"revenue": 0.0, "last_sale_at": None})
+        sales_info = sales_today_map.get(
+            store_id, {"revenue": 0.0, "last_sale_at": None})
         projection = projection_map.get(store_id, {})
         widgets.append(
             {
@@ -7971,14 +8186,16 @@ def log_sync_discrepancies(
 
     with transactional_session(db):
         for discrepancy in discrepancies:
-            entity_id = str(discrepancy.get("sku") or discrepancy.get("entity", "global"))
+            entity_id = str(discrepancy.get("sku")
+                            or discrepancy.get("entity", "global"))
             _log_action(
                 db,
                 action="sync_discrepancy",
                 entity_type="inventory",
                 entity_id=entity_id,
                 performed_by_id=performed_by_id,
-                details=json.dumps(discrepancy, ensure_ascii=False, default=str),
+                details=json.dumps(
+                    discrepancy, ensure_ascii=False, default=str),
             )
 
 
@@ -7994,7 +8211,8 @@ def mark_outbox_entries_sent(
     if not ids_tuple:
         return []
 
-    statement = select(models.SyncOutbox).where(models.SyncOutbox.id.in_(ids_tuple))
+    statement = select(models.SyncOutbox).where(
+        models.SyncOutbox.id.in_(ids_tuple))
     entries = list(db.scalars(statement))
     if not entries:
         return []
@@ -8073,7 +8291,8 @@ def list_sync_history_by_store(
     if not store_rows:
         return []
 
-    selected_store_ids = [row.store_id for row in store_rows if row.store_id is not None]
+    selected_store_ids = [
+        row.store_id for row in store_rows if row.store_id is not None]
     include_global = any(row.store_id is None for row in store_rows)
 
     ranked_sessions = (
@@ -8120,7 +8339,8 @@ def list_sync_history_by_store(
         entries = grouped.get(store_id, [])
         if not entries:
             continue
-        entries.sort(key=lambda entry: entry.started_at or datetime.min, reverse=True)
+        entries.sort(
+            key=lambda entry: entry.started_at or datetime.min, reverse=True)
         history.append(
             {
                 "store_id": store_id,
@@ -8264,7 +8484,8 @@ def list_sync_queue_entries(
     if statuses is not None:
         status_tuple = tuple(statuses)
         if status_tuple:
-            statement = statement.where(models.SyncQueue.status.in_(status_tuple))
+            statement = statement.where(
+                models.SyncQueue.status.in_(status_tuple))
     return list(db.scalars(statement))
 
 
@@ -8407,7 +8628,8 @@ def summarize_sync_queue_by_event_type(
     """Agrupa la cola híbrida por tipo de evento y estado."""
 
     statement = (
-        select(models.SyncQueue.event_type, models.SyncQueue.status, func.count())
+        select(models.SyncQueue.event_type,
+               models.SyncQueue.status, func.count())
         .group_by(models.SyncQueue.event_type, models.SyncQueue.status)
         .order_by(models.SyncQueue.event_type, models.SyncQueue.status)
     )
@@ -8420,7 +8642,8 @@ def summarize_sync_queue_by_event_type(
             {status_key: 0 for status_key in models.SyncQueueStatus},
         )
         if isinstance(status, models.SyncQueueStatus):
-            module_totals[status] = module_totals.get(status, 0) + int(amount or 0)
+            module_totals[status] = module_totals.get(
+                status, 0) + int(amount or 0)
     return results
 
 
@@ -8464,7 +8687,8 @@ def summarize_sync_outbox_by_entity_type(
     """Agrupa el outbox por tipo de entidad y estado."""
 
     statement = (
-        select(models.SyncOutbox.entity_type, models.SyncOutbox.status, func.count())
+        select(models.SyncOutbox.entity_type,
+               models.SyncOutbox.status, func.count())
         .group_by(models.SyncOutbox.entity_type, models.SyncOutbox.status)
         .order_by(models.SyncOutbox.entity_type, models.SyncOutbox.status)
     )
@@ -8477,7 +8701,8 @@ def summarize_sync_outbox_by_entity_type(
             {status_key: 0 for status_key in models.SyncOutboxStatus},
         )
         if isinstance(status, models.SyncOutboxStatus):
-            module_totals[status] = module_totals.get(status, 0) + int(amount or 0)
+            module_totals[status] = module_totals.get(
+                status, 0) + int(amount or 0)
     return results
 
 
@@ -8559,7 +8784,8 @@ def list_sync_outbox(
     if statuses is not None:
         status_tuple = tuple(statuses)
         if status_tuple:
-            statement = statement.where(models.SyncOutbox.status.in_(status_tuple))
+            statement = statement.where(
+                models.SyncOutbox.status.in_(status_tuple))
     return list(db.scalars(statement))
 
 
@@ -8576,7 +8802,8 @@ def reset_outbox_entries(
     if not ids_tuple:
         return []
 
-    statement = select(models.SyncOutbox).where(models.SyncOutbox.id.in_(ids_tuple))
+    statement = select(models.SyncOutbox).where(
+        models.SyncOutbox.id.in_(ids_tuple))
     entries = list(db.scalars(statement))
     if not entries:
         return []
@@ -8609,7 +8836,8 @@ def reset_outbox_entries(
     if limit is None:
         return refreshed[normalized_offset:]
     normalized_limit = max(limit, 0)
-    end_index = normalized_offset + normalized_limit if normalized_limit else normalized_offset
+    end_index = normalized_offset + \
+        normalized_limit if normalized_limit else normalized_offset
     return refreshed[normalized_offset:end_index]
 
 
@@ -8663,10 +8891,11 @@ def get_sync_outbox_statistics(
                 "oldest_pending": row.oldest_pending,
             }
         )
-    results.sort(key=lambda item: (_priority_weight(item["priority"]), item["entity_type"]))
+    results.sort(key=lambda item: (_priority_weight(
+        item["priority"]), item["entity_type"]))
     if limit is None:
         return results[offset:]
-    return results[offset : offset + limit]
+    return results[offset: offset + limit]
 
 
 def get_store_sync_overview(
@@ -8769,7 +8998,8 @@ def get_store_sync_overview(
             if not isinstance(entries, list):
                 continue
             for entry in entries:
-                store_candidate = entry.get("store_id") or entry.get("sucursal_id")
+                store_candidate = entry.get(
+                    "store_id") or entry.get("sucursal_id")
                 if store_candidate is None:
                     continue
                 try:
@@ -8905,7 +9135,8 @@ def list_sync_conflicts(
             or f"SYNC-{log.id}"
         )
         product_name = payload.get("product_name") or payload.get("nombre")
-        difference_raw = payload.get("diferencia") or payload.get("difference") or 0
+        difference_raw = payload.get(
+            "diferencia") or payload.get("difference") or 0
         try:
             difference = int(difference_raw)
         except (TypeError, ValueError):
@@ -9123,7 +9354,8 @@ def get_transfer_order(db: Session, transfer_id: int) -> models.TransferOrder:
     statement = (
         select(models.TransferOrder)
         .options(
-            joinedload(models.TransferOrder.items).joinedload(models.TransferOrderItem.device),
+            joinedload(models.TransferOrder.items).joinedload(
+                models.TransferOrderItem.device),
             joinedload(models.TransferOrder.origin_store),
             joinedload(models.TransferOrder.destination_store),
         )
@@ -9167,7 +9399,8 @@ def dispatch_transfer_order(
             entity_type="transfer_order",
             entity_id=str(order.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"status": order.status.value, "reason": reason}),
+            details=json.dumps(
+                {"status": order.status.value, "reason": reason}),
         )
 
         db.refresh(order)
@@ -9338,7 +9571,8 @@ def receive_transfer_order(
             entity_type="transfer_order",
             entity_id=str(order.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"status": order.status.value, "reason": reason}),
+            details=json.dumps(
+                {"status": order.status.value, "reason": reason}),
         )
 
         db.refresh(order)
@@ -9377,7 +9611,8 @@ def cancel_transfer_order(
             entity_type="transfer_order",
             entity_id=str(order.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"status": order.status.value, "reason": reason}),
+            details=json.dumps(
+                {"status": order.status.value, "reason": reason}),
         )
 
         db.refresh(order)
@@ -9399,7 +9634,8 @@ def list_transfer_orders(
     statement = (
         select(models.TransferOrder)
         .options(
-            joinedload(models.TransferOrder.items).joinedload(models.TransferOrderItem.device),
+            joinedload(models.TransferOrder.items).joinedload(
+                models.TransferOrderItem.device),
             joinedload(models.TransferOrder.origin_store),
             joinedload(models.TransferOrder.destination_store),
             joinedload(models.TransferOrder.requested_by),
@@ -9415,13 +9651,16 @@ def list_transfer_orders(
             | (models.TransferOrder.destination_store_id == store_id)
         )
     if origin_store_id is not None:
-        statement = statement.where(models.TransferOrder.origin_store_id == origin_store_id)
+        statement = statement.where(
+            models.TransferOrder.origin_store_id == origin_store_id)
     if destination_store_id is not None:
-        statement = statement.where(models.TransferOrder.destination_store_id == destination_store_id)
+        statement = statement.where(
+            models.TransferOrder.destination_store_id == destination_store_id)
     if status is not None:
         statement = statement.where(models.TransferOrder.status == status)
     if date_from is not None:
-        statement = statement.where(models.TransferOrder.created_at >= date_from)
+        statement = statement.where(
+            models.TransferOrder.created_at >= date_from)
     if date_to is not None:
         statement = statement.where(models.TransferOrder.created_at <= date_to)
     if offset:
@@ -9523,7 +9762,8 @@ def _purchase_record_statement():
         .options(
             joinedload(models.Compra.proveedor),
             joinedload(models.Compra.usuario),
-            joinedload(models.Compra.detalles).joinedload(models.DetalleCompra.producto),
+            joinedload(models.Compra.detalles).joinedload(
+                models.DetalleCompra.producto),
         )
         .order_by(models.Compra.fecha.desc(), models.Compra.id_compra.desc())
     )
@@ -9548,7 +9788,8 @@ def _apply_purchase_record_filters(
     if date_to is not None:
         statement = statement.where(models.Compra.fecha <= date_to)
     if estado is not None:
-        statement = statement.where(func.lower(models.Compra.estado) == estado.lower())
+        statement = statement.where(func.lower(
+            models.Compra.estado) == estado.lower())
     if query:
         normalized = f"%{query.lower()}%"
         statement = statement.join(models.Proveedor).where(
@@ -9671,7 +9912,8 @@ def count_purchase_records(
     if date_to is not None:
         statement = statement.where(models.Compra.fecha <= date_to)
     if estado is not None:
-        statement = statement.where(func.lower(models.Compra.estado) == estado.lower())
+        statement = statement.where(func.lower(
+            models.Compra.estado) == estado.lower())
     if query:
         normalized = f"%{query.lower()}%"
         statement = statement.join(models.Proveedor).where(
@@ -9681,7 +9923,8 @@ def count_purchase_records(
 
 
 def get_purchase_record(db: Session, record_id: int) -> schemas.PurchaseRecordResponse:
-    statement = _purchase_record_statement().where(models.Compra.id_compra == record_id)
+    statement = _purchase_record_statement().where(
+        models.Compra.id_compra == record_id)
     purchase = db.scalars(statement).unique().first()
     if purchase is None:
         raise LookupError("purchase_record_not_found")
@@ -9720,7 +9963,8 @@ def create_purchase_record(
                 raise ValueError("purchase_record_invalid_cost")
 
             device = get_device_global(db, item.producto_id)
-            unit_cost = _to_decimal(item.costo_unitario).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            unit_cost = _to_decimal(item.costo_unitario).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP)
             subtotal = (
                 unit_cost * _to_decimal(item.cantidad)
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -9737,8 +9981,10 @@ def create_purchase_record(
             subtotal_total += subtotal
 
         tax_rate = _to_decimal(payload.impuesto_tasa)
-        impuesto = (subtotal_total * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        total = (subtotal_total + impuesto).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        impuesto = (subtotal_total *
+                    tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total = (subtotal_total + impuesto).quantize(Decimal("0.01"),
+                                                     rounding=ROUND_HALF_UP)
         purchase.total = total
         purchase.impuesto = impuesto
 
@@ -9757,7 +10003,7 @@ def create_purchase_record(
                 }
             ),
         )
-    
+
     return get_purchase_record(db, purchase.id_compra)
 
 
@@ -9801,7 +10047,8 @@ def list_vendor_purchase_history(
         limit=limit,
         offset=offset,
     )
-    records = [_build_purchase_record_response(purchase) for purchase in purchases]
+    records = [_build_purchase_record_response(
+        purchase) for purchase in purchases]
 
     summary_stmt = select(
         func.coalesce(func.sum(models.Compra.total), 0),
@@ -9813,7 +10060,8 @@ def list_vendor_purchase_history(
         summary_stmt = summary_stmt.where(models.Compra.fecha >= date_from)
     if date_to is not None:
         summary_stmt = summary_stmt.where(models.Compra.fecha <= date_to)
-    total_value, tax_value, count_value, last_purchase = db.execute(summary_stmt).one()
+    total_value, tax_value, count_value, last_purchase = db.execute(
+        summary_stmt).one()
 
     vendor_response = schemas.PurchaseVendorResponse(
         id_proveedor=vendor.id_proveedor,
@@ -9898,11 +10146,14 @@ def get_purchase_statistics(
         .join(models.Compra, models.Compra.proveedor_id == models.Proveedor.id_proveedor)
     )
     if date_from is not None:
-        top_vendors_stmt = top_vendors_stmt.where(models.Compra.fecha >= date_from)
+        top_vendors_stmt = top_vendors_stmt.where(
+            models.Compra.fecha >= date_from)
     if date_to is not None:
-        top_vendors_stmt = top_vendors_stmt.where(models.Compra.fecha <= date_to)
+        top_vendors_stmt = top_vendors_stmt.where(
+            models.Compra.fecha <= date_to)
     top_vendors_stmt = (
-        top_vendors_stmt.group_by(models.Proveedor.id_proveedor, models.Proveedor.nombre)
+        top_vendors_stmt.group_by(
+            models.Proveedor.id_proveedor, models.Proveedor.nombre)
         .order_by(func.sum(models.Compra.total).desc())
         .limit(top_limit)
     )
@@ -9920,7 +10171,8 @@ def get_purchase_statistics(
     top_users_stmt = (
         select(
             models.User.id,
-            func.coalesce(models.User.full_name, models.User.username).label("nombre"),
+            func.coalesce(models.User.full_name,
+                          models.User.username).label("nombre"),
             func.coalesce(func.sum(models.Compra.total), 0).label("total"),
             func.count(models.Compra.id_compra).label("ordenes"),
         )
@@ -9931,7 +10183,8 @@ def get_purchase_statistics(
     if date_to is not None:
         top_users_stmt = top_users_stmt.where(models.Compra.fecha <= date_to)
     top_users_stmt = (
-        top_users_stmt.group_by(models.User.id, models.User.full_name, models.User.username)
+        top_users_stmt.group_by(
+            models.User.id, models.User.full_name, models.User.username)
         .order_by(func.sum(models.Compra.total).desc())
         .limit(top_limit)
     )
@@ -10035,7 +10288,8 @@ def create_purchase_order(
                 purchase_order_id=order.id,
                 device_id=device.id,
                 quantity_ordered=item.quantity_ordered,
-                unit_cost=_to_decimal(item.unit_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                unit_cost=_to_decimal(item.unit_cost).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP),
             )
             db.add(order_item)
 
@@ -10047,7 +10301,8 @@ def create_purchase_order(
             entity_type="purchase_order",
             entity_id=str(order.id),
             performed_by_id=created_by_id,
-            details=json.dumps({"store_id": order.store_id, "supplier": order.supplier}),
+            details=json.dumps({"store_id": order.store_id,
+                               "supplier": order.supplier}),
         )
         db.refresh(order)
         enqueue_sync_outbox(
@@ -10068,7 +10323,8 @@ def _build_purchase_movement_comment(
 ) -> str:
     """Genera una descripción legible para los movimientos de compras."""
 
-    parts: list[str] = [action, f"OC #{order.id}", f"Proveedor: {order.supplier}"]
+    parts: list[str] = [
+        action, f"OC #{order.id}", f"Proveedor: {order.supplier}"]
     if device.imei:
         parts.append(f"IMEI: {device.imei}")
     if device.serial:
@@ -10147,7 +10403,8 @@ def receive_purchase_order(
             entity_type="purchase_order",
             entity_id=str(order.id),
             performed_by_id=received_by_id,
-            details=json.dumps({"items": reception_details, "status": order.status.value}),
+            details=json.dumps({"items": reception_details,
+                               "status": order.status.value}),
         )
         db.refresh(order)
         enqueue_sync_outbox(
@@ -10232,7 +10489,8 @@ def cancel_purchase_order(
         order.status = models.PurchaseStatus.CANCELADA
         order.closed_at = datetime.utcnow()
         if reason:
-            order.notes = (order.notes or "") + f" | Cancelación: {reason}" if order.notes else reason
+            order.notes = (order.notes or "") + \
+                f" | Cancelación: {reason}" if order.notes else reason
 
         flush_session(db)
         db.refresh(order)
@@ -10271,14 +10529,16 @@ def register_purchase_return(
     reason: str | None = None,
 ) -> models.PurchaseReturn:
     order = get_purchase_order(db, order_id)
-    order_item = next((item for item in order.items if item.device_id == payload.device_id), None)
+    order_item = next(
+        (item for item in order.items if item.device_id == payload.device_id), None)
     if order_item is None:
         raise LookupError("purchase_item_not_found")
     if payload.quantity <= 0:
         raise ValueError("purchase_invalid_quantity")
 
     received_total = order_item.quantity_received
-    returned_total = sum(ret.quantity for ret in order.returns if ret.device_id == payload.device_id)
+    returned_total = sum(
+        ret.quantity for ret in order.returns if ret.device_id == payload.device_id)
     if payload.quantity > received_total - returned_total:
         raise ValueError("purchase_return_exceeds_received")
 
@@ -10322,7 +10582,8 @@ def register_purchase_return(
             entity_type="purchase_order",
             entity_id=str(order.id),
             performed_by_id=processed_by_id,
-            details=json.dumps({"device_id": payload.device_id, "quantity": payload.quantity}),
+            details=json.dumps(
+                {"device_id": payload.device_id, "quantity": payload.quantity}),
         )
         db.refresh(order)
         enqueue_sync_outbox(
@@ -10346,7 +10607,8 @@ def import_purchase_orders_from_csv(
     fieldnames = [
         (header or "").strip().lower() for header in (reader.fieldnames or []) if header
     ]
-    required_headers = {"store_id", "supplier", "device_id", "quantity", "unit_cost"}
+    required_headers = {"store_id", "supplier",
+                        "device_id", "quantity", "unit_cost"}
     if not fieldnames or required_headers.difference(fieldnames):
         raise ValueError("purchase_import_invalid_headers")
 
@@ -10387,7 +10649,8 @@ def import_purchase_orders_from_csv(
             continue
 
         if quantity <= 0:
-            errors.append(f"Fila {line_number}: la cantidad debe ser mayor a cero")
+            errors.append(
+                f"Fila {line_number}: la cantidad debe ser mayor a cero")
             continue
 
         try:
@@ -10397,7 +10660,8 @@ def import_purchase_orders_from_csv(
             continue
 
         if unit_cost_value < Decimal("0"):
-            errors.append(f"Fila {line_number}: el costo unitario no puede ser negativo")
+            errors.append(
+                f"Fila {line_number}: el costo unitario no puede ser negativo")
             continue
 
         reference = normalized.get("reference") or f"{store_id}-{supplier}"
@@ -10411,10 +10675,12 @@ def import_purchase_orders_from_csv(
             },
         )
 
-        items_map: defaultdict[int, dict[str, Decimal | int]] = group["items"]  # type: ignore[assignment]
+        items_map: defaultdict[int, dict[str, Decimal | int]
+                               ] = group["items"]  # type: ignore[assignment]
         bucket = items_map[device_id]
         bucket["quantity"] += quantity
-        bucket["unit_cost"] = unit_cost_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        bucket["unit_cost"] = unit_cost_value.quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP)
         if notes and not group["notes"]:
             group["notes"] = notes
 
@@ -10465,7 +10731,8 @@ def import_purchase_orders_from_csv(
                 entity_type="purchase_order",
                 entity_id="bulk",
                 performed_by_id=created_by_id,
-                details=json.dumps({"imported": len(orders), "errors": len(errors)}),
+                details=json.dumps(
+                    {"imported": len(orders), "errors": len(errors)}),
             )
 
     return orders, errors
@@ -10488,7 +10755,8 @@ def list_recurring_orders(
         .order_by(models.RecurringOrder.updated_at.desc())
     )
     if order_type is not None:
-        statement = statement.where(models.RecurringOrder.order_type == order_type)
+        statement = statement.where(
+            models.RecurringOrder.order_type == order_type)
     if offset:
         statement = statement.offset(offset)
     statement = statement.limit(limit)
@@ -10522,7 +10790,8 @@ def create_recurring_order(
     store_scope: int | None = None
 
     if payload.order_type is models.RecurringOrderType.PURCHASE:
-        store_scope = int(payload_data.get("store_id")) if payload_data.get("store_id") is not None else None
+        store_scope = int(payload_data.get("store_id")) if payload_data.get(
+            "store_id") is not None else None
         if store_scope is not None:
             get_store(db, store_scope)
     elif payload.order_type is models.RecurringOrderType.TRANSFER:
@@ -10572,7 +10841,8 @@ def execute_recurring_order(
     now = datetime.utcnow()
 
     if template.order_type is models.RecurringOrderType.PURCHASE:
-        purchase_payload = schemas.PurchaseOrderCreate.model_validate(template.payload)
+        purchase_payload = schemas.PurchaseOrderCreate.model_validate(
+            template.payload)
         notes = purchase_payload.notes or None
         if reason:
             reason_note = f"Plantilla #{template.id}: {reason}"
@@ -10587,7 +10857,8 @@ def execute_recurring_order(
         reference_id = order.id
         store_scope = order.store_id
     elif template.order_type is models.RecurringOrderType.TRANSFER:
-        transfer_payload = schemas.TransferOrderCreate.model_validate(template.payload)
+        transfer_payload = schemas.TransferOrderCreate.model_validate(
+            template.payload)
         transfer_payload.reason = reason or transfer_payload.reason
         order = create_transfer_order(
             db,
@@ -10645,7 +10916,8 @@ def list_repair_orders(
     statement = (
         select(models.RepairOrder)
         .options(
-            joinedload(models.RepairOrder.parts).joinedload(models.RepairOrderPart.device)
+            joinedload(models.RepairOrder.parts).joinedload(
+                models.RepairOrderPart.device)
         )
         .order_by(models.RepairOrder.opened_at.desc())
     )
@@ -10664,7 +10936,8 @@ def list_repair_orders(
         statement = statement.where(
             or_(
                 func.lower(models.RepairOrder.customer_name).like(normalized),
-                func.lower(models.RepairOrder.technician_name).like(normalized),
+                func.lower(models.RepairOrder.technician_name).like(
+                    normalized),
                 func.lower(models.RepairOrder.damage_type).like(normalized),
                 func.lower(models.RepairOrder.device_model).like(normalized),
                 func.lower(models.RepairOrder.imei).like(normalized),
@@ -10682,7 +10955,8 @@ def get_repair_order(db: Session, order_id: int) -> models.RepairOrder:
         select(models.RepairOrder)
         .where(models.RepairOrder.id == order_id)
         .options(
-            joinedload(models.RepairOrder.parts).joinedload(models.RepairOrderPart.device),
+            joinedload(models.RepairOrder.parts).joinedload(
+                models.RepairOrderPart.device),
             joinedload(models.RepairOrder.customer),
         )
     )
@@ -10711,7 +10985,8 @@ def _apply_repair_parts(  # // [PACK37-backend]
     existing_parts: dict[tuple[int, str, str], models.RepairOrderPart] = {}
     for part in order.parts:
         part_source = part.source if part.source else models.RepairPartSource.STOCK
-        existing_parts[_part_key(part.device_id, part.part_name, part_source)] = part
+        existing_parts[_part_key(
+            part.device_id, part.part_name, part_source)] = part
 
     aggregated: dict[tuple[int, str, str], dict[str, object]] = {}
     for payload in parts_payload:
@@ -10847,7 +11122,8 @@ def _apply_repair_parts(  # // [PACK37-backend]
         order.parts.remove(part)
         db.delete(part)
 
-    order.parts_cost = total_cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    order.parts_cost = total_cost.quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP)
     order.parts_snapshot = snapshot
     order.inventory_adjusted = bool(processed_devices)
     _recalculate_store_inventory_value(db, order.store_id)
@@ -10865,8 +11141,10 @@ def create_repair_order(
     customer = None
     if payload.customer_id:
         customer = get_customer(db, payload.customer_id)
-    labor_cost = _to_decimal(payload.labor_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    customer_name = payload.customer_name or (customer.name if customer else None)
+    labor_cost = _to_decimal(payload.labor_cost).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP)
+    customer_name = payload.customer_name or (
+        customer.name if customer else None)
     order = models.RepairOrder(
         store_id=payload.store_id,
         customer_id=payload.customer_id,
@@ -10894,11 +11172,13 @@ def create_repair_order(
                 performed_by_id=performed_by_id,
                 reason=reason,
             )
-        order.total_cost = (labor_cost + parts_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        order.total_cost = (
+            labor_cost + parts_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         db.add(order)
 
         if customer:
-            _append_customer_history(customer, f"Orden de reparación #{order.id} creada")
+            _append_customer_history(
+                customer, f"Orden de reparación #{order.id} creada")
             db.add(customer)
 
         flush_session(db)
@@ -10912,7 +11192,8 @@ def create_repair_order(
             entity_type="repair_order",
             entity_id=str(order.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"store_id": order.store_id, "status": order.status.value}),
+            details=json.dumps({"store_id": order.store_id,
+                               "status": order.status.value}),
         )
         db.refresh(order)
         enqueue_sync_outbox(
@@ -10940,7 +11221,8 @@ def update_repair_order(
             customer = get_customer(db, payload.customer_id)
             order.customer_id = customer.id
             order.customer_name = customer.name
-            _append_customer_history(customer, f"Orden de reparación #{order.id} actualizada")
+            _append_customer_history(
+                customer, f"Orden de reparación #{order.id} actualizada")
             db.add(customer)
             updated_fields["customer_id"] = customer.id
         else:
@@ -10984,7 +11266,8 @@ def update_repair_order(
         elif payload.status in {models.RepairStatus.PENDIENTE, models.RepairStatus.EN_PROCESO}:
             order.delivered_at = None
     if payload.labor_cost is not None:
-        order.labor_cost = _to_decimal(payload.labor_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        order.labor_cost = _to_decimal(payload.labor_cost).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP)
         updated_fields["labor_cost"] = float(order.labor_cost)
     if payload.parts is not None:
         parts_cost = _apply_repair_parts(
@@ -11040,7 +11323,8 @@ def append_repair_parts(  # // [PACK37-backend]
         part_name = (value.part_name or "").strip().lower()
         return (value.device_id or 0, part_name, source.value)
 
-    existing_payloads: dict[tuple[int, str, str], schemas.RepairOrderPartPayload] = {}
+    existing_payloads: dict[tuple[int, str, str],
+                            schemas.RepairOrderPartPayload] = {}
     for part in order.parts:
         source = part.source or models.RepairPartSource.STOCK
         existing_payloads[(part.device_id or 0, (part.part_name or "").strip().lower(), source.value)] = (
@@ -11216,7 +11500,8 @@ def list_sales(
     if customer_id is not None:
         statement = statement.where(models.Sale.customer_id == customer_id)
     if performed_by_id is not None:
-        statement = statement.where(models.Sale.performed_by_id == performed_by_id)
+        statement = statement.where(
+            models.Sale.performed_by_id == performed_by_id)
     if date_from is not None or date_to is not None:
         start, end = _normalize_date_range(date_from, date_to)
         statement = statement.where(
@@ -11361,7 +11646,8 @@ def _preview_sale_totals(
         )
         gross_total += line_total
 
-        line_discount_percent = _to_decimal(getattr(item, "discount_percent", None))
+        line_discount_percent = _to_decimal(
+            getattr(item, "discount_percent", None))
         if line_discount_percent == Decimal("0"):
             line_discount_percent = sale_discount_percent
         discount_fraction = line_discount_percent / Decimal("100")
@@ -11426,7 +11712,8 @@ def _apply_sale_items(
         )
         gross_total += line_total
 
-        line_discount_percent = _to_decimal(getattr(item, "discount_percent", None))
+        line_discount_percent = _to_decimal(
+            getattr(item, "discount_percent", None))
         if line_discount_percent == Decimal("0"):
             line_discount_percent = sale_discount_percent
         discount_fraction = line_discount_percent / Decimal("100")
@@ -11506,7 +11793,8 @@ def create_sale(
         tax_value = _to_decimal(tax_rate)
         if tax_value < Decimal("0"):
             tax_value = Decimal("0")
-        tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
+        tax_fraction = tax_value / \
+            Decimal("100") if tax_value else Decimal("0")
 
         try:
             preview_gross_total, preview_discount = _preview_sale_totals(
@@ -11548,7 +11836,8 @@ def create_sale(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         sale.subtotal_amount = subtotal
-        tax_amount = (subtotal * tax_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        tax_amount = (
+            subtotal * tax_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         sale.tax_amount = tax_amount
         sale.total_amount = (subtotal + tax_amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -11605,7 +11894,8 @@ def create_sale(
             entity_type="sale",
             entity_id=str(sale.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"store_id": sale.store_id, "total_amount": float(sale.total_amount)}),
+            details=json.dumps(
+                {"store_id": sale.store_id, "total_amount": float(sale.total_amount)}),
         )
         db.refresh(sale)
         sale_payload = {
@@ -11667,7 +11957,8 @@ def update_sale(
     reserved_quantities: dict[int, int] = {}
     for existing_item in sale.items:
         reserved_quantities[existing_item.device_id] = (
-            reserved_quantities.get(existing_item.device_id, 0) + existing_item.quantity
+            reserved_quantities.get(
+                existing_item.device_id, 0) + existing_item.quantity
         )
     ledger_reversal: models.CustomerLedgerEntry | None = None
     ledger_new: models.CustomerLedgerEntry | None = None
@@ -11676,7 +11967,8 @@ def update_sale(
     with transactional_session(db):
         sale_discount_percent = _to_decimal(payload.discount_percent or 0)
         new_payment_method = models.PaymentMethod(payload.payment_method)
-        sale_status = (payload.status or sale.status or "COMPLETADA").strip() or "COMPLETADA"
+        sale_status = (
+            payload.status or sale.status or "COMPLETADA").strip() or "COMPLETADA"
         normalized_status = sale_status.upper()
 
         customer = None
@@ -11696,7 +11988,8 @@ def update_sale(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         tax_value = _to_decimal(None)
-        tax_fraction = tax_value / Decimal("100") if tax_value else Decimal("0")
+        tax_fraction = tax_value / \
+            Decimal("100") if tax_value else Decimal("0")
         preview_tax_amount = (preview_subtotal * tax_fraction).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
@@ -11741,7 +12034,8 @@ def update_sale(
             and previous_total_amount > Decimal("0")
         ):
             updated_debt = (
-                _to_decimal(previous_customer.outstanding_debt) - previous_total_amount
+                _to_decimal(previous_customer.outstanding_debt) -
+                previous_total_amount
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if updated_debt < Decimal("0"):
                 updated_debt = Decimal("0")
@@ -11790,7 +12084,8 @@ def update_sale(
         if target_customer:
             if sale.payment_method == models.PaymentMethod.CREDITO:
                 target_customer.outstanding_debt = (
-                    _to_decimal(target_customer.outstanding_debt) + sale.total_amount
+                    _to_decimal(target_customer.outstanding_debt) +
+                    sale.total_amount
                 ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 customers_to_sync[target_customer.id] = target_customer
                 ledger_new = _create_customer_ledger_entry(
@@ -11914,7 +12209,8 @@ def cancel_sale(
 
         if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO and sale.total_amount > Decimal("0"):
             updated_debt = (
-                _to_decimal(sale.customer.outstanding_debt) - _to_decimal(sale.total_amount)
+                _to_decimal(sale.customer.outstanding_debt) -
+                _to_decimal(sale.total_amount)
             ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             if updated_debt < Decimal("0"):
                 updated_debt = Decimal("0")
@@ -12024,7 +12320,8 @@ def register_sale_return(
                 device_id=item.device_id,
                 movement_type=models.MovementType.IN,
                 quantity=item.quantity,
-                comment=_build_sale_return_comment(sale, device, item.reason or reason),
+                comment=_build_sale_return_comment(
+                    sale, device, item.reason or reason),
                 performed_by_id=processed_by_id,
                 unit_cost=_quantize_currency(previous_cost),
                 reference_type="sale_return",
@@ -12063,7 +12360,8 @@ def register_sale_return(
             entity_type="sale",
             entity_id=str(sale.id),
             performed_by_id=processed_by_id,
-            details=json.dumps({"items": [item.model_dump() for item in payload.items]}),
+            details=json.dumps(
+                {"items": [item.model_dump() for item in payload.items]}),
         )
         flush_session(db)
 
@@ -12139,7 +12437,8 @@ def list_operations_history(
         )
     )
     if store_id is not None:
-        purchase_stmt = purchase_stmt.where(models.PurchaseOrder.store_id == store_id)
+        purchase_stmt = purchase_stmt.where(
+            models.PurchaseOrder.store_id == store_id)
     for order in db.scalars(purchase_stmt).unique():
         if technician_id is not None and order.created_by_id != technician_id:
             continue
@@ -12270,7 +12569,8 @@ def list_operations_history(
         if entry.technician_id is not None and entry.technician_id in technicians
     }
     technicians_list = [
-        schemas.OperationHistoryTechnician(id=tech_id, name=technicians[tech_id])
+        schemas.OperationHistoryTechnician(
+            id=tech_id, name=technicians[tech_id])
         for tech_id in sorted(technician_ids, key=lambda ident: technicians[ident].lower())
     ]
 
@@ -12298,7 +12598,8 @@ def list_cash_sessions(
 
 
 def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession:
-    statement = select(models.CashRegisterSession).where(models.CashRegisterSession.id == session_id)
+    statement = select(models.CashRegisterSession).where(
+        models.CashRegisterSession.id == session_id)
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:
@@ -12360,7 +12661,8 @@ def open_cash_session(
             entity_type="cash_session",
             entity_id=str(session.id),
             performed_by_id=opened_by_id,
-            details=json.dumps({"store_id": session.store_id, "reason": reason}),
+            details=json.dumps(
+                {"store_id": session.store_id, "reason": reason}),
         )
         flush_session(db)
         db.refresh(session)
@@ -12385,7 +12687,8 @@ def close_cash_session(
         .group_by(models.Sale.payment_method)
     )
     for method, total in db.execute(totals_stmt):
-        totals_value = _to_decimal(total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        totals_value = _to_decimal(total).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP)
         sales_totals[method.value] = totals_value
 
     session.closing_amount = _to_decimal(payload.closing_amount).quantize(
@@ -12394,20 +12697,24 @@ def close_cash_session(
     session.closed_by_id = closed_by_id
     session.closed_at = datetime.utcnow()
     session.status = models.CashSessionStatus.CERRADO
-    session.payment_breakdown = {key: float(value) for key, value in sales_totals.items()}
+    session.payment_breakdown = {key: float(
+        value) for key, value in sales_totals.items()}
 
     for method_key, reported_amount in payload.payment_breakdown.items():
         session.payment_breakdown[f"reportado_{method_key.upper()}"] = float(
             Decimal(str(reported_amount))
         )
 
-    expected_cash = session.opening_amount + sales_totals.get(models.PaymentMethod.EFECTIVO.value, Decimal("0"))
-    session.expected_amount = expected_cash.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    expected_cash = session.opening_amount + \
+        sales_totals.get(models.PaymentMethod.EFECTIVO.value, Decimal("0"))
+    session.expected_amount = expected_cash.quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP)
     session.difference_amount = (
         session.closing_amount - session.expected_amount
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     if payload.notes:
-        session.notes = (session.notes or "") + f"\n{payload.notes}" if session.notes else payload.notes
+        session.notes = (session.notes or "") + \
+            f"\n{payload.notes}" if session.notes else payload.notes
 
     with transactional_session(db):
         db.add(session)
@@ -12434,12 +12741,14 @@ def close_cash_session(
 
 def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
     store = get_store(db, store_id)
-    statement = select(models.POSConfig).where(models.POSConfig.store_id == store_id)
+    statement = select(models.POSConfig).where(
+        models.POSConfig.store_id == store_id)
     config = db.scalars(statement).first()
     if config is None:
         prefix = store.name[:3].upper() if store.name else "POS"
         generated_prefix = f"{prefix}-{store_id:03d}"[:12]
-        config = models.POSConfig(store_id=store_id, invoice_prefix=generated_prefix)
+        config = models.POSConfig(
+            store_id=store_id, invoice_prefix=generated_prefix)
         with transactional_session(db):
             db.add(config)
             flush_session(db)
@@ -12500,7 +12809,8 @@ def update_pos_config(
 # // [PACK34-taxes]
 def list_pos_taxes(db: Session) -> list[schemas.POSTaxInfo]:
     statement = (
-        select(models.POSConfig.tax_rate, models.POSConfig.store_id, models.Store.name)
+        select(models.POSConfig.tax_rate,
+               models.POSConfig.store_id, models.Store.name)
         .join(models.Store, models.Store.id == models.POSConfig.store_id)
         .order_by(models.POSConfig.tax_rate.desc())
     )
@@ -12561,7 +12871,8 @@ def save_pos_draft(
     get_store(db, payload.store_id)
     draft: models.POSDraftSale
     if payload.draft_id:
-        statement = select(models.POSDraftSale).where(models.POSDraftSale.id == payload.draft_id)
+        statement = select(models.POSDraftSale).where(
+            models.POSDraftSale.id == payload.draft_id)
         draft = db.scalars(statement).first()
         if draft is None:
             raise LookupError("pos_draft_not_found")
@@ -12605,7 +12916,8 @@ def save_pos_draft(
 
 
 def delete_pos_draft(db: Session, draft_id: int, *, removed_by_id: int | None = None) -> None:
-    statement = select(models.POSDraftSale).where(models.POSDraftSale.id == draft_id)
+    statement = select(models.POSDraftSale).where(
+        models.POSDraftSale.id == draft_id)
     draft = db.scalars(statement).first()
     if draft is None:
         raise LookupError("pos_draft_not_found")
@@ -12654,7 +12966,8 @@ def register_pos_sale(
                 device_id=item.device_id,
                 quantity=item.quantity,
                 discount_percent=item.discount_percent,
-                unit_price_override=getattr(item, "unit_price_override", None),  # // [PACK34-pricing]
+                unit_price_override=getattr(
+                    item, "unit_price_override", None),  # // [PACK34-pricing]
             )
             for item in payload.items
         ],
@@ -12682,7 +12995,8 @@ def register_pos_sale(
 
     if payload.draft_id:
         try:
-            delete_pos_draft(db, payload.draft_id, removed_by_id=performed_by_id)
+            delete_pos_draft(db, payload.draft_id,
+                             removed_by_id=performed_by_id)
         except LookupError:
             logger.debug(
                 f"Borrador POS {payload.draft_id} no encontrado al confirmar la venta."
@@ -12703,6 +13017,7 @@ def register_pos_sale(
         records=[sale],
     )
     return sale, warnings
+
 
 def list_backup_jobs(
     db: Session, *, limit: int = 50, offset: int = 0
@@ -12755,10 +13070,12 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
     movements = list(db.scalars(movements_stmt))
     _hydrate_movement_references(db, movements)
 
-    sync_stmt = select(models.SyncSession).order_by(models.SyncSession.started_at.desc())
+    sync_stmt = select(models.SyncSession).order_by(
+        models.SyncSession.started_at.desc())
     sync_sessions = list(db.scalars(sync_stmt))
 
-    audit_stmt = select(models.AuditLog).order_by(models.AuditLog.created_at.desc())
+    audit_stmt = select(models.AuditLog).order_by(
+        models.AuditLog.created_at.desc())
     audits = list(db.scalars(audit_stmt))
 
     total_device_records = 0
@@ -12891,7 +13208,8 @@ def build_inventory_snapshot(db: Session) -> dict[str, object]:
             "device_records": total_device_records,
             "total_units": total_units,
             "inventory_value": float(
-                total_inventory_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                total_inventory_value.quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP)
             ),
         },
         "integrity_report": integrity_report.model_dump(mode="json"),
@@ -12979,7 +13297,8 @@ def list_import_validations(
         .limit(safe_limit)
     )
     if corregido is not None:
-        statement = statement.where(models.ImportValidation.corregido.is_(corregido))
+        statement = statement.where(
+            models.ImportValidation.corregido.is_(corregido))
     return list(db.scalars(statement))
 
 
@@ -12996,7 +13315,8 @@ def list_import_validation_details(
         .order_by(models.ImportValidation.fecha.desc())
     )
     if corregido is not None:
-        statement = statement.where(models.ImportValidation.corregido.is_(corregido))
+        statement = statement.where(
+            models.ImportValidation.corregido.is_(corregido))
     if offset:
         statement = statement.offset(offset)
     if limit is not None:
@@ -13038,7 +13358,8 @@ def get_import_validation_report(db: Session) -> schemas.ImportValidationSummary
         .limit(1)
     )
     registros_revisados = last_import.total_registros if last_import else 0
-    duration = float(last_import.duracion_segundos) if last_import and last_import.duracion_segundos is not None else None
+    duration = float(
+        last_import.duracion_segundos) if last_import and last_import.duracion_segundos is not None else None
     campos_faltantes: set[str] = set()
     if last_import and last_import.columnas_detectadas:
         for canonical, header in last_import.columnas_detectadas.items():

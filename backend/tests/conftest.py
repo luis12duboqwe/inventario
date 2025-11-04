@@ -1,4 +1,18 @@
 from __future__ import annotations
+from backend.app.main import create_app
+from backend.app.db.valor_inventario_view import (
+    create_valor_inventario_view,
+    drop_valor_inventario_view,
+)
+from backend.app.db.movimientos_inventario_view import (
+    create_movimientos_inventario_view,
+    drop_movimientos_inventario_view,
+)
+from backend.app.database import Base, create_engine_from_url, get_db
+from backend.app.config import settings
+from sqlalchemy.orm import Session, sessionmaker
+from fastapi.testclient import TestClient
+import pytest
 
 import os
 from collections.abc import Iterator
@@ -12,27 +26,11 @@ os.environ.setdefault("CORS_ORIGINS", "[\"http://testserver\"]")
 os.environ.setdefault("REFRESH_TOKEN_EXPIRE_DAYS", "7")
 os.environ.setdefault("SOFTMOBILE_BOOTSTRAP_TOKEN", "test-bootstrap-token")
 
-import pytest
 
 pytest.importorskip(
     "fastapi",
     reason="La suite backend requiere fastapi para instanciar la aplicación de pruebas.",
 )
-
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session, sessionmaker
-
-from backend.app.config import settings
-from backend.app.database import Base, create_engine_from_url, get_db
-from backend.app.db.movimientos_inventario_view import (
-    create_movimientos_inventario_view,
-    drop_movimientos_inventario_view,
-)
-from backend.app.db.valor_inventario_view import (
-    create_valor_inventario_view,
-    drop_valor_inventario_view,
-)
-from backend.app.main import create_app
 
 
 @pytest.fixture(scope="session")
@@ -58,7 +56,8 @@ def db_session(db_engine) -> Iterator[Session]:
 
     connection = db_engine.connect()
     transaction = connection.begin()
-    session_factory = sessionmaker(bind=connection, autocommit=False, autoflush=False, future=True)
+    session_factory = sessionmaker(
+        bind=connection, autocommit=False, autoflush=False, future=True)
     session = session_factory()
     try:
         yield session
@@ -100,12 +99,33 @@ def client(db_session: Session) -> Iterator[TestClient]:
         sensitive_get_prefixes = ("/pos", "/reports", "/customers")
         original_request = test_client.request
 
+        def _sanitize_ascii(value: str) -> str:
+            # Convierte a ASCII seguro para cabeceras HTTP WSGI, eliminando acentos/símbolos
+            try:
+                import unicodedata
+
+                normalized = unicodedata.normalize("NFKD", value)
+                return normalized.encode("ascii", "ignore").decode("ascii")
+            except Exception:
+                # Fallback conservador
+                return value.encode("ascii", "ignore").decode("ascii")
+
         def request_with_reason(method: str, url: str, *args, **kwargs):
             provided_headers = kwargs.pop("headers", None) or {}
             merged_headers = {**test_client.headers, **provided_headers}
+
+            # Normaliza cualquier X-Reason entrante a ASCII para evitar UnicodeEncodeError en WSGI
+            for key in list(merged_headers.keys()):
+                if key.lower() == "x-reason" and isinstance(merged_headers[key], str):
+                    merged_headers[key] = _sanitize_ascii(merged_headers[key])
+
             path = urlsplit(url).path
             if method.upper() == "GET" and path.startswith(sensitive_get_prefixes):
-                if not any(key.lower() == "x-reason" for key in merged_headers):
+                # Solo auto-inyectar motivo si la request NO está autenticada (para no interferir
+                # con pruebas que validan el 400 por falta de motivo en rutas export).
+                has_auth = any(
+                    k.lower() == "authorization" for k in merged_headers)
+                if not has_auth and not any(key.lower() == "x-reason" for key in merged_headers):
                     merged_headers["X-Reason"] = "Consulta automatizada pruebas"
             kwargs["headers"] = merged_headers
             return original_request(method, url, *args, **kwargs)
