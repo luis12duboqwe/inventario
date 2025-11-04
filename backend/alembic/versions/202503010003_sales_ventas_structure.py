@@ -316,4 +316,3 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     if inspector.has_table("detalle_ventas"):
         op.rename_table("detalle_ventas", "sale_items")
-***
