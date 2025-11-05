@@ -46,8 +46,8 @@ function ModuleHeader({ icon, title, subtitle, status, statusLabel, actions }: P
         leadingIcon={icon}
         title={title}
         description={subtitle}
-        status={resolvedStatus}
-        actions={actions}
+        {...(resolvedStatus ? { status: resolvedStatus } : {})}
+        {...(actions ? { actions } : {})}
       />
     </motion.div>
   );

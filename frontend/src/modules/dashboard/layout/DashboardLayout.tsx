@@ -76,6 +76,14 @@ const toastIcons: Record<ToastMessage["variant"], JSX.Element> = {
       />
     </svg>
   ),
+  warning: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M10.29 3.86 1.82 18.14A2 2 0 0 0 3.53 21h16.94a2 2 0 0 0 1.71-2.86L13.71 3.86a2 2 0 0 0-3.42 0ZM12 9a1 1 0 0 1 1 1v3.5a1 1 0 0 1-2 0V10a1 1 0 0 1 1-1Zm0 8a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 17Z"
+      />
+    </svg>
+  ),
 };
 
 function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
@@ -261,12 +269,13 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
   );
 
   const availableNavItems = navItems.filter((item) => item.isEnabled);
-  const sidebarItems: SidebarNavItem[] = availableNavItems.map(({ to, label, icon, children }) => ({
-    to,
-    label,
-    icon,
-    children,
-  }));
+  const sidebarItems: SidebarNavItem[] = availableNavItems.map(({ to, label, icon, children }) => {
+    const base: SidebarNavItem = { to, label, icon };
+    if (children && children.length > 0) {
+      return { ...base, children };
+    }
+    return base;
+  });
 
   const activeNav =
     availableNavItems.find((item) => location.pathname.startsWith(item.to)) ?? availableNavItems[0];
@@ -408,16 +417,26 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         srNotices.push("Existe un aviso nuevo asociado a reportes.");
       }
 
-      return {
+      const module: AdminControlPanelModule = {
         to: item.to,
         label: item.label,
         description: item.description,
         icon: isValidElement(item.icon) ? item.icon : <HelpCircle className="icon" aria-hidden="true" />,
-        badge: badges.length > 0 ? badges.join(" · ") : undefined,
         badgeVariant,
         isActive,
-        srHint: srNotices.length > 0 ? srNotices.join(" ") : undefined,
       };
+
+      const badgeText = badges.length > 0 ? badges.join(" · ") : null;
+      if (badgeText) {
+        module.badge = badgeText;
+      }
+
+      const srHint = srNotices.length > 0 ? srNotices.join(" ") : null;
+      if (srHint) {
+        module.srHint = srHint;
+      }
+
+      return module;
     });
   }, [
     availableNavItems,

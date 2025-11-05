@@ -54,7 +54,16 @@ export default function FiltersBar({ value, onChange, onNew }: Props) {
       />
       <select
         value={v.status || "ALL"}
-        onChange={(event) => onChange({ ...v, status: event.target.value as Filters["status"] })}
+        onChange={(event) => {
+          const statusValue = event.target.value as Filters["status"];
+          const next: Filters = { ...v };
+          if (!statusValue || statusValue === "ALL") {
+            delete next.status;
+          } else {
+            next.status = statusValue;
+          }
+          onChange(next);
+        }}
         style={inputStyle}
       >
         <option value="ALL">Todos</option>

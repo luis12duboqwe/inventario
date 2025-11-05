@@ -13,6 +13,8 @@ import { inventoryService } from "../services/inventoryService";
 
 export function useInventoryModule() {
   const dashboard = useDashboard();
+  // Desestructurar referencias necesarias para estabilizar dependencias de hooks
+  const { token, selectedStoreId, setError, pushToast } = dashboard;
 
   const [supplierBatchOverview, setSupplierBatchOverview] = useState<
     SupplierBatchOverviewItem[]
@@ -22,15 +24,15 @@ export function useInventoryModule() {
   const [recentMovementsLoading, setRecentMovementsLoading] = useState(false);
 
   const refreshSupplierBatchOverview = useCallback(async () => {
-    if (!dashboard.selectedStoreId) {
+    if (!selectedStoreId) {
       setSupplierBatchOverview([]);
       return;
     }
     try {
       setSupplierBatchLoading(true);
       const data = await inventoryService.fetchSupplierBatchOverview(
-        dashboard.token,
-        dashboard.selectedStoreId,
+        token,
+        selectedStoreId,
       );
       setSupplierBatchOverview(data);
     } catch (error) {
@@ -38,16 +40,16 @@ export function useInventoryModule() {
         error instanceof Error
           ? error.message
           : "No fue posible consultar los lotes recientes por proveedor.";
-      dashboard.setError(message);
-      dashboard.pushToast({ message, variant: "error" });
+      setError(message);
+      pushToast({ message, variant: "error" });
     } finally {
       setSupplierBatchLoading(false);
     }
   }, [
-    dashboard.pushToast,
-    dashboard.selectedStoreId,
-    dashboard.setError,
-    dashboard.token,
+    pushToast,
+    selectedStoreId,
+    setError,
+    token,
   ]);
 
   useEffect(() => {
@@ -129,8 +131,8 @@ export function useInventoryModule() {
     try {
       setRecentMovementsLoading(true);
       const filters: InventoryMovementsFilters = {};
-      if (dashboard.selectedStoreId) {
-        filters.storeIds = [dashboard.selectedStoreId];
+      if (selectedStoreId) {
+        filters.storeIds = [selectedStoreId];
       }
       const now = new Date();
       const pastDate = new Date(now);
@@ -138,7 +140,7 @@ export function useInventoryModule() {
       filters.dateFrom = pastDate.toISOString();
       filters.dateTo = now.toISOString();
       const report = await inventoryService.fetchInventoryMovementsReport(
-        dashboard.token,
+        token,
         filters,
       );
       setRecentMovements(report.movimientos.slice(0, 8));
@@ -147,16 +149,16 @@ export function useInventoryModule() {
         error instanceof Error
           ? error.message
           : "No fue posible consultar los movimientos recientes.";
-      dashboard.setError(message);
-      dashboard.pushToast({ message, variant: "error" });
+      setError(message);
+      pushToast({ message, variant: "error" });
     } finally {
       setRecentMovementsLoading(false);
     }
   }, [
-    dashboard.pushToast,
-    dashboard.selectedStoreId,
-    dashboard.setError,
-    dashboard.token,
+    pushToast,
+    selectedStoreId,
+    setError,
+    token,
   ]);
 
   useEffect(() => {

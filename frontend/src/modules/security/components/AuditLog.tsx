@@ -122,8 +122,12 @@ function AuditLog({ token }: Props) {
         const effectiveFilters = buildCurrentFilters(overrides);
         const data = await getAuditLogs(token, effectiveFilters);
         setLogs((previous) => {
-          if (notify && previous.length > 0 && data.length > 0 && data[0].id !== previous[0].id) {
-            pushToast({ message: `Nueva acción registrada: ${data[0].action}`, variant: "info" });
+          if (notify && previous.length > 0 && data.length > 0) {
+            const latest = data[0];
+            const previousFirst = previous[0];
+            if (latest && previousFirst && latest.id !== previousFirst.id) {
+              pushToast({ message: `Nueva acción registrada: ${latest.action}`, variant: "info" });
+            }
           }
           return data;
         });
@@ -334,15 +338,16 @@ function AuditLog({ token }: Props) {
       setAckError(null);
       try {
         setAcknowledging(true);
-        await acknowledgeAuditAlert(
-          token,
-          {
-            entity_type: selectedReminder.entity_type,
-            entity_id: selectedReminder.entity_id,
-            note: note ? note : undefined,
-          },
-          trimmedReason
-        );
+        const payload: Parameters<typeof acknowledgeAuditAlert>[1] = {
+          entity_type: selectedReminder.entity_type,
+          entity_id: selectedReminder.entity_id,
+        };
+
+        if (note) {
+          payload.note = note;
+        }
+
+        await acknowledgeAuditAlert(token, payload, trimmedReason);
         pushToast({
           message: `Acuse registrado para ${selectedReminder.entity_type} #${selectedReminder.entity_id}.`,
           variant: "success",

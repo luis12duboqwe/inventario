@@ -13,7 +13,7 @@ import {
 import type { MoveFilters, MoveRow } from "../components/moves-list";
 
 export default function StockMovesListPage() {
-  const [filters, setFilters] = React.useState<MoveFilters>({ status: "ALL", type: "ALL" });
+  const [filters, setFilters] = React.useState<MoveFilters>({});
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [selectedRow, setSelectedRow] = React.useState<MoveRow | null>(null);
   const [openImport, setOpenImport] = React.useState(false);
@@ -22,8 +22,8 @@ export default function StockMovesListPage() {
   const [openCancel, setOpenCancel] = React.useState(false);
 
   // TODO: conectar con servicio real en packs posteriores
-  const data = React.useMemo<{ rows: MoveRow[] }>(() => ({ rows: [] }), []);
-  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const data = React.useMemo<{ rows: MoveRow[] }>(() => ({ rows: [] as MoveRow[] }), []);
+  const rows = data.rows;
   const isLoading = false;
 
   const summaryItems = React.useMemo(() => {
@@ -139,7 +139,7 @@ export default function StockMovesListPage() {
         onRowClick={handleRowClick}
       />
 
-      <MoveSidePanel row={selectedRow || undefined} onClose={() => setSelectedRow(null)} />
+  <MoveSidePanel row={selectedRow} onClose={() => setSelectedRow(null)} />
 
       <MoveImportModal open={openImport} onClose={() => setOpenImport(false)} />
       <MoveExportModal open={openExport} onClose={() => setOpenExport(false)} />

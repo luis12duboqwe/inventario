@@ -74,8 +74,8 @@ function OperationsHistoryPanel({ stores, token }: Props) {
         setLoading(true);
         setError(null);
         const response = await listOperationsHistory(token, {
-          storeId: filters.storeId === "all" ? undefined : filters.storeId,
-          technicianId: filters.technicianId === "all" ? undefined : filters.technicianId,
+          storeId: filters.storeId === "all" ? null : filters.storeId,
+          technicianId: filters.technicianId === "all" ? null : filters.technicianId,
           startDate: filters.startDate,
           endDate: filters.endDate,
         });

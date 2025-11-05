@@ -20,6 +20,7 @@ import RouteErrorElement from "./RouteErrorElement"; // [PACK36-router]
 import {
   bootstrapAdmin,
   getBootstrapStatus,
+  type BootstrapRequest,
   type BootstrapStatus,
   type Credentials,
 } from "../services/api/auth";
@@ -230,12 +231,13 @@ const LoginScene = memo(function LoginScene({
 
   const bootstrapMutation = useMutation({
     mutationFn: async (values: BootstrapFormValues) => {
-      await bootstrapAdmin({
+      const payload: BootstrapRequest = {
         username: values.username,
         password: values.password,
-        full_name: values.fullName,
-        telefono: values.telefono,
-      });
+        full_name: values.fullName ?? null,
+        telefono: values.telefono ?? null,
+      };
+      await bootstrapAdmin(payload);
     },
   });
 

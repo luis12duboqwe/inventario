@@ -25,21 +25,29 @@ export default function SalesHistory({ loading, saleDetail, onSearch, onReturn }
   const handleReturn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!saleDetail) return;
-    if (!returnForm.imei && !returnForm.productId) return;
+    const imeiValue = returnForm.imei.trim();
+    const productValueRaw = returnForm.productId ? Number(returnForm.productId) : null;
+    if (!imeiValue && !productValueRaw) return;
     setSubmittingReturn(true);
     try {
+      const item: PosReturnPayload["items"][number] = {
+        qty: returnForm.qty,
+      };
+      if (imeiValue) {
+        item.imei = imeiValue;
+      }
+      if (productValueRaw) {
+        item.productId = productValueRaw;
+      }
       const payload: PosReturnPayload = {
         originalSaleId: saleDetail.sale.id,
-        reason: returnForm.reason,
-        items: [
-          {
-            imei: returnForm.imei || undefined,
-            productId: returnForm.productId ? Number(returnForm.productId) : undefined,
-            qty: returnForm.qty,
-          },
-        ],
+        items: [item],
       };
-      await onReturn(payload, returnForm.reason);
+      const reasonValue = returnForm.reason.trim();
+      if (reasonValue) {
+        payload.reason = reasonValue;
+      }
+      await onReturn(payload, reasonValue || returnForm.reason);
       setReturnForm({ imei: "", productId: "", qty: 1, reason: "Devolución POS" });
     } finally {
       setSubmittingReturn(false);

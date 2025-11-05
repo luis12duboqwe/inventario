@@ -182,7 +182,7 @@ function SidePanel({
                   <tr key={device.id}>
                     <td>{device.sku}</td>
                     <td>{device.name}</td>
-                    <td>{device.condition_label ?? device.condition}</td>
+                    <td>{device.condicion ?? device.estado ?? "—"}</td>
                     <td>{formatCurrency(device.unit_price)}</td>
                     <td>{device.quantity}</td>
                     <td>

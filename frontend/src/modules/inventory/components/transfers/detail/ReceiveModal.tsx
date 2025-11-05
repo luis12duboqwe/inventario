@@ -49,7 +49,7 @@ function ReceiveModal({ open, lines, onClose, onSubmit }: Props) {
 
   const invalidLine = entries.some((line) => {
     const value = qtys[line.id] ?? 0;
-    const limit = limits[line.id];
+    const limit = limits[line.id] ?? line.qty;
     if (value < 0 || value > limit) {
       return true;
     }
@@ -91,7 +91,7 @@ function ReceiveModal({ open, lines, onClose, onSubmit }: Props) {
         </header>
         <div className="modal-card__body">
           {entries.map((line) => {
-            const limit = limits[line.id];
+            const limit = limits[line.id] ?? line.qty;
             const value = qtys[line.id] ?? 0;
             return (
               <div key={line.id} className="modal-panel">

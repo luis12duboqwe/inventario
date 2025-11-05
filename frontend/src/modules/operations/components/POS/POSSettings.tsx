@@ -58,8 +58,8 @@ function POSSettingsForm({ config, devices, onSave, loading }: POSSettingsFormPr
         store_id: config.store_id,
         tax_rate: Math.min(100, Math.max(0, taxRate)),
         invoice_prefix: invoicePrefix.trim().toUpperCase() || "POS",
-        printer_name: printerName.trim() || undefined,
-        printer_profile: printerProfile.trim() || undefined,
+        printer_name: printerName.trim() || null,
+        printer_profile: printerProfile.trim() || null,
         quick_product_ids: quickProducts,
       });
       setMessage("Configuración guardada correctamente.");

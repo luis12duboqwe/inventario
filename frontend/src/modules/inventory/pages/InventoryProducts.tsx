@@ -46,14 +46,19 @@ export default function InventoryProducts() {
 
   const gridItems = React.useMemo<ProductCardData[]>(
     () =>
-      rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        sku: row.sku,
-        price: row.price,
-        status: row.status,
-        stock: row.stock,
-      })),
+      rows.map((row) => {
+        const card: ProductCardData = {
+          id: row.id,
+          name: row.name,
+          price: row.price,
+          status: row.status,
+          stock: row.stock,
+        };
+        if (row.sku) {
+          card.sku = row.sku;
+        }
+        return card;
+      }),
     [rows],
   );
 
@@ -164,20 +169,6 @@ export default function InventoryProducts() {
     setPage(nextPage);
   }, []);
 
-  const sideProduct = React.useMemo(() => {
-    if (!side) {
-      return undefined;
-    }
-    return {
-      name: side.name,
-      sku: side.sku,
-      price: side.price,
-      status: side.status,
-      stock: side.stock,
-      category: side.category,
-    };
-  }, [side]);
-
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div>
@@ -219,7 +210,19 @@ export default function InventoryProducts() {
 
       <ProductsPagination page={page} pages={pages} onPage={handlePageChange} />
 
-      <ProductsSidePanel product={sideProduct} onClose={() => setSide(null)} />
+        {side ? (
+          <ProductsSidePanel
+            product={{
+              name: side.name,
+              price: side.price,
+              status: side.status,
+              stock: side.stock,
+              ...(side.sku ? { sku: side.sku } : {}),
+              ...(side.category ? { category: side.category } : {}),
+            }}
+            onClose={() => setSide(null)}
+          />
+        ) : null}
       <ProductsImportModal open={mImport} onClose={() => setMImport(false)} />
       <ProductsExportModal open={mExport} onClose={() => setMExport(false)} />
       <ProductsMoveCategoryModal open={mMove} onClose={() => setMMove(false)} onSubmit={handleMoveCategorySubmit} />

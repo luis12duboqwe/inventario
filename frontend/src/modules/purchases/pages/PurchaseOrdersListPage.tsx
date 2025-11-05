@@ -129,15 +129,20 @@ function PurchaseOrdersListPage() {
 
   const rows: PORow[] = useMemo(
     () =>
-      filteredRecords.map(({ id, number, date, supplier, itemsCount, total, status }) => ({
-        id,
-        number,
-        date,
-        supplier,
-        itemsCount,
-        total,
-        status,
-      })),
+      filteredRecords.map(({ id, number, date, supplier, itemsCount, total, status }) => {
+        const row: PORow = {
+          id,
+          date,
+          supplier,
+          itemsCount,
+          total,
+          status,
+        };
+        if (number) {
+          row.number = number;
+        }
+        return row;
+      }),
     [filteredRecords],
   );
 
@@ -236,7 +241,7 @@ function PurchaseOrdersListPage() {
         onRowClick={setActiveRow}
       />
 
-      <POSidePanel row={activeRow ?? undefined} onClose={() => setActiveRow(null)} />
+  <POSidePanel row={activeRow} onClose={() => setActiveRow(null)} />
 
       <POImportModal open={importOpen} onClose={() => setImportOpen(false)} />
       <POExportModal open={exportOpen} onClose={() => setExportOpen(false)} />

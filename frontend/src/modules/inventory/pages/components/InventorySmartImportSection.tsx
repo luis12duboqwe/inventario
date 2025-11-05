@@ -6,7 +6,6 @@ import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 function InventorySmartImportSection() {
   const {
-    module: { formatCurrency },
     downloads: { downloadSmartResultCsv, downloadSmartResultPdf },
     smartImport: {
       smartImportFile,
@@ -18,10 +17,9 @@ function InventorySmartImportSection() {
       smartImportLoading,
       smartImportHistory,
       smartImportHistoryLoading,
-      refreshSmartImportHistory,
-      pendingDevices,
-      pendingDevicesLoading,
-      refreshPendingDevices,
+  refreshSmartImportHistory,
+  pendingDevicesLoading,
+  refreshPendingDevices,
       smartPreviewDirty,
       smartFileInputRef,
       handleSmartOverrideChange,

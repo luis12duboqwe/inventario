@@ -1,9 +1,9 @@
 import React, { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 export type ToolbarAction = {
-  id: string;
+  id?: string;
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
   disabled?: boolean;
   title?: string;
 };

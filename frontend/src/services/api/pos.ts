@@ -26,6 +26,7 @@ export type {
   PosSalePayload,
   PosSaleResponse,
   PosSaleOperationPayload,
+  PosSaleItemRequest,
   PosSalePaymentEntry,
   PosSessionCloseInput,
   PosSessionOpenInput,

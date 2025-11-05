@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   AlertTriangle,
@@ -23,14 +23,18 @@ import { useInventoryModule } from "../hooks/useInventoryModule";
 import { useSmartImportManager } from "./hooks/useSmartImportManager";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import { safeArray } from "@/utils/safeValues"; // [PACK36-inventory-state]
-import type { InventoryLayoutContextValue, StatusCard } from "./context/InventoryLayoutContext";
+import type {
+  InventoryLayoutContextValue,
+  StatusBadge,
+  StatusCard,
+} from "./context/InventoryLayoutContext";
 
 export type InventoryTabId = "productos" | "movimientos" | "proveedores" | "alertas";
 
 const INVENTORY_TABS: Array<{
   id: InventoryTabId;
   label: string;
-  icon: JSX.Element;
+  icon: ReactNode;
   path: string;
 }> = [
   { id: "productos", label: "Productos", icon: <Boxes size={16} aria-hidden="true" />, path: "productos" },
@@ -41,7 +45,7 @@ const INVENTORY_TABS: Array<{
 
 export type InventoryLayoutState = {
   contextValue: InventoryLayoutContextValue;
-  tabOptions: Array<{ id: InventoryTabId; label: string; icon: JSX.Element }>;
+  tabOptions: Array<{ id: InventoryTabId; label: string; icon: ReactNode }>;
   activeTab: InventoryTabId;
   handleTabChange: (tabId: InventoryTabId) => void;
   moduleStatus: "ok" | "warning" | "critical";
@@ -72,11 +76,8 @@ export function useInventoryLayoutState(): InventoryLayoutState {
   const { globalSearchTerm, setGlobalSearchTerm, pushToast, setError } = useDashboard();
   const inventoryModule = useInventoryModule();
   const {
-    token,
-    enableCatalogPro,
     stores,
     selectedStoreId,
-    setSelectedStoreId,
     selectedStore,
     devices,
     loading,
@@ -84,9 +85,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     totalItems,
     totalValue,
     formatCurrency,
-    topStores,
     lowStockDevices,
-    handleMovement,
     handleDeviceUpdate,
     backupHistory,
     updateStatus,
@@ -95,33 +94,13 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     downloadInventoryCsv,
     exportCatalogCsv,
     importCatalogCsv,
-    supplierBatchOverview,
-    supplierBatchLoading,
     refreshSupplierBatchOverview,
     stockByCategory,
-    recentMovements,
-    recentMovementsLoading,
     refreshRecentMovements,
     lowStockThreshold,
     updateLowStockThreshold,
     refreshSummary,
     storeValuationSnapshot,
-    fetchInventoryCurrentReport,
-    downloadInventoryCurrentCsv,
-    downloadInventoryCurrentPdf,
-    downloadInventoryCurrentXlsx,
-    fetchInventoryValueReport,
-    fetchInventoryMovementsReport,
-    fetchTopProductsReport,
-    downloadInventoryValueCsv,
-    downloadInventoryValuePdf,
-    downloadInventoryValueXlsx,
-    downloadInventoryMovementsCsv,
-    downloadInventoryMovementsPdf,
-    downloadInventoryMovementsXlsx,
-    downloadTopProductsCsv,
-    downloadTopProductsPdf,
-    downloadTopProductsXlsx,
     smartImportInventory,
     fetchSmartImportHistory,
     fetchIncompleteDevices,
@@ -150,27 +129,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     setError,
   });
 
-  const {
-    smartImportFile,
-    setSmartImportFile,
-    smartImportPreviewState,
-    smartImportResult,
-    smartImportOverrides,
-    smartImportHeaders,
-    smartImportLoading,
-    smartImportHistory,
-    smartImportHistoryLoading,
-    refreshSmartImportHistory,
-    pendingDevices,
-    pendingDevicesLoading,
-    refreshPendingDevices,
-    smartPreviewDirty,
-    smartFileInputRef,
-    handleSmartOverrideChange,
-    handleSmartPreview,
-    handleSmartCommit,
-    resetSmartImportContext,
-  } = smartImport;
+  // Consumidores obtienen funcionalidades de importación inteligente desde `smartImport` a través del contexto.
 
   useEffect(() => {
     setInventoryQuery("");
@@ -420,13 +379,13 @@ export function useInventoryLayoutState(): InventoryLayoutState {
       try {
         await handleDeviceUpdate(editingDevice.id, updates, reason);
         closeEditDialog();
-        await refreshPendingDevices();
+        await smartImport.refreshPendingDevices();
         void refreshSummary();
-      } catch (error) {
+      } catch {
         // Errores gestionados en el contexto de dashboard.
       }
     },
-    [closeEditDialog, editingDevice, handleDeviceUpdate, refreshPendingDevices, refreshSummary],
+    [closeEditDialog, editingDevice, handleDeviceUpdate, smartImport, refreshSummary],
   );
 
   const resolvePendingFields = useCallback(
@@ -463,26 +422,27 @@ export function useInventoryLayoutState(): InventoryLayoutState {
   );
 
   const downloadSmartResultCsv = useCallback(() => {
-    if (!smartImportResult) {
+    const result = smartImport.smartImportResult;
+    if (!result) {
       return;
     }
     const lines = [
       "Campo,Valor",
-      `Total procesados,${smartImportResult.total_procesados}`,
-      `Nuevos,${smartImportResult.nuevos}`,
-      `Actualizados,${smartImportResult.actualizados}`,
-      `Registros incompletos,${smartImportResult.registros_incompletos}`,
-      `Tiendas nuevas,${smartImportResult.tiendas_nuevas.join(" | ") || "Ninguna"}`,
+      `Total procesados,${result.total_procesados}`,
+      `Nuevos,${result.nuevos}`,
+      `Actualizados,${result.actualizados}`,
+      `Registros incompletos,${result.registros_incompletos}`,
+      `Tiendas nuevas,${result.tiendas_nuevas.join(" | ") || "Ninguna"}`,
     ];
-    if (smartImportResult.columnas_faltantes.length > 0) {
+    if (result.columnas_faltantes.length > 0) {
       lines.push(
-        `Columnas faltantes,"${smartImportResult.columnas_faltantes.join(" | ").replace(/"/g, '""')}"`,
+        `Columnas faltantes,"${result.columnas_faltantes.join(" | ").replace(/"/g, '""')}"`,
       );
     } else {
       lines.push("Columnas faltantes,N/A");
     }
-    if (smartImportResult.advertencias.length > 0) {
-      smartImportResult.advertencias.forEach((warning, index) => {
+    if (result.advertencias.length > 0) {
+      result.advertencias.forEach((warning, index) => {
         lines.push(
           `Advertencia ${index + 1},"${warning.replace(/"/g, '""')}"`,
         );
@@ -499,7 +459,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [smartImportResult]);
+  }, [smartImport.smartImportResult]);
 
   const buildSmartSummaryPdf = useCallback((summary: string) => {
     const sanitizedLines = summary
@@ -525,26 +485,30 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     const stream = streamLines.join("\n");
     const contentObject = `5 0 obj << /Length ${stream.length + 1} >> stream\n${stream}\nendstream endobj`;
     const body = `${objects.join("\n")}\n${contentObject}`;
-    const offset1 = header.length;
-    const offset2 = offset1 + objects[0].length + 1;
-    const offset3 = offset2 + objects[1].length + 1;
-    const offset4 = offset3 + objects[2].length + 1;
-    const offset5 = offset4 + objects[3].length + 1;
-    const xref = `xref\n0 6\n0000000000 65535 f \n${offset1.toString().padStart(10, "0")} 00000 n \n${offset2
-      .toString()
-      .padStart(10, "0")} 00000 n \n${offset3.toString().padStart(10, "0")} 00000 n \n${offset4
-      .toString()
-      .padStart(10, "0")} 00000 n \n${offset5.toString().padStart(10, "0")} 00000 n \n`;
+
+    const entries = [...objects, contentObject];
+    const offsets: number[] = [];
+    let cursor = header.length;
+    for (const entry of entries) {
+      offsets.push(cursor);
+      cursor += entry.length + 1;
+    }
+
+    const xrefEntries = offsets
+      .map((offset) => `${offset.toString().padStart(10, "0")} 00000 n `)
+      .join("\n");
+    const xref = `xref\n0 ${offsets.length + 1}\n0000000000 65535 f \n${xrefEntries}\n`;
     const xrefPosition = header.length + body.length + 1;
-    const trailer = `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPosition}\n%%EOF`;
+    const trailer = `trailer << /Size ${offsets.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPosition}\n%%EOF`;
     return new Blob([header, body, "\n", xref, trailer], { type: "application/pdf" });
   }, []);
 
   const downloadSmartResultPdf = useCallback(() => {
-    if (!smartImportResult) {
+    const result = smartImport.smartImportResult;
+    if (!result) {
       return;
     }
-    const blob = buildSmartSummaryPdf(smartImportResult.resumen);
+    const blob = buildSmartSummaryPdf(result.resumen);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -553,7 +517,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [buildSmartSummaryPdf, smartImportResult]);
+  }, [buildSmartSummaryPdf, smartImport.smartImportResult]);
 
   const resolveLowStockSeverity = useCallback((quantity: number): "critical" | "warning" | "notice" => {
     if (quantity <= 1) {
@@ -580,13 +544,13 @@ export function useInventoryLayoutState(): InventoryLayoutState {
   }, [lowStockDevices, resolveLowStockSeverity]);
 
   const statusCards = useMemo<StatusCard[]>(() => {
-    const refreshBadge = lastInventoryRefresh
-      ? { tone: "success", text: "Auto" }
-      : { tone: "warning", text: "Sin datos" };
+      const refreshBadge: StatusBadge = lastInventoryRefresh
+        ? { tone: "success", text: "Auto" }
+        : { tone: "warning", text: "Sin datos" };
 
-    const versionBadge = updateStatus?.is_update_available
-      ? { tone: "warning", text: `Actualizar a ${updateStatus.latest_version}` }
-      : { tone: "success", text: "Sistema al día" };
+      const versionBadge: StatusBadge = updateStatus?.is_update_available
+        ? { tone: "warning", text: `Actualizar a ${updateStatus.latest_version}` }
+        : { tone: "success", text: "Sistema al día" };
 
     return [
       {

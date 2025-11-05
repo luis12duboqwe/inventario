@@ -13,7 +13,7 @@ type Totals = {
 
 const INITIAL_TOTALS: Totals = { cash: 0, card: 0, transfer: 0, other: 0, total: 0 };
 
-export default function CashClosePage() {
+export function CashClosePage() {
   const [theoretical] = useState<Totals>(INITIAL_TOTALS); // TODO(wire)
   const [counted, setCounted] = useState<Totals>(INITIAL_TOTALS);
 
@@ -87,3 +87,5 @@ export default function CashClosePage() {
     </div>
   );
 }
+
+export default CashClosePage;

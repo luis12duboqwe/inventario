@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   ActiveSession,
   TOTPSetup,
@@ -33,28 +33,28 @@ function TwoFactorSetup({ token }: Props) {
     return trimmed;
   };
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     try {
       const response = await getTotpStatus(token);
       setStatus(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible obtener el estado de 2FA");
     }
-  };
+  }, [token]);
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     try {
       const data = await listActiveSessions(token);
       setSessions(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible obtener las sesiones activas");
     }
-  };
+  }, [token]);
 
   useEffect(() => {
-    loadStatus();
-    loadSessions();
-  }, [token]);
+    void loadStatus();
+    void loadSessions();
+  }, [loadStatus, loadSessions]);
 
   const handleSetup = async () => {
     const validReason = ensureReason();

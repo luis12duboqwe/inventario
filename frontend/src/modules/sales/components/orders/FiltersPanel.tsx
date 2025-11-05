@@ -1,8 +1,10 @@
 import React from "react";
 
+type OrderStatusFilter = "DRAFT" | "OPEN" | "PAID" | "CANCELLED" | "REFUNDED";
+
 export type OrderFilters = {
   query?: string;
-  status?: "DRAFT" | "OPEN" | "PAID" | "CANCELLED" | "REFUNDED" | "ALL";
+  status?: OrderStatusFilter;
   storeId?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -26,14 +28,30 @@ function FiltersPanel({ value, onChange }: Props) {
       <input
         placeholder="Buscar (cliente, #factura, ref)"
         value={v.query || ""}
-        onChange={(event) => onChange({ ...v, query: event.target.value })}
+        onChange={(event) => {
+          const next: OrderFilters = { ...v };
+          const value = event.target.value;
+          if (value) {
+            next.query = value;
+          } else {
+            delete next.query;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <select
         value={v.status || "ALL"}
-        onChange={(event) =>
-          onChange({ ...v, status: event.target.value as OrderFilters["status"] })
-        }
+        onChange={(event) => {
+          const selected = event.target.value as OrderStatusFilter | "ALL";
+          const next: OrderFilters = { ...v };
+          if (selected === "ALL") {
+            delete next.status;
+          } else {
+            next.status = selected;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       >
         <option value="ALL">Todos</option>
@@ -46,19 +64,46 @@ function FiltersPanel({ value, onChange }: Props) {
       <input
         placeholder="Sucursal ID"
         value={v.storeId || ""}
-        onChange={(event) => onChange({ ...v, storeId: event.target.value })}
+        onChange={(event) => {
+          const next: OrderFilters = { ...v };
+          const value = event.target.value.trim();
+          if (value) {
+            next.storeId = value;
+          } else {
+            delete next.storeId;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         type="date"
         value={v.dateFrom || ""}
-        onChange={(event) => onChange({ ...v, dateFrom: event.target.value })}
+        onChange={(event) => {
+          const next: OrderFilters = { ...v };
+          const value = event.target.value;
+          if (value) {
+            next.dateFrom = value;
+          } else {
+            delete next.dateFrom;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         type="date"
         value={v.dateTo || ""}
-        onChange={(event) => onChange({ ...v, dateTo: event.target.value })}
+        onChange={(event) => {
+          const next: OrderFilters = { ...v };
+          const value = event.target.value;
+          if (value) {
+            next.dateTo = value;
+          } else {
+            delete next.dateTo;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <div />

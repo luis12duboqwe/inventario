@@ -53,6 +53,7 @@ describe("AdvancedSearch", () => {
         id: 200,
         sku: "IPH-15-PRO",
         name: "iPhone 15 Pro",
+        completo: true,
         quantity: 4,
         store_id: 2,
         unit_price: 23999,
@@ -95,19 +96,7 @@ describe("AdvancedSearch", () => {
 
     await waitFor(() => {
       expect(searchCatalogDevicesMock).toHaveBeenCalledWith("token-123", {
-        imei: "",
-        serial: "",
-        capacidad_gb: undefined,
-        color: "",
-        marca: "",
         modelo: "iPhone 15 Pro",
-        categoria: undefined,
-        condicion: undefined,
-        estado: undefined,
-        ubicacion: undefined,
-        proveedor: undefined,
-        fecha_ingreso_desde: undefined,
-        fecha_ingreso_hasta: undefined,
       });
     });
 

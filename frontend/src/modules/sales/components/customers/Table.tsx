@@ -15,14 +15,21 @@ type Props = {
   onRowClick?: (row: CustomerRow) => void;
 };
 
+const renderCellValue = (value: string | undefined): React.ReactNode => {
+  if (!value) {
+    return "—";
+  }
+  return value;
+};
+
 export default function Table({ rows, onRowClick }: Props) {
   const columns = useMemo(
     () => [
-      { key: "name", label: "Cliente" },
-      { key: "phone", label: "Teléfono" },
-      { key: "email", label: "Email" },
-      { key: "tier", label: "Tier" },
-      { key: "lastSale", label: "Última compra" },
+      { key: "name" as const, label: "Cliente" },
+      { key: "phone" as const, label: "Teléfono" },
+      { key: "email" as const, label: "Email" },
+      { key: "tier" as const, label: "Tier" },
+      { key: "lastSale" as const, label: "Última compra" },
     ],
     [],
   );
@@ -41,7 +48,7 @@ export default function Table({ rows, onRowClick }: Props) {
         id: row.id,
         cells: columns.map((column) => (
           <span key={column.key} style={{ display: "block", textAlign: column.key === "tier" ? "center" : "left" }}>
-            {(row as Record<string, unknown>)[column.key] ?? "—"}
+            {renderCellValue(row[column.key] as string | undefined)}
           </span>
         )),
       })),

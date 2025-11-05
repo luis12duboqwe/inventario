@@ -23,7 +23,10 @@ export default function MediaGallery({ images }: Props) {
 
     const hasActiveImage = data.some((image) => image.id === active);
     if (!hasActiveImage) {
-      setActive(data[0].id);
+      const firstId = data[0]?.id;
+      if (firstId) {
+        setActive(firstId);
+      }
     }
   }, [data, active]);
 

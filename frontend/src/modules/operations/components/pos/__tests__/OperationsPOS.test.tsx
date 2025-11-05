@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import OperationsPOS from "../../../pages/OperationsPOS";
 
@@ -95,12 +95,12 @@ describe("OperationsPOS", () => {
     await waitFor(() => expect(screen.getByText(/Totales/)).toBeInTheDocument());
   });
 
-  it("informa cuando el flag de ventas y compras está desactivado", () => {
+  it("informa cuando el flag de ventas y compras está desactivado", async () => {
     moduleState.enablePurchasesSales = false;
 
     render(<OperationsPOS />);
 
-    expect(screen.getByText(/Activa el flag corporativo/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Activa el flag corporativo/i)).toBeInTheDocument();
     expect(screen.queryByText(/Totales/)).not.toBeInTheDocument();
   });
 });

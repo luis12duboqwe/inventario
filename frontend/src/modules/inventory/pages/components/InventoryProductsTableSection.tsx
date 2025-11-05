@@ -25,7 +25,7 @@ function InventoryProductsTableSection() {
           <span className="inventory-last-update">Última actualización: {lastRefreshDisplay}</span>
         </div>
       </header>
-      <Suspense fallback={<Loader message="Cargando tabla de inventario…" variant="compact" />}>
+  <Suspense fallback={<Loader message="Cargando tabla de inventario…" variant="overlay" />}>
         <InventoryTable
           devices={filteredDevices}
           highlightedDeviceIds={highlightedDeviceIds}

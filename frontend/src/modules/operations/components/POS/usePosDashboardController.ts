@@ -207,12 +207,13 @@ export function usePosDashboardController({
       try {
         setCustomerLoading(true);
         const normalized = query?.trim();
-        const data = await listCustomers(token, {
-          query: normalized && normalized.length > 0 ? normalized : undefined,
-          limit: 100,
-        });
+        const options =
+          normalized && normalized.length > 0
+            ? { query: normalized, limit: 100 }
+            : { limit: 100 };
+        const data = await listCustomers(token, options);
         setCustomerOptions(data);
-      } catch (err) {
+      } catch {
         setError((current) =>
           current ?? "No fue posible cargar los clientes corporativos.",
         );
@@ -229,7 +230,7 @@ export function usePosDashboardController({
         setCashLoading(true);
         const history = await listCashSessions(token, storeId, 20);
         setCashSessions(history);
-      } catch (err) {
+      } catch {
         setError((current) =>
           current ?? "No fue posible cargar las sesiones de caja.",
         );
@@ -534,8 +535,7 @@ export function usePosDashboardController({
           return;
         }
       }
-      const resolvedCustomerName =
-        payment.customerName.trim() || selectedCustomer?.name || undefined;
+      const resolvedCustomerName = payment.customerName.trim() || selectedCustomer?.name;
       const payload: PosSalePayload = {
         store_id: selectedStoreId,
         payment_method: payment.paymentMethod,
@@ -545,14 +545,23 @@ export function usePosDashboardController({
           discount_percent: line.discountPercent,
         })),
         discount_percent: payment.discountPercent,
-        customer_id: payment.customerId ?? undefined,
-        customer_name: resolvedCustomerName,
-        notes: payment.notes || undefined,
         confirm: mode === "sale",
         save_as_draft: mode === "draft",
-        draft_id: draftId ?? undefined,
         apply_taxes: payment.applyTaxes,
       };
+      if (payment.customerId != null) {
+        payload.customer_id = payment.customerId;
+      }
+      if (resolvedCustomerName) {
+        payload.customer_name = resolvedCustomerName;
+      }
+      const trimmedNotes = payment.notes.trim();
+      if (trimmedNotes) {
+        payload.notes = trimmedNotes;
+      }
+      if (draftId != null) {
+        payload.draft_id = draftId;
+      }
       if (payment.cashSessionId) {
         payload.cash_session_id = payment.cashSessionId;
       }
@@ -581,7 +590,11 @@ export function usePosDashboardController({
             eventType: "pos.sale", // [PACK35-frontend]
             payload: {
               store_id: selectedStoreId,
-              items: payload.items,
+              items: cart.map((line) => ({
+                device_id: line.device.id,
+                quantity: line.quantity,
+                discount_percent: line.discountPercent,
+              })),
               total: totals.total,
               draft: mode === "draft",
             },
@@ -671,7 +684,9 @@ export function usePosDashboardController({
     if (!name || !name.trim()) {
       return;
     }
-    const email = window.prompt("Correo del cliente (opcional)", "");
+  const email = window.prompt("Correo del cliente (opcional)", "");
+  const phoneRaw = window.prompt("Telefono del cliente (requerido)", "0000000000");
+  const phone = (phoneRaw ?? "0000000000").trim() || "0000000000";
     const reason = window.prompt(
       "Motivo corporativo para registrar al cliente",
       "Alta cliente POS",
@@ -682,14 +697,15 @@ export function usePosDashboardController({
     }
     try {
       setError(null);
-      const customer = await createCustomer(
-        token,
-        {
-          name: name.trim(),
-          email: email?.trim() || undefined,
-        },
-        reason.trim(),
-      );
+      const payload = {
+        name: name.trim(),
+        phone,
+      } as { name: string; phone: string; email?: string };
+      const normalizedEmail = email?.trim();
+      if (normalizedEmail) {
+        payload.email = normalizedEmail;
+      }
+      const customer = await createCustomer(token, payload, reason.trim());
       setMessage("Cliente creado correctamente.");
       setPayment((current) => ({
         ...current,
@@ -737,13 +753,17 @@ export function usePosDashboardController({
       return;
     }
     try {
+      const openingPayload: Parameters<typeof openCashSession>[1] = {
+        store_id: selectedStoreId,
+        opening_amount: Number(openingAmount.toFixed(2)),
+      };
+      const normalizedNotes = notes?.trim();
+      if (normalizedNotes) {
+        openingPayload.notes = normalizedNotes;
+      }
       const session = await openCashSession(
         token,
-        {
-          store_id: selectedStoreId,
-          opening_amount: Number(openingAmount.toFixed(2)),
-          notes: notes?.trim() || undefined,
-        },
+        openingPayload,
         reason.trim(),
       );
       setMessage("Caja abierta correctamente.");
@@ -811,14 +831,20 @@ export function usePosDashboardController({
       return;
     }
     try {
+      const closePayload: Parameters<typeof closeCashSession>[1] = {
+        session_id: activeCashSession.id,
+        closing_amount: Number(closingAmount.toFixed(2)),
+      };
+      if (Object.keys(breakdown).length > 0) {
+        closePayload.payment_breakdown = breakdown;
+      }
+      const normalizedNotes = notes?.trim();
+      if (normalizedNotes) {
+        closePayload.notes = normalizedNotes;
+      }
       const closed = await closeCashSession(
         token,
-        {
-          session_id: activeCashSession.id,
-          closing_amount: Number(closingAmount.toFixed(2)),
-          payment_breakdown: breakdown,
-          notes: notes?.trim() || undefined,
-        },
+        closePayload,
         reason.trim(),
       );
       setMessage("Caja cerrada exitosamente.");

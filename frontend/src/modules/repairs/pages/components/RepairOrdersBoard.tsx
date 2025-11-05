@@ -42,6 +42,19 @@ function RepairOrdersBoard({
   const [selectedBudgetOrder, setSelectedBudgetOrder] = useState<RepairOrder | null>(null);
   const [selectedPartsOrder, setSelectedPartsOrder] = useState<RepairOrder | null>(null);
 
+  const hookOptions = {
+    token,
+    selectedStoreId,
+    onSelectedStoreChange,
+    initialStatusFilter,
+    showCreateForm,
+    onShowBudget: (order: RepairOrder) => setSelectedBudgetOrder(order),
+    onShowParts: (order: RepairOrder) => setSelectedPartsOrder(order),
+    ...(onInventoryRefresh ? { onInventoryRefresh } : {}),
+    ...(onModuleStatusChange ? { onModuleStatusChange } : {}),
+    ...(statusFilterOptions ? { statusFilterOptions } : {}),
+  } satisfies Parameters<typeof useRepairOrdersBoard>[0];
+
   const {
     localStoreId,
     handleStoreChange,
@@ -76,18 +89,7 @@ function RepairOrdersBoard({
     handleDateFromChange,
     handleDateToChange,
     showCreateForm: showCreateFormEnabled,
-  } = useRepairOrdersBoard({
-    token,
-    selectedStoreId,
-    onSelectedStoreChange,
-    onInventoryRefresh,
-    onModuleStatusChange,
-    initialStatusFilter,
-    statusFilterOptions,
-    showCreateForm,
-    onShowBudget: (order) => setSelectedBudgetOrder(order),
-    onShowParts: (order) => setSelectedPartsOrder(order),
-  });
+  } = useRepairOrdersBoard(hookOptions);
 
   // Resolver órdenes seleccionadas a partir del listado actual sin actualizar estado en efectos
   const selectedBudgetOrderResolved = useMemo(() => {
@@ -120,7 +122,7 @@ function RepairOrdersBoard({
       onStatusFilterChange={handleStatusFilterChange}
       search={search}
       onSearchChange={handleSearchChange}
-      searchPlaceholder={searchPlaceholder}
+  searchPlaceholder={searchPlaceholder ?? "Buscar reparaciones"}
       totalOrders={orders.length}
       getStatusLabel={getStatusLabel}
       dateFrom={dateFrom}
@@ -141,7 +143,8 @@ function RepairOrdersBoard({
 
   const defaultToolbar = <Toolbar actions={toolbarActions}>{filtersSection}</Toolbar>;
 
-  const toolbar = renderToolbar ? renderToolbar({ filters: filtersSection, actions: toolbarActions }) : defaultToolbar;
+  const toolbarPayload = { filters: filtersSection, actions: toolbarActions } as const;
+  const toolbar = renderToolbar ? renderToolbar(toolbarPayload) : defaultToolbar;
 
   return (
     <section className="card wide">
@@ -171,7 +174,7 @@ function RepairOrdersBoard({
         />
       ) : null}
 
-      {toolbar}
+  {toolbar}
 
       <RepairTable
         loading={loading}

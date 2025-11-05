@@ -102,7 +102,7 @@ function mapOrderToRow(order: PurchaseOrder, deviceLookup: Map<number, { sku: st
     itemsCount,
     total: totalAmount,
     received: receivedValue,
-    status: statusLabel,
+    status: order.status,
     statusLabel,
     statusCode: order.status,
   };
@@ -172,7 +172,7 @@ const messageBoxStyle: React.CSSProperties = {
 };
 
 function PurchaseListPage() {
-  const dashboard = useDashboard();
+  const { devices, selectedStoreId, token, setError: setDashError, pushToast } = useDashboard();
   const [filters, setFilters] = useState<PurchaseOrderFilters>({ status: "ALL" });
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(false);
@@ -187,20 +187,18 @@ function PurchaseListPage() {
 
   const deviceLookup = useMemo(
     () =>
-      new Map(
-        dashboard.devices.map((device) => [device.id, { sku: device.sku, name: device.name }]),
-      ),
-    [dashboard.devices],
+      new Map(devices.map((device) => [device.id, { sku: device.sku, name: device.name }])),
+    [devices],
   );
 
   const loadOrders = useCallback(async () => {
-    if (!dashboard.selectedStoreId) {
+    if (!selectedStoreId) {
       setOrders([]);
       return;
     }
     try {
       setLoading(true);
-      const data = await listPurchaseOrders(dashboard.token, dashboard.selectedStoreId, 200);
+      const data = await listPurchaseOrders(token, selectedStoreId, 200);
       setOrders(data);
       setError(null);
     } catch (err) {
@@ -209,11 +207,11 @@ function PurchaseListPage() {
           ? err.message
           : "No fue posible cargar las órdenes de compra.";
       setError(friendly);
-      dashboard.setError(friendly);
+      setDashError(friendly);
     } finally {
       setLoading(false);
     }
-  }, [dashboard.selectedStoreId, dashboard.token, dashboard.setError]);
+  }, [selectedStoreId, token, setDashError]);
 
   useEffect(() => {
     void loadOrders();
@@ -278,7 +276,7 @@ function PurchaseListPage() {
   };
 
   const handleImportSubmit = async (file: File) => {
-    if (!dashboard.selectedStoreId) {
+    if (!selectedStoreId) {
       setError("Selecciona una sucursal para importar órdenes de compra.");
       return;
     }
@@ -294,18 +292,18 @@ function PurchaseListPage() {
       setImporting(true);
       setMessage(null);
       setError(null);
-      const response = await importPurchaseOrdersCsv(dashboard.token, file, reason.trim());
+      const response = await importPurchaseOrdersCsv(token, file, reason.trim());
       setMessage(`Importación completada: ${response.imported} orden(es).`);
       if (response.errors.length > 0) {
         setError(response.errors.join(" · "));
       }
-      dashboard.pushToast?.({ message: "Importación de órdenes completada", variant: "success" });
+      pushToast?.({ message: "Importación de órdenes completada", variant: "success" });
       await loadOrders();
     } catch (err) {
       const friendly =
         err instanceof Error ? err.message : "No fue posible importar las órdenes de compra.";
       setError(friendly);
-      dashboard.setError(friendly);
+      setDashError(friendly);
     } finally {
       setImporting(false);
       setImportOpen(false);
@@ -341,19 +339,19 @@ function PurchaseListPage() {
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 2000);
       setMessage("Archivo de órdenes exportado correctamente.");
-      dashboard.pushToast?.({ message: "Exportación generada", variant: "success" });
+      pushToast?.({ message: "Exportación generada", variant: "success" });
     } catch (err) {
       const friendly =
         err instanceof Error
           ? err.message
           : "No fue posible generar el archivo de exportación.";
       setError(friendly);
-      dashboard.setError(friendly);
+      setDashError(friendly);
     } finally {
       setExporting(false);
       setExportOpen(false);
     }
-  }, [dashboard, rows]);
+  }, [rows, pushToast, setDashError]);
 
   const handleRowClick = (row: PurchaseOrderListRow) => {
     const match = rows.find((candidate) => candidate.id === row.id);

@@ -62,7 +62,7 @@ function formatDateTime(value: string | undefined | null): string {
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
-  } catch (error) {
+  } catch {
     return value;
   }
 }

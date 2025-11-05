@@ -73,8 +73,13 @@ export async function http<T>(path: string, opts: HttpOptions = {}): Promise<T> 
     method: opts.method || "GET",
     headers,
     body: opts.body && !(opts.body instanceof FormData) ? JSON.stringify(opts.body) : opts.body,
-    signal: opts.signal,
   };
+
+  if (opts.signal) {
+    init.signal = opts.signal;
+  } else {
+    init.signal = null;
+  }
 
   const doFetch = async () => {
     const res = await fetch(url, init);

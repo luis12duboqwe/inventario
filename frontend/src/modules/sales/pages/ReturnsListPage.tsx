@@ -1,6 +1,6 @@
 import React from "react";
 // [PACK23-RETURNS-LIST-IMPORTS-START]
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { SalesReturns } from "../../../services/sales";
 import type { ReturnDoc, ReturnListParams } from "../../../services/sales";
@@ -66,7 +66,7 @@ export function ReturnsListPage() {
   const [selectedRow, setSelectedRow] = useState<ReturnDoc | null>(null);
 
   // [PACK23-RETURNS-LIST-FETCH-START]
-  async function fetchReturns(extra?: Partial<ReturnListParams>) {
+  const fetchReturns = useCallback(async (extra?: Partial<ReturnListParams>) => {
     if (!canList) {
       setItems([]);
       setTotal(0);
@@ -75,14 +75,23 @@ export function ReturnsListPage() {
     }
     setLoading(true);
     try {
-      const res = await SalesReturns.listReturns({ page, pageSize, q, reason, ...extra });
+      const baseParams: ReturnListParams = {
+        page,
+        pageSize,
+        q,
+      };
+      if (reason) {
+        baseParams.reason = reason;
+      }
+      const mergedParams = { ...baseParams, ...extra };
+      const res = await SalesReturns.listReturns(mergedParams);
       setItems(res.items || []);
       setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }
-  }
-  useEffect(() => { fetchReturns(); }, [page, pageSize, reason, canList]);
+  }, [canList, page, pageSize, q, reason]);
+  useEffect(() => { void fetchReturns(); }, [fetchReturns]);
   // [PACK23-RETURNS-LIST-FETCH-END]
 
   const rows: ReturnRow[] = items.map((doc) => ({
@@ -212,3 +221,5 @@ export function ReturnsListPage() {
     </div>
   );
 }
+
+export default ReturnsListPage;

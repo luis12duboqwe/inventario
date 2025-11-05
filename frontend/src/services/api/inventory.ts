@@ -14,9 +14,6 @@ export {
   getInventoryMovementsReport,
   getInventoryValueReport,
   getSummary,
-  listInventoryAdjustments,
-  listInventoryMovements,
-  registerAdjustment,
   registerMovement,
   searchCatalogDevices,
   updateDevice,
@@ -32,7 +29,6 @@ export type {
   InventoryMovementsReport,
   InventoryValueFilters,
   InventoryValueReport,
-  Movement,
   MovementInput,
   Summary,
 } from "../../api";

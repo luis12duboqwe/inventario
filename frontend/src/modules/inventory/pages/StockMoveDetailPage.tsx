@@ -52,9 +52,9 @@ export default function StockMoveDetailPage() {
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <MoveHeader
-        number={mov?.number}
+        number={mov?.number ?? ""}
         status={safeStatus}
-        type={mov?.type}
+        type={mov?.type ?? ""}
         onPrint={handlePrint}
         onExportPDF={handleExportPDF}
         onApprove={handleApprove}
@@ -62,19 +62,19 @@ export default function StockMoveDetailPage() {
       />
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
         <div style={{ display: "grid", gap: 12 }}>
-          <MoveItemsTable items={mov?.items} />
-          <MoveNotes value={mov?.note} />
+          <MoveItemsTable items={mov?.items ?? []} />
+          <MoveNotes value={mov?.note ?? ""} />
         </div>
         <div style={{ display: "grid", gap: 12 }}>
-          <MoveSourceCard node={mov?.source} />
-          <MoveDestinationCard node={mov?.dest} />
+          <MoveSourceCard node={mov?.source ?? { id: "", name: "" }} />
+          <MoveDestinationCard node={mov?.dest ?? { id: "", name: "" }} />
           <MoveTotalsCard
             subtotal={calcSubtotal()}
             adjustments={calcAdjustments()}
             total={calcTotal()}
           />
-          <MoveTimeline items={mov?.events} />
-          <MoveAttachments items={mov?.attachments} />
+          <MoveTimeline items={mov?.events ?? []} />
+          <MoveAttachments items={mov?.attachments ?? []} />
         </div>
       </div>
     </div>

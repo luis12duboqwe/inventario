@@ -181,18 +181,28 @@ function OrdersListPage() {
 
   const rows: OrderRow[] = useMemo(
     () =>
-      filteredRows.map(({ id, number, date, customer, itemsCount, total, paid, status, paymentStatus, channel }) => ({
-        id,
-        number,
-        date,
-        customer,
-        itemsCount,
-        total,
-        paid,
-        status,
-        paymentStatus,
-        channel,
-      })),
+      filteredRows.map(({ id, number, date, customer, itemsCount, total, paid, status, paymentStatus, channel }) => {
+        const row: OrderRow = {
+          id,
+          date,
+          itemsCount,
+          total,
+          paid,
+          status,
+          paymentStatus,
+          channel,
+        };
+
+        if (number) {
+          row.number = number;
+        }
+
+        if (customer) {
+          row.customer = customer;
+        }
+
+        return row;
+      }),
     [filteredRows],
   );
 

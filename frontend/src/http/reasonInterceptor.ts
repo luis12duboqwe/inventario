@@ -10,10 +10,16 @@ const SENSITIVE_RULES: { prefix: string; defaultReason: string }[] = [
 ];
 
 function normalizePath(path: string): string {
-  const withoutQuery = path.split("?")[0];
-  return withoutQuery.endsWith("/") && withoutQuery !== "/"
-    ? withoutQuery.slice(0, -1)
-    : withoutQuery;
+  const [rawPath = ""] = path.split("?");
+  if (!rawPath) {
+    return "/";
+  }
+
+  if (rawPath === "/") {
+    return rawPath;
+  }
+
+  return rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
 }
 
 function findRule(path: string): { prefix: string; defaultReason: string } | undefined {

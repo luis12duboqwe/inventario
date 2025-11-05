@@ -50,7 +50,7 @@ function Returns({ token, stores, defaultStoreId = null, onInventoryRefresh }: P
       token={token}
       stores={stores}
       defaultStoreId={defaultStoreId}
-      onInventoryRefresh={onInventoryRefresh}
+      {...(onInventoryRefresh ? { onInventoryRefresh } : {})}
     />
   );
 }
