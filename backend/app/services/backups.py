@@ -530,17 +530,31 @@ def restore_backup(
     critical_source = Path(job.critical_directory)
 
     safe_restore_root = Path(app_settings.backup_directory).resolve()
-    allowed_roots: set[Path] = {safe_restore_root}
-    parent_root = safe_restore_root.parent.resolve()
-    if parent_root != safe_restore_root:
-        allowed_roots.add(parent_root)
 
-    target_base = Path(target_directory).resolve() if target_directory else safe_restore_root
-    if not any(target_base.is_relative_to(root) for root in allowed_roots):
+    import re
+    safe_subdir = None
+    if target_directory:
+        # Only allow simple subdirectory names (alphanumeric, _, -)
+        if (
+            not Path(target_directory).is_absolute()
+            and re.fullmatch(r"[a-zA-Z0-9_\-]+", target_directory)
+            and ".." not in target_directory
+            and "/" not in target_directory
+            and "\\" not in target_directory
+        ):
+            safe_subdir = target_directory
+        else:
+            raise ValueError("Nombre de directorio de restauración no permitido")
+    target_base = safe_restore_root
+    if safe_subdir:
+        target_base = safe_restore_root / safe_subdir
+    target_base = target_base.resolve()
+    # Final check: must be under safe_restore_root
+    if not target_base.is_relative_to(safe_restore_root):
         raise ValueError("Directorio de restauración no permitido")
 
     restore_dir = (target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}").resolve()
-    if not any(restore_dir.is_relative_to(root) for root in allowed_roots):
+    if not restore_dir.is_relative_to(safe_restore_root):
         raise ValueError("Directorio de restauración no permitido")
     restore_dir.mkdir(parents=True, exist_ok=True)
 
