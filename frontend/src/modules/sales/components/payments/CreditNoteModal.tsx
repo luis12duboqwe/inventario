@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 type CreditNoteLine = {
   id: string;
@@ -28,12 +28,7 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
   const [lines, setLines] = useState<CreditNoteLine[]>([]);
   const [reason, setReason] = useState<string>("");
 
-  useEffect(() => {
-    if (!open) {
-      setLines([]);
-      setReason("");
-    }
-  }, [open]);
+  // Sin setState en efectos: limpiar mediante handlers.
 
   const handleAddLine = () => {
     setLines((prev) => [
@@ -83,6 +78,10 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
       return;
     }
     onSubmit?.({ orderId, lines, total, reason: reason.trim() });
+    // Reset para próximo uso y cierre
+    setLines([]);
+    setReason("");
+    onClose?.();
   };
 
   if (!open) {
@@ -153,7 +152,16 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
           <div style={{ textAlign: "right", fontWeight: 700 }}>Total NC: {currency.format(Math.max(0, total))}</div>
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>Cancelar</button>
+          <button
+            onClick={() => {
+              setLines([]);
+              setReason("");
+              onClose?.();
+            }}
+            style={{ padding: "8px 12px", borderRadius: 8 }}
+          >
+            Cancelar
+          </button>
           <button
             type="button"
             disabled={!isValid}

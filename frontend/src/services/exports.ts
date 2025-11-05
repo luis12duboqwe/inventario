@@ -90,7 +90,6 @@ export async function exportCsvAll(entity: "customers" | "quotes" | "returns") {
 
 // XLSX (opcional) si ya existe SheetJS
 export async function exportXlsxIfAvailable(entity: "customers" | "quotes" | "returns", items: any[]) {
-  // @ts-ignore
   const XLSX = (window as any).XLSX ?? undefined;
   if (!XLSX) return false;
   const ws = XLSX.utils.json_to_sheet(items);

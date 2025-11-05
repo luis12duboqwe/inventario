@@ -17,6 +17,35 @@ import type {
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
+// Tipos locales para evitar "any" implícito en mapeos y mantener compatibilidad con respuestas de API.
+type CurrentStoreRow = {
+  store_id: number;
+  store_name: string;
+  total_units?: number | null;
+  total_value?: number | null;
+};
+
+type ValueStoreRow = {
+  store_id: number;
+  store_name: string;
+  valor_total?: number | null;
+  margen_total?: number | null;
+};
+
+type MovementByTypeRow = {
+  tipo_movimiento: string;
+  total_cantidad?: number | null;
+  total_valor?: number | null;
+};
+
+type TopProductItemRow = {
+  store_id: number;
+  device_id: number;
+  nombre: string;
+  unidades_vendidas?: number | null;
+  store_name: string;
+};
+
 const formatDateInput = (date: Date): string => date.toISOString().slice(0, 10);
 
 const createDefaultDateRange = () => {
@@ -93,19 +122,20 @@ function InventoryReportsPanel({
   downloadTopProductsXlsx,
 }: InventoryReportsPanelProps) {
   const dashboard = useDashboard();
-  const normalizedStores = useMemo(() => safeArray(stores), [stores]); // [PACK36-inventory-reports]
+  const normalizedStores = useMemo<Store[]>(() => safeArray(stores) as Store[], [stores]); // [PACK36-inventory-reports]
 
-  const [storeFilter, setStoreFilter] = useState<number | "ALL">(selectedStoreId ?? "ALL");
+  // Permite que el usuario seleccione una sucursal, pero sin setState en efectos: se deriva del prop cuando el usuario no ha elegido.
+  const [userSelectedStoreFilter, setUserSelectedStoreFilter] = useState<number | "ALL" | null>(null);
+  const storeFilter: number | "ALL" = useMemo(
+    () => userSelectedStoreFilter ?? (selectedStoreId ?? "ALL"),
+    [userSelectedStoreFilter, selectedStoreId],
+  );
   const [{ from: dateFrom, to: dateTo }, setDateRange] = useState(createDefaultDateRange);
   const [loading, setLoading] = useState(false);
   const [currentReport, setCurrentReport] = useState<InventoryCurrentReport | null>(null);
   const [valueReport, setValueReport] = useState<InventoryValueReport | null>(null);
   const [movementsReport, setMovementsReport] = useState<InventoryMovementsReport | null>(null);
   const [topProductsReport, setTopProductsReport] = useState<TopProductsReport | null>(null);
-
-  useEffect(() => {
-    setStoreFilter(selectedStoreId ?? "ALL");
-  }, [selectedStoreId]);
 
   const filters = useMemo<InventoryCurrentFilters>(() => {
     if (storeFilter === "ALL") {
@@ -132,20 +162,20 @@ function InventoryReportsPanel({
     }),
     [filters, dateFrom, dateTo],
   );
-  const currentStores = useMemo( // [PACK36-inventory-reports]
-    () => safeArray(currentReport?.stores),
+  const currentStores = useMemo<CurrentStoreRow[]>( // [PACK36-inventory-reports]
+    () => safeArray(currentReport?.stores) as CurrentStoreRow[],
     [currentReport],
   );
-  const valueStores = useMemo( // [PACK36-inventory-reports]
-    () => safeArray(valueReport?.stores),
+  const valueStores = useMemo<ValueStoreRow[]>( // [PACK36-inventory-reports]
+    () => safeArray(valueReport?.stores) as ValueStoreRow[],
     [valueReport],
   );
-  const movementByType = useMemo( // [PACK36-inventory-reports]
-    () => safeArray(movementsReport?.resumen?.por_tipo),
+  const movementByType = useMemo<MovementByTypeRow[]>( // [PACK36-inventory-reports]
+    () => safeArray(movementsReport?.resumen?.por_tipo) as MovementByTypeRow[],
     [movementsReport],
   );
-  const topProductItems = useMemo( // [PACK36-inventory-reports]
-    () => safeArray(topProductsReport?.items),
+  const topProductItems = useMemo<TopProductItemRow[]>( // [PACK36-inventory-reports]
+    () => safeArray(topProductsReport?.items) as TopProductItemRow[],
     [topProductsReport],
   );
   const currentTotals = { // [PACK36-inventory-reports]
@@ -170,7 +200,10 @@ function InventoryReportsPanel({
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    // Evitar setState sincrono dentro del efecto: deferimos la señal de carga.
+    Promise.resolve().then(() => {
+      if (active) setLoading(true);
+    });
     void Promise.all([
       fetchInventoryCurrentReport(filters),
       fetchInventoryValueReport(filters),
@@ -317,7 +350,7 @@ function InventoryReportsPanel({
               value={storeFilter === "ALL" ? "ALL" : String(storeFilter)}
               onChange={(event) => {
                 const value = event.target.value === "ALL" ? "ALL" : Number.parseInt(event.target.value, 10);
-                setStoreFilter(value);
+                setUserSelectedStoreFilter(value);
               }}
             >
               <option value="ALL">Todas las sucursales</option>

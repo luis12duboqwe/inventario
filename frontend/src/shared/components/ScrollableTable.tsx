@@ -44,17 +44,9 @@ function ScrollableTable<T>({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const overlayViewportRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    setPage(1);
-    setFullScreenLimit(pageSize);
-  }, [items, pageSize]);
-
-  useEffect(() => {
-    if (!isFullScreen) {
-      return;
-    }
-    setFullScreenLimit(pageSize);
-  }, [isFullScreen, pageSize]);
+  // Nota: evitamos setState dentro de efectos para reducir renders en cascada.
+  // El reinicio de la paginación y del límite en pantalla completa se maneja
+  // mediante derivación segura de valores y eventos de usuario.
 
   useEffect(() => {
     if (!isFullScreen) {
@@ -94,21 +86,15 @@ function ScrollableTable<T>({
     };
   }, [isFullScreen]);
 
-  useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(items.length / pageSize));
-    if (page > maxPage) {
-      setPage(maxPage);
-    }
-  }, [items.length, page, pageSize]);
-
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
-  const rangeStart = items.length === 0 ? 0 : (page - 1) * pageSize + 1;
-  const rangeEnd = Math.min(page * pageSize, items.length);
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const rangeStart = items.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const rangeEnd = Math.min(safePage * pageSize, items.length);
 
   const pagedItems = useMemo(() => {
-    const start = (page - 1) * pageSize;
+    const start = (safePage - 1) * pageSize;
     return items.slice(start, start + pageSize);
-  }, [items, page, pageSize]);
+  }, [items, safePage, pageSize]);
 
   const fullScreenItems = useMemo(
     () => items.slice(0, fullScreenLimit),
@@ -145,7 +131,11 @@ function ScrollableTable<T>({
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={() => setIsFullScreen(true)}
+            onClick={() => {
+              // Al abrir pantalla completa, reestablece el límite al tamaño de página actual
+              setFullScreenLimit(pageSize);
+              setIsFullScreen(true);
+            }}
           >
             Expandir vista completa
           </button>
@@ -177,12 +167,12 @@ function ScrollableTable<T>({
           ‹ Anterior
         </button>
         <span className="scrollable-table__page-indicator">
-          Página {page} de {totalPages}
+          Página {safePage} de {totalPages}
         </span>
         <button
           type="button"
           onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-          disabled={page === totalPages}
+          disabled={safePage === totalPages}
           className="btn btn--ghost"
         >
           Siguiente ›
@@ -190,7 +180,7 @@ function ScrollableTable<T>({
         <button
           type="button"
           onClick={() => setPage(totalPages)}
-          disabled={page === totalPages}
+          disabled={safePage === totalPages}
           className="btn btn--ghost"
         >
           Último »

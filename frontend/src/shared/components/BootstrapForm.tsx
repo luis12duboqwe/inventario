@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useMemo, useState } from "react";
 
 import Button from "./ui/Button";
 import TextField from "./ui/TextField";
@@ -62,21 +62,31 @@ function BootstrapForm({ loading, error, successMessage, onSubmit }: Props) {
     return formState.confirmPassword.length > 0 && formState.password !== formState.confirmPassword;
   }, [formState.password, formState.confirmPassword]);
 
-  useEffect(() => {
-    if (!passwordMismatch) {
-      setValidationError(null);
-    }
-  }, [passwordMismatch]);
-
-  useEffect(() => {
-    if (validationError === "El correo corporativo es obligatorio." && formState.username.trim()) {
-      setValidationError(null);
-    }
-  }, [formState.username, validationError]);
+  // Limpiar errores de forma reactiva durante la edición, sin usar efectos
 
   const handleChange = useCallback((field: keyof FormState, value: string) => {
-    setFormState((current) => ({ ...current, [field]: value }));
-  }, []);
+    setFormState((current) => {
+      const next = { ...current, [field]: value } as FormState;
+      // Limpia error de correo obligatorio al escribir un valor válido
+      if (
+        field === "username" &&
+        validationError === "El correo corporativo es obligatorio." &&
+        next.username.trim()
+      ) {
+        // microtarea opcional para garantizar fuera del render
+        Promise.resolve().then(() => setValidationError(null));
+      }
+      // Limpia error de contraseñas si deja de existir el desajuste
+      if (field === "password" || field === "confirmPassword") {
+        const mismatch =
+          next.confirmPassword.length > 0 && next.password !== next.confirmPassword;
+        if (!mismatch && validationError === "Las contraseñas no coinciden.") {
+          Promise.resolve().then(() => setValidationError(null));
+        }
+      }
+      return next;
+    });
+  }, [validationError]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import SerialCapture from "./SerialCapture";
 import PutawayPanel from "./PutawayPanel";
 
@@ -56,13 +56,7 @@ export default function ReceiveModal({ open, poNumber, lines, onClose, onSubmit,
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [serials, setSerials] = useState<Record<string, string[]>>({});
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    setQtys({});
-    setSerials({});
-  }, [open, data]);
+  // Evitamos setState en efectos: limpiamos el estado local al cancelar o confirmar.
 
   if (!open) {
     return null;
@@ -128,7 +122,15 @@ export default function ReceiveModal({ open, poNumber, lines, onClose, onSubmit,
           </p>
         ) : null}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button type="button" onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
+          <button
+            type="button"
+            onClick={() => {
+              setQtys({});
+              setSerials({});
+              onClose?.();
+            }}
+            style={{ padding: "8px 12px", borderRadius: 8 }}
+          >
             Cancelar
           </button>
           <button
@@ -137,6 +139,9 @@ export default function ReceiveModal({ open, poNumber, lines, onClose, onSubmit,
             onClick={() => {
               if (!loading) {
                 onSubmit?.({ qtys, serials });
+                // Limpiar tras confirmar para que un nuevo ciclo inicie sin residuos.
+                setQtys({});
+                setSerials({});
               }
             }}
             style={{

@@ -18,6 +18,7 @@ const AnalyticsPage = lazy(() => import("../analytics/pages/AnalyticsPage"));
 const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazy(() => import("../users/pages/UsersPage"));
+const StoresPage = lazy(() => import("../stores/pages/StoresPage"));
 // Reparaciones: usar el alias RepairsPage para permitir el control de Suspense en pruebas
 const RepairsPage = lazy(() => import("../repairs/pages/RepairsPage"));
 const RepairsPending = lazy(() => import("../repairs/pages/RepairsPendingPage"));
@@ -46,6 +47,7 @@ const allowedModules = new Set([
   "security",
   "sync",
   "users",
+  "stores",
   "repairs",
 ]);
 
@@ -240,6 +242,21 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
                 description="Recarga para volver a gestionar usuarios cuando el módulo se recupere."
               >
                 <UsersPage />
+              </AppErrorBoundary>
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="stores"
+          element={
+            <ModuleBoundary>
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Sucursales temporalmente no disponibles"
+                description="Intenta nuevamente en unos momentos mientras restablecemos el módulo."
+              >
+                <StoresPage />
               </AppErrorBoundary>
             </ModuleBoundary>
           }

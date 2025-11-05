@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Device, PosConfig, PosConfigUpdateInput } from "../../../../api";
 
 type Props = {
@@ -9,29 +9,42 @@ type Props = {
 };
 
 function POSSettings({ config, devices, onSave, loading }: Props) {
-  const [taxRate, setTaxRate] = useState(0);
-  const [invoicePrefix, setInvoicePrefix] = useState("");
-  const [printerName, setPrinterName] = useState("");
-  const [printerProfile, setPrinterProfile] = useState("");
-  const [quickProducts, setQuickProducts] = useState<number[]>([]);
+  // Evitar setState en efectos: remonte del formulario cuando cambia la sucursal (config.store_id)
+  if (!config) {
+    return (
+      <section className="card">
+        <h3>Configuración POS</h3>
+        <p className="muted-text">Selecciona una sucursal para personalizar impuestos y accesos rápidos.</p>
+      </section>
+    );
+  }
+
+  return (
+    <POSSettingsForm
+      key={config.store_id}
+      config={config as PosConfig}
+      devices={devices}
+      onSave={onSave}
+      loading={loading}
+    />
+  );
+}
+
+type POSSettingsFormProps = {
+  config: PosConfig;
+  devices: Device[];
+  onSave: (payload: PosConfigUpdateInput) => Promise<void>;
+  loading: boolean;
+};
+
+function POSSettingsForm({ config, devices, onSave, loading }: POSSettingsFormProps) {
+  const [taxRate, setTaxRate] = useState<number>(() => config.tax_rate);
+  const [invoicePrefix, setInvoicePrefix] = useState<string>(() => config.invoice_prefix);
+  const [printerName, setPrinterName] = useState<string>(() => config.printer_name ?? "");
+  const [printerProfile, setPrinterProfile] = useState<string>(() => config.printer_profile ?? "");
+  const [quickProducts, setQuickProducts] = useState<number[]>(() => config.quick_product_ids);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!config) {
-      setTaxRate(0);
-      setInvoicePrefix("");
-      setPrinterName("");
-      setPrinterProfile("");
-      setQuickProducts([]);
-      return;
-    }
-    setTaxRate(config.tax_rate);
-    setInvoicePrefix(config.invoice_prefix);
-    setPrinterName(config.printer_name ?? "");
-    setPrinterProfile(config.printer_profile ?? "");
-    setQuickProducts(config.quick_product_ids);
-  }, [config]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -54,15 +67,6 @@ function POSSettings({ config, devices, onSave, loading }: Props) {
       setError(err instanceof Error ? err.message : "No fue posible actualizar la configuración POS.");
     }
   };
-
-  if (!config) {
-    return (
-      <section className="card">
-        <h3>Configuración POS</h3>
-        <p className="muted-text">Selecciona una sucursal para personalizar impuestos y accesos rápidos.</p>
-      </section>
-    );
-  }
 
   return (
     <section className="card">

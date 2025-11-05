@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { RepairOrder, Store } from "../../../../api";
 import type { ModuleStatus } from "../../../../shared/components/ModuleHeader";
@@ -89,20 +89,18 @@ function RepairOrdersBoard({
     onShowParts: (order) => setSelectedPartsOrder(order),
   });
 
-  useEffect(() => {
-    if (selectedBudgetOrder) {
-      const refreshed = orders.find((order) => order.id === selectedBudgetOrder.id);
-      if (refreshed && refreshed !== selectedBudgetOrder) {
-        setSelectedBudgetOrder(refreshed);
-      }
-    }
-    if (selectedPartsOrder) {
-      const refreshed = orders.find((order) => order.id === selectedPartsOrder.id);
-      if (refreshed && refreshed !== selectedPartsOrder) {
-        setSelectedPartsOrder(refreshed);
-      }
-    }
-  }, [orders, selectedBudgetOrder, selectedPartsOrder]); // [PACK37-frontend]
+  // Resolver órdenes seleccionadas a partir del listado actual sin actualizar estado en efectos
+  const selectedBudgetOrderResolved = useMemo(() => {
+    return selectedBudgetOrder
+      ? orders.find((order) => order.id === selectedBudgetOrder.id) ?? selectedBudgetOrder
+      : null;
+  }, [orders, selectedBudgetOrder]);
+
+  const selectedPartsOrderResolved = useMemo(() => {
+    return selectedPartsOrder
+      ? orders.find((order) => order.id === selectedPartsOrder.id) ?? selectedPartsOrder
+      : null;
+  }, [orders, selectedPartsOrder]);
 
   const deviceLabelById = useMemo(() => {
     const mapping = new Map<number, string>();
@@ -195,13 +193,13 @@ function RepairOrdersBoard({
       />
 
       <BudgetModal
-        order={selectedBudgetOrder}
-        open={selectedBudgetOrder !== null}
+        order={selectedBudgetOrderResolved}
+        open={selectedBudgetOrderResolved !== null}
         onClose={() => setSelectedBudgetOrder(null)}
         onConfirmClose={
-          selectedBudgetOrder
+          selectedBudgetOrderResolved
             ? async () => {
-                const success = await handleCloseOrder(selectedBudgetOrder); // [PACK37-frontend]
+                const success = await handleCloseOrder(selectedBudgetOrderResolved); // [PACK37-frontend]
                 if (success) {
                   setSelectedBudgetOrder(null);
                 }
@@ -211,8 +209,8 @@ function RepairOrdersBoard({
       />
 
       <PartsModal
-        order={selectedPartsOrder}
-        open={selectedPartsOrder !== null}
+        order={selectedPartsOrderResolved}
+        open={selectedPartsOrderResolved !== null}
         onClose={() => setSelectedPartsOrder(null)}
         resolveDeviceLabel={resolveDeviceLabel}
         devices={devices}

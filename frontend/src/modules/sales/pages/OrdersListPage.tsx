@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import {
   OrdersCancelModal,
@@ -197,13 +197,8 @@ function OrdersListPage() {
   );
 
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const paginatedRows = rows.slice((page - 1) * pageSize, page * pageSize);
-
-  useEffect(() => {
-    if (page > pages) {
-      setPage(pages);
-    }
-  }, [page, pages]);
+  const safePage = Math.min(Math.max(1, page), pages);
+  const paginatedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((current) =>

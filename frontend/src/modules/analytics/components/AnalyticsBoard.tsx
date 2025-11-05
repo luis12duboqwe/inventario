@@ -9,9 +9,6 @@ import {
   AnalyticsSalesProjection,
   AnalyticsAlerts,
   AnalyticsRealtime,
-  AnalyticsAlert,
-  StoreRealtimeWidget,
-  AnalyticsCategories,
   downloadAnalyticsCsv,
   downloadAnalyticsPdf,
   getAgingAnalytics,
@@ -76,8 +73,8 @@ function AnalyticsBoard({ token }: Props) {
   const agingItems = aging?.items ?? [];
   const forecastItems = forecast?.items ?? [];
   const comparativeItems = comparative?.items ?? [];
-  const profitItems = profit?.items ?? [];
-  const projectionItems = projection?.items ?? [];
+  const profitItems = useMemo(() => profit?.items ?? [], [profit]);
+  const projectionItems = useMemo(() => projection?.items ?? [], [projection]);
   const alerts = alertsData?.items ?? [];
   const realtime = realtimeData?.items ?? [];
 
@@ -153,7 +150,7 @@ function AnalyticsBoard({ token }: Props) {
           err instanceof Error
             ? `No fue posible cargar categorías: ${err.message}`
             : "No fue posible cargar categorías";
-        pushToast({ message, variant: "warning" });
+  pushToast({ message, variant: "info" });
       }
     };
     fetchCategories();
