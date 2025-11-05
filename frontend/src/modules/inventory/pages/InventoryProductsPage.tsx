@@ -37,7 +37,6 @@ function InventoryProductsPage() {
           {
             label: "Actualizar métricas",
             onClick: triggerRefreshSummary,
-            variant: "ghost",
           },
         ]}
       >

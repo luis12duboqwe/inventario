@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearRequestCache, getStores, registerMovement, type MovementInput } from "./api";
 
 describe("memoización de peticiones del SDK", () => {
-  const originalFetch = global.fetch;
+  const originalFetch = globalThis.fetch;
   const token = "token-demo-123456";
 
   beforeEach(() => {
@@ -12,7 +12,7 @@ describe("memoización de peticiones del SDK", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    global.fetch = originalFetch;
+    globalThis.fetch = originalFetch;
     clearRequestCache();
   });
 
@@ -52,7 +52,7 @@ describe("memoización de peticiones del SDK", () => {
         }),
     );
 
-    global.fetch = fetchMock as unknown as typeof fetch;
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const firstPromise = getStores(token);
     const secondPromise = getStores(token);
@@ -61,7 +61,8 @@ describe("memoización de peticiones del SDK", () => {
       throw new Error("La promesa de fetch no fue inicializada");
     }
 
-    releaseResponse();
+    const release = releaseResponse as () => void;
+    release();
 
     const [first, second] = await Promise.all([firstPromise, secondPromise]);
 
@@ -100,7 +101,7 @@ describe("memoización de peticiones del SDK", () => {
       text: vi.fn(),
     });
 
-    global.fetch = fetchMock as unknown as typeof fetch;
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const first = await getStores(token);
     expect(first).toEqual(payload.items);
@@ -175,7 +176,7 @@ describe("memoización de peticiones del SDK", () => {
         text: vi.fn(),
       }));
 
-    global.fetch = fetchMock as unknown as typeof fetch;
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const first = await getStores(token);
     expect(first).toEqual(initialStores.items);

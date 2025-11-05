@@ -4,6 +4,7 @@ import type {
   RepairOrder,
   RepairOrderClosePayload,
   RepairOrderPartsPayload,
+  RepairOrderPayload,
 } from "../../../../api"; // [PACK37-frontend]
 import {
   appendRepairOrderParts,
@@ -132,24 +133,57 @@ const useRepairOrderActions = ({
         }
         partsPayload.push(payloadPart);
       }
-      const payload = {
+      const payload: RepairOrderPayload = {
         store_id: form.storeId,
-        customer_id: form.customerId ?? undefined,
-        customer_name: form.customerName.trim() || undefined,
-        customer_contact: form.customerContact.trim() || undefined,
         technician_name: form.technicianName.trim(),
         damage_type: form.damageType.trim(),
-        diagnosis: form.diagnosis.trim() || undefined,
-        device_model: form.deviceModel.trim() || undefined,
-        imei: form.imei.trim() || undefined,
-        device_description: form.deviceDescription.trim() || undefined,
-        notes: form.notes.trim() || undefined,
-        labor_cost: Number.isFinite(form.laborCost) ? Math.max(0, form.laborCost) : 0,
         parts: partsPayload,
       };
+
+      payload.customer_id = form.customerId ?? null;
+
+      const trimmedCustomerName = form.customerName.trim();
+      if (trimmedCustomerName) {
+        payload.customer_name = trimmedCustomerName;
+      }
+
+      const trimmedContact = form.customerContact.trim();
+      if (trimmedContact) {
+        payload.customer_contact = trimmedContact;
+      }
+
+      const trimmedDiagnosis = form.diagnosis.trim();
+      if (trimmedDiagnosis) {
+        payload.diagnosis = trimmedDiagnosis;
+      }
+
+      const trimmedModel = form.deviceModel.trim();
+      if (trimmedModel) {
+        payload.device_model = trimmedModel;
+      }
+
+      const trimmedImei = form.imei.trim();
+      if (trimmedImei) {
+        payload.imei = trimmedImei;
+      }
+
+      const trimmedDescription = form.deviceDescription.trim();
+      if (trimmedDescription) {
+        payload.device_description = trimmedDescription;
+      }
+
+      const trimmedNotes = form.notes.trim();
+      if (trimmedNotes) {
+        payload.notes = trimmedNotes;
+      }
+
+      const sanitizedLabor = Number.isFinite(form.laborCost) ? Math.max(0, form.laborCost) : undefined;
+      if (typeof sanitizedLabor === "number") {
+        payload.labor_cost = sanitizedLabor;
+      }
       try {
         setError(null);
-        await createRepairOrder(token, payload, reason);
+  await createRepairOrder(token, payload, reason);
         setMessage("Orden de reparación registrada correctamente.");
         setForm((current) => ({ ...initialRepairForm, storeId: current.storeId }));
         await refreshOrders(

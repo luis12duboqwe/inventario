@@ -29,13 +29,19 @@ function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
     if (!isValid) {
       return;
     }
-    onSubmit?.({
-      orderId,
+    const payload: RefundModalPayload = {
       amount,
       method,
       reason,
-      notes: notes.trim() || undefined,
-    });
+    };
+    const trimmedNotes = notes.trim();
+    if (trimmedNotes) {
+      payload.notes = trimmedNotes;
+    }
+    if (orderId) {
+      payload.orderId = orderId;
+    }
+    onSubmit?.(payload);
     // reset para un nuevo ciclo y cerrar el modal
     setAmount(0);
     setMethod("CASH");

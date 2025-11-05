@@ -13,12 +13,21 @@ type Props = {
   onEditDevice?: (device: Device) => void;
 };
 
-const estadoLabels: Record<Device["estado_comercial"] | undefined, string> = {
+const estadoLabels: Record<NonNullable<Device["estado_comercial"]>, string> = {
   nuevo: "Nuevo",
   A: "Grado A",
   B: "Grado B",
   C: "Grado C",
-  undefined: "No definido",
+};
+
+const DEFAULT_ESTADO_LABEL = "No definido";
+
+const resolveEstadoLabel = (estado?: Device["estado_comercial"]): string => {
+  if (!estado) {
+    return DEFAULT_ESTADO_LABEL;
+  }
+
+  return estadoLabels[estado] ?? DEFAULT_ESTADO_LABEL;
 };
 
 const estadoTone = (estado: Device["estado_comercial"] | undefined): "success" | "info" | "warning" | "danger" => {
@@ -158,7 +167,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
           <td data-label="Condición">{device.condicion ?? "—"}</td>
           <td data-label="Estado">
             <span className={`status-chip ${estadoTone(device.estado_comercial)}`}>
-              {estadoLabels[device.estado_comercial]}
+              {resolveEstadoLabel(device.estado_comercial)}
             </span>
           </td>
           <td data-label="Estado inventario">{device.estado ?? "—"}</td>

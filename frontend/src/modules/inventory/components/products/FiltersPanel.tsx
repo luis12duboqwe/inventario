@@ -47,18 +47,32 @@ export default function FiltersPanel({ value, onChange }: Props) {
         type="number"
         placeholder="Stock ≥"
         value={v.stockFrom ?? ""}
-        onChange={(e) =>
-          onChange({ ...v, stockFrom: e.target.value ? Number(e.target.value) : undefined })
-        }
+        onChange={(e) => {
+          const raw = e.target.value;
+          const next: ProductFilters = { ...v };
+          if (raw) {
+            next.stockFrom = Number(raw);
+          } else {
+            delete next.stockFrom;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         type="number"
         placeholder="Stock ≤"
         value={v.stockTo ?? ""}
-        onChange={(e) =>
-          onChange({ ...v, stockTo: e.target.value ? Number(e.target.value) : undefined })
-        }
+        onChange={(e) => {
+          const raw = e.target.value;
+          const next: ProductFilters = { ...v };
+          if (raw) {
+            next.stockTo = Number(raw);
+          } else {
+            delete next.stockTo;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       {/* estado si aplica */}

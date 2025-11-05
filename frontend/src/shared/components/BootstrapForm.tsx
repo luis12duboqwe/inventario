@@ -169,7 +169,7 @@ function BootstrapForm({ loading, error, successMessage, onSubmit }: Props) {
         placeholder="••••••••"
         value={formState.password}
         onChange={(event) => handleChange("password", event.target.value)}
-        helperText={helperText ?? bootstrapHint}
+        {...(helperText ? { helperText } : { helperText: bootstrapHint })}
       />
 
       <TextField
@@ -182,7 +182,7 @@ function BootstrapForm({ loading, error, successMessage, onSubmit }: Props) {
         placeholder="••••••••"
         value={formState.confirmPassword}
         onChange={(event) => handleChange("confirmPassword", event.target.value)}
-        error={passwordMismatch ? "Las contraseñas no coinciden." : undefined}
+        {...(passwordMismatch ? { error: "Las contraseñas no coinciden." } : {})}
       />
 
       {validationError ? <div className="alert error">{validationError}</div> : null}

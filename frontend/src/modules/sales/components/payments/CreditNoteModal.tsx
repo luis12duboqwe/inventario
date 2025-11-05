@@ -77,7 +77,15 @@ function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalPr
     if (!isValid) {
       return;
     }
-    onSubmit?.({ orderId, lines, total, reason: reason.trim() });
+    const payload: CreditNotePayload = {
+      lines,
+      total,
+      reason: reason.trim(),
+    };
+    if (orderId) {
+      payload.orderId = orderId;
+    }
+    onSubmit?.(payload);
     // Reset para próximo uso y cierre
     setLines([]);
     setReason("");

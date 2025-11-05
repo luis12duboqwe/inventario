@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   closePosSession,
@@ -11,6 +11,7 @@ import {
   type PosReturnPayload,
   type PosSaleDetailResponse,
   type PosSaleOperationPayload,
+  type PosSaleItemRequest,
   type PosSalePaymentEntry,
   type PosSessionSummary,
   type PosTaxInfo,
@@ -60,28 +61,31 @@ export default function OperationsPOS() {
     listPosTaxes(token, "Listar impuestos POS").then(setTaxes).catch(() => setTaxes([]));
   }, [token]);
 
-  const refreshSession = async (storeId: number, reason = "Consultar estado caja") => {
-    if (!token) {
-      return;
-    }
-    setSessionLoading(true);
-    setSessionError(null);
-    try {
-      const result = await getLastPosSession(token, storeId, reason);
-      setSession(result);
-    } catch (error) {
-      setSession(null);
-      setSessionError("No hay caja abierta en la sucursal seleccionada.");
-    } finally {
-      setSessionLoading(false);
-    }
-  };
+  const refreshSession = useCallback(
+    async (storeId: number, reason = "Consultar estado caja") => {
+      if (!token) {
+        return;
+      }
+      setSessionLoading(true);
+      setSessionError(null);
+      try {
+        const result = await getLastPosSession(token, storeId, reason);
+        setSession(result);
+      } catch {
+        setSession(null);
+        setSessionError("No hay caja abierta en la sucursal seleccionada.");
+      } finally {
+        setSessionLoading(false);
+      }
+    },
+    [token]
+  );
 
   useEffect(() => {
     if (activeStoreId) {
       refreshSession(activeStoreId);
     }
-  }, [activeStoreId]);
+  }, [activeStoreId, refreshSession]);
 
   const subtotal = useMemo(() => {
     return cartItems.reduce((acc, item) => {
@@ -99,7 +103,7 @@ export default function OperationsPOS() {
     }, 0);
   }, [cartItems]);
 
-  const taxRate = taxes.length > 0 ? taxes[0].rate : 0;
+  const taxRate = taxes[0]?.rate ?? 0;
   const taxableBase = Math.max(subtotal - discountAmount, 0);
   const taxAmount = (taxableBase * taxRate) / 100;
   const totalDue = taxableBase + taxAmount;
@@ -108,8 +112,28 @@ export default function OperationsPOS() {
     setCartItems((prev) => [...prev, { id: createId(), ...item }]);
   };
 
-  const handleUpdateCartItem = (id: string, update: Partial<CartLine>) => {
-    setCartItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...update } : item)));
+  const handleUpdateCartItem = (
+    id: string,
+    update: Partial<CartLine>,
+    options?: { clear?: ReadonlyArray<keyof CartLine> }
+  ) => {
+    setCartItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) {
+          return item;
+        }
+        const next: CartLine = { ...item, ...update };
+        if (options?.clear?.length) {
+          for (const field of options.clear) {
+            if (field === "id" || field === "qty") {
+              continue;
+            }
+            delete (next as Record<string, unknown>)[field as string];
+          }
+        }
+        return next;
+      })
+    );
   };
 
   const handleRemoveCartItem = (id: string) => {
@@ -142,16 +166,47 @@ export default function OperationsPOS() {
       : [{ id: createId(), method: "EFECTIVO", amount: totalDue }]
     ).map((entry) => ({ method: entry.method, amount: entry.amount }));
 
+    const items: PosSaleItemRequest[] = cartItems.map((ci) => {
+      const item: PosSaleItemRequest = {
+        qty: ci.qty ?? 1,
+      };
+      if (ci.productId != null) {
+        item.productId = ci.productId;
+      }
+      if (ci.device_id != null) {
+        item.device_id = ci.device_id;
+      }
+      const imeiValue = ci.imei?.trim();
+      if (imeiValue) {
+        item.imei = imeiValue;
+      }
+      if (ci.price != null && ci.price !== "") {
+        item.price = typeof ci.price === "string" ? Number(ci.price) : ci.price;
+      }
+      if (ci.discount != null) {
+        item.discount = ci.discount;
+      }
+      if (ci.taxCode) {
+        item.taxCode = ci.taxCode;
+      }
+      return item;
+    });
+
     const payload: PosSaleOperationPayload = {
       branchId: activeStoreId,
-      sessionId: session?.session_id,
-      customerId: undefined,
-      customerName: undefined,
-      note: saleNote,
       confirm: true,
-      items: cartItems.map(({ id, ...rest }) => rest),
+      items,
       payments: normalizedPayments,
     };
+
+    if (session?.session_id != null) {
+      payload.sessionId = session.session_id;
+    }
+
+    const trimmedNote = saleNote.trim();
+    if (trimmedNote) {
+      payload.note = trimmedNote;
+    }
 
     setSubmittingSale(true);
     setSaleError(null);
@@ -161,15 +216,17 @@ export default function OperationsPOS() {
         const detail: PosSaleDetailResponse = {
           sale: response.sale,
           receipt_url: response.receipt_url ?? `/pos/receipt/${response.sale.id}`,
-          receipt_pdf_base64: response.receipt_pdf_base64 ?? undefined,
         };
+        if (response.receipt_pdf_base64 != null) {
+          detail.receipt_pdf_base64 = response.receipt_pdf_base64;
+        }
         setSaleResult(detail);
       }
       setCartItems([]);
       setPayments([]);
       setSaleNote("");
       await refreshSession(activeStoreId, "Actualizar caja tras venta");
-    } catch (error) {
+    } catch {
       setSaleError("No fue posible registrar la venta. Verifica los datos y la sesión de caja.");
     } finally {
       setSubmittingSale(false);
@@ -198,7 +255,7 @@ export default function OperationsPOS() {
     try {
       const detail = await getPosSaleDetail(token, saleId, reason);
       setHistoryDetail(detail);
-    } catch (error) {
+    } catch {
       setHistoryDetail(null);
     } finally {
       setHistoryLoading(false);
@@ -321,7 +378,9 @@ export default function OperationsPOS() {
           <ReceiptViewer
             saleId={saleResult?.sale.id ?? null}
             receiptUrl={saleResult?.receipt_url ?? null}
-            receiptPdfBase64={saleResult?.receipt_pdf_base64 ?? undefined}
+            {...(saleResult?.receipt_pdf_base64 != null
+              ? { receiptPdfBase64: saleResult.receipt_pdf_base64 }
+              : {})}
           />
           <SalesHistory
             loading={historyLoading}

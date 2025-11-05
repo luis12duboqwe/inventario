@@ -28,8 +28,9 @@ function PickModal({ open, lines, onClose, onSubmit }: Props) {
   }, [entries]);
 
   const invalid = entries.some((line) => {
+    const limit = limits[line.id] ?? 0;
     const value = qtys[line.id] ?? 0;
-    return value < 0 || value > limits[line.id] || value === 0;
+    return value < 0 || value > limit || value === 0;
   });
 
   const hasLines = entries.length > 0;
@@ -52,7 +53,7 @@ function PickModal({ open, lines, onClose, onSubmit }: Props) {
         </header>
         <div className="modal-card__body">
           {entries.map((line) => {
-            const max = limits[line.id];
+            const max = limits[line.id] ?? 0;
             const value = qtys[line.id] ?? 0;
             return (
               <div key={line.id} className="modal-row">

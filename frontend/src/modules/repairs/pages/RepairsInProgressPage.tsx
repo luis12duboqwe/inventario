@@ -40,11 +40,11 @@ function RepairsInProgressPage() {
         stores={stores}
         selectedStoreId={selectedStoreId}
         onSelectedStoreChange={setSelectedStoreId}
-        onInventoryRefresh={onInventoryRefresh}
+        {...(onInventoryRefresh ? { onInventoryRefresh } : {})}
         onModuleStatusChange={setModuleStatus}
         initialStatusFilter="EN_PROCESO"
         statusFilterOptions={["TODOS", "EN_PROCESO", "PENDIENTE", "LISTO", "CANCELADO"]} // [PACK37-frontend]
-        renderToolbar={({ filters, actions }) => <PageToolbar actions={actions}>{filters}</PageToolbar>}
+        renderToolbar={({ filters, actions }) => <PageToolbar actions={actions} filters={filters} disableSearch />}
         showCreateForm={false}
       />
     </div>

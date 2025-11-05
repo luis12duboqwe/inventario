@@ -18,7 +18,16 @@ function TransfersListPage() {
   const [filters, setFilters] = useState<TransferFilters>({});
   const [transfers, setTransfers] = useState<TransferOrder[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<TransferRow | null>(null);
+
+  type EnrichedRow = TransferRow & {
+    rawStatus: TransferOrder["status"];
+    createdAt: string;
+    updatedAt: string;
+    reason?: string;
+    createdBy?: string;
+  };
+
+  const [selected, setSelected] = useState<EnrichedRow | null>(null);
 
   const loadTransfers = useCallback(async () => {
     if (!token) {
@@ -55,15 +64,15 @@ function TransfersListPage() {
     [],
   );
 
-  const normalizedRows = useMemo(() => {
+  const normalizedRows = useMemo<EnrichedRow[]>(() => {
     return transfers
-      .map<TransferRow & { reason?: string; createdAt: string; updatedAt: string; createdBy?: string; rawStatus: string }>((transfer) => {
+      .map((transfer) => {
         const origin = storeMap.get(transfer.origin_store_id) ?? `#${transfer.origin_store_id}`;
         const destination = storeMap.get(transfer.destination_store_id) ?? `#${transfer.destination_store_id}`;
         const quantity = transfer.items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
         const formattedNumber = `TRF-${String(transfer.id).padStart(6, "0")}`;
         const rawStatus = transfer.status;
-        return {
+        const row: EnrichedRow = {
           id: String(transfer.id),
           date: transfer.created_at,
           number: formattedNumber,
@@ -72,16 +81,21 @@ function TransfersListPage() {
           items: quantity,
           status: statusLabels[rawStatus] ?? rawStatus,
           rawStatus,
-          reason: transfer.reason ?? undefined,
           createdAt: transfer.created_at,
           updatedAt: transfer.updated_at,
-          createdBy: transfer.ultima_accion?.usuario ?? undefined,
         };
+        if (transfer.reason) {
+          row.reason = transfer.reason;
+        }
+        if (transfer.ultima_accion?.usuario) {
+          row.createdBy = transfer.ultima_accion.usuario;
+        }
+        return row;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [statusLabels, storeMap, transfers]);
 
-  const filteredRows = useMemo(() => {
+  const filteredRows = useMemo<EnrichedRow[]>(() => {
     return normalizedRows.filter((row) => {
       const queryMatch = filters.query
         ? [row.number, row.from, row.to, row.reason]
@@ -91,8 +105,8 @@ function TransfersListPage() {
       if (!queryMatch) {
         return false;
       }
-      const rowStatus = (row as { rawStatus?: string }).rawStatus ?? row.status;
-      if (filters.status && filters.status !== "ALL" && rowStatus !== filters.status) {
+  const rowStatus = row.rawStatus ?? row.status;
+  if (filters.status && filters.status !== "ALL" && rowStatus !== filters.status) {
         return false;
       }
       if (filters.from && !row.from?.toLowerCase().includes(filters.from.toLowerCase())) {
@@ -133,7 +147,7 @@ function TransfersListPage() {
   const summaryItems = useMemo(() => {
     const totals = filteredRows.reduce(
       (acc, row) => {
-        const statusKey = (row as { rawStatus?: string }).rawStatus ?? row.status;
+  const statusKey = row.rawStatus ?? row.status;
         acc[statusKey] = (acc[statusKey] ?? 0) + 1;
         return acc;
       },
@@ -146,6 +160,23 @@ function TransfersListPage() {
       { label: "Canceladas", value: totals.CANCELADA ?? 0, status: "danger" as const },
     ];
   }, [filteredRows]);
+
+  const handleRowClick = useCallback(
+    (row: TransferRow) => {
+      const enriched = filteredRows.find((item) => item.id === row.id);
+      if (enriched) {
+        setSelected(enriched);
+      } else {
+        setSelected({
+          ...row,
+          rawStatus: row.status as TransferOrder["status"],
+          createdAt: row.date,
+          updatedAt: row.date,
+        });
+      }
+    },
+    [filteredRows, setSelected],
+  );
 
   const handleNavigateToTransfers = () => {
     navigate("/dashboard/operations/transferencias");
@@ -175,16 +206,14 @@ function TransfersListPage() {
         />
       </PageToolbar>
 
-      <TransfersTable rows={filteredRows} loading={loading} onRowClick={setSelected} />
+      <TransfersTable rows={filteredRows} loading={loading} onRowClick={handleRowClick} />
 
       <TransfersSidePanel
         row={
           selected
             ? {
                 ...selected,
-                notes: (selected as { reason?: string }).reason ?? "—",
-                createdBy: (selected as { createdBy?: string }).createdBy,
-                updatedAt: (selected as { updatedAt?: string }).updatedAt,
+                ...(selected.reason ? { notes: selected.reason } : {}),
               }
             : null
         }

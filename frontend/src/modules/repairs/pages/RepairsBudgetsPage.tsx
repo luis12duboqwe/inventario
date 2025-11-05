@@ -10,6 +10,7 @@ const STATUS_LABELS: Record<RepairOrder["status"], string> = {
   EN_PROCESO: "En proceso",
   LISTO: "Listo para entrega",
   ENTREGADO: "Entregado",
+  CANCELADO: "Cancelado",
 };
 
 function RepairsBudgetsPage() {

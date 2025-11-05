@@ -26,14 +26,28 @@ export function usePOS() {
   }, [lines]);
 
   const addProduct = useCallback((p: Product, qty = 1) => {
-    setLines(curr => {
-      const i = curr.findIndex(l => l.productId === p.id && !l.imei);
-      if (i >= 0) {
+    setLines((curr) => {
+      const index = curr.findIndex((line) => line.productId === p.id && !line.imei);
+      if (index >= 0) {
         const copy = curr.slice();
-        copy[i] = { ...copy[i], qty: copy[i].qty + qty };
+        const existing = copy[index];
+        if (!existing) {
+          return curr;
+        }
+        copy[index] = { ...existing, qty: existing.qty + qty };
         return copy;
       }
-      return [...curr, { productId: p.id, name: p.name, sku: p.sku, qty, price: p.price, discount: null }];
+      const nextLine: CartLineInput = {
+        productId: p.id,
+        name: p.name,
+        qty,
+        price: p.price,
+        discount: null,
+      };
+      if (p.sku) {
+        nextLine.sku = p.sku;
+      }
+      return [...curr, nextLine];
     });
   }, []);
 

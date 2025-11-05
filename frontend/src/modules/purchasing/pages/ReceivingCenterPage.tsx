@@ -20,7 +20,7 @@ export default function ReceivingCenterPage() {
         <ReceiveModal
           open={open}
           onClose={() => setOpen(false)}
-          onSubmit={(dto) => {
+          onSubmit={() => {
             // TODO(wire)
           }}
         />

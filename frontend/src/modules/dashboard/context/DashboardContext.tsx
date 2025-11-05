@@ -34,7 +34,7 @@ import {
   getSyncHybridOverview,
   updateDevice,
 } from "../../../api";
-import { safeArray, safeNumber } from "../../../utils/safeValues"; // [PACK36-dashboard-guards]
+import { safeArray } from "../../../utils/safeValues"; // [PACK36-dashboard-guards]
 import type {
   BackupJob,
   Device,
@@ -132,7 +132,7 @@ type ProviderProps = {
   children: ReactNode;
 };
 
-type ToastVariant = "success" | "error" | "info";
+type ToastVariant = "success" | "error" | "info" | "warning";
 
 export type ToastMessage = {
   id: number;
@@ -339,10 +339,10 @@ export function DashboardProvider({ token, children }: ProviderProps) {
               : "No fue posible consultar el historial de sincronización",
           );
         }
-        if (storesData.length > 0) {
-          const firstStoreId = storesData[0].id;
-          setSelectedStoreId(firstStoreId);
-          const devicesData = await getDevices(token, firstStoreId);
+        const firstStore = storesData[0];
+        if (firstStore) {
+          setSelectedStoreId(firstStore.id);
+          const devicesData = await getDevices(token, firstStore.id);
           setDevices(safeArray(devicesData));
           setLastInventoryRefresh(new Date());
         }
@@ -357,7 +357,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
 
     fetchInitial();
-  }, [token, pushToast]);
+  }, [friendlyErrorMessage, token, pushToast]);
 
   useEffect(() => {
     if (stores.length === 0) {
@@ -379,7 +379,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
 
     void synchronizeMetrics();
-  }, [currentLowStockThreshold, friendlyErrorMessage, stores.length, token]);
+  }, [currentLowStockThreshold, friendlyErrorMessage, pushToast, stores.length, token]);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -400,7 +400,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
 
     loadDevices();
-  }, [friendlyErrorMessage, selectedStoreId, token]);
+  }, [friendlyErrorMessage, pushToast, selectedStoreId, token]);
 
   useEffect(() => {
     const loadOutbox = async () => {
@@ -505,7 +505,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }, 30000);
 
     return () => window.clearInterval(interval);
-  }, [friendlyErrorMessage, refreshSummary, selectedStoreId, token]);
+  }, [friendlyErrorMessage, pushToast, refreshSummary, selectedStoreId, token]);
 
   useEffect(() => {
     syncClient.init(); // [PACK35-frontend]
@@ -517,83 +517,89 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
   }, [token]);
 
-  const handleMovement = async (payload: MovementInput) => {
-    if (!selectedStoreId) {
-      return;
-    }
-    const comment = payload.comentario.trim();
-    if (comment.length < 5) {
-      setError("Indica un motivo corporativo de al menos 5 caracteres.");
-      return;
-    }
-    try {
-      setError(null);
-      await registerMovement(token, selectedStoreId, payload, comment);
-      setMessage("Movimiento registrado correctamente");
-      pushToast({ message: "Movimiento registrado", variant: "success" });
-      await Promise.all([
-        refreshSummary(),
-        getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
-      ]);
-      setLastInventoryRefresh(new Date());
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo registrar el movimiento";
-      const friendly = friendlyErrorMessage(message);
-      setError(friendly);
-      pushToast({ message: friendly, variant: "error" });
-      if (typeof navigator === "undefined" || !navigator.onLine) {
-        try {
-          await syncClient.enqueue({
-            eventType: "inventory.movement", // [PACK35-frontend]
-            payload: {
-              store_id: selectedStoreId,
-              movement: payload,
-            },
-            idempotencyKey: `inventory-movement-${selectedStoreId}-${Date.now()}`,
-          });
-          pushToast({ message: "Movimiento guardado en cola local.", variant: "info" });
-        } catch (syncError) {
-          console.warn("No fue posible guardar el movimiento en la cola local", syncError);
+  const handleMovement = useCallback(
+    async (payload: MovementInput) => {
+      if (!selectedStoreId) {
+        return;
+      }
+      const comment = payload.comentario.trim();
+      if (comment.length < 5) {
+        setError("Indica un motivo corporativo de al menos 5 caracteres.");
+        return;
+      }
+      try {
+        setError(null);
+        await registerMovement(token, selectedStoreId, payload, comment);
+        setMessage("Movimiento registrado correctamente");
+        pushToast({ message: "Movimiento registrado", variant: "success" });
+        await Promise.all([
+          refreshSummary(),
+          getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
+        ]);
+        setLastInventoryRefresh(new Date());
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No se pudo registrar el movimiento";
+        const friendly = friendlyErrorMessage(message);
+        setError(friendly);
+        pushToast({ message: friendly, variant: "error" });
+        if (typeof navigator === "undefined" || !navigator.onLine) {
+          try {
+            await syncClient.enqueue({
+              eventType: "inventory.movement", // [PACK35-frontend]
+              payload: {
+                store_id: selectedStoreId,
+                movement: payload,
+              },
+              idempotencyKey: `inventory-movement-${selectedStoreId}-${Date.now()}`,
+            });
+            pushToast({ message: "Movimiento guardado en cola local.", variant: "info" });
+          } catch (syncError) {
+            console.warn("No fue posible guardar el movimiento en la cola local", syncError);
+          }
         }
       }
-    }
-  };
+    },
+    [friendlyErrorMessage, pushToast, refreshSummary, selectedStoreId, token],
+  );
 
-  const handleDeviceUpdate = async (
-    deviceId: number,
-    updates: DeviceUpdateInput,
-    reason: string,
-  ) => {
-    if (!selectedStoreId) {
-      return;
-    }
-    const normalizedReason = reason.trim();
-    if (normalizedReason.length < 5) {
-      setError("Indica un motivo corporativo de al menos 5 caracteres.");
-      return;
-    }
-    if (Object.keys(updates).length === 0) {
-      setError("No hay cambios por aplicar en el dispositivo seleccionado.");
-      return;
-    }
-    try {
-      setError(null);
-      await updateDevice(token, selectedStoreId, deviceId, updates, normalizedReason);
-      setMessage("Dispositivo actualizado correctamente");
-      pushToast({ message: "Ficha de dispositivo actualizada", variant: "success" });
-      await Promise.all([
-        refreshSummary(),
-        getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
-      ]);
-      setLastInventoryRefresh(new Date());
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo actualizar el dispositivo";
-      const friendly = friendlyErrorMessage(message);
-      setError(friendly);
-      pushToast({ message: friendly, variant: "error" });
-      throw new Error(friendly);
-    }
-  };
+  const handleDeviceUpdate = useCallback(
+    async (
+      deviceId: number,
+      updates: DeviceUpdateInput,
+      reason: string,
+    ) => {
+      if (!selectedStoreId) {
+        return;
+      }
+      const normalizedReason = reason.trim();
+      if (normalizedReason.length < 5) {
+        setError("Indica un motivo corporativo de al menos 5 caracteres.");
+        return;
+      }
+      if (Object.keys(updates).length === 0) {
+        setError("No hay cambios por aplicar en el dispositivo seleccionado.");
+        return;
+      }
+      try {
+        setError(null);
+        await updateDevice(token, selectedStoreId, deviceId, updates, normalizedReason);
+        setMessage("Dispositivo actualizado correctamente");
+        pushToast({ message: "Ficha de dispositivo actualizada", variant: "success" });
+        await Promise.all([
+          refreshSummary(),
+          getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
+        ]);
+        setLastInventoryRefresh(new Date());
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No se pudo actualizar el dispositivo";
+        const friendly = friendlyErrorMessage(message);
+        setError(friendly);
+        pushToast({ message: friendly, variant: "error" });
+        throw new Error(friendly);
+      }
+    },
+    [friendlyErrorMessage, pushToast, refreshSummary, selectedStoreId, token],
+  );
 
   const refreshInventoryAfterTransfer = useCallback(async () => {
     await refreshSummary();
@@ -667,7 +673,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(overviewData.progress);
       setSyncHybridBreakdown(overviewData.breakdown);
       return;
-    } catch (_err) {
+    } catch {
       // Si la API avanzada falla, se recurre a las solicitudes individuales.
     }
     try {
@@ -722,7 +728,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(overviewData.progress);
       setSyncHybridBreakdown(overviewData.breakdown);
       return;
-    } catch (_err) {
+    } catch {
       // Si falla la vista combinada se consulta cada recurso por separado.
     }
     try {
@@ -794,7 +800,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(overviewData.progress);
       setSyncHybridBreakdown(overviewData.breakdown);
       return;
-    } catch (_err) {
+    } catch {
       // Se recurre al flujo degradado cuando la API avanzada no está disponible.
     }
     try {
@@ -1012,6 +1018,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       outbox,
       outboxError,
       outboxStats,
+      toggleCompactMode,
       syncHybridForecast,
       syncHybridBreakdown,
       syncHybridProgress,

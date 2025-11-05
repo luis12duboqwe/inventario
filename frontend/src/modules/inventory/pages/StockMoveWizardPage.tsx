@@ -96,7 +96,7 @@ export default function StockMoveWizardPage() {
         <MoveStepReview summary={{ type, ...form }} onSubmit={handleCreate} />
       )}
       {active === 4 && (
-        <MoveStepSuccess number={created?.number} onOpen={() => openDetail(created?.id)} />
+        <MoveStepSuccess number={created?.number ?? ""} onOpen={() => openDetail(created?.id)} />
       )}
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <button

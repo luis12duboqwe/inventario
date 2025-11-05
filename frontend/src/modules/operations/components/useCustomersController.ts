@@ -5,6 +5,8 @@ import type {
   Customer,
   CustomerDashboardMetrics,
   CustomerLedgerEntry,
+  CustomerPaymentPayload,
+  CustomerPayload,
   CustomerPortfolioReport,
   CustomerSummary,
 } from "../../../api";
@@ -127,17 +129,20 @@ const resolveLedgerDetails = (entry: CustomerLedgerEntry): LedgerEntryWithDetail
     return entry;
   }
   const detailEntries = Object.entries(entry.details);
-  if (detailEntries.length === 0) {
+  const firstEntry = detailEntries[0];
+  if (!firstEntry) {
     return entry;
   }
-  const [label, raw] = detailEntries[0];
-  let value: string | undefined;
+  const [label, raw] = firstEntry;
+  let value: string | null = null;
   if (typeof raw === "string") {
     value = raw;
   } else if (typeof raw === "number") {
     value = raw.toString();
   }
-  return { ...entry, detailsLabel: label, detailsValue: value };
+  return value !== null
+    ? { ...entry, detailsLabel: label, detailsValue: value }
+    : { ...entry, detailsLabel: label };
 };
 
 export type CustomersControllerParams = {
@@ -200,27 +205,48 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     setCustomerFilters((current) => ({ ...current, [key]: value }));
   };
 
+  const buildCustomerListOptions = useCallback(
+    (queryOverride?: string) => {
+      const options: Parameters<typeof listCustomers>[1] = { limit: 200 };
+      const sourceQuery = queryOverride ?? customerFilters.search;
+      const normalizedQuery = sourceQuery.trim();
+      const effectiveQuery = normalizedQuery.length >= 2 ? normalizedQuery : "";
+      if (effectiveQuery) {
+        options.query = effectiveQuery;
+      }
+      const statusFilter = customerFilters.status !== "todos" ? customerFilters.status : "";
+      if (statusFilter) {
+        options.status = statusFilter;
+        options.statusFilter = statusFilter;
+      }
+      const typeFilter =
+        customerFilters.customerType !== "todos" ? customerFilters.customerType : "";
+      if (typeFilter) {
+        options.customerType = typeFilter;
+        options.customerTypeFilter = typeFilter;
+      }
+      if (customerFilters.debt === "con_deuda") {
+        options.hasDebt = true;
+      } else if (customerFilters.debt === "sin_deuda") {
+        options.hasDebt = false;
+      }
+      return options;
+    },
+    [
+      customerFilters.customerType,
+      customerFilters.debt,
+      customerFilters.search,
+      customerFilters.status,
+    ]
+  );
+
   const refreshCustomers = useCallback(
     async (queryOverride?: string) => {
       try {
         setLoadingCustomers(true);
         setError(null);
-        const data = await listCustomers(token, {
-          query: queryOverride,
-          limit: 200,
-          status: customerFilters.status !== "todos" ? customerFilters.status : undefined,
-          customerType:
-            customerFilters.customerType !== "todos" ? customerFilters.customerType : undefined,
-          hasDebt:
-            customerFilters.debt === "con_deuda"
-              ? true
-              : customerFilters.debt === "sin_deuda"
-              ? false
-              : undefined,
-          statusFilter: customerFilters.status !== "todos" ? customerFilters.status : undefined,
-          customerTypeFilter:
-            customerFilters.customerType !== "todos" ? customerFilters.customerType : undefined,
-        });
+        const listOptions = buildCustomerListOptions(queryOverride);
+        const data = await listCustomers(token, listOptions);
         setCustomers(data);
         if (selectedCustomerId) {
           const exists = data.some((customer) => customer.id === selectedCustomerId);
@@ -237,13 +263,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         setLoadingCustomers(false);
       }
     },
-    [
-      token,
-      customerFilters.customerType,
-      customerFilters.debt,
-      customerFilters.status,
-      selectedCustomerId,
-    ],
+    [buildCustomerListOptions, token, selectedCustomerId],
   );
 
   const refreshSummary = useCallback(
@@ -272,12 +292,17 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     try {
       setPortfolioLoading(true);
       setPortfolioError(null);
-      const data = await getCustomerPortfolio(token, {
+      const filtersPayload: Parameters<typeof getCustomerPortfolio>[1] = {
         category: portfolioFilters.category,
         limit: portfolioFilters.limit,
-        dateFrom: portfolioFilters.dateFrom || undefined,
-        dateTo: portfolioFilters.dateTo || undefined,
-      });
+      };
+      if (portfolioFilters.dateFrom.trim()) {
+        filtersPayload.dateFrom = portfolioFilters.dateFrom.trim();
+      }
+      if (portfolioFilters.dateTo.trim()) {
+        filtersPayload.dateTo = portfolioFilters.dateTo.trim();
+      }
+      const data = await getCustomerPortfolio(token, filtersPayload);
       setPortfolio(data);
     } catch (err) {
       setPortfolioError(
@@ -468,18 +493,23 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       return;
     }
     try {
-      await registerCustomerPayment(
-        token,
-        customer.id,
-        {
-          amount: Number(amount.toFixed(2)),
-          method,
-          reference,
-          note,
-          sale_id: saleId,
-        },
-        reason,
-      );
+      const paymentPayload: CustomerPaymentPayload = {
+        amount: Number(amount.toFixed(2)),
+      };
+      const normalizedMethod = method.trim();
+      if (normalizedMethod) {
+        paymentPayload.method = normalizedMethod;
+      }
+      if (reference && reference.trim()) {
+        paymentPayload.reference = reference.trim();
+      }
+      if (note && note.trim()) {
+        paymentPayload.note = note.trim();
+      }
+      if (typeof saleId === "number") {
+        paymentPayload.sale_id = saleId;
+      }
+      await registerCustomerPayment(token, customer.id, paymentPayload, reason);
       setMessage("Pago registrado correctamente.");
       const trimmed = customerFilters.search.trim();
       await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
@@ -509,18 +539,30 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     if (!reason) {
       return;
     }
-    const payload = {
+    const payload: CustomerPayload = {
       name: formState.name.trim(),
-      contact_name: formState.contactName.trim() || undefined,
-      email: formState.email.trim() || undefined,
       phone: formState.phone.trim(),
-      address: formState.address.trim() || undefined,
       customer_type: formState.customerType,
       status: formState.status,
       credit_limit: Number(formState.creditLimit ?? 0),
       outstanding_debt: Number(formState.outstandingDebt ?? 0),
-      notes: formState.notes.trim() || undefined,
     };
+    const contactName = formState.contactName.trim();
+    if (contactName) {
+      payload.contact_name = contactName;
+    }
+    const email = formState.email.trim();
+    if (email) {
+      payload.email = email;
+    }
+    const address = formState.address.trim();
+    if (address) {
+      payload.address = address;
+    }
+    const notes = formState.notes.trim();
+    if (notes) {
+      payload.notes = notes;
+    }
     try {
       setSavingCustomer(true);
       setError(null);
@@ -551,7 +593,8 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       return;
     }
     try {
-      const blob = await exportCustomersCsv(token, customerFilters, reason);
+      const exportOptions = buildCustomerListOptions();
+      const blob = await exportCustomersCsv(token, exportOptions, reason);
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       downloadBlob(blob, `clientes_${timestamp}.csv`);
       setMessage("Exportación generada correctamente.");
@@ -585,12 +628,16 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     }
     try {
       setExportingPortfolio(format);
-      const filters = {
+      const filters: Parameters<typeof exportCustomerPortfolioPdf>[1] = {
         category: portfolioFilters.category,
         limit: portfolioFilters.limit,
-        dateFrom: portfolioFilters.dateFrom || undefined,
-        dateTo: portfolioFilters.dateTo || undefined,
       };
+      if (portfolioFilters.dateFrom.trim()) {
+        filters.dateFrom = portfolioFilters.dateFrom.trim();
+      }
+      if (portfolioFilters.dateTo.trim()) {
+        filters.dateTo = portfolioFilters.dateTo.trim();
+      }
       const blob =
         format === "pdf"
           ? await exportCustomerPortfolioPdf(token, filters, reason)
@@ -613,11 +660,19 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     return customers.reduce((acc, customer) => acc + Number(customer.outstanding_debt ?? 0), 0);
   }, [customers]);
 
-  const delinquentRatio = useMemo(() => {
-    if (!dashboardMetrics || dashboardMetrics.total_customers === 0) {
-      return 0;
+  const delinquentRatio = useMemo((): { percentage: number; total: number } => {
+    if (!dashboardMetrics) {
+      return { percentage: 0, total: 0 };
     }
-    return dashboardMetrics.delinquent_customers / dashboardMetrics.total_customers;
+    const { customers_with_debt, moroso_flagged, total_outstanding_debt } =
+      dashboardMetrics.delinquent_summary;
+    const ratio =
+      customers_with_debt > 0 ? moroso_flagged / customers_with_debt : 0;
+    const percentage = Math.min(100, Math.max(0, Math.round(ratio * 100)));
+    return {
+      percentage,
+      total: total_outstanding_debt,
+    };
   }, [dashboardMetrics]);
 
   const customerNotes = useMemo(() => {

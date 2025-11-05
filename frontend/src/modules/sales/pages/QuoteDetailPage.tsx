@@ -42,11 +42,7 @@ function formatCurrency(value?: number) {
 
 export function QuoteDetailPage() {
   const { can, user } = useAuthz();
-  // [PACK26-QUOTES-DETAIL-GUARD-START]
-  if (!can(PERMS.QUOTE_LIST)) {
-    return <div>No autorizado</div>;
-  }
-  // [PACK26-QUOTES-DETAIL-GUARD-END]
+  const unauthorized = !can(PERMS.QUOTE_LIST);
   // [PACK23-QUOTES-DETAIL-STATE-START]
   const { id } = useParams();
   const [data, setData] = useState<Quote | null>(null);
@@ -60,13 +56,16 @@ export function QuoteDetailPage() {
   const [flushMessage, setFlushMessage] = useState<string | null>(null);
 
   // [PACK23-QUOTES-DETAIL-FETCH-START]
-  async function load() {
+  const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try { setData(await SalesQuotes.getQuote(id)); }
     finally { setLoading(false); }
-  }
-  useEffect(() => { load(); }, [id]);
+  }, [id]);
+  useEffect(() => {
+    if (!id || unauthorized) return;
+    void load();
+  }, [id, unauthorized, load]);
   // [PACK23-QUOTES-DETAIL-FETCH-END]
 
   useEffect(() => {
@@ -107,8 +106,8 @@ export function QuoteDetailPage() {
     if (!can(PERMS.QUOTE_CONVERT)) return;
     setConverting(true);
     try {
-      const r = await SalesQuotes.convertQuoteToSale(id);
-      await logUI({ ts: Date.now(), userId: user?.id, module: "QUOTES", action: "convert", entityId: id });
+  const r = await SalesQuotes.convertQuoteToSale(id);
+  await logUI({ ts: Date.now(), userId: user?.id ?? null, module: "QUOTES", action: "convert", entityId: id });
       // Opcional: abrir ticket r.printable o navegar a ventas
       // window.open(r.printable?.pdfUrl ?? "", "_blank");
       // [PACK23-PRINT-START]
@@ -159,6 +158,10 @@ export function QuoteDetailPage() {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {unauthorized ? (
+        <div>No autorizado</div>
+      ) : (
+        <>
       {pendingOffline > 0 ? (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
@@ -201,11 +204,14 @@ export function QuoteDetailPage() {
                   price: updated.price,
                 };
               });
-              await onSave({
-                note: value.note,
-                customerName: value.customer,
-                lines: mappedLines,
-              });
+              const payload: Partial<QuoteCreate> = { lines: mappedLines };
+              if (value.customer) {
+                payload.customerName = value.customer;
+              }
+              if (typeof value.note === "string") {
+                payload.note = value.note;
+              }
+              await onSave(payload);
             }}
           >
             {saving ? "Guardando…" : "Guardar"}
@@ -235,11 +241,14 @@ export function QuoteDetailPage() {
                 price: updated.price,
               };
             });
-            await onSave({
-              note: value.note,
-              customerName: value.customer,
-              lines: mappedLines,
-            });
+            const payload: Partial<QuoteCreate> = { lines: mappedLines };
+            if (value.customer) {
+              payload.customerName = value.customer;
+            }
+            if (typeof value.note === "string") {
+              payload.note = value.note;
+            }
+            await onSave(payload);
           }}
         >
           {saving ? "Guardando…" : "Guardar"}
@@ -261,6 +270,10 @@ export function QuoteDetailPage() {
           {converting ? "Convirtiendo…" : "Convertir a venta"}
         </button>
       </div>
+        </>
+      )}
     </div>
   );
 }
+
+export default QuoteDetailPage;

@@ -26,6 +26,8 @@ type Props = {
   token: string;
 };
 
+type UserStatusFilter = "all" | "active" | "inactive" | "locked";
+
 const DEFAULT_FORM_STATE: UserFormState = {
   username: "",
   fullName: "",
@@ -56,7 +58,7 @@ function UserManagement({ token }: Props) {
   const [formState, setFormState] = useState<UserFormState>(DEFAULT_FORM_STATE);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("TODOS");
-  const [statusFilter, setStatusFilter] = useState<UserQueryFilters["status"]>("all");
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
   const [storeFilter, setStoreFilter] = useState<number | "ALL">("ALL");
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
@@ -125,7 +127,8 @@ function UserManagement({ token }: Props) {
       const data = await usersService.listRolePermissions(token);
       setPermissionsMatrix(data);
       if (data.length > 0) {
-        const defaultRole = data.find((item) => item.role === selectedRole)?.role ?? data[0].role;
+        const firstRole = data[0]!;
+        const defaultRole = data.find((item) => item.role === selectedRole)?.role ?? firstRole.role;
         setSelectedRole(defaultRole);
         const mapping: Record<string, RoleModulePermission[]> = {};
         data.forEach((item) => {
@@ -321,11 +324,22 @@ function UserManagement({ token }: Props) {
     const payload: UserCreateInput = {
       username: trimmedUsername,
       password: formState.password,
-      full_name: formState.fullName.trim() || undefined,
-      telefono: formState.telefono.trim() || undefined,
       roles: formState.roles,
-      store_id: formState.storeId === "none" ? undefined : formState.storeId,
     };
+
+    const trimmedFullName = formState.fullName.trim();
+    if (trimmedFullName) {
+      payload.full_name = trimmedFullName;
+    }
+
+    const trimmedPhone = formState.telefono.trim();
+    if (trimmedPhone) {
+      payload.telefono = trimmedPhone;
+    }
+
+    if (formState.storeId !== "none") {
+      payload.store_id = formState.storeId;
+    }
 
     try {
       setSavingUser(true);
@@ -477,7 +491,7 @@ function UserManagement({ token }: Props) {
             roleFilter={roleFilter}
             onRoleFilterChange={setRoleFilter}
             statusFilter={statusFilter}
-            onStatusFilterChange={(value) => setStatusFilter(value)}
+            onStatusFilterChange={(value) => setStatusFilter(value ?? "all")}
             storeFilter={storeFilter}
             onStoreFilterChange={(value) => setStoreFilter(value)}
             roleOptions={roleNames}

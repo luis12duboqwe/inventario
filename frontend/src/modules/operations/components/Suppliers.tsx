@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Store, Supplier, SupplierBatch, SupplierBatchPayload } from "../../../api";
+import type {
+  ContactHistoryEntry,
+  Store,
+  Supplier,
+  SupplierBatch,
+  SupplierBatchPayload,
+  SupplierPayload,
+} from "../../../api";
 import {
   createSupplier,
   createSupplierBatch,
@@ -181,35 +188,73 @@ function Suppliers({ token, stores }: Props) {
     if (!reason) {
       return;
     }
-    const payload = {
-      name: form.name.trim(),
-      contact_name: form.contactName.trim() || undefined,
-      email: form.email.trim() || undefined,
-      phone: form.phone.trim() || undefined,
-      address: form.address.trim() || undefined,
-      notes: form.notes.trim() || undefined,
-      outstanding_debt: Number.isFinite(form.outstandingDebt)
-        ? Math.max(0, Number(form.outstandingDebt))
-        : undefined,
-    } as Record<string, unknown>;
+    const trimmedName = form.name.trim();
+    const contactName = form.contactName.trim();
+    const email = form.email.trim();
+    const phone = form.phone.trim();
+    const address = form.address.trim();
+    const notes = form.notes.trim();
+    const outstandingValue = Number.isFinite(form.outstandingDebt)
+      ? Math.max(0, Number(form.outstandingDebt))
+      : null;
 
     try {
       setError(null);
       if (editingId) {
+        const payload: Partial<SupplierPayload> = { name: trimmedName };
+        if (contactName) {
+          payload.contact_name = contactName;
+        }
+        if (email) {
+          payload.email = email;
+        }
+        if (phone) {
+          payload.phone = phone;
+        }
+        if (address) {
+          payload.address = address;
+        }
+        if (notes) {
+          payload.notes = notes;
+        }
+        if (outstandingValue !== null) {
+          payload.outstanding_debt = outstandingValue;
+        }
         const existing = suppliers.find((supplier) => supplier.id === editingId);
         if (form.historyNote.trim() && existing) {
-          payload.history = [
+          const historyEntries: ContactHistoryEntry[] = [
             ...existing.history,
             { timestamp: new Date().toISOString(), note: form.historyNote.trim() },
           ];
+          payload.history = historyEntries;
         }
         await updateSupplier(token, editingId, payload, reason);
         setMessage("Proveedor actualizado correctamente.");
       } else {
+        const payload: SupplierPayload = { name: trimmedName };
+        if (contactName) {
+          payload.contact_name = contactName;
+        }
+        if (email) {
+          payload.email = email;
+        }
+        if (phone) {
+          payload.phone = phone;
+        }
+        if (address) {
+          payload.address = address;
+        }
+        if (notes) {
+          payload.notes = notes;
+        }
+        if (outstandingValue !== null) {
+          payload.outstanding_debt = outstandingValue;
+        }
         if (form.historyNote.trim()) {
-          payload.history = [
+          const historyEntries: ContactHistoryEntry[] = [
             { timestamp: new Date().toISOString(), note: form.historyNote.trim() },
           ];
+          payload.history = historyEntries;
         }
         await createSupplier(token, payload, reason);
         setMessage("Proveedor registrado exitosamente.");
@@ -391,10 +436,18 @@ function Suppliers({ token, stores }: Props) {
       unit_cost: unitCostValue,
       quantity: Number.isFinite(quantityValue) && quantityValue >= 0 ? quantityValue : 0,
       purchase_date: batchForm.purchaseDate,
-      notes: batchForm.notes.trim() ? batchForm.notes.trim() : undefined,
-      store_id: batchForm.storeId !== "" ? Number(batchForm.storeId) : undefined,
-      device_id: batchForm.deviceId !== "" ? Number(batchForm.deviceId) : undefined,
     };
+
+    const noteValue = batchForm.notes.trim();
+    if (noteValue) {
+      payload.notes = noteValue;
+    }
+    if (batchForm.storeId !== "") {
+      payload.store_id = Number(batchForm.storeId);
+    }
+    if (batchForm.deviceId !== "") {
+      payload.device_id = Number(batchForm.deviceId);
+    }
 
     try {
       setError(null);
@@ -550,9 +603,8 @@ function Suppliers({ token, stores }: Props) {
             <tbody>
               {suppliers.map((supplier) => {
                 const historyLength = supplier.history.length;
-                const lastHistory = historyLength
-                  ? supplier.history[historyLength - 1].note
-                  : "—";
+                const lastEntry = historyLength > 0 ? supplier.history[historyLength - 1] : null;
+                const lastHistory = lastEntry?.note ?? "—";
                 const outstanding = Number(supplier.outstanding_debt ?? 0);
                 return (
                   <tr key={supplier.id}>

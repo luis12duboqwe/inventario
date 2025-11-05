@@ -1,4 +1,4 @@
-import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from "axios";
+import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig, type InternalAxiosRequestConfig } from "axios";
 import { getApiBaseUrl } from "../../config/api";
 import { emitClientWarning } from "../../utils/clientLog";
 
@@ -70,7 +70,7 @@ async function requestRefreshToken(): Promise<string | null> {
       clearAuthToken();
     }
     return newToken;
-  } catch (error) {
+  } catch {
     clearAuthToken();
     return null;
   }
@@ -87,13 +87,12 @@ async function refreshAccessToken(): Promise<string | null> {
 
 type RetryConfig = AxiosRequestConfig & { __isRetryRequest?: boolean };
 
-function attachAuthorization(config: AxiosRequestConfig): AxiosRequestConfig {
+function attachAuthorization(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
   const token = getAuthToken();
   if (token) {
-    config.headers = {
-      ...(config.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    };
+    // Asegurar cabeceras sin romper el tipo AxiosHeaders
+    config.headers = (config.headers ?? ({} as unknown as typeof config.headers));
+    (config.headers as unknown as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
   return config;
 }

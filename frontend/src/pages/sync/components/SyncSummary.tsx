@@ -32,7 +32,7 @@ function formatDate(value: string | null | undefined): string {
   }
   try {
     return new Date(value).toLocaleString("es-MX");
-  } catch (error) {
+  } catch {
     return "—";
   }
 }

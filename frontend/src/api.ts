@@ -2183,10 +2183,21 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   const executeNetworkRequest = async (): Promise<PendingRequestResult> => {
     let response: Response;
     try {
-      response = await fetch(`${API_URL}${path}`, {
-        ...options,
+      const { signal, body, ...restOptions } = options;
+      const requestInit: RequestInit = {
+        ...restOptions,
         headers,
-      });
+      };
+
+      if (typeof body !== "undefined") {
+        requestInit.body = body;
+      }
+
+      if (typeof signal !== "undefined") {
+        requestInit.signal = signal ?? null;
+      }
+
+      response = await fetch(`${API_URL}${path}`, requestInit);
     } catch (error) {
       emitNetworkEvent(
         NETWORK_EVENT,
@@ -2364,9 +2375,13 @@ export function listUsers(
   }
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
+  const requestOptions: RequestInit = { method: "GET" };
+  if (typeof options.signal !== "undefined") {
+    requestOptions.signal = options.signal ?? null;
+  }
   return requestCollection<UserAccount>(
     `/users${suffix}`,
-    { method: "GET", signal: options.signal },
+    requestOptions,
     token,
   );
 }
@@ -3260,7 +3275,8 @@ export function listCustomers(
 
 export function exportCustomersCsv(
   token: string,
-  options: CustomerListOptions = {}
+  options: CustomerListOptions = {},
+  reason: string
 ): Promise<Blob> {
   const params = new URLSearchParams({ export: "csv" });
   if (options.query) {
@@ -3282,7 +3298,11 @@ export function exportCustomersCsv(
     params.append("customer_type_filter", options.customerTypeFilter);
   }
   const queryString = params.toString();
-  return request<Blob>(`/customers?${queryString}`, { method: "GET" }, token);
+  return request<Blob>(
+    `/customers?${queryString}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function getCustomerPortfolio(
@@ -3684,15 +3704,18 @@ export function closeRepairOrder(  // [PACK37-frontend]
   payload: RepairOrderClosePayload | undefined,
   reason: string
 ): Promise<Blob> {
-  return request<Blob>(
-    `/repairs/${repairId}/close`,
-    {
-      method: "POST",
-      body: payload ? JSON.stringify(payload) : undefined,
-      headers: { "X-Reason": reason },
-    },
-    token
-  );
+  const init: RequestInit = payload
+    ? {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: { "X-Reason": reason },
+      }
+    : {
+        method: "POST",
+        headers: { "X-Reason": reason },
+      };
+
+  return request<Blob>(`/repairs/${repairId}/close`, init, token);
 }
 
 export async function downloadRepairOrderPdf(token: string, repairId: number): Promise<Blob> {
@@ -4824,8 +4847,7 @@ export function getAnalyticsRealtime(
   token: string,
   filters?: AnalyticsFilters,
 ): Promise<AnalyticsRealtime> {
-  const { storeIds, category } = filters ?? {};
-  const query = buildAnalyticsQuery({ storeIds, category });
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsRealtime>(`/reports/analytics/realtime${query}`, { method: "GET" }, token);
 }
 

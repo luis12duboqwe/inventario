@@ -45,15 +45,25 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
     if (!isValid) {
       return;
     }
+    const totalAmount = method === "MIXED" ? cashAmount + cardAmount : amount;
     const payload: PaymentModalPayload = {
-      orderId,
       method,
-      amount: method === "MIXED" ? cashAmount + cardAmount : amount,
-      cashAmount: method === "MIXED" ? cashAmount : undefined,
-      cardAmount: method === "MIXED" ? cardAmount : undefined,
-      reference: reference.trim() || undefined,
+      amount: totalAmount,
       reason: reason.trim(),
     };
+    if (method === "MIXED" && cashAmount > 0) {
+      payload.cashAmount = cashAmount;
+    }
+    if (method === "MIXED" && cardAmount > 0) {
+      payload.cardAmount = cardAmount;
+    }
+    const trimmedReference = reference.trim();
+    if (trimmedReference) {
+      payload.reference = trimmedReference;
+    }
+    if (orderId) {
+      payload.orderId = orderId;
+    }
     onSubmit?.(payload);
     // restablecer campos para el próximo uso
     setMethod("CASH");

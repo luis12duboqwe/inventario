@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 
-import type { Customer, Device, RepairOrder } from "../../../../api";
+import type { Customer, Device, RepairOrder, RepairOrderPartsPayload, RepairOrderClosePayload } from "../../../../api";
 import { getDevices, listCustomers, listRepairOrders } from "../../../../api";
 import { useDashboard } from "../../../dashboard/context/DashboardContext";
 import type { ModuleStatus } from "../../../../shared/components/ModuleHeader";
@@ -57,6 +57,15 @@ type RepairOrdersBoardHookResult = {
   devices: Device[];
   handleCreate: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   handleExportCsv: () => void;
+  handleAppendParts: (
+    order: RepairOrder,
+    parts: RepairOrderPartsPayload["parts"],
+  ) => Promise<boolean>;
+  handleRemovePart: (order: RepairOrder, partId: number) => Promise<boolean>;
+  handleCloseOrder: (
+    order: RepairOrder,
+    payload?: RepairOrderClosePayload | undefined,
+  ) => Promise<boolean>;
   renderRepairRow: (order: RepairOrder) => ReactNode;
   statusFilter: RepairOrder["status"] | "TODOS";
   handleStatusFilterChange: (value: RepairOrder["status"] | "TODOS") => void;
@@ -206,10 +215,11 @@ function useRepairOrdersBoard({
     async (query?: string) => {
       try {
         const trimmed = query?.trim();
-        const results = await listCustomers(token, {
-          query: trimmed && trimmed.length > 0 ? trimmed : undefined,
+        const customerOptions = {
           limit: 100,
-        });
+          ...(trimmed && trimmed.length > 0 ? { query: trimmed } : {}),
+        } satisfies Parameters<typeof listCustomers>[1];
+        const results = await listCustomers(token, customerOptions);
         setCustomers(results);
       } catch (err) {
         setError(formatError(err, "No fue posible cargar los clientes para reparaciones."));
@@ -337,6 +347,23 @@ function useRepairOrdersBoard({
     setForm((current) => ({ ...initialRepairForm, storeId: current.storeId }));
   };
 
+  const actionsOptions = {
+    token,
+    form,
+    setForm: (updater: (current: RepairForm) => RepairForm) => setForm((current) => updater(current)),
+    formatError,
+    setError,
+    setMessage,
+    refreshOrders,
+    localStoreId,
+    search,
+    statusFilter,
+    orders,
+    dateFrom,
+    dateTo,
+    ...(onInventoryRefresh ? { onInventoryRefresh } : {}),
+  } satisfies Parameters<typeof useRepairOrderActions>[0];
+
   const {
     handleCreate,
     handleStatusChange,
@@ -346,28 +373,13 @@ function useRepairOrdersBoard({
     handleAppendParts,
     handleRemovePart,
     handleCloseOrder,
-  } = useRepairOrderActions({
-      token,
-      form,
-      setForm: (updater) => setForm((current) => updater(current)),
-      formatError,
-      setError,
-      setMessage,
-      refreshOrders,
-      onInventoryRefresh,
-      localStoreId,
-      search,
-      statusFilter,
-      orders,
-      dateFrom,
-      dateTo,
-    });
+  } = useRepairOrderActions(actionsOptions);
 
-  const getVisual = (order: RepairOrder): RepairVisual => {
+  const getVisual = useCallback((order: RepairOrder): RepairVisual => {
     return visuals[order.id] ?? { icon: resolveDamageIcon(order.damage_type) };
-  };
+  }, [visuals]);
 
-  const handleVisualEdit = (order: RepairOrder) => {
+  const handleVisualEdit = useCallback((order: RepairOrder) => {
     const current = getVisual(order);
     const iconInput = window.prompt(
       "Emoji representativo del dispositivo o daño (ej. 📱, 🔋)",
@@ -384,7 +396,9 @@ function useRepairOrdersBoard({
     if (imageInput === null) {
       setVisuals((previous) => ({
         ...previous,
-        [order.id]: { icon: sanitizedIcon, imageUrl: current.imageUrl },
+        [order.id]: current.imageUrl
+          ? { icon: sanitizedIcon, imageUrl: current.imageUrl }
+          : { icon: sanitizedIcon },
       }));
       return;
     }
@@ -393,7 +407,7 @@ function useRepairOrdersBoard({
       ...previous,
       [order.id]: trimmedImage ? { icon: sanitizedIcon, imageUrl: trimmedImage } : { icon: sanitizedIcon },
     }));
-  };
+  }, [getVisual]);
 
   const devicesById = useMemo(() => {
     const map = new Map<number, Device>();
@@ -410,8 +424,8 @@ function useRepairOrdersBoard({
       handleDownload,
       handleDelete,
       handleClose: handleCloseOrder,
-      onShowBudget,
-      onShowParts,
+      ...(onShowBudget ? { onShowBudget } : {}),
+      ...(onShowParts ? { onShowParts } : {}),
     });
   }, [
     devicesById,
@@ -428,12 +442,12 @@ function useRepairOrdersBoard({
 
   const availableStatusFilters = useMemo(() => {
     if (!statusFilterOptions || statusFilterOptions.length === 0) {
-      return ["TODOS", ...repairStatusOptions];
+      return ["TODOS", ...repairStatusOptions] as Array<RepairOrder["status"] | "TODOS">;
     }
     const withTodos = statusFilterOptions.includes("TODOS")
       ? statusFilterOptions
       : ["TODOS", ...statusFilterOptions];
-    return Array.from(new Set(withTodos));
+    return Array.from(new Set(withTodos)) as Array<RepairOrder["status"] | "TODOS">;
   }, [statusFilterOptions]);
 
   const handleStatusFilterChange = (value: RepairOrder["status"] | "TODOS") => {

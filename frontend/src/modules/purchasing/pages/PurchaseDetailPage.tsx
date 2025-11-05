@@ -62,7 +62,7 @@ function buildItemLabel(device: { sku: string; name: string } | undefined, item:
 
 function PurchaseDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
-  const dashboard = useDashboard();
+  const { devices, token, setError: setDashError, pushToast } = useDashboard();
   const [order, setOrder] = useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -79,12 +79,12 @@ function PurchaseDetailPage() {
   const deviceLookup = useMemo(
     () =>
       new Map(
-        dashboard.devices.map((device) => [
+        devices.map((device) => [
           device.id,
           { sku: device.sku, name: device.name, imei: device.imei, serial: device.serial },
         ]),
       ),
-    [dashboard.devices],
+    [devices],
   );
 
   const loadOrder = useCallback(async () => {
@@ -95,18 +95,18 @@ function PurchaseDetailPage() {
     }
     try {
       setLoading(true);
-      const data = await getPurchaseOrder(dashboard.token, numericId);
+      const data = await getPurchaseOrder(token, numericId);
       setOrder(data);
       setError(null);
     } catch (err) {
       const friendly =
         err instanceof Error ? err.message : "No fue posible consultar la orden de compra.";
       setError(friendly);
-      dashboard.setError(friendly);
+      setDashError(friendly);
     } finally {
       setLoading(false);
     }
-  }, [dashboard.setError, dashboard.token, numericId]);
+  }, [setDashError, token, numericId]);
 
   useEffect(() => {
     void loadOrder();
@@ -118,15 +118,26 @@ function PurchaseDetailPage() {
     }
     return order.items.map((item) => {
       const device = deviceLookup.get(item.device_id);
-      return {
+      const base = {
         id: String(item.id),
-        sku: device?.sku,
         name: buildItemLabel(device, item),
         qty: item.quantity_ordered,
         received: item.quantity_received,
         unitCost: item.unit_cost,
         subtotal: item.quantity_ordered * item.unit_cost,
+      } as {
+        id: string;
+        name: string;
+        qty: number;
+        received: number;
+        unitCost: number;
+        subtotal: number;
+        sku?: string;
       };
+      if (device?.sku) {
+        base.sku = device.sku;
+      }
+      return base;
     });
   }, [deviceLookup, order]);
 
@@ -154,14 +165,16 @@ function PurchaseDetailPage() {
       .filter((item) => item.quantity_received > 0)
       .map((item) => {
         const device = deviceLookup.get(item.device_id);
-        return {
+        const base = {
           id: `rec-${item.id}`,
           date: timestamp,
-          user: undefined,
           lines: 1,
           qty: item.quantity_received,
-          note: device ? `Recepción de ${device.sku}` : undefined,
         };
+        if (device) {
+          return { ...base, note: `Recepción de ${device.sku}` };
+        }
+        return base;
       })
       .sort((a, b) => {
         const first = new Date(a.date).getTime();
@@ -222,8 +235,8 @@ function PurchaseDetailPage() {
         const sortKey = Number.isNaN(parsed.getTime()) ? Number.MAX_SAFE_INTEGER : parsed.getTime();
         return { ...event, sortKey };
       })
-      .sort((a, b) => a.sortKey - b.sortKey)
-      .map(({ sortKey, ...event }) => event);
+    .sort((a, b) => a.sortKey - b.sortKey)
+    .map((e) => ({ id: e.id, date: e.date, message: e.message }));
   }, [deviceLookup, order]);
 
   const modalLines = useMemo(() => {
@@ -233,14 +246,24 @@ function PurchaseDetailPage() {
     return order.items.map((item) => {
       const device = deviceLookup.get(item.device_id);
       const allowSerial = Boolean(device?.imei || device?.serial);
-      return {
+      const line = {
         id: String(item.id),
         name: buildItemLabel(device, item),
-        sku: device?.sku,
         qtyOrdered: item.quantity_ordered,
         qtyReceived: item.quantity_received,
         allowSerial,
+      } as {
+        id: string;
+        name: string;
+        qtyOrdered: number;
+        qtyReceived: number;
+        allowSerial: boolean;
+        sku?: string;
       };
+      if (device?.sku) {
+        line.sku = device.sku;
+      }
+      return line;
     });
   }, [deviceLookup, order]);
 
@@ -272,16 +295,16 @@ function PurchaseDetailPage() {
     }
     try {
       setProcessingReceive(true);
-      await receivePurchaseOrder(dashboard.token, order.id, { items }, reason.trim());
+      await receivePurchaseOrder(token, order.id, { items }, reason.trim());
       setReceiveOpen(false);
       setMessage("Recepción registrada correctamente.");
-      dashboard.pushToast?.({ message: "Orden recibida", variant: "success" });
+      pushToast?.({ message: "Orden recibida", variant: "success" });
       await loadOrder();
     } catch (err) {
       const friendly =
         err instanceof Error ? err.message : "No fue posible registrar la recepción.";
       setError(friendly);
-      dashboard.setError(friendly);
+      setDashError(friendly);
     } finally {
       setProcessingReceive(false);
     }
@@ -301,21 +324,50 @@ function PurchaseDetailPage() {
     }
     try {
       setProcessingCancel(true);
-      await cancelPurchaseOrder(dashboard.token, order.id, reason.trim());
+      await cancelPurchaseOrder(token, order.id, reason.trim());
       setMessage("Orden cancelada correctamente.");
-      dashboard.pushToast?.({ message: "Orden cancelada", variant: "info" });
+      pushToast?.({ message: "Orden cancelada", variant: "info" });
       await loadOrder();
     } catch (err) {
       const friendly = err instanceof Error ? err.message : "No fue posible cancelar la orden.";
       setError(friendly);
-      dashboard.setError(friendly);
+      setDashError(friendly);
     } finally {
       setProcessingCancel(false);
     }
   };
 
+  const handleOpenReceiveDialog = useCallback(() => {
+    setReceiveOpen(true);
+  }, []);
+
+  const handleOpenInvoiceDialog = useCallback(() => {
+    setInvoiceOpen(true);
+    pushToast?.({
+      message: "Registro de facturas disponible desde el módulo corporativo de compras",
+      variant: "info",
+    });
+  }, [pushToast]);
+
+  const handleOpenRtvDialog = useCallback(() => {
+    setRtvOpen(true);
+    pushToast?.({
+      message: "Devolución a proveedor disponible desde el módulo corporativo de compras",
+      variant: "info",
+    });
+  }, [pushToast]);
+
+  const handleOpenLandedCostDialog = useCallback(() => {
+    setLandedCostOpen(true);
+    pushToast?.({
+      message: "Costos indirectos disponible desde el módulo corporativo de compras",
+      variant: "info",
+    });
+  }, [pushToast]);
+
   const handleCloseMessage = () => setMessage(null);
   const handleDismissError = () => setError(null);
+
 
   if (loading && !order) {
     return <div style={{ padding: 16 }}>Cargando orden de compra…</div>;
@@ -338,6 +390,37 @@ function PurchaseDetailPage() {
     );
   }
 
+  const poNumber = `PO-${order.id.toString().padStart(5, "0")}`;
+
+  const headerProps: React.ComponentProps<typeof POHeader> = {
+    number: poNumber,
+    status: statusLabel,
+    supplierName: order.supplier,
+    receiveDisabled: processingReceive,
+    cancelDisabled: processingCancel,
+  };
+  if (canReceive) {
+    headerProps.onReceive = handleOpenReceiveDialog;
+  }
+  headerProps.onInvoice = handleOpenInvoiceDialog;
+  headerProps.onRTV = handleOpenRtvDialog;
+  if (canCancel) {
+    headerProps.onCancel = handleCancel;
+  }
+
+  const actionsProps: React.ComponentProps<typeof POActionsBar> = {
+    receiveDisabled: processingReceive,
+    cancelDisabled: processingCancel,
+  };
+  if (canReceive) {
+    actionsProps.onReceive = handleOpenReceiveDialog;
+  }
+  actionsProps.onInvoice = handleOpenInvoiceDialog;
+  actionsProps.onRTV = handleOpenRtvDialog;
+  if (canCancel) {
+    actionsProps.onCancel = handleCancel;
+  }
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {error ? (
@@ -358,29 +441,7 @@ function PurchaseDetailPage() {
         </div>
       ) : null}
 
-      <POHeader
-        number={`PO-${order.id.toString().padStart(5, "0")}`}
-        status={statusLabel}
-        supplierName={order.supplier}
-        onReceive={canReceive ? () => setReceiveOpen(true) : undefined}
-        onInvoice={() => {
-          setInvoiceOpen(true);
-          dashboard.pushToast?.({
-            message: "Registro de facturas disponible desde el módulo corporativo de compras",
-            variant: "info",
-          });
-        }}
-        onRTV={() => {
-          setRtvOpen(true);
-          dashboard.pushToast?.({
-            message: "Devolución a proveedor disponible desde el módulo corporativo de compras",
-            variant: "info",
-          });
-        }}
-        onCancel={canCancel ? handleCancel : undefined}
-        receiveDisabled={processingReceive}
-        cancelDisabled={processingCancel}
-      />
+      <POHeader {...headerProps} />
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
         <div style={{ display: "grid", gap: 12 }}>
@@ -400,13 +461,7 @@ function PurchaseDetailPage() {
             />
             <button
               type="button"
-              onClick={() => {
-                setLandedCostOpen(true);
-                dashboard.pushToast?.({
-                  message: "Costos indirectos disponible desde el módulo corporativo de compras",
-                  variant: "info",
-                });
-              }}
+              onClick={handleOpenLandedCostDialog}
               style={{ padding: "8px 12px", borderRadius: 8 }}
             >
               Costos indirectos
@@ -417,30 +472,11 @@ function PurchaseDetailPage() {
         </div>
       </div>
 
-      <POActionsBar
-        onReceive={canReceive ? () => setReceiveOpen(true) : undefined}
-        onInvoice={() => {
-          setInvoiceOpen(true);
-          dashboard.pushToast?.({
-            message: "Registro de facturas disponible desde el módulo corporativo de compras",
-            variant: "info",
-          });
-        }}
-        onRTV={() => {
-          setRtvOpen(true);
-          dashboard.pushToast?.({
-            message: "Devolución a proveedor disponible desde el módulo corporativo de compras",
-            variant: "info",
-          });
-        }}
-        onCancel={canCancel ? handleCancel : undefined}
-        receiveDisabled={processingReceive}
-        cancelDisabled={processingCancel}
-      />
+      <POActionsBar {...actionsProps} />
 
       <ReceiveModal
-        open={receiveOpen}
-        poNumber={`PO-${order.id.toString().padStart(5, "0")}`}
+  open={receiveOpen}
+  poNumber={poNumber}
         lines={modalLines}
         onClose={() => setReceiveOpen(false)}
         onSubmit={handleReceiveSubmit}

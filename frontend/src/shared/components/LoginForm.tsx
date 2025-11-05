@@ -16,7 +16,11 @@ function LoginForm({ loading, error, onSubmit }: Props) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await onSubmit({ username, password, otp: otp || undefined });
+    const payload: Credentials = { username, password };
+    if (otp.trim()) {
+      payload.otp = otp.trim();
+    }
+    await onSubmit(payload);
   };
 
   return (

@@ -165,7 +165,12 @@ function Purchases(props: Props) {
         onVendorExport={handleVendorExport}
         onVendorEdit={handleVendorEdit}
         onVendorSelect={handleSelectVendor}
-        onVendorToggleStatus={handleVendorStatusToggle}
+        onVendorToggleStatus={(vendor) =>
+          handleVendorStatusToggle(
+            vendor,
+            vendor.estado === "activo" ? "inactivo" : "activo",
+          )
+        }
         onVendorHistoryFiltersSubmit={handleVendorHistoryFiltersSubmit}
         onVendorHistoryFiltersReset={handleVendorHistoryFiltersReset}
         onVendorHistoryFiltersChange={handleVendorHistoryFiltersDraftChange}

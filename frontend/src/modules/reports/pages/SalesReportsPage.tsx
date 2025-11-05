@@ -9,6 +9,8 @@ import { useReportsModule } from "../hooks/useReportsModule";
 import SalesReportsFilters from "../components/SalesReportsFilters";
 import SalesKpiGrid from "../components/SalesKpiGrid";
 import TopProductsTable from "../components/TopProductsTable";
+import type { SalesKpiGridProps } from "../components/SalesKpiGrid";
+import type { TopProductsTableProps } from "../components/TopProductsTable";
 import {
   fetchCashCloseReport,
   fetchSalesByProduct,
@@ -16,6 +18,7 @@ import {
   type CashCloseReport,
   type SalesByProductItem,
   type SalesSummaryReport,
+  type SalesReportFilters,
 } from "@/services/api/reports";
 import { downloadText } from "@/lib/download";
 import { toCsv } from "@/lib/csv";
@@ -50,25 +53,26 @@ function SalesReportsPage() {
 
   const summaryQuery = useQuery<SalesSummaryReport>({
     queryKey: ["reports", "sales", "summary", appliedFilters],
-    queryFn: () =>
-      fetchSalesSummary({
-        from: appliedFilters.from ?? undefined,
-        to: appliedFilters.to ?? undefined,
-        branchId: appliedFilters.branchId ?? undefined,
-      }),
+    queryFn: () => {
+      const payload: SalesReportFilters = {};
+      if (appliedFilters.from) payload.from = appliedFilters.from;
+      if (appliedFilters.to) payload.to = appliedFilters.to;
+      if (typeof appliedFilters.branchId === "number") payload.branchId = appliedFilters.branchId;
+      return fetchSalesSummary(payload);
+    },
     enabled: enableAnalytics,
     staleTime: ONE_DAY,
   });
 
   const productsQuery = useQuery<SalesByProductItem[]>({
     queryKey: ["reports", "sales", "products", appliedFilters],
-    queryFn: () =>
-      fetchSalesByProduct({
-        from: appliedFilters.from ?? undefined,
-        to: appliedFilters.to ?? undefined,
-        branchId: appliedFilters.branchId ?? undefined,
-        limit: 20,
-      }),
+    queryFn: () => {
+      const payload: SalesReportFilters = { limit: 20 };
+      if (appliedFilters.from) payload.from = appliedFilters.from;
+      if (appliedFilters.to) payload.to = appliedFilters.to;
+      if (typeof appliedFilters.branchId === "number") payload.branchId = appliedFilters.branchId;
+      return fetchSalesByProduct(payload);
+    },
     enabled: enableAnalytics,
     staleTime: ONE_DAY,
   });
@@ -77,11 +81,15 @@ function SalesReportsPage() {
 
   const cashCloseQuery = useQuery<CashCloseReport>({
     queryKey: ["reports", "sales", "cash", cashDate, appliedFilters.branchId],
-    queryFn: () =>
-      fetchCashCloseReport({
-        date: (cashDate ?? new Date().toISOString().slice(0, 10)),
-        branchId: appliedFilters.branchId ?? undefined,
-      }),
+    queryFn: () => {
+      const payload: { date: string; branchId?: number } = {
+        date: cashDate ?? new Date().toISOString().slice(0, 10),
+      };
+      if (typeof appliedFilters.branchId === "number") {
+        payload.branchId = appliedFilters.branchId;
+      }
+      return fetchCashCloseReport(payload);
+    },
     enabled: enableAnalytics,
     staleTime: ONE_DAY,
   });
@@ -185,17 +193,29 @@ function SalesReportsPage() {
         loading={summaryQuery.isFetching || productsQuery.isFetching || cashCloseQuery.isFetching}
         exportDisabled={!productsQuery.data || productsQuery.data.length === 0}
       />
-      <SalesKpiGrid
-        summary={summaryQuery.data}
-        cashClose={cashCloseQuery.data}
-        loading={summaryQuery.isFetching || cashCloseQuery.isFetching}
-        formatCurrency={formatCurrency}
-      />
-      <TopProductsTable
-        products={productsQuery.data}
-        isLoading={productsQuery.isFetching}
-        formatCurrency={formatCurrency}
-      />
+      {(() => {
+        const props: SalesKpiGridProps = {
+          loading: summaryQuery.isFetching || cashCloseQuery.isFetching,
+          formatCurrency,
+        };
+        if (summaryQuery.data) {
+          props.summary = summaryQuery.data;
+        }
+        if (cashCloseQuery.data) {
+          props.cashClose = cashCloseQuery.data;
+        }
+        return <SalesKpiGrid {...props} />;
+      })()}
+      {(() => {
+        const props: TopProductsTableProps = {
+          isLoading: productsQuery.isFetching,
+          formatCurrency,
+        };
+        if (productsQuery.data) {
+          props.products = productsQuery.data;
+        }
+        return <TopProductsTable {...props} />;
+      })()}
     </div>
   );
 }
