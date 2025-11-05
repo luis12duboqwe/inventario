@@ -1,4 +1,20 @@
 from __future__ import annotations
+
+import os
+from collections.abc import Iterator
+from urllib.parse import urlsplit
+
+# Configurar variables de entorno ANTES de cualquier importación del backend
+# para evitar errores de validación en Settings()
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
+os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+os.environ.setdefault("CORS_ORIGINS", "[\"http://testserver\"]")
+# // [PACK28-tests]
+os.environ.setdefault("REFRESH_TOKEN_EXPIRE_DAYS", "7")
+os.environ.setdefault("SOFTMOBILE_BOOTSTRAP_TOKEN", "test-bootstrap-token")
+
+# Ahora sí importar desde el backend después de configurar el entorno
 from backend.app.main import create_app
 from backend.app.db.valor_inventario_view import (
     create_valor_inventario_view,
@@ -13,18 +29,6 @@ from backend.app.config import settings
 from sqlalchemy.orm import Session, sessionmaker
 from fastapi.testclient import TestClient
 import pytest
-
-import os
-from collections.abc import Iterator
-from urllib.parse import urlsplit
-
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
-os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
-os.environ.setdefault("CORS_ORIGINS", "[\"http://testserver\"]")
-# // [PACK28-tests]
-os.environ.setdefault("REFRESH_TOKEN_EXPIRE_DAYS", "7")
-os.environ.setdefault("SOFTMOBILE_BOOTSTRAP_TOKEN", "test-bootstrap-token")
 
 
 pytest.importorskip(
