@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, isValidElement } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -16,6 +16,7 @@ import {
   SunMoon,
   UserCog,
   Wrench,
+  MapPin,
 } from "lucide-react";
 
 import BackToTopButton from "../../../shared/components/BackToTopButton";
@@ -107,8 +108,15 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("softmobile_last_module", location.pathname);
     }
-    setIsSidebarOpen(false);
-  }, [location.pathname]);
+    // Deferimos el cierre al siguiente tick para evitar setState sincrónico dentro del efecto.
+    if (!isSidebarOpen) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setIsSidebarOpen(false);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [location.pathname, isSidebarOpen]);
 
   useEffect(() => {
     if (!isSidebarOpen) {
@@ -228,6 +236,13 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         isEnabled: true,
       },
       {
+        to: "/dashboard/stores",
+        label: "Sucursales",
+        description: "Alta y administración de sucursales corporativas.",
+        icon: <MapPin className="icon" aria-hidden="true" />,
+        isEnabled: isAdmin || isManager,
+      },
+      {
         to: "/dashboard/users",
         label: "Usuarios",
         description: "Gestión de roles, sesiones activas y ajustes sensibles.",
@@ -242,7 +257,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         isEnabled: enablePurchasesSales,
       },
     ],
-    [enableAnalyticsAdv, enablePurchasesSales, enableTransfers, isAdmin],
+    [enableAnalyticsAdv, enablePurchasesSales, enableTransfers, isAdmin, isManager],
   );
 
   const availableNavItems = navItems.filter((item) => item.isEnabled);
@@ -397,7 +412,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         to: item.to,
         label: item.label,
         description: item.description,
-        icon: item.icon,
+        icon: isValidElement(item.icon) ? item.icon : <HelpCircle className="icon" aria-hidden="true" />,
         badge: badges.length > 0 ? badges.join(" · ") : undefined,
         badgeVariant,
         isActive,

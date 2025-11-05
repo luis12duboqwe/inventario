@@ -37,3 +37,34 @@
 
 - Rama: `test/frontend-stabilizacion-v220-2025-11-04`
 - Crear PR: https://github.com/luis12duboqwe/inventario/pull/new/test/frontend-stabilizacion-v220-2025-11-04
+
+---
+
+## Ejecución local — 2025-11-04
+
+- Backend (pytest): PASS — 162 tests en ~94s.
+  - Nota: se añadió `REFRESH_TOKEN_EXPIRE_DAYS=7` al archivo `.env` local para satisfacer la validación de `Settings` y se inyectó `DATABASE_URL=sqlite:///:memory:` al entorno de ejecución para módulos que no cargan `.env` automáticamente.
+- Frontend (build): PASS — Vite 7, build completado en ~19s.
+- Frontend (tests): PASS — 18 suites, 58 pruebas. Advertencias esperadas: React Router future flags y `act(...)` en POS (no bloqueantes).
+
+### Servicios levantados — 2025-11-04
+
+- Backend (Uvicorn): RUNNING en 0.0.0.0:8000
+
+  - Variables de entorno usadas en arranque:
+    - `DATABASE_URL=sqlite:///./softmobile_dev.db`
+    - Flags Softmobile: `SOFTMOBILE_ENABLE_{CATALOG_PRO,TRANSFERS,PURCHASES_SALES,ANALYTICS_ADV,HYBRID_PREP}=1`, `SOFTMOBILE_ENABLE_2FA=0`
+    - CORS/JWT/expiraciones provistos por `.env` (CORS como JSON válido)
+  - Health check: `GET /docs` → 200 OK
+
+- Frontend (Vite dev): RUNNING en 0.0.0.0:5173 (Local http://localhost:5173/)
+  - Health check básico: página de inicio servida correctamente
+
+### Cambios de UI del día
+
+- Sucursales: se añadió modo edición en `StoresPage.tsx` (click en fila → edita; botón “Cancelar edición”), validando motivo corporativo (X-Reason ≥ 5) y refrescando lista global vía `DashboardContext.refreshStores()`.
+
+Comandos ejecutados localmente (resumen):
+
+- Python: `pytest -q` con `DATABASE_URL=sqlite:///:memory:`
+- Node: `npm --prefix frontend install`, `npm --prefix frontend run build`, `npm --prefix frontend run test`

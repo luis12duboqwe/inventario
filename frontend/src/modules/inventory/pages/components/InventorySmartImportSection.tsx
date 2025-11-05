@@ -98,7 +98,7 @@ function InventorySmartImportSection() {
           }}
           disabled={smartImportHistoryLoading}
         >
-          {smartImportHistoryLoading ? "Actualizando historial…" : "Actualizar historial"}
+          {smartImportHistoryLoading ? "Actualizando historial…" : "Actualizar"}
         </Button>
         <Button
           type="button"
@@ -115,7 +115,7 @@ function InventorySmartImportSection() {
       {smartPreviewDirty ? (
         <p className="smart-import__note smart-import__note--warning">Reanaliza el archivo para aplicar las reasignaciones de columnas.</p>
       ) : null}
-      {smartImportLoading ? <Loader message="Procesando importación inteligente…" variant="compact" /> : null}
+  {smartImportLoading ? <Loader label="Procesando importación inteligente…" variant="spinner" /> : null}
       {smartImportPreviewState ? (
         <div className="smart-import__preview">
           <h4>Columnas detectadas</h4>
@@ -182,7 +182,7 @@ function InventorySmartImportSection() {
                           ))}
                         </select>
                       </td>
-                      <td>{match.tipo}</td>
+                      <td>{match.tipo_dato ?? "—"}</td>
                       <td>{match.ejemplos.join(", ") || "—"}</td>
                     </tr>
                   );
@@ -227,14 +227,14 @@ function InventorySmartImportSection() {
           </Button>
         </header>
         {smartImportHistoryLoading ? (
-          <Loader message="Consultando historial…" variant="compact" />
+          <Loader label="Consultando historial…" variant="spinner" />
         ) : smartImportHistory.length === 0 ? (
           <p className="muted-text">No se registran importaciones recientes.</p>
         ) : (
           <ul className="metrics-list">
             {smartImportHistory.map((entry) => (
               <li key={entry.id}>
-                <strong>{entry.file_name}</strong> · {new Date(entry.created_at).toLocaleString("es-MX")} · {entry.total_records}
+                <strong>{entry.nombre_archivo}</strong> · {new Date(entry.fecha).toLocaleString("es-MX")} · {entry.total_registros}
                 registros
               </li>
             ))}

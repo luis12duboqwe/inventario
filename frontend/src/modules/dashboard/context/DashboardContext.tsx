@@ -122,6 +122,7 @@ type DashboardContextValue = {
   dismissToast: (id: number) => void;
   networkAlert: string | null;
   dismissNetworkAlert: () => void;
+  refreshStores: () => Promise<void>;
 };
 
 const DashboardContext = createContext<DashboardContextValue | undefined>(undefined);
@@ -469,6 +470,17 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     setSummary(safeArray(summaryRaw)); // [PACK36-guards]
     setMetrics(metricsData);
   }, [getThresholdForStore, selectedStoreId, token]);
+  const refreshStores = useCallback(async () => {
+    try {
+      const storesRaw = await getStores(token);
+      setStores(safeArray(storesRaw));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "No fue posible actualizar las sucursales";
+      const friendly = friendlyErrorMessage(message);
+      setError(friendly);
+      pushToast({ message: friendly, variant: "error" });
+    }
+  }, [friendlyErrorMessage, pushToast, token]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -966,6 +978,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       dismissToast,
       networkAlert,
       dismissNetworkAlert,
+      refreshStores,
     }),
     [
       backupHistory,
@@ -1032,6 +1045,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       totalValue,
       updateLowStockThreshold,
       updateStatus,
+      refreshStores,
     ],
   );
 

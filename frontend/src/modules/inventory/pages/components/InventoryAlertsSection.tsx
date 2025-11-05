@@ -7,7 +7,7 @@ import { useInventoryLayout } from "../context/InventoryLayoutContext";
 function InventoryAlertsSection() {
   const {
     module: { lowStockDevices, formatCurrency },
-    alerts: { thresholdDraft, setThresholdDraft, updateThresholdDraftValue, handleSaveThreshold, isSavingThreshold },
+    alerts: { thresholdDraft, updateThresholdDraftValue, handleSaveThreshold, isSavingThreshold },
     helpers: { resolveLowStockSeverity },
   } = useInventoryLayout();
 

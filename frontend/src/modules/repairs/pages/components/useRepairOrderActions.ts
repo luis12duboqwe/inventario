@@ -166,6 +166,8 @@ const useRepairOrderActions = ({
     },
     [
       askReason,
+      dateFrom,
+      dateTo,
       form,
       formatError,
       onInventoryRefresh,
@@ -205,6 +207,8 @@ const useRepairOrderActions = ({
     },
     [
       askReason,
+      dateFrom,
+      dateTo,
       formatError,
       localStoreId,
       onInventoryRefresh,
@@ -243,6 +247,8 @@ const useRepairOrderActions = ({
     },
     [
       askReason,
+      dateFrom,
+      dateTo,
       formatError,
       localStoreId,
       onInventoryRefresh,

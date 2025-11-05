@@ -47,6 +47,14 @@ export type Store = {
   created_at: string;
 };
 
+export type StoreCreateInput = {
+  name: string;
+  code?: string | undefined;
+  address?: string | undefined;
+  is_active?: boolean;
+  timezone?: string | undefined;
+};
+
 export type PaginatedResponse<T> = {
   items: T[];
   total: number;
@@ -2051,14 +2059,15 @@ type PendingRequestResult = { value: unknown; isJson: boolean };
 const pendingRequests = new Map<string, Promise<PendingRequestResult>>();
 
 function serializeHeaders(headers: Headers): Array<[string, string]> {
-  return Array.from(headers.entries())
+  const entries: Array<[string, string]> = Array.from(headers.entries());
+  return entries
     .filter(([key]) => key.toLowerCase() !== "authorization")
-    .map(([key, value]) => [key.toLowerCase(), value])
-    .sort((a, b) => {
-      if (a[0] === b[0]) {
-        return a[1].localeCompare(b[1]);
+    .map(([key, value]): [string, string] => [key.toLowerCase(), value])
+    .sort(([aKey, aVal], [bKey, bVal]) => {
+      if (aKey === bKey) {
+        return aVal.localeCompare(bVal);
       }
-      return a[0].localeCompare(b[0]);
+      return aKey.localeCompare(bKey);
     });
 }
 
@@ -2089,13 +2098,7 @@ export function clearRequestCache(): void {
   pendingRequests.clear();
 }
 
-function buildStoreQuery(storeIds?: number[]): string {
-  if (!storeIds || storeIds.length === 0) {
-    return "";
-  }
-  const params = storeIds.map((id) => `store_ids=${encodeURIComponent(id)}`).join("&");
-  return `?${params}`;
-}
+// buildStoreQuery eliminado por no usarse
 
 function buildAnalyticsQuery(filters?: AnalyticsFilters): string {
   if (!filters) {
@@ -2477,6 +2480,41 @@ export function exportUsers(
 
 export function getStores(token: string): Promise<Store[]> {
   return requestCollection<Store>("/stores/?limit=200", { method: "GET" }, token);
+}
+
+export function createStore(
+  token: string,
+  payload: StoreCreateInput,
+  reason: string,
+): Promise<Store> {
+  const safeReason = (reason ?? "").trim();
+  return request<Store>(
+    "/stores",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": safeReason } },
+    token,
+  );
+}
+
+export type StoreUpdateInput = {
+  name?: string | undefined;
+  code?: string | undefined;
+  address?: string | undefined;
+  is_active?: boolean | undefined;
+  timezone?: string | undefined;
+};
+
+export function updateStore(
+  token: string,
+  storeId: number,
+  payload: StoreUpdateInput,
+  reason: string,
+): Promise<Store> {
+  const safeReason = (reason ?? "").trim();
+  return request<Store>(
+    `/stores/${storeId}`,
+    { method: "PUT", body: JSON.stringify(payload), headers: { "X-Reason": safeReason } },
+    token,
+  );
 }
 
 export function getSummary(token: string): Promise<Summary[]> {
@@ -5052,7 +5090,7 @@ export function submitPosSaleOperation(
   payload: PosSaleOperationPayload,
   reason: string
 ): Promise<PosSaleResponse> {
-  const primaryMethod = (payload.payments[0]?.method as PaymentMethod) ?? PaymentMethod.EFECTIVO;
+  const primaryMethod = (payload.payments[0]?.method as PaymentMethod) ?? "EFECTIVO";
   const bodyPayload = {
     branchId: payload.branchId,
     store_id: payload.branchId,

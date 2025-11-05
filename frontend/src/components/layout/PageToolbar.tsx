@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 import React, { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 export type ToolbarAction = {
@@ -61,7 +60,7 @@ export const PageToolbar: React.FC<PageToolbarProps> = ({
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {actions.map((a) => (
           <button
-            key={a.id}
+            key={a.id ?? a.label}
             type="button"
             onClick={a.onClick}
             disabled={!!a.disabled}

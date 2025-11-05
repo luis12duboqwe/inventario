@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import PaymentMethodSelector, { PaymentMethod } from "./PaymentMethodSelector";
 
@@ -29,16 +29,7 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
   const [reference, setReference] = useState<string>("");
   const [reason, setReason] = useState<string>("");
 
-  useEffect(() => {
-    if (!open) {
-      setMethod("CASH");
-      setAmount(0);
-      setCashAmount(0);
-      setCardAmount(0);
-      setReference("");
-      setReason("");
-    }
-  }, [open]);
+  // Sin setState en efectos: limpiamos al cancelar o tras confirmar.
 
   const isValid = useMemo(() => {
     if (method === "MIXED") {
@@ -64,6 +55,14 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
       reason: reason.trim(),
     };
     onSubmit?.(payload);
+    // restablecer campos para el próximo uso
+    setMethod("CASH");
+    setAmount(0);
+    setCashAmount(0);
+    setCardAmount(0);
+    setReference("");
+    setReason("");
+    onClose?.();
   };
 
   const handleAmountChange = (setter: (value: number) => void) => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -141,7 +140,20 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>Cancelar</button>
+          <button
+            onClick={() => {
+              setMethod("CASH");
+              setAmount(0);
+              setCashAmount(0);
+              setCardAmount(0);
+              setReference("");
+              setReason("");
+              onClose?.();
+            }}
+            style={{ padding: "8px 12px", borderRadius: 8 }}
+          >
+            Cancelar
+          </button>
           <button
             type="button"
             disabled={!isValid}

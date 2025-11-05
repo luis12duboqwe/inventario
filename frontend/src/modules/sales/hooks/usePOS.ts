@@ -67,8 +67,7 @@ export function usePOS() {
       setTotals(t);
     } catch (e: any) {
       // Silencioso: el cálculo local mantiene la UI operativa
-      // eslint-disable-next-line no-console
-      console.warn("priceDraft fallback local", e);
+  console.warn("priceDraft fallback local", e);
       setBanner({ type: "warn", msg: "No fue posible sincronizar totales con el servidor (usando cálculo local)." });
     } finally {
       setLoading(false);
@@ -133,8 +132,8 @@ export function usePOS() {
   const retryOffline = useCallback(async () => {
     const raw = localStorage.getItem("sm_offline_sales");
     if (!raw) return 0;
-    const queue = JSON.parse(raw) as OfflineItem[];
-    let ok = 0, left: OfflineItem[] = [];
+  const queue = JSON.parse(raw) as OfflineItem[];
+  let ok = 0; const left: OfflineItem[] = [];
     for (const item of queue) {
       try { await SalesPOS.checkout(item.dto); ok++; }
       catch { left.push(item); }

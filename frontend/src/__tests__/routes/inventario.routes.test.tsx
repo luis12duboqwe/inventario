@@ -199,7 +199,9 @@ vi.mock("../../modules/inventory/pages/InventoryPage", async () => {
   const SuspendedInventoryPage = () => {
     if (resolvedForRun !== suspenseRunId) {
       if (!pending) {
+        // eslint-disable-next-line react-hooks/globals
         pending = new Promise<void>((resolve) => {
+          // eslint-disable-next-line react-hooks/globals
           resolveInventoryModule = () => {
             resolvedForRun = suspenseRunId;
             pending = null;

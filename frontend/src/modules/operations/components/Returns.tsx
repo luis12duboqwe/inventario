@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PurchaseOrder, Sale, Store } from "../../../api";
 import { listPurchaseOrders, listSales, registerPurchaseReturn, registerSaleReturn } from "../../../api";
 
@@ -42,13 +42,27 @@ const initialSaleReturn: SaleReturnForm = {
 };
 
 function Returns({ token, stores, defaultStoreId = null, onInventoryRefresh }: Props) {
+  // Para evitar setState en efectos cuando cambia defaultStoreId,
+  // se remonta un subcomponente con key basada en el defaultStoreId.
+  return (
+    <ReturnsInner
+      key={String(defaultStoreId ?? "none")}
+      token={token}
+      stores={stores}
+      defaultStoreId={defaultStoreId}
+      onInventoryRefresh={onInventoryRefresh}
+    />
+  );
+}
+
+function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh }: Props) {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
-  const [purchaseForm, setPurchaseForm] = useState<PurchaseReturnForm>({
+  const [purchaseForm, setPurchaseForm] = useState<PurchaseReturnForm>(() => ({
     ...initialPurchaseReturn,
     storeId: defaultStoreId,
-  });
-  const [saleForm, setSaleForm] = useState<SaleReturnForm>({ ...initialSaleReturn, storeId: defaultStoreId });
+  }));
+  const [saleForm, setSaleForm] = useState<SaleReturnForm>(() => ({ ...initialSaleReturn, storeId: defaultStoreId }));
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -62,7 +76,7 @@ function Returns({ token, stores, defaultStoreId = null, onInventoryRefresh }: P
     [sales, saleForm.saleId]
   );
 
-  const refreshOrders = async (storeId?: number | null) => {
+  const refreshOrders = useCallback(async (storeId?: number | null) => {
     if (!storeId) {
       setPurchaseOrders([]);
       return;
@@ -73,9 +87,9 @@ function Returns({ token, stores, defaultStoreId = null, onInventoryRefresh }: P
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible cargar las órdenes de compra");
     }
-  };
+  }, [token]);
 
-  const refreshSales = async (storeId?: number | null) => {
+  const refreshSales = useCallback(async (storeId?: number | null) => {
     if (!storeId) {
       setSales([]);
       return;
@@ -86,20 +100,21 @@ function Returns({ token, stores, defaultStoreId = null, onInventoryRefresh }: P
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible cargar las ventas");
     }
-  };
+  }, [token]);
 
   useEffect(() => {
-    setPurchaseForm((current) => ({ ...current, storeId: defaultStoreId ?? null }));
-    setSaleForm((current) => ({ ...current, storeId: defaultStoreId ?? null }));
-  }, [defaultStoreId]);
+    // Evita setState sincrónico en el efecto
+    Promise.resolve().then(() => {
+      void refreshOrders(purchaseForm.storeId ?? undefined);
+    });
+  }, [purchaseForm.storeId, refreshOrders]);
 
   useEffect(() => {
-    refreshOrders(purchaseForm.storeId ?? undefined);
-  }, [purchaseForm.storeId, token]);
-
-  useEffect(() => {
-    refreshSales(saleForm.storeId ?? undefined);
-  }, [saleForm.storeId, token]);
+    // Evita setState sincrónico en el efecto
+    Promise.resolve().then(() => {
+      void refreshSales(saleForm.storeId ?? undefined);
+    });
+  }, [saleForm.storeId, refreshSales]);
 
   const updatePurchaseForm = (updates: Partial<PurchaseReturnForm>) => {
     setPurchaseForm((current) => ({ ...current, ...updates }));
