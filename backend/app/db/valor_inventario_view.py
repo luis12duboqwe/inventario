@@ -54,7 +54,7 @@ SELECT
     ROUND(
         CASE
             WHEN dm.unit_price = 0 THEN 0
-            ELSE ((dm.unit_price - dm.costo_promedio_ponderado) / dm.unit_price) * 100
+            ELSE ((dm.unit_price - dm.costo_promedio_ponderado) * 100.0) / dm.unit_price
         END,
         2
     ) AS margen_producto_porcentaje,
@@ -68,8 +68,9 @@ SELECT
             WHEN SUM(dm.quantity * dm.unit_price) OVER (PARTITION BY dm.categoria) = 0 THEN 0
             ELSE (
                 SUM(dm.quantity * (dm.unit_price - dm.costo_promedio_ponderado)) OVER (PARTITION BY dm.categoria)
+                * 100.0
                 / NULLIF(SUM(dm.quantity * dm.unit_price) OVER (PARTITION BY dm.categoria), 0)
-            ) * 100
+            )
         END,
         2
     ) AS margen_categoria_porcentaje,

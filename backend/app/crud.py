@@ -257,6 +257,13 @@ def _normalize_date_range(
     if start_dt > end_dt:
         start_dt, end_dt = end_dt, start_dt
 
+    # Salvaguarda adicional: si tras reordenar el rango el extremo superior
+    # quedó en inicio de día (00:00:00), amplíalo al final del día para no
+    # perder movimientos registrados durante la jornada destino.
+    if end_dt.time() == datetime.min.time():
+        end_dt = end_dt.replace(
+            hour=23, minute=59, second=59, microsecond=999999)
+
     return start_dt, end_dt
 
 
@@ -644,6 +651,29 @@ def _apply_system_error_filters(
     if date_to:
         statement = statement.where(models.SystemError.fecha <= date_to)
     return statement
+
+
+def purge_system_logs(
+    db: Session,
+    *,
+    retention_days: int = 180,
+    keep_critical: bool = True,
+    reference: datetime | None = None,
+) -> int:
+    """Purga logs del sistema anteriores al cutoff de retención.
+
+    Preserva CRITICAL si keep_critical=True.
+    Devuelve cantidad eliminada.
+    """
+    now = reference or datetime.utcnow()
+    cutoff = now - timedelta(days=retention_days)
+    query = db.query(models.SystemLog).filter(models.SystemLog.fecha < cutoff)
+    if keep_critical:
+        query = query.filter(models.SystemLog.nivel !=
+                             models.SystemLogLevel.CRITICAL)
+    deleted = query.delete(synchronize_session=False)
+    db.commit()
+    return int(deleted or 0)
 
 
 def _severity_weight(level: models.SystemLogLevel) -> int:
@@ -8379,6 +8409,18 @@ def enqueue_sync_outbox(
             models.SyncOutbox.entity_id == entity_id,
         )
         entry = db.scalars(statement).first()
+        conflict_flag = False
+        # Detectar conflicto potencial: si existe entrada PENDING distinta en operación o payload cambió.
+        if entry is not None and entry.status == models.SyncOutboxStatus.PENDING:
+            try:
+                previous_payload = json.loads(entry.payload)
+            except Exception:
+                previous_payload = {}
+            # Heurística simple: si difiere algún campo clave declaramos conflicto.
+            differing = any(previous_payload.get(
+                k) != v for k, v in payload.items())
+            if differing or entry.operation != operation:
+                conflict_flag = True
         if entry is None:
             entry = models.SyncOutbox(
                 entity_type=entity_type,
@@ -8387,6 +8429,8 @@ def enqueue_sync_outbox(
                 payload=serialized,
                 status=models.SyncOutboxStatus.PENDING,
                 priority=resolved_priority,
+                conflict_flag=conflict_flag,
+                version=1,
             )
             db.add(entry)
         else:
@@ -8398,8 +8442,28 @@ def enqueue_sync_outbox(
             entry.last_attempt_at = None
             if _priority_weight(resolved_priority) < _priority_weight(entry.priority):
                 entry.priority = resolved_priority
+            # Si hay conflicto, marcar y aumentar la versión.
+            if conflict_flag:
+                entry.conflict_flag = True
+                entry.version = int(entry.version or 1) + 1
         flush_session(db)
         db.refresh(entry)
+        # Registrar auditoría de conflicto potencial si aplica.
+        if conflict_flag:
+            log_audit_event(
+                db,
+                action="sync_conflict_potential",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                performed_by_id=None,
+                details={
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "previous_version": (int(entry.version) - 1),
+                    "new_version": int(entry.version),
+                    "operation": operation,
+                },
+            )
     # // [PACK35-backend]
     try:
         queue_event = schemas.SyncQueueEvent(

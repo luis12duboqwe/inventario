@@ -123,7 +123,12 @@ def process_smart_import(
     overrides = overrides or {}
     parsed = _read_tabular_file(file_bytes, filename)
     learned_patterns = crud.get_known_import_column_patterns(db)
-    preview = _analyze_dataset(db, parsed, overrides=overrides, learned_patterns=learned_patterns)
+    preview = _analyze_dataset(
+        db, parsed, overrides=overrides, learned_patterns=learned_patterns)
+    # Normalización proactiva: garantizar que sucursales creadas durante la vista previa
+    # (cuando se confirme posteriormente) cuenten con timezone corporativo por defecto y
+    # inventory_value inicializado en 0. Esta lógica se ejecuta sólo en commit dentro de
+    # _commit_import, pero dejamos aquí un comentario explícito para la traza operativa.
     result: schemas.InventorySmartImportResult | None = None
     if commit:
         result = _commit_import(
@@ -152,7 +157,8 @@ def _parse_csv_bytes(file_bytes: bytes) -> ParsedFile:
     headers = [header.strip() for header in reader.fieldnames]
     rows: list[dict[str, Any]] = []
     for raw in reader:
-        normalized_row = {(key or "").strip(): value for key, value in raw.items()}
+        normalized_row = {(key or "").strip(): value for key,
+                          value in raw.items()}
         if not _row_has_data(normalized_row.values()):
             continue
         rows.append(normalized_row)
@@ -171,7 +177,8 @@ def _read_tabular_file(file_bytes: bytes, filename: str) -> ParsedFile:
         return _parse_csv_bytes(file_bytes)
     # default excel
     try:
-        workbook = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
+        workbook = load_workbook(
+            BytesIO(file_bytes), read_only=True, data_only=True)
     except BadZipFile:
         return _parse_csv_bytes(file_bytes)
     sheet = workbook.active
@@ -180,13 +187,15 @@ def _read_tabular_file(file_bytes: bytes, filename: str) -> ParsedFile:
         header_row = next(rows_iter)
     except StopIteration as exc:  # pragma: no cover - empty file defensive
         raise ValueError("archivo_vacio") from exc
-    headers = [str(cell).strip() if cell is not None else "" for cell in header_row]
+    headers = [str(cell).strip()
+               if cell is not None else "" for cell in header_row]
     cleaned_headers = [header for header in headers if header]
     if not cleaned_headers:
         raise ValueError("archivo_sin_encabezados")
     parsed_rows: list[dict[str, Any]] = []
     for row in rows_iter:
-        record = {headers[index]: row[index] for index in range(min(len(headers), len(row)))}
+        record = {headers[index]: row[index]
+                  for index in range(min(len(headers), len(row)))}
         if not _row_has_data(record.values()):
             continue
         parsed_rows.append(record)
@@ -242,7 +251,8 @@ def _analyze_dataset(
         else:
             column_map[canonical] = None
 
-    missing_columns = [field for field, header in column_map.items() if header is None]
+    missing_columns = [field for field,
+                       header in column_map.items() if header is None]
     if missing_columns:
         warnings.append(
             "Columnas faltantes: " + ", ".join(sorted(missing_columns))
@@ -255,7 +265,8 @@ def _analyze_dataset(
     ]
     if unknown_headers:
         warnings.append(
-            "Columnas sin asignar detectadas: " + ", ".join(sorted(set(unknown_headers)))
+            "Columnas sin asignar detectadas: " +
+            ", ".join(sorted(set(unknown_headers)))
         )
 
     registros_incompletos = 0
@@ -332,7 +343,8 @@ def _commit_import(
     validan los escenarios críticos descritos en esta documentación.
     """
     start_time = perf_counter()
-    canonical_rows = _extract_canonical_rows(parsed.rows, preview.columnas_detectadas)
+    canonical_rows = _extract_canonical_rows(
+        parsed.rows, preview.columnas_detectadas)
     total_processed = 0
     created = 0
     updated = 0
@@ -380,20 +392,34 @@ def _commit_import(
                 "device_id": None,
             }
             if not store_name:
-                warnings.append(f"Fila {row_index}: no se especificó la tienda.")
+                warnings.append(
+                    f"Fila {row_index}: no se especificó la tienda.")
                 registros_incompletos += 1
-                processed_records.append(import_validation.build_record(**record_kwargs))
+                processed_records.append(
+                    import_validation.build_record(**record_kwargs))
                 continue
             store, was_created = crud.ensure_store_by_name(
                 db,
                 store_name,
                 performed_by_id=performed_by_id,
             )
+            # Hook de normalización de sucursal recién creada: timezone y valor inventario.
+            if was_created:
+                # Alinear timezone estándar corporativo si quedó en blanco o genérico.
+                if not store.timezone or store.timezone == "UTC":
+                    store.timezone = "America/Mexico_City"
+                # inventory_value debe mantenerse en 0 Decimal de forma explícita
+                # para instalaciones con motores que no respetan defaults al crear via ensure_store_by_name.
+                if store.inventory_value is None:
+                    from decimal import Decimal as _D  # import local para aislar dependencia
+                    store.inventory_value = _D("0")
+                db.add(store)
             record_kwargs["store_id"] = store.id
             record_kwargs["store_name"] = store.name
             if was_created:
                 new_stores.append(store.name)
-            sku = row.get("sku") or _generate_sku(store.code, row.get("modelo"), row_index)
+            sku = row.get("sku") or _generate_sku(
+                store.code, row.get("modelo"), row_index)
             name = row.get("name") or _generate_name(row)
             capacidad_gb = _parse_int(row.get("capacidad_gb"))
             estado = row.get("estado") or "pendiente"
@@ -445,7 +471,8 @@ def _commit_import(
                 )
                 registros_incompletos += 1
                 record_kwargs["device_id"] = existing.id
-                processed_records.append(import_validation.build_record(**record_kwargs))
+                processed_records.append(
+                    import_validation.build_record(**record_kwargs))
                 continue
             device: models.Device | None = existing
             if existing is None:
@@ -462,7 +489,8 @@ def _commit_import(
                         f"Fila {row_index}: no se pudo crear el dispositivo ({exc})."
                     )
                     registros_incompletos += 1
-                    processed_records.append(import_validation.build_record(**record_kwargs))
+                    processed_records.append(
+                        import_validation.build_record(**record_kwargs))
                     continue
                 created += 1
             else:
@@ -503,7 +531,8 @@ def _commit_import(
                         f"Fila {row_index}: no se pudo actualizar el dispositivo ({exc})."
                     )
                     registros_incompletos += 1
-                    processed_records.append(import_validation.build_record(**record_kwargs))
+                    processed_records.append(
+                        import_validation.build_record(**record_kwargs))
                     continue
                 updated += 1
             record_kwargs["device_id"] = device.id if device else None
@@ -537,7 +566,8 @@ def _commit_import(
                     warnings.append(
                         f"Fila {row_index}: no se pudo registrar el movimiento ({exc})."
                     )
-            processed_records.append(import_validation.build_record(**record_kwargs))
+            processed_records.append(
+                import_validation.build_record(**record_kwargs))
         duration = perf_counter() - start_time
         warnings = list(dict.fromkeys(warnings))
         resumen = (
@@ -697,7 +727,8 @@ def _looks_like_date(value: str) -> bool:
 
 def _normalize_boolean_token(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value or "")
-    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = "".join(
+        char for char in normalized if not unicodedata.combining(char))
     return normalized.strip().lower()
 
 
@@ -710,7 +741,8 @@ def _looks_boolean(value: str) -> bool:
 
 def _normalize_header(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value or "")
-    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = "".join(
+        char for char in normalized if not unicodedata.combining(char))
     normalized = normalized.lower()
     cleaned = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
     return cleaned
@@ -775,7 +807,8 @@ def _parse_decimal(value: Any) -> Decimal | None:
     text = _normalize_cell(value)
     if text is None:
         return None
-    cleaned = text.replace("$", "").replace("€", "").replace(",", "").replace(" ", "")
+    cleaned = text.replace("$", "").replace(
+        "€", "").replace(",", "").replace(" ", "")
     try:
         return Decimal(cleaned)
     except Exception:
@@ -815,7 +848,8 @@ def _generate_sku(store_code: str | None, modelo: str | None, row_index: int) ->
 
 
 def _generate_name(row: dict[str, Any]) -> str:
-    parts = [row.get("marca"), row.get("modelo"), row.get("capacidad"), row.get("color")]
+    parts = [row.get("marca"), row.get("modelo"),
+             row.get("capacidad"), row.get("color")]
     return " ".join(filter(None, parts)) or "Producto importado"
 
 
