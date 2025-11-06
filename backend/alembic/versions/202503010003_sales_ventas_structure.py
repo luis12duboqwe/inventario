@@ -40,6 +40,7 @@ def _index_exists(inspector: sa.Inspector, table: str, name: str) -> bool:
 
 def upgrade() -> None:
     bind = op.get_bind()
+    is_sqlite = bind.dialect.name == "sqlite"
     inspector = sa.inspect(bind)
 
     if inspector.has_table("sales"):
@@ -55,20 +56,32 @@ def upgrade() -> None:
             inspector = _refresh_inspector(bind)
 
         if _has_column(inspector, "ventas", "customer_id"):
-            op.alter_column("ventas", "customer_id", new_column_name="cliente_id")
+            op.alter_column("ventas", "customer_id",
+                            new_column_name="cliente_id")
             inspector = _refresh_inspector(bind)
         if not _has_column(inspector, "ventas", "cliente_id"):
-            op.add_column("ventas", sa.Column("cliente_id", sa.Integer(), nullable=True))
+            op.add_column("ventas", sa.Column(
+                "cliente_id", sa.Integer(), nullable=True))
             inspector = _refresh_inspector(bind)
         if not _has_fk(inspector, "ventas", "cliente_id", "customers"):
-            op.create_foreign_key(
-                "fk_ventas_cliente_id",
-                "ventas",
-                "customers",
-                ["cliente_id"],
-                ["id"],
-                ondelete="SET NULL",
-            )
+            if is_sqlite:
+                with op.batch_alter_table("ventas") as batch_op:
+                    batch_op.create_foreign_key(
+                        "fk_ventas_cliente_id",
+                        "customers",
+                        ["cliente_id"],
+                        ["id"],
+                        ondelete="SET NULL",
+                    )
+            else:
+                op.create_foreign_key(
+                    "fk_ventas_cliente_id",
+                    "ventas",
+                    "customers",
+                    ["cliente_id"],
+                    ["id"],
+                    ondelete="SET NULL",
+                )
             inspector = _refresh_inspector(bind)
         if not _index_exists(inspector, "ventas", "ix_ventas_cliente_id") and not _has_index(
             inspector, "ventas", "cliente_id"
@@ -77,20 +90,32 @@ def upgrade() -> None:
             inspector = _refresh_inspector(bind)
 
         if _has_column(inspector, "ventas", "performed_by_id"):
-            op.alter_column("ventas", "performed_by_id", new_column_name="usuario_id")
+            op.alter_column("ventas", "performed_by_id",
+                            new_column_name="usuario_id")
             inspector = _refresh_inspector(bind)
         if not _has_column(inspector, "ventas", "usuario_id"):
-            op.add_column("ventas", sa.Column("usuario_id", sa.Integer(), nullable=True))
+            op.add_column("ventas", sa.Column(
+                "usuario_id", sa.Integer(), nullable=True))
             inspector = _refresh_inspector(bind)
         if not _has_fk(inspector, "ventas", "usuario_id", "users"):
-            op.create_foreign_key(
-                "fk_ventas_usuario_id",
-                "ventas",
-                "users",
-                ["usuario_id"],
-                ["id"],
-                ondelete="SET NULL",
-            )
+            if is_sqlite:
+                with op.batch_alter_table("ventas") as batch_op:
+                    batch_op.create_foreign_key(
+                        "fk_ventas_usuario_id",
+                        "users",
+                        ["usuario_id"],
+                        ["id"],
+                        ondelete="SET NULL",
+                    )
+            else:
+                op.create_foreign_key(
+                    "fk_ventas_usuario_id",
+                    "ventas",
+                    "users",
+                    ["usuario_id"],
+                    ["id"],
+                    ondelete="SET NULL",
+                )
             inspector = _refresh_inspector(bind)
         if not _index_exists(inspector, "ventas", "ix_ventas_usuario_id") and not _has_index(
             inspector, "ventas", "usuario_id"
@@ -111,7 +136,8 @@ def upgrade() -> None:
                     server_default=sa.func.now(),
                 ),
             )
-            op.alter_column("ventas", "fecha", server_default=None)
+            if not is_sqlite:
+                op.alter_column("ventas", "fecha", server_default=None)
             inspector = _refresh_inspector(bind)
 
         if _has_column(inspector, "ventas", "total_amount"):
@@ -120,9 +146,11 @@ def upgrade() -> None:
         if not _has_column(inspector, "ventas", "total"):
             op.add_column(
                 "ventas",
-                sa.Column("total", sa.Numeric(12, 2), nullable=False, server_default="0"),
+                sa.Column("total", sa.Numeric(12, 2),
+                          nullable=False, server_default="0"),
             )
-            op.alter_column("ventas", "total", server_default=None)
+            if not is_sqlite:
+                op.alter_column("ventas", "total", server_default=None)
             inspector = _refresh_inspector(bind)
 
         if _has_column(inspector, "ventas", "tax_amount"):
@@ -131,24 +159,30 @@ def upgrade() -> None:
         if not _has_column(inspector, "ventas", "impuesto"):
             op.add_column(
                 "ventas",
-                sa.Column("impuesto", sa.Numeric(12, 2), nullable=False, server_default="0"),
+                sa.Column("impuesto", sa.Numeric(12, 2),
+                          nullable=False, server_default="0"),
             )
-            op.alter_column("ventas", "impuesto", server_default=None)
+            if not is_sqlite:
+                op.alter_column("ventas", "impuesto", server_default=None)
             inspector = _refresh_inspector(bind)
 
         if _has_column(inspector, "ventas", "payment_method"):
-            op.alter_column("ventas", "payment_method", new_column_name="forma_pago")
+            op.alter_column("ventas", "payment_method",
+                            new_column_name="forma_pago")
             inspector = _refresh_inspector(bind)
 
         if _has_column(inspector, "ventas", "subtotal_amount"):
-            op.alter_column("ventas", "subtotal_amount", new_column_name="subtotal")
+            op.alter_column("ventas", "subtotal_amount",
+                            new_column_name="subtotal")
             inspector = _refresh_inspector(bind)
         if not _has_column(inspector, "ventas", "subtotal"):
             op.add_column(
                 "ventas",
-                sa.Column("subtotal", sa.Numeric(12, 2), nullable=False, server_default="0"),
+                sa.Column("subtotal", sa.Numeric(12, 2),
+                          nullable=False, server_default="0"),
             )
-            op.alter_column("ventas", "subtotal", server_default=None)
+            if not is_sqlite:
+                op.alter_column("ventas", "subtotal", server_default=None)
             inspector = _refresh_inspector(bind)
 
         if not _has_column(inspector, "ventas", "estado"):
@@ -161,50 +195,76 @@ def upgrade() -> None:
                     server_default="COMPLETADA",
                 ),
             )
-            op.alter_column("ventas", "estado", server_default=None)
+            if not is_sqlite:
+                op.alter_column("ventas", "estado", server_default=None)
             inspector = _refresh_inspector(bind)
 
     if inspector.has_table("detalle_ventas"):
         if _has_column(inspector, "detalle_ventas", "id"):
-            op.alter_column("detalle_ventas", "id", new_column_name="id_detalle")
+            op.alter_column("detalle_ventas", "id",
+                            new_column_name="id_detalle")
             inspector = _refresh_inspector(bind)
 
         if _has_column(inspector, "detalle_ventas", "sale_id"):
-            op.alter_column("detalle_ventas", "sale_id", new_column_name="venta_id")
+            op.alter_column("detalle_ventas", "sale_id",
+                            new_column_name="venta_id")
             inspector = _refresh_inspector(bind)
         if not _has_fk(inspector, "detalle_ventas", "venta_id", "ventas"):
-            op.create_foreign_key(
-                "fk_detalle_ventas_venta_id",
-                "detalle_ventas",
-                "ventas",
-                ["venta_id"],
-                ["id_venta"],
-                ondelete="CASCADE",
-            )
+            if is_sqlite:
+                with op.batch_alter_table("detalle_ventas") as batch_op:
+                    batch_op.create_foreign_key(
+                        "fk_detalle_ventas_venta_id",
+                        "ventas",
+                        ["venta_id"],
+                        ["id_venta"],
+                        ondelete="CASCADE",
+                    )
+            else:
+                op.create_foreign_key(
+                    "fk_detalle_ventas_venta_id",
+                    "detalle_ventas",
+                    "ventas",
+                    ["venta_id"],
+                    ["id_venta"],
+                    ondelete="CASCADE",
+                )
             inspector = _refresh_inspector(bind)
         if not _index_exists(
             inspector, "detalle_ventas", "ix_detalle_ventas_venta_id"
         ) and not _has_index(inspector, "detalle_ventas", "venta_id"):
-            op.create_index("ix_detalle_ventas_venta_id", "detalle_ventas", ["venta_id"])
+            op.create_index("ix_detalle_ventas_venta_id",
+                            "detalle_ventas", ["venta_id"])
             inspector = _refresh_inspector(bind)
 
         if _has_column(inspector, "detalle_ventas", "device_id"):
-            op.alter_column("detalle_ventas", "device_id", new_column_name="producto_id")
+            op.alter_column("detalle_ventas", "device_id",
+                            new_column_name="producto_id")
             inspector = _refresh_inspector(bind)
         if not _has_fk(inspector, "detalle_ventas", "producto_id", "devices"):
-            op.create_foreign_key(
-                "fk_detalle_ventas_producto_id",
-                "detalle_ventas",
-                "devices",
-                ["producto_id"],
-                ["id"],
-                ondelete="RESTRICT",
-            )
+            if is_sqlite:
+                with op.batch_alter_table("detalle_ventas") as batch_op:
+                    batch_op.create_foreign_key(
+                        "fk_detalle_ventas_producto_id",
+                        "devices",
+                        ["producto_id"],
+                        ["id"],
+                        ondelete="RESTRICT",
+                    )
+            else:
+                op.create_foreign_key(
+                    "fk_detalle_ventas_producto_id",
+                    "detalle_ventas",
+                    "devices",
+                    ["producto_id"],
+                    ["id"],
+                    ondelete="RESTRICT",
+                )
             inspector = _refresh_inspector(bind)
         if not _index_exists(
             inspector, "detalle_ventas", "ix_detalle_ventas_producto_id"
         ) and not _has_index(inspector, "detalle_ventas", "producto_id"):
-            op.create_index("ix_detalle_ventas_producto_id", "detalle_ventas", ["producto_id"])
+            op.create_index("ix_detalle_ventas_producto_id",
+                            "detalle_ventas", ["producto_id"])
             inspector = _refresh_inspector(bind)
 
         if _has_column(inspector, "detalle_ventas", "unit_price"):
@@ -215,29 +275,44 @@ def upgrade() -> None:
             )
             inspector = _refresh_inspector(bind)
         if _has_column(inspector, "detalle_ventas", "total_line"):
-            op.alter_column("detalle_ventas", "total_line", new_column_name="subtotal")
+            op.alter_column("detalle_ventas", "total_line",
+                            new_column_name="subtotal")
             inspector = _refresh_inspector(bind)
         if not _has_column(inspector, "detalle_ventas", "subtotal"):
             op.add_column(
                 "detalle_ventas",
-                sa.Column("subtotal", sa.Numeric(12, 2), nullable=False, server_default="0"),
+                sa.Column("subtotal", sa.Numeric(12, 2),
+                          nullable=False, server_default="0"),
             )
-            op.alter_column("detalle_ventas", "subtotal", server_default=None)
+            if not is_sqlite:
+                op.alter_column("detalle_ventas", "subtotal",
+                                server_default=None)
             inspector = _refresh_inspector(bind)
 
     if inspector.has_table("sale_returns"):
         if _has_column(inspector, "sale_returns", "sale_id"):
-            op.alter_column("sale_returns", "sale_id", new_column_name="venta_id")
+            op.alter_column("sale_returns", "sale_id",
+                            new_column_name="venta_id")
             inspector = _refresh_inspector(bind)
         if not _has_fk(inspector, "sale_returns", "venta_id", "ventas"):
-            op.create_foreign_key(
-                "fk_sale_returns_venta_id",
-                "sale_returns",
-                "ventas",
-                ["venta_id"],
-                ["id_venta"],
-                ondelete="CASCADE",
-            )
+            if is_sqlite:
+                with op.batch_alter_table("sale_returns") as batch_op:
+                    batch_op.create_foreign_key(
+                        "fk_sale_returns_venta_id",
+                        "ventas",
+                        ["venta_id"],
+                        ["id_venta"],
+                        ondelete="CASCADE",
+                    )
+            else:
+                op.create_foreign_key(
+                    "fk_sale_returns_venta_id",
+                    "sale_returns",
+                    "ventas",
+                    ["venta_id"],
+                    ["id_venta"],
+                    ondelete="CASCADE",
+                )
             inspector = _refresh_inspector(bind)
 
 
@@ -247,22 +322,29 @@ def downgrade() -> None:
 
     if inspector.has_table("sale_returns"):
         if _has_fk(inspector, "sale_returns", "venta_id", "ventas"):
-            op.drop_constraint("fk_sale_returns_venta_id", "sale_returns", type_="foreignkey")
+            op.drop_constraint("fk_sale_returns_venta_id",
+                               "sale_returns", type_="foreignkey")
         if _has_column(inspector, "sale_returns", "venta_id"):
-            op.alter_column("sale_returns", "venta_id", new_column_name="sale_id")
+            op.alter_column("sale_returns", "venta_id",
+                            new_column_name="sale_id")
         inspector = _refresh_inspector(bind)
 
     if inspector.has_table("detalle_ventas"):
         if _has_fk(inspector, "detalle_ventas", "venta_id", "ventas"):
-            op.drop_constraint("fk_detalle_ventas_venta_id", "detalle_ventas", type_="foreignkey")
+            op.drop_constraint("fk_detalle_ventas_venta_id",
+                               "detalle_ventas", type_="foreignkey")
         if _index_exists(inspector, "detalle_ventas", "ix_detalle_ventas_venta_id"):
-            op.drop_index("ix_detalle_ventas_venta_id", table_name="detalle_ventas")
+            op.drop_index("ix_detalle_ventas_venta_id",
+                          table_name="detalle_ventas")
         if _has_fk(inspector, "detalle_ventas", "producto_id", "devices"):
-            op.drop_constraint("fk_detalle_ventas_producto_id", "detalle_ventas", type_="foreignkey")
+            op.drop_constraint("fk_detalle_ventas_producto_id",
+                               "detalle_ventas", type_="foreignkey")
         if _index_exists(inspector, "detalle_ventas", "ix_detalle_ventas_producto_id"):
-            op.drop_index("ix_detalle_ventas_producto_id", table_name="detalle_ventas")
+            op.drop_index("ix_detalle_ventas_producto_id",
+                          table_name="detalle_ventas")
         if _has_column(inspector, "detalle_ventas", "subtotal"):
-            op.alter_column("detalle_ventas", "subtotal", new_column_name="total_line")
+            op.alter_column("detalle_ventas", "subtotal",
+                            new_column_name="total_line")
         if _has_column(inspector, "detalle_ventas", "precio_unitario"):
             op.alter_column(
                 "detalle_ventas",
@@ -270,36 +352,45 @@ def downgrade() -> None:
                 new_column_name="unit_price",
             )
         if _has_column(inspector, "detalle_ventas", "producto_id"):
-            op.alter_column("detalle_ventas", "producto_id", new_column_name="device_id")
+            op.alter_column("detalle_ventas", "producto_id",
+                            new_column_name="device_id")
         if _has_column(inspector, "detalle_ventas", "venta_id"):
-            op.alter_column("detalle_ventas", "venta_id", new_column_name="sale_id")
+            op.alter_column("detalle_ventas", "venta_id",
+                            new_column_name="sale_id")
         if _has_column(inspector, "detalle_ventas", "id_detalle"):
-            op.alter_column("detalle_ventas", "id_detalle", new_column_name="id")
+            op.alter_column("detalle_ventas", "id_detalle",
+                            new_column_name="id")
         inspector = _refresh_inspector(bind)
 
     if inspector.has_table("ventas"):
         if _index_exists(inspector, "ventas", "ix_ventas_usuario_id"):
             op.drop_index("ix_ventas_usuario_id", table_name="ventas")
         if _has_fk(inspector, "ventas", "usuario_id", "users"):
-            op.drop_constraint("fk_ventas_usuario_id", "ventas", type_="foreignkey")
+            op.drop_constraint("fk_ventas_usuario_id",
+                               "ventas", type_="foreignkey")
         if _has_column(inspector, "ventas", "usuario_id"):
-            op.alter_column("ventas", "usuario_id", new_column_name="performed_by_id")
+            op.alter_column("ventas", "usuario_id",
+                            new_column_name="performed_by_id")
 
         if _index_exists(inspector, "ventas", "ix_ventas_cliente_id"):
             op.drop_index("ix_ventas_cliente_id", table_name="ventas")
         if _has_fk(inspector, "ventas", "cliente_id", "customers"):
-            op.drop_constraint("fk_ventas_cliente_id", "ventas", type_="foreignkey")
+            op.drop_constraint("fk_ventas_cliente_id",
+                               "ventas", type_="foreignkey")
         if _has_column(inspector, "ventas", "cliente_id"):
-            op.alter_column("ventas", "cliente_id", new_column_name="customer_id")
+            op.alter_column("ventas", "cliente_id",
+                            new_column_name="customer_id")
 
         if _has_column(inspector, "ventas", "estado"):
             op.drop_column("ventas", "estado")
         if not _has_column(inspector, "ventas", "subtotal_amount") and _has_column(
             inspector, "ventas", "subtotal"
         ):
-            op.alter_column("ventas", "subtotal", new_column_name="subtotal_amount")
+            op.alter_column("ventas", "subtotal",
+                            new_column_name="subtotal_amount")
         if _has_column(inspector, "ventas", "forma_pago"):
-            op.alter_column("ventas", "forma_pago", new_column_name="payment_method")
+            op.alter_column("ventas", "forma_pago",
+                            new_column_name="payment_method")
         if _has_column(inspector, "ventas", "impuesto"):
             op.alter_column("ventas", "impuesto", new_column_name="tax_amount")
         if _has_column(inspector, "ventas", "total"):
@@ -316,4 +407,3 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     if inspector.has_table("detalle_ventas"):
         op.rename_table("detalle_ventas", "sale_items")
-***

@@ -4,13 +4,14 @@ from __future__ import annotations
 import enum
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
+    WithJsonSchema,
     computed_field,
     field_serializer,
     field_validator,
@@ -119,7 +120,8 @@ class RootWelcomeResponse(BaseModel):
 
 
 class StoreBase(BaseModel):
-    name: str = Field(..., max_length=120, description="Nombre visible de la sucursal")
+    name: str = Field(..., max_length=120,
+                      description="Nombre visible de la sucursal")
     location: str | None = Field(
         default=None, max_length=255, description="Dirección física o referencia de la sucursal"
     )
@@ -132,7 +134,8 @@ class StoreBase(BaseModel):
     status: str = Field(
         default="activa", max_length=30, description="Estado operativo de la sucursal"
     )
-    timezone: str = Field(default="UTC", max_length=50, description="Zona horaria de la sucursal")
+    timezone: str = Field(default="UTC", max_length=50,
+                          description="Zona horaria de la sucursal")
 
 
 class StoreCreate(StoreBase):
@@ -170,9 +173,12 @@ class StoreResponse(StoreBase):
 
 
 class DeviceBase(BaseModel):
-    sku: str = Field(..., max_length=80, description="Identificador único del producto")
-    name: str = Field(..., max_length=120, description="Descripción del dispositivo")
-    quantity: int = Field(default=0, ge=0, description="Cantidad disponible en inventario")
+    sku: str = Field(..., max_length=80,
+                     description="Identificador único del producto")
+    name: str = Field(..., max_length=120,
+                      description="Descripción del dispositivo")
+    quantity: int = Field(
+        default=0, ge=0, description="Cantidad disponible en inventario")
     unit_price: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
@@ -183,22 +189,32 @@ class DeviceBase(BaseModel):
         ge=Decimal("0"),
         description="Precio público sugerido del dispositivo",
     )
-    imei: str | None = Field(default=None, max_length=18, description="IMEI del dispositivo")
-    serial: str | None = Field(default=None, max_length=120, description="Número de serie")
-    marca: str | None = Field(default=None, max_length=80, description="Marca comercial")
-    modelo: str | None = Field(default=None, max_length=120, description="Modelo detallado")
-    categoria: str | None = Field(default=None, max_length=80, description="Categoría de catálogo")
-    condicion: str | None = Field(default=None, max_length=60, description="Condición física")
-    color: str | None = Field(default=None, max_length=60, description="Color principal")
-    capacidad_gb: int | None = Field(default=None, ge=0, description="Capacidad de almacenamiento en GB")
-    capacidad: str | None = Field(default=None, max_length=80, description="Capacidad descriptiva")
+    imei: str | None = Field(default=None, max_length=18,
+                             description="IMEI del dispositivo")
+    serial: str | None = Field(
+        default=None, max_length=120, description="Número de serie")
+    marca: str | None = Field(
+        default=None, max_length=80, description="Marca comercial")
+    modelo: str | None = Field(
+        default=None, max_length=120, description="Modelo detallado")
+    categoria: str | None = Field(
+        default=None, max_length=80, description="Categoría de catálogo")
+    condicion: str | None = Field(
+        default=None, max_length=60, description="Condición física")
+    color: str | None = Field(
+        default=None, max_length=60, description="Color principal")
+    capacidad_gb: int | None = Field(
+        default=None, ge=0, description="Capacidad de almacenamiento en GB")
+    capacidad: str | None = Field(
+        default=None, max_length=80, description="Capacidad descriptiva")
     estado_comercial: CommercialState = Field(default=CommercialState.NUEVO)
     estado: str = Field(
         default="disponible",
         max_length=40,
         description="Estado logístico del producto (disponible, apartado, agotado, etc.)",
     )
-    proveedor: str | None = Field(default=None, max_length=120, description="Proveedor principal")
+    proveedor: str | None = Field(
+        default=None, max_length=120, description="Proveedor principal")
     costo_unitario: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
@@ -214,11 +230,16 @@ class DeviceBase(BaseModel):
         ge=Decimal("0"),
         description="Margen aplicado en porcentaje",
     )
-    garantia_meses: int = Field(default=0, ge=0, description="Garantía ofrecida en meses")
-    lote: str | None = Field(default=None, max_length=80, description="Identificador de lote")
-    fecha_compra: date | None = Field(default=None, description="Fecha de compra al proveedor")
-    fecha_ingreso: date | None = Field(default=None, description="Fecha de ingreso al inventario")
-    ubicacion: str | None = Field(default=None, max_length=120, description="Ubicación física en la sucursal")
+    garantia_meses: int = Field(
+        default=0, ge=0, description="Garantía ofrecida en meses")
+    lote: str | None = Field(default=None, max_length=80,
+                             description="Identificador de lote")
+    fecha_compra: date | None = Field(
+        default=None, description="Fecha de compra al proveedor")
+    fecha_ingreso: date | None = Field(
+        default=None, description="Fecha de ingreso al inventario")
+    ubicacion: str | None = Field(
+        default=None, max_length=120, description="Ubicación física en la sucursal")
     descripcion: str | None = Field(
         default=None,
         max_length=1024,
@@ -607,7 +628,8 @@ class DeviceIdentifierBase(BaseModel):
     def _validate_identifiers(self) -> "DeviceIdentifierBase":
         identifiers = [self.imei_1, self.imei_2, self.numero_serie]
         if not any(identifiers):
-            raise ValueError("Debe registrar al menos un IMEI o número de serie.")
+            raise ValueError(
+                "Debe registrar al menos un IMEI o número de serie.")
         if self.imei_1 and self.imei_2 and self.imei_1 == self.imei_2:
             raise ValueError("El IMEI 1 y el IMEI 2 no pueden ser idénticos.")
         return self
@@ -665,7 +687,8 @@ class CustomerBase(BaseModel):
     email: str | None = Field(default=None, max_length=120)
     phone: str = Field(..., min_length=5, max_length=40)
     address: str | None = Field(default=None, max_length=255)
-    customer_type: str = Field(default="minorista", min_length=3, max_length=30)
+    customer_type: str = Field(
+        default="minorista", min_length=3, max_length=30)
     status: str = Field(default="activo", min_length=3, max_length=20)
     credit_limit: Decimal = Field(default=Decimal("0"))
     notes: str | None = Field(default=None, max_length=500)
@@ -956,7 +979,8 @@ class PaymentCenterCreditNoteCreate(BaseModel):
     @classmethod
     def _ensure_lines(cls, value: list[PaymentCenterCreditNoteLine]) -> list[PaymentCenterCreditNoteLine]:
         if not value:
-            raise ValueError("La nota de crédito requiere al menos un concepto")
+            raise ValueError(
+                "La nota de crédito requiere al menos un concepto")
         return value
 
     @field_validator("note", mode="before")
@@ -966,6 +990,7 @@ class PaymentCenterCreditNoteCreate(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
 
 class CustomerPortfolioFilters(BaseModel):
     category: Literal["delinquent", "frequent"]
@@ -1193,7 +1218,8 @@ class TransferOrderCreate(BaseModel):
     @classmethod
     def _ensure_items(cls, value: list[TransferOrderItemCreate]) -> list[TransferOrderItemCreate]:
         if not value:
-            raise ValueError("Debes incluir al menos un dispositivo en la transferencia.")
+            raise ValueError(
+                "Debes incluir al menos un dispositivo en la transferencia.")
         return value
 
 
@@ -1280,16 +1306,22 @@ class RoleResponse(BaseModel):
 
 
 class UserBase(BaseModel):
-    username: str = Field(
-        ...,
-        max_length=120,
-        validation_alias=AliasChoices("username", "correo"),
-    )
-    full_name: str | None = Field(
-        default=None,
-        max_length=120,
-        validation_alias=AliasChoices("full_name", "nombre"),
-    )
+    username: Annotated[
+        str,
+        Field(
+            ...,
+            max_length=120,
+            validation_alias=AliasChoices("username", "correo"),
+        ),
+    ]
+    full_name: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=120,
+            validation_alias=AliasChoices("full_name", "nombre"),
+        ),
+    ]
     telefono: str | None = Field(default=None, max_length=30)
 
     model_config = ConfigDict(populate_by_name=True)
@@ -1315,11 +1347,14 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=128)
     roles: list[str] = Field(default_factory=list)
-    store_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "sucursal_id"),
-    )
+    store_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices("store_id", "sucursal_id"),
+        ),
+    ]
 
 
 class BootstrapStatusResponse(BaseModel):
@@ -1403,14 +1438,24 @@ class UserResponse(UserBase):
 
 
 class UserUpdate(BaseModel):
-    full_name: str | None = Field(default=None, max_length=120, validation_alias=AliasChoices("full_name", "nombre"))
+    full_name: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=120,
+            validation_alias=AliasChoices("full_name", "nombre"),
+        ),
+    ]
     telefono: str | None = Field(default=None, max_length=30)
     password: str | None = Field(default=None, min_length=8, max_length=128)
-    store_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "sucursal_id"),
-    )
+    store_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices("store_id", "sucursal_id"),
+        ),
+    ]
 
 
 class RoleModulePermission(BaseModel):
@@ -1560,8 +1605,10 @@ class TokenVerificationRequest(BaseModel):
 
 
 class TokenVerificationResponse(BaseModel):
-    is_valid: bool = Field(..., description="Indica si el token sigue siendo válido.")
-    detail: str = Field(..., description="Mensaje descriptivo del estado del token.")
+    is_valid: bool = Field(...,
+                           description="Indica si el token sigue siendo válido.")
+    detail: str = Field(...,
+                        description="Mensaje descriptivo del estado del token.")
     session_id: int | None = Field(
         default=None,
         description="Identificador interno de la sesión asociada al token.",
@@ -1616,20 +1663,27 @@ class MovementBase(BaseModel):
     tipo_movimiento: MovementType
     cantidad: int = Field(..., ge=0)
     comentario: str = Field(..., max_length=255)
-    sucursal_origen_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("sucursal_origen_id", "tienda_origen_id"),
-        serialization_alias="sucursal_origen_id",
-    )
-    sucursal_destino_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices(
-            "sucursal_destino_id", "tienda_destino_id", "branch_id"
+    sucursal_origen_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "sucursal_origen_id", "tienda_origen_id"),
+            serialization_alias="sucursal_origen_id",
         ),
-        serialization_alias="sucursal_destino_id",
-    )  # // [PACK30-31-BACKEND]
+    ]
+    sucursal_destino_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "sucursal_destino_id", "tienda_destino_id", "branch_id"
+            ),
+            serialization_alias="sucursal_destino_id",
+        ),
+    ]  # // [PACK30-31-BACKEND]
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
     @field_validator("comentario", mode="before")
@@ -1645,7 +1699,8 @@ class MovementBase(BaseModel):
     @model_validator(mode="after")
     def _validate_quantity(self) -> "MovementBase":
         if self.tipo_movimiento in {MovementType.IN, MovementType.OUT} and self.cantidad <= 0:
-            raise ValueError("La cantidad debe ser mayor que cero para entradas o salidas.")
+            raise ValueError(
+                "La cantidad debe ser mayor que cero para entradas o salidas.")
         if self.tipo_movimiento == MovementType.ADJUST and self.cantidad < 0:
             raise ValueError("La cantidad no puede ser negativa en un ajuste.")
         return self
@@ -1657,67 +1712,109 @@ class MovementCreate(MovementBase):
 
 class MovementResponse(BaseModel):
     id: int
-    producto_id: int = Field(
-        validation_alias=AliasChoices("producto_id", "device_id"),
-        serialization_alias="producto_id",
-    )
-    tipo_movimiento: MovementType = Field(
-        validation_alias=AliasChoices("tipo_movimiento", "movement_type"),
-        serialization_alias="tipo_movimiento",
-    )
-    cantidad: int = Field(
-        validation_alias=AliasChoices("cantidad", "quantity"),
-        serialization_alias="cantidad",
-    )
-    comentario: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("comentario", "comment"),
-        serialization_alias="comentario",
-    )
-    sucursal_origen_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("sucursal_origen_id", "tienda_origen_id", "source_store_id"),
-        serialization_alias="sucursal_origen_id",
-    )
-    sucursal_origen: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("sucursal_origen", "tienda_origen"),
-        serialization_alias="sucursal_origen",
-    )
-    sucursal_destino_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("sucursal_destino_id", "tienda_destino_id", "store_id"),
-        serialization_alias="sucursal_destino_id",
-    )
-    sucursal_destino: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("sucursal_destino", "tienda_destino"),
-        serialization_alias="sucursal_destino",
-    )
-    usuario_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("usuario_id", "performed_by_id"),
-        serialization_alias="usuario_id",
-    )
-    usuario: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("usuario"),
-        serialization_alias="usuario",
-    )
-    referencia_tipo: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("referencia_tipo", "reference_type"),
-        serialization_alias="referencia_tipo",
-    )
-    referencia_id: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("referencia_id", "reference_id"),
-        serialization_alias="referencia_id",
-    )
-    fecha: datetime = Field(
-        validation_alias=AliasChoices("fecha", "created_at"),
-        serialization_alias="fecha",
-    )
+    producto_id: Annotated[
+        int,
+        Field(
+            validation_alias=AliasChoices("producto_id", "device_id"),
+            serialization_alias="producto_id",
+        ),
+    ]
+    tipo_movimiento: Annotated[
+        MovementType,
+        Field(
+            validation_alias=AliasChoices("tipo_movimiento", "movement_type"),
+            serialization_alias="tipo_movimiento",
+        ),
+    ]
+    cantidad: Annotated[
+        int,
+        Field(
+            validation_alias=AliasChoices("cantidad", "quantity"),
+            serialization_alias="cantidad",
+        ),
+    ]
+    comentario: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("comentario", "comment"),
+            serialization_alias="comentario",
+        ),
+    ]
+    sucursal_origen_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "sucursal_origen_id", "tienda_origen_id", "source_store_id"),
+            serialization_alias="sucursal_origen_id",
+        ),
+    ]
+    sucursal_origen: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("sucursal_origen", "tienda_origen"),
+            serialization_alias="sucursal_origen",
+        ),
+    ]
+    sucursal_destino_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "sucursal_destino_id", "tienda_destino_id", "store_id"),
+            serialization_alias="sucursal_destino_id",
+        ),
+    ]
+    sucursal_destino: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "sucursal_destino", "tienda_destino"),
+            serialization_alias="sucursal_destino",
+        ),
+    ]
+    usuario_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("usuario_id", "performed_by_id"),
+            serialization_alias="usuario_id",
+        ),
+    ]
+    usuario: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("usuario"),
+            serialization_alias="usuario",
+        ),
+    ]
+    referencia_tipo: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("referencia_tipo", "reference_type"),
+            serialization_alias="referencia_tipo",
+        ),
+    ]
+    referencia_id: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("referencia_id", "reference_id"),
+            serialization_alias="referencia_id",
+        ),
+    ]
+    fecha: Annotated[
+        datetime,
+        Field(
+            validation_alias=AliasChoices("fecha", "created_at"),
+            serialization_alias="fecha",
+        ),
+    ]
     unit_cost: Decimal | None = Field(default=None)
     store_inventory_value: Decimal
     ultima_accion: AuditTrailInfo | None = None
@@ -2031,15 +2128,18 @@ class AuditUIExportFormat(str, enum.Enum):
 
 
 class AuditUIBulkItem(BaseModel):
-    ts: datetime = Field(..., description="Marca de tiempo del evento en formato ISO 8601")
+    ts: datetime = Field(...,
+                         description="Marca de tiempo del evento en formato ISO 8601")
     user_id: str | None = Field(
         default=None,
         max_length=120,
         alias=AliasChoices("userId", "user_id"),
         description="Identificador del usuario que generó la acción",
     )
-    module: str = Field(..., max_length=80, description="Módulo de la interfaz donde ocurrió")
-    action: str = Field(..., max_length=120, description="Acción específica realizada")
+    module: str = Field(..., max_length=80,
+                        description="Módulo de la interfaz donde ocurrió")
+    action: str = Field(..., max_length=120,
+                        description="Acción específica realizada")
     entity_id: str | None = Field(
         default=None,
         max_length=120,
@@ -2087,7 +2187,8 @@ class AuditUIBulkRequest(BaseModel):
 
 
 class AuditUIBulkResponse(BaseModel):
-    inserted: int = Field(..., ge=0, description="Cantidad de registros insertados")
+    inserted: int = Field(..., ge=0,
+                          description="Cantidad de registros insertados")
 
 
 class AuditUIRecord(BaseModel):
@@ -2156,7 +2257,8 @@ class DashboardAuditAlerts(BaseModel):
     pending_count: int = Field(default=0, ge=0)
     acknowledged_count: int = Field(default=0, ge=0)
     highlights: list[AuditHighlight] = Field(default_factory=list)
-    acknowledged_entities: list[AuditAcknowledgedEntity] = Field(default_factory=list)
+    acknowledged_entities: list[AuditAcknowledgedEntity] = Field(
+        default_factory=list)
 
     @computed_field(return_type=bool)  # type: ignore[misc]
     def has_alerts(self) -> bool:
@@ -2462,7 +2564,8 @@ class SyncQueueEnqueueRequest(BaseModel):
     @model_validator(mode="after")
     def _ensure_events(self) -> "SyncQueueEnqueueRequest":
         if not self.events:
-            raise ValueError("Debes proporcionar al menos un evento para encolar")
+            raise ValueError(
+                "Debes proporcionar al menos un evento para encolar")
         return self
 
 
@@ -2665,17 +2768,21 @@ class AuditLogResponse(BaseModel):
     created_at: datetime
     severity: Literal["info", "warning", "critical"] = Field(default="info")
     severity_label: str = Field(default="Informativa")
-    module: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("module", "modulo"),
-        serialization_alias="modulo",
-    )
+    module: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("module", "modulo"),
+            serialization_alias="modulo",
+        ),
+    ]
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     @model_validator(mode="after")
     def _derive_severity(self) -> "AuditLogResponse":
-        severity = audit_utils.classify_severity(self.action or "", self.details)
+        severity = audit_utils.classify_severity(
+            self.action or "", self.details)
         label = audit_utils.severity_label(severity)
         object.__setattr__(self, "severity", severity)
         object.__setattr__(self, "severity_label", label)
@@ -2687,7 +2794,8 @@ class AuditLogResponse(BaseModel):
 
 
 class SystemLogEntry(BaseModel):
-    id_log: int = Field(validation_alias=AliasChoices("id_log", "id"))
+    id_log: Annotated[int, Field(
+        validation_alias=AliasChoices("id_log", "id"))]
     usuario: str | None
     modulo: str
     accion: str
@@ -2695,11 +2803,14 @@ class SystemLogEntry(BaseModel):
     fecha: datetime
     nivel: SystemLogLevel
     ip_origen: str | None = None
-    audit_log_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("audit_log_id"),
-        serialization_alias="audit_log_id",
-    )
+    audit_log_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("audit_log_id"),
+            serialization_alias="audit_log_id",
+        ),
+    ]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2710,7 +2821,10 @@ class SystemLogEntry(BaseModel):
 
 
 class SystemErrorEntry(BaseModel):
-    id_error: int = Field(validation_alias=AliasChoices("id_error", "id"))
+    id_error: Annotated[
+        int,
+        Field(validation_alias=AliasChoices("id_error", "id")),
+    ]
     mensaje: str
     stack_trace: str | None
     modulo: str
@@ -2930,12 +3044,15 @@ class PurchaseOrderItemCreate(BaseModel):
 
 
 class PurchaseOrderCreate(BaseModel):
-    store_id: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "branch_id"),
-        serialization_alias="store_id",
-    )  # // [PACK30-31-BACKEND]
+    store_id: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("store_id", "branch_id"),
+            serialization_alias="store_id",
+        ),
+    ]  # // [PACK30-31-BACKEND]
     supplier: str = Field(..., max_length=120)
     notes: str | None = Field(default=None, max_length=255)
     items: list[PurchaseOrderItemCreate]
@@ -3144,7 +3261,8 @@ class PurchaseRecordCreate(BaseModel):
     fecha: datetime | None = None
     forma_pago: str = Field(..., max_length=60)
     estado: str = Field(default="REGISTRADA", max_length=40)
-    impuesto_tasa: Decimal = Field(default=Decimal("0.16"), ge=Decimal("0"), le=Decimal("1"))
+    impuesto_tasa: Decimal = Field(default=Decimal(
+        "0.16"), ge=Decimal("0"), le=Decimal("1"))
     items: list[PurchaseRecordItemCreate]
 
     @field_validator("items")
@@ -3362,7 +3480,8 @@ class OperationsHistoryResponse(BaseModel):
 class RepairOrderPartPayload(BaseModel):
     device_id: int | None = Field(default=None, ge=1)
     part_name: str | None = Field(default=None, max_length=120)
-    source: RepairPartSource = Field(default=RepairPartSource.STOCK)  # // [PACK37-backend]
+    source: RepairPartSource = Field(
+        default=RepairPartSource.STOCK)  # // [PACK37-backend]
     quantity: int = Field(..., ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
@@ -3386,17 +3505,24 @@ class RepairOrderCreate(BaseModel):
     store_id: int = Field(..., ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
-    customer_contact: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
+    customer_contact: str | None = Field(
+        default=None, max_length=120)  # // [PACK37-backend]
     technician_name: str = Field(..., max_length=120)
-    damage_type: str = Field(
-        ...,
-        max_length=120,
-        validation_alias=AliasChoices("damage_type", "issue"),
-        serialization_alias="damage_type",
-    )
-    diagnosis: str | None = Field(default=None, max_length=500)  # // [PACK37-backend]
-    device_model: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
-    imei: str | None = Field(default=None, max_length=40)  # // [PACK37-backend]
+    damage_type: Annotated[
+        str,
+        Field(
+            ...,
+            max_length=120,
+            validation_alias=AliasChoices("damage_type", "issue"),
+            serialization_alias="damage_type",
+        ),
+    ]
+    diagnosis: str | None = Field(
+        default=None, max_length=500)  # // [PACK37-backend]
+    device_model: str | None = Field(
+        default=None, max_length=120)  # // [PACK37-backend]
+    imei: str | None = Field(
+        default=None, max_length=40)  # // [PACK37-backend]
     device_description: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=500)
     labor_cost: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
@@ -3424,17 +3550,24 @@ class RepairOrderCreate(BaseModel):
 class RepairOrderUpdate(BaseModel):
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
-    customer_contact: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
+    customer_contact: str | None = Field(
+        default=None, max_length=120)  # // [PACK37-backend]
     technician_name: str | None = Field(default=None, max_length=120)
-    damage_type: str | None = Field(
-        default=None,
-        max_length=120,
-        validation_alias=AliasChoices("damage_type", "issue"),
-        serialization_alias="damage_type",
-    )
-    diagnosis: str | None = Field(default=None, max_length=500)  # // [PACK37-backend]
-    device_model: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
-    imei: str | None = Field(default=None, max_length=40)  # // [PACK37-backend]
+    damage_type: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=120,
+            validation_alias=AliasChoices("damage_type", "issue"),
+            serialization_alias="damage_type",
+        ),
+    ]
+    diagnosis: str | None = Field(
+        default=None, max_length=500)  # // [PACK37-backend]
+    device_model: str | None = Field(
+        default=None, max_length=120)  # // [PACK37-backend]
+    imei: str | None = Field(
+        default=None, max_length=40)  # // [PACK37-backend]
     device_description: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=500)
     status: RepairStatus | None = None
@@ -3475,7 +3608,8 @@ class RepairOrderPartResponse(BaseModel):
     repair_order_id: int
     device_id: int | None
     part_name: str | None = None  # // [PACK37-backend]
-    source: RepairPartSource = Field(default=RepairPartSource.STOCK)  # // [PACK37-backend]
+    source: RepairPartSource = Field(
+        default=RepairPartSource.STOCK)  # // [PACK37-backend]
     quantity: int
     unit_cost: Decimal
 
@@ -3535,11 +3669,14 @@ class SaleItemCreate(BaseModel):
     discount_percent: Decimal | None = Field(
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
     )
-    unit_price_override: Decimal | None = Field(
-        default=None,
-        ge=Decimal("0"),
-        validation_alias=AliasChoices("unit_price_override", "price"),
-    )  # // [PACK34-schema]
+    unit_price_override: Annotated[
+        Decimal | None,
+        Field(
+            default=None,
+            ge=Decimal("0"),
+            validation_alias=AliasChoices("unit_price_override", "price"),
+        ),
+    ]  # // [PACK34-schema]
 
     @field_validator("discount_percent")
     @classmethod
@@ -3550,16 +3687,20 @@ class SaleItemCreate(BaseModel):
 
 
 class SaleCreate(BaseModel):
-    store_id: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "branch_id"),
-        serialization_alias="store_id",
-    )  # // [PACK30-31-BACKEND]
+    store_id: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("store_id", "branch_id"),
+            serialization_alias="store_id",
+        ),
+    ]  # // [PACK30-31-BACKEND]
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
-    discount_percent: Decimal | None = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    discount_percent: Decimal | None = Field(
+        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
     status: str = Field(default="COMPLETADA", max_length=30)
     notes: str | None = Field(default=None, max_length=255)
     items: list[SaleItemCreate]
@@ -3598,7 +3739,8 @@ class SaleUpdate(BaseModel):
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
-    discount_percent: Decimal | None = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    discount_percent: Decimal | None = Field(
+        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
     status: str = Field(default="COMPLETADA", max_length=30)
     notes: str | None = Field(default=None, max_length=255)
     items: list[SaleItemCreate]
@@ -3862,37 +4004,56 @@ class POSCartItem(BaseModel):
     """Elemento del carrito POS aceptando identificadores flexibles."""
 
     # // [PACK34-schema]
-    device_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("device_id", "productId", "product_id"),
-    )
-    imei: str | None = Field(
-        default=None,
-        max_length=18,
-        validation_alias=AliasChoices("imei", "imei_1", "imei1"),
-    )
-    quantity: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("quantity", "qty"),
-    )
-    discount_percent: Decimal | None = Field(
-        default=Decimal("0"),
-        ge=Decimal("0"),
-        le=Decimal("100"),
-        validation_alias=AliasChoices("discount_percent", "discount"),
-    )
-    unit_price_override: Decimal | None = Field(
-        default=None,
-        ge=Decimal("0"),
-        validation_alias=AliasChoices("unit_price_override", "price"),
-    )
-    tax_code: str | None = Field(
-        default=None,
-        max_length=50,
-        validation_alias=AliasChoices("tax_code", "taxCode"),
-    )
+    device_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "device_id", "productId", "product_id"),
+        ),
+    ]
+    imei: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=18,
+            validation_alias=AliasChoices("imei", "imei_1", "imei1"),
+        ),
+    ]
+    quantity: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("quantity", "qty"),
+        ),
+    ]
+    discount_percent: Annotated[
+        Decimal | None,
+        Field(
+            default=Decimal("0"),
+            ge=Decimal("0"),
+            le=Decimal("100"),
+            validation_alias=AliasChoices("discount_percent", "discount"),
+        ),
+    ]
+    unit_price_override: Annotated[
+        Decimal | None,
+        Field(
+            default=None,
+            ge=Decimal("0"),
+            validation_alias=AliasChoices("unit_price_override", "price"),
+        ),
+    ]
+    tax_code: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=50,
+            validation_alias=AliasChoices("tax_code", "taxCode"),
+        ),
+    ]
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -3908,46 +4069,67 @@ class POSSalePaymentInput(BaseModel):
     """Definición de pago para registrar montos por método."""
 
     # // [PACK34-schema]
-    method: PaymentMethod = Field(
-        ..., validation_alias=AliasChoices("method", "paymentMethod")
-    )
+    method: Annotated[
+        PaymentMethod,
+        Field(
+            ...,
+            validation_alias=AliasChoices("method", "paymentMethod"),
+        ),
+    ]
     amount: Decimal = Field(..., ge=Decimal("0"))
 
 
 class POSSaleRequest(BaseModel):
-    store_id: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "branchId", "branch_id"),
-    )
+    store_id: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("store_id", "branchId", "branch_id"),
+        ),
+    ]
     customer_id: int | None = Field(default=None, ge=1)
-    customer_name: str | None = Field(
-        default=None,
-        max_length=120,
-        validation_alias=AliasChoices("customer_name", "customer"),
-    )
-    payment_method: PaymentMethod = Field(
-        default=PaymentMethod.EFECTIVO,
-        validation_alias=AliasChoices("payment_method", "defaultPaymentMethod"),
-    )
+    customer_name: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=120,
+            validation_alias=AliasChoices("customer_name", "customer"),
+        ),
+    ]
+    payment_method: Annotated[
+        PaymentMethod,
+        Field(
+            default=PaymentMethod.EFECTIVO,
+            validation_alias=AliasChoices(
+                "payment_method", "defaultPaymentMethod"
+            ),
+        ),
+    ]
     discount_percent: Decimal | None = Field(
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
     )
-    notes: str | None = Field(
-        default=None,
-        max_length=255,
-        validation_alias=AliasChoices("notes", "note"),
-    )
+    notes: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=255,
+            validation_alias=AliasChoices("notes", "note"),
+        ),
+    ]
     items: list[POSCartItem]
     draft_id: int | None = Field(default=None, ge=1)
     save_as_draft: bool = Field(default=False)
     confirm: bool = Field(default=False)
     apply_taxes: bool = Field(default=True)
-    cash_session_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("cash_session_id", "sessionId"),
-    )
+    cash_session_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices("cash_session_id", "sessionId"),
+        ),
+    ]
     payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
     payments: list[POSSalePaymentInput] = Field(default_factory=list)
 
@@ -3987,7 +4169,8 @@ class POSSaleRequest(BaseModel):
             try:
                 PaymentMethod(method)
             except ValueError as exc:  # pragma: no cover - validation error path
-                raise ValueError("Método de pago inválido en el desglose.") from exc
+                raise ValueError(
+                    "Método de pago inválido en el desglose.") from exc
             normalized[method] = Decimal(str(amount))
         return normalized
 
@@ -4044,28 +4227,45 @@ class POSReturnItemRequest(BaseModel):
     """Item devuelto desde el POS identificable por producto o IMEI."""
 
     # // [PACK34-schema]
-    product_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("product_id", "productId", "device_id"),
-    )
-    imei: str | None = Field(
-        default=None,
-        max_length=18,
-        validation_alias=AliasChoices("imei", "imei_1"),
-    )
-    qty: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("quantity", "qty"),
-    )
+    product_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "product_id", "productId", "device_id"),
+        ),
+    ]
+    imei: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=18,
+            validation_alias=AliasChoices("imei", "imei_1"),
+        ),
+    ]
+    qty: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("quantity", "qty"),
+        ),
+    ]
 
 
 class POSReturnRequest(BaseModel):
     """Solicitud de devolución rápida en POS."""
 
     # // [PACK34-schema]
-    original_sale_id: int = Field(..., ge=1, validation_alias=AliasChoices("originalSaleId", "sale_id"))
+    original_sale_id: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("originalSaleId", "sale_id"),
+        ),
+    ]
     items: list[POSReturnItemRequest]
     reason: str | None = Field(default=None, max_length=255)
 
@@ -4184,9 +4384,14 @@ class POSSessionOpenPayload(BaseModel):
     """Carga útil para aperturas de caja rápidas desde POS."""
 
     # // [PACK34-schema]
-    branch_id: int = Field(
-        ..., ge=1, validation_alias=AliasChoices("branchId", "branch_id", "store_id")
-    )
+    branch_id: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("branchId", "branch_id", "store_id"),
+        ),
+    ]
     opening_amount: Decimal = Field(..., ge=Decimal("0"))
     notes: str | None = Field(default=None, max_length=255)
 
@@ -4229,7 +4434,8 @@ class POSSessionClosePayload(BaseModel):
         else:
             source = []
             for entry in value:
-                method = str(entry.get("method") or entry.get("paymentMethod") or "").strip()
+                method = str(entry.get("method") or entry.get(
+                    "paymentMethod") or "").strip()
                 amount = entry.get("amount") or entry.get("value")
                 if not method:
                     continue
@@ -4337,9 +4543,11 @@ class POSConfigUpdate(BaseModel):
         normalized = []
         for item in value:
             if int(item) < 1:
-                raise ValueError("Los identificadores rápidos deben ser positivos.")
+                raise ValueError(
+                    "Los identificadores rápidos deben ser positivos.")
             normalized.append(int(item))
         return normalized
+
 
 class BackupRunRequest(BaseModel):
     nota: str | None = Field(default=None, max_length=255)
@@ -4397,12 +4605,12 @@ class BackupRestoreResponse(BaseModel):
     resultados: dict[str, str]
 
 
-
 class ReleaseInfo(BaseModel):
     version: str = Field(..., description="Versión disponible del producto")
     release_date: date = Field(..., description="Fecha oficial de liberación")
     notes: str = Field(..., description="Resumen de cambios relevantes")
-    download_url: str = Field(..., description="Enlace de descarga del instalador")
+    download_url: str = Field(...,
+                              description="Enlace de descarga del instalador")
 
 
 class UpdateStatus(BaseModel):

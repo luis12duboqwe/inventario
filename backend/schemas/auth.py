@@ -55,8 +55,8 @@ class RegisterRequest(BaseModel):
         return stripped or None
 
     @model_validator(mode="after")
-    def _ensure_email(cls, model: "RegisterRequest") -> "RegisterRequest":
-        email_source = model.email or model.username
+    def _ensure_email(self) -> "RegisterRequest":
+        email_source = self.email or self.username
         if email_source is None:
             raise ValueError(
                 "Debe proporcionar un correo electrónico o un nombre de usuario válido."
@@ -69,11 +69,12 @@ class RegisterRequest(BaseModel):
         try:
             validated_email = _email_adapter.validate_python(normalized_email)
         except ValueError as exc:
-            raise ValueError("Debe proporcionar un correo electrónico válido.") from exc
-        model.email = validated_email
-        if model.username is None:
-            model.username = str(validated_email)
-        return model
+            raise ValueError(
+                "Debe proporcionar un correo electrónico válido.") from exc
+        self.email = validated_email
+        if self.username is None:
+            self.username = str(validated_email)
+        return self
 
 
 class RegisterResponse(UserRead):
@@ -140,7 +141,8 @@ class ResetPasswordRequest(BaseModel):
 class VerifyEmailRequest(BaseModel):
     """Carga útil para confirmar la verificación de correo."""
 
-    token: str = Field(..., description="Token temporal de verificación de correo")
+    token: str = Field(...,
+                       description="Token temporal de verificación de correo")
 
 
 __all__ = [

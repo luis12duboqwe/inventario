@@ -47,6 +47,7 @@ def _unique_exists(inspector: sa.Inspector, table: str, name: str) -> bool:
 
 def upgrade() -> None:
     bind = op.get_bind()
+    is_sqlite = bind.dialect.name == "sqlite"
     inspector = sa.inspect(bind)
 
     if inspector.has_table("customers") and not inspector.has_table("clientes"):
@@ -102,7 +103,8 @@ def upgrade() -> None:
         inspector = _refresh_inspector(bind)
 
     if _has_column(inspector, "clientes", "outstanding_debt"):
-        op.alter_column("clientes", "outstanding_debt", new_column_name="saldo")
+        op.alter_column("clientes", "outstanding_debt",
+                        new_column_name="saldo")
         inspector = _refresh_inspector(bind)
 
     if not _has_column(inspector, "clientes", "tipo"):
@@ -115,7 +117,8 @@ def upgrade() -> None:
                 server_default="minorista",
             ),
         )
-        op.alter_column("clientes", "tipo", server_default=None)
+        if not is_sqlite:
+            op.alter_column("clientes", "tipo", server_default=None)
         inspector = _refresh_inspector(bind)
 
     if not _has_column(inspector, "clientes", "estado"):
@@ -128,7 +131,8 @@ def upgrade() -> None:
                 server_default="activo",
             ),
         )
-        op.alter_column("clientes", "estado", server_default=None)
+        if not is_sqlite:
+            op.alter_column("clientes", "estado", server_default=None)
         inspector = _refresh_inspector(bind)
 
     if not _has_column(inspector, "clientes", "limite_credito"):
@@ -141,13 +145,15 @@ def upgrade() -> None:
                 server_default="0",
             ),
         )
-        op.alter_column("clientes", "limite_credito", server_default=None)
+        if not is_sqlite:
+            op.alter_column("clientes", "limite_credito", server_default=None)
         inspector = _refresh_inspector(bind)
 
     if not _index_exists(inspector, "clientes", "ix_clientes_nombre") and not _has_index(
         inspector, "clientes", "nombre"
     ):
-        op.create_index("ix_clientes_nombre", "clientes", ["nombre"], unique=True)
+        op.create_index("ix_clientes_nombre", "clientes",
+                        ["nombre"], unique=True)
         inspector = _refresh_inspector(bind)
 
     if not _index_exists(inspector, "clientes", "ix_clientes_telefono") and not _has_index(
@@ -169,13 +175,19 @@ def upgrade() -> None:
         inspector = _refresh_inspector(bind)
 
     if not _unique_exists(inspector, "clientes", "uq_clientes_correo"):
-        op.create_unique_constraint("uq_clientes_correo", "clientes", ["correo"])
+        if is_sqlite:
+            op.create_index("uq_clientes_correo", "clientes",
+                            ["correo"], unique=True)
+        else:
+            op.create_unique_constraint(
+                "uq_clientes_correo", "clientes", ["correo"])
         inspector = _refresh_inspector(bind)
 
     if inspector.has_table("ventas"):
         for fk in inspector.get_foreign_keys("ventas"):
             if fk.get("referred_table") == "customers":
-                op.drop_constraint(fk.get("name"), "ventas", type_="foreignkey")
+                op.drop_constraint(fk.get("name"), "ventas",
+                                   type_="foreignkey")
         inspector = _refresh_inspector(bind)
         if not _has_fk(inspector, "ventas", "cliente_id", "clientes"):
             op.create_foreign_key(
@@ -191,7 +203,8 @@ def upgrade() -> None:
     if inspector.has_table("repair_orders"):
         for fk in inspector.get_foreign_keys("repair_orders"):
             if fk.get("referred_table") == "customers":
-                op.drop_constraint(fk.get("name"), "repair_orders", type_="foreignkey")
+                op.drop_constraint(
+                    fk.get("name"), "repair_orders", type_="foreignkey")
         inspector = _refresh_inspector(bind)
         if not _has_fk(inspector, "repair_orders", "customer_id", "clientes"):
             op.create_foreign_key(
@@ -216,13 +229,15 @@ def downgrade() -> None:
     if inspector.has_table("ventas"):
         for fk in inspector.get_foreign_keys("ventas"):
             if fk.get("referred_table") == "clientes":
-                op.drop_constraint(fk.get("name"), "ventas", type_="foreignkey")
+                op.drop_constraint(fk.get("name"), "ventas",
+                                   type_="foreignkey")
                 dropped_sales_fk = True
 
     if inspector.has_table("repair_orders"):
         for fk in inspector.get_foreign_keys("repair_orders"):
             if fk.get("referred_table") == "clientes":
-                op.drop_constraint(fk.get("name"), "repair_orders", type_="foreignkey")
+                op.drop_constraint(
+                    fk.get("name"), "repair_orders", type_="foreignkey")
                 dropped_repairs_fk = True
 
     inspector = _refresh_inspector(bind)
@@ -247,7 +262,8 @@ def downgrade() -> None:
         op.drop_column("clientes", "tipo")
 
     if _has_column(inspector, "clientes", "saldo"):
-        op.alter_column("clientes", "saldo", new_column_name="outstanding_debt")
+        op.alter_column("clientes", "saldo",
+                        new_column_name="outstanding_debt")
     if _has_column(inspector, "clientes", "notas"):
         op.alter_column("clientes", "notas", new_column_name="notes")
     if _has_column(inspector, "clientes", "direccion"):
