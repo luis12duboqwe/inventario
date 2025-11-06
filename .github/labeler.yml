@@ -1,15 +1,19 @@
 frontend:
-  - frontend/**
+  - changed-files:
+      - any-glob-to-any-file: ["frontend/**"]
 
 backend:
-  - backend/**
+  - changed-files:
+      - any-glob-to-any-file: ["backend/**"]
 
 docs:
-  - docs/**
+  - changed-files:
+      - any-glob-to-any-file: ["docs/**"]
 
 ci:
-  - .github/**
+  - changed-files:
+      - any-glob-to-any-file: [".github/**"]
 
 tests:
-  - frontend/**/__tests__/**
-  - backend/tests/**
+  - changed-files:
+      - any-glob-to-any-file: ["frontend/**/__tests__/**", "backend/tests/**"]
