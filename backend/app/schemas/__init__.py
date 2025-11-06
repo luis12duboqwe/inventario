@@ -18,6 +18,8 @@ from pydantic import (
     model_validator,
 )
 
+# necesario para anotaciones que referencian models.* (flake8 F821)
+from .. import models
 from ..models import (
     BackupComponent,
     BackupMode,
