@@ -11,6 +11,15 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+# Cargar variables de entorno desde .env antes de configurar la base de datos
+try:
+    from dotenv import load_dotenv
+    _env_file = Path(__file__).resolve().parents[1] / ".env"
+    if _env_file.exists():
+        load_dotenv(_env_file)
+except ImportError:
+    pass  # python-dotenv no está disponible, usar variables de entorno del sistema
+
 
 def _resolve_database_configuration() -> tuple[str, dict[str, object], Path | None]:
     """Obtiene la configuración de conexión a la base de datos desde el entorno."""

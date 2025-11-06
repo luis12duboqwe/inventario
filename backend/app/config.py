@@ -355,6 +355,24 @@ class Settings(BaseSettings):
     def _ensure_testing_flag(self) -> "Settings":
         if bool(os.getenv("PYTEST_CURRENT_TEST")):
             self.testing_mode = True
+        # Parse allowed_origins from allowed_origins_str
+        raw = self.allowed_origins_str
+        if isinstance(raw, str):
+            # Try to parse as JSON array first (for backwards compatibility)
+            if raw.startswith('['):
+                try:
+                    import json
+                    self.allowed_origins = [
+                        str(o).strip() for o in json.loads(raw) if str(o).strip()]
+                    return self
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            # Parse as comma-separated string
+            self.allowed_origins = [origin.strip()
+                                    for origin in raw.split(",") if origin.strip()]
+        elif isinstance(raw, (list, tuple)):
+            self.allowed_origins = [str(origin).strip()
+                                    for origin in raw if str(origin).strip()]
         return self
 
     @field_validator(
