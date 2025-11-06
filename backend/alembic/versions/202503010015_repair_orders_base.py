@@ -12,7 +12,6 @@ from sqlalchemy.dialects import postgresql
 revision: str = "202503010015_repair_orders_base"
 down_revision: str | None = "202503010015"
 branch_labels: Sequence[str] | None = None
-depends_on: Sequence[str] | None = None
 
 
 REPAIR_STATUS_VALUES = (
