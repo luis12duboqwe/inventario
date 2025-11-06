@@ -9,6 +9,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
+# These module-level variables are read by Alembic at runtime to build the migration graph.
+# They are required and should not be removed despite appearing unused to static analysis.
 revision: str = "202503010015_repair_orders_base"
 down_revision: str | None = "202503010015"
 branch_labels: Sequence[str] | None = None
