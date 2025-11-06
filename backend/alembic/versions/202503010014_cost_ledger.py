@@ -4,7 +4,7 @@ import sqlalchemy as sa
 # // [PACK30-31-BACKEND]
 # revision identifiers, used by Alembic.
 revision = "202503010014"
-down_revision = "202503010013"
+down_revision = "202503010013_audit_ui"
 branch_labels = None
 depends_on = None
 
@@ -47,9 +47,12 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
     )
-    op.create_index("ix_cost_ledger_product", "cost_ledger", ["product_id"], unique=False)
-    op.create_index("ix_cost_ledger_move", "cost_ledger", ["move_id"], unique=False)
-    op.create_index("ix_cost_ledger_branch", "cost_ledger", ["branch_id"], unique=False)
+    op.create_index("ix_cost_ledger_product", "cost_ledger",
+                    ["product_id"], unique=False)
+    op.create_index("ix_cost_ledger_move", "cost_ledger",
+                    ["move_id"], unique=False)
+    op.create_index("ix_cost_ledger_branch", "cost_ledger",
+                    ["branch_id"], unique=False)
 
 
 def downgrade() -> None:

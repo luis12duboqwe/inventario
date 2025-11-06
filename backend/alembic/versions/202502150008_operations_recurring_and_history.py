@@ -29,7 +29,8 @@ def upgrade() -> None:
         sa.Column("payload", sa.JSON(), nullable=False),
         sa.Column("created_by_id", sa.Integer(), nullable=True),
         sa.Column("last_used_by_id", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True),
+                  nullable=False, server_default=sa.func.now()),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
@@ -38,20 +39,33 @@ def upgrade() -> None:
             server_onupdate=sa.func.now(),
         ),
         sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["store_id"], ["stores.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["created_by_id"], ["users.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["last_used_by_id"], ["users.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["store_id"],
+            ["stores.id"],
+            name="fk_recurring_orders_store_id",
+            ondelete="SET NULL",
+        ),
+        sa.ForeignKeyConstraint(
+            ["created_by_id"], ["users.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["last_used_by_id"], [
+                                "users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_recurring_orders_id"), "recurring_orders", ["id"], unique=False)
-    op.create_index(op.f("ix_recurring_orders_order_type"), "recurring_orders", ["order_type"], unique=False)
-    op.create_index(op.f("ix_recurring_orders_store_id"), "recurring_orders", ["store_id"], unique=False)
+    op.create_index(op.f("ix_recurring_orders_id"),
+                    "recurring_orders", ["id"], unique=False)
+    op.create_index(op.f("ix_recurring_orders_order_type"),
+                    "recurring_orders", ["order_type"], unique=False)
+    op.create_index(op.f("ix_recurring_orders_store_id"),
+                    "recurring_orders", ["store_id"], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_recurring_orders_store_id"), table_name="recurring_orders")
-    op.drop_index(op.f("ix_recurring_orders_order_type"), table_name="recurring_orders")
-    op.drop_index(op.f("ix_recurring_orders_id"), table_name="recurring_orders")
+    op.drop_index(op.f("ix_recurring_orders_store_id"),
+                  table_name="recurring_orders")
+    op.drop_index(op.f("ix_recurring_orders_order_type"),
+                  table_name="recurring_orders")
+    op.drop_index(op.f("ix_recurring_orders_id"),
+                  table_name="recurring_orders")
     op.drop_table("recurring_orders")
 
     recurring_type = sa.Enum(name="recurring_order_type")

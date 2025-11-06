@@ -1,13 +1,14 @@
 """Punto de entrada para la aplicación FastAPI."""
 from __future__ import annotations
 
-import os
+import asyncio
+import json
 import logging
+import os
+import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-import traceback
 
-import asyncio
 from collections.abc import Callable, Generator, Mapping
 
 from fastapi import FastAPI, HTTPException, Request
@@ -72,6 +73,41 @@ SENSITIVE_PREFIXES = (
     "/operations",
 )
 READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers")
+
+
+def _resolve_additional_cors_origins() -> set[str]:
+    """Genera orígenes adicionales para entornos de desarrollo (Codespaces, localhost)."""
+
+    extra_origins: set[str] = {
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    }
+
+    dev_host = os.getenv("VITE_DEV_HOST", "").strip()
+    if dev_host and dev_host not in {"localhost", "127.0.0.1"}:
+        extra_origins.add(f"http://{dev_host}:5173")
+        extra_origins.add(f"https://{dev_host}:5173")
+
+    codespace_name = os.getenv("CODESPACE_NAME", "").strip()
+    if codespace_name:
+        forwarding_domain = os.getenv(
+            "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN",
+            "app.github.dev",
+        ).strip()
+        if forwarding_domain:
+            extra_origins.add(
+                f"https://{codespace_name}-5173.{forwarding_domain}")
+            extra_origins.add(
+                f"https://{codespace_name}-4173.{forwarding_domain}")
+
+    env_extra = os.getenv("SOFTMOBILE_EXTRA_ORIGINS", "").strip()
+    if env_extra:
+        for origin in env_extra.split(","):
+            cleaned = origin.strip()
+            if cleaned:
+                extra_origins.add(cleaned)
+
+    return {origin for origin in extra_origins if origin}
 
 
 def _remove_route(target_app: FastAPI, path: str, method: str) -> None:
@@ -350,9 +386,14 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.title,
                   version=settings.version, lifespan=lifespan)
     if settings.allowed_origins:
+        resolved_origins = sorted(
+            {origin.strip()
+             for origin in settings.allowed_origins if origin.strip()}
+            | _resolve_additional_cors_origins()
+        )
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.allowed_origins,
+            allow_origins=resolved_origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
@@ -363,6 +404,11 @@ def create_app() -> FastAPI:
             return
         module = _resolve_module(request.url.path) or "general"
         message = getattr(exc, "detail", str(exc))
+        if not isinstance(message, str):
+            try:
+                message = json.dumps(message, ensure_ascii=False)
+            except Exception:  # pragma: no cover - degradado seguro
+                message = str(message)
         stack_trace = "".join(
             traceback.format_exception(type(exc), exc, exc.__traceback__)
         )

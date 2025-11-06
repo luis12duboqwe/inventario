@@ -1,7 +1,7 @@
 const API_URL = import.meta.env.VITE_API_URL?.trim();
 const DEFAULT_API_PORT = "8000";
-const DEFAULT_HOSTNAME = "127.0.0.1";
 const DEFAULT_PROTOCOL = "https";
+const RELATIVE_API_BASE = "/api";
 const CODESPACES_DOMAIN_REGEX = /-(\d+)\.(app\.github\.dev|githubpreview\.dev)$/;
 
 type RuntimeEnvironment = "codespaces" | "local" | "custom";
@@ -116,12 +116,25 @@ export function getApiBaseUrl(): string {
     return codespacesUrl;
   }
 
+  if (typeof window !== "undefined" && window.location) {
+    const { hostname, port } = window.location;
+    if (!hostname) {
+      return RELATIVE_API_BASE;
+    }
+    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0") {
+      return RELATIVE_API_BASE;
+    }
+    if (port === DEFAULT_API_PORT || port === "5173") {
+      return RELATIVE_API_BASE;
+    }
+  }
+
   const localFallback = buildLocalFallbackUrl();
   if (localFallback) {
     return localFallback;
   }
 
-  return `${DEFAULT_PROTOCOL}://${DEFAULT_HOSTNAME}:${DEFAULT_API_PORT}`;
+  return RELATIVE_API_BASE;
 }
 
 export const apiConfig = {

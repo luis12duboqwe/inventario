@@ -12,6 +12,7 @@ export { ReportsRoutes as __Pack29ReportsRoutesKeep };
 import Loader from "../shared/components/Loader";
 import Button from "../shared/components/ui/Button";
 import AppErrorBoundary from "../shared/components/AppErrorBoundary"; // [PACK36-router]
+import { lazyWithRetry } from "../shared/utils/lazyWithRetry";
 // [PACK28-router-guards]
 import RequireAuth from "./guards/RequireAuth";
 // [PACK28-router-guards]
@@ -26,10 +27,10 @@ import {
 } from "../services/api/auth";
 import type { BootstrapFormValues } from "../shared/components/BootstrapForm";
 
-const Dashboard = React.lazy(() => import("../shared/components/Dashboard"));
-const WelcomeHero = React.lazy(() => import("../shared/components/WelcomeHero"));
-const LoginForm = React.lazy(() => import("../shared/components/LoginForm"));
-const BootstrapForm = React.lazy(() => import("../shared/components/BootstrapForm"));
+const Dashboard = lazyWithRetry(() => import("../shared/components/Dashboard"));
+const WelcomeHero = lazyWithRetry(() => import("../shared/components/WelcomeHero"));
+const LoginForm = lazyWithRetry(() => import("../shared/components/LoginForm"));
+const BootstrapForm = lazyWithRetry(() => import("../shared/components/BootstrapForm"));
 
 export type ThemeMode = "dark" | "light";
 
