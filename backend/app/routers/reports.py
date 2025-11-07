@@ -129,6 +129,7 @@ def export_global_report(
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
+    _ensure_analytics_enabled()
     normalized_from = _coerce_datetime(date_from)
     normalized_to = _coerce_datetime(date_to)
     overview = crud.build_global_report_overview(
