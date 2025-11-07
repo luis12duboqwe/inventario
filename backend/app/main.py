@@ -386,11 +386,15 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.title,
                   version=settings.version, lifespan=lifespan)
     if settings.allowed_origins:
-        resolved_origins = sorted(
-            {origin.strip()
-             for origin in settings.allowed_origins if origin.strip()}
-            | _resolve_additional_cors_origins()
-        )
+        resolved_origins = {
+            origin.strip()
+            for origin in settings.allowed_origins
+            if origin.strip()
+        }
+        if settings.testing_mode or settings.enable_dev_cors_origins:
+            resolved_origins |= _resolve_additional_cors_origins()
+
+        resolved_origins = sorted(resolved_origins)
         app.add_middleware(
             CORSMiddleware,
             allow_origins=resolved_origins,

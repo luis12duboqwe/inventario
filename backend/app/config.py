@@ -350,13 +350,22 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    enable_dev_cors_origins: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "SOFTMOBILE_ENABLE_DEV_CORS", "ENABLE_DEV_CORS"
+            ),
+        ),
+    ]
 
     @model_validator(mode="after")
     def _ensure_testing_flag(self) -> "Settings":
         if bool(os.getenv("PYTEST_CURRENT_TEST")):
             self.testing_mode = True
         # Parse allowed_origins from allowed_origins_str
-        raw = self.allowed_origins_str
+        raw = getattr(self, "allowed_origins_str", None)
         if isinstance(raw, str):
             # Try to parse as JSON array first (for backwards compatibility)
             if raw.startswith('['):
