@@ -48,6 +48,7 @@ from .routers import (
     transfers,
     updates,
     users,
+    wms_bins,
 )
 from .services.scheduler import BackgroundScheduler
 
@@ -570,6 +571,9 @@ def create_app() -> FastAPI:
     app.include_router(monitoring.router)
     app.include_router(audit.router)
     app.include_router(audit_ui.router)
+    # Rutas WMS (bins) ligeras: se incluyen siempre y cada handler
+    # valida la bandera internamente para responder 404 sin romper compatibilidad.
+    app.include_router(wms_bins.router)
     return app
 
 

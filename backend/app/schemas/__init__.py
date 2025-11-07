@@ -16,6 +16,7 @@ from pydantic import (
     field_serializer,
     field_validator,
     model_validator,
+    model_serializer,
 )
 
 from ..models import (
@@ -642,6 +643,94 @@ class DeviceIdentifierRequest(DeviceIdentifierBase):
 class DeviceIdentifierResponse(DeviceIdentifierBase):
     id: int
     producto_id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WMSBinBase(BaseModel):
+    codigo: str = Field(
+        ..., min_length=1, max_length=60, description="Código único del bin dentro de la sucursal"
+    )
+    pasillo: str | None = Field(default=None, max_length=60)
+    rack: str | None = Field(default=None, max_length=60)
+    nivel: str | None = Field(default=None, max_length=60)
+    descripcion: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_bin_aliases(cls, data: Any) -> Any:  # pragma: no cover - simple mapeo
+        if not isinstance(data, dict):
+            return data
+        alias_map = {
+            "codigo": ["code"],
+            "pasillo": ["aisle"],
+            "nivel": ["level"],
+            "descripcion": ["description"],
+        }
+        for target, sources in alias_map.items():
+            if target not in data:
+                for source in sources:
+                    if source in data:
+                        data[target] = data[source]
+                        break
+        return data
+
+    @field_validator("codigo", mode="before")
+    @classmethod
+    def _normalize_code(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError("codigo_requerido")
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("codigo_requerido")
+        return normalized
+
+
+class WMSBinCreate(WMSBinBase):
+    """Carga de datos necesaria para registrar un bin."""
+
+
+class WMSBinUpdate(BaseModel):
+    codigo: str | None = Field(default=None, max_length=60)
+    pasillo: str | None = Field(default=None, max_length=60)
+    rack: str | None = Field(default=None, max_length=60)
+    nivel: str | None = Field(default=None, max_length=60)
+    descripcion: str | None = Field(default=None, max_length=255)
+
+
+class WMSBinResponse(BaseModel):
+    """Respuesta de un bin WMS con claves en español.
+
+    Internamente usamos los nombres de atributos reales del modelo SQLAlchemy
+    (code, store_id, created_at, updated_at) y los convertimos a las claves
+    originales en español mediante un serializer personalizado para no depender
+    de *validation_alias*/"serialization_alias" que generan warnings en Pydantic v2.
+    """
+
+    id: int
+    code: str
+    store_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_serializer
+    def _serialize(self) -> dict[str, Any]:  # pragma: no cover - mapeo directo
+        return {
+            "id": self.id,
+            "codigo": self.code,
+            "sucursal_id": self.store_id,
+            "fecha_creacion": self.created_at,
+            "fecha_actualizacion": self.updated_at,
+        }
+
+
+class DeviceBinAssignmentResponse(BaseModel):
+    producto_id: int = Field(..., ge=1)
+    bin: WMSBinResponse
+    asignado_en: datetime
+    desasignado_en: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1306,22 +1395,9 @@ class RoleResponse(BaseModel):
 
 
 class UserBase(BaseModel):
-    username: Annotated[
-        str,
-        Field(
-            ...,
-            max_length=120,
-            validation_alias=AliasChoices("username", "correo"),
-        ),
-    ]
-    full_name: Annotated[
-        str | None,
-        Field(
-            default=None,
-            max_length=120,
-            validation_alias=AliasChoices("full_name", "nombre"),
-        ),
-    ]
+    # El campo principal es username; aceptamos 'correo' como alias de entrada mediante _coerce_aliases.
+    username: Annotated[str, Field(..., max_length=120)]
+    full_name: Annotated[str | None, Field(default=None, max_length=120)]
     telefono: str | None = Field(default=None, max_length=30)
 
     model_config = ConfigDict(populate_by_name=True)
@@ -1343,18 +1419,28 @@ class UserBase(BaseModel):
             raise ValueError("El correo del usuario es obligatorio")
         return value.strip()
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_aliases(cls, data: Any) -> Any:  # pragma: no cover - lógica simple
+        """Permite aceptar claves alternativas (correo/nombre) sin usar validation_alias.
+
+        Evita warnings de Pydantic v2 y mantiene compatibilidad con payloads históricos.
+        """
+        if not isinstance(data, dict):
+            return data
+        # username <= correo
+        if "username" not in data and "correo" in data:
+            data["username"] = data.get("correo")
+        # full_name <= nombre
+        if "full_name" not in data and "nombre" in data:
+            data["full_name"] = data.get("nombre")
+        return data
+
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=128)
     roles: list[str] = Field(default_factory=list)
-    store_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            ge=1,
-            validation_alias=AliasChoices("store_id", "sucursal_id"),
-        ),
-    ]
+    store_id: Annotated[int | None, Field(default=None, ge=1)]
 
 
 class BootstrapStatusResponse(BaseModel):
@@ -1438,24 +1524,22 @@ class UserResponse(UserBase):
 
 
 class UserUpdate(BaseModel):
-    full_name: Annotated[
-        str | None,
-        Field(
-            default=None,
-            max_length=120,
-            validation_alias=AliasChoices("full_name", "nombre"),
-        ),
-    ]
+    full_name: Annotated[str | None, Field(default=None, max_length=120)]
     telefono: str | None = Field(default=None, max_length=30)
     password: str | None = Field(default=None, min_length=8, max_length=128)
-    store_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            ge=1,
-            validation_alias=AliasChoices("store_id", "sucursal_id"),
-        ),
-    ]
+    store_id: Annotated[int | None, Field(default=None, ge=1)]
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_aliases(cls, data: Any) -> Any:  # pragma: no cover - simple
+        if not isinstance(data, dict):
+            return data
+        if "full_name" not in data and "nombre" in data:
+            data["full_name"] = data.get("nombre")
+        if "store_id" not in data and "sucursal_id" in data:
+            data["store_id"] = data.get("sucursal_id")
+        return data
 
 
 class RoleModulePermission(BaseModel):
@@ -1630,14 +1714,33 @@ class TOTPSetupResponse(BaseModel):
     otpauth_url: str
 
 
-class TOTPActivateRequest(BaseModel):
-    code: str = Field(..., min_length=6, max_length=6)
-
-
 class TOTPStatusResponse(BaseModel):
     is_active: bool
     activated_at: datetime | None
     last_verified_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TOTPActivateRequest(BaseModel):
+    """Payload para activar 2FA TOTP.
+
+    Acepta alias comunes como otp/totp/token/otp_code sin generar warnings de alias.
+    """
+
+    code: str = Field(..., min_length=6, max_length=10)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        if "code" not in data:
+            for key in ("otp", "totp", "token", "otp_code"):
+                if key in data and data[key]:
+                    data["code"] = data[key]
+                    break
+        return data
 
 
 class ActiveSessionResponse(BaseModel):
@@ -1650,6 +1753,7 @@ class ActiveSessionResponse(BaseModel):
     revoked_at: datetime | None
     revoked_by_id: int | None
     revoke_reason: str | None
+    user: UserResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1657,34 +1761,79 @@ class ActiveSessionResponse(BaseModel):
 class SessionRevokeRequest(BaseModel):
     reason: str = Field(..., min_length=5, max_length=255)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_reason_alias(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "reason" not in data:
+            for alias in ("motivo", "revoke_reason"):
+                if alias in data:
+                    data["reason"] = data[alias]
+                    break
+        return data
+
+
+class POSReturnItemRequest(BaseModel):
+    """Elemento individual a devolver desde POS (sin warnings de alias)."""
+
+    sale_item_id: int = Field(..., ge=1)
+    imei: str | None = Field(default=None, max_length=18)
+    qty: int = Field(..., ge=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_return_item_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        mapping = {
+            "sale_item_id": ["saleItemId", "item_id", "itemId"],
+            "imei": ["imei_1"],
+            "qty": ["quantity"],
+        }
+        for target, sources in mapping.items():
+            if target not in data:
+                for s in sources:
+                    if s in data:
+                        data[target] = data[s]
+                        break
+        return data
+    # Eliminamos bloque residual de MovementBase que se insertó por error durante refactor.
+
 
 class MovementBase(BaseModel):
+    """Base para registrar movimientos de inventario (entradas/salidas/ajustes).
+
+    Acepta aliases comunes (device_id, quantity, comment, source_store_id, store_id)
+    y los normaliza a las claves en español usadas en nuestra API pública.
+    """
+
     producto_id: int = Field(..., ge=1)
     tipo_movimiento: MovementType
     cantidad: int = Field(..., ge=0)
-    comentario: str = Field(..., max_length=255)
-    sucursal_origen_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            ge=1,
-            validation_alias=AliasChoices(
-                "sucursal_origen_id", "tienda_origen_id"),
-            serialization_alias="sucursal_origen_id",
-        ),
-    ]
-    sucursal_destino_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            ge=1,
-            validation_alias=AliasChoices(
-                "sucursal_destino_id", "tienda_destino_id", "branch_id"
-            ),
-            serialization_alias="sucursal_destino_id",
-        ),
-    ]  # // [PACK30-31-BACKEND]
+    comentario: str = Field(..., min_length=5, max_length=255)
+    sucursal_origen_id: int | None = Field(default=None, ge=1)
+    sucursal_destino_id: int | None = Field(default=None, ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_movement_input(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        mapping = {
+            "producto_id": ["device_id"],
+            "tipo_movimiento": ["movement_type"],
+            "cantidad": ["quantity"],
+            "comentario": ["comment"],
+            "sucursal_origen_id": ["tienda_origen_id", "source_store_id"],
+            "sucursal_destino_id": ["tienda_destino_id", "branch_id", "store_id"],
+        }
+        for target, sources in mapping.items():
+            if target not in data:
+                for s in sources:
+                    if s in data:
+                        data[target] = data[s]
+                        break
+        return data
 
     @field_validator("comentario", mode="before")
     @classmethod
@@ -1711,115 +1860,36 @@ class MovementCreate(MovementBase):
 
 
 class MovementResponse(BaseModel):
+    """Respuesta de movimiento de inventario con claves en español.
+
+    Se usan nombres internos iguales al modelo (`device_id`, `movement_type`,
+    `quantity`, `comment`, `source_store_id`, `store_id`, `performed_by_id`,
+    `created_at`) y se serializan a los nombres históricos en español utilizados
+    por las pruebas y el frontend (`producto_id`, `tipo_movimiento`, `cantidad`,
+    `comentario`, `sucursal_origen_id`, `sucursal_destino_id`, `usuario_id`,
+    `fecha`). Esto evita depender de *validation_alias* y reduce warnings.
+    """
+
     id: int
-    producto_id: Annotated[
-        int,
-        Field(
-            validation_alias=AliasChoices("producto_id", "device_id"),
-            serialization_alias="producto_id",
-        ),
-    ]
-    tipo_movimiento: Annotated[
-        MovementType,
-        Field(
-            validation_alias=AliasChoices("tipo_movimiento", "movement_type"),
-            serialization_alias="tipo_movimiento",
-        ),
-    ]
-    cantidad: Annotated[
-        int,
-        Field(
-            validation_alias=AliasChoices("cantidad", "quantity"),
-            serialization_alias="cantidad",
-        ),
-    ]
-    comentario: Annotated[
-        str | None,
-        Field(
-            default=None,
-            validation_alias=AliasChoices("comentario", "comment"),
-            serialization_alias="comentario",
-        ),
-    ]
-    sucursal_origen_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            validation_alias=AliasChoices(
-                "sucursal_origen_id", "tienda_origen_id", "source_store_id"),
-            serialization_alias="sucursal_origen_id",
-        ),
-    ]
-    sucursal_origen: Annotated[
-        str | None,
-        Field(
-            default=None,
-            validation_alias=AliasChoices("sucursal_origen", "tienda_origen"),
-            serialization_alias="sucursal_origen",
-        ),
-    ]
-    sucursal_destino_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            validation_alias=AliasChoices(
-                "sucursal_destino_id", "tienda_destino_id", "store_id"),
-            serialization_alias="sucursal_destino_id",
-        ),
-    ]
-    sucursal_destino: Annotated[
-        str | None,
-        Field(
-            default=None,
-            validation_alias=AliasChoices(
-                "sucursal_destino", "tienda_destino"),
-            serialization_alias="sucursal_destino",
-        ),
-    ]
-    usuario_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            validation_alias=AliasChoices("usuario_id", "performed_by_id"),
-            serialization_alias="usuario_id",
-        ),
-    ]
-    usuario: Annotated[
-        str | None,
-        Field(
-            default=None,
-            validation_alias=AliasChoices("usuario"),
-            serialization_alias="usuario",
-        ),
-    ]
-    referencia_tipo: Annotated[
-        str | None,
-        Field(
-            default=None,
-            validation_alias=AliasChoices("referencia_tipo", "reference_type"),
-            serialization_alias="referencia_tipo",
-        ),
-    ]
-    referencia_id: Annotated[
-        str | None,
-        Field(
-            default=None,
-            validation_alias=AliasChoices("referencia_id", "reference_id"),
-            serialization_alias="referencia_id",
-        ),
-    ]
-    fecha: Annotated[
-        datetime,
-        Field(
-            validation_alias=AliasChoices("fecha", "created_at"),
-            serialization_alias="fecha",
-        ),
-    ]
-    unit_cost: Decimal | None = Field(default=None)
+    device_id: int
+    movement_type: MovementType
+    quantity: int
+    comment: str | None = None
+    source_store_id: int | None = None
+    store_id: int | None = None  # destino
+    performed_by_id: int | None = None
+    created_at: datetime
+    unit_cost: Decimal | None = None
     store_inventory_value: Decimal
+    # Propiedades calculadas disponibles en el modelo (usuario, sucursal_origen, sucursal_destino)
+    usuario: str | None = None
+    sucursal_origen: str | None = None
+    sucursal_destino: str | None = None
+    referencia_tipo: str | None = None
+    referencia_id: str | None = None
     ultima_accion: AuditTrailInfo | None = None
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
     @field_serializer("unit_cost")
     @classmethod
@@ -1832,6 +1902,28 @@ class MovementResponse(BaseModel):
     @classmethod
     def _serialize_inventory_total(cls, value: Decimal) -> float:
         return float(value)
+
+    @model_serializer
+    def _serialize(self) -> dict[str, Any]:  # pragma: no cover - mapeo directo
+        return {
+            "id": self.id,
+            "producto_id": self.device_id,
+            "tipo_movimiento": self.movement_type,
+            "cantidad": self.quantity,
+            "comentario": self.comment,
+            "sucursal_origen_id": self.source_store_id,
+            "sucursal_origen": self.sucursal_origen,
+            "sucursal_destino_id": self.store_id,
+            "sucursal_destino": self.sucursal_destino,
+            "usuario_id": self.performed_by_id,
+            "usuario": self.usuario,
+            "referencia_tipo": self.referencia_tipo,
+            "referencia_id": self.referencia_id,
+            "fecha": self.created_at,
+            "unit_cost": self._serialize_unit_cost(self.unit_cost),
+            "store_inventory_value": self._serialize_inventory_total(self.store_inventory_value),
+            "ultima_accion": self.ultima_accion,
+        }
 
 
 class InventorySummary(BaseModel):
@@ -3044,18 +3136,20 @@ class PurchaseOrderItemCreate(BaseModel):
 
 
 class PurchaseOrderCreate(BaseModel):
-    store_id: Annotated[
-        int,
-        Field(
-            ...,
-            ge=1,
-            validation_alias=AliasChoices("store_id", "branch_id"),
-            serialization_alias="store_id",
-        ),
-    ]  # // [PACK30-31-BACKEND]
+    store_id: int = Field(..., ge=1)  # // [PACK30-31-BACKEND]
     supplier: str = Field(..., max_length=120)
     notes: str | None = Field(default=None, max_length=255)
     items: list[PurchaseOrderItemCreate]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_store_alias(cls, data: Any) -> Any:  # pragma: no cover - mapeo directo
+        if isinstance(data, dict) and "store_id" not in data:
+            for k in ("branch_id",):
+                if k in data:
+                    data["store_id"] = data[k]
+                    break
+        return data
 
     @field_validator("supplier")
     @classmethod
@@ -3508,15 +3602,7 @@ class RepairOrderCreate(BaseModel):
     customer_contact: str | None = Field(
         default=None, max_length=120)  # // [PACK37-backend]
     technician_name: str = Field(..., max_length=120)
-    damage_type: Annotated[
-        str,
-        Field(
-            ...,
-            max_length=120,
-            validation_alias=AliasChoices("damage_type", "issue"),
-            serialization_alias="damage_type",
-        ),
-    ]
+    damage_type: str = Field(..., max_length=120)
     diagnosis: str | None = Field(
         default=None, max_length=500)  # // [PACK37-backend]
     device_model: str | None = Field(
@@ -3527,6 +3613,16 @@ class RepairOrderCreate(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
     labor_cost: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     parts: list[RepairOrderPartPayload] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_repair_create_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "damage_type" not in data:
+            for k in ("issue",):
+                if k in data:
+                    data["damage_type"] = data[k]
+                    break
+        return data
 
     @field_validator(
         "customer_name",
@@ -3553,15 +3649,7 @@ class RepairOrderUpdate(BaseModel):
     customer_contact: str | None = Field(
         default=None, max_length=120)  # // [PACK37-backend]
     technician_name: str | None = Field(default=None, max_length=120)
-    damage_type: Annotated[
-        str | None,
-        Field(
-            default=None,
-            max_length=120,
-            validation_alias=AliasChoices("damage_type", "issue"),
-            serialization_alias="damage_type",
-        ),
-    ]
+    damage_type: str | None = Field(default=None, max_length=120)
     diagnosis: str | None = Field(
         default=None, max_length=500)  # // [PACK37-backend]
     device_model: str | None = Field(
@@ -3573,6 +3661,16 @@ class RepairOrderUpdate(BaseModel):
     status: RepairStatus | None = None
     labor_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
     parts: list[RepairOrderPartPayload] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_repair_update_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "damage_type" not in data:
+            for k in ("issue",):
+                if k in data:
+                    data["damage_type"] = data[k]
+                    break
+        return data
 
     @field_validator(
         "customer_name",
@@ -3687,15 +3785,7 @@ class SaleItemCreate(BaseModel):
 
 
 class SaleCreate(BaseModel):
-    store_id: Annotated[
-        int,
-        Field(
-            ...,
-            ge=1,
-            validation_alias=AliasChoices("store_id", "branch_id"),
-            serialization_alias="store_id",
-        ),
-    ]  # // [PACK30-31-BACKEND]
+    store_id: int = Field(..., ge=1)  # // [PACK30-31-BACKEND]
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
@@ -3704,6 +3794,18 @@ class SaleCreate(BaseModel):
     status: str = Field(default="COMPLETADA", max_length=30)
     notes: str | None = Field(default=None, max_length=255)
     items: list[SaleItemCreate]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_sale_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        if "store_id" not in data:
+            for k in ("branch_id",):
+                if k in data:
+                    data["store_id"] = data[k]
+                    break
+        return data
 
     @field_validator("customer_name")
     @classmethod
@@ -4004,56 +4106,13 @@ class POSCartItem(BaseModel):
     """Elemento del carrito POS aceptando identificadores flexibles."""
 
     # // [PACK34-schema]
-    device_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            ge=1,
-            validation_alias=AliasChoices(
-                "device_id", "productId", "product_id"),
-        ),
-    ]
-    imei: Annotated[
-        str | None,
-        Field(
-            default=None,
-            max_length=18,
-            validation_alias=AliasChoices("imei", "imei_1", "imei1"),
-        ),
-    ]
-    quantity: Annotated[
-        int,
-        Field(
-            ...,
-            ge=1,
-            validation_alias=AliasChoices("quantity", "qty"),
-        ),
-    ]
-    discount_percent: Annotated[
-        Decimal | None,
-        Field(
-            default=Decimal("0"),
-            ge=Decimal("0"),
-            le=Decimal("100"),
-            validation_alias=AliasChoices("discount_percent", "discount"),
-        ),
-    ]
-    unit_price_override: Annotated[
-        Decimal | None,
-        Field(
-            default=None,
-            ge=Decimal("0"),
-            validation_alias=AliasChoices("unit_price_override", "price"),
-        ),
-    ]
-    tax_code: Annotated[
-        str | None,
-        Field(
-            default=None,
-            max_length=50,
-            validation_alias=AliasChoices("tax_code", "taxCode"),
-        ),
-    ]
+    device_id: int | None = Field(default=None, ge=1)
+    imei: str | None = Field(default=None, max_length=18)
+    quantity: int = Field(..., ge=1)
+    discount_percent: Decimal | None = Field(
+        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    unit_price_override: Decimal | None = Field(default=None, ge=Decimal("0"))
+    tax_code: str | None = Field(default=None, max_length=50)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -4064,72 +4123,61 @@ class POSCartItem(BaseModel):
             return Decimal("0")
         return value
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_cart_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        mapping = {
+            "device_id": ["productId", "product_id"],
+            "imei": ["imei_1", "imei1"],
+            "quantity": ["qty"],
+            "discount_percent": ["discount"],
+            "unit_price_override": ["price"],
+            "tax_code": ["taxCode"],
+        }
+        for target, sources in mapping.items():
+            if target not in data:
+                for s in sources:
+                    if s in data:
+                        data[target] = data[s]
+                        break
+        return data
+
 
 class POSSalePaymentInput(BaseModel):
     """Definición de pago para registrar montos por método."""
 
     # // [PACK34-schema]
-    method: Annotated[
-        PaymentMethod,
-        Field(
-            ...,
-            validation_alias=AliasChoices("method", "paymentMethod"),
-        ),
-    ]
+    method: PaymentMethod
     amount: Decimal = Field(..., ge=Decimal("0"))
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_method_alias(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "method" not in data:
+            for k in ("paymentMethod",):
+                if k in data:
+                    data["method"] = data[k]
+                    break
+        return data
 
 
 class POSSaleRequest(BaseModel):
-    store_id: Annotated[
-        int,
-        Field(
-            ...,
-            ge=1,
-            validation_alias=AliasChoices("store_id", "branchId", "branch_id"),
-        ),
-    ]
+    store_id: int = Field(..., ge=1)
     customer_id: int | None = Field(default=None, ge=1)
-    customer_name: Annotated[
-        str | None,
-        Field(
-            default=None,
-            max_length=120,
-            validation_alias=AliasChoices("customer_name", "customer"),
-        ),
-    ]
-    payment_method: Annotated[
-        PaymentMethod,
-        Field(
-            default=PaymentMethod.EFECTIVO,
-            validation_alias=AliasChoices(
-                "payment_method", "defaultPaymentMethod"
-            ),
-        ),
-    ]
+    customer_name: str | None = Field(default=None, max_length=120)
+    payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
     discount_percent: Decimal | None = Field(
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
     )
-    notes: Annotated[
-        str | None,
-        Field(
-            default=None,
-            max_length=255,
-            validation_alias=AliasChoices("notes", "note"),
-        ),
-    ]
+    notes: str | None = Field(default=None, max_length=255)
     items: list[POSCartItem]
     draft_id: int | None = Field(default=None, ge=1)
     save_as_draft: bool = Field(default=False)
     confirm: bool = Field(default=False)
     apply_taxes: bool = Field(default=True)
-    cash_session_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            ge=1,
-            validation_alias=AliasChoices("cash_session_id", "sessionId"),
-        ),
-    ]
+    cash_session_id: int | None = Field(default=None, ge=1)
     payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
     payments: list[POSSalePaymentInput] = Field(default_factory=list)
 
@@ -4173,6 +4221,26 @@ class POSSaleRequest(BaseModel):
                     "Método de pago inválido en el desglose.") from exc
             normalized[method] = Decimal(str(amount))
         return normalized
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_pos_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        mapping = {
+            "store_id": ["branchId", "branch_id"],
+            "customer_name": ["customer"],
+            "payment_method": ["payment_method", "defaultPaymentMethod"],
+            "notes": ["note", "notes"],
+            "cash_session_id": ["sessionId"],
+        }
+        for target, sources in mapping.items():
+            if target not in data:
+                for s in sources:
+                    if s in data:
+                        data[target] = data[s]
+                        break
+        return data
 
     @model_validator(mode="after")
     def _sync_pos_payments(self) -> "POSSaleRequest":
@@ -4255,19 +4323,21 @@ class POSReturnItemRequest(BaseModel):
 
 
 class POSReturnRequest(BaseModel):
-    """Solicitud de devolución rápida en POS."""
+    """Solicitud de devolución rápida en POS (alias normalizados)."""
 
-    # // [PACK34-schema]
-    original_sale_id: Annotated[
-        int,
-        Field(
-            ...,
-            ge=1,
-            validation_alias=AliasChoices("originalSaleId", "sale_id"),
-        ),
-    ]
+    original_sale_id: int = Field(..., ge=1)
     items: list[POSReturnItemRequest]
     reason: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_return_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "original_sale_id" not in data:
+            for k in ("originalSaleId", "sale_id"):
+                if k in data:
+                    data["original_sale_id"] = data[k]
+                    break
+        return data
 
     @field_validator("items")
     @classmethod
@@ -4381,19 +4451,21 @@ class CashSessionResponse(BaseModel):
 
 
 class POSSessionOpenPayload(BaseModel):
-    """Carga útil para aperturas de caja rápidas desde POS."""
+    """Carga útil para aperturas de caja rápidas desde POS (branch/store alias)."""
 
-    # // [PACK34-schema]
-    branch_id: Annotated[
-        int,
-        Field(
-            ...,
-            ge=1,
-            validation_alias=AliasChoices("branchId", "branch_id", "store_id"),
-        ),
-    ]
+    branch_id: int = Field(..., ge=1)
     opening_amount: Decimal = Field(..., ge=Decimal("0"))
     notes: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_open_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "branch_id" not in data:
+            for k in ("branchId", "store_id"):
+                if k in data:
+                    data["branch_id"] = data[k]
+                    break
+        return data
 
     @field_validator("notes")
     @classmethod

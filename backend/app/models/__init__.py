@@ -14,6 +14,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    Index,
     JSON,
     Numeric,
     String,
@@ -344,6 +345,69 @@ class DeviceIdentifier(Base):
 
     device: Mapped[Device] = relationship(
         "Device", back_populates="identifier")
+
+
+class WMSBin(Base):
+    """Ubicación física (bin) dentro de una sucursal para WMS ligero."""
+
+    __tablename__ = "wms_bins"
+    __table_args__ = (
+        UniqueConstraint("sucursal_id", "codigo",
+                         name="uq_wms_bins_store_code"),
+        Index("ix_wms_bins_store", "sucursal_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int] = mapped_column(
+        "sucursal_id",
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    code: Mapped[str] = mapped_column("codigo", String(60), nullable=False)
+    aisle: Mapped[str | None] = mapped_column(
+        "pasillo", String(60), nullable=True)
+    rack: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    level: Mapped[str | None] = mapped_column(
+        "nivel", String(60), nullable=True)
+    description: Mapped[str | None] = mapped_column(
+        "descripcion", String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column("fecha_creacion", DateTime(
+        timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column("fecha_actualizacion", DateTime(
+        timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    store: Mapped[Store] = relationship("Store")
+    assignments: Mapped[list["DeviceBinAssignment"]] = relationship(
+        "DeviceBinAssignment", back_populates="bin", cascade="all, delete-orphan"
+    )
+
+
+class DeviceBinAssignment(Base):
+    """Asociación actual/histórica entre un dispositivo y un bin."""
+
+    __tablename__ = "device_bins"
+    __table_args__ = (
+        Index("ix_device_bins_device", "producto_id"),
+        Index("ix_device_bins_bin", "bin_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    device_id: Mapped[int] = mapped_column(
+        "producto_id", Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
+    )
+    bin_id: Mapped[int] = mapped_column(Integer, ForeignKey(
+        "wms_bins.id", ondelete="CASCADE"), nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column("asignado_en", DateTime(
+        timezone=True), default=datetime.utcnow, nullable=False)
+    unassigned_at: Mapped[datetime | None] = mapped_column(
+        "desasignado_en", DateTime(timezone=True), nullable=True)
+    active: Mapped[bool] = mapped_column(
+        "activo", Boolean, default=True, nullable=False)
+
+    device: Mapped[Device] = relationship("Device")
+    bin: Mapped[WMSBin] = relationship("WMSBin", back_populates="assignments")
 
 
 class Role(Base):

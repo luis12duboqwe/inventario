@@ -246,6 +246,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    enable_wms_bins: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "ENABLE_WMS_BINS",
+                "SOFTMOBILE_ENABLE_WMS_BINS",
+            ),
+        ),
+    ]
     inventory_low_stock_threshold: Annotated[
         int,
         Field(
@@ -436,6 +446,7 @@ class Settings(BaseSettings):
         "enable_analytics_adv",
         "enable_2fa",
         "enable_hybrid_prep",
+        "enable_wms_bins",
         "session_cookie_secure",
     )
     @classmethod

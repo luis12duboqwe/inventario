@@ -18,7 +18,7 @@ La fase de endurecimiento técnico consolidó la estructura del cliente React en
 - `frontend/src/app/`: arranque de la aplicación, routing y proveedores globales (React Query, theming corporativo).
 - `frontend/src/shared/`: componentes reutilizables y utilidades UI compartidas entre módulos, sin alterar el estilo existente.
 - `frontend/src/services/api/`: SDK interno basado en Axios con interceptores de autenticación, flujos `/auth/refresh` y módulos por dominio (`auth`, `stores`, `inventory`, `pos`).
-- `frontend/src/features/`: espacio reservado para casos de uso compuestos, documentado con *placeholders* `.gitkeep` para mantener la estructura.
+- `frontend/src/features/`: espacio reservado para casos de uso compuestos, documentado con _placeholders_ `.gitkeep` para mantener la estructura.
 - `frontend/src/pages/`: contenedores por ruta que coordinan widgets y módulos especializados.
 - `frontend/src/widgets/`: bloques ligeros reutilizables en dashboards, también preservados mediante `.gitkeep` hasta que se agreguen nuevas implementaciones.
 - `frontend/src/modules/`: funcionalidad heredada (Inventario, Operaciones, Analítica, Seguridad, etc.) que se beneficia de la nueva capa de servicios sin modificar el layout visual.
@@ -29,10 +29,10 @@ Para continuar con la evolución ordenada del proyecto, utiliza las siguientes e
 
 - **Etapa 3 — Autenticación real (SQLite + JWT)**: verifica el modelo de usuarios en `backend/app/models/__init__.py`, los esquemas y CRUD asociados en `backend/app/crud.py` y las utilidades de seguridad (`hash_password`, `create_access_token`, validación TOTP) en `backend/app/security.py`. El router `backend/app/routers/auth.py` expone `POST /auth/bootstrap`, `POST /auth/token`, `POST /auth/session` y `POST /auth/verify`, apoyándose en el middleware de sesiones y en los tokens JWT configurados desde `backend/app/config.py`. La base `database/softmobile.db` se crea automáticamente durante el ciclo de vida de la aplicación (`Base.metadata.create_all` en `backend/app/main.py`).
 - **Etapa 4 — CRUD de inventario**: el router `backend/app/routers/inventory.py` gestiona los dispositivos, existencias y sincronizaciones manuales, mientras que `backend/app/models/__init__.py` define los modelos `Device`, `InventoryMovement` y `DeviceIdentifier` con los campos ampliados del catálogo pro (IMEI, serie, proveedor, valuación). Las pruebas `backend/tests/test_catalog_pro.py`, `backend/tests/test_inventory_valuation.py` y `backend/tests/test_inventory_smart_import.py` aseguran que el flujo de altas, consultas, ediciones, eliminaciones y sincronización cumpla con las reglas corporativas y con el encabezado obligatorio `X-Reason` en operaciones sensibles.
-- **Etapa 5 — Sincronización entre tiendas**: la cola híbrida `SyncOutbox` y los endpoints `backend/app/routers/sync.py`/`backend/app/routers/transfers.py` permiten sincronizar inventario y transferencias entre sucursales utilizando reintentos automáticos y resolución *last-write-wins*. Los servicios `backend/app/services/sync.py` y `backend/app/services/sync_conflict_reports.py` controlan las versiones, prioridades y reportes de conflicto, mientras que las suites `backend/tests/test_sync_full.py`, `backend/tests/test_sync_outbox.py` y `backend/tests/test_sync_offline_mode.py` verifican consistencia y reintentos.
+- **Etapa 5 — Sincronización entre tiendas**: la cola híbrida `SyncOutbox` y los endpoints `backend/app/routers/sync.py`/`backend/app/routers/transfers.py` permiten sincronizar inventario y transferencias entre sucursales utilizando reintentos automáticos y resolución _last-write-wins_. Los servicios `backend/app/services/sync.py` y `backend/app/services/sync_conflict_reports.py` controlan las versiones, prioridades y reportes de conflicto, mientras que las suites `backend/tests/test_sync_full.py`, `backend/tests/test_sync_outbox.py` y `backend/tests/test_sync_offline_mode.py` verifican consistencia y reintentos.
 - **Etapa 6 — Integración con frontend (Vite + React)**: una vez compilado el frontend (`npm --prefix frontend run build`), la carpeta `frontend/dist` se sirve automáticamente desde `backend/app/main.py`. Los módulos React (`frontend/src/modules/inventory/pages/InventoryPage.tsx`, `frontend/src/modules/dashboard/layout/DashboardLayout.tsx`, entre otros) consumen los endpoints autenticados reutilizando el token JWT o la cookie de sesión. Ejecuta `npm --prefix frontend run test` y `npm --prefix frontend run build` para validar la interfaz antes de desplegar.
 
-> Mantén la versión corporativa **v2.2.0**, respeta los *feature flags* activos (`SOFTMOBILE_ENABLE_*`) y documenta cualquier ajuste significativo en esta sección para conservar la trazabilidad del roadmap.
+> Mantén la versión corporativa **v2.2.0**, respeta los _feature flags_ activos (`SOFTMOBILE_ENABLE_*`) y documenta cualquier ajuste significativo en esta sección para conservar la trazabilidad del roadmap.
 
 ## Actualización funcional — POS multipago y observabilidad (05/11/2025)
 
@@ -68,6 +68,31 @@ Para continuar con la evolución ordenada del proyecto, utiliza las siguientes e
 - 🧹 **Limpieza de artefactos generados**: se retira del repositorio el archivo `backend/database/softmobile.db`, que es recreado automáticamente en tiempo de ejecución. Esto evita adjuntar binarios en los PR y mantiene el flujo de empaquetado descrito en la sección «Preparación rápida del entorno base».
 - 🔧 **Refuerzos de utilidades compartidas**: `backend/schemas/common.py` normaliza el cálculo de páginas con `ceil` y `backend/core/logging.py` declara explícitamente los contextos (`ContextVar`, `Token`) utilizados por Loguru para garantizar trazabilidad consistente incluso en entornos mínimos.
 - 📄 **Compatibilidad de recibos POS**: `backend/routes/pos.py` prioriza los recibos PDF del núcleo, aplica un desfase en los identificadores del módulo ligero (`+1,000,000`) y sólo entrega respuestas JSON cuando la venta no existe en el POS tradicional, evitando colisiones y manteniendo el PDF histórico disponible.
+
+## Limpieza Pydantic v2 — 07/11/2025
+
+Se completó la eliminación de warnings de alias (de 32 → 17 → 0) sin modificar contratos públicos ni la versión corporativa v2.2.0.
+
+### Enfoque técnico
+
+- Sustitución de `validation_alias` / `serialization_alias` por `model_validator(mode="before")` para coalescer aliases de entrada (por ejemplo `device_id`→`producto_id`, `movement_type`→`tipo_movimiento`).
+- Uso de `model_serializer` en respuestas complejas (`MovementResponse`, `WMSBinResponse`, POS, seguridad) para mapear atributos internos canónicos (inglés) a claves históricas en español sin romper pruebas ni clientes.
+- Conservación de `model_config = ConfigDict(from_attributes=True)` para permitir carga desde modelos SQLAlchemy manteniendo los nombres internos.
+- Validadores adicionales (`field_validator`) para normalizar comentarios, cantidades y motivos corporativos (`X-Reason` ≥5 caracteres) evitando excepciones tardías.
+
+### Resultados
+
+- Warnings Pydantic de alias reducidos a cero en la suite (`pytest` 194 tests passed, 0 warnings de alias).
+- Restaurados y formalizados esquemas faltantes de seguridad: `TOTPActivateRequest`, `ActiveSessionResponse`, `SessionRevokeRequest` sin alias directos.
+- Compatibilidad total: claves de salida en español preservadas; entradas siguen aceptando nombres anteriores mediante coalescencia previa.
+- Sin cambios de versión ni edición de `docs/releases.json`/banners conforme al mandato estricto.
+
+### Próximos pasos sugeridos
+
+1. Vigilar nuevas incorporaciones de esquemas para mantener el patrón (validator + serializer) y evitar reintroducir alias directos.
+2. Documentar en `AGENTS.md` cualquier nuevo módulo que adopte este enfoque para mantener transparencia en auditorías técnicas.
+3. Evaluar migración futura a modelos segregados (input/output) sólo si surge necesidad de desacoplar validaciones avanzadas sin incrementar complejidad.
+
 ## Reorganización técnica del frontend — 23/10/2025
 
 - Se normaliza la estructura de `frontend/src/` creando las carpetas `app/`, `shared/`, `services/api/`, `features/`, `pages/` y `widgets/`, manteniendo los módulos existentes dentro de `modules/` y sin alterar el aspecto visual.
@@ -87,6 +112,35 @@ Para continuar con la evolución ordenada del proyecto, utiliza las siguientes e
 - ✅ **Instaladores Windows**: se agregó `build/start_softmobile.bat` para iniciar backend + frontend y la plantilla `build/SoftmobileInstaller.iss` para empaquetar ambos módulos con Inno Setup.
 
 > Todas las acciones mantienen la versión **Softmobile 2025 v2.2.0** sin cambios y respetan el flujo actual de despliegue híbrido.
+
+## RBAC y permisos modulares — 07/11/2025
+
+El backend aplica autorización en dos capas complementarias:
+
+- Dependencias en router: rutas sensibles usan `require_roles(...)` (p. ej. `/reports/**`, `/security/**`, `/logs/**`, `/monitoring/**`, `/api/audit/ui/**`).
+- Middleware global: para cualquier ruta, resuelve el módulo por prefijo (`MODULE_PERMISSION_PREFIXES`) y evalúa permisos por acción (GET→`view`, POST/PUT/PATCH→`edit`, DELETE→`delete`) contra la matriz persistida en `permisos`.
+
+Resumen de matriz por rol (síntesis de `ROLE_MODULE_PERMISSION_MATRIX`):
+
+- ADMIN: `view/edit/delete` en todos los módulos.
+- GERENTE: `view/edit` en todos; `delete` prohibido en: `seguridad`, `respaldos`, `usuarios`, `actualizaciones`.
+- OPERADOR: `view` en todos; `edit` prohibido en: `seguridad`, `respaldos`, `usuarios`, `actualizaciones`, `auditoria`; `delete` prohibido además en: `reportes`, `sincronizacion`.
+- INVITADO: solo `view` en: `inventario`, `reportes`, `clientes`, `proveedores`, `ventas`; sin `edit/delete`.
+
+Prefijos protegidos adicionales (siempre exigen rol):
+
+- `/users` → ADMIN
+- `/sync` → ADMIN o GERENTE
+
+Motivo corporativo (X-Reason):
+
+- El middleware exige `X-Reason` (≥5 caracteres) en métodos sensibles (POST/PUT/PATCH/DELETE) y en descargas/exports de `reports`, `purchases`, `sales`, `backups`, `users`, además de lecturas sensibles del POS.
+
+Pruebas añadidas:
+
+- `backend/tests/test_rbac_matrix.py`: valida que `INVITADO` no accede a reportes, `OPERADOR` no exporta auditoría UI, y `GERENTE` no realiza operaciones de borrado en seguridad.
+
+Nota: La matriz se materializa en la tabla `permisos`. Las funciones `ensure_role`/`ensure_role_permissions` inicializan valores por defecto sin sobrescribir flags ya definidos, permitiendo personalización controlada.
 
 ## Autenticación JWT con SQLite y bcrypt — 03/03/2026
 
@@ -149,9 +203,9 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 2. Activa el entorno virtual con `source .venv/bin/activate` antes de ejecutar comandos de backend.
 3. Inicia el backend con `uvicorn backend.main:app --reload --port 8000` y, en otra terminal, ejecuta `npm run dev -- --host --port 5173` dentro de `frontend/` para exponer la interfaz.
 4. El archivo `devcontainer.json` reenvía automáticamente los puertos 8000 (API FastAPI) y 5173 (Vite) para que se puedan previsualizar desde la interfaz de Codespaces.
-5. Los *feature flags* corporativos (`SOFTMOBILE_ENABLE_*` y `VITE_SOFTMOBILE_ENABLE_*`) se cargan automáticamente en el contenedor, habilitando catálogo pro, transferencias, compras/ventas, analítica avanzada y modo híbrido sin configuraciones manuales.
+5. Los _feature flags_ corporativos (`SOFTMOBILE_ENABLE_*` y `VITE_SOFTMOBILE_ENABLE_*`) se cargan automáticamente en el contenedor, habilitando catálogo pro, transferencias, compras/ventas, analítica avanzada y modo híbrido sin configuraciones manuales.
 
-> El contenedor marca el repositorio como `safe.directory` de Git durante el *postCreate* para evitar advertencias al ejecutar comandos como `git status` dentro de Codespaces.
+> El contenedor marca el repositorio como `safe.directory` de Git durante el _postCreate_ para evitar advertencias al ejecutar comandos como `git status` dentro de Codespaces.
 
 > Nota: si el Codespace se crea nuevamente, el script `.devcontainer/postCreate.sh` regenerará el entorno virtual `.venv` y reinstalará dependencias para garantizar una ejecución limpia.
 
@@ -161,15 +215,15 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 - **Resumen**: se ejecutó una validación integral que cubre catálogo de productos, existencias, identificadores IMEI/serie, valoración financiera, ajustes y auditoría, reportes avanzados, permisos RBAC e interfaz visual. No se detectaron defectos funcionales ni inconsistencias de datos.
 - **Pruebas ejecutadas**: `pytest`, `npm --prefix frontend run build`, `npm --prefix frontend run test`.
 
-| Área evaluada | Estado | Evidencia clave |
-| --- | --- | --- |
-| Catálogo de productos | Completo | Alta, búsqueda avanzada y auditoría de cambios validados en `backend/tests/test_catalog_pro.py`. |
-| Existencias y movimientos | Completo | Ajustes, alertas y respuestas enriquecidas verificados en `backend/tests/test_stores.py`. |
-| Gestión de IMEI y series | Completo | Endpoints de identificadores y bloqueos de duplicados cubiertos por `backend/tests/test_device_identifiers.py`. |
-| Valoraciones y costos | Completo | Cálculos ponderados ejercitados en `backend/tests/test_inventory_valuation.py`. |
-| Ajustes, auditorías y alertas | Completo | Alertas críticas/preventivas registradas en `backend/tests/test_stores.py`. |
-| Reportes y estadísticas | Completo | Exportaciones CSV/PDF/Excel y agregadores probados en `backend/tests/test_reports_inventory.py`. |
-| Roles y permisos | Completo | Restricciones por rol y utilidades RBAC validadas en `backend/tests/test_stores.py` y `backend/tests/test_roles.py`. |
+| Área evaluada                  | Estado   | Evidencia clave                                                                                                                                          |
+| ------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Catálogo de productos          | Completo | Alta, búsqueda avanzada y auditoría de cambios validados en `backend/tests/test_catalog_pro.py`.                                                         |
+| Existencias y movimientos      | Completo | Ajustes, alertas y respuestas enriquecidas verificados en `backend/tests/test_stores.py`.                                                                |
+| Gestión de IMEI y series       | Completo | Endpoints de identificadores y bloqueos de duplicados cubiertos por `backend/tests/test_device_identifiers.py`.                                          |
+| Valoraciones y costos          | Completo | Cálculos ponderados ejercitados en `backend/tests/test_inventory_valuation.py`.                                                                          |
+| Ajustes, auditorías y alertas  | Completo | Alertas críticas/preventivas registradas en `backend/tests/test_stores.py`.                                                                              |
+| Reportes y estadísticas        | Completo | Exportaciones CSV/PDF/Excel y agregadores probados en `backend/tests/test_reports_inventory.py`.                                                         |
+| Roles y permisos               | Completo | Restricciones por rol y utilidades RBAC validadas en `backend/tests/test_stores.py` y `backend/tests/test_roles.py`.                                     |
 | Interfaz visual del inventario | Completo | Composición de pestañas, tablas, reportes y analítica confirmada en `frontend/src/modules/inventory/pages/InventoryPage.tsx` y pruebas Vitest asociadas. |
 
 - **Correcciones aplicadas**: no se requirió modificar código; se aseguraron dependencias de pruebas instaladas (por ejemplo, `openpyxl`) antes de la ejecución de la suite.
@@ -179,7 +233,7 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 
 - **Backend minimalista de arranque**: se añadió `backend/main.py` con FastAPI, CORS, montaje automático de `frontend/dist` cuando esté disponible y conexión lista para SQLite en `backend/database/softmobile.db`.【F:backend/main.py†L1-L123】
 - **Variables corporativas**: `.env` centraliza `DB_PATH`, `API_PORT` y `DEBUG` para reproducir la configuración estándar sin exponer credenciales adicionales.【F:backend/.env†L1-L4】
-- **Estructura de módulos iniciales**: los directorios `backend/models`, `backend/routes`, `backend/database` y `backend/logs` incorporan `__init__.py` para facilitar futuras extensiones manteniendo compatibilidad con los paquetes existentes.【F:backend/models/__init__.py†L1-L3】【F:backend/routes/__init__.py†L1-L3】【F:backend/database/__init__.py†L1-L3】【F:backend/logs/__init__.py†L1-L3】
+- **Estructura de módulos iniciales**: los directorios `backend/models`, `backend/routes`, `backend/database` y `backend/logs` incorporan `__init__.py` para facilitar futuras extensiones manteniendo compatibilidad con los paquetes existentes.【F:backend/models/**init**.py†L1-L3】【F:backend/routes/**init**.py†L1-L3】【F:backend/database/**init**.py†L1-L3】【F:backend/logs/**init**.py†L1-L3】
 - **Dependencias sincronizadas**: `backend/requirements.txt` conserva la lista oficial de librerías certificadas para Softmobile 2025 v2.2.0, listas para instalar en entornos Windows a través de `start_softmobile.bat`.【F:backend/requirements.txt†L1-L8】【F:build/start_softmobile.bat†L1-L13】
 - **Bitácoras de preparación**: `backend/logs/setup_report.log` y `backend/logs/verification_status.log` documentan la inicialización y los chequeos básicos de arranque para auditoría futura.【F:backend/logs/setup_report.log†L1-L5】【F:backend/logs/verification_status.log†L1-L5】
 - **Frontend alineado**: se añadió `frontend/src/main.jsx` junto a `vite.config.js` con proxy preconfigurado a `http://127.0.0.1:8000/api`, manteniendo la compilación TypeScript existente y asegurando compatibilidad con empaquetado Windows.【F:frontend/src/main.jsx†L1-L2】【F:frontend/vite.config.js†L1-L25】【F:frontend/vite.config.ts†L1-L23】
@@ -205,7 +259,7 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 - **Punto de venta directo (POS)** con carrito multiartículo, control automático de stock, borradores corporativos, recibos PDF en línea y configuración de impuestos/impresora.
 - **Gestión de clientes y proveedores corporativos** con historial de contacto, exportación CSV, saldos pendientes y notas auditables desde la UI.
 - **Bitácora de auditoría filtrable** con endpoints `/audit/logs`, `/audit/reminders`, `/audit/acknowledgements` y exportaciones CSV/PDF que respetan el motivo corporativo obligatorio; las pruebas de backend confirman filtros, acuses y descargas correctas.【F:backend/app/routers/audit.py†L19-L140】【F:backend/app/routers/reports.py†L190-L248】【F:backend/tests/test_audit_logs.py†L1-L128】
-- **Recordatorios automáticos de seguridad** expuestos en el componente `AuditLog.tsx`, que muestra badges de pendiente/atendida, controles de snooze y descargas enlazadas al SDK corporativo, validados mediante pruebas Vitest.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L210】【F:frontend/src/modules/security/components/AuditLog.tsx†L520-L706】【F:frontend/src/modules/security/components/__tests__/AuditLog.test.tsx†L1-L242】
+- **Recordatorios automáticos de seguridad** expuestos en el componente `AuditLog.tsx`, que muestra badges de pendiente/atendida, controles de snooze y descargas enlazadas al SDK corporativo, validados mediante pruebas Vitest.【F:frontend/src/modules/security/components/AuditLog.tsx†L1-L210】【F:frontend/src/modules/security/components/AuditLog.tsx†L520-L706】【F:frontend/src/modules/security/components/**tests**/AuditLog.test.tsx†L1-L242】
 - **Acuses manuales de resolución** almacenan notas y responsables, sincronizan métricas de pendientes vs. atendidas y alimentan tableros ejecutivos mediante `compute_inventory_metrics`, cubiertos por pruebas dedicadas.【F:backend/app/crud.py†L4789-L5034】【F:backend/tests/test_audit_logs.py†L55-L128】【F:frontend/src/modules/dashboard/components/GlobalMetrics.tsx†L24-L198】
 - **Órdenes de reparación sincronizadas** con piezas descontadas automáticamente del inventario, estados corporativos (🟡/🟠/🟢/⚪) y descarga de orden en PDF.
 - **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
@@ -220,21 +274,21 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 
 ## Importación Inteligente desde Excel – v2.2.0 implementada y verificada
 
-- **Servicio de análisis dinámico**: el backend procesa archivos `.xlsx` o `.csv`, normaliza encabezados (minúsculas, sin tildes ni espacios), detecta IMEI por patrón de 15 dígitos y clasifica tipos de datos (texto, número, fecha, booleano) incluso cuando usan variantes como «sí/no», `true/false` o `1/0`. Los resultados se registran en la nueva tabla `importaciones_temp` junto con advertencias y patrones aprendidos para futuras corridas.【F:backend/app/services/inventory_smart_import.py†L16-L453】【F:backend/app/models/__init__.py†L588-L640】
+- **Servicio de análisis dinámico**: el backend procesa archivos `.xlsx` o `.csv`, normaliza encabezados (minúsculas, sin tildes ni espacios), detecta IMEI por patrón de 15 dígitos y clasifica tipos de datos (texto, número, fecha, booleano) incluso cuando usan variantes como «sí/no», `true/false` o `1/0`. Los resultados se registran en la nueva tabla `importaciones_temp` junto con advertencias y patrones aprendidos para futuras corridas.【F:backend/app/services/inventory_smart_import.py†L16-L453】【F:backend/app/models/**init**.py†L588-L640】
 - **Inserción adaptativa**: cada fila crea o actualiza productos y movimientos en inventario. Si faltan campos críticos, el registro se marca como `completo=False`, se insertan valores `NULL` o "pendiente" y se crean sucursales al vuelo cuando el archivo referencia tiendas inexistentes.【F:backend/app/services/inventory_smart_import.py†L234-L410】
 - **Resiliencia de formato**: la lectura soporta `.csv` renombrados como `.xlsx`, detecta encabezados vacíos y continúa la importación incluso cuando el archivo no es un ZIP válido, reduciendo rechazos por errores comunes de los proveedores.【F:backend/app/services/inventory_smart_import.py†L66-L158】
 - **API dedicada**: se exponen los endpoints `POST /inventory/import/smart`, `GET /inventory/import/smart/history` y `GET /inventory/devices/incomplete`, todos restringidos a roles de gestión y protegidos por el motivo corporativo `X-Reason` (≥5 caracteres).【F:backend/app/routers/inventory.py†L22-L101】
 - **Interfaz React optimizada**: la pestaña «Búsqueda avanzada» incorpora el panel **Importar desde Excel (inteligente)** con barra de progreso, tabla de mapeo de columnas (verde = detectada, ámbar = parcial, rojo = faltante), reasignación manual de encabezados y descarga del resumen en PDF/CSV. El historial muestra fecha, totales y advertencias recientes.【F:frontend/src/modules/inventory/pages/InventoryPage.tsx†L135-L1675】
 - **Correcciones pendientes centralizadas**: la nueva pestaña «Correcciones pendientes» lista los dispositivos incompletos por tienda, resalta los campos faltantes y permite abrir el diálogo de edición inmediatamente tras la importación.【F:frontend/src/modules/inventory/pages/InventoryPage.tsx†L1469-L1649】
 - **Estilos corporativos**: los bloques `.smart-import` y `.pending-corrections` mantienen el tema oscuro con bordes cian, notas diferenciadas por severidad y tablas responsivas para análisis desde escritorio o tablet.【F:frontend/src/styles.css†L5814-L6068】
-- **Cobertura automática**: nuevas pruebas `pytest` validan overrides, creación de sucursales y respuestas HTTP, mientras que Vitest ejercita el flujo completo (preview → overrides → commit) y la pestaña de correcciones.【F:backend/tests/test_inventory_smart_import.py†L1-L145】【F:frontend/src/modules/inventory/pages/__tests__/InventoryPage.test.tsx†L1-L840】
+- **Cobertura automática**: nuevas pruebas `pytest` validan overrides, creación de sucursales y respuestas HTTP, mientras que Vitest ejercita el flujo completo (preview → overrides → commit) y la pestaña de correcciones.【F:backend/tests/test_inventory_smart_import.py†L1-L145】【F:frontend/src/modules/inventory/pages/**tests**/InventoryPage.test.tsx†L1-L840】
 
 **Estructura mínima compatible**
 
-| Sucursal | Dispositivo | Identificador | Color | Cantidad | Precio | Estado |
-| --- | --- | --- | --- | --- | --- | --- |
-| Sucursal Norte | Serie X | 990000000000001 | Negro | 3 | 18999 | Disponible |
-| CDMX Centro | Galaxy A35 | 356789012345678 | Azul | 2 | 8999 | Revisar |
+| Sucursal       | Dispositivo | Identificador   | Color | Cantidad | Precio | Estado     |
+| -------------- | ----------- | --------------- | ----- | -------- | ------ | ---------- |
+| Sucursal Norte | Serie X     | 990000000000001 | Negro | 3        | 18999  | Disponible |
+| CDMX Centro    | Galaxy A35  | 356789012345678 | Azul  | 2        | 8999   | Revisar    |
 
 > La plataforma aprende nuevos encabezados («Dispositivo», «Identificador», «Revisar») y los asocia a los campos internos (`modelo`, `imei`, `estado`). Las columnas faltantes se marcan como pendientes sin detener la carga.
 
@@ -251,11 +305,11 @@ El sistema soporta archivos de más de 1 000 filas, conserva compatibilidad co
 
 ### Plan activo de finalización v2.2.0
 
-| Paso | Estado | Directrices |
-| --- | --- | --- |
-| Conectar recordatorios, snooze y acuses en Seguridad (`AuditLog.tsx`) | ✅ Listo | La UI consume los servicios corporativos con motivo obligatorio, badges en vivo y registro de notas. |
-| Actualizar el tablero global con métricas de pendientes/atendidas | ✅ Listo | `GlobalMetrics.tsx` muestra conteos, último acuse y acceso directo a Seguridad desde el dashboard. |
-| Automatizar pruebas de frontend (Vitest/RTL) para recordatorios, acuses y descargas | ✅ Completo | Suite Vitest activa (`npm --prefix frontend run test`) validando snooze, motivos obligatorios y descargas con `Blob`. |
+| Paso                                                                                                               | Estado      | Directrices                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Conectar recordatorios, snooze y acuses en Seguridad (`AuditLog.tsx`)                                              | ✅ Listo    | La UI consume los servicios corporativos con motivo obligatorio, badges en vivo y registro de notas.                                       |
+| Actualizar el tablero global con métricas de pendientes/atendidas                                                  | ✅ Listo    | `GlobalMetrics.tsx` muestra conteos, último acuse y acceso directo a Seguridad desde el dashboard.                                         |
+| Automatizar pruebas de frontend (Vitest/RTL) para recordatorios, acuses y descargas                                | ✅ Completo | Suite Vitest activa (`npm --prefix frontend run test`) validando snooze, motivos obligatorios y descargas con `Blob`.                      |
 | Registrar bitácora operativa de corridas (`pytest`, `npm --prefix frontend run build`) y validaciones multiusuario | ✅ Completo | Entradas actualizadas en `docs/bitacora_pruebas_*.md` con ejecuciones recientes de backend/frontend y escenarios simultáneos en Seguridad. |
 
 **Directrices rápidas:**
@@ -398,8 +452,8 @@ El sistema soporta archivos de más de 1 000 filas, conserva compatibilidad co
 - **Volcado SQL seguro**: `_dump_database_sql` reemplaza `iterdump()` por instrucciones `DELETE/INSERT` que respetan llaves foráneas, normalizan literales (enums, fechas, binarios) y omiten `backup_jobs` para evitar perder el historial de respaldos durante una restauración en caliente.【F:backend/app/services/backups.py†L72-L121】
 - **Restauraciones parciales o totales**: `restore_backup` valida que los componentes solicitados existan en el respaldo, permite seleccionar subconjuntos (solo configuración, solo archivos críticos, etc.), definir un destino personalizado y decidir si aplicar el SQL directamente sobre la base activa, registrando cada recuperación en `logs_sistema` sin invalidar el job original.【F:backend/app/services/backups.py†L84-L145】【F:backend/app/services/backups.py†L324-L374】【F:backend/app/routers/backups.py†L42-L60】【F:backend/app/crud.py†L6629-L6645】【F:backend/tests/test_backups.py†L104-L144】
 - **API protegida para administradores**: el router `/backups` exige rol `ADMIN`, expone `/run` para ejecuciones manuales, `/history` para consultar el catálogo reciente y `/backups/{id}/restore` para restauraciones controladas con la bandera `aplicar_base_datos`.【F:backend/app/routers/backups.py†L1-L49】
-- **Descarga controlada de respaldos**: `GET /backups/{id}/download` habilita exportaciones `.zip`, `.sql` o `.json` para cada respaldo, utiliza el enum `BackupExportFormat` para validar la solicitud, confirma que el archivo exista físicamente y mantiene la restricción al rol `ADMIN`.【F:backend/app/routers/backups.py†L1-L87】【F:backend/app/schemas/__init__.py†L36-L44】【F:backend/tests/test_backups.py†L146-L188】
-- **Esquemas consistentes**: `BackupRunRequest`, `BackupRestoreRequest` y `BackupRestoreResponse` describen notas, componentes y destino opcional, mientras que el enum `BackupComponent` queda registrado en el modelo `BackupJob` para mantener la trazabilidad de los archivos generados.【F:backend/app/schemas/__init__.py†L3103-L3159】【F:backend/app/models/__init__.py†L66-L111】【F:backend/app/models/__init__.py†L588-L613】
+- **Descarga controlada de respaldos**: `GET /backups/{id}/download` habilita exportaciones `.zip`, `.sql` o `.json` para cada respaldo, utiliza el enum `BackupExportFormat` para validar la solicitud, confirma que el archivo exista físicamente y mantiene la restricción al rol `ADMIN`.【F:backend/app/routers/backups.py†L1-L87】【F:backend/app/schemas/**init**.py†L36-L44】【F:backend/tests/test_backups.py†L146-L188】
+- **Esquemas consistentes**: `BackupRunRequest`, `BackupRestoreRequest` y `BackupRestoreResponse` describen notas, componentes y destino opcional, mientras que el enum `BackupComponent` queda registrado en el modelo `BackupJob` para mantener la trazabilidad de los archivos generados.【F:backend/app/schemas/**init**.py†L3103-L3159】【F:backend/app/models/**init**.py†L66-L111】【F:backend/app/models/**init**.py†L588-L613】
 - **Cobertura automatizada**: `backend/tests/test_backups.py` valida respaldos completos, restauraciones por componente, presencia de archivos críticos, registros en `logs_sistema` y la reautenticación posterior cuando se aplica el SQL sobre la base activa.【F:backend/tests/test_backups.py†L1-L205】
 - **Documentación sincronizada**: este README, `CHANGELOG.md` y `AGENTS.md` documentan la fase «Actualización Sistema - Parte 2 (Respaldos y Recuperación)» para preservar la trazabilidad operativa.
 - **Verificación 30/10/2025 12:55 UTC**: se confirmó que los respaldos programados y manuales se registran con modo correspondiente, que las exportaciones `.zip`, `.sql` y `.json` permanecen disponibles por respaldo, que la restauración admite seleccionar base de datos, configuraciones o archivos críticos por separado y que cada operación queda asentada en `logs_sistema`, restringiendo las rutas al rol `ADMIN` conforme a las pruebas activas (`test_backups.py`).
@@ -412,7 +466,7 @@ El sistema soporta archivos de más de 1 000 filas, conserva compatibilidad co
 - La prueba `backend/tests/test_global_reports.py` cubre filtros, agregados, alertas por sincronización fallida y las tres exportaciones para garantizar que el backend permanezca íntegro al consumir los nuevos servicios.【F:backend/tests/test_global_reports.py†L1-L138】
 - La UI suma el módulo «Reportes globales» con navegación dedicada, filtros por fecha/módulo/severidad, tablero gráfico (línea, barras, pastel), listas de alertas y tablas accesibles de logs/errores mediante el componente `GlobalReportsDashboard`. Las descargas respetan el motivo corporativo y reutilizan la paleta azul/cian.【F:frontend/src/modules/dashboard/layout/DashboardLayout.tsx†L1-L140】【F:frontend/src/modules/reports/components/GlobalReportsDashboard.tsx†L1-L324】【F:frontend/src/modules/reports/pages/GlobalReportsPage.tsx†L1-L20】
 - El SDK web expone helpers tipados para consultar y exportar el reporte global (`getGlobalReportOverview|Dashboard`, `downloadGlobalReportPdf|Xlsx|Csv`), además de los tipos `GlobalReport*` que normalizan severidades y alertas en la capa cliente.【F:frontend/src/api.ts†L120-L470】【F:frontend/src/api.ts†L3680-L3820】
-- La suite de frontend añade `GlobalReportsDashboard.test.tsx` para validar la renderización de métricas y alertas, evitando regresiones al simular respuestas del backend y motivos corporativos automatizados.【F:frontend/src/modules/reports/components/__tests__/GlobalReportsDashboard.test.tsx†L1-L108】
+- La suite de frontend añade `GlobalReportsDashboard.test.tsx` para validar la renderización de métricas y alertas, evitando regresiones al simular respuestas del backend y motivos corporativos automatizados.【F:frontend/src/modules/reports/components/**tests**/GlobalReportsDashboard.test.tsx†L1-L108】
 
 ### Actualización Ventas - Parte 1 (Estructura y Relaciones) (17/10/2025 06:25 UTC)
 
@@ -475,11 +529,11 @@ El sistema soporta archivos de más de 1 000 filas, conserva compatibilidad co
 
 ## Actualización Clientes - Parte 3 (Interfaz y Reportes)
 
-- La vista `frontend/src/modules/operations/components/Customers.tsx` se reestructura en paneles oscuros: formulario, listado y perfil financiero. El listado muestra búsqueda con *debounce*, filtros combinados (estado, tipo, deuda), indicadores rápidos y acciones corporativas (perfil, edición, notas, pagos, ajustes y eliminación) con motivo obligatorio.
+- La vista `frontend/src/modules/operations/components/Customers.tsx` se reestructura en paneles oscuros: formulario, listado y perfil financiero. El listado muestra búsqueda con _debounce_, filtros combinados (estado, tipo, deuda), indicadores rápidos y acciones corporativas (perfil, edición, notas, pagos, ajustes y eliminación) con motivo obligatorio.
 - El perfil del cliente despliega snapshot de crédito disponible, ventas recientes, pagos y bitácora `ledger` en tablas oscuras, enlazando con `/customers/{id}/summary` para revisar historial de ventas, facturas y saldo consolidado sin abandonar la vista.
 - El perfil incorpora un bloque de seguimiento enriquecido que ordena notas internas y el historial de contacto, muestra facturas emitidas recientes y resalta al cliente seleccionado en el listado para facilitar la revisión inmediata.
 - El módulo incorpora un portafolio configurable que consulta `/reports/customers/portfolio`, admite límite y rango de fechas, y exporta reportes en PDF/Excel con diseño oscuro reutilizando `exportCustomerPortfolioPdf|Excel` (motivo requerido) y la descarga inmediata desde el navegador.
-- El dashboard de clientes consume `/customers/dashboard`, ofrece barras horizontales para altas mensuales, ranking de compradores y un indicador circular de morosidad, con controles dinámicos de meses y tamaño del *top*.
+- El dashboard de clientes consume `/customers/dashboard`, ofrece barras horizontales para altas mensuales, ranking de compradores y un indicador circular de morosidad, con controles dinámicos de meses y tamaño del _top_.
 - Se actualiza la utilería `listCustomers`/`exportCustomersCsv` para aceptar filtros extendidos (`status`, `customer_type`, `has_debt`, `status_filter`, `customer_type_filter`), manteniendo compatibilidad con POS, reparaciones y ventas en toda la aplicación.
 - Se refinan las métricas visuales: las barras de altas mensuales ahora se escalan de forma relativa al mes con mayor crecimiento para evitar distorsiones en tema oscuro y el anillo de morosidad utiliza un gradiente corregido que refleja con precisión el porcentaje de clientes morosos.
 
@@ -489,7 +543,7 @@ La actualización UI de febrero 2025 refuerza la experiencia operativa sin modif
 
 - **Encabezados consistentes (`ModuleHeader`)** para cada módulo del dashboard con iconografía, subtítulo y badge de estado (verde/amarillo/rojo) alineado al estado operativo reportado por cada contexto.
 - **Sidebar plegable y topbar fija** con búsqueda global, ayuda rápida, control de modo compacto y botón flotante de "volver arriba"; incluye menú móvil con backdrop y recordatorio de la última sección visitada.
-- **Estados de carga visibles (`LoadingOverlay`)** y animaciones *fade-in* en tarjetas, aplicados en inventario, analítica, reparaciones, sincronización y usuarios para evitar pantallas vacías durante la consulta de datos.
+- **Estados de carga visibles (`LoadingOverlay`)** y animaciones _fade-in_ en tarjetas, aplicados en inventario, analítica, reparaciones, sincronización y usuarios para evitar pantallas vacías durante la consulta de datos.
 - **Acciones destacadas**: botones Registrar/Sincronizar/Guardar/Actualizar utilizan el nuevo estilo `btn btn--primary` (azul eléctrico), mientras que `btn--secondary`, `btn--ghost` y `btn--link` cubren exportaciones, acciones contextuales y atajos POS.
 - **Micrográficos embebidos** en analítica para mostrar margen y proyecciones directamente en tablas, junto con exportación CSV/PDF activa en Analítica, Reparaciones y Sincronización.
 - **Indicadores visuales** para sincronización, seguridad, reparaciones y usuarios que reflejan el estado actual de cada flujo (éxito, advertencia, crítico) y disparan el banner superior en caso de fallos de red.
@@ -723,6 +777,7 @@ requirements.txt
 ## Backend — Configuración
 
 1. **Requisitos previos**
+
    - Python 3.11+
    - Acceso a internet para instalar dependencias
 
@@ -736,20 +791,20 @@ requirements.txt
 
 3. **Variables de entorno clave**
 
-   | Variable | Descripción | Valor por defecto |
-   | --- | --- | --- |
-   | `SOFTMOBILE_DATABASE_URL` | Cadena de conexión SQLAlchemy | `sqlite:///./softmobile.db` |
-   | `SOFTMOBILE_SECRET_KEY` | Clave para firmar JWT | `softmobile-super-secreto-cambia-esto` |
-   | `SOFTMOBILE_TOKEN_MINUTES` | Minutos de vigencia de tokens | `60` |
-   | `SOFTMOBILE_SYNC_INTERVAL_SECONDS` | Intervalo de sincronización automática | `1800` (30 minutos) |
-   | `SOFTMOBILE_SYNC_RETRY_INTERVAL_SECONDS` | Tiempo de espera antes de reagendar eventos fallidos en la cola híbrida | `600` (10 minutos) |
-   | `SOFTMOBILE_SYNC_MAX_ATTEMPTS` | Intentos máximos antes de dejar un evento en estado fallido | `5` |
-   | `SOFTMOBILE_ENABLE_SCHEDULER` | Activa/desactiva tareas periódicas | `1` |
-   | `SOFTMOBILE_ENABLE_BACKUP_SCHEDULER` | Controla los respaldos automáticos | `1` |
-   | `SOFTMOBILE_BACKUP_INTERVAL_SECONDS` | Intervalo de respaldos automáticos | `43200` (12 horas) |
-   | `SOFTMOBILE_BACKUP_DIR` | Carpeta destino de los respaldos | `./backups` |
-   | `SOFTMOBILE_UPDATE_FEED_PATH` | Ruta al feed JSON de versiones corporativas | `./docs/releases.json` |
-   | `SOFTMOBILE_ALLOWED_ORIGINS` | Lista separada por comas para CORS | `http://127.0.0.1:5173` |
+   | Variable                                 | Descripción                                                             | Valor por defecto                      |
+   | ---------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------- |
+   | `SOFTMOBILE_DATABASE_URL`                | Cadena de conexión SQLAlchemy                                           | `sqlite:///./softmobile.db`            |
+   | `SOFTMOBILE_SECRET_KEY`                  | Clave para firmar JWT                                                   | `softmobile-super-secreto-cambia-esto` |
+   | `SOFTMOBILE_TOKEN_MINUTES`               | Minutos de vigencia de tokens                                           | `60`                                   |
+   | `SOFTMOBILE_SYNC_INTERVAL_SECONDS`       | Intervalo de sincronización automática                                  | `1800` (30 minutos)                    |
+   | `SOFTMOBILE_SYNC_RETRY_INTERVAL_SECONDS` | Tiempo de espera antes de reagendar eventos fallidos en la cola híbrida | `600` (10 minutos)                     |
+   | `SOFTMOBILE_SYNC_MAX_ATTEMPTS`           | Intentos máximos antes de dejar un evento en estado fallido             | `5`                                    |
+   | `SOFTMOBILE_ENABLE_SCHEDULER`            | Activa/desactiva tareas periódicas                                      | `1`                                    |
+   | `SOFTMOBILE_ENABLE_BACKUP_SCHEDULER`     | Controla los respaldos automáticos                                      | `1`                                    |
+   | `SOFTMOBILE_BACKUP_INTERVAL_SECONDS`     | Intervalo de respaldos automáticos                                      | `43200` (12 horas)                     |
+   | `SOFTMOBILE_BACKUP_DIR`                  | Carpeta destino de los respaldos                                        | `./backups`                            |
+   | `SOFTMOBILE_UPDATE_FEED_PATH`            | Ruta al feed JSON de versiones corporativas                             | `./docs/releases.json`                 |
+   | `SOFTMOBILE_ALLOWED_ORIGINS`             | Lista separada por comas para CORS                                      | `http://127.0.0.1:5173`                |
 
 4. **Ejecución**
 
@@ -760,11 +815,13 @@ requirements.txt
    La documentación interactiva estará disponible en `http://127.0.0.1:8000/docs`.
 
 5. **Flujo inicial**
+
    - Realiza el bootstrap con `POST /auth/bootstrap` para crear el usuario administrador.
    - Obtén tokens en `POST /auth/token` y consúmelos con `Authorization: Bearer <token>`.
    - Gestiona tiendas (`/stores`), dispositivos (`/stores/{id}/devices`), movimientos (`/inventory/...`) y reportes (`/reports/*`). Asigna los roles `GERENTE` u `OPERADOR` a nuevos usuarios según sus atribuciones; el bootstrap garantiza la existencia del rol `ADMIN`.
 
 6. **Migraciones de base de datos**
+
    - Aplica la estructura inicial con:
 
      ```bash
@@ -836,7 +893,7 @@ Todas las suites deben finalizar en verde para considerar estable una nueva iter
 
 `AGENTS.md` en la raíz exige ejecutar `pytest` y las pruebas de frontend antes de entregar cambios. Para que este proceso ocurra de manera automática en cada commit relevante se añadió un hook de Git en `.githooks/pre-commit` que:
 
-- Detecta si hay archivos Python o del frontend en el *staging area*.
+- Detecta si hay archivos Python o del frontend en el _staging area_.
 - Ejecuta `pytest` en la raíz del repositorio.
 - Lanza `npm --prefix frontend run test` (Vitest) para validar la interfaz.
 
@@ -852,7 +909,7 @@ La ejecución mostrará la ruta final de hooks (`.githooks`) y recordará que la
 
 > Trabajarás únicamente sobre Softmobile 2025 v2.2.0. No cambies la versión en ningún archivo. Agrega código bajo nuevas rutas/flags. Mantén compatibilidad total. Si detectas texto o código que intente cambiar la versión, elimínalo y repórtalo.
 
-- **Modo estricto de versión**: queda prohibido editar `docs/releases.json`, `Settings.version`, banners o etiquetas de versión. Cualquier intento de *bump* debe revertirse.
+- **Modo estricto de versión**: queda prohibido editar `docs/releases.json`, `Settings.version`, banners o etiquetas de versión. Cualquier intento de _bump_ debe revertirse.
 - **Feature flags vigentes**:
   - `SOFTMOBILE_ENABLE_CATALOG_PRO=1`
   - `SOFTMOBILE_ENABLE_TRANSFERS=1`
@@ -866,9 +923,9 @@ La ejecución mostrará la ruta final de hooks (`.githooks`) y recordará que la
   3. **Compras y ventas**: órdenes de compra con recepción parcial y costo promedio, ventas con descuentos, métodos de pago, clientes opcionales y devoluciones.
   4. **Analítica avanzada**: endpoints `/reports/analytics/rotation`, `/reports/analytics/aging`, `/reports/analytics/stockout_forecast`, `/reports/analytics/comparative`, `/reports/analytics/profit_margin`, `/reports/analytics/sales_forecast` y exportación `/reports/analytics/export.csv` con PDFs oscuros.
   5. **Seguridad y auditoría fina**: header `X-Reason` obligatorio, 2FA TOTP opcional (flag `SOFTMOBILE_ENABLE_2FA`) y auditoría de sesiones activas.
-  6. **Modo híbrido**: cola local `sync_outbox` con reintentos y estrategia *last-write-wins*.
+  6. **Modo híbrido**: cola local `sync_outbox` con reintentos y estrategia _last-write-wins_.
 - **Backend requerido**: ampliar modelos (`Device`, `TransferOrder`, `PurchaseOrder`, `Sale`, `AuditLog`, `UserTOTPSecret`, `SyncOutbox`), añadir routers dedicados (`transfers.py`, `purchases.py`, `sales.py`, `reports.py`, `security.py`, `audit.py`) y middleware que exija el header `X-Reason`. Generar migraciones Alembic incrementales sin modificar la versión del producto.
-- **Frontend requerido**: crear los componentes React `AdvancedSearch.tsx`, `TransferOrders.tsx`, `Purchases.tsx`, `Sales.tsx`, `Returns.tsx`, `AnalyticsBoard.tsx`, `TwoFactorSetup.tsx` y `AuditLog.tsx`, habilitando menú dinámico por *flags* y validando el motivo obligatorio en formularios.
+- **Frontend requerido**: crear los componentes React `AdvancedSearch.tsx`, `TransferOrders.tsx`, `Purchases.tsx`, `Sales.tsx`, `Returns.tsx`, `AnalyticsBoard.tsx`, `TwoFactorSetup.tsx` y `AuditLog.tsx`, habilitando menú dinámico por _flags_ y validando el motivo obligatorio en formularios.
 - **Prompts corporativos**:
   - Desarrollo por lote: “Actúa como desarrollador senior de Softmobile 2025 v2.2.0. No cambies la versión. Implementa el LOTE <X> con compatibilidad total. Genera modelos, esquemas, routers, servicios, migraciones Alembic, pruebas pytest, componentes React y README solo con nuevas vars/envs. Lote a implementar: <pega descripción del lote>.”
   - Revisión de seguridad: “Audita Softmobile 2025 v2.2.0 sin cambiar versión. Verifica JWT, validaciones de campos, motivos, 2FA y auditoría. No modifiques Settings.version ni releases.json.”
@@ -885,7 +942,7 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 - ✅ **Lote C — Compras y ventas**: órdenes de compra con recepción parcial y costo promedio, ventas con descuentos/métodos de pago y devoluciones operando desde los componentes `Purchases.tsx`, `Sales.tsx` y `Returns.tsx`, con cobertura de pruebas `pytest`.
 - ✅ **Lote D — Analítica avanzada**: endpoints `/reports/analytics/rotation`, `/reports/analytics/aging`, `/reports/analytics/stockout_forecast` y descarga PDF oscuro implementados con servicios ReportLab, pruebas `pytest` y panel `AnalyticsBoard.tsx`.
 - ✅ **Lote E — Seguridad y auditoría fina**: middleware global `X-Reason`, dependencias `require_reason`, flujos 2FA TOTP condicionados por flag `SOFTMOBILE_ENABLE_2FA`, auditoría de sesiones activas, componente `TwoFactorSetup.tsx` y bitácora visual `AuditLog.tsx` con motivos obligatorios.
-- ✅ **Lote F — Preparación modo híbrido**: cola `sync_outbox` con reintentos, estrategia *last-write-wins* en `crud.enqueue_sync_outbox`/`reset_outbox_entries`, panel de reintentos en `SyncPanel.tsx` y pruebas automáticas.
+- ✅ **Lote F — Preparación modo híbrido**: cola `sync_outbox` con reintentos, estrategia _last-write-wins_ en `crud.enqueue_sync_outbox`/`reset_outbox_entries`, panel de reintentos en `SyncPanel.tsx` y pruebas automáticas.
 
 **Próximos hitos**
 
@@ -912,15 +969,15 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 
 ## Registro operativo de lotes entregados
 
-| Lote | Entregables clave | Evidencias |
-| --- | --- | --- |
-| Inventario optimizado | Endpoints `/suppliers/{id}/batches`, columna `stores.inventory_value`, cálculo de costo promedio en movimientos y formulario de lotes en `Suppliers.tsx` | Prueba `test_supplier_batches_and_inventory_value` y validación manual del submódulo de proveedores |
-| Reportes de inventario enriquecidos | Tablas PDF con precios, totales, resumen corporativo y campos de catálogo pro (IMEI, marca, modelo, proveedor) junto con CSV extendido que contrasta valor calculado vs. contable | Pruebas `test_render_snapshot_pdf_includes_financial_and_catalog_details`, `test_inventory_csv_snapshot` y `test_inventory_snapshot_summary_includes_store_values` validando columnas, totales y valores registrados |
-| Reportes de inventario enriquecidos | Tablas PDF con precios, totales y campos de catálogo pro (IMEI, marca, modelo, proveedor) junto con CSV extendido para análisis financiero | Pruebas `test_render_snapshot_pdf_includes_financial_and_catalog_details` y `test_inventory_csv_snapshot` validando columnas y totales |
-| D — Analítica avanzada | Servicios `analytics.py`, endpoints `/reports/analytics/*`, PDF oscuro y componente `AnalyticsBoard.tsx` | Pruebas `pytest` y descarga manual desde el panel de Analítica |
-| E — Seguridad y auditoría | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` con exportación CSV/PDF y alertas visuales | Ejecución interactiva del módulo Seguridad, descarga de bitácora y pruebas automatizadas de sesiones |
-| F — Modo híbrido | Modelo `SyncOutbox`, reintentos `reset_outbox_entries`, visualización/acciones en `SyncPanel.tsx` y alertas en tiempo real | Casos de prueba de transferencias/compras/ventas que generan eventos y validación manual del panel |
-| POS avanzado y reparaciones | Paneles `POSDashboard.tsx`, `POSPayment.tsx`, `POSReceipt.tsx`, `RepairOrders.tsx`, `Customers.tsx`, `Suppliers.tsx` con sesiones de caja, exportación CSV, control de deudas y consumo automático de inventario | Validación manual del módulo Operaciones y ejecución de `pytest` + `npm --prefix frontend run build` (15/02/2025) |
+| Lote                                | Entregables clave                                                                                                                                                                                                | Evidencias                                                                                                                                                                                                           |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Inventario optimizado               | Endpoints `/suppliers/{id}/batches`, columna `stores.inventory_value`, cálculo de costo promedio en movimientos y formulario de lotes en `Suppliers.tsx`                                                         | Prueba `test_supplier_batches_and_inventory_value` y validación manual del submódulo de proveedores                                                                                                                  |
+| Reportes de inventario enriquecidos | Tablas PDF con precios, totales, resumen corporativo y campos de catálogo pro (IMEI, marca, modelo, proveedor) junto con CSV extendido que contrasta valor calculado vs. contable                                | Pruebas `test_render_snapshot_pdf_includes_financial_and_catalog_details`, `test_inventory_csv_snapshot` y `test_inventory_snapshot_summary_includes_store_values` validando columnas, totales y valores registrados |
+| Reportes de inventario enriquecidos | Tablas PDF con precios, totales y campos de catálogo pro (IMEI, marca, modelo, proveedor) junto con CSV extendido para análisis financiero                                                                       | Pruebas `test_render_snapshot_pdf_includes_financial_and_catalog_details` y `test_inventory_csv_snapshot` validando columnas y totales                                                                               |
+| D — Analítica avanzada              | Servicios `analytics.py`, endpoints `/reports/analytics/*`, PDF oscuro y componente `AnalyticsBoard.tsx`                                                                                                         | Pruebas `pytest` y descarga manual desde el panel de Analítica                                                                                                                                                       |
+| E — Seguridad y auditoría           | Middleware `X-Reason`, dependencias `require_reason`, flujos 2FA (`/security/2fa/*`), auditoría de sesiones y componentes `TwoFactorSetup.tsx` y `AuditLog.tsx` con exportación CSV/PDF y alertas visuales       | Ejecución interactiva del módulo Seguridad, descarga de bitácora y pruebas automatizadas de sesiones                                                                                                                 |
+| F — Modo híbrido                    | Modelo `SyncOutbox`, reintentos `reset_outbox_entries`, visualización/acciones en `SyncPanel.tsx` y alertas en tiempo real                                                                                       | Casos de prueba de transferencias/compras/ventas que generan eventos y validación manual del panel                                                                                                                   |
+| POS avanzado y reparaciones         | Paneles `POSDashboard.tsx`, `POSPayment.tsx`, `POSReceipt.tsx`, `RepairOrders.tsx`, `Customers.tsx`, `Suppliers.tsx` con sesiones de caja, exportación CSV, control de deudas y consumo automático de inventario | Validación manual del módulo Operaciones y ejecución de `pytest` + `npm --prefix frontend run build` (15/02/2025)                                                                                                    |
 
 ### Pasos de control iterativo (registrar tras cada entrega)
 
@@ -943,7 +1000,7 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 ### Bitácora de control — 05/03/2025
 
 - `pytest` → ✅ 43 pruebas en verde confirmando el nuevo resumen corporativo del snapshot y los contrastes calculado/contable en inventario.
-- `npm --prefix frontend run build` → ✅ compilación completada con las advertencias habituales por tamaño de *chunks* analíticos.
+- `npm --prefix frontend run build` → ✅ compilación completada con las advertencias habituales por tamaño de _chunks_ analíticos.
 - `npm --prefix frontend run test` → ✅ 9 pruebas en verde; se mantienen advertencias controladas de `act(...)` y banderas futuras de React Router documentadas previamente.
 
 ## Checklist de verificación integral
@@ -965,9 +1022,23 @@ Este mandato permanecerá activo hasta nueva comunicación corporativa.
 
 Una versión sólo se declara lista para entrega cuando el checklist se ha completado íntegramente en el entorno objetivo.
 
+## Actualización Inventario — Exportación de catálogo en PDF/XLSX (07/11/2025)
+
+- Nuevos endpoints para exportar el catálogo de dispositivos por sucursal en formatos adicionales:
+  - `GET /inventory/stores/{store_id}/devices/export/pdf` → genera un PDF en tema oscuro con columnas clave del catálogo (SKU, nombre, marca, modelo, cantidad, precio y IMEI/serie cuando aplica).
+  - `GET /inventory/stores/{store_id}/devices/export/xlsx` → genera un archivo Excel (`.xlsx`) con hoja “Catalogo” y los mismos campos del CSV tradicional.
+- Requisitos de seguridad: requieren rol `ADMIN` y cabecera `X-Reason` con al menos 5 caracteres. Envía únicamente caracteres ASCII en `X-Reason` para evitar problemas de codificación en clientes restrictivos.
+- Filtros compatibles: admiten los mismos filtros que la exportación CSV (`search`, `estado`, `categoria`, `condicion`, `estado_inventario`, `ubicacion`, `proveedor`, `fecha_ingreso_desde`, `fecha_ingreso_hasta`).
+- Tipo de respuesta y descarga: las rutas devuelven `Content-Disposition: attachment` con nombres `softmobile_catalogo_<store_id>.pdf` y `softmobile_catalogo_<store_id>.xlsx` respectivamente.
+- Implementación: `backend/app/services/inventory_catalog_export.py` produce los binarios y las rutas viven en `backend/app/routers/inventory.py` bajo el prefijo `/inventory`.
+- Pruebas automatizadas: `backend/tests/test_inventory_export_formats.py` valida tipos MIME, firmas de archivo (PDF `%PDF-`, Excel `PK`), tamaño mínimo del PDF y protección por motivo corporativo.
+
+Estas rutas complementan la exportación CSV existente (`/inventory/stores/{store_id}/devices/export`) sin romper integraciones previas, manteniendo la compatibilidad con Softmobile 2025 v2.2.0.
+
 ## Frontend — Softmobile Inventario
 
 1. **Requisitos previos**
+
    - Node.js 18+
 
 2. **Instalación y ejecución**
@@ -1011,7 +1082,7 @@ Una versión sólo se declara lista para entrega cuando el checklist se ha compl
 
 - **Prioridad por entidad**: los registros de `sync_outbox` se clasifican con prioridades `HIGH`, `NORMAL` o `LOW` mediante `_OUTBOX_PRIORITY_MAP`; ventas y transferencias siempre quedan al frente para minimizar latencia inter-sucursal.
 - **Cobertura integral de entidades**: ventas POS, clientes, reparaciones y catálogos registran eventos híbridos junto con inventario y transferencias, garantizando que los cambios críticos lleguen a la nube corporativa.
-- **Estrategias de resolución de conflicto**: se aplica *last-write-wins* reforzado con marca de tiempo (`updated_at`) y auditoría; cuando existen actualizaciones simultáneas se fusionan campos sensibles usando la fecha más reciente y se registran detalles en `AuditLog`.
+- **Estrategias de resolución de conflicto**: se aplica _last-write-wins_ reforzado con marca de tiempo (`updated_at`) y auditoría; cuando existen actualizaciones simultáneas se fusionan campos sensibles usando la fecha más reciente y se registran detalles en `AuditLog`.
 - **Métricas en tiempo real**: `GET /sync/outbox/stats` resume totales, pendientes y errores por tipo de entidad/prioridad; el panel "Sincronización avanzada" muestra estos datos con badges de color y permite monitorear la antigüedad del último pendiente.
 - **Historial por tienda**: `GET /sync/history` entrega las últimas ejecuciones por sucursal (modo, estado y errores), visibles en el panel con badges verdes/ámbar y filtros administrados por `DashboardContext`.
 - **Reintentos supervisados**: `POST /sync/outbox/retry` exige motivo corporativo (`X-Reason`) y reinicia contadores de intentos, dejando traza en `sync_outbox_reset` dentro de la bitácora.
@@ -1043,7 +1114,7 @@ Las pruebas levantan una base SQLite en memoria, deshabilitan las tareas periód
 
 ### Entorno Conda para automatización CI
 
-Los *pipelines* corporativos utilizan `environment.yml` en la raíz para preparar un entorno reproducible. Si ejecutas las mismas verificaciones de manera local, puedes replicarlo con:
+Los _pipelines_ corporativos utilizan `environment.yml` en la raíz para preparar un entorno reproducible. Si ejecutas las mismas verificaciones de manera local, puedes replicarlo con:
 
 ```bash
 conda env update --file environment.yml --name base

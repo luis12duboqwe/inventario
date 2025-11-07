@@ -5913,6 +5913,223 @@ def get_device_identifier(
     return device.identifier
 
 
+# =====================
+# WMS Bins (ligero)
+# =====================
+def create_wms_bin(
+    db: Session,
+    store_id: int,
+    payload: schemas.WMSBinCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.WMSBin:
+    get_store(db, store_id)
+    data = payload.model_dump()
+    # Normaliza código a mayúsculas sin espacios extremos
+    code = (data.get("codigo") or data.get("code") or "").strip()
+    if not code:
+        raise ValueError("wms_bin_code_required")
+    normalized_code = code.upper()
+    statement = select(models.WMSBin).where(
+        models.WMSBin.store_id == store_id,
+        func.upper(models.WMSBin.code) == normalized_code,
+    )
+    if db.scalars(statement).first() is not None:
+        raise ValueError("wms_bin_duplicate")
+    bin_obj = models.WMSBin(
+        store_id=store_id,
+        code=normalized_code,
+        aisle=data.get("pasillo") or data.get("aisle"),
+        rack=data.get("rack"),
+        level=data.get("nivel") or data.get("level"),
+        description=data.get("descripcion") or data.get("description"),
+    )
+    with transactional_session(db):
+        db.add(bin_obj)
+        flush_session(db)
+        db.refresh(bin_obj)
+        _log_action(
+            db,
+            action="wms_bin_created",
+            entity_type="wms_bin",
+            entity_id=str(bin_obj.id),
+            performed_by_id=performed_by_id,
+            details=f"SUCURSAL={store_id}, CODIGO={normalized_code}",
+        )
+    return bin_obj
+
+
+def list_wms_bins(
+    db: Session,
+    store_id: int,
+    *,
+    limit: int | None = 50,
+    offset: int = 0,
+) -> list[models.WMSBin]:
+    get_store(db, store_id)
+    statement = (
+        select(models.WMSBin)
+        .where(models.WMSBin.store_id == store_id)
+        .order_by(models.WMSBin.code.asc())
+    )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(db.scalars(statement))
+
+
+def update_wms_bin(
+    db: Session,
+    store_id: int,
+    bin_id: int,
+    payload: schemas.WMSBinUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.WMSBin:
+    get_store(db, store_id)
+    bin_obj = db.get(models.WMSBin, bin_id)
+    if bin_obj is None or bin_obj.store_id != store_id:
+        raise LookupError("wms_bin_not_found")
+    data = payload.model_dump(exclude_none=True)
+    changed_fields: list[str] = []
+    with transactional_session(db):
+        if "codigo" in data or "code" in data:
+            new_code = (data.get("codigo") or data.get(
+                "code") or "").strip().upper()
+            if not new_code:
+                raise ValueError("wms_bin_code_required")
+            exists = db.scalars(
+                select(models.WMSBin)
+                .where(models.WMSBin.store_id == store_id)
+                .where(func.upper(models.WMSBin.code) == new_code)
+                .where(models.WMSBin.id != bin_id)
+            ).first()
+            if exists is not None:
+                raise ValueError("wms_bin_duplicate")
+            bin_obj.code = new_code
+            changed_fields.append("codigo")
+        if "pasillo" in data or "aisle" in data:
+            bin_obj.aisle = data.get("pasillo") or data.get("aisle")
+            changed_fields.append("pasillo")
+        if "rack" in data:
+            bin_obj.rack = data.get("rack")
+            changed_fields.append("rack")
+        if "nivel" in data or "level" in data:
+            bin_obj.level = data.get("nivel") or data.get("level")
+            changed_fields.append("nivel")
+        if "descripcion" in data or "description" in data:
+            bin_obj.description = data.get(
+                "descripcion") or data.get("description")
+            changed_fields.append("descripcion")
+        db.add(bin_obj)
+        flush_session(db)
+        db.refresh(bin_obj)
+        if changed_fields:
+            _log_action(
+                db,
+                action="wms_bin_updated",
+                entity_type="wms_bin",
+                entity_id=str(bin_obj.id),
+                performed_by_id=performed_by_id,
+                details=json.dumps(
+                    {"fields": changed_fields}, ensure_ascii=False),
+            )
+    return bin_obj
+
+
+def assign_device_to_bin(
+    db: Session,
+    store_id: int,
+    *,
+    device_id: int,
+    bin_id: int,
+    performed_by_id: int | None,
+    reason: str | None = None,
+) -> models.DeviceBinAssignment:
+    device = get_device(db, store_id, device_id)
+    bin_obj = db.get(models.WMSBin, bin_id)
+    if bin_obj is None or bin_obj.store_id != store_id:
+        raise LookupError("wms_bin_not_found")
+    with transactional_session(db):
+        # Desactivar asignación previa activa si existe
+        prev_stmt = (
+            select(models.DeviceBinAssignment)
+            .where(models.DeviceBinAssignment.device_id == device.id)
+            .where(models.DeviceBinAssignment.active.is_(True))
+        )
+        prev = db.scalars(prev_stmt).first()
+        moved = False
+        if prev is not None:
+            if prev.bin_id == bin_obj.id:
+                # Ya asignado al mismo bin, no duplicar
+                return prev
+            prev.active = False
+            prev.unassigned_at = datetime.utcnow()
+            db.add(prev)
+            moved = True
+
+        assignment = models.DeviceBinAssignment(
+            device_id=device.id,
+            bin_id=bin_obj.id,
+            active=True,
+            assigned_at=datetime.utcnow(),
+        )
+        db.add(assignment)
+        flush_session(db)
+        db.refresh(assignment)
+
+        action = "device_bin_moved" if moved else "device_bin_assigned"
+        details = f"DEVICE={device.id}, BIN={bin_obj.code}, STORE={store_id}"
+        if reason:
+            details = f"{details}, MOTIVO={reason.strip()}"
+        _log_action(
+            db,
+            action=action,
+            entity_type="device",
+            entity_id=str(device.id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
+    return assignment
+
+
+def get_device_current_bin(db: Session, store_id: int, device_id: int) -> models.WMSBin | None:
+    device = get_device(db, store_id, device_id)
+    stmt = (
+        select(models.WMSBin)
+        .join(models.DeviceBinAssignment, models.DeviceBinAssignment.bin_id == models.WMSBin.id)
+        .where(models.DeviceBinAssignment.device_id == device.id)
+        .where(models.DeviceBinAssignment.active.is_(True))
+    )
+    return db.scalars(stmt).first()
+
+
+def list_devices_in_bin(
+    db: Session,
+    store_id: int,
+    bin_id: int,
+    *,
+    limit: int | None = 50,
+    offset: int = 0,
+) -> list[models.Device]:
+    bin_obj = db.get(models.WMSBin, bin_id)
+    if bin_obj is None or bin_obj.store_id != store_id:
+        raise LookupError("wms_bin_not_found")
+    stmt = (
+        select(models.Device)
+        .join(models.DeviceBinAssignment, models.DeviceBinAssignment.device_id == models.Device.id)
+        .where(models.DeviceBinAssignment.bin_id == bin_id)
+        .where(models.DeviceBinAssignment.active.is_(True))
+        .order_by(models.Device.sku.asc())
+    )
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return list(db.scalars(stmt))
+
+
 def list_devices(
     db: Session,
     store_id: int,

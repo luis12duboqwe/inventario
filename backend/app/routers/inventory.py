@@ -26,7 +26,7 @@ from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import inventory_import, inventory_smart_import
+from ..services import inventory_import, inventory_smart_import, inventory_labels, inventory_catalog_export
 from backend.schemas.common import Page, PageParams
 
 router = APIRouter(prefix="/inventory", tags=["inventario"])
@@ -134,7 +134,8 @@ def list_incomplete_inventory_devices(
     devices = crud.list_incomplete_devices(
         db, store_id=store_id, limit=page_size, offset=page_offset
     )
-    items = [schemas.DeviceResponse.model_validate(device) for device in devices]
+    items = [schemas.DeviceResponse.model_validate(
+        device) for device in devices]
     return Page.from_items(items, page=pagination.page, size=page_size, total=total)
 
 
@@ -168,7 +169,8 @@ def register_movement(
                 performed_by_id=current_user.id if current_user else None,
             )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Recurso no encontrado") from exc
     except PermissionError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -215,7 +217,8 @@ def update_device(
                 performed_by_id=current_user.id if current_user else None,
             )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispositivo no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Dispositivo no encontrado") from exc
     except ValueError as exc:
         if str(exc) == "device_identifier_conflict":
             raise HTTPException(
@@ -247,7 +250,8 @@ def retrieve_device_identifier(
         if message == "device_not_found":
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "device_not_found", "message": "Dispositivo no encontrado"},
+                detail={"code": "device_not_found",
+                        "message": "Dispositivo no encontrado"},
             ) from exc
         if message == "device_identifier_not_found":
             raise HTTPException(
@@ -325,7 +329,8 @@ def advanced_device_search(
     current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.CatalogProDeviceResponse]:
     if not settings.enable_catalog_pro:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Funcionalidad no disponible")
     filters = schemas.DeviceSearchFilters(
         imei=imei,
         serial=serial,
@@ -375,7 +380,8 @@ def advanced_device_search(
     )
     results: list[schemas.CatalogProDeviceResponse] = []
     for device in devices:
-        base = schemas.DeviceResponse.model_validate(device, from_attributes=True)
+        base = schemas.DeviceResponse.model_validate(
+            device, from_attributes=True)
         results.append(
             schemas.CatalogProDeviceResponse(
                 **base.model_dump(),
@@ -398,7 +404,8 @@ def inventory_summary(
     )
     page_size = min(pagination.size, limit)
     total = crud.count_stores(db)
-    stores = crud.list_inventory_summary(db, limit=page_size, offset=page_offset)
+    stores = crud.list_inventory_summary(
+        db, limit=page_size, offset=page_offset)
     summaries: list[schemas.InventorySummary] = []
     for store in stores:
         devices = [
@@ -480,6 +487,148 @@ def export_devices(
     )
 
 
+@router.get(
+    "/stores/{store_id}/devices/export/pdf",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def export_devices_pdf(
+    store_id: int = Path(..., ge=1),
+    search: str | None = Query(default=None),
+    estado: str | None = Query(default=None),
+    categoria: str | None = Query(default=None),
+    condicion: str | None = Query(default=None),
+    estado_inventario: str | None = Query(default=None),
+    ubicacion: str | None = Query(default=None),
+    proveedor: str | None = Query(default=None),
+    fecha_ingreso_desde: date | None = Query(default=None),
+    fecha_ingreso_hasta: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    estado_enum: models.CommercialState | None = None
+    if estado:
+        normalized = estado.strip()
+        for candidate in (normalized, normalized.lower(), normalized.upper()):
+            try:
+                estado_enum = models.CommercialState(candidate)
+                break
+            except ValueError:
+                continue
+    pdf_bytes = inventory_catalog_export.render_devices_catalog_pdf(
+        db,
+        store_id,
+        search=search,
+        estado=estado_enum,
+        categoria=categoria,
+        condicion=condicion,
+        estado_inventario=estado_inventario,
+        ubicacion=ubicacion,
+        proveedor=proveedor,
+        fecha_ingreso_desde=fecha_ingreso_desde,
+        fecha_ingreso_hasta=fecha_ingreso_hasta,
+    )
+    metadata = schemas.BinaryFileResponse(
+        filename=f"softmobile_catalogo_{store_id}.pdf",
+        media_type="application/pdf",
+    )
+    from io import BytesIO as _B
+    from fastapi.responses import StreamingResponse as _SR
+    return _SR(
+        _B(pdf_bytes),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
+
+
+@router.get(
+    "/stores/{store_id}/devices/export/xlsx",
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def export_devices_excel(
+    store_id: int = Path(..., ge=1),
+    search: str | None = Query(default=None),
+    estado: str | None = Query(default=None),
+    categoria: str | None = Query(default=None),
+    condicion: str | None = Query(default=None),
+    estado_inventario: str | None = Query(default=None),
+    ubicacion: str | None = Query(default=None),
+    proveedor: str | None = Query(default=None),
+    fecha_ingreso_desde: date | None = Query(default=None),
+    fecha_ingreso_hasta: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    estado_enum: models.CommercialState | None = None
+    if estado:
+        normalized = estado.strip()
+        for candidate in (normalized, normalized.lower(), normalized.upper()):
+            try:
+                estado_enum = models.CommercialState(candidate)
+                break
+            except ValueError:
+                continue
+    excel_bytes = inventory_catalog_export.render_devices_catalog_excel(
+        db,
+        store_id,
+        search=search,
+        estado=estado_enum,
+        categoria=categoria,
+        condicion=condicion,
+        estado_inventario=estado_inventario,
+        ubicacion=ubicacion,
+        proveedor=proveedor,
+        fecha_ingreso_desde=fecha_ingreso_desde,
+        fecha_ingreso_hasta=fecha_ingreso_hasta,
+    )
+    metadata = schemas.BinaryFileResponse(
+        filename=f"softmobile_catalogo_{store_id}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    from io import BytesIO as _B
+    from fastapi.responses import StreamingResponse as _SR
+    return _SR(
+        _B(excel_bytes),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
+    )
+
+
+@router.get(
+    "/stores/{store_id}/devices/{device_id}/label/pdf",
+    response_class=Response,
+    response_model=schemas.BinaryFileResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def export_device_label_pdf(
+    store_id: int = Path(..., ge=1),
+    device_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    """Genera una etiqueta PDF para un dispositivo con información clave.
+
+    Incluye SKU, nombre, precio, identificadores (IMEI/serie) y un código QR
+    corporativo. Conserva compatibilidad al exponer una ruta nueva protegida
+    por roles y motivo corporativo.
+    """
+    pdf_bytes, filename = inventory_labels.render_device_label_pdf(
+        db, store_id, device_id)
+    metadata = schemas.BinaryFileResponse(
+        filename=filename,
+        media_type="application/pdf",
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(disposition="inline"),
+    )
+
+
 @router.post(
     "/stores/{store_id}/devices/import",
     status_code=status.HTTP_201_CREATED,
@@ -515,7 +664,8 @@ async def import_devices(
                 "message": f"El archivo debe incluir las columnas requeridas: {missing}",
             }
         elif message == "csv_missing_header":
-            detail = {"code": "csv_missing_header", "message": "No se encontró encabezado en el archivo."}
+            detail = {"code": "csv_missing_header",
+                      "message": "No se encontró encabezado en el archivo."}
         elif message == "csv_encoding_error":
             detail = {
                 "code": "csv_encoding_error",
@@ -526,5 +676,6 @@ async def import_devices(
                 "code": "csv_import_error",
                 "message": "El archivo contiene datos inválidos.",
             }
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
     return schemas.InventoryImportSummary(**summary)
