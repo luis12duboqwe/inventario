@@ -242,8 +242,9 @@ const LoginScene = memo(function LoginScene({
     },
   });
 
+  // Asume el bootstrap disponible mientras el estado se resuelve para evitar bloquear la UI inicial
+  const allowBootstrap = bootstrapStatus?.disponible ?? true;
   const canDisplayBootstrap = bootstrapStatus?.disponible !== false;
-  const allowBootstrap = bootstrapStatus?.disponible === true;
   const bootstrapLoading = bootstrapMutation.isPending;
 
   const statusErrorMessage = bootstrapStatusError
