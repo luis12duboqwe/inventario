@@ -530,31 +530,43 @@ def restore_backup(
     critical_source = Path(job.critical_directory)
 
     safe_restore_root = Path(app_settings.backup_directory).resolve()
+    allowed_roots: set[Path] = {safe_restore_root}
+    safe_parent = safe_restore_root.parent.resolve()
+    if safe_parent != safe_parent.parent:
+        allowed_roots.add(safe_parent)
+
+    def _is_allowed(path: Path) -> bool:
+        return any(path.is_relative_to(root) for root in allowed_roots)
 
     import re
-    safe_subdir = None
-    if target_directory:
-        # Only allow simple subdirectory names (alphanumeric, _, -)
-        if (
-            not Path(target_directory).is_absolute()
-            and re.fullmatch(r"[a-zA-Z0-9_\-]+", target_directory)
-            and ".." not in target_directory
-            and "/" not in target_directory
-            and "\\" not in target_directory
-        ):
-            safe_subdir = target_directory
-        else:
-            raise ValueError("Nombre de directorio de restauración no permitido")
+
     target_base = safe_restore_root
-    if safe_subdir:
-        target_base = safe_restore_root / safe_subdir
-    target_base = target_base.resolve()
-    # Final check: must be under safe_restore_root
-    if not target_base.is_relative_to(safe_restore_root):
+    if target_directory:
+        target_path = Path(target_directory).expanduser()
+        if target_path.is_absolute():
+            candidate = target_path.resolve()
+            if not _is_allowed(candidate):
+                raise ValueError("Directorio de restauración no permitido")
+            target_base = candidate
+        else:
+            if (
+                re.fullmatch(r"[a-zA-Z0-9_\-]+", target_directory)
+                and ".." not in target_directory
+                and "/" not in target_directory
+                and "\\" not in target_directory
+            ):
+                candidate = (safe_restore_root / target_path).resolve()
+                if not _is_allowed(candidate):
+                    raise ValueError("Directorio de restauración no permitido")
+                target_base = candidate
+            else:
+                raise ValueError("Nombre de directorio de restauración no permitido")
+
+    if not _is_allowed(target_base):
         raise ValueError("Directorio de restauración no permitido")
 
     restore_dir = (target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}").resolve()
-    if not restore_dir.is_relative_to(safe_restore_root):
+    if not _is_allowed(restore_dir):
         raise ValueError("Directorio de restauración no permitido")
     restore_dir.mkdir(parents=True, exist_ok=True)
 
