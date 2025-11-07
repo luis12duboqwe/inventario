@@ -162,6 +162,32 @@ def test_register_repeated_user_is_rejected(client: TestClient) -> None:
     assert conflict_response.json()["detail"] == "El nombre de usuario o correo ya están registrados."
 
 
+def test_register_normalizes_identifiers_and_rejects_case_insensitive_duplicate(
+    client: TestClient,
+) -> None:
+    """El registro debe normalizar identificadores y bloquear duplicados por mayúsculas/minúsculas."""
+
+    create_payload = {
+        "username": "  UsuarioNuevo@Softmobile.COM  ",
+        "password": "clave_segura",
+    }
+    create_response = client.post("/auth/register", json=create_payload)
+
+    assert create_response.status_code == 200
+    created_user = create_response.json()
+    assert created_user["username"] == "usuarionuevo@softmobile.com"
+    assert created_user["email"] == "usuarionuevo@softmobile.com"
+
+    duplicate_payload = {
+        "email": "USUARIONUEVO@SOFTMOBILE.COM",
+        "password": "otra_clave_segura",
+    }
+    duplicate_response = client.post("/auth/register", json=duplicate_payload)
+
+    assert duplicate_response.status_code == 400
+    assert duplicate_response.json()["detail"] == "El nombre de usuario o correo ya están registrados."
+
+
 def test_refresh_reset_and_verify_flow(client: TestClient) -> None:
     """Cubre la renovación de tokens, restablecimiento y verificación de correo."""
 
