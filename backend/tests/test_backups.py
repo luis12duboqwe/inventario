@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 
@@ -94,6 +95,17 @@ def test_backup_generation_and_pdf(client, tmp_path) -> None:
         metadata_path,
     ]:
         assert path.exists()
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["notes"] == "Respaldo QA"
+    assert metadata["reason"] == "Generar respaldo QA"
+    assert metadata["triggered_by_id"] == backup_data["triggered_by_id"]
+    assert metadata["total_size_bytes"] == backup_data["total_size_bytes"]
+    assert metadata["components"] == [
+        "configuration",
+        "critical_files",
+        "database",
+    ]
 
     assert critical_directory.exists() and critical_directory.is_dir()
     expected_size = sum(
