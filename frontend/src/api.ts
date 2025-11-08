@@ -769,7 +769,12 @@ export type SalesFilters = {
 export type SaleCreateInput = {
   store_id: number;
   payment_method: PaymentMethod;
-  items: { device_id: number; quantity: number; discount_percent?: number }[];
+  items: {
+    device_id: number;
+    quantity: number;
+    discount_percent?: number;
+    batch_code?: string | null;
+  }[];
   discount_percent?: number;
   customer_id?: number;
   customer_name?: string;
@@ -861,7 +866,7 @@ export type PurchaseOrderCreateInput = {
 };
 
 export type PurchaseReceiveInput = {
-  items: { device_id: number; quantity: number }[];
+  items: { device_id: number; quantity: number; batch_code?: string | null }[];
 };
 
 export type PurchaseReturnInput = {

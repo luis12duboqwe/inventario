@@ -27,6 +27,8 @@ from .services import audit_ui as audit_ui_service
 from .services import inventory_audit
 # // [PACK30-31-BACKEND]
 from .services import inventory_accounting, inventory_audit
+from .services.purchases import assign_supplier_batch
+from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .utils import audit as audit_utils
@@ -10705,6 +10707,8 @@ def receive_purchase_order(
 
     items_by_device = {item.device_id: item for item in order.items}
     reception_details: dict[str, int] = {}
+    batch_updates: dict[str, int] = {}
+    store = get_store(db, order.store_id)
 
     for receive_item in payload.items:
         order_item = items_by_device.get(receive_item.device_id)
@@ -10738,6 +10742,28 @@ def receive_purchase_order(
         movement_device.proveedor = order.supplier
         reception_details[str(device.id)] = receive_item.quantity
 
+        batch_code = getattr(receive_item, "batch_code", None)
+        if batch_code:
+            batch = assign_supplier_batch(
+                db,
+                supplier_name=order.supplier,
+                store=store,
+                device=movement_device,
+                batch_code=batch_code,
+                quantity=receive_item.quantity,
+                unit_cost=_to_decimal(order_item.unit_cost),
+                purchase_date=datetime.utcnow().date(),
+            )
+            movement_device.lote = batch.batch_code
+            movement_device.fecha_compra = batch.purchase_date
+            movement_device.costo_unitario = batch.unit_cost
+            if batch.supplier and batch.supplier.name:
+                movement_device.proveedor = batch.supplier.name
+            db.add(movement_device)
+            batch_updates[batch.batch_code] = (
+                batch_updates.get(batch.batch_code, 0) + receive_item.quantity
+            )
+
     with transactional_session(db):
         if all(item.quantity_received == item.quantity_ordered for item in order.items):
             order.status = models.PurchaseStatus.COMPLETADA
@@ -10755,8 +10781,13 @@ def receive_purchase_order(
             entity_type="purchase_order",
             entity_id=str(order.id),
             performed_by_id=received_by_id,
-            details=json.dumps({"items": reception_details,
-                               "status": order.status.value}),
+            details=json.dumps(
+                {
+                    "items": reception_details,
+                    "status": order.status.value,
+                    "batches": batch_updates,
+                }
+            ),
         )
         db.refresh(order)
         enqueue_sync_outbox(
@@ -12329,6 +12360,7 @@ def _apply_sale_items(
     sale: models.Sale,
     items: list[schemas.SaleItemCreate],
     *,
+    store: models.Store,
     sale_discount_percent: Decimal,
     performed_by_id: int,
     reason: str | None,
@@ -12340,6 +12372,7 @@ def _apply_sale_items(
     reservation_map = reservations or {}
     blocked_reserved = dict(active_reservations or {})
     consumed: list[models.InventoryReservation] = []
+    batch_consumption: dict[str, int] = {}
 
     for item in items:
         device = get_device(db, sale.store_id, item.device_id)
@@ -12399,13 +12432,20 @@ def _apply_sale_items(
         )
         sale.items.append(sale_item)
 
+        batch_code = getattr(item, "batch_code", None)
+        movement_comment = _build_sale_movement_comment(sale, device, reason)
+        if batch_code:
+            batch_comment = batch_code.strip()
+            if batch_comment:
+                movement_comment = f"{movement_comment} | Lote {batch_comment}"[:255]
+
         movement = _register_inventory_movement(
             db,
             store_id=sale.store_id,
             device_id=device.id,
             movement_type=models.MovementType.OUT,
             quantity=item.quantity,
-            comment=_build_sale_movement_comment(sale, device, reason),
+            comment=movement_comment,
             performed_by_id=performed_by_id,
             source_store_id=sale.store_id,
             reference_type="sale",
@@ -12414,6 +12454,21 @@ def _apply_sale_items(
         movement_device = movement.device or device
         if movement_device.quantity <= 0:
             _mark_device_sold(movement_device)
+        if batch_code:
+            batch = consume_supplier_batch(
+                db,
+                store=store,
+                device=movement_device,
+                batch_code=batch_code,
+                quantity=item.quantity,
+            )
+            if batch.supplier and batch.supplier.name:
+                movement_device.proveedor = batch.supplier.name
+            movement_device.lote = batch.batch_code
+            db.add(movement_device)
+            batch_consumption[batch.batch_code] = (
+                batch_consumption.get(batch.batch_code, 0) + item.quantity
+            )
         if reservation is not None:
             consumed.append(reservation)
 
@@ -12427,6 +12482,7 @@ def _apply_sale_items(
             reference_type="sale",
             reference_id=str(sale.id),
         )
+    sale.__dict__.setdefault("_batch_consumption", batch_consumption)
     return gross_total, total_discount
 
 
@@ -12441,7 +12497,7 @@ def create_sale(
     if not payload.items:
         raise ValueError("sale_items_required")
 
-    get_store(db, payload.store_id)
+    store = get_store(db, payload.store_id)
 
     customer = None
     customer_name = payload.customer_name
@@ -12539,6 +12595,7 @@ def create_sale(
             db,
             sale,
             payload.items,
+            store=store,
             sale_discount_percent=sale_discount_percent,
             performed_by_id=performed_by_id,
             reason=reason,
@@ -12602,6 +12659,7 @@ def create_sale(
         if ledger_entry:
             _sync_customer_ledger_entry(db, ledger_entry)
 
+        batch_consumption = getattr(sale, "_batch_consumption", {})
         _log_action(
             db,
             action="sale_registered",
@@ -12609,8 +12667,14 @@ def create_sale(
             entity_id=str(sale.id),
             performed_by_id=performed_by_id,
             details=json.dumps(
-                {"store_id": sale.store_id, "total_amount": float(sale.total_amount)}),
+                {
+                    "store_id": sale.store_id,
+                    "total_amount": float(sale.total_amount),
+                    "batches": batch_consumption,
+                }
+            ),
         )
+        sale.__dict__.pop("_batch_consumption", None)
         db.refresh(sale)
         sale_payload = {
             "sale_id": sale.id,
@@ -12664,6 +12728,8 @@ def update_sale(
         raise ValueError("sale_items_required")
     if sale.returns:
         raise ValueError("sale_has_returns")
+    if any(getattr(item, "batch_code", None) for item in payload.items):
+        raise ValueError("sale_batches_update_not_supported")
 
     previous_customer = sale.customer
     previous_payment_method = sale.payment_method
@@ -12677,6 +12743,8 @@ def update_sale(
     ledger_reversal: models.CustomerLedgerEntry | None = None
     ledger_new: models.CustomerLedgerEntry | None = None
     customers_to_sync: dict[int, models.Customer] = {}
+
+    store = get_store(db, sale.store_id)
 
     with transactional_session(db):
         sale_discount_percent = _to_decimal(payload.discount_percent or 0)
@@ -12778,6 +12846,7 @@ def update_sale(
             movement_device = movement.device or device
             _restore_device_availability(movement_device)
         sale.items.clear()
+        sale.__dict__.pop("_batch_consumption", None)
         flush_session(db)
 
         if (
@@ -12813,6 +12882,7 @@ def update_sale(
             db,
             sale,
             payload.items,
+            store=store,
             sale_discount_percent=sale_discount_percent,
             performed_by_id=performed_by_id,
             reason=reason,

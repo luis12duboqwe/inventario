@@ -3272,6 +3272,15 @@ class PurchaseOrderResponse(BaseModel):
 class PurchaseReceiveItem(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
+    batch_code: str | None = Field(default=None, max_length=80)
+
+    @field_validator("batch_code")
+    @classmethod
+    def _normalize_batch_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class PurchaseReceiveRequest(BaseModel):
@@ -3838,6 +3847,7 @@ class SaleItemCreate(BaseModel):
     discount_percent: Decimal | None = Field(
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
     )
+    batch_code: str | None = Field(default=None, max_length=80)
     unit_price_override: Annotated[
         Decimal | None,
         Field(
@@ -3854,6 +3864,14 @@ class SaleItemCreate(BaseModel):
         if value is None:
             return Decimal("0")
         return value
+
+    @field_validator("batch_code")
+    @classmethod
+    def _normalize_sale_batch(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class SaleCreate(BaseModel):
