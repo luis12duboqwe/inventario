@@ -1,6 +1,7 @@
 """Pruebas unitarias para el proveedor de sesiones en sincronización."""
 from __future__ import annotations
 
+# Importar el decorador usado para simular ``transactional_session`` en las pruebas.
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any, Callable
