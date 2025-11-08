@@ -30,6 +30,7 @@ from .routers import (
     customers,
     health,
     import_validation,
+    integrations,
     inventory,
     monitoring,
     operations,
@@ -72,6 +73,7 @@ SENSITIVE_PREFIXES = (
     "/security",
     "/sync/outbox",
     "/operations",
+    "/integrations",
 )
 READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers")
 
@@ -148,6 +150,7 @@ def _mount_pos_extensions(target_app: FastAPI | APIRouter) -> None:
 ROLE_PROTECTED_PREFIXES: dict[str, set[str]] = {
     "/users": {"ADMIN"},
     "/sync": {"ADMIN", "GERENTE"},
+    "/integrations": {"ADMIN"},
 }
 
 MODULE_PERMISSION_PREFIXES: tuple[tuple[str, str], ...] = (
@@ -169,6 +172,7 @@ MODULE_PERMISSION_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/sync", "sincronizacion"),
     ("/backups", "respaldos"),
     ("/updates", "actualizaciones"),
+    ("/integrations", "integraciones"),
 )
 
 
@@ -570,6 +574,7 @@ def create_app() -> FastAPI:
         sales.router,
         operations.router,
         sync.router,
+        integrations.router,
         transfers.router,
         updates.router,
         backups.router,
