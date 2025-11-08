@@ -813,6 +813,7 @@ requirements.txt
    | `SOFTMOBILE_SYNC_MAX_ATTEMPTS`           | Intentos máximos antes de dejar un evento en estado fallido             | `5`                                    |
    | `SOFTMOBILE_ENABLE_SCHEDULER`            | Activa/desactiva tareas periódicas                                      | `1`                                    |
    | `SOFTMOBILE_ENABLE_BACKUP_SCHEDULER`     | Controla los respaldos automáticos                                      | `1`                                    |
+   | `SOFTMOBILE_ENABLE_PRICE_LISTS`          | Expone el router `/pricing` para listas de precios priorizadas          | `0`                                    |
    | `SOFTMOBILE_BACKUP_INTERVAL_SECONDS`     | Intervalo de respaldos automáticos                                      | `43200` (12 horas)                     |
    | `SOFTMOBILE_BACKUP_DIR`                  | Carpeta destino de los respaldos                                        | `./backups`                            |
    | `SOFTMOBILE_UPDATE_FEED_PATH`            | Ruta al feed JSON de versiones corporativas                             | `./docs/releases.json`                 |
@@ -932,7 +933,8 @@ La ejecución mostrará la ruta final de hooks (`.githooks`) y recordará que la
   - `SOFTMOBILE_ENABLE_CATALOG_PRO=1`
   - `SOFTMOBILE_ENABLE_TRANSFERS=1`
   - `SOFTMOBILE_ENABLE_PURCHASES_SALES=1`
-- `SOFTMOBILE_ENABLE_ANALYTICS_ADV=1`
+  - `SOFTMOBILE_ENABLE_ANALYTICS_ADV=1`
+  - `SOFTMOBILE_ENABLE_PRICE_LISTS=0`
   - `SOFTMOBILE_ENABLE_2FA=0`
   - `SOFTMOBILE_ENABLE_HYBRID_PREP=1`
 - **Lotes funcionales a desarrollar**:
@@ -1075,6 +1077,7 @@ Estas rutas complementan la exportación CSV existente (`/inventory/stores/{stor
    - Tablero principal con tarjetas dinámicas e indicadores globales alimentados por Recharts, iconografía `lucide-react` y animaciones `framer-motion`.
    - Panel exclusivo de administración (`UserManagement.tsx`) con checkboxes de roles, activación/desactivación y validación de motivos corporativos.
    - Sección de inventario con refresco automático en tiempo real (cada 30s), filtros por IMEI/modelo/estado comercial, chips de estado y alertas de stock bajo con severidad visual.
+   - Pestaña **Listas de precios** activada mediante `VITE_SOFTMOBILE_ENABLE_PRICE_LISTS` para administrar catálogos globales, por sucursal o por cliente con control de motivos corporativos.
    - Editor de fichas de dispositivos con validación de motivos corporativos, soporte para catálogo pro (marca, modelo, capacidad, costos, márgenes, garantías) y recalculo de costos promedio capturando `unit_cost` en entradas de inventario.
    - Área de sincronización con acciones de respaldo, descarga de PDF, historial por tienda y estadísticas avanzadas de la cola híbrida.
    - Notificaciones tipo toast, animaciones suaves y diseño responsive para seguridad y sincronización.

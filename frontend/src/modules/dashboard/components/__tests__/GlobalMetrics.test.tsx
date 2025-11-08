@@ -5,12 +5,14 @@ import GlobalMetrics from "../GlobalMetrics";
 import type { InventoryMetrics } from "../../../../api";
 
 type DashboardStub = {
+  enablePriceLists: boolean;
   metrics: InventoryMetrics | null;
   formatCurrency: (value: number) => string;
   loading: boolean;
 };
 
 const dashboardState: DashboardStub = {
+  enablePriceLists: false,
   metrics: null,
   formatCurrency: (value: number) =>
     new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value),

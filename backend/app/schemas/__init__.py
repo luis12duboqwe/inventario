@@ -446,6 +446,176 @@ class DeviceResponse(DeviceBase):
         return float(self.quantity * self.unit_price)
 
 
+class PriceListBase(BaseModel):
+    name: str = Field(
+        ...,
+        min_length=3,
+        max_length=120,
+        description="Nombre visible de la lista de precios.",
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Descripción interna para identificar la lista.",
+    )
+    priority: int = Field(
+        default=100,
+        ge=0,
+        le=10000,
+        description="Prioridad corporativa (0 = máxima prioridad).",
+    )
+    is_active: bool = Field(
+        default=True,
+        description="Indica si la lista puede aplicarse en cálculos de precios.",
+    )
+    store_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Sucursal asociada cuando la lista es específica para una tienda.",
+    )
+    customer_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Cliente corporativo preferente ligado a la lista.",
+    )
+    starts_at: datetime | None = Field(
+        default=None,
+        description="Fecha de inicio de vigencia (UTC).",
+    )
+    ends_at: datetime | None = Field(
+        default=None,
+        description="Fecha de término de vigencia (UTC).",
+    )
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 3:
+            raise ValueError("El nombre de la lista debe tener al menos 3 caracteres.")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_dates(self) -> "PriceListBase":
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            raise ValueError("La fecha de término debe ser posterior al inicio.")
+        return self
+
+
+class PriceListCreate(PriceListBase):
+    pass
+
+
+class PriceListUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    priority: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = Field(default=None)
+    store_id: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+    starts_at: datetime | None = Field(default=None)
+    ends_at: datetime | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _validate_dates(self) -> "PriceListUpdate":
+        if (
+            self.starts_at is not None
+            and self.ends_at is not None
+            and self.ends_at <= self.starts_at
+        ):
+            raise ValueError("La fecha de término debe ser posterior al inicio.")
+        return self
+
+
+class PriceListItemBase(BaseModel):
+    device_id: int = Field(
+        ...,
+        ge=1,
+        description="Identificador del dispositivo dentro del catálogo corporativo.",
+    )
+    price: Decimal = Field(
+        ...,
+        ge=Decimal("0"),
+        description="Precio específico definido en la lista.",
+    )
+    currency: str = Field(
+        default="MXN",
+        min_length=3,
+        max_length=8,
+        description="Moneda ISO 4217 asociada al precio.",
+    )
+    notes: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Comentarios internos sobre el ajuste de precio.",
+    )
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
+        return normalized
+
+
+class PriceListItemCreate(PriceListItemBase):
+    pass
+
+
+class PriceListItemUpdate(BaseModel):
+    price: Decimal | None = Field(default=None, ge=Decimal("0"))
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
+    notes: str | None = Field(default=None, max_length=500)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
+        return normalized
+
+
+class PriceListItemResponse(PriceListItemBase):
+    id: int
+    price_list_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("price")
+    @classmethod
+    def _serialize_price(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class PriceListResponse(PriceListBase):
+    id: int
+    scope: str
+    created_at: datetime
+    updated_at: datetime
+    items: list[PriceListItemResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PriceEvaluationRequest(BaseModel):
+    device_id: int = Field(..., ge=1)
+    store_id: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+
+
+class PriceEvaluationResponse(BaseModel):
+    device_id: int
+    price_list_id: int | None = None
+    scope: str | None = None
+    price: float | None = None
+    currency: str | None = None
+
 class SmartImportColumnMatch(BaseModel):
     campo: str
     encabezado_origen: str | None = None
