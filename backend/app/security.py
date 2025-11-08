@@ -53,14 +53,27 @@ def _build_anonymous_paths() -> frozenset[str]:
             return None
         return cleaned if cleaned.startswith("/") else f"/{cleaned}"
 
-    main_prefix = _normalize(settings.api_v1_prefix)
-    if main_prefix:
-        paths.add(f"{main_prefix}/health")
+    def _iter_prefixes() -> list[str]:
+        prefixes: list[str] = []
 
-    for alias in settings.api_alias_prefixes:
-        alias_prefix = _normalize(alias)
-        if alias_prefix:
-            paths.add(f"{alias_prefix}/health")
+        main_prefix = _normalize(settings.api_v1_prefix)
+        if main_prefix:
+            prefixes.append(main_prefix)
+
+        for alias in settings.api_alias_prefixes:
+            alias_prefix = _normalize(alias)
+            if alias_prefix:
+                prefixes.append(alias_prefix)
+
+        # Conserva el orden de declaración y evita duplicados
+        return list(dict.fromkeys(prefixes))
+
+    for prefix in _iter_prefixes():
+        for path in _BASE_ANONYMOUS_PATHS:
+            if path == "/":
+                paths.add(prefix)
+            else:
+                paths.add(f"{prefix}{path}")
 
     return frozenset(paths)
 
