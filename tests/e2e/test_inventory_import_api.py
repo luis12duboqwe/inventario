@@ -141,4 +141,6 @@ def test_inventory_import_invalid_quantity_returns_csv_error(client: TestClient)
     assert payload["detail"].get("errors")
     first_error = payload["detail"]["errors"][0]
     assert first_error["row"] == 2
-    assert isinstance(first_error["message"], str) and first_error["message"]
+    assert isinstance(first_error["message"], str) and first_error["message"].startswith(
+        "validation_error:quantity"
+    )
