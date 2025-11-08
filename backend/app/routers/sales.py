@@ -208,6 +208,11 @@ def create_sale_endpoint(
             )
         return sale
     except LookupError as exc:
+        if str(exc) == "supplier_batch_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="El lote indicado no existe o no coincide con el producto.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Recurso no encontrado",
@@ -233,6 +238,16 @@ def create_sale_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="El dispositivo ya fue vendido y no está disponible.",
+            ) from exc
+        if detail == "supplier_batch_code_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Debes indicar un lote válido para cada artículo.",
+            ) from exc
+        if detail == "supplier_batch_insufficient_stock":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El lote seleccionado no cuenta con unidades suficientes.",
             ) from exc
         if detail == "sale_requires_single_unit":
             raise HTTPException(
