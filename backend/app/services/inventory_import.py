@@ -234,9 +234,32 @@ def import_devices_from_csv(
                         result["skipped"] += 1
             except (ValueError, ValidationError) as exc:
                 result["skipped"] += 1
-                result["errors"].append({"row": index, "message": str(exc)})
+                if isinstance(exc, ValidationError):
+                    message = _format_validation_error(exc)
+                else:
+                    message = str(exc)
+                result["errors"].append({"row": index, "message": message})
 
     return result
+
+
+def _format_validation_error(exc: ValidationError) -> str:
+    """Genera un mensaje compacto y consistente para errores de validación."""
+
+    formatted_parts: list[str] = []
+    for error in exc.errors():
+        location = ".".join(str(section) for section in error.get("loc", ()))
+        error_type = error.get("type") or "unknown"
+        ctx = error.get("ctx") or {}
+        ctx_suffix = ""
+        if ctx:
+            ctx_segments = [f"{key}={value}" for key, value in sorted(ctx.items())]
+            ctx_suffix = f"[{','.join(ctx_segments)}]"
+        segment = ":".join(filter(None, [location, error_type])) or error_type
+        formatted_parts.append(f"{segment}{ctx_suffix}" if segment else error_type)
+
+    summary = ";".join(part for part in formatted_parts if part) or "unknown"
+    return f"validation_error:{summary}"
 
 
 def _normalize_string(value: Any) -> str | None:
