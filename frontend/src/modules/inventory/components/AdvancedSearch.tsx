@@ -1,12 +1,16 @@
 import { FormEvent, useMemo, useState } from "react";
-import type { CatalogDevice, DeviceSearchFilters } from "../../../api";
+import type { CatalogDevice, Device, DeviceSearchFilters } from "../../../api";
 import { searchCatalogDevices } from "../../../api";
 
 type Props = {
   token: string;
 };
 
-const createInitialFilters = (): DeviceSearchFilters => ({
+type AdvancedFiltersState = DeviceSearchFilters & {
+  estado_comercial?: NonNullable<Device["estado_comercial"]> | "";
+};
+
+const createInitialFilters = (): AdvancedFiltersState => ({
   imei: "",
   serial: "",
   color: "",
@@ -14,6 +18,7 @@ const createInitialFilters = (): DeviceSearchFilters => ({
   modelo: "",
   categoria: "",
   condicion: "",
+  estado_comercial: "",
   estado: "",
   ubicacion: "",
   proveedor: "",
@@ -22,7 +27,7 @@ const createInitialFilters = (): DeviceSearchFilters => ({
 });
 
 function AdvancedSearch({ token }: Props) {
-  const [filters, setFilters] = useState<DeviceSearchFilters>(() => createInitialFilters());
+  const [filters, setFilters] = useState<AdvancedFiltersState>(() => createInitialFilters());
   const [results, setResults] = useState<CatalogDevice[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +56,9 @@ function AdvancedSearch({ token }: Props) {
     }
     if (filters.condicion?.trim()) {
       payload.condicion = filters.condicion.trim();
+    }
+    if (filters.estado_comercial && filters.estado_comercial !== "") {
+      payload.estado_comercial = filters.estado_comercial;
     }
     if (filters.estado?.trim()) {
       payload.estado = filters.estado.trim();
@@ -99,7 +107,7 @@ function AdvancedSearch({ token }: Props) {
   };
 
   const handleReset = () => {
-  setFilters(() => createInitialFilters());
+    setFilters(() => createInitialFilters());
     setResults([]);
     setError(null);
     setSearched(false);
@@ -198,6 +206,24 @@ function AdvancedSearch({ token }: Props) {
             />
           </label>
           <label>
+            <span>Estado comercial</span>
+            <select
+              value={filters.estado_comercial ?? ""}
+              onChange={(event) =>
+                setFilters((state) => ({
+                  ...state,
+                  estado_comercial: event.target.value as AdvancedFiltersState["estado_comercial"],
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              <option value="nuevo">Nuevo</option>
+              <option value="A">Grado A</option>
+              <option value="B">Grado B</option>
+              <option value="C">Grado C</option>
+            </select>
+          </label>
+          <label>
             <span>Estado inventario</span>
             <input
               type="text"
@@ -277,12 +303,12 @@ function AdvancedSearch({ token }: Props) {
                 <tr key={`${device.id}-${device.store_id}`}>
                   <td>{device.store_name}</td>
                   <td>{device.sku}</td>
-                  <td>{device.categoria ?? "—"}</td>
-                  <td>{device.condicion ?? "—"}</td>
                   <td>{device.marca ?? "—"}</td>
                   <td>{device.modelo ?? "—"}</td>
+                  <td>{device.categoria ?? "—"}</td>
+                  <td>{device.condicion ?? "—"}</td>
                   <td>{device.color ?? "—"}</td>
-                  <td>{device.capacidad_gb ?? "—"}</td>
+                  <td>{device.capacidad ?? device.capacidad_gb ?? "—"}</td>
                   <td>{device.imei ?? "—"}</td>
                   <td>{device.serial ?? "—"}</td>
                   <td>{device.estado_comercial ?? "—"}</td>

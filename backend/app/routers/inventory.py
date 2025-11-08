@@ -16,6 +16,14 @@ from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import (
+    inventory_catalog_export,
+    inventory_import,
+    inventory_labels,
+    inventory_search,
+    inventory_smart_import,
+)
+from backend.schemas.common import Page, PageParams
 
 router = APIRouter(prefix="/inventory", tags=["inventario"])
 
@@ -382,6 +390,7 @@ def advanced_device_search(
     modelo: str | None = Query(default=None, max_length=120),
     categoria: str | None = Query(default=None, max_length=80),
     condicion: str | None = Query(default=None, max_length=60),
+    estado_comercial: str | None = Query(default=None, max_length=10),
     estado: str | None = Query(default=None, max_length=40),
     ubicacion: str | None = Query(default=None, max_length=120),
     proveedor: str | None = Query(default=None, max_length=120),
@@ -396,21 +405,35 @@ def advanced_device_search(
     if not settings.enable_catalog_pro:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Funcionalidad no disponible")
-    filters = schemas.DeviceSearchFilters(
-        imei=imei,
-        serial=serial,
-        capacidad_gb=capacidad_gb,
-        color=color,
-        marca=marca,
-        modelo=modelo,
-        categoria=categoria,
-        condicion=condicion,
-        estado=estado,
-        ubicacion=ubicacion,
-        proveedor=proveedor,
-        fecha_ingreso_desde=fecha_ingreso_desde,
-        fecha_ingreso_hasta=fecha_ingreso_hasta,
-    )
+    try:
+        filters = schemas.DeviceSearchFilters(
+            imei=imei,
+            serial=serial,
+            capacidad_gb=capacidad_gb,
+            color=color,
+            marca=marca,
+            modelo=modelo,
+            categoria=categoria,
+            condicion=condicion,
+            estado_comercial=estado_comercial,
+            estado=estado,
+            ubicacion=ubicacion,
+            proveedor=proveedor,
+            fecha_ingreso_desde=fecha_ingreso_desde,
+            fecha_ingreso_hasta=fecha_ingreso_hasta,
+        )
+    except ValidationError as exc:
+        serialized_errors: list[dict[str, object]] = []
+        for error in exc.errors():
+            context = error.get("ctx")
+            if isinstance(context, dict) and "error" in context:
+                serialized_context = dict(context)
+                if isinstance(serialized_context["error"], ValueError):
+                    serialized_context["error"] = str(serialized_context["error"])
+                serialized_errors.append({**error, "ctx": serialized_context})
+            else:
+                serialized_errors.append(error)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=serialized_errors) from exc
     if not any(
         [
             filters.imei,
@@ -420,6 +443,7 @@ def advanced_device_search(
             filters.modelo,
             filters.categoria,
             filters.condicion,
+            filters.estado_comercial is not None,
             filters.estado,
             filters.ubicacion,
             filters.proveedor,
@@ -439,20 +463,13 @@ def advanced_device_search(
         pagination.offset if (pagination.page > 1 and offset == 0) else offset
     )
     page_size = min(pagination.size, limit)
-    total = crud.count_devices_matching_filters(db, filters)
-    devices = crud.search_devices(
-        db, filters, limit=page_size, offset=page_offset
+    results, total = inventory_search.advanced_catalog_search(
+        db,
+        filters=filters,
+        limit=page_size,
+        offset=page_offset,
+        requested_by=current_user,
     )
-    results: list[schemas.CatalogProDeviceResponse] = []
-    for device in devices:
-        base = schemas.DeviceResponse.model_validate(
-            device, from_attributes=True)
-        results.append(
-            schemas.CatalogProDeviceResponse(
-                **base.model_dump(),
-                store_name=device.store.name if device.store else "",
-            )
-        )
     return Page.from_items(results, page=pagination.page, size=page_size, total=total)
 
 
