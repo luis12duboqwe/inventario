@@ -204,9 +204,16 @@ def test_advanced_analytics_endpoints(client, db_session: Session):
     assert rotation_filtered.status_code == status.HTTP_200_OK
     assert all(item["store_id"] == store_id for item in rotation_filtered.json()["items"])
 
-    settings.enable_analytics_adv = False
-    settings.enable_purchases_sales = False
     try:
+        settings.enable_purchases_sales = False
+        disabled_sales_response = client.get("/reports/analytics/rotation", headers=headers)
+        assert disabled_sales_response.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_purchases_sales = True
+
+    try:
+        settings.enable_analytics_adv = False
+        settings.enable_purchases_sales = True
         disabled_response = client.get("/reports/analytics/rotation", headers=headers)
         assert disabled_response.status_code == status.HTTP_404_NOT_FOUND
     finally:
