@@ -3296,6 +3296,15 @@ class PurchaseOrderResponse(BaseModel):
 class PurchaseReceiveItem(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
+    batch_code: str | None = Field(default=None, max_length=80)
+
+    @field_validator("batch_code")
+    @classmethod
+    def _normalize_batch_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class PurchaseReceiveRequest(BaseModel):
@@ -3631,6 +3640,41 @@ class OperationsHistoryResponse(BaseModel):
     technicians: list[OperationHistoryTechnician]
 
 
+class ReturnRecordType(str, enum.Enum):
+    PURCHASE = "purchase"
+    SALE = "sale"
+
+
+class ReturnRecord(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    type: ReturnRecordType
+    reference_id: int
+    reference_label: str
+    store_id: int
+    store_name: str | None = None
+    device_id: int
+    device_name: str | None = None
+    quantity: int
+    reason: str
+    processed_by_id: int | None = None
+    processed_by_name: str | None = None
+    partner_name: str | None = None
+    occurred_at: datetime
+
+
+class ReturnsTotals(BaseModel):
+    total: int
+    sales: int
+    purchases: int
+
+
+class ReturnsOverview(BaseModel):
+    items: list[ReturnRecord]
+    totals: ReturnsTotals
+
+
 class RepairOrderPartPayload(BaseModel):
     device_id: int | None = Field(default=None, ge=1)
     part_name: str | None = Field(default=None, max_length=120)
@@ -3827,6 +3871,7 @@ class SaleItemCreate(BaseModel):
     discount_percent: Decimal | None = Field(
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
     )
+    batch_code: str | None = Field(default=None, max_length=80)
     unit_price_override: Annotated[
         Decimal | None,
         Field(
@@ -3843,6 +3888,14 @@ class SaleItemCreate(BaseModel):
         if value is None:
             return Decimal("0")
         return value
+
+    @field_validator("batch_code")
+    @classmethod
+    def _normalize_sale_batch(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class SaleCreate(BaseModel):
@@ -4869,6 +4922,10 @@ __all__ = [
     "OperationHistoryTechnician",
     "OperationHistoryType",
     "OperationsHistoryResponse",
+    "ReturnRecordType",
+    "ReturnRecord",
+    "ReturnsTotals",
+    "ReturnsOverview",
     "SaleCreate",
     "SaleUpdate",
     "SaleItemCreate",

@@ -1,7 +1,10 @@
+import json
 from datetime import datetime, timedelta
 from fastapi import status
+from sqlalchemy import select
 from typing import Any, Iterable
 
+from backend.app import models
 from backend.app.core.roles import ADMIN, OPERADOR
 
 
@@ -179,6 +182,123 @@ def test_repair_order_flow(client):
         item for item in _extract_items(devices_final.json()) if item["id"] == device_id
     )
     assert part_final["quantity"] == 10
+
+
+def test_repair_audit_logs_include_reason(client, db_session):
+    token = _bootstrap_admin(client)
+    base_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**base_headers, "X-Reason": "Auditoria reparaciones"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Servicio Auditor", "location": "MX", "timezone": "America/Mexico_City"},
+        headers=base_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "REP-AUD-001",
+            "name": "Pantalla Auditoria",
+            "quantity": 5,
+            "unit_price": 140.0,
+            "costo_unitario": 80.0,
+        },
+        headers=reason_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    customer_response = client.post(
+        "/customers",
+        json={"name": "Cliente Auditor", "phone": "555-999-1234"},
+        headers=reason_headers,
+    )
+    assert customer_response.status_code == status.HTTP_201_CREATED
+    customer_id = customer_response.json()["id"]
+
+    creation_reason = "Registro auditoria"
+    create_headers = {**base_headers, "X-Reason": creation_reason}
+    repair_payload = {
+        "store_id": store_id,
+        "customer_id": customer_id,
+        "technician_name": "Tecnico Auditor",
+        "damage_type": "Diagnostico preventivo",
+        "diagnosis": "Evaluacion general",
+        "device_model": "Softphone X",
+        "labor_cost": 120.0,
+        "parts": [
+            {
+                "device_id": device_id,
+                "quantity": 1,
+                "unit_cost": 85.0,
+                "source": "STOCK",
+            }
+        ],
+    }
+    create_response = client.post(
+        "/repairs",
+        json=repair_payload,
+        headers=create_headers,
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    order_id = create_response.json()["id"]
+
+    created_log = db_session.execute(
+        select(models.AuditLog)
+        .where(
+            models.AuditLog.action == "repair_order_created",
+            models.AuditLog.entity_type == "repair_order",
+            models.AuditLog.entity_id == str(order_id),
+        )
+        .order_by(models.AuditLog.created_at.desc())
+    ).scalars().first()
+    assert created_log is not None
+    created_details = json.loads(created_log.details)
+    assert created_details["reason"] == creation_reason
+
+    update_reason = "Actualizacion auditoria"
+    update_response = client.put(
+        f"/repairs/{order_id}",
+        json={"status": "EN_PROCESO", "labor_cost": 135.0},
+        headers={**base_headers, "X-Reason": update_reason},
+    )
+    assert update_response.status_code == status.HTTP_200_OK
+
+    updated_log = db_session.execute(
+        select(models.AuditLog)
+        .where(
+            models.AuditLog.action == "repair_order_updated",
+            models.AuditLog.entity_type == "repair_order",
+            models.AuditLog.entity_id == str(order_id),
+        )
+        .order_by(models.AuditLog.created_at.desc())
+    ).scalars().first()
+    assert updated_log is not None
+    updated_details = json.loads(updated_log.details)
+    assert updated_details["reason"] == update_reason
+
+    delete_reason = "Eliminacion auditoria"
+    delete_response = client.delete(
+        f"/repairs/{order_id}",
+        headers={**base_headers, "X-Reason": delete_reason},
+    )
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+
+    deleted_log = db_session.execute(
+        select(models.AuditLog)
+        .where(
+            models.AuditLog.action == "repair_order_deleted",
+            models.AuditLog.entity_type == "repair_order",
+            models.AuditLog.entity_id == str(order_id),
+        )
+        .order_by(models.AuditLog.created_at.desc())
+    ).scalars().first()
+    assert deleted_log is not None
+    deleted_details = json.loads(deleted_log.details)
+    assert deleted_details["reason"] == delete_reason
 
 
 def test_repair_parts_management_and_close(client):  # // [PACK37-backend]

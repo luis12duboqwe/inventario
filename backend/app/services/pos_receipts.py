@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 
 from reportlab.lib.pagesizes import letter
@@ -21,6 +22,12 @@ def _ensure_page_space(pdf: canvas.Canvas, current_y: float, lines: int = 1) -> 
         pdf.setFont("Helvetica", 10)
         return letter[1] - 40
     return current_y
+
+
+def _format_currency(value: Decimal | float | int | None) -> str:
+    decimal_value = Decimal("0") if value is None else Decimal(str(value))
+    quantized = decimal_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return f"{quantized:.2f}"
 
 
 def render_receipt_pdf(sale: models.Sale, config: models.POSConfig) -> bytes:
@@ -50,7 +57,9 @@ def render_receipt_pdf(sale: models.Sale, config: models.POSConfig) -> bytes:
     if sale.customer_name:
         pdf.drawString(40, y_position, f"Cliente: {sale.customer_name}")
         y_position -= 14
-    pdf.drawString(40, y_position, f"Método: {sale.payment_method.value}")
+    payment_method = getattr(sale, "payment_method", None)
+    payment_label = payment_method.value if payment_method else "SIN PAGO"
+    pdf.drawString(40, y_position, f"Método: {payment_label}")
     y_position -= 20
 
     pdf.setFont("Helvetica-Bold", 11)
@@ -65,29 +74,41 @@ def render_receipt_pdf(sale: models.Sale, config: models.POSConfig) -> bytes:
         pdf.drawRightString(
             width - 40,
             y_position,
-            f"${item.total_line:.2f}",
+            f"${_format_currency(getattr(item, 'total_line', None))}",
         )
         y_position -= 14
         pdf.drawString(
             60,
             y_position,
-            f"Precio: ${item.unit_price:.2f}  Descuento: ${item.discount_amount:.2f}",
+            "Precio: $%s  Descuento: $%s"
+            % (
+                _format_currency(getattr(item, "unit_price", None)),
+                _format_currency(getattr(item, "discount_amount", 0)),
+            ),
         )
         y_position -= 14
 
     y_position = _ensure_page_space(pdf, y_position, 4)
     pdf.line(40, y_position, width - 40, y_position)
     y_position -= 14
-    pdf.drawRightString(width - 40, y_position, f"Subtotal: ${sale.subtotal_amount:.2f}")
+    pdf.drawRightString(
+        width - 40,
+        y_position,
+        f"Subtotal: ${_format_currency(getattr(sale, 'subtotal_amount', None))}",
+    )
     y_position -= 14
     pdf.drawRightString(
         width - 40,
         y_position,
-        f"Impuestos ({float(config.tax_rate):.2f}%): ${sale.tax_amount:.2f}",
+        f"Impuestos ({_format_currency(config.tax_rate)}%): ${_format_currency(getattr(sale, 'tax_amount', None))}",
     )
     y_position -= 14
     pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawRightString(width - 40, y_position, f"Total: ${sale.total_amount:.2f}")
+    pdf.drawRightString(
+        width - 40,
+        y_position,
+        f"Total: ${_format_currency(getattr(sale, 'total_amount', None))}",
+    )
 
     pdf.showPage()
     pdf.save()

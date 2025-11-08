@@ -3,6 +3,7 @@ import type { Customer, Device, Sale, Store, UserAccount } from "../../../api";
 export type SaleLine = {
   device: Device;
   quantity: number;
+  batchCode: string;
 };
 
 export type SaleFormState = {

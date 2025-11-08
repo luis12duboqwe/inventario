@@ -560,6 +560,11 @@ def receive_purchase_order_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Cantidad a recibir inválida.",
             ) from exc
+        if detail == "supplier_batch_code_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Indica un código de lote válido para la recepción.",
+            ) from exc
         raise
 
 

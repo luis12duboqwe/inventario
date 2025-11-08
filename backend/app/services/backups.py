@@ -141,12 +141,18 @@ def _write_metadata(
     config_path: Path,
     critical_directory: Path,
     copied_files: list[str],
+    total_size_bytes: int,
+    triggered_by_id: int | None,
+    reason: str | None,
 ) -> None:
     metadata = {
         "timestamp": timestamp,
         "mode": mode.value,
         "notes": notes,
         "components": components,
+        "reason": reason,
+        "triggered_by_id": triggered_by_id,
+        "total_size_bytes": total_size_bytes,
         "files": {
             "json": str(json_path),
             "sql": str(sql_path),
@@ -461,37 +467,88 @@ def generate_backup(
         config_snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
 
     copied_files = _collect_critical_files(critical_directory)
-    _write_metadata(
-        metadata_path,
-        timestamp=timestamp,
-        mode=mode,
-        notes=notes,
-        components=selected_components,
-        json_path=json_path,
-        sql_path=sql_path,
-        pdf_path=pdf_path,
-        archive_path=archive_path,
-        config_path=config_path,
-        critical_directory=critical_directory,
-        copied_files=copied_files,
-    )
+    normalized_reason = reason.strip() if reason else None
 
-    with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as zip_file:
-        zip_file.write(pdf_path, arcname=f"reportes/{pdf_path.name}")
-        zip_file.write(json_path, arcname=f"datos/{json_path.name}")
-        zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
-        zip_file.write(config_path, arcname=f"config/{config_path.name}")
-        zip_file.write(metadata_path, arcname=f"metadata/{metadata_path.name}")
-        for file_path in critical_directory.rglob("*"):
-            if file_path.is_file():
-                arcname = Path("criticos") / \
-                    file_path.relative_to(critical_directory)
-                zip_file.write(file_path, arcname=str(arcname))
+    def _build_archive() -> None:
+        with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as zip_file:
+            zip_file.write(pdf_path, arcname=f"reportes/{pdf_path.name}")
+            zip_file.write(json_path, arcname=f"datos/{json_path.name}")
+            zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
+            zip_file.write(config_path, arcname=f"config/{config_path.name}")
+            zip_file.write(metadata_path, arcname=f"metadata/{metadata_path.name}")
+            for file_path in critical_directory.rglob("*"):
+                if file_path.is_file():
+                    arcname = Path("criticos") / \
+                        file_path.relative_to(critical_directory)
+                    zip_file.write(file_path, arcname=str(arcname))
 
-    total_size = _calculate_total_size(
-        [pdf_path, json_path, sql_path, config_path,
-            metadata_path, archive_path, critical_directory]
-    )
+    total_size_estimate = 0
+    calculated_size = 0
+    for _ in range(3):
+        _write_metadata(
+            metadata_path,
+            timestamp=timestamp,
+            mode=mode,
+            notes=notes,
+            components=selected_components,
+            json_path=json_path,
+            sql_path=sql_path,
+            pdf_path=pdf_path,
+            archive_path=archive_path,
+            config_path=config_path,
+            critical_directory=critical_directory,
+            copied_files=copied_files,
+            total_size_bytes=total_size_estimate,
+            triggered_by_id=triggered_by_id,
+            reason=normalized_reason,
+        )
+        _build_archive()
+        calculated_size = _calculate_total_size(
+            [
+                pdf_path,
+                json_path,
+                sql_path,
+                config_path,
+                metadata_path,
+                archive_path,
+                critical_directory,
+            ]
+        )
+        if calculated_size == total_size_estimate:
+            break
+        total_size_estimate = calculated_size
+
+    total_size = calculated_size
+    if total_size != total_size_estimate:
+        _write_metadata(
+            metadata_path,
+            timestamp=timestamp,
+            mode=mode,
+            notes=notes,
+            components=selected_components,
+            json_path=json_path,
+            sql_path=sql_path,
+            pdf_path=pdf_path,
+            archive_path=archive_path,
+            config_path=config_path,
+            critical_directory=critical_directory,
+            copied_files=copied_files,
+            total_size_bytes=total_size,
+            triggered_by_id=triggered_by_id,
+            reason=normalized_reason,
+        )
+        _build_archive()
+        total_size = _calculate_total_size(
+            [
+                pdf_path,
+                json_path,
+                sql_path,
+                config_path,
+                metadata_path,
+                archive_path,
+                critical_directory,
+            ]
+        )
 
     job = crud.create_backup_job(
         db,
@@ -507,7 +564,7 @@ def generate_backup(
         total_size_bytes=total_size,
         notes=notes,
         triggered_by_id=triggered_by_id,
-        reason=reason.strip() if reason else None,
+        reason=normalized_reason,
     )
     return job
 

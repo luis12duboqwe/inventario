@@ -12,7 +12,7 @@ from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import pos_receipts
+from ..services import cash_register, pos_receipts
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -195,13 +195,13 @@ def open_pos_session_endpoint(
         opening_amount=payload.opening_amount,
         notes=payload.notes,
     )
-    session = crud.open_cash_session(
+    session = cash_register.open_session(
         db,
         open_payload,
         opened_by_id=current_user.id if current_user else None,
         reason=reason,
     )
-    return schemas.POSSessionSummary.from_model(session)
+    return cash_register.to_summary(session)
 
 
 # // [PACK34-endpoints]
@@ -222,13 +222,13 @@ def close_pos_session_endpoint(
         notes=payload.notes,
         payment_breakdown=payload.payments,
     )
-    session = crud.close_cash_session(
+    session = cash_register.close_session(
         db,
         close_payload,
         closed_by_id=current_user.id if current_user else None,
         reason=reason,
     )
-    return schemas.POSSessionSummary.from_model(session)
+    return cash_register.to_summary(session)
 
 
 # // [PACK34-endpoints]
@@ -244,13 +244,13 @@ def read_last_pos_session_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        session = crud.get_last_cash_session_for_store(db, store_id=branch_id)
+        session = cash_register.last_session_for_store(db, store_id=branch_id)
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No existe una sesión previa en la sucursal.",
         ) from exc
-    return schemas.POSSessionSummary.from_model(session)
+    return cash_register.to_summary(session)
 
 
 # // [PACK34-endpoints]
@@ -494,4 +494,10 @@ def list_cash_sessions_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
-    return crud.list_cash_sessions(db, store_id=store_id, limit=limit, offset=offset)
+    sessions = cash_register.list_sessions(
+        db,
+        store_id=store_id,
+        limit=limit,
+        offset=offset,
+    )
+    return sessions

@@ -29,7 +29,7 @@ router = APIRouter(prefix="/reports", tags=["reportes"])
 
 
 def _ensure_analytics_enabled() -> None:
-    if not settings.enable_analytics_adv:
+    if not settings.enable_analytics_adv or not settings.enable_purchases_sales:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Analítica avanzada no disponible",

@@ -233,12 +233,41 @@ def verify_totp(secret: str, code: str) -> bool:
     return totp.verify(code, valid_window=1)
 
 
+def _collect_user_roles(user: Any) -> set[str]:
+    """Extrae los roles declarados para el usuario incluyendo el campo primario."""
+
+    collected: set[str] = set()
+
+    assignments = getattr(user, "roles", None) or []
+    for assignment in assignments:
+        role_obj = getattr(assignment, "role", None)
+        role_name = getattr(role_obj, "name", None)
+        if role_name:
+            collected.add(str(role_name).upper())
+            continue
+        fallback_name = getattr(assignment, "name", None)
+        if fallback_name:
+            collected.add(str(fallback_name).upper())
+
+    direct_role = getattr(user, "rol", None) or getattr(user, "role", None)
+    if direct_role:
+        direct_name = getattr(direct_role, "name", None)
+        if direct_name:
+            collected.add(str(direct_name).upper())
+        else:
+            collected.add(str(direct_role).upper())
+
+    return collected
+
+
 def require_roles(*roles: str):
     async def dependency(current_user=Depends(get_current_user)):
-        user_roles = {assignment.role.name for assignment in current_user.roles}
+        user_roles = _collect_user_roles(current_user)
         if ADMIN in user_roles:
             return current_user
-        if roles and user_roles.isdisjoint(roles):
+
+        required_roles = {role.upper() for role in roles if isinstance(role, str)}
+        if required_roles and user_roles.isdisjoint(required_roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No cuenta con permisos para realizar esta acción.",
