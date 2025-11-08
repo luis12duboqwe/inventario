@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Iterator
 
@@ -76,6 +77,10 @@ def client(db_session: Session) -> Iterator[TestClient]:
     settings.enable_background_scheduler = False
     settings.enable_backup_scheduler = False
 
+    original_backup_dir = settings.backup_directory
+    tmp_backup_dir = tempfile.TemporaryDirectory()
+    settings.backup_directory = tmp_backup_dir.name
+
     app = create_app()
 
     def override_get_db() -> Iterator[Session]:
@@ -86,12 +91,15 @@ def client(db_session: Session) -> Iterator[TestClient]:
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as test_client:
-        if settings.bootstrap_token:
-            test_client.headers.update({"X-Bootstrap-Token": settings.bootstrap_token})
-        yield test_client
-
-    app.dependency_overrides.clear()
+    try:
+        with TestClient(app) as test_client:
+            if settings.bootstrap_token:
+                test_client.headers.update({"X-Bootstrap-Token": settings.bootstrap_token})
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
+        settings.backup_directory = original_backup_dir
+        tmp_backup_dir.cleanup()
 
 
 def _auth_headers(client: TestClient) -> dict[str, str]:
