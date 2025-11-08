@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 from typing import Iterable
 
@@ -13,6 +13,42 @@ from sqlalchemy.orm import Session
 
 from ..models import AuditUI
 from ..schemas import AuditUIExportFormat
+
+
+def normalize_boundary(
+    value: date | datetime | None,
+    *,
+    end: bool = False,
+) -> datetime | None:
+    """Normaliza límites de fechas para consultas sin acceder a la base de datos."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        normalized = value
+    else:
+        normalized = datetime.combine(
+            value,
+            datetime.max.time() if end else datetime.min.time(),
+        )
+
+    if normalized.tzinfo is None:
+        return normalized.replace(tzinfo=timezone.utc)
+
+    return normalized.astimezone(timezone.utc)
+
+
+def normalize_range(
+    date_from: date | datetime | None,
+    date_to: date | datetime | None,
+) -> tuple[datetime | None, datetime | None]:
+    """Obtiene los límites normalizados que aplican a una consulta de auditoría UI."""
+
+    return (
+        normalize_boundary(date_from, end=False),
+        normalize_boundary(date_to, end=True),
+    )
 
 RETENTION_DAYS = 180
 
