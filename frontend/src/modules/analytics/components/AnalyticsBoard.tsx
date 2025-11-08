@@ -150,7 +150,7 @@ function AnalyticsBoard({ token }: Props) {
           err instanceof Error
             ? `No fue posible cargar categorías: ${err.message}`
             : "No fue posible cargar categorías";
-  pushToast({ message, variant: "info" });
+        pushToast({ message, variant: "error" });
       }
     };
     fetchCategories();
