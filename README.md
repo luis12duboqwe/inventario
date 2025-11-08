@@ -306,6 +306,12 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 5. Consultar **Historial reciente** para validar cada corrida y descargar los reportes en PDF/CSV.
 6. Ir a **Correcciones pendientes** para completar fichas con datos incompletos y sincronizar con el inventario corporativo.
 
+**Etiquetas y escaneo en Inventario**
+
+- Desde la tabla principal puedes imprimir etiquetas individuales o por lote; el servicio `backend/app/services/inventory_labels.py` genera PDFs A7 con fondo corporativo, QR interno y código de barras **Code128** del SKU para que los escáneres lean tanto dispositivos nuevos como reposiciones.【F:backend/app/services/inventory_labels.py†L1-L118】
+- Las fichas de alta y recepción aceptan lectores en modo teclado: basta con enfocar el campo IMEI/SKU y disparar el lector para que el valor quede registrado en la ficha o en los formularios de recepción parcial. El componente `ScanIMEI` se reutiliza en conteos cíclicos y correcciones para capturar identificadores en serie sin escribir manualmente.【F:frontend/src/modules/inventory/components/cycle-count/ScanIMEI.tsx†L1-L36】
+- Cada etiqueta integra simultáneamente QR y Code128; al escanear el QR en bodegas se muestra la ficha del dispositivo (`softmobile://device/<id>`), mientras que el Code128 alimenta directamente los formularios de altas y recepciones al pegar el SKU en el campo activo. Esto evita errores de digitación y mantiene sincronizados los estados de inventario y valuación.
+
 El sistema soporta archivos de más de 1 000 filas, conserva compatibilidad con catálogos previos y registra logs `info`/`warning` por importación para auditoría corporativa.【F:backend/app/crud.py†L10135-L10168】
 
 ### Plan activo de finalización v2.2.0
@@ -862,6 +868,12 @@ El módulo POS complementa el flujo de compras/ventas con un carrito dinámico, 
 - `POSPayment.tsx`: controla método de pago, desglose multiforma, selección de cliente/sesión de caja, descuento global y motivo corporativo antes de enviar la venta o guardar borradores.
 - `POSReceipt.tsx`: descarga o envía el PDF inmediatamente después de la venta.
 - `POSSettings.tsx`: define impuestos, prefijo de factura, impresora y productos frecuentes.
+
+**Escaneo y etiquetado en el POS y transferencias**
+
+- Los lectores USB/Bluetooth operan en modo teclado: al escanear un IMEI o SKU se llena la columna correspondiente dentro de `CartPanel`, que guía las ventas y transferencias con totales en vivo y mensajes cuando el stock es insuficiente.【F:frontend/src/pages/pos/components/CartPanel.tsx†L1-L104】
+- El carrito clásico (`CartTable`) acepta entradas simultáneas por ID de producto, SKU o IMEI; tras cada lectura se agrega la línea al borrador y se puede ajustar cantidad, precio y descuento sin perder la referencia original del escaneo.【F:frontend/src/modules/operations/components/pos/CartTable.tsx†L1-L134】
+- En flujos de venta POS y transferencias internas, la etiqueta PDF (QR + Code128) facilita ubicar y validar dispositivos: el QR abre la ficha para confirmar costos/márgenes y el Code128 alimenta los formularios de envío o recepción, manteniendo trazabilidad entre inventario, POS y transferencias corporativas.【F:backend/app/services/inventory_labels.py†L1-L118】
 
 ### Experiencia visual renovada
 
