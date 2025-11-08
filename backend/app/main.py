@@ -22,6 +22,12 @@ from .config import settings
 from .core.roles import DEFAULT_ROLES
 from .core.transactions import transactional_session
 from .database import SessionLocal, get_db, Base, engine
+from .middleware import (
+    DEFAULT_EXPORT_PREFIXES,
+    DEFAULT_EXPORT_TOKENS,
+    DEFAULT_SENSITIVE_GET_PREFIXES,
+    build_reason_header_middleware,
+)
 from .routers import (
     alerts,
     audit,
@@ -462,53 +468,17 @@ def create_app() -> FastAPI:
                 "No se pudo registrar el error del sistema en la bitácora."
             )
 
+    _enforce_reason_header = build_reason_header_middleware(
+        sensitive_methods=SENSITIVE_METHODS,
+        sensitive_prefixes=SENSITIVE_PREFIXES,
+        export_tokens=DEFAULT_EXPORT_TOKENS,
+        export_prefixes=DEFAULT_EXPORT_PREFIXES,
+        read_sensitive_get_prefixes=DEFAULT_SENSITIVE_GET_PREFIXES,
+    )
+
     @app.middleware("http")
     async def enforce_reason_header(request: Request, call_next):
-        method_upper = request.method.upper()
-
-        path = request.url.path
-
-        # Para solicitudes GET, solo exigimos X-Reason en exportaciones y lecturas sensibles del POS
-        def _requires_reason_get(p: str) -> bool:
-            # Exportaciones de archivos (CSV/PDF/Excel) o rutas /export/ en módulos de reportes/ventas/compras/respaldos/usuarios
-            if any(token in p for token in ("/csv", "/pdf", "/xlsx", "/export/")) and (
-                p.startswith("/reports")
-                or p.startswith("/purchases")
-                or p.startswith("/sales")
-                or p.startswith("/backups")
-                or p.startswith("/users")
-            ):
-                return True
-            # Lecturas sensibles del POS (recibos/config)
-            if p.startswith("/pos/receipt") or p.startswith("/pos/config"):
-                return True
-            return False
-
-        requires_reason = (
-            method_upper in SENSITIVE_METHODS
-            and any(path.startswith(prefix) for prefix in SENSITIVE_PREFIXES)
-        ) or (method_upper == "GET" and _requires_reason_get(path))
-
-        if requires_reason:
-            reason = request.headers.get("X-Reason")
-            if not reason or len(reason.strip()) < 5:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "detail": "Reason header requerido",
-                    },
-                )
-            request.state.x_reason = reason.strip()
-        else:
-            # Si no es requerido por ruta, pero el cliente envía X-Reason y es inválido, rechazar
-            reason = request.headers.get("X-Reason")
-            if reason is not None and len(reason.strip()) < 5:
-                return JSONResponse(
-                    status_code=400,
-                    content={"detail": "Reason header requerido"},
-                )
-        response = await call_next(request)
-        return response
+        return await _enforce_reason_header(request, call_next)
 
     @app.middleware("http")
     async def capture_internal_errors(request: Request, call_next):

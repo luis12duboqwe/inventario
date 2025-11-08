@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from urllib.parse import urlsplit
+import tempfile
 
 # Configurar variables de entorno ANTES de cualquier importación del backend
 # para evitar errores de validación en Settings()
@@ -85,6 +86,10 @@ def client(db_session: Session) -> Iterator[TestClient]:
     settings.enable_background_scheduler = False
     settings.enable_backup_scheduler = False
 
+    original_backup_dir = settings.backup_directory
+    backup_tmp_dir = tempfile.TemporaryDirectory()
+    settings.backup_directory = backup_tmp_dir.name
+
     app = create_app()
 
     def override_get_db():
@@ -138,3 +143,5 @@ def client(db_session: Session) -> Iterator[TestClient]:
         yield test_client
 
     app.dependency_overrides.clear()
+    settings.backup_directory = original_backup_dir
+    backup_tmp_dir.cleanup()
