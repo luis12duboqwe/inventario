@@ -521,41 +521,40 @@ def generate_backup(
         total_size_estimate = calculated_size
 
     total_size = calculated_size
-    if last_written_size != total_size:
-        for _ in range(3):
-            last_written_size = total_size
-            _write_metadata(
+    for _ in range(3):
+        last_written_size = total_size
+        _write_metadata(
+            metadata_path,
+            timestamp=timestamp,
+            mode=mode,
+            notes=notes,
+            components=selected_components,
+            json_path=json_path,
+            sql_path=sql_path,
+            pdf_path=pdf_path,
+            archive_path=archive_path,
+            config_path=config_path,
+            critical_directory=critical_directory,
+            copied_files=copied_files,
+            total_size_bytes=total_size,
+            triggered_by_id=triggered_by_id,
+            reason=normalized_reason,
+        )
+        _build_archive()
+        recalculated_size = _calculate_total_size(
+            [
+                pdf_path,
+                json_path,
+                sql_path,
+                config_path,
                 metadata_path,
-                timestamp=timestamp,
-                mode=mode,
-                notes=notes,
-                components=selected_components,
-                json_path=json_path,
-                sql_path=sql_path,
-                pdf_path=pdf_path,
-                archive_path=archive_path,
-                config_path=config_path,
-                critical_directory=critical_directory,
-                copied_files=copied_files,
-                total_size_bytes=total_size,
-                triggered_by_id=triggered_by_id,
-                reason=normalized_reason,
-            )
-            _build_archive()
-            recalculated_size = _calculate_total_size(
-                [
-                    pdf_path,
-                    json_path,
-                    sql_path,
-                    config_path,
-                    metadata_path,
-                    archive_path,
-                    critical_directory,
-                ]
-            )
-            if recalculated_size == total_size:
-                break
-            total_size = recalculated_size
+                archive_path,
+                critical_directory,
+            ]
+        )
+        if recalculated_size == total_size:
+            break
+        total_size = recalculated_size
 
     job = crud.create_backup_job(
         db,

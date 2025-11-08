@@ -5626,7 +5626,10 @@ def list_price_lists(
         statement = statement.where(models.PriceList.is_active.is_(is_active))
     if include_items:
         statement = statement.options(joinedload(models.PriceList.items))
-    return list(db.scalars(statement))
+    result = db.scalars(statement)
+    if include_items:
+        result = result.unique()
+    return list(result)
 
 
 def get_price_list(
@@ -5639,7 +5642,10 @@ def get_price_list(
     if include_items:
         statement = statement.options(joinedload(models.PriceList.items))
     try:
-        return db.scalars(statement).one()
+        result = db.scalars(statement)
+        if include_items:
+            result = result.unique()
+        return result.one()
     except NoResultFound as exc:
         raise LookupError("price_list_not_found") from exc
 

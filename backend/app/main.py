@@ -43,6 +43,7 @@ from .routers import (
     inventory_import,
     monitoring,
     operations,
+    price_lists,
     payments,
     pos,
     purchases,
@@ -85,6 +86,7 @@ SENSITIVE_PREFIXES = (
     "/sync/outbox",
     "/operations",
     "/integrations",
+    "/price-lists",
 )
 READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers")
 
@@ -553,6 +555,7 @@ def create_app() -> FastAPI:
         sales.router,
         returns.router,
         operations.router,
+        price_lists.router,
         sync.router,
         integrations.router,
         transfers.router,
