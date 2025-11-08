@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import type {
   Device,
   PurchaseOrder,
+  PurchaseReceiveInput,
   PurchaseRecord,
   PurchaseRecordPayload,
   PurchaseStatistics,
@@ -550,8 +551,29 @@ export const usePurchasesController = ({
       setMessage("La orden ya fue recibida por completo.");
       return;
     }
+    const itemsWithBatch: PurchaseReceiveInput["items"] = [];
+    for (const entry of pendingItems) {
+      const deviceInfo =
+        recordDevices.find((device) => device.id === entry.device_id) ??
+        devices.find((device) => device.id === entry.device_id);
+      const promptLabel = deviceInfo
+        ? `Lote recibido para ${deviceInfo.sku} · ${deviceInfo.name} (opcional)`
+        : `Lote recibido para el dispositivo #${entry.device_id} (opcional)`;
+      const batchInput = window.prompt(promptLabel, "");
+      if (batchInput === null) {
+        setMessage("Recepción cancelada por el usuario.");
+        return;
+      }
+      const normalizedBatch = batchInput.trim();
+      if (normalizedBatch) {
+        itemsWithBatch.push({ ...entry, batch_code: normalizedBatch });
+      } else {
+        itemsWithBatch.push(entry);
+      }
+    }
+
     try {
-      await receivePurchaseOrder(token, order.id, { items: pendingItems }, reason);
+      await receivePurchaseOrder(token, order.id, { items: itemsWithBatch }, reason);
       setMessage("Orden actualizada y productos recibidos");
       await refreshOrders(order.store_id);
       onInventoryRefresh?.();

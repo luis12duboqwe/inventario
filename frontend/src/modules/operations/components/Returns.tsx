@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { PurchaseOrder, Sale, Store } from "../../../api";
-import { listPurchaseOrders, listSales, registerPurchaseReturn, registerSaleReturn } from "../../../api";
+import type { PurchaseOrder, ReturnRecord, Sale, Store } from "../../../api";
+import {
+  listPurchaseOrders,
+  listReturns,
+  listSales,
+  registerPurchaseReturn,
+  registerSaleReturn,
+} from "../../../api";
 
 type Props = {
   token: string;
@@ -65,6 +71,10 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
   const [saleForm, setSaleForm] = useState<SaleReturnForm>(() => ({ ...initialSaleReturn, storeId: defaultStoreId }));
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [historyStoreId, setHistoryStoreId] = useState<number | null>(defaultStoreId);
+  const [history, setHistory] = useState<ReturnRecord[]>([]);
+  const [historyTotals, setHistoryTotals] = useState({ total: 0, sales: 0, purchases: 0 });
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const selectedPurchaseOrder = useMemo(
     () => purchaseOrders.find((order) => order.id === purchaseForm.orderId) ?? null,
@@ -116,6 +126,35 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
     });
   }, [saleForm.storeId, refreshSales]);
 
+  const refreshHistory = useCallback(
+    async (storeId?: number | null) => {
+      setHistoryLoading(true);
+      try {
+        const overview = await listReturns(token, {
+          storeId: typeof storeId === "number" ? storeId : undefined,
+          limit: 25,
+        });
+        setHistory(overview.items);
+        setHistoryTotals(overview.totals);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "No fue posible cargar el historial de devoluciones"
+        );
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [token]
+  );
+
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      void refreshHistory(historyStoreId);
+    });
+  }, [historyStoreId, refreshHistory]);
+
   const updatePurchaseForm = (updates: Partial<PurchaseReturnForm>) => {
     setPurchaseForm((current) => ({ ...current, ...updates }));
   };
@@ -148,6 +187,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
       );
       setMessage("Devolución al proveedor registrada correctamente");
       await refreshOrders(purchaseForm.storeId);
+      await refreshHistory(historyStoreId);
       onInventoryRefresh?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible registrar la devolución de compra");
@@ -182,6 +222,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
       );
       setMessage("Devolución de cliente registrada correctamente");
       await refreshSales(saleForm.storeId);
+      await refreshHistory(historyStoreId);
       onInventoryRefresh?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible registrar la devolución de venta");
@@ -351,6 +392,90 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
             Registrar devolución de cliente
           </button>
         </form>
+
+        <div className="returns-history">
+          <div className="returns-history__header">
+            <h3>Historial de devoluciones</h3>
+            <div className="returns-history__filters">
+              <label>
+                Sucursal
+                <select
+                  value={historyStoreId ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value ? Number(event.target.value) : null;
+                    setHistoryStoreId(value);
+                  }}
+                >
+                  <option value="">Todas las sucursales</option>
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  setError(null);
+                  void refreshHistory(historyStoreId);
+                }}
+              >
+                Actualizar
+              </button>
+            </div>
+          </div>
+          <div className="returns-history__totals" aria-live="polite">
+            <span>Total: {historyTotals.total}</span>
+            <span>Clientes: {historyTotals.sales}</span>
+            <span>Proveedores: {historyTotals.purchases}</span>
+          </div>
+          {historyLoading ? (
+            <div className="table-wrapper" role="status" aria-busy="true">
+              <p>Cargando historial de devoluciones…</p>
+            </div>
+          ) : history.length === 0 ? (
+            <div className="table-wrapper">
+              <p>Sin devoluciones registradas en el periodo seleccionado.</p>
+            </div>
+          ) : (
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Documento</th>
+                    <th>Dispositivo</th>
+                    <th>Cantidad</th>
+                    <th>Motivo</th>
+                    <th>Relacionado</th>
+                    <th>Responsable</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((record) => (
+                    <tr key={`${record.type}-${record.id}`}>
+                      <td>{new Date(record.occurred_at).toLocaleString("es-MX")}</td>
+                      <td>
+                        <span className={`returns-history__badge returns-history__type--${record.type}`}>
+                          {record.type === "sale" ? "Cliente" : "Proveedor"}
+                        </span>
+                      </td>
+                      <td>{record.reference_label}</td>
+                      <td>{record.device_name ?? `#${record.device_id}`}</td>
+                      <td>{record.quantity}</td>
+                      <td>{record.reason}</td>
+                      <td>{record.partner_name ?? "Sin asociación"}</td>
+                      <td>{record.processed_by_name ?? "Sin responsable"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

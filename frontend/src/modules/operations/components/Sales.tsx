@@ -278,7 +278,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
             : line
         );
       }
-      return [...current, { device, quantity: 1 }];
+      return [...current, { device, quantity: 1, batchCode: device.lote ?? "" }];
     });
   };
 
@@ -288,6 +288,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         line.device.id === deviceId
           ? { ...line, quantity: Math.max(1, Math.min(line.device.quantity, quantity)) }
           : line
+      )
+    );
+  };
+
+  const handleBatchCodeChange = (deviceId: number, batchCode: string) => {
+    setSaleItems((current) =>
+      current.map((line) =>
+        line.device.id === deviceId ? { ...line, batchCode } : line
       )
     );
   };
@@ -323,10 +331,17 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
       setError("El motivo corporativo debe tener al menos 5 caracteres.");
       return;
     }
-    const payloadItems = saleItems.map((line) => ({
-      device_id: line.device.id,
-      quantity: Math.max(1, line.quantity),
-    }));
+    const payloadItems = saleItems.map((line) => {
+      const entry: SaleCreateInput["items"][number] = {
+        device_id: line.device.id,
+        quantity: Math.max(1, line.quantity),
+      };
+      const normalizedBatch = line.batchCode.trim();
+      if (normalizedBatch) {
+        entry.batch_code = normalizedBatch;
+      }
+      return entry;
+    });
     const normalizedDiscount = Math.min(Math.max(saleForm.discountPercent, 0), 100);
     const customerName = saleForm.customerName.trim() || selectedCustomer?.name || "";
     const payload: SaleCreateInput = {
@@ -356,7 +371,11 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
       setMessage("Venta registrada correctamente");
       setLastSaleId(sale.id);
       setLastSaleSnapshot({
-        items: saleItems.map((line) => ({ device: line.device, quantity: line.quantity })),
+        items: saleItems.map((line) => ({
+          device: line.device,
+          quantity: line.quantity,
+          batchCode: line.batchCode,
+        })),
         summary: saleSummary,
       });
       resetSaleForm();
@@ -449,20 +468,21 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         message={message}
         error={error}
       >
-        <SidePanel
-          stores={stores}
-          customers={customers}
-          saleForm={saleForm}
-          onSaleFormChange={updateSaleForm}
-          deviceQuery={deviceQuery}
-          onDeviceQueryChange={setDeviceQuery}
-          devices={devices}
-          isLoadingDevices={isLoadingDevices}
-          onAddDevice={handleAddDevice}
-          saleItems={saleItems}
-          onQuantityChange={handleQuantityChange}
-          onRemoveLine={handleRemoveLine}
-          saleSummary={saleSummary}
+      <SidePanel
+        stores={stores}
+        customers={customers}
+        saleForm={saleForm}
+        onSaleFormChange={updateSaleForm}
+        deviceQuery={deviceQuery}
+        onDeviceQueryChange={setDeviceQuery}
+        devices={devices}
+        isLoadingDevices={isLoadingDevices}
+        onAddDevice={handleAddDevice}
+        saleItems={saleItems}
+        onQuantityChange={handleQuantityChange}
+        onBatchCodeChange={handleBatchCodeChange}
+        onRemoveLine={handleRemoveLine}
+        saleSummary={saleSummary}
           paymentLabels={paymentLabels}
           isSaving={isSaving}
           isPrinting={isPrinting}
