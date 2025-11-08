@@ -199,6 +199,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    reservations_expiration_interval_seconds: Annotated[
+        int,
+        Field(
+            default=300,
+            validation_alias=AliasChoices(
+                "RESERVATIONS_EXPIRATION_INTERVAL_SECONDS",
+                "SOFTMOBILE_RESERVATIONS_INTERVAL_SECONDS",
+            ),
+        ),
+    ]
     enable_catalog_pro: Annotated[
         bool,
         Field(

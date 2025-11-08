@@ -9603,14 +9603,33 @@ def create_transfer_order(
         db.add(order)
         flush_session(db)
 
+        expire_reservations(
+            db, store_id=origin_store.id, device_ids=[item.device_id for item in payload.items]
+        )
+
         for item in payload.items:
             device = get_device(db, origin_store.id, item.device_id)
             if item.quantity <= 0:
                 raise ValueError("transfer_invalid_quantity")
+            reservation_id = getattr(item, "reservation_id", None)
+            reservation = None
+            if reservation_id is not None:
+                reservation = get_inventory_reservation(db, reservation_id)
+                if reservation.store_id != origin_store.id:
+                    raise ValueError("reservation_store_mismatch")
+                if reservation.device_id != device.id:
+                    raise ValueError("reservation_device_mismatch")
+                if reservation.status != models.InventoryState.RESERVADO:
+                    raise ValueError("reservation_not_active")
+                if reservation.quantity != item.quantity:
+                    raise ValueError("reservation_quantity_mismatch")
+                if reservation.expires_at <= datetime.utcnow():
+                    raise ValueError("reservation_expired")
             order_item = models.TransferOrderItem(
                 transfer_order=order,
                 device=device,
                 quantity=item.quantity,
+                reservation_id=reservation.id if reservation is not None else None,
             )
             db.add(order_item)
 
@@ -9718,17 +9737,57 @@ def _apply_transfer_reception(
     *,
     performed_by_id: int,
 ) -> None:
+    device_ids = [item.device_id for item in order.items]
+    expire_reservations(db, store_id=order.origin_store_id, device_ids=device_ids)
+    reservation_map: dict[int, models.InventoryReservation] = {}
+    reserved_allowances: dict[int, int] = {}
+    for item in order.items:
+        if item.reservation_id is None:
+            continue
+        reservation = get_inventory_reservation(db, item.reservation_id)
+        if reservation.store_id != order.origin_store_id:
+            raise ValueError("reservation_store_mismatch")
+        if reservation.device_id != item.device_id:
+            raise ValueError("reservation_device_mismatch")
+        if reservation.status != models.InventoryState.RESERVADO:
+            raise ValueError("reservation_not_active")
+        if reservation.quantity != item.quantity:
+            raise ValueError("reservation_quantity_mismatch")
+        if reservation.expires_at <= datetime.utcnow():
+            raise ValueError("reservation_expired")
+        reservation_map[item.reservation_id] = reservation
+        reserved_allowances[item.device_id] = reserved_allowances.get(
+            item.device_id, 0
+        ) + reservation.quantity
+
+    active_reserved_map = _active_reservations_by_device(
+        db, store_id=order.origin_store_id, device_ids=set(device_ids)
+    )
+    blocked_map: dict[int, int] = {}
+    for device_id in device_ids:
+        active_total = active_reserved_map.get(device_id, 0)
+        allowance = reserved_allowances.get(device_id, 0)
+        blocked_map[device_id] = max(active_total - allowance, 0)
+
     for item in order.items:
         device = item.device
         if device.store_id != order.origin_store_id:
             raise ValueError("transfer_device_mismatch")
         if item.quantity <= 0:
             raise ValueError("transfer_invalid_quantity")
-        if device.quantity < item.quantity:
+        active_reserved = blocked_map.get(device.id, 0)
+        effective_stock = device.quantity - active_reserved
+        if effective_stock < item.quantity:
             raise ValueError("transfer_insufficient_stock")
 
         if (device.imei or device.serial) and device.quantity != item.quantity:
             raise ValueError("transfer_requires_full_unit")
+
+        if item.reservation_id is not None:
+            reservation = reservation_map.get(item.reservation_id)
+            if reservation is None:
+                raise ValueError("reservation_not_active")
+            blocked_map[device.id] = max(active_reserved - reservation.quantity, 0)
 
         origin_cost = _to_decimal(device.costo_unitario)
         origin_unit_cost = _quantize_currency(origin_cost)
@@ -9810,6 +9869,18 @@ def _apply_transfer_reception(
                 source_store_id=order.origin_store_id,
                 destination_store_id=order.destination_store_id,
                 unit_cost=origin_unit_cost,
+                reference_type="transfer_order",
+                reference_id=str(order.id),
+            )
+
+        if item.reservation_id is not None:
+            reservation = reservation_map[item.reservation_id]
+            release_reservation(
+                db,
+                reservation.id,
+                performed_by_id=performed_by_id,
+                reason=order.reason,
+                target_state=models.InventoryState.CONSUMIDO,
                 reference_type="transfer_order",
                 reference_id=str(order.id),
             )
@@ -11849,12 +11920,293 @@ def get_sale(db: Session, sale_id: int) -> models.Sale:
     return sale
 
 
+def _normalize_reservation_reason(reason: str | None) -> str:
+    normalized = (reason or "").strip()
+    if len(normalized) < 5:
+        raise ValueError("reservation_reason_required")
+    return normalized[:255]
+
+
+def _active_reservations_by_device(
+    db: Session,
+    *,
+    store_id: int,
+    device_ids: Iterable[int] | None = None,
+) -> dict[int, int]:
+    ids = set(device_ids or [])
+    now = datetime.utcnow()
+    statement = (
+        select(
+            models.InventoryReservation.device_id,
+            func.coalesce(func.sum(models.InventoryReservation.quantity), 0).label(
+                "reserved"
+            ),
+        )
+        .where(models.InventoryReservation.store_id == store_id)
+        .where(models.InventoryReservation.status == models.InventoryState.RESERVADO)
+        .where(models.InventoryReservation.expires_at > now)
+        .group_by(models.InventoryReservation.device_id)
+    )
+    if ids:
+        statement = statement.where(models.InventoryReservation.device_id.in_(ids))
+    rows = db.execute(statement).all()
+    reserved_map: dict[int, int] = {}
+    for row in rows:
+        device_id = int(row.device_id)
+        reserved_value = int(row.reserved or 0)
+        reserved_map[device_id] = reserved_value
+    return reserved_map
+
+
+def expire_reservations(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    device_ids: Iterable[int] | None = None,
+) -> int:
+    now = datetime.utcnow()
+    ids = set(device_ids or [])
+    statement = select(models.InventoryReservation).where(
+        models.InventoryReservation.status == models.InventoryState.RESERVADO,
+        models.InventoryReservation.expires_at <= now,
+    )
+    if store_id is not None:
+        statement = statement.where(models.InventoryReservation.store_id == store_id)
+    if ids:
+        statement = statement.where(models.InventoryReservation.device_id.in_(ids))
+    expirations = list(db.scalars(statement).unique())
+    if not expirations:
+        return 0
+
+    reason = "Expiración automática"
+    for reservation in expirations:
+        reservation.status = models.InventoryState.EXPIRADO
+        reservation.resolution_reason = reservation.resolution_reason or reason
+        reservation.resolved_at = now
+        reservation.quantity = 0
+        if reservation.device and (reservation.device.imei or reservation.device.serial):
+            reservation.device.estado = "disponible"
+    return len(expirations)
+
+
+def get_inventory_reservation(
+    db: Session, reservation_id: int
+) -> models.InventoryReservation:
+    reservation = db.get(models.InventoryReservation, reservation_id)
+    if reservation is None:
+        raise LookupError("reservation_not_found")
+    return reservation
+
+
+def list_inventory_reservations(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    device_id: int | None = None,
+    status: models.InventoryState | None = None,
+    include_expired: bool = False,
+) -> list[models.InventoryReservation]:
+    statement = (
+        select(models.InventoryReservation)
+        .options(
+            joinedload(models.InventoryReservation.device),
+            joinedload(models.InventoryReservation.store),
+        )
+        .order_by(models.InventoryReservation.created_at.desc())
+    )
+    now = datetime.utcnow()
+    if store_id is not None:
+        statement = statement.where(models.InventoryReservation.store_id == store_id)
+    if device_id is not None:
+        statement = statement.where(models.InventoryReservation.device_id == device_id)
+    if status is not None:
+        statement = statement.where(models.InventoryReservation.status == status)
+    if not include_expired:
+        statement = statement.where(
+            or_(
+                models.InventoryReservation.status != models.InventoryState.RESERVADO,
+                models.InventoryReservation.expires_at > now,
+            )
+        )
+    return list(db.scalars(statement).unique())
+
+
+def create_reservation(
+    db: Session,
+    *,
+    store_id: int,
+    device_id: int,
+    quantity: int,
+    expires_at: datetime,
+    reserved_by_id: int | None,
+    reason: str,
+) -> models.InventoryReservation:
+    if quantity <= 0:
+        raise ValueError("reservation_invalid_quantity")
+    if expires_at <= datetime.utcnow():
+        raise ValueError("reservation_invalid_expiration")
+
+    normalized_reason = _normalize_reservation_reason(reason)
+    store = get_store(db, store_id)
+    device = get_device(db, store_id, device_id)
+
+    expire_reservations(db, store_id=store.id, device_ids=[device.id])
+    active_reserved = _active_reservations_by_device(
+        db, store_id=store.id, device_ids=[device.id]
+    ).get(device.id, 0)
+    available_quantity = device.quantity - active_reserved
+    if available_quantity < quantity:
+        raise ValueError("reservation_insufficient_stock")
+    if device.imei or device.serial:
+        if quantity != 1:
+            raise ValueError("reservation_requires_single_unit")
+        if device.estado and device.estado.lower() == "vendido":
+            raise ValueError("reservation_device_unavailable")
+
+    reservation = models.InventoryReservation(
+        store_id=store.id,
+        device_id=device.id,
+        reserved_by_id=reserved_by_id,
+        initial_quantity=quantity,
+        quantity=quantity,
+        status=models.InventoryState.RESERVADO,
+        reason=normalized_reason,
+        expires_at=expires_at,
+    )
+
+    with transactional_session(db):
+        db.add(reservation)
+        if device.imei or device.serial:
+            device.estado = "reservado"
+        flush_session(db)
+        db.refresh(reservation)
+        details = json.dumps(
+            {
+                "store_id": store.id,
+                "device_id": device.id,
+                "quantity": quantity,
+                "expires_at": expires_at.isoformat(),
+            }
+        )
+        _log_action(
+            db,
+            action="inventory_reservation_created",
+            entity_type="inventory_reservation",
+            entity_id=str(reservation.id),
+            performed_by_id=reserved_by_id,
+            details=details,
+        )
+    return reservation
+
+
+def renew_reservation(
+    db: Session,
+    reservation_id: int,
+    *,
+    expires_at: datetime,
+    performed_by_id: int | None,
+    reason: str,
+) -> models.InventoryReservation:
+    reservation = get_inventory_reservation(db, reservation_id)
+    if reservation.status != models.InventoryState.RESERVADO:
+        raise ValueError("reservation_not_active")
+    if expires_at <= datetime.utcnow():
+        raise ValueError("reservation_invalid_expiration")
+
+    _ = _normalize_reservation_reason(reason)
+
+    with transactional_session(db):
+        reservation.expires_at = expires_at
+        reservation.updated_at = datetime.utcnow()
+        flush_session(db)
+        details = json.dumps(
+            {
+                "expires_at": expires_at.isoformat(),
+                "reason": reason,
+            }
+        )
+        _log_action(
+            db,
+            action="inventory_reservation_renewed",
+            entity_type="inventory_reservation",
+            entity_id=str(reservation.id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
+        db.refresh(reservation)
+    return reservation
+
+
+def release_reservation(
+    db: Session,
+    reservation_id: int,
+    *,
+    performed_by_id: int | None,
+    reason: str | None = None,
+    target_state: models.InventoryState = models.InventoryState.CANCELADO,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+) -> models.InventoryReservation:
+    if target_state not in {
+        models.InventoryState.CANCELADO,
+        models.InventoryState.CONSUMIDO,
+    }:
+        raise ValueError("reservation_invalid_transition")
+
+    reservation = get_inventory_reservation(db, reservation_id)
+    if reservation.status != models.InventoryState.RESERVADO:
+        raise ValueError("reservation_not_active")
+
+    normalized_reason = (reason or "").strip() or None
+    now = datetime.utcnow()
+
+    with transactional_session(db):
+        reservation.status = target_state
+        reservation.resolved_by_id = performed_by_id
+        reservation.resolution_reason = normalized_reason
+        reservation.resolved_at = now
+        reservation.reference_type = reference_type
+        reservation.reference_id = reference_id
+        reservation.quantity = 0
+        if target_state == models.InventoryState.CONSUMIDO:
+            reservation.consumed_at = now
+        else:
+            if reservation.device and (reservation.device.imei or reservation.device.serial):
+                reservation.device.estado = "disponible"
+        flush_session(db)
+
+        details = json.dumps(
+            {
+                "target_state": target_state.value,
+                "reason": normalized_reason,
+                "reference_type": reference_type,
+                "reference_id": reference_id,
+            }
+        )
+        action = (
+            "inventory_reservation_consumed"
+            if target_state == models.InventoryState.CONSUMIDO
+            else "inventory_reservation_released"
+        )
+        _log_action(
+            db,
+            action=action,
+            entity_type="inventory_reservation",
+            entity_id=str(reservation.id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
+        db.refresh(reservation)
+    return reservation
+
+
 def _ensure_device_available_for_sale(
-    device: models.Device, quantity: int
+    device: models.Device, quantity: int, *, active_reserved: int = 0
 ) -> None:
     if quantity <= 0:
         raise ValueError("sale_invalid_quantity")
-    if device.quantity < quantity:
+    effective_stock = device.quantity - active_reserved
+    if effective_stock < quantity:
         raise ValueError("sale_insufficient_stock")
     if device.imei or device.serial:
         if device.estado and device.estado.lower() == "vendido":
@@ -11874,11 +12226,16 @@ def _restore_device_availability(device: models.Device) -> None:
 
 
 def _ensure_device_available_for_preview(
-    device: models.Device, quantity: int, *, reserved_quantity: int = 0
+    device: models.Device,
+    quantity: int,
+    *,
+    reserved_quantity: int = 0,
+    active_reserved: int = 0,
 ) -> None:
     if quantity <= 0:
         raise ValueError("sale_invalid_quantity")
-    available_quantity = device.quantity + reserved_quantity
+    effective_stock = max(device.quantity - active_reserved, 0)
+    available_quantity = effective_stock + reserved_quantity
     if available_quantity < quantity:
         raise ValueError("sale_insufficient_stock")
     if device.imei or device.serial:
@@ -11899,16 +12256,21 @@ def _preview_sale_totals(
     *,
     sale_discount_percent: Decimal,
     reserved_quantities: dict[int, int] | None = None,
+    active_reservations: dict[int, int] | None = None,
 ) -> tuple[Decimal, Decimal]:
     gross_total = Decimal("0")
     total_discount = Decimal("0")
     reserved = reserved_quantities or {}
+    blocked = active_reservations or {}
 
     for item in items:
         device = get_device(db, store_id, item.device_id)
         reserved_quantity = reserved.get(device.id, 0)
         _ensure_device_available_for_preview(
-            device, item.quantity, reserved_quantity=reserved_quantity
+            device,
+            item.quantity,
+            reserved_quantity=reserved_quantity,
+            active_reserved=blocked.get(device.id, 0),
         )
 
         # // [PACK34-pricing]
@@ -11970,12 +12332,32 @@ def _apply_sale_items(
     sale_discount_percent: Decimal,
     performed_by_id: int,
     reason: str | None,
+    reservations: dict[int, models.InventoryReservation] | None = None,
+    active_reservations: dict[int, int] | None = None,
 ) -> tuple[Decimal, Decimal]:
     gross_total = Decimal("0")
     total_discount = Decimal("0")
+    reservation_map = reservations or {}
+    blocked_reserved = dict(active_reservations or {})
+    consumed: list[models.InventoryReservation] = []
+
     for item in items:
         device = get_device(db, sale.store_id, item.device_id)
-        _ensure_device_available_for_sale(device, item.quantity)
+        reservation_id = getattr(item, "reservation_id", None)
+        allowance = 0
+        reservation: models.InventoryReservation | None = None
+        if reservation_id is not None:
+            reservation = reservation_map.get(reservation_id)
+            if reservation is None:
+                raise ValueError("reservation_not_active")
+            if reservation.device_id != device.id:
+                raise ValueError("reservation_device_mismatch")
+            allowance = reservation.quantity
+        active_reserved = max(blocked_reserved.get(device.id, 0) - allowance, 0)
+        _ensure_device_available_for_sale(
+            device, item.quantity, active_reserved=active_reserved
+        )
+        blocked_reserved[device.id] = active_reserved
 
         # // [PACK34-pricing]
         override_price = getattr(item, "unit_price_override", None)
@@ -12013,6 +12395,7 @@ def _apply_sale_items(
             unit_price=line_unit_price,
             discount_amount=line_discount_amount,
             total_line=net_line_total,
+            reservation_id=reservation.id if reservation is not None else None,
         )
         sale.items.append(sale_item)
 
@@ -12031,6 +12414,19 @@ def _apply_sale_items(
         movement_device = movement.device or device
         if movement_device.quantity <= 0:
             _mark_device_sold(movement_device)
+        if reservation is not None:
+            consumed.append(reservation)
+
+    for reservation in consumed:
+        release_reservation(
+            db,
+            reservation.id,
+            performed_by_id=performed_by_id,
+            reason=reason,
+            target_state=models.InventoryState.CONSUMIDO,
+            reference_type="sale",
+            reference_id=str(sale.id),
+        )
     return gross_total, total_discount
 
 
@@ -12071,6 +12467,39 @@ def create_sale(
     with transactional_session(db):
         db.add(sale)
 
+        expire_reservations(db, store_id=sale.store_id, device_ids=[item.device_id for item in payload.items])
+        reservation_map: dict[int, models.InventoryReservation] = {}
+        reserved_allowances: dict[int, int] = {}
+        device_ids = {item.device_id for item in payload.items}
+        for item in payload.items:
+            reservation_id = getattr(item, "reservation_id", None)
+            if reservation_id is None:
+                continue
+            reservation = get_inventory_reservation(db, reservation_id)
+            if reservation.store_id != sale.store_id:
+                raise ValueError("reservation_store_mismatch")
+            if reservation.device_id != item.device_id:
+                raise ValueError("reservation_device_mismatch")
+            if reservation.status != models.InventoryState.RESERVADO:
+                raise ValueError("reservation_not_active")
+            if reservation.quantity != item.quantity:
+                raise ValueError("reservation_quantity_mismatch")
+            if reservation.expires_at <= datetime.utcnow():
+                raise ValueError("reservation_expired")
+            reservation_map[reservation.id] = reservation
+            reserved_allowances[item.device_id] = reserved_allowances.get(
+                item.device_id, 0
+            ) + reservation.quantity
+
+        active_reserved_map = _active_reservations_by_device(
+            db, store_id=sale.store_id, device_ids=device_ids
+        )
+        blocked_map: dict[int, int] = {}
+        for device_id in device_ids:
+            active_total = active_reserved_map.get(device_id, 0)
+            allowance = reserved_allowances.get(device_id, 0)
+            blocked_map[device_id] = max(active_total - allowance, 0)
+
         tax_value = _to_decimal(tax_rate)
         if tax_value < Decimal("0"):
             tax_value = Decimal("0")
@@ -12083,6 +12512,8 @@ def create_sale(
                 sale.store_id,
                 payload.items,
                 sale_discount_percent=sale_discount_percent,
+                reserved_quantities=reserved_allowances,
+                active_reservations=blocked_map,
             )
             preview_subtotal = (preview_gross_total - preview_discount).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -12111,6 +12542,8 @@ def create_sale(
             sale_discount_percent=sale_discount_percent,
             performed_by_id=performed_by_id,
             reason=reason,
+            reservations=reservation_map,
+            active_reservations=blocked_map,
         )
 
         subtotal = (gross_total - total_discount).quantize(
@@ -12258,12 +12691,50 @@ def update_sale(
             customer = get_customer(db, payload.customer_id)
             customer_name = customer_name or customer.name
 
+        expire_reservations(db, store_id=sale.store_id, device_ids=[item.device_id for item in payload.items])
+        reservation_map: dict[int, models.InventoryReservation] = {}
+        reserved_allowances: dict[int, int] = {}
+        device_ids = {item.device_id for item in payload.items}
+        for item in payload.items:
+            reservation_id = getattr(item, "reservation_id", None)
+            if reservation_id is None:
+                continue
+            reservation = get_inventory_reservation(db, reservation_id)
+            if reservation.store_id != sale.store_id:
+                raise ValueError("reservation_store_mismatch")
+            if reservation.device_id != item.device_id:
+                raise ValueError("reservation_device_mismatch")
+            if reservation.status != models.InventoryState.RESERVADO:
+                raise ValueError("reservation_not_active")
+            if reservation.quantity != item.quantity:
+                raise ValueError("reservation_quantity_mismatch")
+            if reservation.expires_at <= datetime.utcnow():
+                raise ValueError("reservation_expired")
+            reservation_map[reservation.id] = reservation
+            reserved_allowances[item.device_id] = reserved_allowances.get(
+                item.device_id, 0
+            ) + reservation.quantity
+
+        combined_reserved = reserved_quantities.copy()
+        for device_id, qty in reserved_allowances.items():
+            combined_reserved[device_id] = combined_reserved.get(device_id, 0) + qty
+
+        active_reserved_map = _active_reservations_by_device(
+            db, store_id=sale.store_id, device_ids=device_ids
+        )
+        blocked_map: dict[int, int] = {}
+        for device_id in device_ids:
+            active_total = active_reserved_map.get(device_id, 0)
+            allowance = reserved_allowances.get(device_id, 0)
+            blocked_map[device_id] = max(active_total - allowance, 0)
+
         preview_gross_total, preview_discount = _preview_sale_totals(
             db,
             sale.store_id,
             payload.items,
             sale_discount_percent=sale_discount_percent,
-            reserved_quantities=reserved_quantities,
+            reserved_quantities=combined_reserved,
+            active_reservations=blocked_map,
         )
         preview_subtotal = (preview_gross_total - preview_discount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -12345,6 +12816,8 @@ def update_sale(
             sale_discount_percent=sale_discount_percent,
             performed_by_id=performed_by_id,
             reason=reason,
+            reservations=reservation_map,
+            active_reservations=blocked_map,
         )
 
         subtotal = (gross_total - total_discount).quantize(

@@ -115,6 +115,164 @@ def list_import_history(
 
 
 @router.get(
+    "/reservations",
+    response_model=Page[schemas.InventoryReservationResponse],
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def list_inventory_reservations_endpoint(
+    store_id: int | None = Query(default=None, ge=1),
+    device_id: int | None = Query(default=None, ge=1),
+    status_filter: models.InventoryState | None = Query(default=None),
+    include_expired: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    pagination: PageParams = Depends(),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> Page[schemas.InventoryReservationResponse]:
+    crud.expire_reservations(
+        db,
+        store_id=store_id,
+        device_ids=[device_id] if device_id is not None else None,
+    )
+    reservations = crud.list_inventory_reservations(
+        db,
+        store_id=store_id,
+        device_id=device_id,
+        status=status_filter,
+        include_expired=include_expired,
+    )
+    page_offset = (
+        pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    )
+    page_size = min(pagination.size, limit)
+    sliced = reservations[page_offset : page_offset + page_size]
+    items = [
+        schemas.InventoryReservationResponse.model_validate(record)
+        for record in sliced
+    ]
+    return Page.from_items(
+        items,
+        page=pagination.page,
+        size=page_size,
+        total=len(reservations),
+    )
+
+
+@router.post(
+    "/reservations",
+    response_model=schemas.InventoryReservationResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def create_inventory_reservation_endpoint(
+    payload: schemas.InventoryReservationCreate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.InventoryReservationResponse:
+    try:
+        reservation = crud.create_reservation(
+            db,
+            store_id=payload.store_id,
+            device_id=payload.device_id,
+            quantity=payload.quantity,
+            expires_at=payload.expires_at,
+            reserved_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado"
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message in {"reservation_invalid_quantity", "reservation_invalid_expiration", "reservation_reason_required", "reservation_requires_single_unit"}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=message,
+            ) from exc
+        if message in {"reservation_insufficient_stock", "reservation_device_unavailable"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.InventoryReservationResponse.model_validate(reservation)
+
+
+@router.put(
+    "/reservations/{reservation_id}/renew",
+    response_model=schemas.InventoryReservationResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def renew_inventory_reservation_endpoint(
+    payload: schemas.InventoryReservationRenew,
+    reservation_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.InventoryReservationResponse:
+    try:
+        reservation = crud.renew_reservation(
+            db,
+            reservation_id,
+            expires_at=payload.expires_at,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Reserva no encontrada"
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message in {"reservation_not_active", "reservation_invalid_expiration", "reservation_reason_required"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT
+                if message == "reservation_not_active"
+                else status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.InventoryReservationResponse.model_validate(reservation)
+
+
+@router.post(
+    "/reservations/{reservation_id}/cancel",
+    response_model=schemas.InventoryReservationResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def cancel_inventory_reservation_endpoint(
+    reservation_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.InventoryReservationResponse:
+    try:
+        reservation = crud.release_reservation(
+            db,
+            reservation_id,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+            target_state=models.InventoryState.CANCELADO,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Reserva no encontrada"
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message in {"reservation_not_active", "reservation_invalid_transition"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.InventoryReservationResponse.model_validate(reservation)
+
+
+@router.get(
     "/devices/incomplete",
     response_model=Page[schemas.DeviceResponse],
     dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],

@@ -34,6 +34,16 @@ class MovementType(str, enum.Enum):
     ADJUST = "ajuste"
 
 
+# // [PACK38-inventory-reservations]
+class InventoryState(str, enum.Enum):
+    """Estados de ciclo de vida de una reserva de inventario."""
+
+    RESERVADO = "RESERVADO"
+    CONSUMIDO = "CONSUMIDO"
+    CANCELADO = "CANCELADO"
+    EXPIRADO = "EXPIRADO"
+
+
 # // [PACK30-31-BACKEND]
 class StockMoveType(str, enum.Enum):
     """Clasificación de movimientos contables por sucursal."""
@@ -152,6 +162,9 @@ class Store(Base):
         "SupplierBatch", back_populates="store", cascade="all, delete-orphan"
     )
     users: Mapped[list["User"]] = relationship("User", back_populates="store")
+    reservations: Mapped[list["InventoryReservation"]] = relationship(
+        "InventoryReservation", back_populates="store", cascade="all, delete-orphan"
+    )
 
 
 class CommercialState(str, enum.Enum):
@@ -296,6 +309,11 @@ class Device(Base):
     )
     validations: Mapped[list["ImportValidation"]] = relationship(
         "ImportValidation",
+        back_populates="device",
+        cascade="all, delete-orphan",
+    )
+    reservations: Mapped[list["InventoryReservation"]] = relationship(
+        "InventoryReservation",
         back_populates="device",
         cascade="all, delete-orphan",
     )
@@ -517,6 +535,18 @@ class User(Base):
         back_populates="acknowledged_by",
         cascade="all, delete-orphan",
     )
+    inventory_reservations: Mapped[list["InventoryReservation"]] = relationship(
+        "InventoryReservation",
+        back_populates="reserved_by",
+        cascade="all, delete-orphan",
+        foreign_keys="InventoryReservation.reserved_by_id",
+    )
+    resolved_reservations: Mapped[list["InventoryReservation"]] = relationship(
+        "InventoryReservation",
+        back_populates="resolved_by",
+        cascade="all, delete-orphan",
+        foreign_keys="InventoryReservation.resolved_by_id",
+    )
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
         "PasswordResetToken",
         back_populates="user",
@@ -628,6 +658,76 @@ class InventoryMovement(Base):
     @property
     def sucursal_destino(self) -> str | None:
         return self.tienda_destino
+
+
+class InventoryReservation(Base):
+    """Bloqueo temporal de existencias para ventas o transferencias."""
+
+    __tablename__ = "inventory_reservations"
+    __table_args__ = (
+        Index("ix_inventory_reservation_store_device", "store_id", "device_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
+        nullable=False,
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reserved_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+    )
+    resolved_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+    )
+    initial_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[InventoryState] = mapped_column(
+        Enum(InventoryState, name="inventory_reservation_state"),
+        nullable=False,
+        default=InventoryState.RESERVADO,
+    )
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    resolution_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    store: Mapped[Store] = relationship("Store", back_populates="reservations")
+    device: Mapped[Device] = relationship("Device", back_populates="reservations")
+    reserved_by: Mapped[User | None] = relationship(
+        "User", back_populates="inventory_reservations", foreign_keys=[reserved_by_id]
+    )
+    resolved_by: Mapped[User | None] = relationship(
+        "User", back_populates="resolved_reservations", foreign_keys=[resolved_by_id]
+    )
+    sale_items: Mapped[list["SaleItem"]] = relationship(
+        "SaleItem", back_populates="reservation"
+    )
+    transfer_items: Mapped[list["TransferOrderItem"]] = relationship(
+        "TransferOrderItem", back_populates="reservation"
+    )
 
 
 # // [PACK30-31-BACKEND]
@@ -1006,11 +1106,20 @@ class TransferOrderItem(Base):
         Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    reservation_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("inventory_reservations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     transfer_order: Mapped[TransferOrder] = relationship(
         "TransferOrder", back_populates="items"
     )
     device: Mapped[Device] = relationship("Device")
+    reservation: Mapped["InventoryReservation | None"] = relationship(
+        "InventoryReservation", back_populates="transfer_items"
+    )
 
 
 class RecurringOrderType(str, enum.Enum):
@@ -1560,9 +1669,18 @@ class SaleItem(Base):
     total_line: Mapped[Decimal] = mapped_column(
         "subtotal", Numeric(12, 2), nullable=False
     )
+    reservation_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("inventory_reservations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     sale: Mapped[Sale] = relationship("Sale", back_populates="items")
     device: Mapped[Device] = relationship("Device")
+    reservation: Mapped["InventoryReservation | None"] = relationship(
+        "InventoryReservation", back_populates="sale_items"
+    )
 
 
 class SaleReturn(Base):

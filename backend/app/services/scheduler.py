@@ -80,6 +80,16 @@ class BackgroundScheduler:
                 )
             )
 
+        reservations_interval = settings.reservations_expiration_interval_seconds
+        if reservations_interval > 0:
+            self._jobs.append(
+                _PeriodicJob(
+                    name="reservas_inventario",
+                    interval_seconds=reservations_interval,
+                    callback=_reservation_cleanup_job,
+                )
+            )
+
     async def start(self) -> None:
         for job in self._jobs:
             await job.start()
@@ -137,3 +147,14 @@ def _backup_job() -> None:
                 triggered_by_id=None,
                 notes="Respaldo automático programado",
             )
+
+
+def _reservation_cleanup_job() -> None:
+    with SessionLocal() as session:
+        with transactional_session(session):
+            expired = crud.expire_reservations(session)
+            if expired:
+                logger.info(
+                    "Reservas vencidas liberadas automáticamente",
+                    extra={"reservations_expired": expired},
+                )
