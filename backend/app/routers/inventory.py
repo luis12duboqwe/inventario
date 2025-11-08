@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from backend.schemas.common import Page, PageParams

@@ -288,6 +288,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    enable_price_lists: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "ENABLE_PRICE_LISTS",
+                "SOFTMOBILE_ENABLE_PRICE_LISTS",
+            ),
+        ),
+    ]
     inventory_low_stock_threshold: Annotated[
         int,
         Field(

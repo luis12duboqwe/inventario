@@ -46,6 +46,7 @@ from .routers import (
     payments,
     pos,
     purchases,
+    price_lists,
     repairs,
     reports,
     reports_sales,
@@ -84,6 +85,7 @@ SENSITIVE_PREFIXES = (
     "/security",
     "/sync/outbox",
     "/operations",
+    "/pricing",
     "/integrations",
 )
 READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers")
@@ -179,6 +181,7 @@ MODULE_PERMISSION_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/returns", "operaciones"),
     ("/transfers", "transferencias"),
     ("/operations", "operaciones"),
+    ("/pricing", "precios"),
     ("/reports", "reportes"),
     ("/audit", "auditoria"),
     ("/sync", "sincronizacion"),
@@ -546,6 +549,7 @@ def create_app() -> FastAPI:
         import_validation.router,
         pos.router,
         purchases.router,
+        price_lists.router,
         payments.router,
         customers.router,
         suppliers.router,
