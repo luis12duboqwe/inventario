@@ -58,6 +58,11 @@ vi.mock("../components/InventoryProductsFilters", () => ({
   default: () => <div data-testid="inventory-products-filters" />,
 }));
 
+vi.mock("../../../catalog/components/PriceLists", () => ({
+  __esModule: true,
+  default: () => <div data-testid="catalog-price-lists" />,
+}));
+
 vi.mock("../components/InventoryMovementFormSection", () => ({
   __esModule: true,
   default: () => <div data-testid="inventory-movement-form" />,
@@ -88,6 +93,7 @@ import InventoryLayoutContext, {
 } from "../context/InventoryLayoutContext";
 import InventoryPage from "../InventoryPage";
 import InventoryProductsPage from "../InventoryProductsPage";
+import InventoryPriceListsPage from "../InventoryPriceListsPage";
 import InventoryMovementsPage from "../InventoryMovementsPage";
 import InventorySuppliersPage from "../InventorySuppliersPage";
 import InventoryAlertsPage from "../InventoryAlertsPage";
@@ -280,6 +286,7 @@ describe("InventoryPage", () => {
       contextValue: createContextValue(),
       tabOptions: [
         { id: "productos", label: "Productos", icon: null },
+        { id: "listas", label: "Listas de precios", icon: null },
         { id: "movimientos", label: "Movimientos", icon: null },
         { id: "reservas", label: "Reservas", icon: null },
       ],
@@ -304,6 +311,7 @@ describe("InventoryPage", () => {
 
     expect(screen.getByRole("heading", { name: /Inventario corporativo/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Productos/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Listas de precios/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Movimientos/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Reservas/i })).toBeInTheDocument();
   });
@@ -371,6 +379,20 @@ describe("InventoryProductsPage", () => {
     expect(screen.getByTestId("inventory-catalog-tools")).toBeInTheDocument();
     expect(screen.getByTestId("inventory-smart-import")).toBeInTheDocument();
     expect(screen.getByTestId("inventory-corrections")).toBeInTheDocument();
+  });
+});
+
+describe("InventoryPriceListsPage", () => {
+  it("incluye el componente de listas de precios", () => {
+    const contextValue = createContextValue();
+    render(
+      <InventoryLayoutContext.Provider value={contextValue}>
+        <InventoryPriceListsPage />
+      </InventoryLayoutContext.Provider>,
+    );
+
+    expect(screen.getByRole("heading", { name: /Listas de precios/i })).toBeInTheDocument();
+    expect(screen.getByTestId("catalog-price-lists")).toBeInTheDocument();
   });
 });
 

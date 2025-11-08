@@ -29,7 +29,13 @@ import type {
   StatusCard,
 } from "./context/InventoryLayoutContext";
 
-export type InventoryTabId = "productos" | "movimientos" | "proveedores" | "alertas" | "reservas";
+export type InventoryTabId =
+  | "productos"
+  | "listas"
+  | "movimientos"
+  | "proveedores"
+  | "alertas"
+  | "reservas";
 
 const INVENTORY_TABS: Array<{
   id: InventoryTabId;
@@ -38,6 +44,12 @@ const INVENTORY_TABS: Array<{
   path: string;
 }> = [
   { id: "productos", label: "Productos", icon: <Boxes size={16} aria-hidden="true" />, path: "productos" },
+  {
+    id: "listas",
+    label: "Listas de precios",
+    icon: <DollarSign size={16} aria-hidden="true" />,
+    path: "listas-precios",
+  },
   { id: "movimientos", label: "Movimientos", icon: <RefreshCcw size={16} aria-hidden="true" />, path: "movimientos" },
   { id: "proveedores", label: "Proveedores", icon: <Building2 size={16} aria-hidden="true" />, path: "proveedores" },
   { id: "alertas", label: "Alertas", icon: <AlertTriangle size={16} aria-hidden="true" />, path: "alertas" },
@@ -61,6 +73,9 @@ export type InventoryLayoutState = {
 function resolveActiveTab(pathname: string): InventoryTabId {
   if (pathname.includes("/movimientos")) {
     return "movimientos";
+  }
+  if (pathname.includes("/listas-precios")) {
+    return "listas";
   }
   if (pathname.includes("/proveedores")) {
     return "proveedores";

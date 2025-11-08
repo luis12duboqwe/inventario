@@ -8,6 +8,7 @@ const DashboardLayout = lazyWithRetry(() => import("./layout/DashboardLayout"));
 const InventoryLayout = lazyWithRetry(() => import("../inventory/pages/InventoryLayout"));
 // Usar las variantes *Page para permitir mocks de pruebas y loaders dedicados
 const InventoryProducts = lazyWithRetry(() => import("../inventory/pages/InventoryProductsPage"));
+const InventoryPriceLists = lazyWithRetry(() => import("../inventory/pages/InventoryPriceListsPage"));
 const InventoryMoves = lazyWithRetry(() => import("../inventory/pages/InventoryMovementsPage"));
 const InventorySuppliers = lazyWithRetry(() => import("../inventory/pages/InventorySuppliersPage"));
 const InventoryAlerts = lazyWithRetry(() => import("../inventory/pages/InventoryAlertsPage"));
@@ -118,6 +119,7 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
         >
           <Route index element={<Navigate to="productos" replace />} />
           <Route path="productos" element={<InventoryProducts />} />
+          <Route path="listas-precios" element={<InventoryPriceLists />} />
           <Route path="movimientos" element={<InventoryMoves />} />
           <Route path="proveedores" element={<InventorySuppliers />} />
           <Route path="alertas" element={<InventoryAlerts />} />

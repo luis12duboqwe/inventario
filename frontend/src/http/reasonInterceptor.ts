@@ -7,6 +7,7 @@ const SENSITIVE_RULES: { prefix: string; defaultReason: string }[] = [
   { prefix: "/pos", defaultReason: "Consulta POS corporativa" },
   { prefix: "/reports", defaultReason: "Consulta reportes corporativa" },
   { prefix: "/customers", defaultReason: "Consulta clientes corporativa" },
+  { prefix: "/price-lists", defaultReason: "Consulta listas de precios" },
 ];
 
 function normalizePath(path: string): string {

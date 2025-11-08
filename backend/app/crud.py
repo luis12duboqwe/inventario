@@ -1711,6 +1711,28 @@ def _ensure_non_negative_decimal(value: Decimal, error_code: str) -> Decimal:
     return normalized
 
 
+def _ensure_positive_decimal(value: Decimal, error_code: str) -> Decimal:
+    normalized = _to_decimal(value).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if normalized <= Decimal("0"):
+        raise ValueError(error_code)
+    return normalized
+
+
+def _ensure_discount_percentage(
+    value: Decimal | None, error_code: str
+) -> Decimal | None:
+    if value is None:
+        return None
+    normalized = _to_decimal(value).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if normalized < Decimal("0") or normalized > Decimal("100"):
+        raise ValueError(error_code)
+    return normalized
+
+
 def _ensure_debt_respects_limit(credit_limit: Decimal, outstanding: Decimal) -> None:
     """Valida que el saldo pendiente no supere el límite de crédito configurado."""
 
@@ -5585,6 +5607,370 @@ def get_device_global(db: Session, device_id: int) -> models.Device:
     if device is None:
         raise LookupError("device_not_found")
     return device
+
+
+def list_price_lists(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+    is_active: bool | None = None,
+    include_items: bool = False,
+) -> list[models.PriceList]:
+    statement = select(models.PriceList).order_by(models.PriceList.name.asc())
+    if store_id is not None:
+        statement = statement.where(models.PriceList.store_id == store_id)
+    if customer_id is not None:
+        statement = statement.where(models.PriceList.customer_id == customer_id)
+    if is_active is not None:
+        statement = statement.where(models.PriceList.is_active.is_(is_active))
+    if include_items:
+        statement = statement.options(joinedload(models.PriceList.items))
+    result = db.scalars(statement)
+    if include_items:
+        result = result.unique()
+    return list(result)
+
+
+def get_price_list(
+    db: Session,
+    price_list_id: int,
+    *,
+    include_items: bool = False,
+) -> models.PriceList:
+    statement = select(models.PriceList).where(models.PriceList.id == price_list_id)
+    if include_items:
+        statement = statement.options(joinedload(models.PriceList.items))
+    try:
+        result = db.scalars(statement)
+        if include_items:
+            result = result.unique()
+        return result.one()
+    except NoResultFound as exc:
+        raise LookupError("price_list_not_found") from exc
+
+
+def create_price_list(
+    db: Session,
+    payload: schemas.PriceListCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.PriceList:
+    if payload.store_id is not None:
+        get_store(db, payload.store_id)
+    if payload.customer_id is not None:
+        get_customer(db, payload.customer_id)
+
+    with transactional_session(db):
+        price_list = models.PriceList(
+            name=payload.name,
+            description=payload.description,
+            is_active=payload.is_active,
+            store_id=payload.store_id,
+            customer_id=payload.customer_id,
+            currency=payload.currency,
+            valid_from=payload.valid_from,
+            valid_until=payload.valid_until,
+        )
+        db.add(price_list)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("price_list_conflict") from exc
+        db.refresh(price_list)
+
+        _log_action(
+            db,
+            action="price_list_created",
+            entity_type="price_list",
+            entity_id=str(price_list.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"name": price_list.name}),
+        )
+        flush_session(db)
+        db.refresh(price_list)
+    return price_list
+
+
+def update_price_list(
+    db: Session,
+    price_list_id: int,
+    payload: schemas.PriceListUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.PriceList:
+    price_list = get_price_list(db, price_list_id)
+
+    updates = payload.model_dump(exclude_unset=True)
+    sanitized_updates: dict[str, Any] = {}
+    for field, value in updates.items():
+        if field in {"name", "currency"} and value is None:
+            continue
+        sanitized_updates[field] = value
+    if not sanitized_updates:
+        return price_list
+
+    if (
+        "store_id" in sanitized_updates
+        and sanitized_updates["store_id"] is not None
+        and sanitized_updates["store_id"] != price_list.store_id
+    ):
+        get_store(db, sanitized_updates["store_id"])
+    if (
+        "customer_id" in sanitized_updates
+        and sanitized_updates["customer_id"] is not None
+        and sanitized_updates["customer_id"] != price_list.customer_id
+    ):
+        get_customer(db, sanitized_updates["customer_id"])
+
+    with transactional_session(db):
+        for field, value in sanitized_updates.items():
+            setattr(price_list, field, value)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("price_list_conflict") from exc
+        db.refresh(price_list)
+
+        _log_action(
+            db,
+            action="price_list_updated",
+            entity_type="price_list",
+            entity_id=str(price_list.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"updated_fields": sorted(sanitized_updates.keys())}),
+        )
+        flush_session(db)
+        db.refresh(price_list)
+    return price_list
+
+
+def delete_price_list(
+    db: Session,
+    price_list_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> None:
+    price_list = get_price_list(db, price_list_id)
+    name = price_list.name
+    with transactional_session(db):
+        db.delete(price_list)
+        flush_session(db)
+
+        _log_action(
+            db,
+            action="price_list_deleted",
+            entity_type="price_list",
+            entity_id=str(price_list_id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"name": name}),
+        )
+        flush_session(db)
+
+
+def get_price_list_item(db: Session, item_id: int) -> models.PriceListItem:
+    statement = select(models.PriceListItem).where(models.PriceListItem.id == item_id)
+    try:
+        return db.scalars(statement).one()
+    except NoResultFound as exc:
+        raise LookupError("price_list_item_not_found") from exc
+
+
+def create_price_list_item(
+    db: Session,
+    price_list_id: int,
+    payload: schemas.PriceListItemCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.PriceListItem:
+    price_list = get_price_list(db, price_list_id)
+    device = get_device_global(db, payload.device_id)
+
+    price = _ensure_positive_decimal(
+        payload.price, "price_list_item_price_invalid"
+    )
+    discount = _ensure_discount_percentage(
+        payload.discount_percentage, "price_list_item_discount_invalid"
+    )
+
+    with transactional_session(db):
+        item = models.PriceListItem(
+            price_list_id=price_list.id,
+            device_id=device.id,
+            price=price,
+            discount_percentage=discount,
+            notes=payload.notes,
+        )
+        db.add(item)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("price_list_item_conflict") from exc
+        db.refresh(item)
+
+        _log_action(
+            db,
+            action="price_list_item_created",
+            entity_type="price_list_item",
+            entity_id=str(item.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "price_list_id": price_list.id,
+                    "device_id": device.id,
+                }
+            ),
+        )
+        flush_session(db)
+        db.refresh(item)
+    return item
+
+
+def update_price_list_item(
+    db: Session,
+    item_id: int,
+    payload: schemas.PriceListItemUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.PriceListItem:
+    item = get_price_list_item(db, item_id)
+
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        return item
+
+    if "price" in updates:
+        updates["price"] = _ensure_positive_decimal(
+            updates["price"], "price_list_item_price_invalid"
+        )
+    if "discount_percentage" in updates:
+        updates["discount_percentage"] = _ensure_discount_percentage(
+            updates["discount_percentage"], "price_list_item_discount_invalid"
+        )
+
+    with transactional_session(db):
+        for field, value in updates.items():
+            setattr(item, field, value)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("price_list_item_conflict") from exc
+        db.refresh(item)
+
+        _log_action(
+            db,
+            action="price_list_item_updated",
+            entity_type="price_list_item",
+            entity_id=str(item.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "price_list_id": item.price_list_id,
+                    "device_id": item.device_id,
+                    "updated_fields": sorted(updates.keys()),
+                }
+            ),
+        )
+        flush_session(db)
+        db.refresh(item)
+    return item
+
+
+def delete_price_list_item(
+    db: Session,
+    item_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> None:
+    item = get_price_list_item(db, item_id)
+    with transactional_session(db):
+        db.delete(item)
+        flush_session(db)
+
+        _log_action(
+            db,
+            action="price_list_item_deleted",
+            entity_type="price_list_item",
+            entity_id=str(item_id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "price_list_id": item.price_list_id,
+                    "device_id": item.device_id,
+                }
+            ),
+        )
+        flush_session(db)
+
+
+def resolve_price_for_device(
+    db: Session,
+    *,
+    device_id: int,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+    reference_date: date | None = None,
+) -> tuple[models.PriceList, models.PriceListItem] | None:
+    get_device_global(db, device_id)
+    effective_date = reference_date or date.today()
+
+    validity_condition = and_(
+        or_(models.PriceList.valid_from.is_(None), models.PriceList.valid_from <= effective_date),
+        or_(models.PriceList.valid_until.is_(None), models.PriceList.valid_until >= effective_date),
+    )
+
+    statement = (
+        select(models.PriceListItem, models.PriceList)
+        .join(models.PriceList, models.PriceListItem.price_list_id == models.PriceList.id)
+        .where(models.PriceListItem.device_id == device_id)
+        .where(models.PriceList.is_active.is_(True))
+        .where(validity_condition)
+    )
+
+    results = db.execute(statement).all()
+
+    def _priority(price_list: models.PriceList) -> int:
+        if (
+            store_id is not None
+            and customer_id is not None
+            and price_list.store_id == store_id
+            and price_list.customer_id == customer_id
+        ):
+            return 1
+        if (
+            customer_id is not None
+            and price_list.customer_id == customer_id
+            and price_list.store_id is None
+        ):
+            return 2
+        if (
+            store_id is not None
+            and price_list.store_id == store_id
+            and price_list.customer_id is None
+        ):
+            return 3
+        if price_list.store_id is None and price_list.customer_id is None:
+            return 4
+        return 99
+
+    best_match: tuple[models.PriceList, models.PriceListItem] | None = None
+    best_priority = 99
+    for item, price_list in results:
+        priority = _priority(price_list)
+        if priority >= 99:
+            continue
+        if (
+            best_match is None
+            or priority < best_priority
+            or (
+                priority == best_priority
+                and price_list.updated_at > best_match[0].updated_at
+            )
+        ):
+            best_match = (price_list, item)
+            best_priority = priority
+
+    return best_match
 
 
 # // [PACK34-lookup]

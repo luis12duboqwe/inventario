@@ -484,7 +484,9 @@ def generate_backup(
 
     total_size_estimate = 0
     calculated_size = 0
+    last_written_size = -1
     for _ in range(3):
+        last_written_size = total_size_estimate
         _write_metadata(
             metadata_path,
             timestamp=timestamp,
@@ -519,7 +521,8 @@ def generate_backup(
         total_size_estimate = calculated_size
 
     total_size = calculated_size
-    if total_size != total_size_estimate:
+    for _ in range(3):
+        last_written_size = total_size
         _write_metadata(
             metadata_path,
             timestamp=timestamp,
@@ -538,7 +541,7 @@ def generate_backup(
             reason=normalized_reason,
         )
         _build_archive()
-        total_size = _calculate_total_size(
+        recalculated_size = _calculate_total_size(
             [
                 pdf_path,
                 json_path,
@@ -549,6 +552,9 @@ def generate_backup(
                 critical_directory,
             ]
         )
+        if recalculated_size == total_size:
+            break
+        total_size = recalculated_size
 
     job = crud.create_backup_job(
         db,
