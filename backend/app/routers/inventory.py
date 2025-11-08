@@ -17,6 +17,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
@@ -655,17 +656,24 @@ async def import_devices(
             content,
             performed_by_id=current_user.id if current_user else None,
         )
-    except ValueError as exc:
+    except (ValueError, ValidationError) as exc:
         message = str(exc)
-        if message.startswith("csv_missing_columns"):
+        if isinstance(exc, ValidationError):
+            detail = {
+                "code": "csv_import_error",
+                "message": "El archivo contiene datos inválidos.",
+            }
+        elif message.startswith("csv_missing_columns"):
             missing = message.split(":", maxsplit=1)[1]
             detail = {
                 "code": "csv_missing_columns",
                 "message": f"El archivo debe incluir las columnas requeridas: {missing}",
             }
         elif message == "csv_missing_header":
-            detail = {"code": "csv_missing_header",
-                      "message": "No se encontró encabezado en el archivo."}
+            detail = {
+                "code": "csv_missing_header",
+                "message": "No se encontró encabezado en el archivo.",
+            }
         elif message == "csv_encoding_error":
             detail = {
                 "code": "csv_encoding_error",
@@ -678,4 +686,14 @@ async def import_devices(
             }
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
-    return schemas.InventoryImportSummary(**summary)
+    summary_payload = schemas.InventoryImportSummary(**summary)
+    if summary_payload.errors:
+        detail = {
+            "code": "csv_import_error",
+            "message": "El archivo contiene datos inválidos.",
+            "errors": [error.model_dump() for error in summary_payload.errors],
+        }
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=detail
+        )
+    return summary_payload
