@@ -1,6 +1,8 @@
 """Utilidades de seguridad y autenticación para la API."""
 from __future__ import annotations
 
+import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 import types
 import uuid
@@ -19,12 +21,46 @@ from .core.roles import ADMIN
 from .config import settings
 from .database import get_db
 
+logger = logging.getLogger(__name__)
+
+try:  # pragma: no cover - import defensivo
+    from fastapi_limiter import FastAPILimiter  # type: ignore
+    from fastapi_limiter.depends import RateLimiter as _RateLimiter  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - degradación controlada
+    FastAPILimiter = None  # type: ignore[assignment]
+    _RateLimiter = None  # type: ignore[assignment]
+    FakeRedis = None  # type: ignore[assignment]
+else:  # pragma: no cover - import defensivo
+    try:
+        from fakeredis.aioredis import FakeRedis  # type: ignore
+    except ModuleNotFoundError:  # pragma: no cover - fakeredis opcional
+        FakeRedis = None  # type: ignore[assignment]
+
+
+def _is_stub_rate_limiter() -> bool:
+    """Detecta si se está utilizando la implementación stub del limitador."""
+
+    if FastAPILimiter is None:
+        return False
+    doc = getattr(FastAPILimiter, "__doc__", "") or ""
+    return "Stub compatible" in doc and "pruebas" in doc.lower()
+
+
+class _MemoryLimiterRedis:
+    """Almacén mínimo en memoria para satisfacer la interfaz del stub."""
+
+    async def close(self) -> None:  # pragma: no cover - comportamiento trivial
+        return None
+
+
 if not hasattr(bcrypt, "__about__"):
     bcrypt.__about__ = types.SimpleNamespace(__version__=bcrypt.__version__)
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 ALGORITHM = "HS256"
+
+_rate_limiter_configured = False
 
 _BASE_ANONYMOUS_PATHS = {
     "/",
@@ -66,6 +102,96 @@ def _build_anonymous_paths() -> frozenset[str]:
 
 
 _ANONYMOUS_PATHS = _build_anonymous_paths()
+
+
+class _RateLimiterStub:  # pragma: no cover - comportamiento trivial
+    """Satisface la interfaz esperada cuando el limitador no está disponible."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # noqa: D401 - interfaz FastAPI
+        self.args = args
+        self.kwargs = kwargs
+
+    async def __call__(self, _request: Request) -> None:
+        return None
+
+
+def rate_limit(*, times: int, minutes: int) -> Any:
+    """Devuelve una dependencia de limitación de peticiones.
+
+    Cuando fastapi-limiter no está disponible, se devuelve un stub inofensivo que
+    mantiene la firma esperada por FastAPI sin aplicar restricciones reales.
+    """
+
+    if _RateLimiter is None:
+        return _RateLimiterStub(times=times, minutes=minutes)
+    return _RateLimiter(times=times, minutes=minutes)
+
+
+def _default_rate_limit_identifier(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    if forwarded:
+        return forwarded
+    client = request.client
+    if client and client.host:
+        return client.host
+    return "anonymous"
+
+
+async def ensure_rate_limiter(
+    identifier: Callable[[Request], str | Awaitable[str]] | None = None,
+) -> None:
+    """Inicializa el limitador de ritmo con Redis en memoria cuando es posible."""
+
+    global _rate_limiter_configured
+    if _rate_limiter_configured:
+        if identifier and FastAPILimiter is not None:
+            FastAPILimiter.identifier = identifier
+        return
+
+    if FastAPILimiter is None:
+        logger.warning(
+            "fastapi-limiter no disponible; las rutas funcionarán sin límite de peticiones",
+        )
+        _rate_limiter_configured = True
+        return
+
+    if getattr(FastAPILimiter, "redis", None) is None:
+        redis_instance: Any | None = None
+        if FakeRedis is not None:
+            redis_instance = FakeRedis()
+        elif _is_stub_rate_limiter():
+            redis_instance = _MemoryLimiterRedis()
+        if redis_instance is None:
+            logger.warning(
+                "fakeredis no está instalado; no se aplicará limitación de peticiones en memoria",
+            )
+            _rate_limiter_configured = True
+            return
+        await FastAPILimiter.init(redis_instance)
+
+    if identifier is not None:
+        FastAPILimiter.identifier = identifier
+    elif getattr(FastAPILimiter, "identifier", None) is None:
+        FastAPILimiter.identifier = _default_rate_limit_identifier
+
+    _rate_limiter_configured = True
+
+
+async def reset_rate_limiter() -> None:
+    """Libera los recursos asociados al limitador de ritmo."""
+
+    global _rate_limiter_configured
+    if FastAPILimiter is None:
+        _rate_limiter_configured = False
+        return
+
+    close = getattr(FastAPILimiter, "close", None)
+    if close is not None:
+        await close()
+    else:  # pragma: no cover - degradación defensiva
+        FastAPILimiter.redis = None  # type: ignore[attr-defined]
+    FastAPILimiter.identifier = None
+    _rate_limiter_configured = False
 
 
 def hash_password(password: str) -> str:

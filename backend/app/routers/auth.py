@@ -17,9 +17,12 @@ from ..security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    ensure_rate_limiter,
     get_current_user,
     hash_password,
+    rate_limit,
     require_active_user,
+    reset_rate_limiter,
     verify_password,
     verify_totp,
 )
@@ -81,6 +84,18 @@ def _authenticate_user(
     return user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+async def _setup_rate_limiter() -> None:
+    await ensure_rate_limiter()
+
+
+async def _shutdown_rate_limiter() -> None:
+    await reset_rate_limiter()
+
+
+router.add_event_handler("startup", _setup_rate_limiter)
+router.add_event_handler("shutdown", _shutdown_rate_limiter)
 
 
 # // [PACK28-auth]
@@ -186,7 +201,7 @@ def bootstrap_admin(payload: schemas.UserCreate, db: Session = Depends(get_db)):
 @router.post(
     "/login",
     response_model=schemas.AuthLoginResponse,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(rate_limit(times=5, minutes=1)), Depends(get_current_user)],
 )
 def login_with_jwt(
     response: Response,
@@ -248,7 +263,7 @@ class OAuth2PasswordRequestFormWithOTP(OAuth2PasswordRequestForm):
 @router.post(
     "/token",
     response_model=schemas.TokenResponse,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(rate_limit(times=5, minutes=1)), Depends(get_current_user)],
 )
 def login(form_data: OAuth2PasswordRequestFormWithOTP = Depends(), db: Session = Depends(get_db)):
     user = _authenticate_user(
@@ -275,7 +290,7 @@ def login(form_data: OAuth2PasswordRequestFormWithOTP = Depends(), db: Session =
 @router.post(
     "/session",
     response_model=schemas.SessionLoginResponse,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(rate_limit(times=5, minutes=1)), Depends(get_current_user)],
 )
 def login_with_session(
     response: Response,
@@ -439,7 +454,7 @@ async def read_current_user(current_user=Depends(require_active_user)):
     "/password/request",
     response_model=schemas.PasswordResetResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(rate_limit(times=3, minutes=5)), Depends(get_current_user)],
 )
 def request_password_reset(
     payload: schemas.PasswordRecoveryRequest, db: Session = Depends(get_db)
