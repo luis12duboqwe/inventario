@@ -323,7 +323,6 @@ class Device(Base):
     price_list_items: Mapped[list["PriceListItem"]] = relationship(
         "PriceListItem",
         back_populates="device",
-        cascade="all, delete-orphan",
     )
 
     @property
