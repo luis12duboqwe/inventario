@@ -484,7 +484,9 @@ def generate_backup(
 
     total_size_estimate = 0
     calculated_size = 0
+    last_written_size = -1
     for _ in range(3):
+        last_written_size = total_size_estimate
         _write_metadata(
             metadata_path,
             timestamp=timestamp,
@@ -519,8 +521,9 @@ def generate_backup(
         total_size_estimate = calculated_size
 
     total_size = calculated_size
-    if total_size != total_size_estimate:
+    if last_written_size != total_size:
         for _ in range(3):
+            last_written_size = total_size
             _write_metadata(
                 metadata_path,
                 timestamp=timestamp,
