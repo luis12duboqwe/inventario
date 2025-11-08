@@ -2170,6 +2170,28 @@ const requestCache = new Map<string, RequestCacheRecord>();
 type PendingRequestResult = { value: unknown; isJson: boolean };
 const pendingRequests = new Map<string, Promise<PendingRequestResult>>();
 
+function parseFilenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) {
+    return fallback;
+  }
+
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch (error) {
+      return utf8Match[1];
+    }
+  }
+
+  const asciiMatch = header.match(/filename="?([^";]+)"?/i);
+  if (asciiMatch?.[1]) {
+    return asciiMatch[1];
+  }
+
+  return fallback;
+}
+
 function serializeHeaders(headers: Headers): Array<[string, string]> {
   const entries: Array<[string, string]> = Array.from(headers.entries());
   return entries
@@ -2994,6 +3016,41 @@ export function importStoreDevicesCsv(
     { method: "POST", body: formData, headers: { "X-Reason": reason } },
     token,
   );
+}
+
+export type DeviceLabelDownload = {
+  blob: Blob;
+  filename: string;
+};
+
+export async function downloadDeviceLabelPdf(
+  token: string,
+  storeId: number,
+  deviceId: number,
+  reason: string,
+): Promise<DeviceLabelDownload> {
+  const response = await fetch(
+    `${API_URL}/inventory/stores/${storeId}/devices/${deviceId}/label/pdf`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/pdf",
+        "X-Reason": reason,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("No fue posible generar la etiqueta del dispositivo.");
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition");
+  const fallback = `etiqueta_${storeId}_${deviceId}.pdf`;
+  const filename = parseFilenameFromDisposition(disposition, fallback);
+
+  return { blob, filename };
 }
 
 export function smartInventoryImport(

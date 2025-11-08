@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import io
+from decimal import Decimal
 
 from fastapi import status
+
+from backend.app import crud, models, schemas
+from backend.app.services import inventory_labels
 
 
 def _pdf_starts_with_header(content: bytes) -> bool:
@@ -70,3 +74,60 @@ def test_device_label_pdf_generation(client):
         "Content-Type", "").startswith("application/pdf")
     content = label_resp.content
     assert _pdf_starts_with_header(content)
+
+
+def test_device_label_deduplicates_identifiers(db_session):
+    store = crud.create_store(
+        db_session,
+        schemas.StoreCreate(name="Sucursal Duplicada", timezone="UTC"),
+    )
+    device = crud.create_device(
+        db_session,
+        store_id=store.id,
+        payload=schemas.DeviceCreate(
+            sku="SKU-DEDUP",
+            name="Equipo Duplicado",
+            quantity=1,
+            unit_price=Decimal("999.99"),
+            costo_unitario=Decimal("699.99"),
+            marca="Marca Test",
+            modelo="Modelo Test",
+            color="Negro",
+            imei="111222333444555",
+            serial="SER-12345",
+            completo=True,
+        ),
+    )
+
+    crud.upsert_device_identifier(
+        db_session,
+        store_id=store.id,
+        device_id=device.id,
+        payload=schemas.DeviceIdentifierRequest(
+            imei_1="111222333444555",
+            imei_2="666777888999000",
+            numero_serie="SER-12345",
+            estado_tecnico=None,
+            observaciones=None,
+        ),
+    )
+
+    db_session.expire_all()
+    device_with_identifiers = db_session.get(models.Device, device.id)
+    assert device_with_identifiers is not None
+
+    lines = inventory_labels._collect_identifier_lines(device_with_identifiers)
+    assert lines == [
+        "IMEI: 111222333444555",
+        "SERIE: SER-12345",
+        "IMEI 2: 666777888999000",
+    ]
+
+    pdf_bytes, filename = inventory_labels.render_device_label_pdf(
+        db_session,
+        store_id=store.id,
+        device_id=device.id,
+    )
+
+    assert _pdf_starts_with_header(pdf_bytes)
+    assert filename == f"etiqueta_{store.id}_{device.sku}.pdf"

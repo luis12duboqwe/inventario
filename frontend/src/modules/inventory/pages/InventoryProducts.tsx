@@ -16,6 +16,7 @@ import {
 } from "../components/products-list";
 import type { ProductFilters, ProductCardData, ProductRow } from "../components/products-list";
 import { useInventoryLayout } from "./context/InventoryLayoutContext"; // [PACK30-31-FRONTEND]
+import LabelGenerator from "../components/LabelGenerator";
 
 type MovePayload = { categoryId: string };
 type TagPayload = { tags: string[] };
@@ -38,6 +39,7 @@ export default function InventoryProducts() {
   const [mExport, setMExport] = React.useState(false);
   const [mMove, setMMove] = React.useState(false);
   const [mTag, setMTag] = React.useState(false);
+  const [mLabel, setMLabel] = React.useState(false);
   const [page, setPage] = React.useState<number>(1);
 
   const rows = React.useMemo<ProductRow[]>(() => [], []);
@@ -154,6 +156,10 @@ export default function InventoryProducts() {
     setMTag(true);
   }, []);
 
+  const handleLabel = React.useCallback(() => {
+    setMLabel(true);
+  }, []);
+
   const handleMoveCategorySubmit = React.useCallback((payload: MovePayload) => {
     console.info("Mover categoría", payload);
     setMMove(false);
@@ -168,6 +174,36 @@ export default function InventoryProducts() {
   const handlePageChange = React.useCallback((nextPage: number) => {
     setPage(nextPage);
   }, []);
+
+  const selectedProduct = React.useMemo(() => {
+    if (selectedIds.length === 0) {
+      return null;
+    }
+    const [firstId] = selectedIds;
+    return rows.find((row) => row.id === firstId) ?? null;
+  }, [rows, selectedIds]);
+
+  const selectedStoreId = React.useMemo(() => {
+    if (typeof filters.storeId === "number") {
+      return filters.storeId;
+    }
+    return selectedProduct?.storeId ?? null;
+  }, [filters.storeId, selectedProduct]);
+
+  const selectedStoreName = React.useMemo(() => {
+    if (!selectedStoreId) {
+      return selectedProduct?.store ?? null;
+    }
+    const match = stores?.find((store) => store.id === selectedStoreId);
+    return match?.name ?? selectedProduct?.store ?? null;
+  }, [selectedProduct, selectedStoreId, stores]);
+
+  const canGenerateLabel = React.useMemo(() => {
+    if (!selectedProduct) {
+      return false;
+    }
+    return selectedIds.length === 1 && selectedStoreId != null;
+  }, [selectedIds.length, selectedProduct, selectedStoreId]);
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -193,6 +229,8 @@ export default function InventoryProducts() {
         onImport={handleImport}
         onMoveCategory={handleMoveCategory}
         onTag={handleTag}
+        onLabel={handleLabel}
+        canGenerateLabel={canGenerateLabel}
       />
 
       {mode === "grid" ? (
@@ -227,6 +265,15 @@ export default function InventoryProducts() {
       <ProductsExportModal open={mExport} onClose={() => setMExport(false)} />
       <ProductsMoveCategoryModal open={mMove} onClose={() => setMMove(false)} onSubmit={handleMoveCategorySubmit} />
       <ProductsTagModal open={mTag} onClose={() => setMTag(false)} onSubmit={handleTagSubmit} />
+      <LabelGenerator
+        open={mLabel}
+        onClose={() => setMLabel(false)}
+        storeId={selectedStoreId}
+        storeName={selectedStoreName}
+        deviceId={selectedProduct?.id ?? null}
+        deviceName={selectedProduct?.name ?? null}
+        sku={selectedProduct?.sku ?? null}
+      />
     </div>
   );
 }
