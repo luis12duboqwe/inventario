@@ -4,6 +4,7 @@ from fastapi import status
 
 from backend.app import crud, models
 from backend.app.config import settings
+from backend.app.services import global_reports_data, global_reports_renderers
 from backend.app.core.roles import ADMIN
 
 
@@ -129,6 +130,25 @@ def test_global_reports_overview_dashboard_and_exports(client, db_session):
     assert csv_response.status_code == status.HTTP_200_OK
     assert csv_response.headers["content-type"].startswith("text/csv")
     assert b"Registros" in csv_response.content
+
+    dataset = global_reports_data.build_dataset(
+        db_session,
+        date_from=None,
+        date_to=None,
+        module=None,
+        severity=None,
+    )
+    assert dataset.overview.totals.logs >= 3
+    assert dataset.dashboard.activity_series
+
+    pdf_direct = global_reports_renderers.render_global_report_pdf(dataset.overview, dataset.dashboard)
+    assert isinstance(pdf_direct, bytes) and len(pdf_direct) > 0
+
+    xlsx_direct = global_reports_renderers.render_global_report_xlsx(dataset.overview, dataset.dashboard)
+    assert len(xlsx_direct.getvalue()) > 0
+
+    csv_direct = global_reports_renderers.render_global_report_csv(dataset.overview, dataset.dashboard)
+    assert "Softmobile 2025" in csv_direct.getvalue()
 
 
 def test_global_reports_respects_analytics_flag(client):

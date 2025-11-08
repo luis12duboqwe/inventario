@@ -19,7 +19,7 @@ from ..security import require_roles
 from ..services import analytics as analytics_service
 from ..services import audit as audit_service
 from ..services import backups as backup_services
-from ..services import global_reports as global_reports_service
+from ..services import global_reports_data, global_reports_renderers
 from ..services import customer_reports
 from ..services import inventory_reports as inventory_reports_service
 from ..utils import audit as audit_utils
@@ -82,7 +82,7 @@ def global_report_overview(
     _ensure_analytics_enabled()
     normalized_from = _coerce_datetime(date_from)
     normalized_to = _coerce_datetime(date_to)
-    return crud.build_global_report_overview(
+    return global_reports_data.get_overview(
         db,
         date_from=normalized_from,
         date_to=normalized_to,
@@ -106,7 +106,7 @@ def global_report_dashboard(
     _ensure_analytics_enabled()
     normalized_from = _coerce_datetime(date_from)
     normalized_to = _coerce_datetime(date_to)
-    return crud.build_global_report_dashboard(
+    return global_reports_data.get_dashboard(
         db,
         date_from=normalized_from,
         date_to=normalized_to,
@@ -131,23 +131,18 @@ def export_global_report(
 ):
     normalized_from = _coerce_datetime(date_from)
     normalized_to = _coerce_datetime(date_to)
-    overview = crud.build_global_report_overview(
+    dataset = global_reports_data.build_dataset(
         db,
         date_from=normalized_from,
         date_to=normalized_to,
         module=module,
         severity=severity,
     )
-    dashboard = crud.build_global_report_dashboard(
-        db,
-        date_from=normalized_from,
-        date_to=normalized_to,
-        module=module,
-        severity=severity,
-    )
+    overview = dataset.overview
+    dashboard = dataset.dashboard
 
     if format == "pdf":
-        pdf_bytes = global_reports_service.render_global_report_pdf(overview, dashboard)
+        pdf_bytes = global_reports_renderers.render_global_report_pdf(overview, dashboard)
         buffer = BytesIO(pdf_bytes)
         metadata = schemas.BinaryFileResponse(
             filename="softmobile_reporte_global.pdf",
@@ -159,7 +154,7 @@ def export_global_report(
             headers=metadata.content_disposition(),
         )
     if format == "xlsx":
-        workbook = global_reports_service.render_global_report_xlsx(overview, dashboard)
+        workbook = global_reports_renderers.render_global_report_xlsx(overview, dashboard)
         metadata = schemas.BinaryFileResponse(
             filename="softmobile_reporte_global.xlsx",
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -170,7 +165,7 @@ def export_global_report(
             headers=metadata.content_disposition(),
         )
     if format == "csv":
-        csv_buffer = global_reports_service.render_global_report_csv(overview, dashboard)
+        csv_buffer = global_reports_renderers.render_global_report_csv(overview, dashboard)
         metadata = schemas.BinaryFileResponse(
             filename="softmobile_reporte_global.csv",
             media_type="text/csv",
