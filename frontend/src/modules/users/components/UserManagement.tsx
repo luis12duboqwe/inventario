@@ -126,16 +126,22 @@ function UserManagement({ token }: Props) {
       setLoadingPermissions(true);
       const data = await usersService.listRolePermissions(token);
       setPermissionsMatrix(data);
-      if (data.length > 0) {
-        const firstRole = data[0]!;
-        const defaultRole = data.find((item) => item.role === selectedRole)?.role ?? firstRole.role;
-        setSelectedRole(defaultRole);
-        const mapping: Record<string, RoleModulePermission[]> = {};
-        data.forEach((item) => {
-          mapping[item.role] = item.permissions.map((permission) => ({ ...permission }));
-        });
-        setPermissionDraft(mapping);
+      if (data.length === 0) {
+        setPermissionDraft({});
+        setSelectedRole("");
+        return;
       }
+      const mapping: Record<string, RoleModulePermission[]> = {};
+      data.forEach((item) => {
+        mapping[item.role] = item.permissions.map((permission) => ({ ...permission }));
+      });
+      setPermissionDraft(mapping);
+      setSelectedRole((current) => {
+        if (current && data.some((item) => item.role === current)) {
+          return current;
+        }
+        return data[0]!.role;
+      });
     } catch (error_) {
       const message =
         error_ instanceof Error ? error_.message : "No fue posible cargar los permisos corporativos.";
@@ -143,7 +149,7 @@ function UserManagement({ token }: Props) {
     } finally {
       setLoadingPermissions(false);
     }
-  }, [token, pushToast, selectedRole]);
+  }, [token, pushToast]);
 
   useEffect(() => {
     let active = true;
