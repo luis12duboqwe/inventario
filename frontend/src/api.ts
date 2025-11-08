@@ -800,6 +800,45 @@ export type PurchaseReturn = {
   created_at: string;
 };
 
+export type ReturnRecordType = "sale" | "purchase";
+
+export type ReturnRecord = {
+  id: number;
+  type: ReturnRecordType;
+  reference_id: number;
+  reference_label: string;
+  store_id: number;
+  store_name?: string | null;
+  device_id: number;
+  device_name?: string | null;
+  quantity: number;
+  reason: string;
+  processed_by_id?: number | null;
+  processed_by_name?: string | null;
+  partner_name?: string | null;
+  occurred_at: string;
+};
+
+export type ReturnsTotals = {
+  total: number;
+  sales: number;
+  purchases: number;
+};
+
+export type ReturnsOverview = {
+  items: ReturnRecord[];
+  totals: ReturnsTotals;
+};
+
+export type ReturnsFilters = {
+  storeId?: number | null;
+  type?: ReturnRecordType;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
+};
+
 export type PurchaseOrder = {
   id: number;
   store_id: number;
@@ -3944,6 +3983,34 @@ export function registerSaleReturn(
     },
     token
   );
+}
+
+export function listReturns(
+  token: string,
+  filters: ReturnsFilters = {}
+): Promise<ReturnsOverview> {
+  const params = new URLSearchParams();
+  if (typeof filters.storeId === "number") {
+    params.set("store_id", String(filters.storeId));
+  }
+  if (filters.type) {
+    params.set("type", filters.type);
+  }
+  if (filters.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  if (typeof filters.limit === "number") {
+    params.set("limit", String(filters.limit));
+  }
+  if (typeof filters.offset === "number") {
+    params.set("offset", String(filters.offset));
+  }
+  const query = params.toString();
+  const path = `/returns${query ? `?${query}` : ""}`;
+  return request<ReturnsOverview>(path, { method: "GET" }, token);
 }
 
 export function listStoreMemberships(token: string, storeId: number): Promise<StoreMembership[]> {
