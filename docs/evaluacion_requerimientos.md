@@ -57,3 +57,35 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 - Consulta `docs/verificacion_integral_v2.2.0.md` antes de desarrollar nuevas iteraciones para validar el estado vigente del sistema.
 - Respuesta rápida ante alertas: el tablero global muestra recuentos críticos/preventivos y se documentó el protocolo de atención inmediata en README y en Seguridad.
 - Para la versión v2.2.0 restan únicamente las mejoras planeadas hacia la hoja de ruta 2.3 (monitoreo avanzado y despliegues en la nube), sin tareas abiertas de auditoría.
+
+## 10. Hallazgos de la iteración actual
+- **Cumplimiento funcional**: Los módulos críticos (inventario pro, transferencias, compras/ventas, analítica avanzada, seguridad/auditoría y modo híbrido) mantienen cobertura total conforme al mandato Softmobile 2025 v2.2.0, sin regresiones detectadas en pruebas automatizadas recientes.
+- **Operación POS**: El flujo clásico `/pos/sale` continúa priorizando recibos PDF del núcleo antes de recurrir al módulo ligero, lo que garantiza compatibilidad con recibos históricos y mantiene el encabezado obligatorio `X-Reason`.
+- **Sincronización híbrida**: La cola `sync_outbox` conserva reintentos y resolución *last-write-wins* para inventario, POS y reparaciones; no se observaron cuellos de botella en la última revisión de logs.
+- **Documentación y pruebas**: README, CHANGELOG y suites (`pytest`, `npm --prefix frontend run build`, `npm --prefix frontend run test`) permanecen actualizados según la bitácora general.
+- **Verificación de pruebas automatizadas**: La suite `pytest` se ejecutó por completo (203 casos) sin fallos; el corte previo tras 65 pruebas se debió a una interrupción manual, por lo que no se requirieron ajustes de código para estabilizar la ejecución.
+
+## 11. Priorización de ajustes pendientes
+| Prioridad | Ajuste | Justificación | Responsable sugerido |
+| --- | --- | --- | --- |
+| Alta | Definir estrategia de monitoreo centralizado (alertas, tableros y retención de logs) para despliegues v2.3 sin alterar la versión vigente. | Requisito crítico para operaciones en nube y auditoría continua. | Equipo de Infraestructura y Observabilidad |
+| Alta | Fortalecer resolución de conflictos en `sync_outbox` para entidades nuevas previstas en v2.3 (clientes ampliados, órdenes combinadas). | Evitar inconsistencias cuando aumente el tráfico híbrido. | Equipo Backend Híbrido |
+| Media | Documentar lineamientos de soporte remoto para 2FA y sincronización distribuida, incluyendo protocolos de atención y escalamiento. | Facilita adopción corporativa y reduce incidencias operativas. | Equipo de Seguridad Corporativa |
+| Media | Extender analítica comparativa entre sucursales con nuevos formatos de exportación (PDF/Excel) respetando el tema oscuro. | Preparar capacidades que se presentarán en roadmap 2.3. | Equipo de Analítica |
+| Baja | Analizar viabilidad de PostgreSQL administrado para escenarios en la nube manteniendo compatibilidad con SQLite/SQLAlchemy. | Exploración técnica sin impacto inmediato en v2.2.0. | Equipo de Arquitectura |
+
+## 12. Reporte ejecutivo para stakeholders
+**Estado general**: Softmobile Inventario v2.2.0 se mantiene estable y listo para operación corporativa. Todos los módulos habilitados (inventario, transferencias, compras/ventas, analítica avanzada, seguridad con auditoría fina y modo híbrido) superaron la validación funcional sin hallazgos críticos.
+
+**Riesgos y mitigaciones**:
+- Preparar el monitoreo centralizado antes del arranque de despliegues en nube para evitar pérdida de visibilidad operacional.
+- Refuerzos planificados en la cola híbrida asegurarán consistencia cuando se integren nuevas entidades en la siguiente versión.
+
+**Oportunidades**:
+- Extender analítica comparativa entre sucursales permitirá decisiones comerciales más rápidas y soportará próximas iniciativas de inteligencia de negocio.
+- Documentar protocolos de soporte remoto de 2FA y sincronización mejorará la adopción en franquicias y socios estratégicos.
+
+**Próximos pasos sugeridos**:
+1. Aprobar la inversión en infraestructura de observabilidad (stack de logs, métricas y alertas) y asignar responsables.
+2. Programar un sprint de endurecimiento de `sync_outbox` para cubrir entidades planificadas en v2.3.
+3. Publicar lineamientos corporativos de soporte remoto y analítica comparativa antes del comité de revisión trimestral.
