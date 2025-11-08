@@ -2060,6 +2060,32 @@ class LowStockDevice(BaseModel):
         return float(self.quantity * self.unit_price)
 
 
+class InventoryAlertDevice(LowStockDevice):
+    severity: Literal["critical", "warning", "notice"]
+
+
+class InventoryAlertSummary(BaseModel):
+    total: int
+    critical: int
+    warning: int
+    notice: int
+
+
+class InventoryAlertSettingsResponse(BaseModel):
+    threshold: int
+    minimum_threshold: int
+    maximum_threshold: int
+    warning_cutoff: int
+    critical_cutoff: int
+    adjustment_variance_threshold: int
+
+
+class InventoryAlertsResponse(BaseModel):
+    settings: InventoryAlertSettingsResponse
+    summary: InventoryAlertSummary
+    items: list[InventoryAlertDevice]
+
+
 class InventoryTotals(BaseModel):
     stores: int
     devices: int
@@ -4796,6 +4822,10 @@ __all__ = [
     "DashboardGlobalMetrics",
     "InventoryTotals",
     "LowStockDevice",
+    "InventoryAlertDevice",
+    "InventoryAlertSummary",
+    "InventoryAlertSettingsResponse",
+    "InventoryAlertsResponse",
     "MovementBase",
     "MovementCreate",
     "MovementResponse",

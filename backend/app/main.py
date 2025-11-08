@@ -23,6 +23,7 @@ from .core.roles import DEFAULT_ROLES
 from .core.transactions import transactional_session
 from .database import SessionLocal, get_db, Base, engine
 from .routers import (
+    alerts,
     audit,
     audit_ui,
     auth,
@@ -556,6 +557,7 @@ def create_app() -> FastAPI:
 
     routers_to_mount: tuple[APIRouter, ...] = (
         health.router,
+        alerts.router,
         auth.router,
         users.router,
         stores.router,

@@ -1,94 +1,99 @@
-import { motion } from "framer-motion";
-import { AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import Button from "../../../../shared/components/ui/Button";
+import type { InventoryAlertsResponse } from "../../../../api";
+import { getInventoryAlerts } from "../../../../api";
+import { useDashboard } from "../../../dashboard/context/DashboardContext";
+import InventoryAlerts from "../../components/InventoryAlerts";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 function InventoryAlertsSection() {
   const {
-    module: { lowStockDevices, formatCurrency },
+    module: { selectedStoreId, formatCurrency, lowStockDevices },
     alerts: { thresholdDraft, updateThresholdDraftValue, handleSaveThreshold, isSavingThreshold },
-    helpers: { resolveLowStockSeverity },
   } = useInventoryLayout();
+  const { token, pushToast, setError } = useDashboard();
+
+  const [alertsData, setAlertsData] = useState<InventoryAlertsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchAlerts = useCallback(
+    async (overrideThreshold?: number) => {
+      try {
+        setIsLoading(true);
+        const response = await getInventoryAlerts(token, {
+          storeId: selectedStoreId ?? undefined,
+          threshold: overrideThreshold,
+        });
+        setAlertsData(response);
+        updateThresholdDraftValue(response.settings.threshold);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible obtener las alertas de inventario.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [pushToast, selectedStoreId, setError, token, updateThresholdDraftValue],
+  );
+
+  useEffect(() => {
+    void fetchAlerts();
+  }, [fetchAlerts]);
+
+  useEffect(() => {
+    void fetchAlerts(alertsData?.settings.threshold);
+  }, [fetchAlerts, lowStockDevices.length]);
+
+  const handlePersistThreshold = useCallback(async () => {
+    try {
+      await handleSaveThreshold();
+      await fetchAlerts(thresholdDraft);
+    } catch {
+      await fetchAlerts(alertsData?.settings.threshold);
+    }
+  }, [alertsData?.settings.threshold, fetchAlerts, handleSaveThreshold, thresholdDraft]);
+
+  const summary = alertsData?.summary ?? {
+    total: 0,
+    critical: 0,
+    warning: 0,
+    notice: 0,
+  };
+
+  const settings = useMemo(() => {
+    if (alertsData) {
+      return alertsData.settings;
+    }
+    return {
+      threshold: thresholdDraft,
+      minimum_threshold: 0,
+      maximum_threshold: 100,
+      warning_cutoff: 0,
+      critical_cutoff: 0,
+      adjustment_variance_threshold: 0,
+    };
+  }, [alertsData, thresholdDraft]);
+
+  const items = alertsData?.items ?? [];
 
   return (
-    <section className="card">
-      <header className="card-header">
-        <div>
-          <h2>Alertas de inventario bajo</h2>
-          <p className="card-subtitle">Seguimiento inmediato de piezas críticas.</p>
-        </div>
-        <span className={`pill ${lowStockDevices.length === 0 ? "success" : "warning"}`}>
-          {lowStockDevices.length === 0
-            ? "Sin alertas"
-            : `${lowStockDevices.length} alerta${lowStockDevices.length === 1 ? "" : "s"}`}
-        </span>
-      </header>
-      <div className="threshold-settings">
-        <label htmlFor="low-stock-threshold">
-          Umbral por sucursal ({thresholdDraft} unidad{thresholdDraft === 1 ? "" : "es"})
-        </label>
-        <div className="threshold-inputs">
-          <input
-            id="low-stock-threshold"
-            type="range"
-            min={0}
-            max={100}
-            value={thresholdDraft}
-            onChange={(event) => updateThresholdDraftValue(Number(event.target.value))}
-          />
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={thresholdDraft}
-            onChange={(event) => updateThresholdDraftValue(Number(event.target.value))}
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            type="button"
-            onClick={() => {
-              void handleSaveThreshold();
-            }}
-            disabled={isSavingThreshold}
-          >
-            {isSavingThreshold ? "Guardando…" : "Guardar umbral"}
-          </Button>
-        </div>
-      </div>
-      {lowStockDevices.length === 0 ? (
-        <p className="muted-text">No hay alertas por ahora.</p>
-      ) : (
-        <ul className="low-stock-list">
-          {lowStockDevices.map((device) => {
-            const severity = resolveLowStockSeverity(device.quantity);
-            return (
-              <motion.li
-                key={device.device_id}
-                className={`low-stock-item ${severity}`}
-                whileHover={{ x: 6 }}
-                transition={{ type: "spring", stiffness: 300, damping: 24 }}
-              >
-                <span className="low-stock-icon">
-                  <AlertTriangle size={18} />
-                </span>
-                <div className="low-stock-body">
-                  <strong>{device.sku}</strong>
-                  <span>
-                    {device.name} · {device.store_name}
-                  </span>
-                </div>
-                <div className="low-stock-meta">
-                  <span className="low-stock-quantity">{device.quantity} uds</span>
-                  <span>{formatCurrency(device.inventory_value)}</span>
-                </div>
-              </motion.li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
+    <InventoryAlerts
+      items={items}
+      summary={summary}
+      settings={settings}
+      thresholdDraft={thresholdDraft}
+      onThresholdChange={updateThresholdDraftValue}
+      onSaveThreshold={() => {
+        void handlePersistThreshold();
+      }}
+      isSaving={isSavingThreshold}
+      formatCurrency={formatCurrency}
+      isLoading={isLoading}
+    />
   );
 }
 
