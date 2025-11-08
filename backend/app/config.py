@@ -48,11 +48,22 @@ class Settings(BaseSettings):
     api_v1_prefix: Annotated[
         str,
         Field(
-            default="/api/v1",
+            default="/api/v2.2.0",
             validation_alias=AliasChoices(
                 "API_V1_PREFIX",
                 "SOFTMOBILE_API_PREFIX",
                 "SOFTMOBILE_API_V1_PREFIX",
+            ),
+        ),
+    ]
+    api_alias_prefixes: Annotated[
+        list[str],
+        Field(
+            default_factory=lambda: ["/api/v1"],
+            validation_alias=AliasChoices(
+                "API_ALIAS_PREFIXES",
+                "SOFTMOBILE_API_ALIASES",
+                "SOFTMOBILE_API_LEGACY_PREFIXES",
             ),
         ),
     ]

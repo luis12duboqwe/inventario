@@ -26,25 +26,46 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"],
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 ALGORITHM = "HS256"
 
-_ANONYMOUS_PATHS = frozenset(
-    {
-        "/",
-        "/health",
-        "/api/v1/health",
-        "/auth/bootstrap",
-        "/auth/bootstrap/status",
-        "/auth/token",
-        "/auth/session",
-        "/auth/verify",
-        "/auth/password/request",
-        "/auth/password/reset",
-        "/auth/register",
-        "/auth/login",
-        "/auth/refresh",
-        "/auth/forgot",
-        "/auth/reset",
-    }
-)
+_BASE_ANONYMOUS_PATHS = {
+    "/",
+    "/health",
+    "/auth/bootstrap",
+    "/auth/bootstrap/status",
+    "/auth/token",
+    "/auth/session",
+    "/auth/verify",
+    "/auth/password/request",
+    "/auth/password/reset",
+    "/auth/register",
+    "/auth/login",
+    "/auth/refresh",
+    "/auth/forgot",
+    "/auth/reset",
+}
+
+
+def _build_anonymous_paths() -> frozenset[str]:
+    paths = set(_BASE_ANONYMOUS_PATHS)
+
+    def _normalize(prefix: str) -> str | None:
+        cleaned = prefix.strip()
+        if not cleaned or cleaned == "/":
+            return None
+        return cleaned if cleaned.startswith("/") else f"/{cleaned}"
+
+    main_prefix = _normalize(settings.api_v1_prefix)
+    if main_prefix:
+        paths.add(f"{main_prefix}/health")
+
+    for alias in settings.api_alias_prefixes:
+        alias_prefix = _normalize(alias)
+        if alias_prefix:
+            paths.add(f"{alias_prefix}/health")
+
+    return frozenset(paths)
+
+
+_ANONYMOUS_PATHS = _build_anonymous_paths()
 
 
 def hash_password(password: str) -> str:

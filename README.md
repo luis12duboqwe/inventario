@@ -13,7 +13,7 @@ La versión v2.2.0 trabaja en modo local (sin nube) pero está preparada para em
 
 ### Prefijo de API versionado
 
-El backend publica todas las rutas heredadas sin prefijo para mantener compatibilidad y, adicionalmente, las expone bajo `/api/v1` (configurable mediante la variable `SOFTMOBILE_API_PREFIX`). De esta forma los clientes nuevos pueden anclar la integración a un prefijo estable sin romper implementaciones existentes.
+El backend publica todas las rutas heredadas sin prefijo para mantener compatibilidad y, adicionalmente, las expone bajo `/api/v2.2.0` como prefijo principal (configurable mediante la variable `SOFTMOBILE_API_PREFIX`). El alias legado `/api/v1` permanece disponible por defecto a través de la configuración `SOFTMOBILE_API_ALIASES`, de modo que las integraciones anteriores continúan funcionando sin cambios.
 
 ### Capas del frontend reorganizado
 

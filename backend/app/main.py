@@ -588,18 +588,29 @@ def create_app() -> FastAPI:
 
     _mount_pos_extensions(app)
 
-    api_prefix = settings.api_v1_prefix.strip()
-    if api_prefix and api_prefix != "/":
-        normalized_prefix = api_prefix
+    mounted_prefixes: set[str] = set()
+
+    def _mount_versioned(prefix: str) -> None:
+        normalized_prefix = prefix.strip()
+        if not normalized_prefix or normalized_prefix == "/":
+            return
         if not normalized_prefix.startswith("/"):
             normalized_prefix = f"/{normalized_prefix}"
+        if normalized_prefix in mounted_prefixes:
+            return
 
+        mounted_prefixes.add(normalized_prefix)
         versioned_router = APIRouter(prefix=normalized_prefix)
         for module_router in routers_to_mount:
             versioned_router.include_router(module_router)
 
         _mount_pos_extensions(versioned_router)
         app.include_router(versioned_router)
+
+    _mount_versioned(settings.api_v1_prefix)
+
+    for alias_prefix in settings.api_alias_prefixes:
+        _mount_versioned(alias_prefix)
 
     return app
 

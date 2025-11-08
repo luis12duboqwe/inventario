@@ -92,6 +92,7 @@ def run_migrations() -> None:
     import_module("backend.models.user")
     import_module("backend.models.pos")
     config = _build_alembic_config()
+    command.upgrade(config, "heads")
     try:
         command.upgrade(config, "head")
     except CommandError as exc:

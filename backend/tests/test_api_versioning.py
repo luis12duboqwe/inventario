@@ -18,3 +18,24 @@ def test_health_endpoint_available_under_versioned_prefix(client) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_health_endpoint_available_under_alias_prefixes(client) -> None:
+    """Los alias de prefijo deben continuar resolviendo el endpoint de salud."""
+
+    normalized_aliases = []
+    for alias in settings.api_alias_prefixes:
+        stripped = alias.strip()
+        if not stripped or stripped == "/":
+            continue
+        normalized_aliases.append(
+            stripped if stripped.startswith("/") else f"/{stripped}"
+        )
+
+    if not normalized_aliases:
+        pytest.skip("No se configuraron alias de prefijo para la API.")
+
+    for alias_prefix in normalized_aliases:
+        response = client.get(f"{alias_prefix}/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
