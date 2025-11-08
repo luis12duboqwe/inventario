@@ -91,7 +91,7 @@ def run_migrations() -> None:
     import_module("backend.models.user")
     import_module("backend.models.pos")
     config = _build_alembic_config()
-    command.upgrade(config, "head")
+    command.upgrade(config, "heads")
     _ensure_core_user_columns()
     Base.metadata.create_all(bind=_engine)
 
