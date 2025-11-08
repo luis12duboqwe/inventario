@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from collections.abc import Callable, Generator, Mapping
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
@@ -111,12 +111,21 @@ def _resolve_additional_cors_origins() -> set[str]:
     return {origin for origin in extra_origins if origin}
 
 
-def _remove_route(target_app: FastAPI, path: str, method: str) -> None:
-    """Elimina de la aplicación la ruta que coincida con el path y método."""
+def _resolve_router(target_app: FastAPI | APIRouter) -> APIRouter:
+    """Devuelve el enrutador interno independientemente del tipo recibido."""
+
+    if isinstance(target_app, FastAPI):
+        return target_app.router
+    return target_app
+
+
+def _remove_route(target_app: FastAPI | APIRouter, path: str, method: str) -> None:
+    """Elimina del contenedor de rutas la coincidencia especificada."""
 
     method_upper = method.upper()
-    routes = target_app.router.routes
-    target_app.router.routes[:] = [
+    router = _resolve_router(target_app)
+    routes = router.routes
+    router.routes[:] = [
         route
         for route in routes
         if not (
@@ -127,8 +136,8 @@ def _remove_route(target_app: FastAPI, path: str, method: str) -> None:
     ]
 
 
-def _mount_pos_extensions(target_app: FastAPI) -> None:
-    """Registra los endpoints POS extendidos sobre la app principal."""
+def _mount_pos_extensions(target_app: FastAPI | APIRouter) -> None:
+    """Registra los endpoints POS extendidos sobre la app o router recibido."""
 
     from backend.routes.pos import extended_router
 
@@ -545,35 +554,53 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         return response
 
-    app.include_router(health.router)
-    app.include_router(auth.router)
-    app.include_router(users.router)
-    app.include_router(stores.router)
-    app.include_router(inventory.router)
-    app.include_router(import_validation.router)
-    app.include_router(pos.router)
+    routers_to_mount: tuple[APIRouter, ...] = (
+        health.router,
+        auth.router,
+        users.router,
+        stores.router,
+        inventory.router,
+        import_validation.router,
+        pos.router,
+        purchases.router,
+        payments.router,
+        customers.router,
+        suppliers.router,
+        repairs.router,
+        sales.router,
+        operations.router,
+        sync.router,
+        transfers.router,
+        updates.router,
+        backups.router,
+        reports.router,
+        reports_sales.router,
+        security_router.router,
+        system_logs.router,
+        monitoring.router,
+        audit.router,
+        audit_ui.router,
+        wms_bins.router,  # Los handlers verifican el flag y devuelven 404 cuando está desactivado.
+    )
+
+    for module_router in routers_to_mount:
+        app.include_router(module_router)
+
     _mount_pos_extensions(app)
-    app.include_router(purchases.router)
-    app.include_router(payments.router)
-    app.include_router(customers.router)
-    app.include_router(suppliers.router)
-    app.include_router(repairs.router)
-    app.include_router(sales.router)
-    app.include_router(operations.router)
-    app.include_router(sync.router)
-    app.include_router(transfers.router)
-    app.include_router(updates.router)
-    app.include_router(backups.router)
-    app.include_router(reports.router)
-    app.include_router(reports_sales.router)
-    app.include_router(security_router.router)
-    app.include_router(system_logs.router)
-    app.include_router(monitoring.router)
-    app.include_router(audit.router)
-    app.include_router(audit_ui.router)
-    # Rutas WMS (bins) ligeras: se incluyen siempre y cada handler
-    # valida la bandera internamente para responder 404 sin romper compatibilidad.
-    app.include_router(wms_bins.router)
+
+    api_prefix = settings.api_v1_prefix.strip()
+    if api_prefix and api_prefix != "/":
+        normalized_prefix = api_prefix
+        if not normalized_prefix.startswith("/"):
+            normalized_prefix = f"/{normalized_prefix}"
+
+        versioned_router = APIRouter(prefix=normalized_prefix)
+        for module_router in routers_to_mount:
+            versioned_router.include_router(module_router)
+
+        _mount_pos_extensions(versioned_router)
+        app.include_router(versioned_router)
+
     return app
 
 

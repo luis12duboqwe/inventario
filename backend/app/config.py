@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     ]
     title: str = Field(default="Softmobile Central")
     version: str = Field(default="2.2.0")
+    api_v1_prefix: Annotated[
+        str,
+        Field(
+            default="/api/v1",
+            validation_alias=AliasChoices(
+                "API_V1_PREFIX",
+                "SOFTMOBILE_API_PREFIX",
+                "SOFTMOBILE_API_V1_PREFIX",
+            ),
+        ),
+    ]
     secret_key: Annotated[
         str,
         Field(
