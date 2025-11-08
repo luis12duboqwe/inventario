@@ -6293,6 +6293,9 @@ def _apply_device_search_filters(
     if filters.condicion:
         statement = statement.where(
             models.Device.condicion.ilike(f"%{filters.condicion}%"))
+    if filters.estado_comercial is not None:
+        statement = statement.where(
+            models.Device.estado_comercial == filters.estado_comercial)
     if filters.estado:
         statement = statement.where(
             models.Device.estado.ilike(f"%{filters.estado}%"))

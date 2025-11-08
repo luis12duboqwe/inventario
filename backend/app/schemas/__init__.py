@@ -572,13 +572,14 @@ class DeviceSearchFilters(BaseModel):
     modelo: str | None = Field(default=None, max_length=120)
     categoria: str | None = Field(default=None, max_length=80)
     condicion: str | None = Field(default=None, max_length=60)
+    estado_comercial: CommercialState | None = Field(default=None)
     estado: str | None = Field(default=None, max_length=40)
     ubicacion: str | None = Field(default=None, max_length=120)
     proveedor: str | None = Field(default=None, max_length=120)
     fecha_ingreso_desde: date | None = Field(default=None)
     fecha_ingreso_hasta: date | None = Field(default=None)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", use_enum_values=True)
 
     @field_validator("imei", "serial", "color", "marca", "modelo", mode="before")
     @classmethod
@@ -587,6 +588,29 @@ class DeviceSearchFilters(BaseModel):
             return value
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("estado_comercial", mode="before")
+    @classmethod
+    def _normalize_estado_comercial(
+        cls, value: CommercialState | str | None
+    ) -> CommercialState | None:
+        if value is None:
+            return None
+        if isinstance(value, CommercialState):
+            return value
+        normalized = str(value).strip()
+        if not normalized:
+            return None
+        try:
+            return CommercialState(normalized)
+        except ValueError:
+            candidates = {normalized.lower(), normalized.upper()}
+            for candidate in candidates:
+                try:
+                    return CommercialState(candidate)
+                except ValueError:
+                    continue
+            raise ValueError("estado_comercial_invalido")
 
     @field_validator("categoria", "condicion", "estado", "ubicacion", "proveedor", mode="before")
     @classmethod

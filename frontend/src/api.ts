@@ -1056,6 +1056,7 @@ export type DeviceSearchFilters = {
   modelo?: string;
   categoria?: string;
   condicion?: string;
+  estado_comercial?: Device["estado_comercial"];
   estado?: string;
   ubicacion?: string;
   proveedor?: string;
@@ -3868,6 +3869,7 @@ export function searchCatalogDevices(
   if (filters.modelo) params.append("modelo", filters.modelo);
   if (filters.categoria) params.append("categoria", filters.categoria);
   if (filters.condicion) params.append("condicion", filters.condicion);
+  if (filters.estado_comercial) params.append("estado_comercial", filters.estado_comercial);
   if (filters.estado) params.append("estado", filters.estado);
   if (filters.ubicacion) params.append("ubicacion", filters.ubicacion);
   if (filters.proveedor) params.append("proveedor", filters.proveedor);
