@@ -45,7 +45,13 @@ from backend.core.security import (
     verify_token_expiry,
 )
 from backend.core.settings import settings
-from backend.db import create_user, get_db, get_user_by_email, get_user_by_id, init_db
+from backend.db import (
+    create_user,
+    get_db,
+    get_user_by_email,
+    get_user_by_id,
+    run_migrations,
+)
 from backend.models import User
 from backend.schemas.auth import (
     AuthMessage,
@@ -75,7 +81,7 @@ _auth_scheme = HTTPBearer(auto_error=False)
 async def _initialize_auth_tables() -> None:
     """Asegura la preparación de tablas requeridas por los endpoints de autenticación."""
 
-    init_db()
+    run_migrations()
 
 
 router.add_event_handler("startup", _initialize_auth_tables)

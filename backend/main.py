@@ -70,9 +70,9 @@ core_main_module = _import_module_with_fallback(
 )
 
 try:
-    init_db = getattr(db_module, "init_db")
+    run_migrations = getattr(db_module, "run_migrations")
 except AttributeError as exc:  # pragma: no cover - protección ante refactors futuros
-    raise RuntimeError("backend.db debe exponer la función init_db") from exc
+    raise RuntimeError("backend.db debe exponer la función run_migrations") from exc
 
 try:
     create_core_app = getattr(core_main_module, "create_app")
@@ -474,8 +474,8 @@ def _prepare_environment(target_app: FastAPI) -> None:
     if not _ENVIRONMENT_READY:
         _ensure_database_file(DATABASE_FILE)
         _validate_database_connection(DATABASE_FILE)
-        init_db()
-        LOGGER.info("Tablas de autenticación verificadas/creadas en %s", DATABASE_FILE)
+        run_migrations()
+        LOGGER.info("Migraciones aplicadas correctamente en %s", DATABASE_FILE)
 
         for directory_name in ("models", "routes"):
             directory_path = BASE_DIR / directory_name

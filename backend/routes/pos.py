@@ -19,7 +19,7 @@ from backend.app.routers.dependencies import require_reason
 from backend.app.schemas import BinaryFileResponse
 from backend.app.security import get_current_user, require_roles
 from backend.core.logging import logger as core_logger
-from backend.db import get_db, init_db
+from backend.db import get_db, run_migrations
 from backend.models.pos import Payment, PaymentMethod, Sale, SaleItem, SaleStatus
 from backend.schemas import pos as schemas
 
@@ -33,7 +33,7 @@ logger = core_logger.bind(component="backend.routes.pos")
 async def _initialize_pos_tables() -> None:
     """Prepara las tablas requeridas por el POS extendido en el arranque."""
 
-    init_db()
+    run_migrations()
 
 
 extended_router.add_event_handler("startup", _initialize_pos_tables)

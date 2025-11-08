@@ -13,7 +13,7 @@ pytest.importorskip(
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.database import SessionLocal, init_db
+from backend.database import SessionLocal, run_migrations
 from backend.models import User
 from backend.routes.auth import router as auth_router, verify_email
 from backend.schemas.auth import VerifyEmailRequest
@@ -29,7 +29,7 @@ class _DummyLimiter:
 def _reset_database() -> None:
     """Limpia las tablas antes de ejecutar los escenarios de autenticación."""
 
-    init_db()
+    run_migrations()
     with SessionLocal() as session:
         with session.begin():
             session.query(User).delete()
