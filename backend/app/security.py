@@ -61,6 +61,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 ALGORITHM = "HS256"
 
 _rate_limiter_configured = False
+_use_rate_limiter_stub = False
 
 _BASE_ANONYMOUS_PATHS = {
     "/",
@@ -122,7 +123,7 @@ def rate_limit(*, times: int, minutes: int) -> Any:
     mantiene la firma esperada por FastAPI sin aplicar restricciones reales.
     """
 
-    if _RateLimiter is None:
+    if _RateLimiter is None or _use_rate_limiter_stub:
         return _RateLimiterStub(times=times, minutes=minutes)
     return _RateLimiter(times=times, minutes=minutes)
 
@@ -142,7 +143,7 @@ async def ensure_rate_limiter(
 ) -> None:
     """Inicializa el limitador de ritmo con Redis en memoria cuando es posible."""
 
-    global _rate_limiter_configured
+    global _rate_limiter_configured, _use_rate_limiter_stub
     if _rate_limiter_configured:
         if identifier and FastAPILimiter is not None:
             FastAPILimiter.identifier = identifier
@@ -152,6 +153,7 @@ async def ensure_rate_limiter(
         logger.warning(
             "fastapi-limiter no disponible; las rutas funcionarán sin límite de peticiones",
         )
+        _use_rate_limiter_stub = True
         _rate_limiter_configured = True
         return
 
@@ -165,9 +167,16 @@ async def ensure_rate_limiter(
             logger.warning(
                 "fakeredis no está instalado; no se aplicará limitación de peticiones en memoria",
             )
+            FastAPILimiter.redis = _MemoryLimiterRedis()
+            _use_rate_limiter_stub = True
             _rate_limiter_configured = True
+            if identifier is not None:
+                FastAPILimiter.identifier = identifier
+            elif getattr(FastAPILimiter, "identifier", None) is None:
+                FastAPILimiter.identifier = _default_rate_limit_identifier
             return
         await FastAPILimiter.init(redis_instance)
+        _use_rate_limiter_stub = False
 
     if identifier is not None:
         FastAPILimiter.identifier = identifier
@@ -180,9 +189,10 @@ async def ensure_rate_limiter(
 async def reset_rate_limiter() -> None:
     """Libera los recursos asociados al limitador de ritmo."""
 
-    global _rate_limiter_configured
+    global _rate_limiter_configured, _use_rate_limiter_stub
     if FastAPILimiter is None:
         _rate_limiter_configured = False
+        _use_rate_limiter_stub = False
         return
 
     close = getattr(FastAPILimiter, "close", None)
@@ -192,6 +202,7 @@ async def reset_rate_limiter() -> None:
         FastAPILimiter.redis = None  # type: ignore[attr-defined]
     FastAPILimiter.identifier = None
     _rate_limiter_configured = False
+    _use_rate_limiter_stub = False
 
 
 def hash_password(password: str) -> str:
