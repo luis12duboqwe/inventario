@@ -1,4 +1,4 @@
-"""Generación de reportes globales (PDF, Excel, CSV) para bitácoras y alertas."""
+"""Renderizadores para los reportes globales (PDF, Excel y CSV)."""
 from __future__ import annotations
 
 import csv
@@ -14,12 +14,19 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .. import schemas
+from .global_reports_constants import (
+    ACCENT_COLOR,
+    ACCENT_COLOR_ARGB,
+    GRID_COLOR,
+    PRIMARY_BACKGROUND,
+    SECONDARY_BACKGROUND,
+)
 
-ACCENT_COLOR = "#38bdf8"
-ACCENT_COLOR_ARGB = "FF38BDF8"
-PRIMARY_BACKGROUND = "#0f172a"
-SECONDARY_BACKGROUND = "#111827"
-GRID_COLOR = "#1e293b"
+__all__ = [
+    "render_global_report_pdf",
+    "render_global_report_xlsx",
+    "render_global_report_csv",
+]
 
 
 def _format_datetime(value: datetime | None) -> str:
@@ -525,10 +532,3 @@ def render_global_report_csv(
 
     buffer.seek(0)
     return buffer
-
-
-__all__ = [
-    "render_global_report_pdf",
-    "render_global_report_xlsx",
-    "render_global_report_csv",
-]
