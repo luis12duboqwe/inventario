@@ -1,6 +1,13 @@
 import { createContext, useContext } from "react";
 
-import type { Device, DeviceImportSummary, DeviceUpdateInput } from "../../../../api";
+import type {
+  Device,
+  DeviceImportSummary,
+  DeviceUpdateInput,
+  InventoryReservation,
+  InventoryReservationInput,
+  InventoryReservationRenewInput,
+} from "../../../../api";
 import type { ModuleStatus } from "../../../../shared/components/ModuleHeader";
 import type { useInventoryModule } from "../../hooks/useInventoryModule";
 import type { useSmartImportManager } from "../hooks/useSmartImportManager";
@@ -83,6 +90,25 @@ export type InventoryLayoutContextValue = {
     storeNameById: Map<number, string>;
     resolvePendingFields: (device: Device) => string[];
     resolveLowStockSeverity: (quantity: number) => "critical" | "warning" | "notice";
+  };
+  reservations: {
+    items: InventoryReservation[];
+    meta: { page: number; size: number; total: number; pages: number };
+    loading: boolean;
+    includeExpired: boolean;
+    setIncludeExpired: (value: boolean) => void;
+    refresh: (page?: number) => Promise<void>;
+    create: (
+      input: Omit<InventoryReservationInput, "store_id">,
+      reason: string,
+    ) => Promise<void>;
+    renew: (
+      reservationId: number,
+      input: InventoryReservationRenewInput,
+      reason: string,
+    ) => Promise<void>;
+    cancel: (reservationId: number, reason: string) => Promise<void>;
+    expiringSoon: InventoryReservation[];
   };
 };
 

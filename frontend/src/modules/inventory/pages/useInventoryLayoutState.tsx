@@ -29,7 +29,7 @@ import type {
   StatusCard,
 } from "./context/InventoryLayoutContext";
 
-export type InventoryTabId = "productos" | "movimientos" | "proveedores" | "alertas";
+export type InventoryTabId = "productos" | "movimientos" | "proveedores" | "alertas" | "reservas";
 
 const INVENTORY_TABS: Array<{
   id: InventoryTabId;
@@ -41,6 +41,7 @@ const INVENTORY_TABS: Array<{
   { id: "movimientos", label: "Movimientos", icon: <RefreshCcw size={16} aria-hidden="true" />, path: "movimientos" },
   { id: "proveedores", label: "Proveedores", icon: <Building2 size={16} aria-hidden="true" />, path: "proveedores" },
   { id: "alertas", label: "Alertas", icon: <AlertTriangle size={16} aria-hidden="true" />, path: "alertas" },
+  { id: "reservas", label: "Reservas", icon: <ShieldCheck size={16} aria-hidden="true" />, path: "reservas" },
 ];
 
 export type InventoryLayoutState = {
@@ -66,6 +67,9 @@ function resolveActiveTab(pathname: string): InventoryTabId {
   }
   if (pathname.includes("/alertas")) {
     return "alertas";
+  }
+  if (pathname.includes("/reservas")) {
+    return "reservas";
   }
   return "productos";
 }
@@ -104,6 +108,16 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     smartImportInventory,
     fetchSmartImportHistory,
     fetchIncompleteDevices,
+    reservations,
+    reservationsMeta,
+    reservationsLoading,
+    reservationsIncludeExpired,
+    setReservationsIncludeExpired,
+    refreshReservations: refreshInventoryReservations,
+    createReservation: createInventoryReservation,
+    renewReservation: renewInventoryReservation,
+    cancelReservation: cancelInventoryReservation,
+    expiringReservations,
   } = inventoryModule;
 
   const [inventoryQuery, setInventoryQuery] = useState("");
@@ -752,6 +766,18 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         resolvePendingFields,
         resolveLowStockSeverity,
       },
+      reservations: {
+        items: reservations,
+        meta: reservationsMeta,
+        loading: reservationsLoading,
+        includeExpired: reservationsIncludeExpired,
+        setIncludeExpired: setReservationsIncludeExpired,
+        refresh: refreshInventoryReservations,
+        create: createInventoryReservation,
+        renew: renewInventoryReservation,
+        cancel: cancelInventoryReservation,
+        expiringSoon: expiringReservations,
+      },
     }),
     [
       inventoryModule,
@@ -794,6 +820,16 @@ export function useInventoryLayoutState(): InventoryLayoutState {
       storeNameById,
       resolvePendingFields,
       resolveLowStockSeverity,
+      reservations,
+      reservationsMeta,
+      reservationsLoading,
+      reservationsIncludeExpired,
+      setReservationsIncludeExpired,
+      refreshInventoryReservations,
+      createInventoryReservation,
+      renewInventoryReservation,
+      cancelInventoryReservation,
+      expiringReservations,
     ],
   );
 

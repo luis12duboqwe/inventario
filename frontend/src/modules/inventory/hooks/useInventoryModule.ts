@@ -5,6 +5,9 @@ import type {
   InventoryMovementsFilters,
   InventoryTopProductsFilters,
   InventoryValueFilters,
+  InventoryReservation,
+  InventoryReservationInput,
+  InventoryReservationRenewInput,
   MovementReportEntry,
   SupplierBatchOverviewItem,
 } from "../../../api";
@@ -15,6 +18,7 @@ export function useInventoryModule() {
   const dashboard = useDashboard();
   // Desestructurar referencias necesarias para estabilizar dependencias de hooks
   const { token, selectedStoreId, setError, pushToast } = dashboard;
+  const RESERVATION_PAGE_SIZE = 20;
 
   const [supplierBatchOverview, setSupplierBatchOverview] = useState<
     SupplierBatchOverviewItem[]
@@ -22,6 +26,15 @@ export function useInventoryModule() {
   const [supplierBatchLoading, setSupplierBatchLoading] = useState(false);
   const [recentMovements, setRecentMovements] = useState<MovementReportEntry[]>([]);
   const [recentMovementsLoading, setRecentMovementsLoading] = useState(false);
+  const [reservations, setReservations] = useState<InventoryReservation[]>([]);
+  const [reservationsMeta, setReservationsMeta] = useState({
+    page: 1,
+    size: RESERVATION_PAGE_SIZE,
+    total: 0,
+    pages: 0,
+  });
+  const [reservationsLoading, setReservationsLoading] = useState(false);
+  const [reservationsIncludeExpired, setReservationsIncludeExpired] = useState(false);
 
   const refreshSupplierBatchOverview = useCallback(async () => {
     if (!selectedStoreId) {
@@ -164,6 +177,170 @@ export function useInventoryModule() {
   useEffect(() => {
     void refreshRecentMovements();
   }, [refreshRecentMovements, dashboard.lastInventoryRefresh]);
+
+  const refreshReservations = useCallback(
+    async (page = 1) => {
+      if (!selectedStoreId) {
+        setReservations([]);
+        setReservationsMeta({
+          page: 1,
+          size: RESERVATION_PAGE_SIZE,
+          total: 0,
+          pages: 0,
+        });
+        return;
+      }
+      try {
+        setReservationsLoading(true);
+        const response = await inventoryService.fetchReservations(token, {
+          storeId: selectedStoreId,
+          page,
+          size: RESERVATION_PAGE_SIZE,
+          includeExpired: reservationsIncludeExpired,
+        });
+        setReservations(response.items);
+        setReservationsMeta({
+          page: response.page,
+          size: response.size,
+          total: response.total,
+          pages: response.pages,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible consultar las reservas de inventario.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      } finally {
+        setReservationsLoading(false);
+      }
+    },
+    [
+      pushToast,
+      reservationsIncludeExpired,
+      selectedStoreId,
+      setError,
+      token,
+    ],
+  );
+
+  useEffect(() => {
+    void refreshReservations(1);
+  }, [refreshReservations]);
+
+  const createReservation = useCallback(
+    async (
+      input: Omit<InventoryReservationInput, "store_id">,
+      reason: string,
+    ) => {
+      if (!selectedStoreId) {
+        throw new Error("Selecciona una sucursal antes de reservar inventario");
+      }
+      try {
+        await inventoryService.createReservation(
+          token,
+          {
+            ...input,
+            store_id: selectedStoreId,
+          },
+          reason,
+        );
+        pushToast({
+          message: "Reserva creada exitosamente.",
+          variant: "success",
+        });
+        await refreshReservations(reservationsMeta.page);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible crear la reserva de inventario.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+        throw error;
+      }
+    },
+    [
+      pushToast,
+      refreshReservations,
+      reservationsMeta.page,
+      selectedStoreId,
+      setError,
+      token,
+    ],
+  );
+
+  const renewReservation = useCallback(
+    async (
+      reservationId: number,
+      input: InventoryReservationRenewInput,
+      reason: string,
+    ) => {
+      try {
+        await inventoryService.renewReservation(
+          token,
+          reservationId,
+          input,
+          reason,
+        );
+        pushToast({
+          message: "Reserva renovada correctamente.",
+          variant: "success",
+        });
+        await refreshReservations(reservationsMeta.page);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible renovar la reserva.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+        throw error;
+      }
+    },
+    [
+      pushToast,
+      refreshReservations,
+      reservationsMeta.page,
+      setError,
+      token,
+    ],
+  );
+
+  const cancelReservation = useCallback(
+    async (reservationId: number, reason: string) => {
+      try {
+        await inventoryService.cancelReservation(token, reservationId, reason);
+        pushToast({
+          message: "Reserva cancelada y devuelta al inventario.",
+          variant: "success",
+        });
+        await refreshReservations(reservationsMeta.page);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible cancelar la reserva.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+        throw error;
+      }
+    },
+    [pushToast, refreshReservations, reservationsMeta.page, setError, token],
+  );
+
+  const expiringReservations = useMemo(() => {
+    const now = Date.now();
+    const threshold = 30 * 60 * 1000; // 30 minutos
+    return reservations.filter((reservation) => {
+      if (reservation.status !== "RESERVADO") {
+        return false;
+      }
+      const expiresAt = Date.parse(reservation.expires_at);
+      return expiresAt - now <= threshold && expiresAt > now;
+    });
+  }, [reservations]);
 
   const fetchInventoryCurrentReport = useCallback(
     (filters: InventoryCurrentFilters = {}) =>
@@ -335,5 +512,15 @@ export function useInventoryModule() {
     smartImportInventory,
     fetchSmartImportHistory,
     fetchIncompleteDevices,
+    reservations,
+    reservationsMeta,
+    reservationsLoading,
+    reservationsIncludeExpired,
+    setReservationsIncludeExpired,
+    refreshReservations,
+    createReservation,
+    renewReservation,
+    cancelReservation,
+    expiringReservations,
   };
 }

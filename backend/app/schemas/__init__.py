@@ -30,6 +30,7 @@ from ..models import (
     PurchaseStatus,
     RepairPartSource,
     RepairStatus,
+    InventoryState,
     SyncMode,
     SyncOutboxPriority,
     SyncOutboxStatus,
@@ -1279,6 +1280,7 @@ class SupplierBatchOverviewItem(BaseModel):
 class TransferOrderItemBase(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
+    reservation_id: int | None = Field(default=None, ge=1)
 
 
 class TransferOrderItemCreate(TransferOrderItemBase):
@@ -1924,6 +1926,40 @@ class MovementResponse(BaseModel):
             "store_inventory_value": self._serialize_inventory_total(self.store_inventory_value),
             "ultima_accion": self.ultima_accion,
         }
+
+
+class InventoryReservationCreate(BaseModel):
+    store_id: int = Field(..., ge=1)
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+    expires_at: datetime
+
+
+class InventoryReservationRenew(BaseModel):
+    expires_at: datetime
+
+
+class InventoryReservationResponse(BaseModel):
+    id: int
+    store_id: int
+    device_id: int
+    status: InventoryState
+    initial_quantity: int
+    quantity: int
+    reason: str
+    resolution_reason: str | None
+    reference_type: str | None
+    reference_id: str | None
+    expires_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    reserved_by_id: int | None = None
+    resolved_by_id: int | None = None
+    resolved_at: datetime | None = None
+    consumed_at: datetime | None = None
+    device: DeviceResponse | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InventorySummary(BaseModel):
@@ -3775,6 +3811,7 @@ class SaleItemCreate(BaseModel):
             validation_alias=AliasChoices("unit_price_override", "price"),
         ),
     ]  # // [PACK34-schema]
+    reservation_id: int | None = Field(default=None, ge=1)
 
     @field_validator("discount_percent")
     @classmethod
@@ -3913,6 +3950,7 @@ class SaleItemResponse(BaseModel):
     discount_amount: Decimal
     total_line: Decimal
     device: SaleDeviceSummary | None = None
+    reservation_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -4113,6 +4151,7 @@ class POSCartItem(BaseModel):
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
     unit_price_override: Decimal | None = Field(default=None, ge=Decimal("0"))
     tax_code: str | None = Field(default=None, max_length=50)
+    reservation_id: int | None = Field(default=None, ge=1)
 
     model_config = ConfigDict(populate_by_name=True)
 

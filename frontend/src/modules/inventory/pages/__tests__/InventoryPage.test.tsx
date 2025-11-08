@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -91,7 +91,10 @@ import InventoryProductsPage from "../InventoryProductsPage";
 import InventoryMovementsPage from "../InventoryMovementsPage";
 import InventorySuppliersPage from "../InventorySuppliersPage";
 import InventoryAlertsPage from "../InventoryAlertsPage";
+import InventoryReservationsPage from "../InventoryReservationsPage";
 import { useInventoryLayoutState } from "../useInventoryLayoutState";
+import * as corporateReasonModule from "../../../../utils/corporateReason";
+import type { InventoryReservation } from "../../../../api";
 
 const useInventoryLayoutStateMock = vi.mocked(useInventoryLayoutState);
 
@@ -250,6 +253,18 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     resolvePendingFields: vi.fn().mockReturnValue([]),
     resolveLowStockSeverity: vi.fn().mockReturnValue("notice"),
   },
+  reservations: {
+    items: [],
+    meta: { page: 1, size: 25, total: 0, pages: 0 },
+    loading: false,
+    includeExpired: false,
+    setIncludeExpired: vi.fn(),
+    refresh: vi.fn().mockResolvedValue(undefined),
+    create: vi.fn().mockResolvedValue(undefined),
+    renew: vi.fn().mockResolvedValue(undefined),
+    cancel: vi.fn().mockResolvedValue(undefined),
+    expiringSoon: [],
+  },
 });
 
 describe("InventoryPage", () => {
@@ -266,6 +281,7 @@ describe("InventoryPage", () => {
       tabOptions: [
         { id: "productos", label: "Productos", icon: null },
         { id: "movimientos", label: "Movimientos", icon: null },
+        { id: "reservas", label: "Reservas", icon: null },
       ],
       activeTab: "productos",
       handleTabChange,
@@ -289,6 +305,7 @@ describe("InventoryPage", () => {
     expect(screen.getByRole("heading", { name: /Inventario corporativo/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Productos/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Movimientos/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Reservas/i })).toBeInTheDocument();
   });
 
   it("cambia de pestaña al hacer clic", async () => {
@@ -404,5 +421,126 @@ describe("InventoryAlertsPage", () => {
       screen.getByText(/Selecciona una sucursal para ajustar el umbral de alertas/i),
     ).toBeInTheDocument();
     expect(screen.getByTestId("inventory-alerts-section")).toBeInTheDocument();
+  });
+});
+
+describe("InventoryReservationsPage", () => {
+  it("permite crear, renovar y cancelar reservas", async () => {
+    const user = userEvent.setup();
+    const contextValue = createContextValue();
+    const device = {
+      id: 10,
+      sku: "SKU-RES-01",
+      name: "Equipo reservado",
+      quantity: 5,
+    } as (typeof contextValue.module.devices)[number];
+    contextValue.module.devices = [device];
+    contextValue.module.selectedStoreId = 1;
+    contextValue.module.selectedStore = { id: 1, name: "Sucursal Centro" } as never;
+
+    const now = new Date();
+    const reservation: InventoryReservation = {
+      id: 99,
+      store_id: 1,
+      device_id: device.id,
+      status: "RESERVADO",
+      initial_quantity: 1,
+      quantity: 1,
+      reason: "Reserva inicial",
+      resolution_reason: null,
+      reference_type: null,
+      reference_id: null,
+      expires_at: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+      reserved_by_id: 7,
+      resolved_by_id: null,
+      resolved_at: null,
+      consumed_at: null,
+      device,
+    };
+
+    const createMock = vi.fn().mockResolvedValue(undefined);
+    const renewMock = vi.fn().mockResolvedValue(undefined);
+    const cancelMock = vi.fn().mockResolvedValue(undefined);
+    const refreshMock = vi.fn().mockResolvedValue(undefined);
+    const setIncludeExpiredMock = vi.fn();
+    contextValue.reservations = {
+      items: [reservation],
+      meta: { page: 1, size: 25, total: 1, pages: 1 },
+      loading: false,
+      includeExpired: false,
+      setIncludeExpired: setIncludeExpiredMock,
+      refresh: refreshMock,
+      create: createMock,
+      renew: renewMock,
+      cancel: cancelMock,
+      expiringSoon: [reservation],
+    };
+
+    const reasonSpy = vi
+      .spyOn(corporateReasonModule, "promptCorporateReason")
+      .mockReturnValue("Motivo válido");
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const promptSpy = vi
+      .spyOn(window, "prompt")
+      .mockReturnValue("2031-01-01T10:15");
+
+    render(
+      <InventoryLayoutContext.Provider value={contextValue}>
+        <InventoryReservationsPage />
+      </InventoryLayoutContext.Provider>,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: /Reservas de inventario/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/reservas vencerán en los próximos 30 minutos/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText("RESERVADO")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/Producto/i), `${device.id}`);
+    const quantityInput = screen.getByLabelText(/Cantidad/i);
+    await user.clear(quantityInput);
+    await user.type(quantityInput, "2");
+    const expirationInput = screen.getByLabelText(/Expira/i);
+    await user.clear(expirationInput);
+    await user.type(expirationInput, "2030-05-01T12:30");
+
+    await user.click(screen.getByRole("button", { name: /Reservar unidades/i }));
+    await waitFor(() => expect(createMock).toHaveBeenCalled());
+
+    const [createInput, createReason] = createMock.mock.calls[0];
+    expect(createInput.device_id).toBe(device.id);
+    expect(createInput.quantity).toBe(2);
+    expect(new Date(createInput.expires_at).getUTCFullYear()).toBe(2030);
+    expect(createReason).toBe("Motivo válido");
+
+    await user.click(screen.getByLabelText(/Mostrar vencidas/i));
+    await waitFor(() => expect(setIncludeExpiredMock).toHaveBeenCalledWith(true));
+    expect(refreshMock).toHaveBeenCalledWith(1);
+
+    promptSpy.mockReturnValue("2032-02-02T08:45");
+    await user.click(screen.getByRole("button", { name: /Renovar/i }));
+    await waitFor(() => expect(renewMock).toHaveBeenCalled());
+
+    const [renewId, renewPayload, renewReason] = renewMock.mock.calls[0];
+    expect(renewId).toBe(reservation.id);
+    expect(new Date(renewPayload.expires_at).getUTCFullYear()).toBe(2032);
+    expect(renewReason).toBe("Motivo válido");
+
+    await user.click(screen.getByRole("button", { name: /Cancelar/i }));
+    await waitFor(() => expect(cancelMock).toHaveBeenCalledWith(reservation.id, "Motivo válido"));
+
+    expect(reasonSpy).toHaveBeenCalled();
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(alertSpy).not.toHaveBeenCalled();
+
+    reasonSpy.mockRestore();
+    confirmSpy.mockRestore();
+    alertSpy.mockRestore();
+    promptSpy.mockRestore();
   });
 });

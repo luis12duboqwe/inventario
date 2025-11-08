@@ -16,12 +16,16 @@ import {
   exportStoreDevicesCsv,
   getDevices,
   getIncompleteDevices,
+  getInventoryReservations,
   getInventoryCurrentReport,
   getInventoryMovementsReport,
   getInventoryValueReport,
   getSupplierBatchOverview,
   getTopProductsReport,
   importStoreDevicesCsv,
+  createInventoryReservation,
+  renewInventoryReservation,
+  cancelInventoryReservation,
   registerMovement,
   smartInventoryImport,
   getSmartImportHistory,
@@ -37,7 +41,11 @@ import type {
   InventoryTopProductsFilters,
   InventoryValueFilters,
   InventoryValueReport,
+  InventoryReservation,
+  InventoryReservationInput,
+  InventoryReservationRenewInput,
   MovementInput,
+  PaginatedResponse,
   SupplierBatchOverviewItem,
   TopProductsReport,
 } from "../../../api";
@@ -82,6 +90,30 @@ export const inventoryService = {
     storeId?: number,
     limit = 100,
   ) => getIncompleteDevices(token, storeId, limit),
+  fetchReservations: (
+    token: string,
+    params: Parameters<typeof getInventoryReservations>[1],
+  ): Promise<PaginatedResponse<InventoryReservation>> =>
+    getInventoryReservations(token, params),
+  createReservation: (
+    token: string,
+    payload: InventoryReservationInput,
+    reason: string,
+  ): Promise<InventoryReservation> =>
+    createInventoryReservation(token, payload, reason),
+  renewReservation: (
+    token: string,
+    reservationId: number,
+    payload: InventoryReservationRenewInput,
+    reason: string,
+  ): Promise<InventoryReservation> =>
+    renewInventoryReservation(token, reservationId, payload, reason),
+  cancelReservation: (
+    token: string,
+    reservationId: number,
+    reason: string,
+  ): Promise<InventoryReservation> =>
+    cancelInventoryReservation(token, reservationId, reason),
   fetchSupplierBatchOverview: (
     token: string,
     storeId: number,

@@ -11,6 +11,7 @@ const InventoryProducts = lazyWithRetry(() => import("../inventory/pages/Invento
 const InventoryMoves = lazyWithRetry(() => import("../inventory/pages/InventoryMovementsPage"));
 const InventorySuppliers = lazyWithRetry(() => import("../inventory/pages/InventorySuppliersPage"));
 const InventoryAlerts = lazyWithRetry(() => import("../inventory/pages/InventoryAlertsPage"));
+const InventoryReservations = lazyWithRetry(() => import("../inventory/pages/InventoryReservationsPage"));
 const OperationsLayout = lazyWithRetry(() => import("../operations/pages/OperationsLayout"));
 const OperationsPOS = lazyWithRetry(() => import("../operations/pages/OperationsPOS"));
 const OperationsPurchases = lazyWithRetry(() => import("../operations/pages/OperationsPurchases"));
@@ -120,6 +121,7 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           <Route path="movimientos" element={<InventoryMoves />} />
           <Route path="proveedores" element={<InventorySuppliers />} />
           <Route path="alertas" element={<InventoryAlerts />} />
+          <Route path="reservas" element={<InventoryReservations />} />
         </Route>
         <Route
           path="operations/*"
