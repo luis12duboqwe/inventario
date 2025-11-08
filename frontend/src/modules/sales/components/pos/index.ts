@@ -11,3 +11,4 @@ export { default as HoldResumeDrawer } from "./HoldResumeDrawer";
 export { default as FastCustomerModal } from "./FastCustomerModal";
 export { default as ReceiptPrint } from "./ReceiptPrint";
 export { default as OfflineQueueDrawer } from "./OfflineQueueDrawer";
+export { default as POSQuickScan } from "./POSQuickScan";
