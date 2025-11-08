@@ -12,6 +12,7 @@ import {
   PriceOverrideModal,
   ProductGrid,
   ProductSearchBar,
+  POSQuickScan,
 } from "../components/pos";
 // [PACK22-POS-PAGE-IMPORTS-START]
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -257,6 +258,53 @@ export default function POSPage() {
     addProduct(product, 1);
   }
 
+  const handleQuickScan = useCallback(
+    async (code: string) => {
+      const normalized = code.trim();
+      if (!normalized) {
+        throw new Error("Ingresa un código válido.");
+      }
+
+      const params: ProductSearchParams = {
+        q: normalized,
+        page: 1,
+        pageSize: 1,
+        onlyInStock: true,
+        sku: normalized,
+        imei: normalized,
+      };
+
+      let response;
+      try {
+        response = await SalesProducts.searchProducts(params);
+      } catch {
+        throw new Error("No se pudo consultar el catálogo.");
+      }
+
+      const items = Array.isArray(response.items) ? response.items : [];
+      const candidate =
+        items.find((item) => item.sku && item.sku.toLowerCase() === normalized.toLowerCase()) ||
+        items[0];
+
+      if (!candidate) {
+        throw new Error("No se encontró ningún producto con ese código.");
+      }
+
+      onAddToCart(candidate);
+      setQ(normalized);
+      setPage(1);
+      setProducts((prev) => {
+        if (prev.some((item) => item.id === candidate.id)) {
+          return prev;
+        }
+        return [candidate, ...prev];
+      });
+
+      return { label: candidate.name };
+    },
+    [onAddToCart, setPage, setProducts, setQ],
+  );
+
   function handleQty(id: string, qty: number) {
     updateQty(id, Math.max(1, qty));
   }
@@ -433,7 +481,10 @@ export default function POSPage() {
       <POSLayout
         left={
           <>
-            <ProductSearchBar value={q} onChange={setQ} onSearch={handleSearch} />
+            <div style={{ display: "grid", gap: 10 }}>
+              <POSQuickScan onSubmit={handleQuickScan} />
+              <ProductSearchBar value={q} onChange={setQ} onSearch={handleSearch} />
+            </div>
             {loadingSearch && (
               <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8" }}>Buscando productos…</div>
             )}
