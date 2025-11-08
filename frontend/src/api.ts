@@ -1400,6 +1400,34 @@ export type LowStockDevice = {
   inventory_value: number;
 };
 
+export type InventoryAlertSeverity = "critical" | "warning" | "notice";
+
+export type InventoryAlertItem = LowStockDevice & {
+  severity: InventoryAlertSeverity;
+};
+
+export type InventoryAlertSummary = {
+  total: number;
+  critical: number;
+  warning: number;
+  notice: number;
+};
+
+export type InventoryAlertSettings = {
+  threshold: number;
+  minimum_threshold: number;
+  maximum_threshold: number;
+  warning_cutoff: number;
+  critical_cutoff: number;
+  adjustment_variance_threshold: number;
+};
+
+export type InventoryAlertsResponse = {
+  settings: InventoryAlertSettings;
+  summary: InventoryAlertSummary;
+  items: InventoryAlertItem[];
+};
+
 export type InventoryCurrentStoreReport = {
   store_id: number;
   store_name: string;
@@ -4799,6 +4827,22 @@ export function getInventoryMetrics(token: string, lowStockThreshold = 5): Promi
     { method: "GET" },
     token
   );
+}
+
+export function getInventoryAlerts(
+  token: string,
+  params: { storeId?: number; threshold?: number } = {},
+): Promise<InventoryAlertsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.storeId) {
+    searchParams.set("store_id", String(params.storeId));
+  }
+  if (typeof params.threshold === "number") {
+    searchParams.set("threshold", String(params.threshold));
+  }
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<InventoryAlertsResponse>(`/alerts/inventory${suffix}`, { method: "GET" }, token);
 }
 
 export function getRotationAnalytics(
