@@ -14,6 +14,7 @@ from backend.core.logging import logger as core_logger
 
 from .. import crud, models
 from ..config import settings
+from ..core.session_provider import SessionProvider
 from ..database import SessionLocal
 from ..core.transactions import transactional_session
 
@@ -180,10 +181,16 @@ def run_sync_cycle(
 class SyncScheduler:
     """Ejecuta sincronizaciones automáticas cada intervalo configurado."""
 
-    def __init__(self, interval_seconds: int) -> None:
+    def __init__(
+        self,
+        interval_seconds: int,
+        *,
+        session_provider: SessionProvider | None = None,
+    ) -> None:
         self.interval_seconds = interval_seconds
         self._task: asyncio.Task[None] | None = None
         self._running = False
+        self._session_provider: SessionProvider = session_provider or SessionLocal
 
     async def start(self) -> None:
         if self._task is not None:
@@ -212,7 +219,7 @@ class SyncScheduler:
                 )
 
     def _execute_sync(self) -> None:
-        with SessionLocal() as session:
+        with self._session_provider() as session:
             status = models.SyncStatus.SUCCESS
             processed_events = 0
             differences_count = 0

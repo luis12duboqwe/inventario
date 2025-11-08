@@ -388,7 +388,7 @@ async def lifespan(app: FastAPI):
             session.close()
     global _scheduler
     if settings.enable_background_scheduler:
-        _scheduler = BackgroundScheduler()
+        _scheduler = BackgroundScheduler(session_provider=SessionLocal)
         await _scheduler.start()
     try:
         yield

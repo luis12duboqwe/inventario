@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 from typing import Callable
 
 from backend.core.logging import logger as core_logger
 
 from .. import crud, models
 from ..config import settings
+from ..core.session_provider import SessionProvider
 from ..database import SessionLocal
 from ..core.transactions import transactional_session
 from . import sync as sync_service
@@ -58,8 +60,9 @@ class _PeriodicJob:
 class BackgroundScheduler:
     """Coordina los jobs periódicos configurados por el sistema."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, session_provider: SessionProvider | None = None) -> None:
         self._jobs: list[_PeriodicJob] = []
+        self._session_provider: SessionProvider = session_provider or SessionLocal
 
         sync_interval = settings.sync_interval_seconds
         if sync_interval > 0:
@@ -67,7 +70,7 @@ class BackgroundScheduler:
                 _PeriodicJob(
                     name="sincronizacion",
                     interval_seconds=sync_interval,
-                    callback=_sync_job,
+                    callback=partial(_sync_job, self._session_provider),
                 )
             )
 
@@ -99,8 +102,9 @@ class BackgroundScheduler:
             await job.stop()
 
 
-def _sync_job() -> None:
-    with SessionLocal() as session:
+def _sync_job(session_provider: SessionProvider | None = None) -> None:
+    provider = session_provider or SessionLocal
+    with provider() as session:
         status = models.SyncStatus.SUCCESS
         processed_events = 0
         differences_count = 0
