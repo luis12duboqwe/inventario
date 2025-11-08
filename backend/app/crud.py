@@ -10755,8 +10755,13 @@ def receive_purchase_order(
             entity_type="purchase_order",
             entity_id=str(order.id),
             performed_by_id=received_by_id,
-            details=json.dumps({"items": reception_details,
-                               "status": order.status.value}),
+            details=json.dumps(
+                {
+                    "items": reception_details,
+                    "status": order.status.value,
+                    "reason": reason,
+                }
+            ),
         )
         db.refresh(order)
         enqueue_sync_outbox(
@@ -10935,7 +10940,13 @@ def register_purchase_return(
             entity_id=str(order.id),
             performed_by_id=processed_by_id,
             details=json.dumps(
-                {"device_id": payload.device_id, "quantity": payload.quantity}),
+                {
+                    "device_id": payload.device_id,
+                    "quantity": payload.quantity,
+                    "return_reason": payload.reason,
+                    "request_reason": reason,
+                }
+            ),
         )
         db.refresh(order)
         enqueue_sync_outbox(
@@ -11544,8 +11555,13 @@ def create_repair_order(
             entity_type="repair_order",
             entity_id=str(order.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"store_id": order.store_id,
-                               "status": order.status.value}),
+            details=json.dumps(
+                {
+                    "store_id": order.store_id,
+                    "status": order.status.value,
+                    "reason": reason,
+                }
+            ),
         )
         db.refresh(order)
         enqueue_sync_outbox(
@@ -11639,6 +11655,8 @@ def update_repair_order(
         db.refresh(order)
 
         if updated_fields:
+            if reason is not None:
+                updated_fields["reason"] = reason
             _log_action(
                 db,
                 action="repair_order_updated",
@@ -11812,6 +11830,7 @@ def delete_repair_order(
             entity_type="repair_order",
             entity_id=str(order_id),
             performed_by_id=performed_by_id,
+            details=json.dumps({"reason": reason}),
         )
         enqueue_sync_outbox(
             db,
@@ -12609,7 +12628,12 @@ def create_sale(
             entity_id=str(sale.id),
             performed_by_id=performed_by_id,
             details=json.dumps(
-                {"store_id": sale.store_id, "total_amount": float(sale.total_amount)}),
+                {
+                    "store_id": sale.store_id,
+                    "total_amount": float(sale.total_amount),
+                    "reason": reason,
+                }
+            ),
         )
         db.refresh(sale)
         sale_payload = {
@@ -13115,7 +13139,11 @@ def register_sale_return(
             entity_id=str(sale.id),
             performed_by_id=processed_by_id,
             details=json.dumps(
-                {"items": [item.model_dump() for item in payload.items]}),
+                {
+                    "items": [item.model_dump() for item in payload.items],
+                    "reason": reason,
+                }
+            ),
         )
         flush_session(db)
 
