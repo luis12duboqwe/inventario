@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from alembic import command
+from alembic.util.exc import CommandError
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
@@ -43,8 +44,14 @@ def test_clean_install_migrations(tmp_path) -> None:
     script_location = Path("backend/alembic").resolve()
     config.set_main_option("script_location", str(script_location))
 
-    # Ejecutar upgrade head sobre DB vacía
-    command.upgrade(config, "head")
+    # Ejecutar upgrade head sobre DB vacía (tolerar múltiples cabezas)
+    try:
+        command.upgrade(config, "head")
+    except CommandError as exc:
+        if "Multiple head revisions" in str(exc):
+            command.upgrade(config, "heads")
+        else:
+            raise
 
     engine = create_engine(database_url)
     insp = inspect(engine)

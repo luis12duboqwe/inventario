@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import pytest
@@ -225,6 +226,77 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
     assert logs_response.status_code == status.HTTP_200_OK
     logs = logs_response.json()
     assert any(log["accion"] == "backup_restored" for log in logs)
+
+
+def test_backup_restore_sql_without_applying_database(client, tmp_path) -> None:
+    headers = _auth_headers(client)
+    settings.backup_directory = str(tmp_path / "respaldos")
+
+    store_payload = {
+        "name": "Sucursal Copia SQL",
+        "location": "GDL",
+        "timezone": "America/Mexico_City",
+    }
+    store_response = client.post("/stores", json=store_payload, headers=headers)
+    assert store_response.status_code == status.HTTP_201_CREATED, store_response.json()
+
+    backup_response = client.post(
+        "/backups/run",
+        json={},
+        headers=_with_reason(headers, "Respaldo previo a restauracion en destino"),
+    )
+    assert backup_response.status_code == status.HTTP_201_CREATED, backup_response.json()
+    backup_id = backup_response.json()["id"]
+
+    active_store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Activa", "location": "MTY", "timezone": "America/Monterrey"},
+        headers=headers,
+    )
+    assert active_store_response.status_code == status.HTTP_201_CREATED, active_store_response.json()
+
+    before_restore = client.get("/stores", headers=headers)
+    assert before_restore.status_code == status.HTTP_200_OK, before_restore.json()
+    before_names = {store["name"] for store in before_restore.json()["items"]}
+    assert before_names.issuperset({"Sucursal Copia SQL", "Sucursal Activa"})
+
+    destino_personalizado = tmp_path / "restauracion_sql"
+    restore_response = client.post(
+        f"/backups/{backup_id}/restore",
+        json={
+            "componentes": ["database"],
+            "aplicar_base_datos": False,
+            "destino": str(destino_personalizado),
+        },
+        headers=_with_reason(headers, "Copiar SQL a destino temporal"),
+    )
+    assert restore_response.status_code == status.HTTP_200_OK, restore_response.json()
+    restore_data = restore_response.json()
+
+    restore_destination = Path(restore_data["destino"])
+    assert restore_destination.exists() and restore_destination.is_dir()
+    assert set(restore_data["componentes"]) == {"database"}
+    sql_restored_path = Path(restore_data["resultados"]["database"])
+    assert sql_restored_path.exists() and sql_restored_path.is_file()
+    assert sql_restored_path.parent == restore_destination
+
+    with sql_restored_path.open(encoding="utf-8") as sql_file:
+        sql_content = sql_file.read()
+
+    branch_inserts = [
+        line
+        for line in sql_content.splitlines()
+        if 'INSERT INTO "sucursales"' in line
+    ]
+    assert any("Sucursal Copia SQL" in line for line in branch_inserts)
+    assert not any("Sucursal Activa" in line for line in branch_inserts)
+
+    after_restore = client.get("/stores", headers=headers)
+    assert after_restore.status_code == status.HTTP_200_OK, after_restore.json()
+    after_names = {store["name"] for store in after_restore.json()["items"]}
+    assert after_names == before_names
+
+    shutil.rmtree(restore_destination, ignore_errors=True)
 
 
 def test_backup_download_formats(client, tmp_path) -> None:

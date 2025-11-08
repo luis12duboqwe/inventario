@@ -7,6 +7,7 @@ from importlib import import_module
 from pathlib import Path
 
 from alembic import command
+from alembic.util.exc import CommandError
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
@@ -92,6 +93,13 @@ def run_migrations() -> None:
     import_module("backend.models.pos")
     config = _build_alembic_config()
     command.upgrade(config, "heads")
+    try:
+        command.upgrade(config, "head")
+    except CommandError as exc:
+        if "Multiple head revisions" in str(exc):
+            command.upgrade(config, "heads")
+        else:
+            raise
     _ensure_core_user_columns()
     Base.metadata.create_all(bind=_engine)
 
