@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 from typing import Any, Iterable
 
+import json
+
 from fastapi import status
 from sqlalchemy import select
 
@@ -571,5 +573,91 @@ def test_sales_endpoints_require_feature_flag(client, db_session):
         }
         create_response = client.post("/sales", json=payload, headers=headers)
         assert create_response.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_sale_audit_logs_include_reason(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}"}
+
+    try:
+        store_response = client.post(
+            "/stores",
+            json={"name": "Ventas Centro", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=base_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_payload = {
+            "sku": "AUD-VENT-001",
+            "name": "Smartphone Auditor",
+            "quantity": 4,
+            "unit_price": 420.0,
+            "costo_unitario": 300.0,
+            "margen_porcentaje": 15.0,
+        }
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json=device_payload,
+            headers={**base_headers, "X-Reason": "Alta inventario auditoria"},
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        sale_reason = "Venta auditada"
+        sale_payload = {
+            "store_id": store_id,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": device_id, "quantity": 1}],
+        }
+        sale_response = client.post(
+            "/sales",
+            json=sale_payload,
+            headers={**base_headers, "X-Reason": sale_reason},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+        sale_id = sale_response.json()["id"]
+
+        sale_log = db_session.execute(
+            select(models.AuditLog)
+            .where(
+                models.AuditLog.action == "sale_registered",
+                models.AuditLog.entity_type == "sale",
+                models.AuditLog.entity_id == str(sale_id),
+            )
+            .order_by(models.AuditLog.created_at.desc())
+        ).scalars().first()
+        assert sale_log is not None
+        sale_details = json.loads(sale_log.details)
+        assert sale_details["reason"] == sale_reason
+
+        return_reason = "Devolucion auditoria"
+        return_payload = {
+            "sale_id": sale_id,
+            "items": [{"device_id": device_id, "quantity": 1, "reason": "Cliente detecta falla"}],
+        }
+        return_response = client.post(
+            "/sales/returns",
+            json=return_payload,
+            headers={**base_headers, "X-Reason": return_reason},
+        )
+        assert return_response.status_code == status.HTTP_200_OK
+
+        return_log = db_session.execute(
+            select(models.AuditLog)
+            .where(
+                models.AuditLog.action == "sale_return_registered",
+                models.AuditLog.entity_type == "sale",
+                models.AuditLog.entity_id == str(sale_id),
+            )
+            .order_by(models.AuditLog.created_at.desc())
+        ).scalars().first()
+        assert return_log is not None
+        return_details = json.loads(return_log.details)
+        assert return_details["reason"] == return_reason
     finally:
         settings.enable_purchases_sales = previous_flag

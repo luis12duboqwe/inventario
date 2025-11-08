@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 from typing import Any, Iterable
 
@@ -271,6 +272,83 @@ def test_purchase_receipt_and_return_flow(client, db_session):
             headers=auth_headers,
         )
         assert disabled_create.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_purchase_audit_logs_include_reason(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**base_headers, "X-Reason": "Auditoria compras"}
+
+    try:
+        store_id = _create_store(client, reason_headers)
+        device_id = _create_device(client, store_id, reason_headers)
+
+        order_response = client.post(
+            "/purchases",
+            json={
+                "store_id": store_id,
+                "supplier": "Proveedor Auditado",
+                "items": [
+                    {"device_id": device_id, "quantity_ordered": 3, "unit_cost": 780.0},
+                ],
+            },
+            headers=reason_headers,
+        )
+        assert order_response.status_code == status.HTTP_201_CREATED
+        order_id = order_response.json()["id"]
+
+        receive_reason = "Recepcion auditada"
+        receive_headers = {**base_headers, "X-Reason": receive_reason}
+        receive_response = client.post(
+            f"/purchases/{order_id}/receive",
+            json={"items": [{"device_id": device_id, "quantity": 2}]},
+            headers=receive_headers,
+        )
+        assert receive_response.status_code == status.HTTP_200_OK
+
+        received_log = db_session.execute(
+            select(models.AuditLog)
+            .where(
+                models.AuditLog.action == "purchase_order_received",
+                models.AuditLog.entity_type == "purchase_order",
+                models.AuditLog.entity_id == str(order_id),
+            )
+            .order_by(models.AuditLog.created_at.desc())
+        ).scalars().first()
+        assert received_log is not None
+        received_details = json.loads(received_log.details)
+        assert received_details["reason"] == receive_reason
+
+        return_headers = {**base_headers, "X-Reason": "Reingreso auditado"}
+        return_payload = {
+            "device_id": device_id,
+            "quantity": 1,
+            "reason": "Equipo defectuoso",
+        }
+        return_response = client.post(
+            f"/purchases/{order_id}/returns",
+            json=return_payload,
+            headers=return_headers,
+        )
+        assert return_response.status_code == status.HTTP_200_OK
+
+        return_log = db_session.execute(
+            select(models.AuditLog)
+            .where(
+                models.AuditLog.action == "purchase_return_registered",
+                models.AuditLog.entity_type == "purchase_order",
+                models.AuditLog.entity_id == str(order_id),
+            )
+            .order_by(models.AuditLog.created_at.desc())
+        ).scalars().first()
+        assert return_log is not None
+        return_details = json.loads(return_log.details)
+        assert return_details["return_reason"] == return_payload["reason"]
+        assert return_details["request_reason"] == return_headers["X-Reason"]
     finally:
         settings.enable_purchases_sales = previous_flag
 
