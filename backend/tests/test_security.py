@@ -1,5 +1,6 @@
 from fastapi import status
 import pyotp
+from fastapi_limiter import FastAPILimiter
 
 from backend.app import models
 from backend.app.config import settings
@@ -309,3 +310,8 @@ def test_module_permissions_block_operator_edit_without_permission(client, db_se
         },
     )
     assert denied_response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_rate_limiter_initializes_within_app(client):
+    assert FastAPILimiter.redis is not None
+    assert FastAPILimiter.identifier is not None

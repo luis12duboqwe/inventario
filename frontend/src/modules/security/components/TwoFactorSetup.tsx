@@ -23,6 +23,7 @@ function TwoFactorSetup({ token }: Props) {
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFeatureEnabled, setIsFeatureEnabled] = useState(true);
 
   const ensureReason = (): string | null => {
     const trimmed = reason.trim();
@@ -36,8 +37,16 @@ function TwoFactorSetup({ token }: Props) {
   const loadStatus = useCallback(async () => {
     try {
       const response = await getTotpStatus(token);
+      setIsFeatureEnabled(true);
       setStatus(response);
     } catch (err) {
+      if (err instanceof Error && err.message.includes("Funcionalidad no disponible")) {
+        setIsFeatureEnabled(false);
+        setStatus(null);
+        setSetup(null);
+        setError(null);
+        return;
+      }
       setError(err instanceof Error ? err.message : "No fue posible obtener el estado de 2FA");
     }
   }, [token]);
@@ -57,6 +66,10 @@ function TwoFactorSetup({ token }: Props) {
   }, [loadStatus, loadSessions]);
 
   const handleSetup = async () => {
+    if (!isFeatureEnabled) {
+      setError("La verificación en dos pasos está deshabilitada por configuración corporativa.");
+      return;
+    }
     const validReason = ensureReason();
     if (!validReason) {
       return;
@@ -76,6 +89,10 @@ function TwoFactorSetup({ token }: Props) {
 
   const handleActivate = async (event: FormEvent) => {
     event.preventDefault();
+    if (!isFeatureEnabled) {
+      setError("La verificación en dos pasos está deshabilitada por configuración corporativa.");
+      return;
+    }
     if (!code) {
       setError("Ingresa el código temporal para activar 2FA");
       return;
@@ -99,6 +116,10 @@ function TwoFactorSetup({ token }: Props) {
   };
 
   const handleDisable = async () => {
+    if (!isFeatureEnabled) {
+      setError("La verificación en dos pasos está deshabilitada por configuración corporativa.");
+      return;
+    }
     const validReason = ensureReason();
     if (!validReason) {
       return;
@@ -117,6 +138,10 @@ function TwoFactorSetup({ token }: Props) {
   };
 
   const handleRevoke = async (sessionId: number) => {
+    if (!isFeatureEnabled) {
+      setError("La verificación en dos pasos está deshabilitada por configuración corporativa.");
+      return;
+    }
     const validReason = ensureReason();
     if (!validReason) {
       return;
@@ -133,6 +158,8 @@ function TwoFactorSetup({ token }: Props) {
     }
   };
 
+  const actionsDisabled = loading || !isFeatureEnabled;
+
   return (
     <section className="card security-card fade-in">
       <header className="card-header">
@@ -141,6 +168,11 @@ function TwoFactorSetup({ token }: Props) {
           Habilita la verificación TOTP para cuentas administrativas y controla las sesiones activas en minutos.
         </p>
       </header>
+      {!isFeatureEnabled && (
+        <p className="muted-text" role="status">
+          La verificación en dos pasos está deshabilitada por configuración corporativa (flag SOFTMOBILE_ENABLE_2FA).
+        </p>
+      )}
       {error && <p className="error-text">{error}</p>}
       <div className="card-body">
         <div className="security-status">
@@ -164,16 +196,17 @@ function TwoFactorSetup({ token }: Props) {
               }}
               placeholder="Describe por qué modificas la configuración de 2FA"
               minLength={5}
+              disabled={actionsDisabled}
               required
             />
           </label>
           <p className="muted-text">Se reutilizará para activar, desactivar o revocar sesiones. Mínimo 5 caracteres.</p>
         </div>
         <div className="security-actions">
-          <button className="btn btn--primary" onClick={handleSetup} disabled={loading}>
+          <button className="btn btn--primary" onClick={handleSetup} disabled={actionsDisabled}>
             Generar secreto TOTP
           </button>
-          <button className="btn btn--ghost" onClick={handleDisable} disabled={loading || !status?.is_active}>
+          <button className="btn btn--ghost" onClick={handleDisable} disabled={actionsDisabled || !status?.is_active}>
             Desactivar 2FA
           </button>
         </div>
@@ -193,9 +226,10 @@ function TwoFactorSetup({ token }: Props) {
                   maxLength={6}
                   pattern="\\d{6}"
                   onChange={(event) => setCode(event.target.value)}
+                  disabled={actionsDisabled}
                 />
               </label>
-              <button className="btn btn--primary" type="submit" disabled={loading}>
+              <button className="btn btn--primary" type="submit" disabled={actionsDisabled}>
                 Activar 2FA
               </button>
             </form>
@@ -219,7 +253,7 @@ function TwoFactorSetup({ token }: Props) {
                   {session.revoked_at && <p>Revocada el: {new Date(session.revoked_at).toLocaleString()}</p>}
                 </div>
                 {!session.revoked_at && (
-                  <button className="btn btn--ghost" onClick={() => handleRevoke(session.id)} disabled={loading}>
+                  <button className="btn btn--ghost" onClick={() => handleRevoke(session.id)} disabled={actionsDisabled}>
                     Revocar
                   </button>
                 )}
