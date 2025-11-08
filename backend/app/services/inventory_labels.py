@@ -4,8 +4,8 @@ Usa ReportLab con tema oscuro corporativo y un código QR con referencia interna
 """
 from __future__ import annotations
 
-from io import BytesIO
 from decimal import Decimal
+from io import BytesIO
 
 from reportlab.lib.pagesizes import A7
 from reportlab.lib import colors
@@ -27,6 +27,37 @@ def _format_money(value: Decimal | float | int | None) -> str:
     except Exception:  # pragma: no cover - defensivo
         number = 0.0
     return f"${number:,.2f}"
+
+
+def _collect_identifier_lines(device: models.Device) -> list[str]:
+    """Reúne identificadores únicos del dispositivo para mostrarlos en la etiqueta."""
+
+    identifiers: list[tuple[str, str | None]] = [
+        ("IMEI", getattr(device, "imei", None)),
+        ("SERIE", getattr(device, "serial", None)),
+    ]
+
+    extra = getattr(device, "identifier", None)
+    if extra is not None:
+        identifiers.extend(
+            (
+                ("IMEI", getattr(extra, "imei_1", None)),
+                ("IMEI 2", getattr(extra, "imei_2", None)),
+                ("SERIE", getattr(extra, "numero_serie", None)),
+            )
+        )
+
+    unique_values: set[str] = set()
+    lines: list[str] = []
+    for label, raw in identifiers:
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if not text or text in unique_values:
+            continue
+        unique_values.add(text)
+        lines.append(f"{label}: {text}")
+    return lines
 
 
 def render_device_label_pdf(db: Session, store_id: int, device_id: int) -> tuple[bytes, str]:
@@ -71,11 +102,10 @@ def render_device_label_pdf(db: Session, store_id: int, device_id: int) -> tuple
     c.setFillColor(colors.HexColor("#e2e8f0"))
     c.setFont("Helvetica", 8)
     line_y = height - 30 * mm
-    if getattr(device, "imei", None):
-        c.drawString(6 * mm, line_y, f"IMEI: {device.imei}")
-        line_y -= 4 * mm
-    if getattr(device, "serial", None):
-        c.drawString(6 * mm, line_y, f"SERIE: {device.serial}")
+    for identifier_line in _collect_identifier_lines(device):
+        if line_y < 8 * mm:
+            break
+        c.drawString(6 * mm, line_y, identifier_line[:64])
         line_y -= 4 * mm
 
     # Marca/Modelo/Color/Capacidad (GB) si existen
