@@ -362,13 +362,18 @@ class PriceList(Base):
         Index("ix_price_lists_priority", "priority"),
         Index("ix_price_lists_store_id", "store_id"),
         Index("ix_price_lists_customer_id", "customer_id"),
+        Index("ix_price_lists_name", "name"),
+        Index("ix_price_lists_is_active", "is_active"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, index=True
+    )
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
     store_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
@@ -388,6 +393,8 @@ class PriceList(Base):
     ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )

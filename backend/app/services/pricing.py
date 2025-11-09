@@ -1,13 +1,16 @@
-"""Servicios de listas de precios y resolución de tarifas personalizadas."""
+"""Servicios para resolver precios corporativos basados en listas dedicadas."""
+
 from __future__ import annotations
 
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Iterable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
-
+from ..models import Device, PriceList, PriceListItem
 
 _QUANTIZER = Decimal("0.01")
 
@@ -16,8 +19,18 @@ def _quantize(value: Decimal) -> Decimal:
     return value.quantize(_QUANTIZER, rounding=ROUND_HALF_UP)
 
 
+def _scope_rank(price_list: PriceList) -> int:
+    if price_list.store_id is not None and price_list.customer_id is not None:
+        return 0
+    if price_list.customer_id is not None:
+        return 1
+    if price_list.store_id is not None:
+        return 2
+    return 3
+
+
 def _resolve_scope(
-    price_list: "crud.models.PriceList",
+    price_list: PriceList,
     store_id: int | None,
     customer_id: int | None,
 ) -> str:
@@ -43,6 +56,7 @@ def _resolve_scope(
     return "global"
 
 
+def list_applicable_price_lists(
 def list_price_lists(
     db: Session,
     *,
@@ -256,6 +270,72 @@ def resolve_device_price(
     )
 
 
+def resolve_prices_for_devices(
+    db: Session,
+    devices: Iterable[Device],
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+) -> dict[int, tuple[PriceList, PriceListItem]]:
+    mapping: dict[int, tuple[PriceList, PriceListItem]] = {}
+    for device in devices:
+        resolved = resolve_price_for_device(
+            db, device, store_id=store_id, customer_id=customer_id
+        )
+        if resolved:
+            mapping[device.id] = resolved
+    return mapping
+
+
+def resolve_price_for_device(
+    db: Session,
+    device: Device,
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+) -> tuple[PriceList, PriceListItem] | None:
+    price_lists = list_applicable_price_lists(
+        db,
+        store_id=store_id,
+        customer_id=customer_id,
+        include_items=False,
+    )
+    if not price_lists:
+        return None
+
+    statement = (
+        select(PriceListItem)
+        .where(PriceListItem.price_list_id.in_([pl.id for pl in price_lists]))
+        .where(PriceListItem.device_id == device.id)
+    )
+    items = {item.price_list_id: item for item in db.scalars(statement)}
+    for price_list in sorted(
+        price_lists, key=lambda pl: (_scope_rank(pl), pl.priority, pl.id)
+    ):
+        item = items.get(price_list.id)
+        if item is not None:
+            return price_list, item
+    return None
+
+
+def compute_effective_price(
+    db: Session,
+    device: Device,
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+) -> Decimal:
+    resolved = resolve_price_for_device(
+        db, device, store_id=store_id, customer_id=customer_id
+    )
+    if resolved:
+        _, item = resolved
+        return item.price
+    return device.unit_price
+
+
+__all__ = [
+    "list_applicable_price_lists",
 __all__ = [
     "list_price_lists",
     "get_price_list",
@@ -267,4 +347,7 @@ __all__ = [
     "update_price_list_item",
     "delete_price_list_item",
     "resolve_device_price",
+    "resolve_prices_for_devices",
+    "resolve_price_for_device",
+    "compute_effective_price",
 ]

@@ -478,7 +478,7 @@ class DeviceResponse(DeviceBase):
 
 
 class PriceListBase(BaseModel):
-    """Información común de una lista de precios."""
+    """Información común de una lista de precios corporativa."""
 
     name: str = Field(
         ...,
@@ -515,7 +515,7 @@ class PriceListBase(BaseModel):
         default="MXN",
         min_length=3,
         max_length=10,
-        description="Moneda en la que se expresan los precios.",
+        description="Moneda ISO 4217 en la que se expresan los precios.",
     )
     valid_from: date | None = Field(
         default=None,
@@ -527,11 +527,11 @@ class PriceListBase(BaseModel):
     )
     starts_at: datetime | None = Field(
         default=None,
-        description="Fecha de inicio de vigencia (UTC).",
+        description="Fecha de inicio de vigencia en hora exacta (UTC).",
     )
     ends_at: datetime | None = Field(
         default=None,
-        description="Fecha de término de vigencia (UTC).",
+        description="Fecha de término de vigencia en hora exacta (UTC).",
     )
 
     @field_validator("name", mode="before")
@@ -574,11 +574,11 @@ class PriceListBase(BaseModel):
 
 
 class PriceListCreate(PriceListBase):
-    """Carga útil para crear una lista de precios."""
+    """Carga útil para registrar una nueva lista de precios."""
 
 
 class PriceListUpdate(BaseModel):
-    """Campos disponibles para actualizar una lista de precios."""
+    """Campos opcionales disponibles para actualizar una lista de precios."""
 
     name: str | None = Field(default=None, min_length=3, max_length=120)
     description: str | None = Field(default=None, max_length=500)
@@ -630,6 +630,7 @@ class PriceListUpdate(BaseModel):
             raise ValueError(
                 "La fecha de inicio no puede ser posterior a la fecha de fin."
             )
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
         if (
             self.starts_at is not None
             and self.ends_at is not None
@@ -650,7 +651,7 @@ class PriceListItemBase(BaseModel):
     price: Decimal = Field(
         ...,
         gt=Decimal("0"),
-        description="Precio base asignado al dispositivo.",
+        description="Precio específico definido en la lista.",
     )
     discount_percentage: Decimal | None = Field(
         default=None,
@@ -658,11 +659,25 @@ class PriceListItemBase(BaseModel):
         le=Decimal("100"),
         description="Descuento porcentual adicional aplicado al precio base.",
     )
+    currency: str = Field(
+        default="MXN",
+        min_length=3,
+        max_length=8,
+        description="Moneda ISO 4217 asociada al precio.",
+    )
     notes: str | None = Field(
         default=None,
         max_length=500,
         description="Notas internas sobre la regla de precios.",
     )
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
+        return normalized
 
     @field_validator("notes", mode="before")
     @classmethod
@@ -682,9 +697,22 @@ class PriceListItemUpdate(BaseModel):
 
     price: Decimal | None = Field(default=None, gt=Decimal("0"))
     discount_percentage: Decimal | None = Field(
-        default=None, ge=Decimal("0"), le=Decimal("100")
+        default=None,
+        ge=Decimal("0"),
+        le=Decimal("100"),
     )
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
     notes: str | None = Field(default=None, max_length=500)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
+        return normalized
 
     @field_validator("notes", mode="before")
     @classmethod
@@ -3702,6 +3730,50 @@ class PurchaseImportResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class PurchaseSuggestionItem(BaseModel):
+    store_id: int
+    store_name: str
+    supplier_id: int | None
+    supplier_name: str | None
+    device_id: int
+    sku: str
+    name: str
+    current_quantity: int
+    minimum_stock: int
+    suggested_quantity: int
+    average_daily_sales: float
+    projected_coverage_days: int | None
+    last_30_days_sales: int
+    unit_cost: Decimal = Field(default=Decimal("0"))
+    reason: Literal["below_minimum", "projected_consumption"]
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+    @computed_field(return_type=float)  # type: ignore[misc]
+    def suggested_value(self) -> float:
+        return float(self.unit_cost * Decimal(self.suggested_quantity))
+
+
+class PurchaseSuggestionStore(BaseModel):
+    store_id: int
+    store_name: str
+    total_suggested: int
+    total_value: float
+    items: list[PurchaseSuggestionItem]
+
+
+class PurchaseSuggestionsResponse(BaseModel):
+    generated_at: datetime
+    lookback_days: int
+    planning_horizon_days: int
+    minimum_stock: int
+    total_items: int
+    stores: list[PurchaseSuggestionStore]
+
+
 class PurchaseVendorBase(BaseModel):
     nombre: str = Field(..., min_length=3, max_length=150)
     telefono: str | None = Field(default=None, max_length=40)
@@ -5468,6 +5540,9 @@ __all__ = [
     "PurchaseReceiveItem",
     "PurchaseReceiveRequest",
     "PurchaseImportResponse",
+    "PurchaseSuggestionItem",
+    "PurchaseSuggestionStore",
+    "PurchaseSuggestionsResponse",
     "POSCartItem",
     "POSSalePaymentInput",
     "POSSaleRequest",
