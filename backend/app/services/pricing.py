@@ -7,7 +7,6 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Iterable
 
 from sqlalchemy import or_, select
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -59,9 +58,6 @@ def _resolve_scope(
     ):
         return "store"
     return "global"
-
-
-def list_applicable_price_lists(
 def list_price_lists(
     db: Session,
     *,
@@ -388,8 +384,6 @@ def compute_effective_price(
 
 
 __all__ = [
-    "list_applicable_price_lists",
-__all__ = [
     "list_price_lists",
     "get_price_list",
     "create_price_list",
@@ -402,8 +396,6 @@ __all__ = [
     "list_applicable_price_lists",
     "resolve_price_for_device",
     "resolve_device_price",
-    "resolve_device_price",
     "resolve_prices_for_devices",
-    "resolve_price_for_device",
     "compute_effective_price",
 ]

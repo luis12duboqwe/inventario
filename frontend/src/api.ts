@@ -1145,6 +1145,49 @@ export type PosSaleResponse = {
   receipt_pdf_base64?: string | null;
 };
 
+export type PosConnectorType = "usb" | "network";
+
+export type PosPrinterMode = "thermal" | "fiscal";
+
+export type PosConnectorSettings = {
+  type: PosConnectorType;
+  identifier: string;
+  path?: string | null;
+  host?: string | null;
+  port?: number | null;
+};
+
+export type PosPrinterSettings = {
+  name: string;
+  mode: PosPrinterMode;
+  connector: PosConnectorSettings;
+  paper_width_mm?: number | null;
+  is_default: boolean;
+  vendor?: string | null;
+  supports_qr?: boolean;
+};
+
+export type PosCashDrawerSettings = {
+  enabled: boolean;
+  connector?: PosConnectorSettings | null;
+  auto_open_on_cash_sale: boolean;
+  pulse_duration_ms: number;
+};
+
+export type PosCustomerDisplaySettings = {
+  enabled: boolean;
+  channel: "websocket" | "local";
+  brightness: number;
+  theme: "dark" | "light";
+  message_template?: string | null;
+};
+
+export type PosHardwareSettings = {
+  printers: PosPrinterSettings[];
+  cash_drawer: PosCashDrawerSettings;
+  customer_display: PosCustomerDisplaySettings;
+};
+
 export type PosConfig = {
   store_id: number;
   tax_rate: number;
@@ -1152,6 +1195,7 @@ export type PosConfig = {
   printer_name?: string | null;
   printer_profile?: string | null;
   quick_product_ids: number[];
+  hardware_settings: PosHardwareSettings;
   updated_at: string;
 };
 
@@ -1162,6 +1206,7 @@ export type PosConfigUpdateInput = {
   printer_name?: string | null;
   printer_profile?: string | null;
   quick_product_ids: number[];
+  hardware_settings?: PosHardwareSettings;
 };
 
 export type PosSessionSummary = {
@@ -6381,6 +6426,80 @@ export function updatePosConfig(
     "/pos/config",
     {
       method: "PUT",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export type PosHardwareActionResponse = {
+  status: "queued" | "ok" | "error";
+  message: string;
+  details?: Record<string, unknown> | null;
+};
+
+export type PosHardwarePrintTestInput = {
+  store_id: number;
+  printer_name?: string | null;
+  mode?: PosPrinterMode;
+  sample?: string;
+};
+
+export type PosHardwareDrawerOpenInput = {
+  store_id: number;
+  connector_identifier?: string | null;
+  pulse_duration_ms?: number | null;
+};
+
+export type PosHardwareDisplayPushInput = {
+  store_id: number;
+  headline: string;
+  message?: string | null;
+  total_amount?: number | null;
+};
+
+export function testPosPrinter(
+  token: string,
+  payload: PosHardwarePrintTestInput,
+  reason = "Prueba hardware POS"
+): Promise<PosHardwareActionResponse> {
+  return request<PosHardwareActionResponse>(
+    "/pos/hardware/print-test",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function openPosCashDrawer(
+  token: string,
+  payload: PosHardwareDrawerOpenInput,
+  reason = "Apertura manual gaveta"
+): Promise<PosHardwareActionResponse> {
+  return request<PosHardwareActionResponse>(
+    "/pos/hardware/drawer/open",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function pushCustomerDisplay(
+  token: string,
+  payload: PosHardwareDisplayPushInput,
+  reason = "Mensaje pantalla cliente"
+): Promise<PosHardwareActionResponse> {
+  return request<PosHardwareActionResponse>(
+    "/pos/hardware/display/push",
+    {
+      method: "POST",
       body: JSON.stringify(payload),
       headers: { "X-Reason": reason },
     },

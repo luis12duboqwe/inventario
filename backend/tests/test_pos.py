@@ -127,6 +127,8 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     assert config_response.status_code == 200
     default_config = config_response.json()
     assert default_config["store_id"] == store_id
+    assert default_config["hardware_settings"]["printers"] == []
+    assert default_config["hardware_settings"]["cash_drawer"]["enabled"] is False
 
     update_payload = {
         "store_id": store_id,
@@ -135,6 +137,37 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
         "printer_name": "TM-88V",
         "printer_profile": "USB",
         "quick_product_ids": [device_id],
+        "hardware_settings": {
+            "printers": [
+                {
+                    "name": "TM-88V",
+                    "mode": "thermal",
+                    "is_default": True,
+                    "connector": {
+                        "type": "usb",
+                        "identifier": "TM-88V",
+                    },
+                    "paper_width_mm": 80,
+                    "supports_qr": True,
+                }
+            ],
+            "cash_drawer": {
+                "enabled": True,
+                "connector": {
+                    "type": "usb",
+                    "identifier": "Drawer-01",
+                },
+                "auto_open_on_cash_sale": True,
+                "pulse_duration_ms": 200,
+            },
+            "customer_display": {
+                "enabled": True,
+                "channel": "websocket",
+                "brightness": 85,
+                "theme": "dark",
+                "message_template": "Gracias por tu compra",
+            },
+        },
     }
     update_response = client.put(
         "/pos/config",
@@ -145,6 +178,8 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     updated_config = update_response.json()
     assert updated_config["tax_rate"] == 16.0
     assert updated_config["invoice_prefix"] == "POSCDMX"
+    assert updated_config["hardware_settings"]["printers"][0]["name"] == "TM-88V"
+    assert updated_config["hardware_settings"]["cash_drawer"]["enabled"] is True
 
     customer_response = client.post(
         "/customers",
@@ -455,6 +490,109 @@ def test_pos_config_requires_reason_and_audit(client, db_session):
         details = json.loads(audit_entry.details)
         assert details["store_id"] == store_id
         assert details["reason"] == "Auditar POS"
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
+def test_pos_hardware_channels_and_drawer(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Prueba hardware POS"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Hardware POS", "location": "MTY", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        config_payload = {
+            "store_id": store_id,
+            "tax_rate": 16.0,
+            "invoice_prefix": "POSHW",
+            "printer_name": "TM-HW",
+            "printer_profile": "USB",
+            "quick_product_ids": [],
+            "hardware_settings": {
+                "printers": [
+                    {
+                        "name": "TM-HW",
+                        "mode": "thermal",
+                        "is_default": True,
+                        "connector": {
+                            "type": "usb",
+                            "identifier": "TM-HW",
+                        },
+                    }
+                ],
+                "cash_drawer": {
+                    "enabled": True,
+                    "connector": {
+                        "type": "usb",
+                        "identifier": "Drawer-HW",
+                    },
+                    "auto_open_on_cash_sale": True,
+                    "pulse_duration_ms": 180,
+                },
+                "customer_display": {
+                    "enabled": True,
+                    "channel": "websocket",
+                    "brightness": 90,
+                    "theme": "dark",
+                },
+            },
+        }
+        config_response = client.put(
+            "/pos/config",
+            json=config_payload,
+            headers=reason_headers,
+        )
+        assert config_response.status_code == status.HTTP_200_OK
+
+        with client.websocket_connect(f"/pos/hardware/ws?storeId={store_id}") as websocket:
+            ready_message = websocket.receive_json()
+            assert ready_message["event"] == "hardware.ready"
+
+            print_response = client.post(
+                "/pos/hardware/print-test",
+                json={
+                    "store_id": store_id,
+                    "printer_name": "TM-HW",
+                    "mode": "thermal",
+                },
+                headers=reason_headers,
+            )
+            assert print_response.status_code == status.HTTP_200_OK
+            assert print_response.json()["status"] == "ok"
+
+            drawer_response = client.post(
+                "/pos/hardware/drawer/open",
+                json={"store_id": store_id},
+                headers=reason_headers,
+            )
+            assert drawer_response.status_code == status.HTTP_200_OK
+            drawer_event = websocket.receive_json()
+            assert drawer_event["event"] == "cash_drawer.open"
+            assert drawer_event["store_id"] == store_id
+
+            display_response = client.post(
+                "/pos/hardware/display/push",
+                json={
+                    "store_id": store_id,
+                    "headline": "Gracias",
+                    "message": "Total a pagar",
+                    "total_amount": 199.99,
+                },
+                headers=reason_headers,
+            )
+            assert display_response.status_code == status.HTTP_200_OK
+            display_event = websocket.receive_json()
+            assert display_event["event"] == "customer_display.message"
+            assert display_event["headline"] == "Gracias"
     finally:
         settings.enable_purchases_sales = original_flag
 

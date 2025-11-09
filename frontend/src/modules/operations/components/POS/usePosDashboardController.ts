@@ -14,6 +14,7 @@ import type {
   PaymentMethod,
   PosConfig,
   PosConfigUpdateInput,
+  PosPrinterMode,
   PosSalePayload,
   Sale,
   Store,
@@ -25,7 +26,10 @@ import {
   getPosConfig,
   listCashSessions,
   listCustomers,
+  openPosCashDrawer,
   submitPosSale,
+  pushCustomerDisplay,
+  testPosPrinter,
   updatePosConfig,
   openCashSession,
 } from "../../../../api";
@@ -128,6 +132,9 @@ type SettingsState = {
   config: PosConfig | null;
   devices: Device[];
   onSave: (payload: PosConfigUpdateInput) => Promise<void>;
+  onTestPrinter: (storeId: number, printerName: string | undefined, mode: PosPrinterMode) => Promise<void>;
+  onOpenDrawer: (storeId: number) => Promise<void>;
+  onDisplayPreview: (storeId: number, payload: { headline: string; message: string; total?: number | null }) => Promise<void>;
   loading: boolean;
 };
 
@@ -620,6 +627,34 @@ export function usePosDashboardController({
     });
   };
 
+  const handleHardwarePrinterTest = (
+    storeId: number,
+    printerName: string | undefined,
+    mode: PosPrinterMode,
+  ) =>
+    testPosPrinter(token, {
+      store_id: storeId,
+      printer_name: printerName ?? undefined,
+      mode,
+    }).then(() => undefined);
+
+  const handleHardwareDrawerOpen = (storeId: number) =>
+    openPosCashDrawer(token, { store_id: storeId }).then(() => undefined);
+
+  const handleHardwareDisplayPreview = (
+    storeId: number,
+    payload: { headline: string; message: string; total?: number | null },
+  ) =>
+    pushCustomerDisplay(token, {
+      store_id: storeId,
+      headline: payload.headline,
+      message: payload.message,
+      total_amount:
+        typeof payload.total === "number" && Number.isFinite(payload.total)
+          ? payload.total
+          : undefined,
+    }).then(() => undefined);
+
   const closeConfigReasonDialog = () => {
     if (configReasonSubmitting) {
       return;
@@ -997,6 +1032,9 @@ export function usePosDashboardController({
       setSaleWarnings([]);
       await handleSettingsSave(payload);
     },
+    onTestPrinter: handleHardwarePrinterTest,
+    onOpenDrawer: handleHardwareDrawerOpen,
+    onDisplayPreview: handleHardwareDisplayPreview,
     loading: settingsSaving,
   };
 
