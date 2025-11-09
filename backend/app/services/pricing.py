@@ -241,7 +241,7 @@ def list_applicable_price_lists(
     """Obtiene las listas aplicables considerando vigencias y alcance."""
 
     now = _utc_now()
-    statement = select(PriceList).order_by(PriceList.priority.asc(), PriceList.id.asc())
+    statement = select(PriceList).order_by(PriceList.priority, PriceList.id)
 
     if not include_inactive:
         statement = statement.where(PriceList.is_active.is_(True))
@@ -262,7 +262,10 @@ def list_applicable_price_lists(
         statement = statement.where(PriceList.customer_id.is_(None))
     else:
         statement = statement.where(
-            or_(PriceList.customer_id == customer_id, PriceList.customer_id.is_(None))
+            or_(
+                PriceList.customer_id == customer_id,
+                PriceList.customer_id.is_(None),
+            )
         )
 
     return list(db.scalars(statement))
@@ -387,6 +390,23 @@ def resolve_device_price(
         valid_from=price_list.valid_from,
         valid_until=price_list.valid_until,
     )
+
+
+def resolve_prices_for_devices(
+    db: Session,
+    devices: Iterable[Device],
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+) -> dict[int, tuple[PriceList, PriceListItem]]:
+    mapping: dict[int, tuple[PriceList, PriceListItem]] = {}
+    for device in devices:
+        resolved = resolve_price_for_device(
+            db, device, store_id=store_id, customer_id=customer_id
+        )
+        if resolved:
+            mapping[device.id] = resolved
+    return mapping
 
 
 def compute_effective_price(

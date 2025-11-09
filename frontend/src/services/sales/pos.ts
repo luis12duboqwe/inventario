@@ -1,9 +1,12 @@
 // src/services/sales/pos.ts
+import { httpPost, httpGet, httpPut } from "../http";
 import { httpPost, httpGet } from "../http";
 import {
   Totals,
   CheckoutRequest,
   CheckoutResponse,
+  PosPromotionsConfig,
+  PosPromotionsUpdate,
   ReceiptDeliveryPayload,
   ReceiptDeliveryResponse,
 } from "./types";
@@ -25,6 +28,20 @@ export async function checkout(dto: CheckoutRequest): Promise<CheckoutResponse> 
   return httpPost<CheckoutResponse>(apiMap.pos.checkout, dto, { withAuth: true });
 }
 
+const PROMOTION_REASON_HEADER = { "X-Reason": "Panel promociones POS" } as const;
+
+export async function getPromotions(storeId: string | number): Promise<PosPromotionsConfig> {
+  return httpGet<PosPromotionsConfig>(apiMap.pos.promotions, {
+    withAuth: true,
+    headers: PROMOTION_REASON_HEADER,
+    query: { store_id: storeId },
+  });
+}
+
+export async function updatePromotions(dto: PosPromotionsUpdate): Promise<PosPromotionsConfig> {
+  return httpPut<PosPromotionsConfig>(apiMap.pos.promotions, dto, {
+    withAuth: true,
+    headers: PROMOTION_REASON_HEADER,
 export async function sendReceipt(
   saleId: string | number,
   payload: ReceiptDeliveryPayload,

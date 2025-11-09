@@ -25,6 +25,12 @@ from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .core.transactions import flush_session, transactional_session
 # // [PACK30-31-BACKEND]
+from .services import (
+    inventory_accounting,
+    inventory_audit,
+    inventory_availability,
+    promotions,
+)
 from .services import credit, inventory_accounting, inventory_audit, inventory_availability
 from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
@@ -1684,9 +1690,24 @@ def _pos_config_payload(config: models.POSConfig) -> dict[str, object]:
         "printer_name": config.printer_name,
         "printer_profile": config.printer_profile,
         "quick_product_ids": config.quick_product_ids,
+        "promotions_config": config.promotions_config,
         "hardware_settings": config.hardware_settings,
         "updated_at": config.updated_at.isoformat(),
     }
+
+
+def _build_pos_promotions_response(
+    config: models.POSConfig,
+) -> schemas.POSPromotionsResponse:
+    normalized = promotions.load_config(config.promotions_config)
+    return schemas.POSPromotionsResponse(
+        store_id=config.store_id,
+        feature_flags=normalized.feature_flags,
+        volume_promotions=normalized.volume_promotions,
+        combo_promotions=normalized.combo_promotions,
+        coupons=normalized.coupons,
+        updated_at=config.updated_at,
+    )
 
 
 def _pos_draft_payload(draft: models.POSDraftSale) -> dict[str, object]:
@@ -15147,6 +15168,55 @@ def update_pos_config(
             payload=_pos_config_payload(config),
         )
     return config
+
+
+# // [POS-promotions]
+def get_pos_promotions(db: Session, store_id: int) -> schemas.POSPromotionsResponse:
+    config = get_pos_config(db, store_id)
+    return _build_pos_promotions_response(config)
+
+
+def update_pos_promotions(
+    db: Session,
+    payload: schemas.POSPromotionsUpdate,
+    *,
+    updated_by_id: int | None,
+    reason: str | None = None,
+) -> schemas.POSPromotionsResponse:
+    config = get_pos_config(db, payload.store_id)
+    normalized = schemas.POSPromotionsConfig.model_validate(
+        payload.model_dump(exclude={"store_id"})
+    )
+    serialized = normalized.model_dump(mode="json")
+
+    with transactional_session(db):
+        config.promotions_config = serialized
+        db.add(config)
+        flush_session(db)
+        db.refresh(config)
+
+        _log_action(
+            db,
+            action="pos_promotions_update",
+            entity_type="store",
+            entity_id=str(payload.store_id),
+            performed_by_id=updated_by_id,
+            details=json.dumps({
+                "reason": reason,
+                "volume": normalized.feature_flags.volume,
+                "combos": normalized.feature_flags.combos,
+                "coupons": normalized.feature_flags.coupons,
+            }),
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="pos_config",
+            entity_id=str(payload.store_id),
+            operation="UPSERT",
+            payload=_pos_config_payload(config),
+        )
+    db.refresh(config)
+    return _build_pos_promotions_response(config)
 
 
 # // [PACK34-taxes]

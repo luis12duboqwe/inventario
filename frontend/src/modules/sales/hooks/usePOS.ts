@@ -10,6 +10,7 @@ export function usePOS() {
   const [lines, setLines] = useState<CartLineInput[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [payments, setPayments] = useState<PaymentInput[]>([]);
+  const [coupons, setCoupons] = useState<string[]>([]);
   const [totals, setTotals] = useState<Totals>(() => calcTotalsLocal([]));
   const [loading, setLoading] = useState(false);
   const [banner, setBanner] = useState<PosBanner | null>(null);
@@ -77,6 +78,7 @@ export function usePOS() {
     // Ajuste con backend (si está disponible)
     try {
       setLoading(true);
+      const dto = asCheckoutRequest(lines, payments, customerId ?? undefined, coupons);
       const dto = asCheckoutRequest(lines, payments, {
         customerId: customerId ?? undefined,
         docType,
@@ -90,6 +92,10 @@ export function usePOS() {
     } finally {
       setLoading(false);
     }
+  }, [lines, payments, customerId, coupons, refreshTotalsLocal]);
+
+  const holdSale = useCallback(async () => {
+    const dto = asCheckoutRequest(lines, payments, customerId ?? undefined, coupons);
   }, [lines, payments, customerId, docType, refreshTotalsLocal]);
 
   const holdSale = useCallback(async () => {
@@ -108,6 +114,7 @@ export function usePOS() {
     } finally {
       setLoading(false);
     }
+  }, [lines, payments, customerId, coupons]);
   }, [lines, payments, customerId, docType]);
 
   const resumeHold = useCallback(async (holdId: string) => {
@@ -117,6 +124,7 @@ export function usePOS() {
       setLines(dto.lines || []);
       setPayments(dto.payments || []);
       setCustomerId(dto.customerId || null);
+      setCoupons(dto.coupons || []);
       if (dto.docType) {
         setDocType(dto.docType);
       }
@@ -130,6 +138,7 @@ export function usePOS() {
   }, [priceDraft]);
 
   const checkout = useCallback(async () => {
+    const dto = asCheckoutRequest(lines, payments, customerId ?? undefined, coupons);
     const dto = asCheckoutRequest(lines, payments, {
       customerId: customerId ?? undefined,
       docType,
@@ -139,6 +148,7 @@ export function usePOS() {
       const r = await SalesPOS.checkout(dto);
       clearCart();
       setPayments([]);
+      setCoupons([]);
       setBanner({ type: "success", msg: `Venta #${r.number} realizada.` });
       return r;
     } catch (e: any) {
@@ -154,6 +164,7 @@ export function usePOS() {
     } finally {
       setLoading(false);
     }
+  }, [lines, payments, customerId, coupons, clearCart]);
   }, [lines, payments, customerId, docType, clearCart]);
 
   const retryOffline = useCallback(async () => {
@@ -189,6 +200,10 @@ export function usePOS() {
   const pushBanner = useCallback((entry: PosBanner | null) => setBanner(entry), []);
 
   return {
+    lines, payments, totals, loading, banner, customerId, pendingOffline, coupons,
+    setCustomerId, setPayments, setCoupons,
+    addProduct, updateQty, removeLine, setDiscount, overridePrice, clearCart,
+    priceDraft, checkout, holdSale, resumeHold, retryOffline, purgeOffline,
     lines,
     payments,
     totals,

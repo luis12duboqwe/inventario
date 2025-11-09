@@ -2296,6 +2296,7 @@ class POSConfig(Base):
         String(255), nullable=True)
     quick_product_ids: Mapped[list[int]] = mapped_column(
         JSON, nullable=False, default=list)
+    promotions_config: Mapped[dict[str, Any]] = mapped_column(
     hardware_settings: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict)
     updated_at: Mapped[datetime] = mapped_column(

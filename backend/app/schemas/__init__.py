@@ -604,6 +604,7 @@ class ProductBundleResponse(ProductBundleBase):
 
 
 
+
 class PriceListBase(BaseModel):
     """Información común de una lista de precios corporativa."""
 
@@ -689,14 +690,18 @@ class PriceListBase(BaseModel):
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListBase":
         if (
-            self.valid_from
-            and self.valid_until
+            self.valid_from is not None
+            and self.valid_until is not None
             and self.valid_from > self.valid_until
         ):
             raise ValueError(
                 "La fecha de inicio no puede ser posterior a la fecha de fin."
             )
-        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+        if (
+            self.starts_at is not None
+            and self.ends_at is not None
+            and self.ends_at <= self.starts_at
+        ):
             raise ValueError("La fecha de término debe ser posterior al inicio.")
         return self
 
@@ -762,8 +767,8 @@ class PriceListUpdate(BaseModel):
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListUpdate":
         if (
-            self.valid_from
-            and self.valid_until
+            self.valid_from is not None
+            and self.valid_until is not None
             and self.valid_from > self.valid_until
         ):
             raise ValueError(
@@ -896,7 +901,6 @@ class PriceListResponse(PriceListBase):
     items: list[PriceListItemResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
-
 
 class PriceResolution(BaseModel):
     """Resultado de resolver un precio con base en listas disponibles."""
@@ -5078,6 +5082,7 @@ class POSSaleRequest(BaseModel):
     save_as_draft: bool = Field(default=False)
     confirm: bool = Field(default=False)
     apply_taxes: bool = Field(default=True)
+    coupons: list[str] = Field(default_factory=list)
     cash_session_id: int | None = Field(default=None, ge=1)
     payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
     payments: list[POSSalePaymentInput] = Field(default_factory=list)
@@ -5121,6 +5126,22 @@ class POSSaleRequest(BaseModel):
                 raise ValueError(
                     "Método de pago inválido en el desglose.") from exc
             normalized[method] = Decimal(str(amount))
+        return normalized
+
+    @field_validator("coupons")
+    @classmethod
+    def _normalize_coupons(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in value:
+            trimmed = (raw or "").strip()
+            if len(trimmed) < 3:
+                continue
+            code = trimmed.upper()
+            if code in seen:
+                continue
+            seen.add(code)
+            normalized.append(code)
         return normalized
 
     @model_validator(mode="before")
@@ -5179,6 +5200,7 @@ class POSSaleResponse(BaseModel):
     cash_session_id: int | None = None
     payment_breakdown: dict[str, float] = Field(default_factory=dict)
     receipt_pdf_base64: str | None = Field(default=None)
+    applied_promotions: list[POSAppliedPromotion] = Field(default_factory=list)
     debt_summary: CustomerDebtSnapshot | None = None
     credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
     debt_receipt_pdf_base64: str | None = None
@@ -5732,6 +5754,91 @@ class POSConfigResponse(BaseModel):
         )
 
 
+class POSPromotionFeatureFlags(BaseModel):
+    volume: bool = False
+    combos: bool = False
+    coupons: bool = False
+
+
+class POSVolumePromotion(BaseModel):
+    id: str = Field(..., min_length=1, max_length=60)
+    device_id: int = Field(..., ge=1)
+    min_quantity: int = Field(..., ge=1)
+    discount_percent: Decimal = Field(..., gt=Decimal("0"), le=Decimal("100"))
+
+    @field_serializer("discount_percent")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class POSComboPromotionItem(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
+class POSComboPromotion(BaseModel):
+    id: str = Field(..., min_length=1, max_length=60)
+    items: list[POSComboPromotionItem] = Field(default_factory=list)
+    discount_percent: Decimal = Field(..., gt=Decimal("0"), le=Decimal("100"))
+
+    @field_serializer("discount_percent")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_items(cls, value: list[POSComboPromotionItem]) -> list[POSComboPromotionItem]:
+        if not value:
+            raise ValueError("Los combos deben incluir al menos un artículo.")
+        return value
+
+
+class POSCouponPromotion(BaseModel):
+    code: str = Field(..., min_length=3, max_length=40)
+    discount_percent: Decimal = Field(..., gt=Decimal("0"), le=Decimal("100"))
+    description: str | None = Field(default=None, max_length=120)
+
+    @field_serializer("discount_percent")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class POSPromotionsConfig(BaseModel):
+    feature_flags: POSPromotionFeatureFlags = Field(default_factory=POSPromotionFeatureFlags)
+    volume_promotions: list[POSVolumePromotion] = Field(default_factory=list)
+    combo_promotions: list[POSComboPromotion] = Field(default_factory=list)
+    coupons: list[POSCouponPromotion] = Field(default_factory=list)
+
+
+class POSPromotionsUpdate(POSPromotionsConfig):
+    store_id: int = Field(..., ge=1)
+
+
+class POSPromotionsResponse(POSPromotionsConfig):
+    store_id: int
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class POSAppliedPromotion(BaseModel):
+    id: str
+    promotion_type: Literal["volume", "combo", "coupon"]
+    description: str
+    discount_percent: Decimal = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    affected_items: list[int] = Field(default_factory=list)
+    coupon_code: str | None = Field(default=None, max_length=60)
+
+    @field_serializer("discount_percent", "discount_amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
 class POSConfigUpdate(BaseModel):
     store_id: int = Field(..., ge=1)
     tax_rate: Decimal = Field(..., ge=Decimal("0"), le=Decimal("100"))
@@ -6156,6 +6263,15 @@ __all__ = [
     "POSSalePaymentInput",
     "POSSaleRequest",
     "POSSaleResponse",
+    "POSPromotionFeatureFlags",
+    "POSVolumePromotion",
+    "POSComboPromotionItem",
+    "POSComboPromotion",
+    "POSCouponPromotion",
+    "POSPromotionsConfig",
+    "POSPromotionsUpdate",
+    "POSPromotionsResponse",
+    "POSAppliedPromotion",
     "POSReceiptDeliveryChannel",
     "POSReceiptDeliveryRequest",
     "POSReceiptDeliveryResponse",

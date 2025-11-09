@@ -29,6 +29,7 @@ from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import cash_register, pos_receipts, promotions
 from ..services import cash_register, pos_receipts, credit
 from ..services import cash_register, pos_receipts, notifications
 from ..services import cash_register, pos_receipts
@@ -167,6 +168,21 @@ def register_pos_sale_endpoint(
                 )
             )
         normalized_payload = payload.model_copy(update={"items": normalized_items})
+        config = crud.get_pos_config(db, normalized_payload.store_id)
+        promotions_config = promotions.load_config(config.promotions_config)
+        global_enabled = settings.enable_pos_promotions
+        switches = promotions.resolve_feature_switches(
+            global_volume=global_enabled and settings.enable_pos_promotions_volume,
+            global_combo=global_enabled and settings.enable_pos_promotions_combo,
+            global_coupon=global_enabled and settings.enable_pos_promotions_coupons,
+            config_flags=promotions_config.feature_flags,
+        )
+        promo_result = promotions.apply_promotions(
+            normalized_payload,
+            config=promotions_config,
+            switches=switches,
+        )
+        adjusted_payload = promo_result.sale_request
 
         sale, warnings, debt_context = crud.register_pos_sale(
         electronic_results: list[schemas.POSElectronicPaymentResult] = []
@@ -191,11 +207,16 @@ def register_pos_sale_endpoint(
 
         sale, warnings = crud.register_pos_sale(
             db,
-            normalized_payload,
+            adjusted_payload,
             performed_by_id=current_user.id if current_user else None,
             reason=reason,
         )
         sale_detail = crud.get_sale(db, sale.id)
+        sale_schema = schemas.SaleResponse.model_validate(sale_detail)
+        applied_promotions = promotions.summarize_applications(
+            sale_schema,
+            promo_result.applications,
+        )
         config = crud.get_pos_config(db, sale_detail.store_id)
         snapshot = None
         schedule_data: list[dict[str, object]] = []
@@ -280,11 +301,12 @@ def register_pos_sale_endpoint(
             payment_breakdown=
             {
                 key: float(Decimal(str(value)))
-                for key, value in payload.payment_breakdown.items()
+                for key, value in adjusted_payload.payment_breakdown.items()
             }
-            if payload.payment_breakdown
+            if adjusted_payload.payment_breakdown
             else {},
             receipt_pdf_base64=receipt_pdf,
+            applied_promotions=applied_promotions,
             debt_summary=debt_summary,
             credit_schedule=credit_schedule,
             debt_receipt_pdf_base64=debt_receipt_pdf_base64,
@@ -922,6 +944,54 @@ def update_pos_config_endpoint(
         terminals=settings.pos_payment_terminals,
         tip_suggestions=settings.pos_tip_suggestions,
     )
+
+
+@router.get(
+    "/promotions",
+    response_model=schemas.POSPromotionsResponse
+)
+def read_pos_promotions(
+    store_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        response = crud.get_pos_promotions(db, store_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sucursal no encontrada",
+        ) from exc
+    _ = reason  # motivo registrado en middleware y auditoría
+    return response
+
+
+@router.put(
+    "/promotions",
+    response_model=schemas.POSPromotionsResponse
+)
+def update_pos_promotions_endpoint(
+    payload: schemas.POSPromotionsUpdate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        response = crud.update_pos_promotions(
+            db,
+            payload,
+            updated_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sucursal no encontrada",
+        ) from exc
+    return response
 
 
 @router.post(

@@ -27,6 +27,13 @@ export function calcChange(grand: number, payments: PaymentInput[]): number {
   return +(paidAmount(payments) - grand).toFixed(2);
 }
 
+export function asCheckoutRequest(
+  lines: CartLineInput[],
+  payments: PaymentInput[],
+  customerId?: string | null,
+  coupons: string[] = [],
+): CheckoutRequest {
+  const payload: CheckoutRequest = {
 type CheckoutOptions = {
   customerId?: string | null;
   docType?: "TICKET" | "INVOICE";
@@ -51,6 +58,8 @@ export function asCheckoutRequest(lines: CartLineInput[], payments: PaymentInput
     payments,
     docType: options?.docType ?? "TICKET",
   };
+  if (coupons.length) {
+    payload.coupons = coupons;
   if (options?.note) {
     payload.note = options.note;
   }
