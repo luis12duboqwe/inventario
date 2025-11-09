@@ -61,21 +61,20 @@ def _resolve_scope(
     return "global"
 
 
-def list_applicable_price_lists(
 def list_price_lists(
     db: Session,
     *,
     store_id: int | None = None,
     customer_id: int | None = None,
-    is_active: bool | None = None,
-    include_items: bool = False,
+    include_inactive: bool = False,
+    include_global: bool = True,
 ) -> list[schemas.PriceListResponse]:
     price_lists = crud.list_price_lists(
         db,
         store_id=store_id,
         customer_id=customer_id,
-        is_active=is_active,
-        include_items=include_items,
+        include_inactive=include_inactive,
+        include_global=include_global,
     )
     return [
         schemas.PriceListResponse.model_validate(price_list, from_attributes=True)
