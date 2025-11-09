@@ -97,6 +97,14 @@ export type InventoryLayoutContextValue = {
     resolvePendingFields: (device: Device) => string[];
     resolveLowStockSeverity: (quantity: number) => "critical" | "warning" | "notice";
   };
+  labeling: {
+    open: boolean;
+    device: Device | null;
+    storeId: number | null;
+    storeName: string | null;
+    openLabelPrinter: (device: Device) => void;
+    closeLabelPrinter: () => void;
+  };
   reservations: {
     items: InventoryReservation[];
     meta: { page: number; size: number; total: number; pages: number };
