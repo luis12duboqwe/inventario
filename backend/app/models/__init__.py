@@ -166,6 +166,9 @@ class Store(Base):
         "InventoryReservation", back_populates="store", cascade="all, delete-orphan"
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
+        "PriceList",
+        back_populates="store",
+        cascade="all, delete-orphan",
         "PriceList", back_populates="store", cascade="all, delete-orphan"
         "PriceList",
         back_populates="store",

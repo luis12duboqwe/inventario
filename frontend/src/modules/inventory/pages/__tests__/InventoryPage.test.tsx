@@ -192,6 +192,9 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     handleSmartPreview: vi.fn(),
     handleSmartCommit: vi.fn(),
     resetSmartImportContext: vi.fn(),
+    vendorTemplates: [],
+    applyVendorTemplate: vi.fn(),
+    smartImportGuideUrl: "/docs/importacion/proveedores",
   },
   search: {
     inventoryQuery: "",

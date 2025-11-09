@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import base64
+from decimal import Decimal
+from pathlib import Path
+
 from fastapi import status
 
 from backend.app import crud, models
 from backend.app.core.roles import ADMIN
 from backend.app.services import inventory_smart_import
-from decimal import Decimal
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "imports"
+
+
+def _vendor_layout_xlsx_bytes() -> bytes:
+    base64_payload = (FIXTURES_DIR / "vendor_layout.xlsx.b64").read_text()
+    return base64.b64decode(base64_payload)
 
 
 def _auth_headers(client) -> dict[str, str]:
@@ -155,6 +165,61 @@ def test_inventory_smart_import_handles_overrides_and_incomplete_records(db_sess
     assert record.total_registros == 1
     assert record.registros_incompletos == 1
     assert record.columnas_detectadas.get("modelo") == "Dispositivo"
+
+
+def test_inventory_smart_import_vendor_layout_detects_advanced_columns(db_session):
+    fixture_bytes = _vendor_layout_xlsx_bytes()
+
+    response = inventory_smart_import.process_smart_import(
+        db_session,
+        file_bytes=fixture_bytes,
+        filename="vendor_layout.xlsx",
+        commit=False,
+        overrides=None,
+        performed_by_id=None,
+        username="tester",
+        reason="Plantilla proveedor",
+    )
+
+    preview = response.preview
+    assert preview.total_filas == 1
+    assert "garantia_meses" not in preview.columnas_faltantes
+    assert preview.columnas_detectadas.get("garantia_meses") == "Warranty (months)"
+    assert preview.columnas_detectadas.get("margen_porcentaje") == "Margin %"
+    assert preview.columnas_detectadas.get("imagen_url") == "Image URL"
+    assert preview.columnas_detectadas.get("descripcion") == "Descripción extendida"
+
+
+def test_inventory_smart_import_vendor_layout_commit_maps_advanced_fields(db_session):
+    fixture_bytes = (FIXTURES_DIR / "vendor_layout.csv").read_bytes()
+
+    response = inventory_smart_import.process_smart_import(
+        db_session,
+        file_bytes=fixture_bytes,
+        filename="vendor_layout.csv",
+        commit=True,
+        overrides=None,
+        performed_by_id=None,
+        username="tester",
+        reason="Plantilla proveedor",
+    )
+
+    result = response.resultado
+    assert result is not None
+    assert result.total_procesados == 1
+    assert result.nuevos == 1
+    store = crud.get_store_by_name(db_session, "Sucursal Centro")
+    assert store is not None
+    device = crud.find_device_for_import(
+        db_session,
+        store_id=store.id,
+        imei="490000123456789",
+    )
+    assert device is not None
+    assert device.margen_porcentaje == Decimal("35")
+    assert device.garantia_meses == 24
+    assert device.imagen_url == "https://cdn.megasupplier.mx/catalogo/s23-5g.png"
+    assert device.descripcion == "Kit corporativo con cargador y cable oficial."
 
 
 def test_inventory_smart_import_endpoint_rejects_invalid_overrides(client):

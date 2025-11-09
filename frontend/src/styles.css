@@ -6947,6 +6947,80 @@ ol {
   color: var(--accent);
 }
 
+.smart-import__assistant {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.smart-import__assistant-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.smart-import__assistant-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.smart-import__assistant-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.smart-import__assistant-field {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.smart-import__assistant-field select {
+  min-width: 220px;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.smart-import__assistant-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.smart-import__assistant-links a {
+  color: var(--accent);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.smart-import__assistant-links a:hover,
+.smart-import__assistant-links a:focus {
+  text-decoration: underline;
+}
+
+.smart-import__assistant-description {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.smart-import__assistant-placeholder {
+  margin: 0;
+}
+
 .smart-import__preview {
   display: grid;
   gap: 1rem;
