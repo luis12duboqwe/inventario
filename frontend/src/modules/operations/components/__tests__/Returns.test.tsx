@@ -61,6 +61,9 @@ describe("Returns", () => {
           device_name: "Lectura",
           quantity: 1,
           reason: "Cliente arrepentido",
+          disposition: "vendible",
+          warehouse_id: null,
+          warehouse_name: null,
           processed_by_id: 7,
           processed_by_name: "Operador Uno",
           partner_name: "María Pérez",
@@ -79,6 +82,9 @@ describe("Returns", () => {
           device_name: "Terminal",
           quantity: 2,
           reason: "Proveedor defectuoso",
+          disposition: "defectuoso",
+          warehouse_id: 4,
+          warehouse_name: "Almacén QA",
           processed_by_id: 7,
           processed_by_name: "Operador Uno",
           partner_name: "Proveedor Central",
@@ -132,6 +138,8 @@ describe("Returns", () => {
     expect(screen.getByText("EFECTIVO: $120.00")).toBeInTheDocument();
     expect(screen.getByText("Cliente arrepentido")).toBeInTheDocument();
     expect(screen.getByText("Proveedor defectuoso")).toBeInTheDocument();
+    expect(screen.getByText("Vendible")).toBeInTheDocument();
+    expect(screen.getByText("Almacén QA")).toBeInTheDocument();
     expect(screen.getAllByText("Cliente")).not.toHaveLength(0);
   });
 

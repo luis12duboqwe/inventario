@@ -34,6 +34,20 @@ class MovementType(str, enum.Enum):
     ADJUST = "ajuste"
 
 
+class ReturnDisposition(str, enum.Enum):
+    """Clasificación operativa de los artículos devueltos."""
+
+    VENDIBLE = "vendible"
+    DEFECTUOSO = "defectuoso"
+    NO_VENDIBLE = "no_vendible"
+    REPARACION = "reparacion"
+
+
+RETURN_DISPOSITION_ENUM = Enum(
+    ReturnDisposition, name="return_disposition"
+)
+
+
 # // [PACK38-inventory-reservations]
 class InventoryState(str, enum.Enum):
     """Estados de ciclo de vida de una reserva de inventario."""
@@ -1840,6 +1854,17 @@ class PurchaseReturn(Base):
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    disposition: Mapped[ReturnDisposition] = mapped_column(
+        RETURN_DISPOSITION_ENUM.copy(),
+        nullable=False,
+        default=ReturnDisposition.DEFECTUOSO,
+    )
+    warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     processed_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -1850,6 +1875,9 @@ class PurchaseReturn(Base):
         "PurchaseOrder", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
     processed_by: Mapped[User | None] = relationship("User")
+    warehouse: Mapped[Store | None] = relationship(
+        "Store", foreign_keys=[warehouse_id]
+    )
 
 
 class Sale(Base):
@@ -1986,6 +2014,17 @@ class SaleReturn(Base):
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    disposition: Mapped[ReturnDisposition] = mapped_column(
+        RETURN_DISPOSITION_ENUM.copy(),
+        nullable=False,
+        default=ReturnDisposition.VENDIBLE,
+    )
+    warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     processed_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -1995,6 +2034,9 @@ class SaleReturn(Base):
     sale: Mapped[Sale] = relationship("Sale", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
     processed_by: Mapped[User | None] = relationship("User")
+    warehouse: Mapped[Store | None] = relationship(
+        "Store", foreign_keys=[warehouse_id]
+    )
 
 
 class RepairOrder(Base):
@@ -2209,9 +2251,12 @@ class POSConfig(Base):
     quick_product_ids: Mapped[list[int]] = mapped_column(
         JSON, nullable=False, default=list)
     promotions_config: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
         JSON, nullable=False, default=dict)
     hardware_settings: Mapped[dict[str, Any]] = mapped_column(
-        JSON, nullable=False, default=dict)
+        JSON, nullable=False, default=dict
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )

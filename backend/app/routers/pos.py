@@ -633,6 +633,8 @@ def register_pos_return_endpoint(
                 device_id=device.id,
                 quantity=item.qty,
                 reason=normalized_reason,
+                disposition=item.disposition,
+                warehouse_id=item.warehouse_id,
             )
         )
 
@@ -664,12 +666,18 @@ def register_pos_return_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Cantidad de devolución inválida.",
             ) from exc
+        if detail == "sale_return_invalid_warehouse":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Selecciona un almacén válido para la devolución.",
+            ) from exc
         raise
 
     return schemas.POSReturnResponse(
         sale_id=sale.id,
         return_ids=[sale_return.id for sale_return in returns],
         notes=payload.reason,
+        dispositions=[sale_return.disposition for sale_return in returns],
     )
 
 

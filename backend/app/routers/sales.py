@@ -325,6 +325,11 @@ def register_sale_return_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Cantidad de devolución inválida.",
             ) from exc
+        if detail == "sale_return_invalid_warehouse":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Selecciona un almacén válido para la devolución.",
+            ) from exc
         raise
 
 

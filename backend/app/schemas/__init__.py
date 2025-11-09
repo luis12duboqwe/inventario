@@ -632,6 +632,7 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
+        description="Sucursal asociada cuando la lista es específica para una tienda.",
         description="Identificador de la sucursal asociada, cuando aplica.",
     )
     customer_id: int | None = Field(
@@ -2373,6 +2374,21 @@ class POSReturnItemRequest(BaseModel):
             validation_alias=AliasChoices("quantity", "qty"),
         ),
     ]
+    disposition: Annotated[
+        ReturnDisposition,
+        Field(
+            default=ReturnDisposition.VENDIBLE,
+            validation_alias=AliasChoices("disposition", "estado"),
+        ),
+    ]
+    warehouse_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices("warehouse_id", "warehouseId", "almacen_id"),
+        ),
+    ]
 
     @model_validator(mode="after")
     def _ensure_identifier(self) -> "POSReturnItemRequest":
@@ -3973,10 +3989,21 @@ class PurchaseOrderItemResponse(BaseModel):
         return float(value)
 
 
+class ReturnDisposition(str, enum.Enum):
+    VENDIBLE = "vendible"
+    DEFECTUOSO = "defectuoso"
+    NO_VENDIBLE = "no_vendible"
+    REPARACION = "reparacion"
+
+
 class PurchaseReturnCreate(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
     reason: str = Field(..., min_length=5, max_length=255)
+    disposition: ReturnDisposition = Field(
+        default=ReturnDisposition.DEFECTUOSO
+    )
+    warehouse_id: int | None = Field(default=None, ge=1)
 
     @field_validator("reason")
     @classmethod
@@ -3993,6 +4020,8 @@ class PurchaseReturnResponse(BaseModel):
     device_id: int
     quantity: int
     reason: str
+    disposition: ReturnDisposition
+    warehouse_id: int | None
     processed_by_id: int | None
     created_at: datetime
 
@@ -4420,10 +4449,13 @@ class ReturnRecord(BaseModel):
     reference_label: str
     store_id: int
     store_name: str | None = None
+    warehouse_id: int | None = None
+    warehouse_name: str | None = None
     device_id: int
     device_name: str | None = None
     quantity: int
     reason: str
+    disposition: ReturnDisposition = ReturnDisposition.VENDIBLE
     processed_by_id: int | None = None
     processed_by_name: str | None = None
     partner_name: str | None = None
@@ -4885,6 +4917,10 @@ class SaleReturnItem(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
     reason: str = Field(..., min_length=5, max_length=255)
+    disposition: ReturnDisposition = Field(
+        default=ReturnDisposition.VENDIBLE
+    )
+    warehouse_id: int | None = Field(default=None, ge=1)
 
     @field_validator("reason")
     @classmethod
@@ -4913,6 +4949,8 @@ class SaleReturnResponse(BaseModel):
     device_id: int
     quantity: int
     reason: str
+    disposition: ReturnDisposition
+    warehouse_id: int | None
     processed_by_id: int | None
     created_at: datetime
 
@@ -5334,6 +5372,7 @@ class POSReturnResponse(BaseModel):
     sale_id: int
     return_ids: list[int]
     notes: str | None = None
+    dispositions: list[ReturnDisposition] = Field(default_factory=list)
 
 
 class POSSaleDetailResponse(BaseModel):
@@ -6347,6 +6386,7 @@ __all__ = [
     "OperationHistoryTechnician",
     "OperationHistoryType",
     "OperationsHistoryResponse",
+    "ReturnDisposition",
     "ReturnRecordType",
     "ReturnRecord",
     "ReturnsTotals",

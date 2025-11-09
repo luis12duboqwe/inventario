@@ -119,6 +119,8 @@ def test_get_purchase_order_detail_includes_items_and_returns(client, db_session
         assert payload["returns"]
         assert payload["returns"][0]["quantity"] == 1
         assert payload["returns"][0]["reason"] == "Equipo defectuoso"
+        assert payload["returns"][0]["disposition"] == "defectuoso"
+        assert payload["returns"][0]["warehouse_id"] is None
     finally:
         settings.enable_purchases_sales = previous_flag
 

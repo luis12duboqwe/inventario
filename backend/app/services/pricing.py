@@ -72,6 +72,7 @@ def list_price_lists(
     *,
     store_id: int | None = None,
     customer_id: int | None = None,
+    is_active: bool | None = None,
     include_inactive: bool = True,
     include_global: bool = True,
     include_items: bool = True,
@@ -85,6 +86,8 @@ def list_price_lists(
         db,
         store_id=store_id,
         customer_id=customer_id,
+        is_active=is_active,
+        include_items=include_items,
         include_inactive=include_inactive,
         include_global=include_global,
     )
@@ -106,7 +109,7 @@ def get_price_list(
 ) -> schemas.PriceListResponse:
     """Obtiene el detalle de una lista de precios específica."""
 
-    price_list = crud.get_price_list(db, price_list_id)
+    price_list = crud.get_price_list(db, price_list_id, include_items=include_items)
     response = schemas.PriceListResponse.model_validate(
         price_list, from_attributes=True
     )
@@ -128,7 +131,9 @@ def create_price_list(
         db, payload, performed_by_id=performed_by_id
     )
     if include_items:
-        price_list = crud.get_price_list(db, price_list.id)
+        price_list = crud.get_price_list(
+            db, price_list.id, include_items=include_items
+        )
     response = schemas.PriceListResponse.model_validate(
         price_list, from_attributes=True
     )
@@ -154,7 +159,9 @@ def update_price_list(
         performed_by_id=performed_by_id,
     )
     if include_items:
-        price_list = crud.get_price_list(db, price_list.id)
+        price_list = crud.get_price_list(
+            db, price_list.id, include_items=include_items
+        )
     response = schemas.PriceListResponse.model_validate(
         price_list, from_attributes=True
     )
