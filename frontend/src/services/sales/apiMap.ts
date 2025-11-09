@@ -13,6 +13,7 @@ export const apiMap = {
     hold:       `${ROOT}/sales/hold`,                    // POST -> {holdId}
     resume:     (holdId: string) => `${ROOT}/sales/hold/${holdId}`, // GET
     checkout:   `${ROOT}/sales/checkout`,                // POST CheckoutRequest -> CheckoutResponse
+    promotions: `${ROOT}/pos/promotions`,
   },
   quotes: {
     list:       `${ROOT}/quotes`,                        // GET

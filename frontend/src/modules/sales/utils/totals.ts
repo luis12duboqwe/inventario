@@ -22,12 +22,21 @@ export function calcChange(grand: number, payments: PaymentInput[]): number {
   return +(paidAmount(payments) - grand).toFixed(2);
 }
 
-export function asCheckoutRequest(lines: CartLineInput[], payments: PaymentInput[], customerId?: string | null): CheckoutRequest {
-  return {
+export function asCheckoutRequest(
+  lines: CartLineInput[],
+  payments: PaymentInput[],
+  customerId?: string | null,
+  coupons: string[] = [],
+): CheckoutRequest {
+  const payload: CheckoutRequest = {
     customerId: customerId ?? null,
     lines,
     payments,
     docType: "TICKET",
   };
+  if (coupons.length) {
+    payload.coupons = coupons;
+  }
+  return payload;
 }
 // [PACK22-POS-UTILS-END]

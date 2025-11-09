@@ -16,8 +16,13 @@ import {
 } from "../components/pos";
 // [PACK22-POS-PAGE-IMPORTS-START]
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Product, ProductSearchParams, PaymentInput } from "../../../services/sales";
-import { SalesProducts } from "../../../services/sales";
+import type {
+  Product,
+  ProductSearchParams,
+  PaymentInput,
+  PosPromotionsConfig,
+} from "../../../services/sales";
+import { SalesProducts, SalesPOS } from "../../../services/sales";
 import {
   getInventoryAvailability,
   type InventoryAvailabilityRecord,
@@ -79,6 +84,40 @@ export default function POSPage() {
   const [fastCustomerOpen, setFastCustomerOpen] = useState<boolean>(false);
   const [offlineDrawerOpen, setOfflineDrawerOpen] = useState<boolean>(false);
   const [holdItems, setHoldItems] = useState<HoldSale[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("1");
+  const [promotionsConfig, setPromotionsConfig] = useState<PosPromotionsConfig | null>(null);
+  const [promotionsDraft, setPromotionsDraft] = useState<PosPromotionsConfig | null>(null);
+  const [promotionsLoading, setPromotionsLoading] = useState(false);
+  const [promotionsError, setPromotionsError] = useState<string | null>(null);
+  const [promotionsEditorOpen, setPromotionsEditorOpen] = useState(false);
+  const [volumeForm, setVolumeForm] = useState({ id: "", deviceId: "", minQuantity: "", discountPercent: "" });
+  const [comboForm, setComboForm] = useState({ id: "", deviceIds: "", discountPercent: "" });
+  const [couponForm, setCouponForm] = useState({ code: "", discountPercent: "", description: "" });
+  const [couponInput, setCouponInput] = useState("");
+
+  const editorInputStyle: React.CSSProperties = {
+    padding: "6px 10px",
+    borderRadius: 8,
+    background: "rgba(15,23,42,0.85)",
+    border: "1px solid rgba(148,163,184,0.25)",
+    color: "#e2e8f0",
+    minWidth: 110,
+  };
+  const secondaryButtonStyle: React.CSSProperties = {
+    padding: "6px 12px",
+    borderRadius: 8,
+    border: "1px solid rgba(59,130,246,0.35)",
+    background: "rgba(30,41,59,0.8)",
+    color: "#e2e8f0",
+  };
+  const primaryButtonStyle: React.CSSProperties = {
+    padding: "6px 16px",
+    borderRadius: 8,
+    border: "none",
+    background: "linear-gradient(90deg, rgba(56,189,248,0.8), rgba(14,165,233,0.85))",
+    color: "#0f172a",
+    fontWeight: 600,
+  };
   // [PACK22-POS-SEARCH-STATE-START]
   const [q, setQ] = useState("");
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -111,6 +150,8 @@ export default function POSPage() {
     setCustomerId,
     setPayments,
     purgeOffline,
+    coupons: appliedCoupons,
+    setCoupons: setAppliedCoupons,
   } = pos;
 
   const updateAvailabilityForProducts = useCallback(
@@ -170,6 +211,10 @@ export default function POSPage() {
     setCustomerId(customer?.id ?? null);
   }, [customer, setCustomerId]);
 
+  useEffect(() => {
+    void priceDraft();
+  }, [appliedCoupons, priceDraft]);
+
   const productCards = useMemo(
     () =>
       products.map((product) => {
@@ -208,6 +253,273 @@ export default function POSPage() {
     });
   }, [pendingOffline]);
 
+  const fetchPromotions = useCallback(async (storeNumeric: number) => {
+    try {
+      setPromotionsLoading(true);
+      const data = await SalesPOS.getPromotions(storeNumeric);
+      const featureFlagsSource: any = (data as any).featureFlags ?? (data as any).feature_flags ?? {};
+      const volumeSource: any[] = (data as any).volumePromotions ?? (data as any).volume_promotions ?? [];
+      const comboSource: any[] = (data as any).comboPromotions ?? (data as any).combo_promotions ?? [];
+      const couponSource: any[] = (data as any).coupons ?? [];
+      const normalized: PosPromotionsConfig = {
+        storeId: (data as any).storeId ?? (data as any).store_id ?? storeNumeric,
+        featureFlags: {
+          volume: Boolean(featureFlagsSource.volume),
+          combos: Boolean(featureFlagsSource.combos),
+          coupons: Boolean(featureFlagsSource.coupons),
+        },
+        volumePromotions: volumeSource.map((rule) => ({
+          id: String(rule.id ?? ""),
+          deviceId: Number(rule.deviceId ?? rule.device_id ?? 0),
+          minQuantity: Number(rule.minQuantity ?? rule.min_quantity ?? 0),
+          discountPercent: Number(rule.discountPercent ?? rule.discount_percent ?? 0),
+        })).filter((rule) => rule.deviceId > 0),
+        comboPromotions: comboSource.map((rule) => ({
+          id: String(rule.id ?? ""),
+          items: Array.isArray(rule.items)
+            ? rule.items.map((item: any) => ({
+                deviceId: Number(item.deviceId ?? item.device_id ?? 0),
+                quantity: Number(item.quantity ?? 1) || 1,
+              })).filter((item: any) => item.deviceId > 0)
+            : [],
+          discountPercent: Number(rule.discountPercent ?? rule.discount_percent ?? 0),
+        })).filter((rule) => rule.items.length > 0),
+        coupons: couponSource.map((coupon) => ({
+          code: String(coupon.code ?? ""),
+          discountPercent: Number(coupon.discountPercent ?? coupon.discount_percent ?? 0),
+          description: coupon.description ?? null,
+        })).filter((coupon) => coupon.code.length > 0),
+        updatedAt: (data as any).updatedAt ?? (data as any).updated_at ?? null,
+      };
+      setPromotionsConfig(normalized);
+      setPromotionsDraft(normalized);
+      setPromotionsError(null);
+    } catch (error) {
+      console.warn("No se pudo cargar promociones", error);
+      setPromotionsError("No se pudo cargar promociones.");
+    } finally {
+      setPromotionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const numericStore = Number(selectedStoreId);
+    if (!Number.isFinite(numericStore) || numericStore <= 0) {
+      setPromotionsConfig(null);
+      setPromotionsDraft(null);
+      return;
+    }
+    void fetchPromotions(numericStore);
+  }, [selectedStoreId, fetchPromotions]);
+
+  const handleReloadPromotions = useCallback(() => {
+    const numericStore = Number(selectedStoreId);
+    if (!Number.isFinite(numericStore) || numericStore <= 0) {
+      setPromotionsError("Selecciona una sucursal válida.");
+      return;
+    }
+    void fetchPromotions(numericStore);
+  }, [selectedStoreId, fetchPromotions]);
+
+  const handleFlagToggle = useCallback((flag: "volume" | "combos" | "coupons") => {
+    setPromotionsDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        featureFlags: { ...prev.featureFlags, [flag]: !prev.featureFlags[flag] },
+      };
+    });
+  }, []);
+
+  const handleAddVolumeRule = useCallback(() => {
+    if (!promotionsDraft) return;
+    const deviceId = Number(volumeForm.deviceId);
+    const minQuantity = Number(volumeForm.minQuantity);
+    const discountPercent = Number(volumeForm.discountPercent);
+    if (!volumeForm.id.trim() || !Number.isFinite(deviceId) || deviceId <= 0 || !Number.isFinite(minQuantity) || minQuantity <= 0 || !Number.isFinite(discountPercent) || discountPercent <= 0) {
+      return;
+    }
+    const rule = {
+      id: volumeForm.id.trim(),
+      deviceId,
+      minQuantity,
+      discountPercent,
+    };
+    setPromotionsDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        volumePromotions: [...prev.volumePromotions.filter((item) => item.id !== rule.id), rule],
+      };
+    });
+    setVolumeForm({ id: "", deviceId: "", minQuantity: "", discountPercent: "" });
+  }, [promotionsDraft, volumeForm]);
+
+  const handleRemoveVolumeRule = useCallback((id: string) => {
+    setPromotionsDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        volumePromotions: prev.volumePromotions.filter((rule) => rule.id !== id),
+      };
+    });
+  }, []);
+
+  const handleAddComboRule = useCallback(() => {
+    if (!promotionsDraft) return;
+    const discountPercent = Number(comboForm.discountPercent);
+    const deviceIds = comboForm.deviceIds
+      .split(",")
+      .map((value) => Number(value.trim()))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (!comboForm.id.trim() || !deviceIds.length || !Number.isFinite(discountPercent) || discountPercent <= 0) {
+      return;
+    }
+    const items = deviceIds.map((deviceId) => ({ deviceId, quantity: 1 }));
+    const rule = {
+      id: comboForm.id.trim(),
+      items,
+      discountPercent,
+    };
+    setPromotionsDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        comboPromotions: [...prev.comboPromotions.filter((item) => item.id !== rule.id), rule],
+      };
+    });
+    setComboForm({ id: "", deviceIds: "", discountPercent: "" });
+  }, [promotionsDraft, comboForm]);
+
+  const handleRemoveComboRule = useCallback((id: string) => {
+    setPromotionsDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        comboPromotions: prev.comboPromotions.filter((rule) => rule.id !== id),
+      };
+    });
+  }, []);
+
+  const handleAddCouponRule = useCallback(() => {
+    if (!promotionsDraft) return;
+    const discountPercent = Number(couponForm.discountPercent);
+    const code = couponForm.code.trim().toUpperCase();
+    if (!code || !Number.isFinite(discountPercent) || discountPercent <= 0) {
+      return;
+    }
+    const coupon = {
+      code,
+      discountPercent,
+      description: couponForm.description.trim() ? couponForm.description.trim() : null,
+    };
+    setPromotionsDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        coupons: [...prev.coupons.filter((item) => item.code !== coupon.code), coupon],
+      };
+    });
+    setCouponForm({ code: "", discountPercent: "", description: "" });
+  }, [promotionsDraft, couponForm]);
+
+  const handleRemoveCouponRule = useCallback((code: string) => {
+    setPromotionsDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        coupons: prev.coupons.filter((coupon) => coupon.code !== code),
+      };
+    });
+  }, []);
+
+  const handleSavePromotions = useCallback(async () => {
+    if (!promotionsDraft) return;
+    const storeNumeric = promotionsDraft.storeId || Number(selectedStoreId);
+    if (!Number.isFinite(storeNumeric) || storeNumeric <= 0) {
+      setPromotionsError("Selecciona una sucursal válida.");
+      return;
+    }
+    const payload = {
+      storeId: storeNumeric,
+      featureFlags: { ...promotionsDraft.featureFlags },
+      volumePromotions: promotionsDraft.volumePromotions.map((rule) => ({
+        id: rule.id,
+        deviceId: Number(rule.deviceId),
+        minQuantity: Number(rule.minQuantity),
+        discountPercent: Number(rule.discountPercent),
+      })),
+      comboPromotions: promotionsDraft.comboPromotions.map((rule) => ({
+        id: rule.id,
+        items: rule.items.map((item) => ({
+          deviceId: Number(item.deviceId),
+          quantity: Number(item.quantity) || 1,
+        })),
+        discountPercent: Number(rule.discountPercent),
+      })),
+      coupons: promotionsDraft.coupons.map((coupon) => ({
+        code: coupon.code,
+        discountPercent: Number(coupon.discountPercent),
+        description: coupon.description ?? null,
+      })),
+    };
+    setPromotionsLoading(true);
+    try {
+      await SalesPOS.updatePromotions(payload);
+      await fetchPromotions(storeNumeric);
+      setPromotionsEditorOpen(false);
+      setPromotionsError(null);
+    } catch (error) {
+      console.warn("No se pudo guardar promociones", error);
+      setPromotionsError("No se pudo guardar promociones.");
+    } finally {
+      setPromotionsLoading(false);
+    }
+  }, [promotionsDraft, selectedStoreId, fetchPromotions]);
+
+  const promotionBadges = useMemo<Record<string, string[]>>(() => {
+    if (!promotionsConfig) {
+      return {};
+    }
+    const badges: Record<string, string[]> = {};
+    const lineByDevice = new Map<number, (typeof lines)[number]>();
+    lines.forEach((line) => {
+      const numericId = Number(line.productId);
+      if (Number.isFinite(numericId)) {
+        lineByDevice.set(numericId, line);
+      }
+    });
+    if (promotionsConfig.featureFlags.volume) {
+      promotionsConfig.volumePromotions.forEach((rule) => {
+        const target = lineByDevice.get(rule.deviceId);
+        if (!target) return;
+        if (target.qty >= rule.minQuantity) {
+          const key = String(target.productId);
+          const badge = `Volumen ${rule.discountPercent}% (≥${rule.minQuantity})`;
+          badges[key] = [...(badges[key] ?? []), badge];
+        }
+      });
+    }
+    if (promotionsConfig.featureFlags.combos) {
+      promotionsConfig.comboPromotions.forEach((rule) => {
+        if (!rule.items.length) return;
+        const qualifies = rule.items.every((item) => {
+          const target = lineByDevice.get(item.deviceId);
+          return target && target.qty >= item.quantity;
+        });
+        if (!qualifies) return;
+        rule.items.forEach((item) => {
+          const target = lineByDevice.get(item.deviceId);
+          if (!target) return;
+          const key = String(target.productId);
+          const badge = `Combo ${rule.id} ${rule.discountPercent}%`;
+          badges[key] = [...(badges[key] ?? []), badge];
+        });
+      });
+    }
+    return badges;
+  }, [lines, promotionsConfig]);
+
   const cartLines = useMemo<React.ComponentProps<typeof CartPanel>["lines"]>(
     () =>
       lines.map((line) => {
@@ -227,9 +539,14 @@ export default function POSPage() {
           cartLine.imei = line.imei;
         }
 
+        const badgeKey = String(line.productId);
+        if (promotionBadges[badgeKey]?.length) {
+          cartLine.badges = promotionBadges[badgeKey];
+        }
+
         return cartLine;
       }),
-    [lines],
+    [lines, promotionBadges],
   );
 
   const currentPrice = priceTarget
@@ -381,6 +698,26 @@ export default function POSPage() {
   function handleRemove(id: string) {
     removeLine(id);
   }
+
+  const handleApplyCouponCode = useCallback(() => {
+    const normalized = couponInput.trim().toUpperCase();
+    if (!normalized || normalized.length < 3) {
+      return;
+    }
+    if (appliedCoupons.includes(normalized)) {
+      setCouponInput("");
+      return;
+    }
+    setAppliedCoupons([...appliedCoupons, normalized]);
+    setCouponInput("");
+  }, [couponInput, appliedCoupons, setAppliedCoupons]);
+
+  const handleRemoveAppliedCoupon = useCallback(
+    (code: string) => {
+      setAppliedCoupons(appliedCoupons.filter((item) => item !== code));
+    },
+    [appliedCoupons, setAppliedCoupons],
+  );
 
   const handleDiscountSubmit = (payload: { type: "PERCENT" | "AMOUNT"; value: number }) => {
     if (!discountTarget) return;
@@ -547,6 +884,271 @@ export default function POSPage() {
         </div>
       ) : null}
       {/* [PACK26-POS-HOLD-BUTTON-END] */}
+      <div
+        style={{
+          border: "1px solid rgba(56,189,248,0.25)",
+          borderRadius: 12,
+          padding: 12,
+          background: "rgba(15,23,42,0.65)",
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div style={{ fontWeight: 600 }}>Promociones activas</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              Sucursal
+              <input
+                value={selectedStoreId}
+                onChange={(event) => setSelectedStoreId(event.target.value)}
+                style={{ ...editorInputStyle, minWidth: 80 }}
+              />
+            </label>
+            <button onClick={handleReloadPromotions} style={secondaryButtonStyle}>
+              Recargar
+            </button>
+            <button
+              onClick={() => setPromotionsEditorOpen((prev) => !prev)}
+              style={{
+                ...secondaryButtonStyle,
+                background: promotionsEditorOpen ? "rgba(56,189,248,0.28)" : secondaryButtonStyle.background,
+                color: promotionsEditorOpen ? "#0f172a" : secondaryButtonStyle.color,
+              }}
+            >
+              {promotionsEditorOpen ? "Cerrar editor" : "Editar reglas"}
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: "#94a3b8" }}>
+          {promotionsLoading
+            ? "Sincronizando promociones…"
+            : promotionsConfig
+            ? `Volumen ${promotionsConfig.featureFlags.volume ? "activo" : "apagado"} · Combos ${promotionsConfig.featureFlags.combos ? "activos" : "apagados"} · Cupones ${promotionsConfig.featureFlags.coupons ? "activos" : "apagados"}`
+            : "Selecciona una sucursal para cargar promociones."}
+        </div>
+        {promotionsError && (
+          <div style={{ fontSize: 12, color: "#f87171" }}>{promotionsError}</div>
+        )}
+        {promotionsConfig && !promotionsLoading && (
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: "#cbd5f5" }}>
+            <span>{promotionsConfig.volumePromotions.length} reglas de volumen</span>
+            <span>{promotionsConfig.comboPromotions.length} combos</span>
+            <span>{promotionsConfig.coupons.length} cupones</span>
+          </div>
+        )}
+        {promotionsEditorOpen && promotionsDraft && (
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              background: "rgba(15,23,42,0.75)",
+              borderRadius: 12,
+              padding: 12,
+              border: "1px solid rgba(56,189,248,0.25)",
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Banderas</div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12 }}>
+                {(["volume", "combos", "coupons"] as const).map((flag) => (
+                  <label key={flag} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(promotionsDraft.featureFlags[flag])}
+                      onChange={() => handleFlagToggle(flag)}
+                    />
+                    {flag === "volume" ? "Volumen" : flag === "combos" ? "Combos" : "Cupones"}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Promociones por volumen</div>
+              {promotionsDraft.volumePromotions.length ? (
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#cbd5f5" }}>
+                  {promotionsDraft.volumePromotions.map((rule) => (
+                    <li key={rule.id} style={{ marginBottom: 4 }}>
+                      ID {rule.id} · dispositivo #{rule.deviceId} · min {rule.minQuantity} · {rule.discountPercent}%
+                      <button
+                        onClick={() => handleRemoveVolumeRule(rule.id)}
+                        style={{ ...secondaryButtonStyle, marginLeft: 8, padding: "2px 8px", fontSize: 11 }}
+                      >
+                        Quitar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin reglas de volumen.</div>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                <input
+                  value={volumeForm.id}
+                  onChange={(event) => setVolumeForm((prev) => ({ ...prev, id: event.target.value }))}
+                  placeholder="ID"
+                  style={editorInputStyle}
+                />
+                <input
+                  value={volumeForm.deviceId}
+                  onChange={(event) => setVolumeForm((prev) => ({ ...prev, deviceId: event.target.value }))}
+                  placeholder="Dispositivo"
+                  style={editorInputStyle}
+                />
+                <input
+                  value={volumeForm.minQuantity}
+                  onChange={(event) => setVolumeForm((prev) => ({ ...prev, minQuantity: event.target.value }))}
+                  placeholder="Cantidad"
+                  style={editorInputStyle}
+                />
+                <input
+                  value={volumeForm.discountPercent}
+                  onChange={(event) => setVolumeForm((prev) => ({ ...prev, discountPercent: event.target.value }))}
+                  placeholder="% desc"
+                  style={editorInputStyle}
+                />
+                <button onClick={handleAddVolumeRule} style={secondaryButtonStyle}>
+                  Agregar
+                </button>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Combos</div>
+              {promotionsDraft.comboPromotions.length ? (
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#cbd5f5" }}>
+                  {promotionsDraft.comboPromotions.map((rule) => (
+                    <li key={rule.id} style={{ marginBottom: 4 }}>
+                      {rule.id} · dispositivos {rule.items.map((item) => `#${item.deviceId}`).join(", ")} · {rule.discountPercent}%
+                      <button
+                        onClick={() => handleRemoveComboRule(rule.id)}
+                        style={{ ...secondaryButtonStyle, marginLeft: 8, padding: "2px 8px", fontSize: 11 }}
+                      >
+                        Quitar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin combos registrados.</div>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                <input
+                  value={comboForm.id}
+                  onChange={(event) => setComboForm((prev) => ({ ...prev, id: event.target.value }))}
+                  placeholder="ID"
+                  style={editorInputStyle}
+                />
+                <input
+                  value={comboForm.deviceIds}
+                  onChange={(event) => setComboForm((prev) => ({ ...prev, deviceIds: event.target.value }))}
+                  placeholder="Dispositivos (1,2)"
+                  style={{ ...editorInputStyle, minWidth: 160 }}
+                />
+                <input
+                  value={comboForm.discountPercent}
+                  onChange={(event) => setComboForm((prev) => ({ ...prev, discountPercent: event.target.value }))}
+                  placeholder="% desc"
+                  style={editorInputStyle}
+                />
+                <button onClick={handleAddComboRule} style={secondaryButtonStyle}>
+                  Agregar
+                </button>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Cupones</div>
+              {promotionsDraft.coupons.length ? (
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#cbd5f5" }}>
+                  {promotionsDraft.coupons.map((coupon) => (
+                    <li key={coupon.code} style={{ marginBottom: 4 }}>
+                      {coupon.code} · {coupon.discountPercent}% {coupon.description ? `· ${coupon.description}` : ""}
+                      <button
+                        onClick={() => handleRemoveCouponRule(coupon.code)}
+                        style={{ ...secondaryButtonStyle, marginLeft: 8, padding: "2px 8px", fontSize: 11 }}
+                      >
+                        Quitar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin cupones configurados.</div>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                <input
+                  value={couponForm.code}
+                  onChange={(event) => setCouponForm((prev) => ({ ...prev, code: event.target.value }))}
+                  placeholder="Código"
+                  style={editorInputStyle}
+                />
+                <input
+                  value={couponForm.discountPercent}
+                  onChange={(event) => setCouponForm((prev) => ({ ...prev, discountPercent: event.target.value }))}
+                  placeholder="% desc"
+                  style={editorInputStyle}
+                />
+                <input
+                  value={couponForm.description}
+                  onChange={(event) => setCouponForm((prev) => ({ ...prev, description: event.target.value }))}
+                  placeholder="Descripción"
+                  style={{ ...editorInputStyle, minWidth: 180 }}
+                />
+                <button onClick={handleAddCouponRule} style={secondaryButtonStyle}>
+                  Agregar
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={handleSavePromotions} style={primaryButtonStyle}>
+                Guardar promociones
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          value={couponInput}
+          onChange={(event) => setCouponInput(event.target.value)}
+          placeholder="Cupón promocional"
+          style={editorInputStyle}
+        />
+        <button onClick={handleApplyCouponCode} style={secondaryButtonStyle}>
+          Aplicar cupón
+        </button>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {appliedCoupons.map((code) => (
+            <span
+              key={code}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 10px",
+                borderRadius: 9999,
+                background: "rgba(56,189,248,0.2)",
+                color: "#38bdf8",
+                fontSize: 12,
+              }}
+            >
+              {code}
+              <button
+                onClick={() => handleRemoveAppliedCoupon(code)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#0f172a",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+                aria-label={`Quitar cupón ${code}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      </div>
       <POSLayout
         left={
           <>

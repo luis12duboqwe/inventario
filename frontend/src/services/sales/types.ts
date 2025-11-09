@@ -40,6 +40,57 @@ export interface Totals {
   grand: number;  // total final
 }
 
+export interface PosPromotionFeatureFlags {
+  volume: boolean;
+  combos: boolean;
+  coupons: boolean;
+}
+
+export interface PosVolumePromotion {
+  id: string;
+  deviceId: number;
+  minQuantity: number;
+  discountPercent: number;
+}
+
+export interface PosComboPromotionItem {
+  deviceId: number;
+  quantity: number;
+}
+
+export interface PosComboPromotion {
+  id: string;
+  items: PosComboPromotionItem[];
+  discountPercent: number;
+}
+
+export interface PosCouponPromotion {
+  code: string;
+  discountPercent: number;
+  description?: string | null;
+}
+
+export interface PosPromotionsConfig {
+  storeId: number;
+  featureFlags: PosPromotionFeatureFlags;
+  volumePromotions: PosVolumePromotion[];
+  comboPromotions: PosComboPromotion[];
+  coupons: PosCouponPromotion[];
+  updatedAt?: string | null;
+}
+
+export type PosPromotionsUpdate = Omit<PosPromotionsConfig, "updatedAt">;
+
+export interface PosAppliedPromotion {
+  id: string;
+  promotionType: "volume" | "combo" | "coupon";
+  description: string;
+  discountPercent?: number | null;
+  discountAmount?: number | null;
+  affectedItems?: number[];
+  couponCode?: string | null;
+}
+
 export type PaymentType = "CASH" | "CARD" | "TRANSFER" | "OTHER";
 export interface PaymentInput { type: PaymentType; amount: number; ref?: string; }
 
@@ -49,6 +100,7 @@ export interface CheckoutRequest {
   payments: PaymentInput[];
   docType?: "TICKET" | "INVOICE";
   note?: string;
+  coupons?: string[];
 }
 
 // [PACK27-PRINT-TYPES-START]
@@ -66,6 +118,7 @@ export interface CheckoutResponse {
   totals: Totals;
   // para impresión rápida
   printable?: PrintableResource | null;
+  appliedPromotions?: PosAppliedPromotion[];
 }
 
 export interface Quote {

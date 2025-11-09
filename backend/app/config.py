@@ -260,6 +260,46 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    enable_pos_promotions: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "ENABLE_POS_PROMOTIONS",
+                "SOFTMOBILE_ENABLE_POS_PROMOTIONS",
+            ),
+        ),
+    ]
+    enable_pos_promotions_volume: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "ENABLE_POS_PROMOTIONS_VOLUME",
+                "SOFTMOBILE_ENABLE_POS_PROMOTIONS_VOLUME",
+            ),
+        ),
+    ]
+    enable_pos_promotions_combo: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "ENABLE_POS_PROMOTIONS_COMBO",
+                "SOFTMOBILE_ENABLE_POS_PROMOTIONS_COMBO",
+            ),
+        ),
+    ]
+    enable_pos_promotions_coupons: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "ENABLE_POS_PROMOTIONS_COUPONS",
+                "SOFTMOBILE_ENABLE_POS_PROMOTIONS_COUPONS",
+            ),
+        ),
+    ]
     enable_analytics_adv: Annotated[
         bool,
         Field(
@@ -496,6 +536,10 @@ class Settings(BaseSettings):
         "enable_transfers",
         "enable_purchases_sales",
         "enable_price_lists",
+        "enable_pos_promotions",
+        "enable_pos_promotions_volume",
+        "enable_pos_promotions_combo",
+        "enable_pos_promotions_coupons",
         "enable_analytics_adv",
         "enable_2fa",
         "enable_hybrid_prep",
