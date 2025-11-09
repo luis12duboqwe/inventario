@@ -6298,20 +6298,47 @@ def list_price_lists(
     customer_id: int | None = None,
     is_active: bool | None = None,
     include_items: bool = False,
+    include_inactive: bool = True,
+    include_global: bool = True,
 ) -> list[models.PriceList]:
-    statement = select(models.PriceList).order_by(models.PriceList.name.asc())
-    if store_id is not None:
-        statement = statement.where(models.PriceList.store_id == store_id)
-    if customer_id is not None:
-        statement = statement.where(models.PriceList.customer_id == customer_id)
-    if is_active is not None:
-        statement = statement.where(models.PriceList.is_active.is_(is_active))
+    statement = (
+        select(models.PriceList)
+        .order_by(models.PriceList.priority.asc(), models.PriceList.id.asc())
+    )
     if include_items:
         statement = statement.options(joinedload(models.PriceList.items))
-    result = db.scalars(statement)
+    if is_active is not None:
+        statement = statement.where(models.PriceList.is_active.is_(is_active))
+    elif not include_inactive:
+        statement = statement.where(models.PriceList.is_active.is_(True))
+    if store_id is not None:
+        if include_global:
+            statement = statement.where(
+                or_(
+                    models.PriceList.store_id == store_id,
+                    models.PriceList.store_id.is_(None),
+                )
+            )
+        else:
+            statement = statement.where(models.PriceList.store_id == store_id)
+    elif not include_global:
+        statement = statement.where(models.PriceList.store_id.isnot(None))
+    if customer_id is not None:
+        if include_global:
+            statement = statement.where(
+                or_(
+                    models.PriceList.customer_id == customer_id,
+                    models.PriceList.customer_id.is_(None),
+                )
+            )
+        else:
+            statement = statement.where(models.PriceList.customer_id == customer_id)
+    elif not include_global:
+        statement = statement.where(models.PriceList.customer_id.isnot(None))
+    results = db.scalars(statement)
     if include_items:
-        result = result.unique()
-    return list(result)
+        results = results.unique()
+    return list(results)
 
 
 def get_price_list(
@@ -6323,10 +6350,10 @@ def get_price_list(
     statement = select(models.PriceList).where(models.PriceList.id == price_list_id)
     if include_items:
         statement = statement.options(joinedload(models.PriceList.items))
+    result = db.scalars(statement)
+    if include_items:
+        result = result.unique()
     try:
-        result = db.scalars(statement)
-        if include_items:
-            result = result.unique()
         return result.one()
     except NoResultFound as exc:
         raise LookupError("price_list_not_found") from exc
@@ -6338,29 +6365,21 @@ def create_price_list(
     *,
     performed_by_id: int | None = None,
 ) -> models.PriceList:
-    if payload.store_id is not None:
-        get_store(db, payload.store_id)
-    if payload.customer_id is not None:
-        get_customer(db, payload.customer_id)
-
+    data = payload.model_dump()
+    store_id = data.get("store_id")
+    customer_id = data.get("customer_id")
+    if store_id is not None:
+        get_store(db, store_id)
+    if customer_id is not None:
+        get_customer(db, customer_id)
     with transactional_session(db):
-        price_list = models.PriceList(
-            name=payload.name,
-            description=payload.description,
-            is_active=payload.is_active,
-            store_id=payload.store_id,
-            customer_id=payload.customer_id,
-            currency=payload.currency,
-            valid_from=payload.valid_from,
-            valid_until=payload.valid_until,
-        )
+        price_list = models.PriceList(**data)
         db.add(price_list)
         try:
             flush_session(db)
         except IntegrityError as exc:
             raise ValueError("price_list_conflict") from exc
         db.refresh(price_list)
-
         _log_action(
             db,
             action="price_list_created",
@@ -6382,7 +6401,6 @@ def update_price_list(
     performed_by_id: int | None = None,
 ) -> models.PriceList:
     price_list = get_price_list(db, price_list_id)
-
     updates = payload.model_dump(exclude_unset=True)
     sanitized_updates: dict[str, Any] = {}
     for field, value in updates.items():
@@ -6391,7 +6409,6 @@ def update_price_list(
         sanitized_updates[field] = value
     if not sanitized_updates:
         return price_list
-
     if (
         "store_id" in sanitized_updates
         and sanitized_updates["store_id"] is not None
@@ -6404,7 +6421,6 @@ def update_price_list(
         and sanitized_updates["customer_id"] != price_list.customer_id
     ):
         get_customer(db, sanitized_updates["customer_id"])
-
     with transactional_session(db):
         for field, value in sanitized_updates.items():
             setattr(price_list, field, value)
@@ -6413,7 +6429,6 @@ def update_price_list(
         except IntegrityError as exc:
             raise ValueError("price_list_conflict") from exc
         db.refresh(price_list)
-
         _log_action(
             db,
             action="price_list_updated",
@@ -6438,7 +6453,6 @@ def delete_price_list(
     with transactional_session(db):
         db.delete(price_list)
         flush_session(db)
-
         _log_action(
             db,
             action="price_list_deleted",
@@ -6467,20 +6481,19 @@ def create_price_list_item(
 ) -> models.PriceListItem:
     price_list = get_price_list(db, price_list_id)
     device = get_device_global(db, payload.device_id)
-
-    price = _ensure_positive_decimal(
-        payload.price, "price_list_item_price_invalid"
-    )
+    if price_list.store_id is not None and device.store_id != price_list.store_id:
+        raise ValueError("price_list_item_invalid_store")
+    price = _ensure_positive_decimal(payload.price, "price_list_item_price_invalid")
     discount = _ensure_discount_percentage(
         payload.discount_percentage, "price_list_item_discount_invalid"
     )
-
     with transactional_session(db):
         item = models.PriceListItem(
             price_list_id=price_list.id,
             device_id=device.id,
             price=price,
             discount_percentage=discount,
+            currency=payload.currency,
             notes=payload.notes,
         )
         db.add(item)
@@ -6489,7 +6502,6 @@ def create_price_list_item(
         except IntegrityError as exc:
             raise ValueError("price_list_item_conflict") from exc
         db.refresh(item)
-
         _log_action(
             db,
             action="price_list_item_created",
@@ -6516,12 +6528,8 @@ def update_price_list_item(
     performed_by_id: int | None = None,
 ) -> models.PriceListItem:
     item = get_price_list_item(db, item_id)
-
     updates = payload.model_dump(exclude_unset=True)
-    if not updates:
-        return item
-
-    if "price" in updates:
+    if "price" in updates and updates["price"] is not None:
         updates["price"] = _ensure_positive_decimal(
             updates["price"], "price_list_item_price_invalid"
         )
@@ -6529,7 +6537,8 @@ def update_price_list_item(
         updates["discount_percentage"] = _ensure_discount_percentage(
             updates["discount_percentage"], "price_list_item_discount_invalid"
         )
-
+    if not updates:
+        return item
     with transactional_session(db):
         for field, value in updates.items():
             setattr(item, field, value)
@@ -6538,7 +6547,6 @@ def update_price_list_item(
         except IntegrityError as exc:
             raise ValueError("price_list_item_conflict") from exc
         db.refresh(item)
-
         _log_action(
             db,
             action="price_list_item_updated",
@@ -6568,7 +6576,6 @@ def delete_price_list_item(
     with transactional_session(db):
         db.delete(item)
         flush_session(db)
-
         _log_action(
             db,
             action="price_list_item_deleted",
@@ -7079,247 +7086,6 @@ def update_wms_bin(
                     {"fields": changed_fields}, ensure_ascii=False),
             )
     return bin_obj
-
-
-def list_price_lists(
-    db: Session,
-    *,
-    store_id: int | None = None,
-    customer_id: int | None = None,
-    include_inactive: bool = True,
-    include_global: bool = True,
-) -> list[models.PriceList]:
-    statement = (
-        select(models.PriceList)
-        .options(joinedload(models.PriceList.items))
-        .order_by(models.PriceList.priority.asc(), models.PriceList.id.asc())
-    )
-    if not include_inactive:
-        statement = statement.where(models.PriceList.is_active.is_(True))
-    if store_id is not None:
-        if include_global:
-            statement = statement.where(
-                or_(
-                    models.PriceList.store_id == store_id,
-                    models.PriceList.store_id.is_(None),
-                )
-            )
-        else:
-            statement = statement.where(models.PriceList.store_id == store_id)
-    elif not include_global:
-        statement = statement.where(models.PriceList.store_id.isnot(None))
-    if customer_id is not None:
-        if include_global:
-            statement = statement.where(
-                or_(
-                    models.PriceList.customer_id == customer_id,
-                    models.PriceList.customer_id.is_(None),
-                )
-            )
-        else:
-            statement = statement.where(
-                models.PriceList.customer_id == customer_id
-            )
-    elif not include_global:
-        statement = statement.where(models.PriceList.customer_id.isnot(None))
-    return list(db.scalars(statement))
-
-
-def get_price_list(db: Session, price_list_id: int) -> models.PriceList:
-    statement = (
-        select(models.PriceList)
-        .options(joinedload(models.PriceList.items))
-        .where(models.PriceList.id == price_list_id)
-    )
-    price_list = db.scalars(statement).first()
-    if price_list is None:
-        raise LookupError("price_list_not_found")
-    return price_list
-
-
-def create_price_list(
-    db: Session,
-    payload: schemas.PriceListCreate,
-    *,
-    performed_by_id: int | None = None,
-) -> models.PriceList:
-    data = payload.model_dump()
-    store_id = data.get("store_id")
-    customer_id = data.get("customer_id")
-    if store_id is not None:
-        get_store(db, store_id)
-    if customer_id is not None:
-        get_customer(db, customer_id)
-    price_list = models.PriceList(**data)
-    with transactional_session(db):
-        db.add(price_list)
-        try:
-            flush_session(db)
-        except IntegrityError as exc:
-            raise ValueError("price_list_duplicate") from exc
-        db.refresh(price_list)
-        _log_action(
-            db,
-            action="price_list_created",
-            entity_type="price_list",
-            entity_id=str(price_list.id),
-            performed_by_id=performed_by_id,
-            details=f"NOMBRE={price_list.name};SCOPE={price_list.scope}",
-        )
-    return price_list
-
-
-def update_price_list(
-    db: Session,
-    price_list_id: int,
-    payload: schemas.PriceListUpdate,
-    *,
-    performed_by_id: int | None = None,
-) -> models.PriceList:
-    price_list = get_price_list(db, price_list_id)
-    data = payload.model_dump(exclude_unset=True)
-    if not data:
-        return price_list
-    if "store_id" in data and data["store_id"] is not None:
-        get_store(db, data["store_id"])
-    if "customer_id" in data and data["customer_id"] is not None:
-        get_customer(db, data["customer_id"])
-    with transactional_session(db):
-        for key, value in data.items():
-            setattr(price_list, key, value)
-        db.add(price_list)
-        try:
-            flush_session(db)
-        except IntegrityError as exc:
-            raise ValueError("price_list_duplicate") from exc
-        db.refresh(price_list)
-        _log_action(
-            db,
-            action="price_list_updated",
-            entity_type="price_list",
-            entity_id=str(price_list.id),
-            performed_by_id=performed_by_id,
-            details=f"CAMPOS={','.join(sorted(data.keys()))}",
-        )
-    return price_list
-
-
-def delete_price_list(
-    db: Session,
-    price_list_id: int,
-    *,
-    performed_by_id: int | None = None,
-) -> None:
-    price_list = get_price_list(db, price_list_id)
-    with transactional_session(db):
-        db.delete(price_list)
-        flush_session(db)
-        _log_action(
-            db,
-            action="price_list_deleted",
-            entity_type="price_list",
-            entity_id=str(price_list_id),
-            performed_by_id=performed_by_id,
-            details="LISTA ELIMINADA",
-        )
-
-
-def create_price_list_item(
-    db: Session,
-    price_list_id: int,
-    payload: schemas.PriceListItemCreate,
-    *,
-    performed_by_id: int | None = None,
-) -> models.PriceListItem:
-    price_list = get_price_list(db, price_list_id)
-    device = db.get(models.Device, payload.device_id)
-    if device is None:
-        raise LookupError("device_not_found")
-    if price_list.store_id is not None and device.store_id != price_list.store_id:
-        raise ValueError("price_list_item_invalid_store")
-    existing = db.scalars(
-        select(models.PriceListItem)
-        .where(models.PriceListItem.price_list_id == price_list_id)
-        .where(models.PriceListItem.device_id == payload.device_id)
-    ).first()
-    if existing is not None:
-        raise ValueError("price_list_item_duplicate")
-    item = models.PriceListItem(
-        price_list_id=price_list_id,
-        device_id=payload.device_id,
-        price=payload.price,
-        currency=payload.currency,
-        notes=payload.notes,
-    )
-    with transactional_session(db):
-        db.add(item)
-        flush_session(db)
-        db.refresh(item)
-        _log_action(
-            db,
-            action="price_list_item_created",
-            entity_type="price_list_item",
-            entity_id=str(item.id),
-            performed_by_id=performed_by_id,
-            details=f"LISTA={price_list_id};DISPOSITIVO={payload.device_id}",
-        )
-    return item
-
-
-def update_price_list_item(
-    db: Session,
-    price_list_id: int,
-    item_id: int,
-    payload: schemas.PriceListItemUpdate,
-    *,
-    performed_by_id: int | None = None,
-) -> models.PriceListItem:
-    get_price_list(db, price_list_id)
-    item = db.get(models.PriceListItem, item_id)
-    if item is None or item.price_list_id != price_list_id:
-        raise LookupError("price_list_item_not_found")
-    updates = payload.model_dump(exclude_unset=True)
-    if not updates:
-        return item
-    with transactional_session(db):
-        for key, value in updates.items():
-            setattr(item, key, value)
-        db.add(item)
-        flush_session(db)
-        db.refresh(item)
-        _log_action(
-            db,
-            action="price_list_item_updated",
-            entity_type="price_list_item",
-            entity_id=str(item.id),
-            performed_by_id=performed_by_id,
-            details=f"LISTA={price_list_id};CAMPOS={','.join(sorted(updates.keys()))}",
-        )
-    return item
-
-
-def delete_price_list_item(
-    db: Session,
-    price_list_id: int,
-    item_id: int,
-    *,
-    performed_by_id: int | None = None,
-) -> None:
-    get_price_list(db, price_list_id)
-    item = db.get(models.PriceListItem, item_id)
-    if item is None or item.price_list_id != price_list_id:
-        raise LookupError("price_list_item_not_found")
-    with transactional_session(db):
-        db.delete(item)
-        flush_session(db)
-        _log_action(
-            db,
-            action="price_list_item_deleted",
-            entity_type="price_list_item",
-            entity_id=str(item_id),
-            performed_by_id=performed_by_id,
-            details=f"LISTA={price_list_id}",
-        )
 
 
 def assign_device_to_bin(
@@ -12300,9 +12066,32 @@ def register_purchase_return(
         raise ValueError("purchase_return_exceeds_received")
 
     device = get_device(db, order.store_id, payload.device_id)
+    disposition = payload.disposition
+    warehouse_id = payload.warehouse_id
+    if warehouse_id is not None and warehouse_id <= 0:
+        raise ValueError("purchase_return_invalid_warehouse")
+    warehouse_store: models.Store | None = None
+    if warehouse_id is not None:
+        if warehouse_id == order.store_id:
+            warehouse_store = order.store or get_store(db, order.store_id)
+        else:
+            warehouse_store = get_store(db, warehouse_id)
     if device.quantity < payload.quantity:
         raise ValueError("purchase_return_insufficient_stock")
     with transactional_session(db):
+        movement_reason = payload.reason or reason
+        if movement_reason:
+            movement_reason = movement_reason.strip()
+        if disposition != schemas.ReturnDisposition.VENDIBLE:
+            note = f"estado={disposition.value}"
+            movement_reason = f"{movement_reason} | {note}" if movement_reason else note
+        if warehouse_store and warehouse_store.id != order.store_id:
+            warehouse_note = f"almacen={warehouse_store.name}"
+            movement_reason = (
+                f"{movement_reason} | {warehouse_note}"
+                if movement_reason
+                else warehouse_note
+            )
         _register_inventory_movement(
             db,
             store_id=order.store_id,
@@ -12313,7 +12102,7 @@ def register_purchase_return(
                 "Devolución proveedor",
                 order,
                 device,
-                payload.reason or reason,
+                movement_reason,
             ),
             performed_by_id=processed_by_id,
             source_store_id=order.store_id,
@@ -12327,6 +12116,8 @@ def register_purchase_return(
             device_id=device.id,
             quantity=payload.quantity,
             reason=payload.reason,
+            disposition=disposition,
+            warehouse_id=warehouse_id,
             processed_by_id=processed_by_id,
         )
         db.add(purchase_return)
@@ -13733,13 +13524,22 @@ def _build_sale_movement_comment(
 
 
 def _build_sale_return_comment(
-    sale: models.Sale, device: models.Device, reason: str | None
+    sale: models.Sale,
+    device: models.Device,
+    reason: str | None,
+    *,
+    disposition: schemas.ReturnDisposition | None = None,
+    warehouse_name: str | None = None,
 ) -> str:
     segments = [f"Devolución venta #{sale.id}"]
     if device.sku:
         segments.append(f"SKU {device.sku}")
     if reason:
         segments.append(reason)
+    if disposition is not None:
+        segments.append(f"estado={disposition.value}")
+    if warehouse_name:
+        segments.append(f"almacen={warehouse_name}")
     return " — ".join(segments)[:255]
 
 
@@ -14511,6 +14311,12 @@ def register_sale_return(
     ledger_entry: models.CustomerLedgerEntry | None = None
     customer_to_sync: models.Customer | None = None
 
+    non_sellable_dispositions = {
+        schemas.ReturnDisposition.DEFECTUOSO,
+        schemas.ReturnDisposition.NO_VENDIBLE,
+        schemas.ReturnDisposition.REPARACION,
+    }
+
     with transactional_session(db):
         for item in payload.items:
             sale_item = items_by_device.get(item.device_id)
@@ -14527,6 +14333,23 @@ def register_sale_return(
 
             device = get_device(db, sale.store_id, item.device_id)
             previous_cost = _to_decimal(device.costo_unitario)
+            disposition = item.disposition
+            warehouse_id = item.warehouse_id
+            if warehouse_id is not None and warehouse_id <= 0:
+                raise ValueError("sale_return_invalid_warehouse")
+            if (
+                warehouse_id is None
+                and disposition in non_sellable_dispositions
+                and settings.defective_returns_store_id
+            ):
+                warehouse_id = settings.defective_returns_store_id
+            warehouse_store: models.Store | None = None
+            if warehouse_id is not None:
+                if warehouse_id == sale.store_id:
+                    warehouse_store = sale.store or get_store(db, sale.store_id)
+                else:
+                    warehouse_store = get_store(db, warehouse_id)
+
             movement = _register_inventory_movement(
                 db,
                 store_id=sale.store_id,
@@ -14534,21 +14357,33 @@ def register_sale_return(
                 movement_type=models.MovementType.IN,
                 quantity=item.quantity,
                 comment=_build_sale_return_comment(
-                    sale, device, item.reason or reason),
+                    sale,
+                    device,
+                    item.reason or reason,
+                    disposition=disposition,
+                    warehouse_name=warehouse_store.name if warehouse_store else None,
+                ),
                 performed_by_id=processed_by_id,
                 unit_cost=_quantize_currency(previous_cost),
                 reference_type="sale_return",
                 reference_id=str(sale.id),
             )
             movement_device = movement.device or device
-            if movement_device.quantity > 0:
+            if (
+                disposition == schemas.ReturnDisposition.VENDIBLE
+                and movement_device.quantity > 0
+            ):
                 _restore_device_availability(movement_device)
+            elif movement_device.imei or movement_device.serial:
+                movement_device.estado = "no_vendible"
 
             sale_return = models.SaleReturn(
                 sale_id=sale.id,
                 device_id=item.device_id,
                 quantity=item.quantity,
                 reason=item.reason,
+                disposition=disposition,
+                warehouse_id=warehouse_id,
                 processed_by_id=processed_by_id,
             )
             db.add(sale_return)

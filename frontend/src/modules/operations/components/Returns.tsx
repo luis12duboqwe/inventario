@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { PurchaseOrder, ReturnRecord, Sale, Store } from "../../../api";
+import type {
+  PurchaseOrder,
+  ReturnDisposition,
+  ReturnRecord,
+  Sale,
+  Store,
+} from "../../../api";
 import {
   listPurchaseOrders,
   listReturns,
@@ -21,6 +27,8 @@ type PurchaseReturnForm = {
   deviceId: number | null;
   quantity: number;
   reason: string;
+  disposition: ReturnDisposition;
+  warehouseId: number | null;
 };
 
 type SaleReturnForm = {
@@ -29,6 +37,8 @@ type SaleReturnForm = {
   deviceId: number | null;
   quantity: number;
   reason: string;
+  disposition: ReturnDisposition;
+  warehouseId: number | null;
 };
 
 const initialPurchaseReturn: PurchaseReturnForm = {
@@ -37,6 +47,8 @@ const initialPurchaseReturn: PurchaseReturnForm = {
   deviceId: null,
   quantity: 1,
   reason: "Equipo defectuoso",
+  disposition: "defectuoso",
+  warehouseId: null,
 };
 
 const initialSaleReturn: SaleReturnForm = {
@@ -45,7 +57,21 @@ const initialSaleReturn: SaleReturnForm = {
   deviceId: null,
   quantity: 1,
   reason: "Reingreso cliente",
+  disposition: "vendible",
+  warehouseId: null,
 };
+
+const dispositionOptions: { value: ReturnDisposition; label: string }[] = [
+  { value: "vendible", label: "Vendible" },
+  { value: "defectuoso", label: "Defectuoso" },
+  { value: "no_vendible", label: "No vendible" },
+  { value: "reparacion", label: "En revisión" },
+];
+
+function dispositionLabel(value: ReturnDisposition): string {
+  const match = dispositionOptions.find((option) => option.value === value);
+  return match ? match.label : value;
+}
 
 function Returns({ token, stores, defaultStoreId = null, onInventoryRefresh }: Props) {
   // Para evitar setState en efectos cuando cambia defaultStoreId,
@@ -182,6 +208,8 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
           device_id: purchaseForm.deviceId,
           quantity: Math.max(1, purchaseForm.quantity),
           reason: purchaseForm.reason.trim(),
+          disposition: purchaseForm.disposition,
+          ...(purchaseForm.warehouseId ? { warehouse_id: purchaseForm.warehouseId } : {}),
         },
         purchaseForm.reason.trim()
       );
@@ -215,6 +243,8 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
               device_id: saleForm.deviceId,
               quantity: Math.max(1, saleForm.quantity),
               reason: saleForm.reason.trim(),
+              disposition: saleForm.disposition,
+              ...(saleForm.warehouseId ? { warehouse_id: saleForm.warehouseId } : {}),
             },
           ],
         },
@@ -249,6 +279,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
                 storeId: event.target.value ? Number(event.target.value) : null,
                 orderId: null,
                 deviceId: null,
+                warehouseId: null,
               })}
             >
               <option value="">Selecciona una sucursal</option>
@@ -304,6 +335,39 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
             />
           </label>
           <label>
+            Estado del lote
+            <select
+              value={purchaseForm.disposition}
+              onChange={(event) =>
+                updatePurchaseForm({ disposition: event.target.value as ReturnDisposition })
+              }
+            >
+              {dispositionOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Almacén destino
+            <select
+              value={purchaseForm.warehouseId ?? ""}
+              onChange={(event) =>
+                updatePurchaseForm({
+                  warehouseId: event.target.value ? Number(event.target.value) : null,
+                })
+              }
+            >
+              <option value="">Mantener en sucursal</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Motivo corporativo
             <input
               value={purchaseForm.reason}
@@ -326,6 +390,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
                 storeId: event.target.value ? Number(event.target.value) : null,
                 saleId: null,
                 deviceId: null,
+                warehouseId: null,
               })}
             >
               <option value="">Selecciona una sucursal</option>
@@ -379,6 +444,39 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
               value={saleForm.quantity}
               onChange={(event) => updateSaleForm({ quantity: Number(event.target.value) })}
             />
+          </label>
+          <label>
+            Estado del producto
+            <select
+              value={saleForm.disposition}
+              onChange={(event) =>
+                updateSaleForm({ disposition: event.target.value as ReturnDisposition })
+              }
+            >
+              {dispositionOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Almacén destino
+            <select
+              value={saleForm.warehouseId ?? ""}
+              onChange={(event) =>
+                updateSaleForm({
+                  warehouseId: event.target.value ? Number(event.target.value) : null,
+                })
+              }
+            >
+              <option value="">Mantener en sucursal</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Motivo corporativo
@@ -450,6 +548,8 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
                     <th>Dispositivo</th>
                     <th>Cantidad</th>
                     <th>Motivo</th>
+                    <th>Estado</th>
+                    <th>Almacén</th>
                     <th>Relacionado</th>
                     <th>Responsable</th>
                   </tr>
@@ -467,6 +567,8 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
                       <td>{record.device_name ?? `#${record.device_id}`}</td>
                       <td>{record.quantity}</td>
                       <td>{record.reason}</td>
+                      <td>{dispositionLabel(record.disposition)}</td>
+                      <td>{record.warehouse_name ?? (record.warehouse_id ? `#${record.warehouse_id}` : "Sin asignar")}</td>
                       <td>{record.partner_name ?? "Sin asociación"}</td>
                       <td>{record.processed_by_name ?? "Sin responsable"}</td>
                     </tr>

@@ -39,15 +39,6 @@ def _format_currency(value: Decimal | float | int | None) -> str:
     decimal_value = Decimal("0") if value is None else Decimal(str(value))
     quantized = decimal_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return f"{quantized:.2f}"
-
-
-def render_receipt_pdf(
-    sale: models.Sale,
-    config: models.POSConfig,
-    *,
-    debt_snapshot: DebtSnapshot | None = None,
-    schedule: Sequence[dict[str, object]] | None = None,
-) -> bytes:
 def _extract_candidate(value: object | None) -> str | None:
     if value is None:
         return None

@@ -58,6 +58,7 @@ def _serialize_sale_return(
     store = sale.store if sale else None
     device = sale_return.device
     processed_by = sale_return.processed_by
+    warehouse = sale_return.warehouse
     return schemas.ReturnRecord(
         id=sale_return.id,
         type=schemas.ReturnRecordType.SALE,
@@ -65,10 +66,13 @@ def _serialize_sale_return(
         reference_label=f"Venta #{sale_return.sale_id}",
         store_id=sale.store_id if sale else 0,
         store_name=store.name if store else None,
+        warehouse_id=sale_return.warehouse_id,
+        warehouse_name=warehouse.name if warehouse else None,
         device_id=sale_return.device_id,
         device_name=device.name if device else None,
         quantity=sale_return.quantity,
         reason=sale_return.reason,
+        disposition=sale_return.disposition,
         processed_by_id=sale_return.processed_by_id,
         processed_by_name=_user_display_name(processed_by),
         partner_name=_customer_display_name(sale),
@@ -83,6 +87,7 @@ def _serialize_purchase_return(
     store = order.store if order else None
     device = purchase_return.device
     processed_by = purchase_return.processed_by
+    warehouse = purchase_return.warehouse
     store_id = order.store_id if order else 0
     supplier_name = order.supplier if order else None
     return schemas.ReturnRecord(
@@ -92,10 +97,13 @@ def _serialize_purchase_return(
         reference_label=f"Compra #{purchase_return.purchase_order_id}",
         store_id=store_id,
         store_name=store.name if store else None,
+        warehouse_id=purchase_return.warehouse_id,
+        warehouse_name=warehouse.name if warehouse else None,
         device_id=purchase_return.device_id,
         device_name=device.name if device else None,
         quantity=purchase_return.quantity,
         reason=purchase_return.reason,
+        disposition=purchase_return.disposition,
         processed_by_id=purchase_return.processed_by_id,
         processed_by_name=_user_display_name(processed_by),
         partner_name=supplier_name,
@@ -149,6 +157,7 @@ def _list_sale_returns(
             joinedload(models.SaleReturn.sale).joinedload(models.Sale.customer),
             joinedload(models.SaleReturn.device),
             joinedload(models.SaleReturn.processed_by),
+            joinedload(models.SaleReturn.warehouse),
         )
         .where(models.SaleReturn.created_at.between(filters.start, filters.end))
         .order_by(models.SaleReturn.created_at.desc())
@@ -178,6 +187,7 @@ def _list_purchase_returns(
             joinedload(models.PurchaseReturn.order).joinedload(models.PurchaseOrder.store),
             joinedload(models.PurchaseReturn.device),
             joinedload(models.PurchaseReturn.processed_by),
+            joinedload(models.PurchaseReturn.warehouse),
         )
         .where(models.PurchaseReturn.created_at.between(filters.start, filters.end))
         .order_by(models.PurchaseReturn.created_at.desc())

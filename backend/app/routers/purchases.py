@@ -697,4 +697,9 @@ def register_purchase_return_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Inventario insuficiente para devolver.",
             ) from exc
+        if detail == "purchase_return_invalid_warehouse":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Selecciona un almacén válido para la devolución.",
+            ) from exc
         raise

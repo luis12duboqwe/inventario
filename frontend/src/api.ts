@@ -878,12 +878,16 @@ export type SaleItem = {
   device?: SaleDeviceSummary | null;
 };
 
+export type ReturnDisposition = "vendible" | "defectuoso" | "no_vendible" | "reparacion";
+
 export type SaleReturn = {
   id: number;
   sale_id: number;
   device_id: number;
   quantity: number;
   reason: string;
+  disposition: ReturnDisposition;
+  warehouse_id?: number | null;
   processed_by_id?: number | null;
   created_at: string;
 };
@@ -937,7 +941,13 @@ export type SaleCreateInput = {
 
 export type SaleReturnInput = {
   sale_id: number;
-  items: { device_id: number; quantity: number; reason: string }[];
+  items: {
+    device_id: number;
+    quantity: number;
+    reason: string;
+    disposition?: ReturnDisposition;
+    warehouse_id?: number | null;
+  }[];
 };
 
 export type PurchaseOrderItem = {
@@ -955,6 +965,8 @@ export type PurchaseReturn = {
   device_id: number;
   quantity: number;
   reason: string;
+  disposition: ReturnDisposition;
+  warehouse_id?: number | null;
   processed_by_id: number | null;
   created_at: string;
 };
@@ -968,10 +980,13 @@ export type ReturnRecord = {
   reference_label: string;
   store_id: number;
   store_name?: string | null;
+  warehouse_id?: number | null;
+  warehouse_name?: string | null;
   device_id: number;
   device_name?: string | null;
   quantity: number;
   reason: string;
+  disposition: ReturnDisposition;
   processed_by_id?: number | null;
   processed_by_name?: string | null;
   partner_name?: string | null;
@@ -1027,6 +1042,8 @@ export type PurchaseReturnInput = {
   device_id: number;
   quantity: number;
   reason: string;
+  disposition?: ReturnDisposition;
+  warehouse_id?: number | null;
 };
 
 export type PurchaseImportResponse = {

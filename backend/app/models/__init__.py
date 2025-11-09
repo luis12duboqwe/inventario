@@ -34,6 +34,20 @@ class MovementType(str, enum.Enum):
     ADJUST = "ajuste"
 
 
+class ReturnDisposition(str, enum.Enum):
+    """Clasificación operativa de los artículos devueltos."""
+
+    VENDIBLE = "vendible"
+    DEFECTUOSO = "defectuoso"
+    NO_VENDIBLE = "no_vendible"
+    REPARACION = "reparacion"
+
+
+RETURN_DISPOSITION_ENUM = Enum(
+    ReturnDisposition, name="return_disposition"
+)
+
+
 # // [PACK38-inventory-reservations]
 class InventoryState(str, enum.Enum):
     """Estados de ciclo de vida de una reserva de inventario."""
@@ -594,94 +608,6 @@ class DeviceBinAssignment(Base):
 
     device: Mapped[Device] = relationship("Device")
     bin: Mapped[WMSBin] = relationship("WMSBin", back_populates="assignments")
-
-    class DeviceIdentifier(Base):
-        __tablename__ = "device_identifiers"
-        __table_args__ = (
-            UniqueConstraint("producto_id", name="uq_device_identifiers_producto"),
-            UniqueConstraint("imei_1", name="uq_device_identifiers_imei_1"),
-            UniqueConstraint("imei_2", name="uq_device_identifiers_imei_2"),
-            UniqueConstraint(
-                "numero_serie", name="uq_device_identifiers_numero_serie"),
-        )
-
-        id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-        producto_id: Mapped[int] = mapped_column(
-            Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
-        )
-        imei_1: Mapped[str | None] = mapped_column(String(18), nullable=True)
-        imei_2: Mapped[str | None] = mapped_column(String(18), nullable=True)
-        numero_serie: Mapped[str | None] = mapped_column(
-            String(120), nullable=True)
-        estado_tecnico: Mapped[str | None] = mapped_column(
-            String(60), nullable=True)
-        observaciones: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-        device: Mapped[Device] = relationship(
-            "Device", back_populates="identifier")
-
-
-    class WMSBin(Base):
-        """Ubicación física (bin) dentro de una sucursal para WMS ligero."""
-
-        __tablename__ = "wms_bins"
-        __table_args__ = (
-            UniqueConstraint("sucursal_id", "codigo",
-                             name="uq_wms_bins_store_code"),
-            Index("ix_wms_bins_store", "sucursal_id"),
-        )
-
-        id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-        store_id: Mapped[int] = mapped_column(
-            "sucursal_id",
-            Integer,
-            ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
-            nullable=False,
-            index=True,
-        )
-        code: Mapped[str] = mapped_column("codigo", String(60), nullable=False)
-        aisle: Mapped[str | None] = mapped_column(
-            "pasillo", String(60), nullable=True)
-        rack: Mapped[str | None] = mapped_column(String(60), nullable=True)
-        level: Mapped[str | None] = mapped_column(
-            "nivel", String(60), nullable=True)
-        description: Mapped[str | None] = mapped_column(
-            "descripcion", String(255), nullable=True)
-        created_at: Mapped[datetime] = mapped_column("fecha_creacion", DateTime(
-            timezone=True), default=datetime.utcnow, nullable=False)
-        updated_at: Mapped[datetime] = mapped_column("fecha_actualizacion", DateTime(
-            timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-        store: Mapped[Store] = relationship("Store")
-        assignments: Mapped[list["DeviceBinAssignment"]] = relationship(
-            "DeviceBinAssignment", back_populates="bin", cascade="all, delete-orphan"
-        )
-
-
-    class DeviceBinAssignment(Base):
-        """Asociación actual/histórica entre un dispositivo y un bin."""
-
-        __tablename__ = "device_bins"
-        __table_args__ = (
-            Index("ix_device_bins_device", "producto_id"),
-            Index("ix_device_bins_bin", "bin_id"),
-        )
-
-        id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-        device_id: Mapped[int] = mapped_column(
-            "producto_id", Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
-        )
-        bin_id: Mapped[int] = mapped_column(Integer, ForeignKey(
-            "wms_bins.id", ondelete="CASCADE"), nullable=False)
-        assigned_at: Mapped[datetime] = mapped_column("asignado_en", DateTime(
-            timezone=True), default=datetime.utcnow, nullable=False)
-        unassigned_at: Mapped[datetime | None] = mapped_column(
-            "desasignado_en", DateTime(timezone=True), nullable=True)
-        active: Mapped[bool] = mapped_column(
-            "activo", Boolean, default=True, nullable=False)
-
-        device: Mapped[Device] = relationship("Device")
-        bin: Mapped[WMSBin] = relationship("WMSBin", back_populates="assignments")
 
 
 class PriceList(Base):
@@ -1928,6 +1854,17 @@ class PurchaseReturn(Base):
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    disposition: Mapped[ReturnDisposition] = mapped_column(
+        RETURN_DISPOSITION_ENUM.copy(),
+        nullable=False,
+        default=ReturnDisposition.DEFECTUOSO,
+    )
+    warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     processed_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -1938,6 +1875,9 @@ class PurchaseReturn(Base):
         "PurchaseOrder", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
     processed_by: Mapped[User | None] = relationship("User")
+    warehouse: Mapped[Store | None] = relationship(
+        "Store", foreign_keys=[warehouse_id]
+    )
 
 
 class Sale(Base):
@@ -2074,6 +2014,17 @@ class SaleReturn(Base):
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    disposition: Mapped[ReturnDisposition] = mapped_column(
+        RETURN_DISPOSITION_ENUM.copy(),
+        nullable=False,
+        default=ReturnDisposition.VENDIBLE,
+    )
+    warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     processed_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -2083,6 +2034,9 @@ class SaleReturn(Base):
     sale: Mapped[Sale] = relationship("Sale", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
     processed_by: Mapped[User | None] = relationship("User")
+    warehouse: Mapped[Store | None] = relationship(
+        "Store", foreign_keys=[warehouse_id]
+    )
 
 
 class RepairOrder(Base):
@@ -2297,8 +2251,11 @@ class POSConfig(Base):
     quick_product_ids: Mapped[list[int]] = mapped_column(
         JSON, nullable=False, default=list)
     promotions_config: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
     hardware_settings: Mapped[dict[str, Any]] = mapped_column(
-        JSON, nullable=False, default=dict)
+        JSON, nullable=False, default=dict
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )

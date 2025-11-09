@@ -505,6 +505,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    defective_returns_store_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "DEFECTIVE_RETURNS_STORE_ID",
+                "SOFTMOBILE_DEFECTIVE_RETURNS_STORE_ID",
+            ),
+        ),
+    ]
     default_credit_installments: Annotated[
         int,
         Field(

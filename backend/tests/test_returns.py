@@ -35,6 +35,7 @@ def _bootstrap_admin(client, db_session):
 
 def test_returns_overview_includes_reasons(client, db_session):
     original_flag = settings.enable_purchases_sales
+    original_defective_store = settings.defective_returns_store_id
     settings.enable_purchases_sales = True
     token, user_id = _bootstrap_admin(client, db_session)
     auth_headers = {"Authorization": f"Bearer {token}"}
@@ -47,11 +48,11 @@ def test_returns_overview_includes_reasons(client, db_session):
     assert store_response.status_code == status.HTTP_201_CREATED
     store_id = store_response.json()["id"]
 
-    device_response = client.post(
-        f"/stores/{store_id}/devices",
-        json={
-            "sku": "RET-001",
-            "name": "Lector Inventario",
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "RET-001",
+                "name": "Lector Inventario",
             "quantity": 0,
             "unit_price": 120.0,
             "costo_unitario": 80.0,
@@ -83,11 +84,24 @@ def test_returns_overview_includes_reasons(client, db_session):
     )
     assert receive_response.status_code == status.HTTP_200_OK
 
-    purchase_return_payload = {
-        "device_id": device_id,
-        "quantity": 2,
-        "reason": "Proveedor defectuoso",
-    }
+        defective_store_response = client.post(
+            "/stores",
+            json={
+                "name": "Almacén Defectuosos",
+                "location": "MX",
+                "timezone": "America/Mexico_City",
+            },
+            headers=auth_headers,
+        )
+        assert defective_store_response.status_code == status.HTTP_201_CREATED
+        defective_store_id = defective_store_response.json()["id"]
+        settings.defective_returns_store_id = defective_store_id
+
+        purchase_return_payload = {
+            "device_id": device_id,
+            "quantity": 2,
+            "reason": "Proveedor defectuoso",
+        }
     purchase_return_response = client.post(
         f"/purchases/{order_id}/returns",
         json=purchase_return_payload,
@@ -108,23 +122,33 @@ def test_returns_overview_includes_reasons(client, db_session):
     assert sale_response.status_code == status.HTTP_201_CREATED
     sale_id = sale_response.json()["id"]
 
-    sale_return_payload = {
-        "sale_id": sale_id,
-        "items": [
-            {"device_id": device_id, "quantity": 1, "reason": "Cliente arrepentido"},
-        ],
-    }
-    sale_return_response = client.post(
-        "/sales/returns",
-        json=sale_return_payload,
-        headers={**auth_headers, "X-Reason": "Reingreso cliente"},
-    )
-    assert sale_return_response.status_code == status.HTTP_200_OK
+        sale_return_payload = {
+            "sale_id": sale_id,
+            "items": [
+                {
+                    "device_id": device_id,
+                    "quantity": 1,
+                    "reason": "Cliente arrepentido",
+                    "disposition": "defectuoso",
+                },
+            ],
+        }
+        sale_return_response = client.post(
+            "/sales/returns",
+            json=sale_return_payload,
+            headers={**auth_headers, "X-Reason": "Reingreso cliente"},
+        )
+        assert sale_return_response.status_code == status.HTTP_200_OK
+        sale_return_body = sale_return_response.json()
+        assert sale_return_body
+        first_sale_return = sale_return_body[0]
+        assert first_sale_return["disposition"] == "defectuoso"
+        assert first_sale_return["warehouse_id"] == defective_store_id
 
-    try:
-        returns_response = client.get(
-            "/returns",
-            params={"store_id": store_id, "limit": 10},
+        try:
+            returns_response = client.get(
+                "/returns",
+                params={"store_id": store_id, "limit": 10},
             headers=auth_headers,
         )
         assert returns_response.status_code == status.HTTP_200_OK
@@ -145,5 +169,8 @@ def test_returns_overview_includes_reasons(client, db_session):
         assert processed is not None
         assert processed["processed_by_id"] == user_id
         assert "Venta #" in processed["reference_label"]
+        assert processed["disposition"] == "defectuoso"
+        assert processed["warehouse_id"] == defective_store_id
     finally:
         settings.enable_purchases_sales = original_flag
+        settings.defective_returns_store_id = original_defective_store
