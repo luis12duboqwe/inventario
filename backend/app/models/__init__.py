@@ -421,6 +421,33 @@ class ProductVariant(Base):
         cascade="all, delete-orphan",
     )
 
+    @property
+    def store_id(self) -> int:
+        """Identificador de la sucursal propietaria del dispositivo."""
+
+        device = self.device
+        if device is None:  # pragma: no cover - protección defensiva
+            raise AttributeError("La variante no tiene un dispositivo asociado")
+        return device.store_id
+
+    @property
+    def device_sku(self) -> str:
+        """SKU del dispositivo asociado."""
+
+        device = self.device
+        if device is None:  # pragma: no cover - protección defensiva
+            raise AttributeError("La variante no tiene un dispositivo asociado")
+        return device.sku
+
+    @property
+    def device_name(self) -> str:
+        """Nombre del dispositivo asociado."""
+
+        device = self.device
+        if device is None:  # pragma: no cover - protección defensiva
+            raise AttributeError("La variante no tiene un dispositivo asociado")
+        return device.name
+
 
 class ProductBundle(Base):
     __tablename__ = "product_bundles"
@@ -496,6 +523,33 @@ class ProductBundleItem(Base):
     variant: Mapped[Optional["ProductVariant"]] = relationship(
         "ProductVariant", back_populates="bundle_items"
     )
+
+    @property
+    def device_sku(self) -> str:
+        """SKU del dispositivo incluido en el combo."""
+
+        device = self.device
+        if device is None:  # pragma: no cover - protección defensiva
+            raise AttributeError("El artículo del combo no tiene dispositivo asociado")
+        return device.sku
+
+    @property
+    def device_name(self) -> str:
+        """Nombre del dispositivo incluido en el combo."""
+
+        device = self.device
+        if device is None:  # pragma: no cover - protección defensiva
+            raise AttributeError("El artículo del combo no tiene dispositivo asociado")
+        return device.name
+
+    @property
+    def variant_name(self) -> str | None:
+        """Nombre de la variante asociada, si existe."""
+
+        variant = self.variant
+        if variant is None:
+            return None
+        return variant.name
 
 
 class PriceList(Base):
