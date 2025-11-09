@@ -250,6 +250,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    enable_price_lists: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "ENABLE_PRICE_LISTS",
+                "SOFTMOBILE_ENABLE_PRICE_LISTS",
+            ),
+        ),
+    ]
     enable_analytics_adv: Annotated[
         bool,
         Field(
@@ -485,6 +495,7 @@ class Settings(BaseSettings):
         "enable_catalog_pro",
         "enable_transfers",
         "enable_purchases_sales",
+        "enable_price_lists",
         "enable_analytics_adv",
         "enable_2fa",
         "enable_hybrid_prep",

@@ -1,3 +1,12 @@
+import PageHeader from "../../../components/layout/PageHeader";
+import { useInventoryLayout } from "./context/InventoryLayoutContext";
+import PriceLists from "../../catalog/components/PriceLists";
+
+function InventoryPriceListsPage(): JSX.Element {
+  const { module } = useInventoryLayout();
+  const subtitle = module.selectedStore
+    ? `Define precios corporativos personalizados para ${module.selectedStore.name}.`
+    : "Selecciona una sucursal para filtrar listas específicas o administra listas globales.";
 import { ShieldAlert } from "lucide-react";
 
 import PageHeader from "../../../components/layout/PageHeader";
@@ -40,6 +49,8 @@ function InventoryPriceListsPage(): JSX.Element {
     <div className="inventory-price-lists-page">
       <PageHeader
         title="Listas de precios"
+        subtitle={subtitle}
+      />
         subtitle={
           selectedStore
             ? `Gestiona ajustes de precios vinculados a ${selectedStore.name}.`

@@ -447,15 +447,23 @@ class DeviceResponse(DeviceBase):
 
 
 class PriceListBase(BaseModel):
+    """Información común de una lista de precios."""
+
     name: str = Field(
         ...,
         min_length=3,
         max_length=120,
+        description="Nombre visible para identificar la lista de precios.",
         description="Nombre visible de la lista de precios.",
     )
     description: str | None = Field(
         default=None,
         max_length=500,
+        description="Descripción opcional del alcance o uso de la lista.",
+    )
+    is_active: bool = Field(
+        default=True,
+        description="Indica si la lista está habilitada para resolver precios.",
         description="Descripción interna para identificar la lista.",
     )
     priority: int = Field(
@@ -471,11 +479,30 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
+        description="Identificador de la sucursal asociada, cuando aplica.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
         default=None,
         ge=1,
+        description="Identificador del cliente asociado, cuando aplica.",
+    )
+    currency: str = Field(
+        default="MXN",
+        min_length=3,
+        max_length=10,
+        description="Moneda en la que se expresan los precios.",
+    )
+    valid_from: date | None = Field(
+        default=None,
+        description="Fecha a partir de la cual la lista entra en vigor.",
+    )
+    valid_until: date | None = Field(
+        default=None,
+        description="Fecha límite de vigencia de la lista de precios.",
+    )
+
+    @field_validator("name")
         description="Cliente corporativo preferente ligado a la lista.",
     )
     starts_at: datetime | None = Field(
@@ -492,17 +519,84 @@ class PriceListBase(BaseModel):
     def _normalize_name(cls, value: str) -> str:
         normalized = value.strip()
         if len(normalized) < 3:
+            raise ValueError("El nombre debe tener al menos 3 caracteres.")
+        return normalized
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("currency")
+    @classmethod
+    def _normalize_currency(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe tener al menos 3 caracteres.")
             raise ValueError("El nombre de la lista debe tener al menos 3 caracteres.")
         return normalized
 
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListBase":
+        if (
+            self.valid_from
+            and self.valid_until
+            and self.valid_from > self.valid_until
+        ):
+            raise ValueError(
+                "La fecha de inicio no puede ser posterior a la fecha de fin."
+            )
         if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
             raise ValueError("La fecha de término debe ser posterior al inicio.")
         return self
 
 
 class PriceListCreate(PriceListBase):
+    """Carga útil para crear una lista de precios."""
+
+
+class PriceListUpdate(BaseModel):
+    """Campos disponibles para actualizar una lista de precios."""
+
+    name: str | None = Field(default=None, min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    is_active: bool | None = Field(default=None)
+    store_id: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+    currency: str | None = Field(default=None, min_length=3, max_length=10)
+    valid_from: date | None = Field(default=None)
+    valid_until: date | None = Field(default=None)
+
+    @field_validator("name")
+    @classmethod
+    def _normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if normalized and len(normalized) < 3:
+            raise ValueError("El nombre debe tener al menos 3 caracteres.")
+        return normalized or None
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("currency")
+    @classmethod
+    def _normalize_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe tener al menos 3 caracteres.")
+        return normalized
     pass
 
 
@@ -519,6 +613,13 @@ class PriceListUpdate(BaseModel):
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListUpdate":
         if (
+            self.valid_from
+            and self.valid_until
+            and self.valid_from > self.valid_until
+        ):
+            raise ValueError(
+                "La fecha de inicio no puede ser posterior a la fecha de fin."
+            )
             self.starts_at is not None
             and self.ends_at is not None
             and self.ends_at <= self.starts_at
@@ -528,6 +629,23 @@ class PriceListUpdate(BaseModel):
 
 
 class PriceListItemBase(BaseModel):
+    """Definición de un precio para un producto dentro de una lista."""
+
+    device_id: int = Field(
+        ...,
+        ge=1,
+        description="Identificador del dispositivo dentro del catálogo.",
+    )
+    price: Decimal = Field(
+        ...,
+        gt=Decimal("0"),
+        description="Precio base asignado al dispositivo.",
+    )
+    discount_percentage: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        le=Decimal("100"),
+        description="Descuento porcentual adicional aplicado al precio base.",
     device_id: int = Field(
         ...,
         ge=1,
@@ -547,6 +665,44 @@ class PriceListItemBase(BaseModel):
     notes: str | None = Field(
         default=None,
         max_length=500,
+        description="Notas internas sobre la regla de precios.",
+    )
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class PriceListItemCreate(PriceListItemBase):
+    """Carga útil para agregar un producto a una lista de precios."""
+
+
+class PriceListItemUpdate(BaseModel):
+    """Campos disponibles para actualizar un precio de catálogo."""
+
+    price: Decimal | None = Field(default=None, gt=Decimal("0"))
+    discount_percentage: Decimal | None = Field(
+        default=None, ge=Decimal("0"), le=Decimal("100")
+    )
+    notes: str | None = Field(default=None, max_length=500)
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _ensure_valid_price(self) -> "PriceListItemUpdate":
+        if self.price is not None and self.price <= Decimal("0"):
+            raise ValueError("El precio debe ser mayor a cero.")
+        return self
         description="Comentarios internos sobre el ajuste de precio.",
     )
 
@@ -592,6 +748,16 @@ class PriceListItemResponse(PriceListItemBase):
     def _serialize_price(cls, value: Decimal) -> float:
         return float(value)
 
+    @field_serializer("discount_percentage")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class PriceListResponse(PriceListBase):
+    id: int
 
 class PriceListResponse(PriceListBase):
     id: int
@@ -602,6 +768,48 @@ class PriceListResponse(PriceListBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class PriceResolution(BaseModel):
+    """Resultado de resolver un precio con base en listas disponibles."""
+
+    device_id: int = Field(..., ge=1)
+    price_list_id: int | None = Field(default=None, ge=1)
+    price_list_name: str | None = Field(default=None, max_length=120)
+    scope: Literal[
+        "store_customer",
+        "customer",
+        "store",
+        "global",
+        "fallback",
+    ] = Field(..., description="Ámbito de la lista aplicada al cálculo.")
+    source: Literal["price_list", "fallback"] = Field(
+        ..., description="Origen del precio devuelto."
+    )
+    currency: str = Field(..., min_length=3, max_length=10)
+    base_price: Decimal = Field(..., ge=Decimal("0"))
+    discount_percentage: Decimal | None = Field(
+        default=None, ge=Decimal("0"), le=Decimal("100")
+    )
+    final_price: Decimal = Field(..., ge=Decimal("0"))
+    valid_from: date | None = None
+    valid_until: date | None = None
+
+    @field_serializer("base_price")
+    @classmethod
+    def _serialize_base_price(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("discount_percentage")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+    @field_serializer("final_price")
+    @classmethod
+    def _serialize_final_price(cls, value: Decimal) -> float:
+        return float(value)
 
 class PriceEvaluationRequest(BaseModel):
     device_id: int = Field(..., ge=1)
@@ -5295,6 +5503,15 @@ __all__ = [
     "POSSessionSummary",
     "POSTaxInfo",
     "POSReturnItemRequest",
+    "PriceListBase",
+    "PriceListCreate",
+    "PriceListItemBase",
+    "PriceListItemCreate",
+    "PriceListItemResponse",
+    "PriceListItemUpdate",
+    "PriceListResponse",
+    "PriceListUpdate",
+    "PriceResolution",
     "POSReturnRequest",
     "POSReturnResponse",
     "POSSaleDetailResponse",

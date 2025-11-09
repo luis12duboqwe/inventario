@@ -208,7 +208,7 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 2. Activa el entorno virtual con `source .venv/bin/activate` antes de ejecutar comandos de backend.
 3. Inicia el backend con `uvicorn backend.main:app --reload --port 8000` y, en otra terminal, ejecuta `npm run dev -- --host --port 5173` dentro de `frontend/` para exponer la interfaz.
 4. El archivo `devcontainer.json` reenvía automáticamente los puertos 8000 (API FastAPI) y 5173 (Vite) para que se puedan previsualizar desde la interfaz de Codespaces.
-5. Los _feature flags_ corporativos (`SOFTMOBILE_ENABLE_*` y `VITE_SOFTMOBILE_ENABLE_*`) se cargan automáticamente en el contenedor, habilitando catálogo pro, transferencias, compras/ventas, analítica avanzada y modo híbrido sin configuraciones manuales.
+5. Los _feature flags_ corporativos (`SOFTMOBILE_ENABLE_*` y `VITE_SOFTMOBILE_ENABLE_*`) se cargan automáticamente en el contenedor, habilitando catálogo pro, transferencias, compras/ventas, listas de precios, analítica avanzada y modo híbrido sin configuraciones manuales.
 
 > El contenedor marca el repositorio como `safe.directory` de Git durante el _postCreate_ para evitar advertencias al ejecutar comandos como `git status` dentro de Codespaces.
 
@@ -813,6 +813,7 @@ requirements.txt
    | `SOFTMOBILE_SYNC_MAX_ATTEMPTS`           | Intentos máximos antes de dejar un evento en estado fallido             | `5`                                    |
    | `SOFTMOBILE_ENABLE_SCHEDULER`            | Activa/desactiva tareas periódicas                                      | `1`                                    |
    | `SOFTMOBILE_ENABLE_BACKUP_SCHEDULER`     | Controla los respaldos automáticos                                      | `1`                                    |
+   | `SOFTMOBILE_ENABLE_PRICE_LISTS`          | Habilita el router `/price-lists` y la resolución de listas condicionadas | `0`                                    |
    | `SOFTMOBILE_ENABLE_PRICE_LISTS`          | Expone el router `/pricing` para listas de precios priorizadas          | `0`                                    |
    | `SOFTMOBILE_BACKUP_INTERVAL_SECONDS`     | Intervalo de respaldos automáticos                                      | `43200` (12 horas)                     |
    | `SOFTMOBILE_BACKUP_DIR`                  | Carpeta destino de los respaldos                                        | `./backups`                            |
@@ -933,6 +934,8 @@ La ejecución mostrará la ruta final de hooks (`.githooks`) y recordará que la
   - `SOFTMOBILE_ENABLE_CATALOG_PRO=1`
   - `SOFTMOBILE_ENABLE_TRANSFERS=1`
   - `SOFTMOBILE_ENABLE_PURCHASES_SALES=1`
+  - `SOFTMOBILE_ENABLE_PRICE_LISTS=0`
+  - `SOFTMOBILE_ENABLE_ANALYTICS_ADV=1`
   - `SOFTMOBILE_ENABLE_ANALYTICS_ADV=1`
   - `SOFTMOBILE_ENABLE_PRICE_LISTS=0`
   - `SOFTMOBILE_ENABLE_2FA=0`
