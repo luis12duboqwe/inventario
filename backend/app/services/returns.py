@@ -1,8 +1,10 @@
 """Servicios de consulta y auditoría de devoluciones."""
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Sequence
 
 from sqlalchemy import func, select
@@ -51,6 +53,36 @@ def _customer_display_name(sale: models.Sale | None) -> str | None:
     return None
 
 
+def _to_decimal(value: Decimal | float | int | None) -> Decimal:
+    if isinstance(value, Decimal):
+        return value
+    if value is None:
+        return Decimal("0")
+    return Decimal(str(value))
+
+
+def _sale_return_amount(sale_return: models.SaleReturn) -> Decimal:
+    sale = sale_return.sale
+    if sale is None:
+        return Decimal("0")
+    sale_item = next(
+        (item for item in sale.items if item.device_id == sale_return.device_id),
+        None,
+    )
+    if sale_item is None or sale_item.quantity <= 0:
+        return Decimal("0")
+    unit_total = _to_decimal(sale_item.total_line)
+    unit_quantity = Decimal(sale_item.quantity)
+    if unit_quantity <= 0:
+        return Decimal("0")
+    unit_price = (unit_total / unit_quantity).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    return (unit_price * Decimal(sale_return.quantity)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
 def _serialize_sale_return(
     sale_return: models.SaleReturn,
 ) -> schemas.ReturnRecord:
@@ -58,6 +90,8 @@ def _serialize_sale_return(
     store = sale.store if sale else None
     device = sale_return.device
     processed_by = sale_return.processed_by
+    refund_amount = _sale_return_amount(sale_return)
+    payment_method = sale.payment_method if sale else None
     return schemas.ReturnRecord(
         id=sale_return.id,
         type=schemas.ReturnRecordType.SALE,
@@ -73,6 +107,8 @@ def _serialize_sale_return(
         processed_by_name=_user_display_name(processed_by),
         partner_name=_customer_display_name(sale),
         occurred_at=sale_return.created_at,
+        refund_amount=refund_amount,
+        payment_method=payment_method,
     )
 
 
@@ -137,9 +173,9 @@ def _list_sale_returns(
     filters: _ReturnFilters,
     limit: int,
     offset: int,
-) -> Sequence[schemas.ReturnRecord]:
+) -> tuple[list[schemas.ReturnRecord], dict[str, Decimal], Decimal]:
     if filters.kind is not None and filters.kind != schemas.ReturnRecordType.SALE:
-        return []
+        return [], {}, Decimal("0")
 
     fetch_limit = limit + offset
     statement = (
@@ -147,6 +183,7 @@ def _list_sale_returns(
         .options(
             joinedload(models.SaleReturn.sale).joinedload(models.Sale.store),
             joinedload(models.SaleReturn.sale).joinedload(models.Sale.customer),
+            joinedload(models.SaleReturn.sale).joinedload(models.Sale.items),
             joinedload(models.SaleReturn.device),
             joinedload(models.SaleReturn.processed_by),
         )
@@ -158,8 +195,22 @@ def _list_sale_returns(
         statement = statement.join(models.Sale).where(
             models.Sale.store_id == filters.store_id
         )
-    sale_returns = db.scalars(statement).all()
-    return [_serialize_sale_return(item) for item in sale_returns]
+    sale_returns = db.scalars(statement).unique().all()
+    records: list[schemas.ReturnRecord] = []
+    refunds_by_method: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    refund_total = Decimal("0")
+    for sale_return in sale_returns:
+        record = _serialize_sale_return(sale_return)
+        records.append(record)
+        if record.payment_method is not None and record.refund_amount is not None:
+            method_key = record.payment_method.value
+            refunds_by_method[method_key] = (
+                refunds_by_method[method_key] + record.refund_amount
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            refund_total = (refund_total + record.refund_amount).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+    return records, dict(refunds_by_method), refund_total
 
 
 def _list_purchase_returns(
@@ -218,7 +269,9 @@ def list_returns(
     sale_count = _count_sale_returns(db, filters)
     purchase_count = _count_purchase_returns(db, filters)
 
-    sale_returns = _list_sale_returns(db, filters, limit, offset)
+    sale_returns, refunds_by_method, refund_total_amount = _list_sale_returns(
+        db, filters, limit, offset
+    )
     purchase_returns = _list_purchase_returns(db, filters, limit, offset)
 
     combined = _merge_returns(sale_returns, purchase_returns)
@@ -228,6 +281,8 @@ def list_returns(
         total=sale_count + purchase_count,
         sales=sale_count,
         purchases=purchase_count,
+        refunds_by_method=refunds_by_method,
+        refund_total_amount=refund_total_amount,
     )
     return schemas.ReturnsOverview(items=list(paginated), totals=totals)
 

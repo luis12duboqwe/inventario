@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { PurchaseOrder, ReturnRecord, Sale, Store } from "../../../api";
+import type {
+  PurchaseOrder,
+  ReturnRecord,
+  ReturnsTotals,
+  Sale,
+  Store,
+} from "../../../api";
 import {
   listPurchaseOrders,
   listReturns,
@@ -47,6 +53,14 @@ const initialSaleReturn: SaleReturnForm = {
   reason: "Reingreso cliente",
 };
 
+const initialHistoryTotals: ReturnsTotals = {
+  total: 0,
+  sales: 0,
+  purchases: 0,
+  refunds_by_method: {},
+  refund_total_amount: 0,
+};
+
 function Returns({ token, stores, defaultStoreId = null, onInventoryRefresh }: Props) {
   // Para evitar setState en efectos cuando cambia defaultStoreId,
   // se remonta un subcomponente con key basada en el defaultStoreId.
@@ -73,8 +87,17 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
   const [message, setMessage] = useState<string | null>(null);
   const [historyStoreId, setHistoryStoreId] = useState<number | null>(defaultStoreId);
   const [history, setHistory] = useState<ReturnRecord[]>([]);
-  const [historyTotals, setHistoryTotals] = useState({ total: 0, sales: 0, purchases: 0 });
+  const [historyTotals, setHistoryTotals] = useState<ReturnsTotals>(initialHistoryTotals);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  const formatCurrency = useCallback(
+    (value: number) =>
+      value.toLocaleString("es-MX", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    [],
+  );
 
   const selectedPurchaseOrder = useMemo(
     () => purchaseOrders.find((order) => order.id === purchaseForm.orderId) ?? null,
@@ -135,7 +158,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
           limit: 25,
         });
         setHistory(overview.items);
-        setHistoryTotals(overview.totals);
+        setHistoryTotals(overview.totals ?? initialHistoryTotals);
       } catch (err) {
         setError(
           err instanceof Error
@@ -430,7 +453,19 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
             <span>Total: {historyTotals.total}</span>
             <span>Clientes: {historyTotals.sales}</span>
             <span>Proveedores: {historyTotals.purchases}</span>
+            <span>
+              Reembolsos: ${formatCurrency(historyTotals.refund_total_amount ?? 0)}
+            </span>
           </div>
+          {Object.keys(historyTotals.refunds_by_method ?? {}).length > 0 ? (
+            <div className="returns-history__refunds muted-text" aria-live="polite">
+              {Object.entries(historyTotals.refunds_by_method).map(([method, amount]) => (
+                <span key={method}>
+                  {method}: ${formatCurrency(amount ?? 0)}
+                </span>
+              ))}
+            </div>
+          ) : null}
           {historyLoading ? (
             <div className="table-wrapper" role="status" aria-busy="true">
               <p>Cargando historial de devoluciones…</p>

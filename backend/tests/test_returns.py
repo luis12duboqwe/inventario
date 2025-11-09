@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from decimal import Decimal, ROUND_HALF_UP
+
+import pytest
 from fastapi import status
 from sqlalchemy import select
 
@@ -145,5 +148,26 @@ def test_returns_overview_includes_reasons(client, db_session):
         assert processed is not None
         assert processed["processed_by_id"] == user_id
         assert "Venta #" in processed["reference_label"]
+
+        sale_item = db_session.execute(
+            select(models.SaleItem).where(
+                models.SaleItem.sale_id == sale_id,
+                models.SaleItem.device_id == device_id,
+            )
+        ).scalar_one()
+        unit_total = Decimal(sale_item.total_line)
+        unit_quantity = Decimal(sale_item.quantity)
+        expected_refund = (unit_total / unit_quantity).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        assert processed["payment_method"] == "EFECTIVO"
+        assert processed["refund_amount"] == pytest.approx(float(expected_refund))
+        assert payload["totals"]["refund_total_amount"] == pytest.approx(
+            float(expected_refund)
+        )
+        assert payload["totals"]["refunds_by_method"]["EFECTIVO"] == pytest.approx(
+            float(expected_refund)
+        )
     finally:
         settings.enable_purchases_sales = original_flag

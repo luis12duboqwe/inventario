@@ -61,6 +61,8 @@ describe("Returns", () => {
           processed_by_name: "Operador Uno",
           partner_name: "María Pérez",
           occurred_at: new Date("2025-02-01T12:00:00Z").toISOString(),
+          refund_amount: 120,
+          payment_method: "EFECTIVO",
         },
         {
           id: 2,
@@ -79,7 +81,13 @@ describe("Returns", () => {
           occurred_at: new Date("2025-02-01T10:00:00Z").toISOString(),
         },
       ],
-      totals: { total: 2, sales: 1, purchases: 1 },
+      totals: {
+        total: 2,
+        sales: 1,
+        purchases: 1,
+        refunds_by_method: { EFECTIVO: 120 },
+        refund_total_amount: 120,
+      },
     });
   });
 
@@ -116,6 +124,8 @@ describe("Returns", () => {
     expect(screen.getByText("Total: 2")).toBeInTheDocument();
     expect(screen.getByText("Clientes: 1")).toBeInTheDocument();
     expect(screen.getByText("Proveedores: 1")).toBeInTheDocument();
+    expect(screen.getByText("Reembolsos: $120.00")).toBeInTheDocument();
+    expect(screen.getByText("EFECTIVO: $120.00")).toBeInTheDocument();
     expect(screen.getByText("Cliente arrepentido")).toBeInTheDocument();
     expect(screen.getByText("Proveedor defectuoso")).toBeInTheDocument();
     expect(screen.getAllByText("Cliente")).not.toHaveLength(0);

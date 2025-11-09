@@ -906,6 +906,7 @@ export type Sale = {
   cash_session?: CashSession | null;
   items: SaleItem[];
   returns: SaleReturn[];
+  payment_breakdown?: Record<string, number>;
   store?: SaleStoreSummary | null;
   performed_by?: SaleUserSummary | null;
 };
@@ -976,12 +977,16 @@ export type ReturnRecord = {
   processed_by_name?: string | null;
   partner_name?: string | null;
   occurred_at: string;
+  refund_amount?: number | null;
+  payment_method?: PaymentMethod | string | null;
 };
 
 export type ReturnsTotals = {
   total: number;
   sales: number;
   purchases: number;
+  refunds_by_method: Record<string, number>;
+  refund_total_amount: number;
 };
 
 export type ReturnsOverview = {
@@ -1237,6 +1242,8 @@ export type PosHardwareSettings = {
   printers: PosPrinterSettings[];
   cash_drawer: PosCashDrawerSettings;
   customer_display: PosCustomerDisplaySettings;
+};
+
 export type PosTerminalConfig = {
   id: string;
   label: string;
