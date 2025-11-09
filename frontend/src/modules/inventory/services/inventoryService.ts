@@ -22,6 +22,14 @@ import {
   getInventoryValueReport,
   getSupplierBatchOverview,
   getTopProductsReport,
+  getProductVariants,
+  getProductBundles,
+  createProductVariant,
+  updateProductVariant,
+  archiveProductVariant,
+  createProductBundle,
+  updateProductBundle,
+  archiveProductBundle,
   importStoreDevicesCsv,
   createInventoryReservation,
   renewInventoryReservation,
@@ -47,11 +55,58 @@ import type {
   MovementInput,
   PaginatedResponse,
   SupplierBatchOverviewItem,
+  ProductVariant,
+  ProductVariantCreateInput,
+  ProductVariantUpdateInput,
+  ProductBundle,
+  ProductBundleCreateInput,
+  ProductBundleUpdateInput,
   TopProductsReport,
 } from "../../../api";
 
 export const inventoryService = {
   fetchDevices: getDevices,
+  fetchVariants: (
+    token: string,
+    params: Parameters<typeof getProductVariants>[1] = {},
+  ): Promise<ProductVariant[]> => getProductVariants(token, params),
+  createVariant: (
+    token: string,
+    deviceId: number,
+    payload: ProductVariantCreateInput,
+    reason: string,
+  ): Promise<ProductVariant> => createProductVariant(token, deviceId, payload, reason),
+  updateVariant: (
+    token: string,
+    variantId: number,
+    payload: ProductVariantUpdateInput,
+    reason: string,
+  ): Promise<ProductVariant> => updateProductVariant(token, variantId, payload, reason),
+  archiveVariant: (
+    token: string,
+    variantId: number,
+    reason: string,
+  ): Promise<ProductVariant> => archiveProductVariant(token, variantId, reason),
+  fetchBundles: (
+    token: string,
+    params: Parameters<typeof getProductBundles>[1] = {},
+  ): Promise<ProductBundle[]> => getProductBundles(token, params),
+  createBundle: (
+    token: string,
+    payload: ProductBundleCreateInput,
+    reason: string,
+  ): Promise<ProductBundle> => createProductBundle(token, payload, reason),
+  updateBundle: (
+    token: string,
+    bundleId: number,
+    payload: ProductBundleUpdateInput,
+    reason: string,
+  ): Promise<ProductBundle> => updateProductBundle(token, bundleId, payload, reason),
+  archiveBundle: (
+    token: string,
+    bundleId: number,
+    reason: string,
+  ): Promise<ProductBundle> => archiveProductBundle(token, bundleId, reason),
   registerMovement: (
     token: string,
     storeId: number,

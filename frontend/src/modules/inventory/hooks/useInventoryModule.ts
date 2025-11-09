@@ -461,6 +461,8 @@ export function useInventoryModule() {
   return {
     token: dashboard.token,
     enableCatalogPro: dashboard.enableCatalogPro,
+    enableVariants: dashboard.enableVariants,
+    enableBundles: dashboard.enableBundles,
     stores: dashboard.stores,
     selectedStoreId: dashboard.selectedStoreId,
     setSelectedStoreId: dashboard.setSelectedStoreId,

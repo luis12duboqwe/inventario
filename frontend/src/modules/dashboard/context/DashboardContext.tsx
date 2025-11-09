@@ -66,6 +66,7 @@ type DashboardContextValue = {
   enableTwoFactor: boolean;
   enableHybridPrep: boolean;
   enablePriceLists: boolean;
+  enableVariants: boolean;
   enableBundles: boolean;
   enableDte: boolean;
   compactMode: boolean;
@@ -155,6 +156,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     twoFactor: enableTwoFactor,
     hybridPrep: enableHybridPrep,
     priceLists: enablePriceLists,
+    variants: enableVariants,
     bundles: enableBundles,
     dte: enableDte,
   } = featureFlags;
@@ -930,6 +932,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableTwoFactor,
       enableHybridPrep,
       enablePriceLists,
+      enableVariants,
       enableBundles,
       enableDte,
       compactMode: compactModeState,
@@ -1005,6 +1008,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableCatalogPro,
       enableHybridPrep,
       enableBundles,
+      enableVariants,
       enablePriceLists,
       enablePurchasesSales,
       enableTransfers,

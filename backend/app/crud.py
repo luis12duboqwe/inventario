@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from sqlalchemy import and_, case, cast, desc, func, literal, or_, select, tuple_, String
 from sqlalchemy.exc import IntegrityError, NoResultFound
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql import ColumnElement, Select
 
 from backend.core.logging import logger as core_logger
@@ -5593,21 +5593,387 @@ def create_device(
 
 
 def get_device(db: Session, store_id: int, device_id: int) -> models.Device:
-    statement = select(models.Device).where(
-        models.Device.id == device_id,
-        models.Device.store_id == store_id,
+    statement = (
+        select(models.Device)
+        .options(
+            joinedload(models.Device.identifier),
+            selectinload(models.Device.variants),
+        )
+        .where(
+            models.Device.id == device_id,
+            models.Device.store_id == store_id,
+        )
     )
     try:
-        return db.scalars(statement).one()
+        return db.scalars(statement).unique().one()
     except NoResultFound as exc:
         raise LookupError("device_not_found") from exc
 
 
 def get_device_global(db: Session, device_id: int) -> models.Device:
-    device = db.get(models.Device, device_id)
-    if device is None:
-        raise LookupError("device_not_found")
-    return device
+    statement = (
+        select(models.Device)
+        .options(
+            joinedload(models.Device.identifier),
+            selectinload(models.Device.variants),
+        )
+        .where(models.Device.id == device_id)
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("device_not_found") from exc
+
+
+def list_product_variants(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    device_id: int | None = None,
+    include_inactive: bool = False,
+) -> list[models.ProductVariant]:
+    statement = (
+        select(models.ProductVariant)
+        .options(joinedload(models.ProductVariant.device))
+        .order_by(models.ProductVariant.variant_sku.asc())
+    )
+    if device_id is not None:
+        statement = statement.where(models.ProductVariant.device_id == device_id)
+    if store_id is not None:
+        statement = statement.join(models.ProductVariant.device).where(
+            models.Device.store_id == store_id
+        )
+    if not include_inactive:
+        statement = statement.where(models.ProductVariant.is_active.is_(True))
+    return list(db.scalars(statement).unique())
+
+
+def get_product_variant(db: Session, variant_id: int) -> models.ProductVariant:
+    statement = (
+        select(models.ProductVariant)
+        .options(joinedload(models.ProductVariant.device))
+        .where(models.ProductVariant.id == variant_id)
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("product_variant_not_found") from exc
+
+
+def _unset_default_variant(db: Session, device_id: int, keep_id: int | None = None) -> None:
+    query = db.query(models.ProductVariant).filter(
+        models.ProductVariant.device_id == device_id
+    )
+    if keep_id is not None:
+        query = query.filter(models.ProductVariant.id != keep_id)
+    query.update({"is_default": False}, synchronize_session=False)
+
+
+def create_product_variant(
+    db: Session,
+    device_id: int,
+    payload: schemas.ProductVariantCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductVariant:
+    device = get_device_global(db, device_id)
+    payload_data = payload.model_dump()
+    if payload_data.get("unit_price_override") is not None:
+        payload_data["unit_price_override"] = _to_decimal(
+            payload_data["unit_price_override"]
+        )
+    with transactional_session(db):
+        variant = models.ProductVariant(device_id=device.id, **payload_data)
+        db.add(variant)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("product_variant_conflict") from exc
+        if variant.is_default:
+            _unset_default_variant(db, device.id, keep_id=variant.id)
+        db.refresh(variant)
+
+        _log_action(
+            db,
+            action="product_variant_created",
+            entity_type="product_variant",
+            entity_id=str(variant.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({
+                "device_id": device.id,
+                "variant_sku": variant.variant_sku,
+            }),
+        )
+        flush_session(db)
+        db.refresh(variant)
+    return variant
+
+
+def update_product_variant(
+    db: Session,
+    variant_id: int,
+    payload: schemas.ProductVariantUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductVariant:
+    variant = get_product_variant(db, variant_id)
+    updates = payload.model_dump(exclude_unset=True)
+    sanitized: dict[str, Any] = {}
+    for field, value in updates.items():
+        if field == "unit_price_override" and value is not None:
+            sanitized[field] = _to_decimal(value)
+        else:
+            sanitized[field] = value
+    if not sanitized:
+        return variant
+
+    with transactional_session(db):
+        for field, value in sanitized.items():
+            setattr(variant, field, value)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("product_variant_conflict") from exc
+        if sanitized.get("is_default"):
+            _unset_default_variant(db, variant.device_id, keep_id=variant.id)
+        db.refresh(variant)
+
+        _log_action(
+            db,
+            action="product_variant_updated",
+            entity_type="product_variant",
+            entity_id=str(variant.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"updated_fields": sorted(sanitized.keys())}),
+        )
+        flush_session(db)
+        db.refresh(variant)
+    return variant
+
+
+def archive_product_variant(
+    db: Session,
+    variant_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductVariant:
+    variant = get_product_variant(db, variant_id)
+    if not variant.is_active:
+        return variant
+    with transactional_session(db):
+        variant.is_active = False
+        flush_session(db)
+        db.refresh(variant)
+
+        _log_action(
+            db,
+            action="product_variant_archived",
+            entity_type="product_variant",
+            entity_id=str(variant.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"device_id": variant.device_id}),
+        )
+        flush_session(db)
+        db.refresh(variant)
+    return variant
+
+
+def list_product_bundles(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    include_inactive: bool = False,
+) -> list[models.ProductBundle]:
+    statement = (
+        select(models.ProductBundle)
+        .options(
+            joinedload(models.ProductBundle.store),
+            selectinload(models.ProductBundle.items).joinedload(
+                models.ProductBundleItem.device
+            ),
+            selectinload(models.ProductBundle.items).joinedload(
+                models.ProductBundleItem.variant
+            ),
+        )
+        .order_by(models.ProductBundle.bundle_sku.asc())
+    )
+    if store_id is not None:
+        statement = statement.where(models.ProductBundle.store_id == store_id)
+    if not include_inactive:
+        statement = statement.where(models.ProductBundle.is_active.is_(True))
+    return list(db.scalars(statement).unique())
+
+
+def get_product_bundle(db: Session, bundle_id: int) -> models.ProductBundle:
+    statement = (
+        select(models.ProductBundle)
+        .options(
+            joinedload(models.ProductBundle.store),
+            selectinload(models.ProductBundle.items).joinedload(
+                models.ProductBundleItem.device
+            ),
+            selectinload(models.ProductBundle.items).joinedload(
+                models.ProductBundleItem.variant
+            ),
+        )
+        .where(models.ProductBundle.id == bundle_id)
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("product_bundle_not_found") from exc
+
+
+def _build_bundle_item(
+    db: Session,
+    item: schemas.ProductBundleItemCreate,
+    *,
+    expected_store_id: int | None,
+) -> models.ProductBundleItem:
+    device = get_device_global(db, item.device_id)
+    if expected_store_id is not None and device.store_id != expected_store_id:
+        raise ValueError("bundle_device_store_mismatch")
+    variant_id = item.variant_id
+    if variant_id is not None:
+        variant = get_product_variant(db, variant_id)
+        if variant.device_id != device.id:
+            raise ValueError("bundle_variant_device_mismatch")
+    return models.ProductBundleItem(
+        device_id=device.id,
+        variant_id=variant_id,
+        quantity=item.quantity,
+    )
+
+
+def _replace_bundle_items(
+    db: Session,
+    bundle: models.ProductBundle,
+    items: Sequence[schemas.ProductBundleItemCreate],
+    *,
+    expected_store_id: int | None,
+) -> None:
+    bundle.items[:] = []
+    for item in items:
+        bundle.items.append(
+            _build_bundle_item(db, item, expected_store_id=expected_store_id)
+        )
+
+
+def create_product_bundle(
+    db: Session,
+    payload: schemas.ProductBundleCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductBundle:
+    if not payload.items:
+        raise ValueError("bundle_items_required")
+    if payload.store_id is not None:
+        get_store(db, payload.store_id)
+    data = payload.model_dump(exclude={"items"})
+    data["base_price"] = _to_decimal(data.get("base_price"))
+    with transactional_session(db):
+        bundle = models.ProductBundle(**data)
+        db.add(bundle)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("product_bundle_conflict") from exc
+        _replace_bundle_items(
+            db,
+            bundle,
+            payload.items,
+            expected_store_id=bundle.store_id,
+        )
+        flush_session(db)
+        db.refresh(bundle)
+
+        _log_action(
+            db,
+            action="product_bundle_created",
+            entity_type="product_bundle",
+            entity_id=str(bundle.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"bundle_sku": bundle.bundle_sku}),
+        )
+        flush_session(db)
+        db.refresh(bundle)
+    return bundle
+
+
+def update_product_bundle(
+    db: Session,
+    bundle_id: int,
+    payload: schemas.ProductBundleUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductBundle:
+    bundle = get_product_bundle(db, bundle_id)
+    updates = payload.model_dump(exclude_unset=True)
+    items = updates.pop("items", None)
+    if "base_price" in updates and updates["base_price"] is not None:
+        updates["base_price"] = _to_decimal(updates["base_price"])
+    if not updates and items is None:
+        return bundle
+
+    with transactional_session(db):
+        for field, value in updates.items():
+            setattr(bundle, field, value)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("product_bundle_conflict") from exc
+        target_store_id = bundle.store_id
+        if items is not None:
+            if not items:
+                raise ValueError("bundle_items_required")
+            _replace_bundle_items(
+                db,
+                bundle,
+                items,
+                expected_store_id=target_store_id,
+            )
+        flush_session(db)
+        db.refresh(bundle)
+
+        changed_fields = sorted(list(updates.keys()) + (["items"] if items is not None else []))
+        _log_action(
+            db,
+            action="product_bundle_updated",
+            entity_type="product_bundle",
+            entity_id=str(bundle.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"updated_fields": changed_fields}),
+        )
+        flush_session(db)
+        db.refresh(bundle)
+    return bundle
+
+
+def archive_product_bundle(
+    db: Session,
+    bundle_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductBundle:
+    bundle = get_product_bundle(db, bundle_id)
+    if not bundle.is_active:
+        return bundle
+    with transactional_session(db):
+        bundle.is_active = False
+        flush_session(db)
+        db.refresh(bundle)
+
+        _log_action(
+            db,
+            action="product_bundle_archived",
+            entity_type="product_bundle",
+            entity_id=str(bundle.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"store_id": bundle.store_id}),
+        )
+        flush_session(db)
+        db.refresh(bundle)
+    return bundle
 
 
 def list_price_lists(
@@ -6677,7 +7043,10 @@ def list_devices(
     get_store(db, store_id)
     statement = (
         select(models.Device)
-        .options(joinedload(models.Device.identifier))
+        .options(
+            joinedload(models.Device.identifier),
+            selectinload(models.Device.variants),
+        )
         .where(models.Device.store_id == store_id)
     )
     if estado is not None:

@@ -180,9 +180,9 @@ export type DeviceIdentifierInput = {
 };
 
 export type Device = {
-    id: number;
-    sku: string;
-    name: string;
+  id: number;
+  sku: string;
+  name: string;
   quantity: number;
   store_id: number;
   unit_price: number;
@@ -212,6 +212,91 @@ export type Device = {
   imagen_url?: string | null;
   precio_venta?: number;
   identifier?: DeviceIdentifier | null;
+  variant_count?: number;
+  has_variants?: boolean;
+};
+
+export type ProductVariant = {
+  id: number;
+  device_id: number;
+  store_id: number;
+  name: string;
+  variant_sku: string;
+  barcode?: string | null;
+  unit_price_override?: number | null;
+  is_default: boolean;
+  is_active: boolean;
+  device_sku: string;
+  device_name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductVariantCreateInput = {
+  name: string;
+  variant_sku: string;
+  barcode?: string | null;
+  unit_price_override?: number | null;
+  is_default?: boolean;
+  is_active?: boolean;
+};
+
+export type ProductVariantUpdateInput = {
+  name?: string | null;
+  variant_sku?: string | null;
+  barcode?: string | null;
+  unit_price_override?: number | null;
+  is_default?: boolean;
+  is_active?: boolean;
+};
+
+export type ProductBundleItem = {
+  id: number;
+  device_id: number;
+  variant_id?: number | null;
+  quantity: number;
+  device_sku: string;
+  device_name: string;
+  variant_name?: string | null;
+};
+
+export type ProductBundle = {
+  id: number;
+  store_id: number | null;
+  name: string;
+  bundle_sku: string;
+  description?: string | null;
+  base_price: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  items: ProductBundleItem[];
+};
+
+export type ProductBundleItemInput = {
+  device_id: number;
+  variant_id?: number | null;
+  quantity?: number;
+};
+
+export type ProductBundleCreateInput = {
+  store_id?: number | null;
+  name: string;
+  bundle_sku: string;
+  description?: string | null;
+  base_price?: number | null;
+  is_active?: boolean;
+  items: ProductBundleItemInput[];
+};
+
+export type ProductBundleUpdateInput = {
+  store_id?: number | null;
+  name?: string | null;
+  bundle_sku?: string | null;
+  description?: string | null;
+  base_price?: number | null;
+  is_active?: boolean;
+  items?: ProductBundleItemInput[];
 };
 
 export type CatalogDevice = Device & { store_name: string };
@@ -2935,6 +3020,144 @@ export function getDevices(
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   return requestCollection<Device>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
+}
+
+export function getProductVariants(
+  token: string,
+  params: { storeId?: number; deviceId?: number; includeInactive?: boolean } = {},
+): Promise<ProductVariant[]> {
+  const queryParams = new URLSearchParams();
+  if (typeof params.storeId === "number") {
+    queryParams.set("store_id", String(params.storeId));
+  }
+  if (typeof params.deviceId === "number") {
+    queryParams.set("device_id", String(params.deviceId));
+  }
+  if (params.includeInactive) {
+    queryParams.set("include_inactive", "true");
+  }
+  const suffix = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  return requestCollection<ProductVariant>(
+    `/inventory/variants${suffix}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function createProductVariant(
+  token: string,
+  deviceId: number,
+  payload: ProductVariantCreateInput,
+  reason: string,
+): Promise<ProductVariant> {
+  return request<ProductVariant>(
+    `/inventory/devices/${deviceId}/variants`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function updateProductVariant(
+  token: string,
+  variantId: number,
+  payload: ProductVariantUpdateInput,
+  reason: string,
+): Promise<ProductVariant> {
+  return request<ProductVariant>(
+    `/inventory/variants/${variantId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function archiveProductVariant(
+  token: string,
+  variantId: number,
+  reason: string,
+): Promise<ProductVariant> {
+  return request<ProductVariant>(
+    `/inventory/variants/${variantId}`,
+    {
+      method: "DELETE",
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function getProductBundles(
+  token: string,
+  params: { storeId?: number; includeInactive?: boolean } = {},
+): Promise<ProductBundle[]> {
+  const queryParams = new URLSearchParams();
+  if (typeof params.storeId === "number") {
+    queryParams.set("store_id", String(params.storeId));
+  }
+  if (params.includeInactive) {
+    queryParams.set("include_inactive", "true");
+  }
+  const suffix = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  return requestCollection<ProductBundle>(
+    `/inventory/bundles${suffix}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function createProductBundle(
+  token: string,
+  payload: ProductBundleCreateInput,
+  reason: string,
+): Promise<ProductBundle> {
+  return request<ProductBundle>(
+    "/inventory/bundles",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function updateProductBundle(
+  token: string,
+  bundleId: number,
+  payload: ProductBundleUpdateInput,
+  reason: string,
+): Promise<ProductBundle> {
+  return request<ProductBundle>(
+    `/inventory/bundles/${bundleId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function archiveProductBundle(
+  token: string,
+  bundleId: number,
+  reason: string,
+): Promise<ProductBundle> {
+  return request<ProductBundle>(
+    `/inventory/bundles/${bundleId}`,
+    {
+      method: "DELETE",
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
 }
 
 export function getInventoryReservations(
