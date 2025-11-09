@@ -89,3 +89,12 @@ Este documento se debe revisar tras **cada** iteración de desarrollo para valid
 1. Aprobar la inversión en infraestructura de observabilidad (stack de logs, métricas y alertas) y asignar responsables.
 2. Programar un sprint de endurecimiento de `sync_outbox` para cubrir entidades planificadas en v2.3.
 3. Publicar lineamientos corporativos de soporte remoto y analítica comparativa antes del comité de revisión trimestral.
+
+## 13. Capacidades pendientes consolidadas
+- **Monitoreo centralizado y despliegues en nube**: definir la estrategia de observabilidad para ambientes v2.3, incluyendo tableros y retención de logs antes de iniciar despliegues remotos.【F:docs/evaluacion_requerimientos.md†L23-L24】【F:docs/evaluacion_requerimientos.md†L71-L72】【F:docs/evaluacion_requerimientos.md†L89-L90】
+- **Resolución avanzada de conflictos en `sync_outbox`**: fortalecer los mecanismos de conciliación y planificar un sprint dedicado para cubrir entidades adicionales previstas en la siguiente versión.【F:docs/evaluacion_requerimientos.md†L72-L73】【F:docs/evaluacion_requerimientos.md†L90-L91】【F:README.md†L969-L970】
+- **Analítica comparativa inter-sucursal y nuevos formatos**: ampliar tableros comparativos con exportaciones adicionales (PDF/CSV) manteniendo el tema oscuro corporativo.【F:docs/evaluacion_requerimientos.md†L74-L75】【F:docs/evaluacion_requerimientos.md†L84-L85】【F:README.md†L970-L971】
+- **Lineamientos corporativos de soporte remoto para 2FA y sincronización**: documentar protocolos de atención y escalamiento para facilitar la adopción masiva de las capacidades actuales.【F:docs/evaluacion_requerimientos.md†L73-L74】【F:docs/evaluacion_requerimientos.md†L86-L87】【F:README.md†L971-L971】
+- **Evaluación de PostgreSQL administrado**: mantener el análisis de compatibilidad con proveedores administrados asegurando coexistencia con SQLite/SQLAlchemy en v2.2.0.【F:docs/evaluacion_requerimientos.md†L42-L44】【F:docs/evaluacion_requerimientos.md†L75-L75】
+- **Estabilización de advertencias React `act(...)`**: abordar las advertencias pendientes de la suite de pruebas de frontend en una iteración futura.【F:CHANGELOG.md†L64-L69】
+- **Seguimiento del patrón de validadores Pydantic**: vigilar nuevas incorporaciones de esquemas para preservar el enfoque `validator + serializer` y documentar los módulos que lo adopten.【F:README.md†L94-L103】
