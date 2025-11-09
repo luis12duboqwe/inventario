@@ -798,3 +798,96 @@ def test_pos_cash_history_requires_reason(client):
         assert ok_response.status_code == status.HTTP_200_OK
     finally:
         settings.enable_purchases_sales = original_flag
+
+def test_pos_sale_with_store_credit_breakdown(client, db_session):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    store_payload = {
+        "name": "POS Notas",
+        "location": "Guadalajara",
+        "timezone": "America/Mexico_City",
+    }
+    store_response = client.post("/stores", json=store_payload, headers=auth_headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {
+        "sku": "NC-001",
+        "name": "Dispositivo con nota",
+        "quantity": 3,
+        "unit_price": 120.0,
+        "costo_unitario": 80.0,
+        "margen_porcentaje": 15.0,
+    }
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=auth_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    customer_payload = {
+        "name": "Cliente Nota POS",
+        "phone": "+52 55 1111 5555",
+        "customer_type": "minorista",
+        "status": "activo",
+        "credit_limit": 0.0,
+        "history": [],
+    }
+    customer_response = client.post(
+        "/customers",
+        json=customer_payload,
+        headers={**auth_headers, "X-Reason": "Alta cliente POS"},
+    )
+    assert customer_response.status_code == status.HTTP_201_CREATED
+    customer_id = customer_response.json()["id"]
+
+    issue_payload = {
+        "customer_id": customer_id,
+        "amount": 120.0,
+        "notes": "Reposición venta anterior",
+    }
+    credit_response = client.post(
+        "/store-credits",
+        json=issue_payload,
+        headers={**auth_headers, "X-Reason": "Emisión nota"},
+    )
+    assert credit_response.status_code == status.HTTP_201_CREATED
+    credit_id = credit_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "customer_id": customer_id,
+        "payment_method": "NOTA_CREDITO",
+        "items": [
+            {"device_id": device_id, "quantity": 1},
+        ],
+        "confirm": True,
+        "save_as_draft": False,
+        "apply_taxes": False,
+        "payment_breakdown": {"NOTA_CREDITO": 120.0},
+        "notes": "Venta cubierta con nota",
+    }
+    sale_response = client.post(
+        "/pos/sale",
+        json=sale_payload,
+        headers={**auth_headers, "X-Reason": "Venta con nota"},
+    )
+    assert sale_response.status_code == status.HTTP_201_CREATED
+    sale_data = sale_response.json()
+    assert sale_data["status"] == "registered"
+    assert any("nota de crédito" in warning.lower() for warning in sale_data.get("warnings", []))
+
+    credits_after = client.get(
+        f"/store-credits/by-customer/{customer_id}",
+        headers={**auth_headers, "X-Reason": "Verificar saldo nota"},
+    )
+    assert credits_after.status_code == status.HTTP_200_OK
+    credit_items = credits_after.json()
+    assert credit_items[0]["id"] == credit_id
+    assert credit_items[0]["balance_amount"] == 0.0
+    assert credit_items[0]["status"] == "REDIMIDO"
+    assert len(credit_items[0]["redemptions"]) >= 1

@@ -40,8 +40,9 @@ def test_returns_overview_includes_reasons(client, db_session):
     original_flag = settings.enable_purchases_sales
     original_defective_store = settings.defective_returns_store_id
     settings.enable_purchases_sales = True
-    token, user_id = _bootstrap_admin(client, db_session)
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    try:
+        token, user_id = _bootstrap_admin(client, db_session)
+        auth_headers = {"Authorization": f"Bearer {token}"}
 
     try:
         store_response = client.post(
@@ -65,6 +66,41 @@ def test_returns_overview_includes_reasons(client, db_session):
                 "unit_price": 120.0,
                 "costo_unitario": 80.0,
                 "margen_porcentaje": 20.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        purchase_payload = {
+            "store_id": store_id,
+            "supplier": "Proveedor Central",
+            "items": [
+                {"device_id": device_id, "quantity_ordered": 5, "unit_cost": 90.0}
+            ],
+        }
+        purchase_response = client.post(
+            "/purchases",
+            json=purchase_payload,
+            headers={**auth_headers, "X-Reason": "Planeación inventario"},
+        )
+        assert purchase_response.status_code == status.HTTP_201_CREATED
+        order_id = purchase_response.json()["id"]
+
+        receive_payload = {"items": [{"device_id": device_id, "quantity": 5}]}
+        receive_response = client.post(
+            f"/purchases/{order_id}/receive",
+            json=receive_payload,
+            headers={**auth_headers, "X-Reason": "Recepción inicial"},
+        )
+        assert receive_response.status_code == status.HTTP_200_OK
+
+        defective_store_response = client.post(
+            "/stores",
+            json={
+                "name": "Almacén Defectuosos",
+                "location": "MX",
+                "timezone": "America/Mexico_City",
             },
             headers=auth_headers,
         )

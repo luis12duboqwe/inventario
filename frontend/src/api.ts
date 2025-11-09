@@ -392,7 +392,13 @@ export type InventoryAvailabilityParams = {
   limit?: number;
 };
 
-export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
+export type PaymentMethod =
+  | "EFECTIVO"
+  | "TARJETA"
+  | "TRANSFERENCIA"
+  | "OTRO"
+  | "CREDITO"
+  | "NOTA_CREDITO";
 
 export type ContactHistoryEntry = {
   timestamp: string;
@@ -489,12 +495,40 @@ export type CustomerInvoiceSummary = {
   store_id: number;
 };
 
+export type StoreCreditRedemption = {
+  id: number;
+  store_credit_id: number;
+  sale_id: number | null;
+  amount: number;
+  notes?: string | null;
+  created_at: string;
+  created_by?: string | null;
+};
+
+export type StoreCredit = {
+  id: number;
+  code: string;
+  customer_id: number;
+  issued_amount: number;
+  balance_amount: number;
+  status: "ACTIVO" | "PARCIAL" | "REDIMIDO" | "CANCELADO";
+  notes?: string | null;
+  context: Record<string, unknown>;
+  issued_at: string;
+  redeemed_at?: string | null;
+  expires_at?: string | null;
+  redemptions: StoreCreditRedemption[];
+};
+
 export type CustomerFinancialSnapshot = {
   credit_limit: number;
   outstanding_debt: number;
   available_credit: number;
   total_sales_credit: number;
   total_payments: number;
+  store_credit_issued: number;
+  store_credit_available: number;
+  store_credit_redeemed: number;
 };
 
 export type CustomerSummary = {
@@ -504,6 +538,7 @@ export type CustomerSummary = {
   invoices: CustomerInvoiceSummary[];
   payments: CustomerLedgerEntry[];
   ledger: CustomerLedgerEntry[];
+  store_credits: StoreCredit[];
 };
 
 export type CustomerPortfolioItem = {
