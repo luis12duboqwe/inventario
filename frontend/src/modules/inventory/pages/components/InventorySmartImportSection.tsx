@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import Button from "../../../../shared/components/ui/Button";
 import Loader from "../../../../components/common/Loader";
@@ -17,15 +17,18 @@ function InventorySmartImportSection() {
       smartImportLoading,
       smartImportHistory,
       smartImportHistoryLoading,
-  refreshSmartImportHistory,
-  pendingDevicesLoading,
-  refreshPendingDevices,
+      refreshSmartImportHistory,
+      pendingDevicesLoading,
+      refreshPendingDevices,
       smartPreviewDirty,
       smartFileInputRef,
       handleSmartOverrideChange,
       handleSmartPreview,
       handleSmartCommit,
       resetSmartImportContext,
+      vendorTemplates,
+      applyVendorTemplate,
+      smartImportGuideUrl,
     },
   } = useInventoryLayout();
 
@@ -35,6 +38,18 @@ function InventorySmartImportSection() {
     }
     return ["", ...smartImportHeaders];
   }, [smartImportHeaders]);
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const selectedTemplate = useMemo(
+    () => vendorTemplates.find((template) => template.id === selectedTemplateId) ?? null,
+    [selectedTemplateId, vendorTemplates],
+  );
+  const handleApplyTemplate = () => {
+    if (!selectedTemplateId) {
+      return;
+    }
+    applyVendorTemplate(selectedTemplateId);
+  };
 
   return (
     <section className="card">
@@ -46,6 +61,68 @@ function InventorySmartImportSection() {
           </p>
         </div>
       </header>
+      {vendorTemplates.length > 0 ? (
+        <div className="smart-import__assistant" aria-labelledby="smart-import-templates-title">
+          <div className="smart-import__assistant-header">
+            <div>
+              <h3 id="smart-import-templates-title">Asistentes por proveedor</h3>
+              <p className="muted-text">
+                Precarga coincidencias de columnas y descarga la plantilla oficial del proveedor seleccionado.
+              </p>
+            </div>
+            <div className="smart-import__assistant-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleApplyTemplate}
+                disabled={!selectedTemplateId}
+              >
+                Aplicar plantilla
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedTemplateId("")}
+                disabled={!selectedTemplateId}
+              >
+                Limpiar selección
+              </Button>
+            </div>
+          </div>
+          <div className="smart-import__assistant-controls">
+            <label className="smart-import__assistant-field">
+              <span>Proveedor</span>
+              <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
+                <option value="">Selecciona proveedor</option>
+                {vendorTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.proveedor}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="smart-import__assistant-links">
+              <a href={smartImportGuideUrl} target="_blank" rel="noreferrer">
+                Ver guía de formatos
+              </a>
+              {selectedTemplate?.downloads.map((download) => (
+                <a key={`${selectedTemplate.id}-${download.label}`} href={download.url} download>
+                  {download.label}
+                </a>
+              ))}
+            </div>
+          </div>
+          {selectedTemplate ? (
+            <p className="smart-import__assistant-description">{selectedTemplate.descripcion}</p>
+          ) : (
+            <p className="smart-import__assistant-placeholder muted-text">
+              Selecciona un proveedor para mostrar la descripción y los archivos de ejemplo.
+            </p>
+          )}
+        </div>
+      ) : null}
       <label className="file-input">
         <span>Archivo Excel o CSV</span>
         <input

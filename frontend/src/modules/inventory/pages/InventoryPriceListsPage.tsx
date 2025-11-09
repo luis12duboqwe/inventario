@@ -1,12 +1,3 @@
-import PageHeader from "../../../components/layout/PageHeader";
-import { useInventoryLayout } from "./context/InventoryLayoutContext";
-import PriceLists from "../../catalog/components/PriceLists";
-
-function InventoryPriceListsPage(): JSX.Element {
-  const { module } = useInventoryLayout();
-  const subtitle = module.selectedStore
-    ? `Define precios corporativos personalizados para ${module.selectedStore.name}.`
-    : "Selecciona una sucursal para filtrar listas específicas o administra listas globales.";
 import { ShieldAlert } from "lucide-react";
 
 import PageHeader from "../../../components/layout/PageHeader";
@@ -35,9 +26,9 @@ function InventoryPriceListsPage(): JSX.Element {
               Funcionalidad protegida por flag corporativa
             </p>
             <p className="inventory-price-lists-disabled__content">
-              Define la variable <code>SOFTMOBILE_ENABLE_PRICE_LISTS=1</code> en tu entorno para habilitar
-              la creación y asignación de listas. Mientras permanezca desactivada, los precios publicados
-              seguirán calculándose con el catálogo base.
+              Define la variable <code>SOFTMOBILE_ENABLE_PRICE_LISTS=1</code> en tu entorno para habilitar la creación y
+              asignación de listas. Mientras permanezca desactivada, los precios publicados seguirán calculándose con el
+              catálogo base.
             </p>
           </div>
         </div>
@@ -45,18 +36,13 @@ function InventoryPriceListsPage(): JSX.Element {
     );
   }
 
+  const subtitle = selectedStore
+    ? `Gestiona ajustes de precios vinculados a ${selectedStore.name}.`
+    : "Selecciona una sucursal para definir listas específicas.";
+
   return (
     <div className="inventory-price-lists-page">
-      <PageHeader
-        title="Listas de precios"
-        subtitle={subtitle}
-      />
-        subtitle={
-          selectedStore
-            ? `Gestiona ajustes de precios vinculados a ${selectedStore.name}.`
-            : "Selecciona una sucursal para definir listas específicas."
-        }
-      />
+      <PageHeader title="Listas de precios" subtitle={subtitle} />
 
       <PriceLists />
     </div>

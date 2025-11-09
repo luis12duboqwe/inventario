@@ -192,6 +192,9 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     handleSmartPreview: vi.fn(),
     handleSmartCommit: vi.fn(),
     resetSmartImportContext: vi.fn(),
+    vendorTemplates: [],
+    applyVendorTemplate: vi.fn(),
+    smartImportGuideUrl: "/docs/importacion/proveedores",
   },
   search: {
     inventoryQuery: "",
@@ -270,6 +273,14 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     renew: vi.fn().mockResolvedValue(undefined),
     cancel: vi.fn().mockResolvedValue(undefined),
     expiringSoon: [],
+  },
+  labeling: {
+    open: false,
+    device: null,
+    storeId: null,
+    storeName: null,
+    openLabelPrinter: vi.fn(),
+    closeLabelPrinter: vi.fn(),
   },
 });
 

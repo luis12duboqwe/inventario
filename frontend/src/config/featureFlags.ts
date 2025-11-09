@@ -22,6 +22,7 @@ export const featureFlags = {
   twoFactor: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_2FA, false),
   hybridPrep: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_HYBRID_PREP, true),
   priceLists: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_PRICE_LISTS, false),
+  variants: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_VARIANTS, false),
   bundles: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_BUNDLES, false),
   dte: coerceFlag(import.meta.env.VITE_SOFTMOBILE_ENABLE_DTE, false),
 } as const;

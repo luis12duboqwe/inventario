@@ -13,7 +13,6 @@ const InventoryMoves = lazyWithRetry(() => import("../inventory/pages/InventoryM
 const InventorySuppliers = lazyWithRetry(() => import("../inventory/pages/InventorySuppliersPage"));
 const InventoryAlerts = lazyWithRetry(() => import("../inventory/pages/InventoryAlertsPage"));
 const InventoryReservations = lazyWithRetry(() => import("../inventory/pages/InventoryReservationsPage"));
-const InventoryPriceLists = lazyWithRetry(() => import("../inventory/pages/InventoryPriceListsPage"));
 const OperationsLayout = lazyWithRetry(() => import("../operations/pages/OperationsLayout"));
 const OperationsPOS = lazyWithRetry(() => import("../operations/pages/OperationsPOS"));
 const OperationsPurchases = lazyWithRetry(() => import("../operations/pages/OperationsPurchases"));

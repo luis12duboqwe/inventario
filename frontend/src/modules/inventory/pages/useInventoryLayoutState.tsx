@@ -17,9 +17,16 @@ import type {
   DeviceImportSummary,
   DeviceListFilters,
   DeviceUpdateInput,
+  ProductVariant,
+  ProductVariantCreateInput,
+  ProductVariantUpdateInput,
+  ProductBundle,
+  ProductBundleCreateInput,
+  ProductBundleUpdateInput,
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryModule } from "../hooks/useInventoryModule";
+import { inventoryService } from "../services/inventoryService";
 import { useSmartImportManager } from "./hooks/useSmartImportManager";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import { safeArray } from "@/utils/safeValues"; // [PACK36-inventory-state]
@@ -36,11 +43,6 @@ export type InventoryTabId =
   | "proveedores"
   | "alertas"
   | "reservas";
-  | "movimientos"
-  | "proveedores"
-  | "alertas"
-  | "reservas"
-  | "listas";
 
 const INVENTORY_TABS: Array<{
   id: InventoryTabId;
@@ -49,17 +51,11 @@ const INVENTORY_TABS: Array<{
   path: string;
 }> = [
   { id: "productos", label: "Productos", icon: <Boxes size={16} aria-hidden="true" />, path: "productos" },
-  {
-    id: "listas",
-    label: "Listas de precios",
-    icon: <DollarSign size={16} aria-hidden="true" />,
-    path: "listas-precios",
-  },
+  { id: "listas", label: "Listas de precios", icon: <DollarSign size={16} aria-hidden="true" />, path: "listas" },
   { id: "movimientos", label: "Movimientos", icon: <RefreshCcw size={16} aria-hidden="true" />, path: "movimientos" },
   { id: "proveedores", label: "Proveedores", icon: <Building2 size={16} aria-hidden="true" />, path: "proveedores" },
   { id: "alertas", label: "Alertas", icon: <AlertTriangle size={16} aria-hidden="true" />, path: "alertas" },
   { id: "reservas", label: "Reservas", icon: <ShieldCheck size={16} aria-hidden="true" />, path: "reservas" },
-  { id: "listas", label: "Listas de precios", icon: <DollarSign size={16} aria-hidden="true" />, path: "listas" },
 ];
 
 export type InventoryLayoutState = {
@@ -157,6 +153,13 @@ export function useInventoryLayoutState(): InventoryLayoutState {
   const [lastImportSummary, setLastImportSummary] = useState<DeviceImportSummary | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [variantsLoading, setVariantsLoading] = useState(false);
+  const [variantsIncludeInactive, setVariantsIncludeInactive] = useState(false);
+  const [bundles, setBundles] = useState<ProductBundle[]>([]);
+  const [bundlesLoading, setBundlesLoading] = useState(false);
+  const [bundlesIncludeInactive, setBundlesIncludeInactive] = useState(false);
+
   const smartImport = useSmartImportManager({
     smartImportInventory,
     fetchSmartImportHistory,
@@ -167,6 +170,248 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     pushToast,
     setError,
   });
+
+  const refreshVariants = useCallback(async () => {
+    if (!inventoryModule.enableVariants) {
+      setVariants([]);
+      return;
+    }
+    try {
+      setVariantsLoading(true);
+      const data = await inventoryService.fetchVariants(inventoryModule.token, {
+        storeId: inventoryModule.selectedStoreId ?? undefined,
+        includeInactive: variantsIncludeInactive,
+      });
+      setVariants(data);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible obtener las variantes del inventario.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+    } finally {
+      setVariantsLoading(false);
+    }
+  }, [
+    inventoryModule.enableVariants,
+    inventoryModule.selectedStoreId,
+    inventoryModule.token,
+    pushToast,
+    setError,
+    variantsIncludeInactive,
+  ]);
+
+  const refreshBundles = useCallback(async () => {
+    if (!inventoryModule.enableBundles) {
+      setBundles([]);
+      return;
+    }
+    try {
+      setBundlesLoading(true);
+      const data = await inventoryService.fetchBundles(inventoryModule.token, {
+        storeId: inventoryModule.selectedStoreId ?? undefined,
+        includeInactive: bundlesIncludeInactive,
+      });
+      setBundles(data);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible obtener los combos configurados.";
+      setError(message);
+      pushToast({ message, variant: "error" });
+    } finally {
+      setBundlesLoading(false);
+    }
+  }, [
+    inventoryModule.enableBundles,
+    inventoryModule.selectedStoreId,
+    inventoryModule.token,
+    bundlesIncludeInactive,
+    pushToast,
+    setError,
+  ]);
+
+  useEffect(() => {
+    void refreshVariants();
+  }, [refreshVariants]);
+
+  useEffect(() => {
+    void refreshBundles();
+  }, [refreshBundles]);
+
+  const handleCreateVariant = useCallback(
+    async (deviceId: number, payload: ProductVariantCreateInput, reason: string) => {
+      if (!inventoryModule.enableVariants) {
+        return;
+      }
+      try {
+        await inventoryService.createVariant(
+          inventoryModule.token,
+          deviceId,
+          payload,
+          reason,
+        );
+        pushToast({ message: "Variante registrada correctamente.", variant: "success" });
+        await refreshVariants();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible registrar la variante.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [inventoryModule.enableVariants, inventoryModule.token, pushToast, refreshVariants, setError],
+  );
+
+  const handleUpdateVariant = useCallback(
+    async (
+      variantId: number,
+      payload: ProductVariantUpdateInput,
+      reason: string,
+    ) => {
+      if (!inventoryModule.enableVariants) {
+        return;
+      }
+      try {
+        await inventoryService.updateVariant(
+          inventoryModule.token,
+          variantId,
+          payload,
+          reason,
+        );
+        pushToast({ message: "Variante actualizada.", variant: "success" });
+        await refreshVariants();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible actualizar la variante.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [inventoryModule.enableVariants, inventoryModule.token, pushToast, refreshVariants, setError],
+  );
+
+  const handleArchiveVariant = useCallback(
+    async (variantId: number, reason: string) => {
+      if (!inventoryModule.enableVariants) {
+        return;
+      }
+      try {
+        await inventoryService.archiveVariant(
+          inventoryModule.token,
+          variantId,
+          reason,
+        );
+        pushToast({ message: "Variante archivada.", variant: "success" });
+        await refreshVariants();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible archivar la variante.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [inventoryModule.enableVariants, inventoryModule.token, pushToast, refreshVariants, setError],
+  );
+
+  const handleCreateBundle = useCallback(
+    async (payload: ProductBundleCreateInput, reason: string) => {
+      if (!inventoryModule.enableBundles) {
+        return;
+      }
+      const resolvedStoreId =
+        payload.store_id ?? inventoryModule.selectedStoreId ?? undefined;
+      const bundlePayload =
+        resolvedStoreId !== undefined ? { ...payload, store_id: resolvedStoreId } : payload;
+      try {
+        await inventoryService.createBundle(
+          inventoryModule.token,
+          bundlePayload,
+          reason,
+        );
+        pushToast({ message: "Combo creado correctamente.", variant: "success" });
+        await refreshBundles();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible registrar el combo.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [
+      inventoryModule.enableBundles,
+      inventoryModule.selectedStoreId,
+      inventoryModule.token,
+      pushToast,
+      refreshBundles,
+      setError,
+    ],
+  );
+
+  const handleUpdateBundle = useCallback(
+    async (
+      bundleId: number,
+      payload: ProductBundleUpdateInput,
+      reason: string,
+    ) => {
+      if (!inventoryModule.enableBundles) {
+        return;
+      }
+      try {
+        await inventoryService.updateBundle(
+          inventoryModule.token,
+          bundleId,
+          payload,
+          reason,
+        );
+        pushToast({ message: "Combo actualizado.", variant: "success" });
+        await refreshBundles();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible actualizar el combo.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [inventoryModule.enableBundles, inventoryModule.token, pushToast, refreshBundles, setError],
+  );
+
+  const handleArchiveBundle = useCallback(
+    async (bundleId: number, reason: string) => {
+      if (!inventoryModule.enableBundles) {
+        return;
+      }
+      try {
+        await inventoryService.archiveBundle(
+          inventoryModule.token,
+          bundleId,
+          reason,
+        );
+        pushToast({ message: "Combo archivado.", variant: "success" });
+        await refreshBundles();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible archivar el combo.";
+        setError(message);
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [inventoryModule.enableBundles, inventoryModule.token, pushToast, refreshBundles, setError],
+  );
 
   // Consumidores obtienen funcionalidades de importación inteligente desde `smartImport` a través del contexto.
 
@@ -239,6 +484,32 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     stores.forEach((store) => mapping.set(store.id, store.name));
     return mapping;
   }, [stores]);
+
+  const [labelingDevice, setLabelingDevice] = useState<Device | null>(null);
+  const [labelingStoreId, setLabelingStoreId] = useState<number | null>(null);
+  const [labelingStoreName, setLabelingStoreName] = useState<string | null>(null);
+  const [isLabelPrinterOpen, setIsLabelPrinterOpen] = useState(false);
+
+  const openLabelPrinter = useCallback(
+    (target: Device) => {
+      const resolvedStoreId = target.store_id ?? selectedStoreId ?? null;
+      setLabelingDevice(target);
+      setLabelingStoreId(resolvedStoreId);
+      const resolvedName =
+        (resolvedStoreId != null ? storeNameById.get(resolvedStoreId) : null) ??
+        target.store_name ??
+        selectedStore?.name ??
+        null;
+      setLabelingStoreName(resolvedName);
+      setIsLabelPrinterOpen(true);
+    },
+    [selectedStoreId, selectedStore, storeNameById],
+  );
+
+  const closeLabelPrinter = useCallback(() => {
+    setIsLabelPrinterOpen(false);
+    setLabelingDevice(null);
+  }, []);
 
   const highlightedDevices = useMemo(
     () => new Set(lowStockDevices.map((entry) => entry.device_id)),
@@ -803,6 +1074,14 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         resolvePendingFields,
         resolveLowStockSeverity,
       },
+      labeling: {
+        open: isLabelPrinterOpen,
+        device: labelingDevice,
+        storeId: labelingStoreId,
+        storeName: labelingStoreName,
+        openLabelPrinter,
+        closeLabelPrinter,
+      },
       reservations: {
         items: reservations,
         meta: reservationsMeta,
@@ -814,6 +1093,28 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         renew: renewInventoryReservation,
         cancel: cancelInventoryReservation,
         expiringSoon: expiringReservations,
+      },
+      variants: {
+        enabled: inventoryModule.enableVariants,
+        loading: variantsLoading,
+        includeInactive: variantsIncludeInactive,
+        setIncludeInactive: setVariantsIncludeInactive,
+        items: variants,
+        refresh: refreshVariants,
+        create: handleCreateVariant,
+        update: handleUpdateVariant,
+        archive: handleArchiveVariant,
+      },
+      bundles: {
+        enabled: inventoryModule.enableBundles,
+        loading: bundlesLoading,
+        includeInactive: bundlesIncludeInactive,
+        setIncludeInactive: setBundlesIncludeInactive,
+        items: bundles,
+        refresh: refreshBundles,
+        create: handleCreateBundle,
+        update: handleUpdateBundle,
+        archive: handleArchiveBundle,
       },
     }),
     [
@@ -867,6 +1168,28 @@ export function useInventoryLayoutState(): InventoryLayoutState {
       renewInventoryReservation,
       cancelInventoryReservation,
       expiringReservations,
+      isLabelPrinterOpen,
+      labelingDevice,
+      labelingStoreId,
+      labelingStoreName,
+      openLabelPrinter,
+      closeLabelPrinter,
+      variants,
+      variantsLoading,
+      variantsIncludeInactive,
+      refreshVariants,
+      handleCreateVariant,
+      handleUpdateVariant,
+      handleArchiveVariant,
+      setVariantsIncludeInactive,
+      bundles,
+      bundlesLoading,
+      bundlesIncludeInactive,
+      refreshBundles,
+      handleCreateBundle,
+      handleUpdateBundle,
+      handleArchiveBundle,
+      setBundlesIncludeInactive,
     ],
   );
 

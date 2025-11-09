@@ -60,8 +60,16 @@ BOOLEAN_FALSE_VALUES = frozenset(
 )
 
 CANONICAL_FIELDS: dict[str, set[str]] = {
-    "sku": {"sku", "codigo", "product_code", "code"},
-    "name": {"nombre", "name", "descripcion", "description", "producto"},
+    "sku": {"sku", "codigo", "product_code", "code", "sku_proveedor", "vendor_sku"},
+    "name": {
+        "nombre",
+        "name",
+        "descripcion",
+        "description",
+        "producto",
+        "nombre_catalogo",
+        "catalog_name",
+    },
     "marca": {"marca", "brand", "fabricante", "manufacturer"},
     "modelo": {"modelo", "model", "device", "modelo_equipo"},
     "imei": {"imei", "imei1", "imei_1", "imei principal"},
@@ -73,15 +81,56 @@ CANONICAL_FIELDS: dict[str, set[str]] = {
     "estado": {"estado", "status", "estado_actual", "situacion"},
     "categoria": {"categoria", "category", "segmento"},
     "condicion": {"condicion", "condition", "grado"},
-    "cantidad": {"cantidad", "qty", "existencia", "stock", "units"},
-    "precio": {"precio", "precio_venta", "precio_publico", "price", "unit_price"},
-    "costo": {"costo", "costo_compra", "cost", "unit_cost"},
+    "cantidad": {"cantidad", "qty", "existencia", "stock", "units", "unidades"},
+    "precio": {"precio", "precio_venta", "precio_publico", "price", "unit_price", "msrp"},
+    "costo": {
+        "costo",
+        "costo_compra",
+        "cost",
+        "unit_cost",
+        "costo_distribuidor",
+        "supplier_cost",
+    },
     "ubicacion": {"ubicacion_interna", "pasillo", "rack", "ubicacion"},
     "proveedor": {"proveedor", "vendor", "supplier"},
     "lote": {"lote", "batch"},
     "fecha_compra": {"fecha_compra", "purchase_date", "fecha de compra"},
     "fecha_ingreso": {"fecha_ingreso", "arrival_date", "fecha alta"},
     "estado_comercial": {"estado_comercial", "grade", "tier"},
+    "descripcion": {
+        "descripcion",
+        "description",
+        "detalle",
+        "detalle_producto",
+        "product_description",
+        "descripcion_extendida",
+        "notes",
+    },
+    "imagen_url": {
+        "imagen_url",
+        "image_url",
+        "imagen",
+        "image",
+        "photo",
+        "foto",
+    },
+    "garantia_meses": {
+        "garantia_meses",
+        "garantia",
+        "warranty_months",
+        "warranty",
+        "warranty_mes",
+        "warranty_month",
+    },
+    "margen_porcentaje": {
+        "margen_porcentaje",
+        "margin",
+        "margin_percent",
+        "margin_pct",
+        "margin_%",
+        "margin_percentaje",
+        "markup",
+    },
 }
 
 CRITICAL_FIELDS = {"marca", "modelo", "tienda"}
@@ -426,6 +475,10 @@ def _commit_import(
             estado_comercial, estado_comercial_original = _resolve_estado_comercial(
                 row.get("estado_comercial")
             )
+            margen = _parse_decimal(row.get("margen_porcentaje"))
+            garantia_meses = _parse_int(row.get("garantia_meses"))
+            descripcion = _normalize_optional(row.get("descripcion")) or name
+            imagen_url = _normalize_optional(row.get("imagen_url"))
             completo = not _is_row_incomplete(row)
             if not completo:
                 registros_incompletos += 1
@@ -449,14 +502,18 @@ def _commit_import(
                 "ubicacion": row.get("ubicacion"),
                 "proveedor": row.get("proveedor"),
                 "lote": row.get("lote"),
-                "descripcion": row.get("descripcion") or name,
-                "imagen_url": None,
+                "descripcion": descripcion,
+                "imagen_url": imagen_url,
                 "imei": imei,
                 "serial": serial,
                 "fecha_compra": fecha_compra,
                 "fecha_ingreso": fecha_ingreso,
                 "completo": completo,
             }
+            if margen is not None:
+                base_payload["margen_porcentaje"] = margen
+            if garantia_meses is not None:
+                base_payload["garantia_meses"] = garantia_meses
             existing = crud.find_device_for_import(
                 db,
                 store_id=store.id,
@@ -516,6 +573,10 @@ def _commit_import(
                 if costo is not None:
                     update_numeric["costo_unitario"] = costo
                     update_numeric["costo_compra"] = costo
+                if margen is not None:
+                    update_numeric["margen_porcentaje"] = margen
+                if garantia_meses is not None:
+                    update_numeric["garantia_meses"] = garantia_meses
                 update_payload.update(update_numeric)
                 update_payload["completo"] = completo
                 try:
