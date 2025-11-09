@@ -8,6 +8,7 @@ from backend.app import models
 
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN, OPERADOR
+from backend.app.services import notifications
 
 
 def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
@@ -244,6 +245,97 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
         item for item in _extract_items(devices_after.json()) if item["id"] == device_id
     )
     assert remaining["quantity"] == 1
+
+    settings.enable_purchases_sales = False
+
+
+def test_pos_receipt_delivery_records_audit(client, db_session, monkeypatch):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "POS Notificaciones", "location": "TEG", "timezone": "America/Tegucigalpa"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "NOTIF-001",
+            "name": "Impresora POS",
+            "quantity": 1,
+            "unit_price": 50.0,
+            "costo_unitario": 30.0,
+        },
+        headers={**auth_headers, "X-Reason": "Alta dispositivo"},
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "payment_method": "EFECTIVO",
+        "items": [{"device_id": device_id, "quantity": 1}],
+        "confirm": True,
+    }
+    sale_response = client.post(
+        "/pos/sale",
+        json=sale_payload,
+        headers={**auth_headers, "X-Reason": "Registrar venta"},
+    )
+    assert sale_response.status_code == status.HTTP_201_CREATED
+    sale_id = sale_response.json()["sale"]["id"]
+
+    email_called: dict[str, Any] = {}
+    whatsapp_called: dict[str, Any] = {}
+
+    def fake_email_notification(**kwargs):
+        email_called.update(kwargs)
+
+    async def fake_whatsapp_notification(**kwargs):
+        whatsapp_called.update(kwargs)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(notifications, "send_email_notification", fake_email_notification)
+    monkeypatch.setattr(notifications, "send_whatsapp_message", fake_whatsapp_notification)
+
+    send_headers = {**auth_headers, "X-Reason": "Enviar recibo"}
+    email_response = client.post(
+        f"/pos/receipt/{sale_id}/send",
+        json={"channel": "email", "recipient": "cliente@test.com", "message": "Gracias"},
+        headers=send_headers,
+    )
+    assert email_response.status_code == status.HTTP_202_ACCEPTED
+    assert email_called["recipients"] == ["cliente@test.com"]
+
+    log_entry = db_session.execute(
+        select(models.AuditLog)
+        .where(models.AuditLog.entity_type == "sale")
+        .order_by(models.AuditLog.created_at.desc())
+    ).scalar_one()
+    assert json.loads(log_entry.details)["canal"] == "email"
+
+    whatsapp_response = client.post(
+        f"/pos/receipt/{sale_id}/send",
+        json={"channel": "whatsapp", "recipient": "+50499998888"},
+        headers=send_headers,
+    )
+    assert whatsapp_response.status_code == status.HTTP_202_ACCEPTED
+    assert whatsapp_called["to_number"] == "+50499998888"
+
+    latest_log = db_session.execute(
+        select(models.AuditLog)
+        .where(models.AuditLog.action == "pos_receipt_sent")
+        .order_by(models.AuditLog.created_at.desc())
+    ).scalars().first()
+    assert latest_log is not None
+    details = json.loads(latest_log.details)
+    assert details["canal"] == "whatsapp"
+    assert details["destinatario"] == "+50499998888"
 
     settings.enable_purchases_sales = False
 

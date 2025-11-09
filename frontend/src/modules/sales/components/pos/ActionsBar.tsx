@@ -9,11 +9,31 @@ type Props = {
   onCancel?: () => void;
   onPrint?: () => void;
   onOffline?: () => void;
+  onSendEmail?: () => void;
+  onSendWhatsapp?: () => void;
+  canSend?: boolean;
+  sendingChannel?: "email" | "whatsapp" | null;
 };
 
-export default function ActionsBar({ onHold, onPay, onCancel, onPrint, onOffline }: Props) {
+export default function ActionsBar({
+  onHold,
+  onPay,
+  onCancel,
+  onPrint,
+  onOffline,
+  onSendEmail,
+  onSendWhatsapp,
+  canSend = false,
+  sendingChannel = null,
+}: Props) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+        gap: 8,
+      }}
+    >
       <RequirePerm perm={PERMS.POS_HOLD} fallback={null}>
         <button onClick={onHold} style={{ padding: "10px 12px", borderRadius: 10 }}>
           Guardar
@@ -35,6 +55,36 @@ export default function ActionsBar({ onHold, onPay, onCancel, onPrint, onOffline
       </DisableIfNoPerm>
       <button onClick={onPrint} style={{ padding: "10px 12px", borderRadius: 10 }}>
         Imprimir
+      </button>
+      <button
+        onClick={onSendEmail}
+        disabled={!canSend || sendingChannel === "email"}
+        aria-busy={sendingChannel === "email"}
+        style={{
+          padding: "10px 12px",
+          borderRadius: 10,
+          background: "#1d4ed8",
+          color: "#f8fafc",
+          border: 0,
+          opacity: !canSend ? 0.5 : 1,
+        }}
+      >
+        Enviar correo
+      </button>
+      <button
+        onClick={onSendWhatsapp}
+        disabled={!canSend || sendingChannel === "whatsapp"}
+        aria-busy={sendingChannel === "whatsapp"}
+        style={{
+          padding: "10px 12px",
+          borderRadius: 10,
+          background: "#10b981",
+          color: "#0b1220",
+          border: 0,
+          opacity: !canSend ? 0.5 : 1,
+        }}
+      >
+        Enviar WhatsApp
       </button>
       <button onClick={onOffline} style={{ padding: "10px 12px", borderRadius: 10 }}>
         Offline

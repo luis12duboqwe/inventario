@@ -717,8 +717,6 @@ class PriceListUpdate(BaseModel):
     currency: str | None = Field(default=None, min_length=3, max_length=10)
     valid_from: date | None = Field(default=None)
     valid_until: date | None = Field(default=None)
-    starts_at: datetime | None = Field(default=None)
-    ends_at: datetime | None = Field(default=None)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -2308,31 +2306,57 @@ class SessionRevokeRequest(BaseModel):
 
 
 class POSReturnItemRequest(BaseModel):
-    """Elemento individual a devolver desde POS (sin warnings de alias)."""
+    """Item devuelto desde el POS identificable por producto, línea o IMEI."""
 
-    sale_item_id: int = Field(..., ge=1)
-    imei: str | None = Field(default=None, max_length=18)
-    qty: int = Field(..., ge=1)
+    sale_item_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "sale_item_id",
+                "saleItemId",
+                "item_id",
+                "itemId",
+            ),
+        ),
+    ]
+    product_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "product_id",
+                "productId",
+                "device_id",
+            ),
+        ),
+    ]
+    imei: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=18,
+            validation_alias=AliasChoices("imei", "imei_1"),
+        ),
+    ]
+    qty: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("quantity", "qty"),
+        ),
+    ]
 
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_return_item_aliases(cls, data: Any) -> Any:  # pragma: no cover
-        if not isinstance(data, dict):
-            return data
-        mapping = {
-            "sale_item_id": ["saleItemId", "item_id", "itemId"],
-            "imei": ["imei_1"],
-            "qty": ["quantity"],
-        }
-        for target, sources in mapping.items():
-            if target not in data:
-                for s in sources:
-                    if s in data:
-                        data[target] = data[s]
-                        break
-        return data
-    # Eliminamos bloque residual de MovementBase que se insertó por error durante refactor.
-
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "POSReturnItemRequest":
+        if not (self.sale_item_id or self.product_id or self.imei):
+            raise ValueError(
+                "Debes proporcionar sale_item_id, product_id o imei para la devolución."
+            )
+        return self
 
 class MovementBase(BaseModel):
     """Base para registrar movimientos de inventario (entradas/salidas/ajustes).
@@ -5135,6 +5159,9 @@ class POSSaleResponse(BaseModel):
         return 0.0
 
 
+class POSReceiptDeliveryChannel(str, enum.Enum):
+    EMAIL = "email"
+    WHATSAPP = "whatsapp"
 class POSElectronicPaymentResult(BaseModel):
     terminal_id: str
     method: PaymentMethod
@@ -5155,32 +5182,25 @@ class POSElectronicPaymentResult(BaseModel):
 class POSReturnItemRequest(BaseModel):
     """Item devuelto desde el POS identificable por producto o IMEI."""
 
-    # // [PACK34-schema]
-    product_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            ge=1,
-            validation_alias=AliasChoices(
-                "product_id", "productId", "device_id"),
-        ),
-    ]
-    imei: Annotated[
-        str | None,
-        Field(
-            default=None,
-            max_length=18,
-            validation_alias=AliasChoices("imei", "imei_1"),
-        ),
-    ]
-    qty: Annotated[
-        int,
-        Field(
-            ...,
-            ge=1,
-            validation_alias=AliasChoices("quantity", "qty"),
-        ),
-    ]
+
+class POSReceiptDeliveryRequest(BaseModel):
+    channel: POSReceiptDeliveryChannel
+    recipient: str = Field(..., min_length=5, max_length=255)
+    message: str | None = Field(default=None, max_length=500)
+    subject: str | None = Field(default=None, max_length=120)
+
+    @field_validator("recipient")
+    @classmethod
+    def _normalize_recipient(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("recipient_required")
+        return normalized
+
+
+class POSReceiptDeliveryResponse(BaseModel):
+    channel: POSReceiptDeliveryChannel
+    status: str
 
 
 class POSReturnRequest(BaseModel):
@@ -6092,6 +6112,9 @@ __all__ = [
     "POSSalePaymentInput",
     "POSSaleRequest",
     "POSSaleResponse",
+    "POSReceiptDeliveryChannel",
+    "POSReceiptDeliveryRequest",
+    "POSReceiptDeliveryResponse",
     "POSSessionOpenPayload",
     "POSSessionClosePayload",
     "POSSessionSummary",

@@ -1,6 +1,12 @@
 // src/services/sales/pos.ts
 import { httpPost, httpGet } from "../http";
-import { Totals, CheckoutRequest, CheckoutResponse } from "./types";
+import {
+  Totals,
+  CheckoutRequest,
+  CheckoutResponse,
+  ReceiptDeliveryPayload,
+  ReceiptDeliveryResponse,
+} from "./types";
 import { apiMap } from "./apiMap";
 
 export async function priceDraft(dto: CheckoutRequest): Promise<Totals> {
@@ -17,4 +23,15 @@ export async function resumeHold(holdId: string): Promise<CheckoutRequest> {
 
 export async function checkout(dto: CheckoutRequest): Promise<CheckoutResponse> {
   return httpPost<CheckoutResponse>(apiMap.pos.checkout, dto, { withAuth: true });
+}
+
+export async function sendReceipt(
+  saleId: string | number,
+  payload: ReceiptDeliveryPayload,
+  reason: string,
+): Promise<ReceiptDeliveryResponse> {
+  return httpPost<ReceiptDeliveryResponse>(apiMap.pos.sendReceipt(saleId), payload, {
+    withAuth: true,
+    headers: { "X-Reason": reason },
+  });
 }

@@ -15354,6 +15354,30 @@ def register_pos_receipt_download(
     )
 
 
+def register_pos_receipt_delivery(
+    db: Session,
+    *,
+    sale_id: int,
+    performed_by_id: int | None,
+    reason: str,
+    channel: str,
+    recipient: str,
+) -> None:
+    detalles = {
+        "motivo": reason.strip(),
+        "canal": channel,
+        "destinatario": recipient,
+    }
+    _log_action(
+        db,
+        action="pos_receipt_sent",
+        entity_type="sale",
+        entity_id=str(sale_id),
+        performed_by_id=performed_by_id,
+        details=detalles,
+    )
+
+
 def build_inventory_snapshot(db: Session) -> dict[str, object]:
     stores_stmt = (
         select(models.Store)

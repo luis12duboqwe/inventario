@@ -1,3 +1,4 @@
+"""Endpoints protegidos para la administración de listas de precios."""
 """Endpoints para la administración de listas de precios corporativas."""
 
 from __future__ import annotations
@@ -74,6 +75,10 @@ def _performed_by_id(user) -> int | None:
 def list_price_lists_endpoint(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
+    is_active: bool | None = Query(default=None),
+    include_items: bool = Query(default=False),
+    include_inactive: bool = Query(default=False),
+    include_global: bool = Query(default=True),
     include_inactive: bool = Query(default=True),
     include_global: bool = Query(default=True),
     include_items: bool = Query(default=True),
@@ -81,6 +86,23 @@ def list_price_lists_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> list[schemas.PriceListResponse]:
     _ensure_feature_enabled()
+    active_filter = is_active
+    if active_filter is None and not include_inactive:
+        active_filter = True
+    price_lists = pricing.list_price_lists(
+        db,
+        store_id=store_id,
+        customer_id=customer_id,
+        is_active=active_filter,
+        include_items=include_items,
+    )
+    if not include_global:
+        price_lists = [
+            price_list
+            for price_list in price_lists
+            if price_list.store_id is not None or price_list.customer_id is not None
+        ]
+    return price_lists
     return pricing.list_price_lists(
         db,
         store_id=store_id,
