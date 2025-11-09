@@ -7,6 +7,8 @@ import InventoryCatalogToolsSection from "./components/InventoryCatalogToolsSect
 import InventorySmartImportSection from "./components/InventorySmartImportSection";
 import InventoryCorrectionsSection from "./components/InventoryCorrectionsSection";
 import InventoryProductsFilters from "./components/InventoryProductsFilters";
+import InventoryVariantsSection from "./components/InventoryVariantsSection";
+import InventoryBundlesSection from "./components/InventoryBundlesSection";
 
 function InventoryProductsPage() {
   const {
@@ -46,6 +48,10 @@ function InventoryProductsPage() {
       <InventoryStatusSection />
 
       <InventoryProductsTableSection />
+
+      <InventoryVariantsSection />
+
+      <InventoryBundlesSection />
 
       <InventoryCatalogToolsSection />
 

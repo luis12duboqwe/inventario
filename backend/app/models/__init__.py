@@ -166,7 +166,13 @@ class Store(Base):
         "InventoryReservation", back_populates="store", cascade="all, delete-orphan"
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
+        "PriceList", back_populates="store", cascade="all, delete-orphan"
         "PriceList",
+        back_populates="store",
+        cascade="all, delete-orphan",
+    )
+    bundles: Mapped[list["ProductBundle"]] = relationship(
+        "ProductBundle",
         back_populates="store",
         cascade="all, delete-orphan",
     )
@@ -333,6 +339,25 @@ class Device(Base):
         back_populates="device",
         cascade="all, delete-orphan",
     )
+    variants: Mapped[list["ProductVariant"]] = relationship(
+        "ProductVariant",
+        back_populates="device",
+        cascade="all, delete-orphan",
+        order_by="ProductVariant.variant_sku",
+    )
+    bundle_items: Mapped[list["ProductBundleItem"]] = relationship(
+        "ProductBundleItem",
+        back_populates="device",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def has_variants(self) -> bool:
+        return bool(self.variants)
+
+    @property
+    def variant_count(self) -> int:
+        return len(self.variants)
 
     @property
     def costo_compra(self) -> Decimal:
@@ -355,6 +380,124 @@ class Device(Base):
         self.unit_price = value
 
 
+class ProductVariant(Base):
+    __tablename__ = "product_variants"
+    __table_args__ = (
+        UniqueConstraint(
+            "device_id", "variant_sku", name="uq_product_variants_device_sku"
+        ),
+        Index("ix_product_variants_device_id", "device_id"),
+        Index("ix_product_variants_variant_sku", "variant_sku"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    variant_sku: Mapped[str] = mapped_column(String(80), nullable=False)
+    barcode: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    unit_price_override: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    device: Mapped["Device"] = relationship("Device", back_populates="variants")
+    bundle_items: Mapped[list["ProductBundleItem"]] = relationship(
+        "ProductBundleItem",
+        back_populates="variant",
+        cascade="all, delete-orphan",
+    )
+
+
+class ProductBundle(Base):
+    __tablename__ = "product_bundles"
+    __table_args__ = (
+        UniqueConstraint(
+            "store_id", "bundle_sku", name="uq_product_bundles_store_sku"
+        ),
+        Index("ix_product_bundles_store_id", "store_id"),
+        Index("ix_product_bundles_bundle_sku", "bundle_sku"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    bundle_sku: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    base_price: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    store: Mapped[Optional[Store]] = relationship("Store", back_populates="bundles")
+    items: Mapped[list["ProductBundleItem"]] = relationship(
+        "ProductBundleItem",
+        back_populates="bundle",
+        cascade="all, delete-orphan",
+    )
+
+
+class ProductBundleItem(Base):
+    __tablename__ = "product_bundle_items"
+    __table_args__ = (
+        Index("ix_product_bundle_items_bundle_id", "bundle_id"),
+        Index("ix_product_bundle_items_device_id", "device_id"),
+        Index("ix_product_bundle_items_variant_id", "variant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    bundle_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("product_bundles.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    variant_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("product_variants.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    bundle: Mapped["ProductBundle"] = relationship(
+        "ProductBundle", back_populates="items"
+    )
+    device: Mapped["Device"] = relationship("Device", back_populates="bundle_items")
+    variant: Mapped[Optional["ProductVariant"]] = relationship(
+        "ProductVariant", back_populates="bundle_items"
+    )
+
+
 class PriceList(Base):
     __tablename__ = "price_lists"
     __table_args__ = (
@@ -362,6 +505,8 @@ class PriceList(Base):
         Index("ix_price_lists_priority", "priority"),
         Index("ix_price_lists_store_id", "store_id"),
         Index("ix_price_lists_customer_id", "customer_id"),
+        Index("ix_price_lists_is_active", "is_active"),
+        Index("ix_price_lists_name", "name"),
         Index("ix_price_lists_name", "name"),
         Index("ix_price_lists_is_active", "is_active"),
     )
@@ -455,6 +600,9 @@ class PriceListItem(Base):
     )
     currency: Mapped[str] = mapped_column(
         String(8), nullable=False, default="MXN"
+    )
+    discount_percentage: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -1511,6 +1659,7 @@ class Customer(Base):
         cascade="all, delete-orphan",
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
+        "PriceList", back_populates="customer", cascade="all, delete-orphan"
         "PriceList",
         back_populates="customer",
         cascade="all, delete-orphan",
