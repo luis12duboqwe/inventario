@@ -881,6 +881,42 @@ export type PurchaseImportResponse = {
   errors: string[];
 };
 
+export type PurchaseSuggestionItem = {
+  store_id: number;
+  store_name: string;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  device_id: number;
+  sku: string;
+  name: string;
+  current_quantity: number;
+  minimum_stock: number;
+  suggested_quantity: number;
+  average_daily_sales: number;
+  projected_coverage_days: number | null;
+  last_30_days_sales: number;
+  unit_cost: number;
+  reason: "below_minimum" | "projected_consumption";
+  suggested_value: number;
+};
+
+export type PurchaseSuggestionStore = {
+  store_id: number;
+  store_name: string;
+  total_suggested: number;
+  total_value: number;
+  items: PurchaseSuggestionItem[];
+};
+
+export type PurchaseSuggestionsResponse = {
+  generated_at: string;
+  lookback_days: number;
+  planning_horizon_days: number;
+  minimum_stock: number;
+  total_items: number;
+  stores: PurchaseSuggestionStore[];
+};
+
 export type RecurringOrderType = "purchase" | "transfer";
 
 export type RecurringOrder = {
@@ -3519,6 +3555,40 @@ export function importPurchaseOrdersCsv(
       body: formData,
       headers: { "X-Reason": reason },
     },
+    token
+  );
+}
+
+export function getPurchaseSuggestions(
+  token: string,
+  params: { storeId?: number; lookbackDays?: number; minimumStock?: number; planningHorizonDays?: number } = {},
+): Promise<PurchaseSuggestionsResponse> {
+  const query = new URLSearchParams();
+  if (params.storeId != null) {
+    query.set("store_id", String(params.storeId));
+  }
+  if (params.lookbackDays != null) {
+    query.set("lookback_days", String(params.lookbackDays));
+  }
+  if (params.minimumStock != null) {
+    query.set("minimum_stock", String(params.minimumStock));
+  }
+  if (params.planningHorizonDays != null) {
+    query.set("planning_horizon_days", String(params.planningHorizonDays));
+  }
+  const suffix = query.toString();
+  const path = suffix ? `/purchases/suggestions?${suffix}` : "/purchases/suggestions";
+  return request<PurchaseSuggestionsResponse>(path, { method: "GET" }, token);
+}
+
+export function createPurchaseOrderFromSuggestion(
+  token: string,
+  payload: PurchaseOrderCreateInput,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    "/purchases/suggestions/orders",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
     token
   );
 }
