@@ -9,6 +9,7 @@ const listSalesMock = vi.hoisted(() => vi.fn());
 const registerPurchaseReturnMock = vi.hoisted(() => vi.fn());
 const registerSaleReturnMock = vi.hoisted(() => vi.fn());
 const listReturnsMock = vi.hoisted(() => vi.fn());
+const searchSalesHistoryMock = vi.hoisted(() => vi.fn());
 
 const apiModuleId = vi.hoisted(
   () => new URL("../../../../api.ts", import.meta.url).pathname,
@@ -21,6 +22,7 @@ vi.mock("../../../../api", () => ({
   registerPurchaseReturn: registerPurchaseReturnMock,
   registerSaleReturn: registerSaleReturnMock,
   listReturns: listReturnsMock,
+  searchSalesHistory: searchSalesHistoryMock,
 }));
 
 vi.mock(apiModuleId, () => ({
@@ -30,6 +32,7 @@ vi.mock(apiModuleId, () => ({
   registerPurchaseReturn: registerPurchaseReturnMock,
   registerSaleReturn: registerSaleReturnMock,
   listReturns: listReturnsMock,
+  searchSalesHistory: searchSalesHistoryMock,
 }));
 
 import Returns from "../Returns";
@@ -41,6 +44,7 @@ describe("Returns", () => {
     registerPurchaseReturnMock.mockReset();
     registerSaleReturnMock.mockReset();
     listReturnsMock.mockReset();
+    searchSalesHistoryMock.mockReset();
 
     listPurchaseOrdersMock.mockResolvedValue([]);
     listSalesMock.mockResolvedValue([]);

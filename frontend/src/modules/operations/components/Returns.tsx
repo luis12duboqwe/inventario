@@ -13,6 +13,7 @@ import {
   registerPurchaseReturn,
   registerSaleReturn,
 } from "../../../api";
+import ReturnsSearch from "./ReturnsSearch";
 
 type Props = {
   token: string;
@@ -253,15 +254,16 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
   };
 
   return (
-    <section className="card">
-      <h2>Devoluciones y ajustes</h2>
-      <p className="card-subtitle">
-        Registra devoluciones a proveedores y reingresos de clientes para mantener la auditoría financiera.
-      </p>
-      {error ? <div className="alert error">{error}</div> : null}
-      {message ? <div className="alert success">{message}</div> : null}
+    <div className="returns-stack">
+      <section className="card">
+        <h2>Devoluciones y ajustes</h2>
+        <p className="card-subtitle">
+          Registra devoluciones a proveedores y reingresos de clientes para mantener la auditoría financiera.
+        </p>
+        {error ? <div className="alert error">{error}</div> : null}
+        {message ? <div className="alert success">{message}</div> : null}
 
-      <div className="returns-grid">
+        <div className="returns-grid">
         <form onSubmit={handlePurchaseReturn}>
           <h3>Devolución a proveedor</h3>
           <label>
@@ -511,8 +513,10 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
             </div>
           )}
         </div>
-      </div>
-    </section>
+        </div>
+      </section>
+      <ReturnsSearch token={token} />
+    </div>
   );
 }
 

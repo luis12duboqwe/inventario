@@ -632,7 +632,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Sucursal asociada cuando la lista es específica para una tienda.",
         description="Identificador de la sucursal asociada, cuando aplica.",
     )
     customer_id: int | None = Field(
@@ -4924,6 +4923,13 @@ class SaleReturnResponse(BaseModel):
         return self.created_at
 
 
+class SaleHistorySearchResponse(BaseModel):
+    by_ticket: list[SaleResponse] = Field(default_factory=list)
+    by_date: list[SaleResponse] = Field(default_factory=list)
+    by_customer: list[SaleResponse] = Field(default_factory=list)
+    by_qr: list[SaleResponse] = Field(default_factory=list)
+
+
 class SalesReportFilters(BaseModel):
     store_id: int | None = None
     customer_id: int | None = None
@@ -6356,6 +6362,7 @@ __all__ = [
     "SaleReturnCreate",
     "SaleReturnItem",
     "SaleReturnResponse",
+    "SaleHistorySearchResponse",
     "SalesReportFilters",
     "SalesReportTotals",
     "SalesReportItem",
