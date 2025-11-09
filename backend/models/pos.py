@@ -34,6 +34,7 @@ class PaymentMethod(str, enum.Enum):
     CASH = "CASH"
     CARD = "CARD"
     TRANSFER = "TRANSFER"
+    STORE_CREDIT = "STORE_CREDIT"
 
 
 class Sale(Base):
