@@ -631,7 +631,6 @@ class PriceListBase(BaseModel):
         default=None,
         ge=1,
         description="Identificador de la sucursal asociada, cuando aplica.",
-        description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -780,7 +779,6 @@ class PriceListUpdate(BaseModel):
             raise ValueError(
                 "La fecha de inicio no puede ser posterior a la fecha de fin."
             )
-        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
         if (
             self.starts_at is not None
             and self.ends_at is not None
@@ -1483,23 +1481,44 @@ class CustomerLedgerEntryResponse(BaseModel):
     def _serialize_amount(cls, value: Decimal) -> float:
         return float(value)
 
-    @field_serializer("balance_after")
+
+class CustomerDebtSnapshot(BaseModel):
+    previous_balance: Decimal
+    new_charges: Decimal
+    payments_applied: Decimal
+    remaining_balance: Decimal
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @field_serializer("previous_balance", "new_charges", "payments_applied", "remaining_balance")
     @classmethod
-    def _serialize_balance_after(cls, value: Decimal) -> float:
+    def _serialize_snapshot_decimal(cls, value: Decimal) -> float:
         return float(value)
 
-    @field_validator("created_by", mode="before")
+
+class CreditScheduleEntry(BaseModel):
+    sequence: int
+    due_date: datetime
+    amount: Decimal
+    status: Literal["pending", "due_soon", "overdue"]
+    reminder: str | None = None
+
+    @field_serializer("amount")
     @classmethod
-    def _normalize_created_by(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        full_name = getattr(value, "full_name", None)
-        if isinstance(full_name, str) and full_name.strip():
-            return full_name.strip()
-        username = getattr(value, "username", None)
-        if isinstance(username, str) and username.strip():
-            return username.strip()
-        return None
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("due_date")
+    @classmethod
+    def _serialize_due_date(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class CustomerPaymentReceiptResponse(BaseModel):
+    ledger_entry: CustomerLedgerEntryResponse
+    debt_summary: CustomerDebtSnapshot
+    credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
+    receipt_pdf_base64: str
 
 
 class CustomerSaleSummary(BaseModel):
@@ -3101,6 +3120,20 @@ class DashboardGlobalMetrics(BaseModel):
     gross_profit: float
 
 
+class DashboardReceivableCustomer(BaseModel):
+    customer_id: int
+    name: str
+    outstanding_debt: float
+    available_credit: float | None = None
+
+
+class DashboardReceivableMetrics(BaseModel):
+    total_outstanding_debt: float
+    customers_with_debt: int
+    moroso_flagged: int
+    top_debtors: list[DashboardReceivableCustomer] = Field(default_factory=list)
+
+
 class DashboardChartPoint(BaseModel):
     label: str
     value: float
@@ -3111,6 +3144,7 @@ class InventoryMetricsResponse(BaseModel):
     top_stores: list[StoreValueMetric]
     low_stock_devices: list[LowStockDevice]
     global_performance: DashboardGlobalMetrics
+    accounts_receivable: DashboardReceivableMetrics
     sales_trend: list[DashboardChartPoint] = Field(default_factory=list)
     stock_breakdown: list[DashboardChartPoint] = Field(default_factory=list)
     repair_mix: list[DashboardChartPoint] = Field(default_factory=list)
@@ -5112,6 +5146,12 @@ class POSSaleResponse(BaseModel):
     cash_session_id: int | None = None
     payment_breakdown: dict[str, float] = Field(default_factory=dict)
     receipt_pdf_base64: str | None = Field(default=None)
+    debt_summary: CustomerDebtSnapshot | None = None
+    credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
+    debt_receipt_pdf_base64: str | None = None
+    payment_receipts: list[CustomerPaymentReceiptResponse] = Field(
+        default_factory=list
+    )
 
     @field_serializer("payment_breakdown")
     @classmethod
@@ -5207,6 +5247,8 @@ class POSSaleDetailResponse(BaseModel):
     sale: SaleResponse
     receipt_url: str
     receipt_pdf_base64: str | None = None
+    debt_summary: CustomerDebtSnapshot | None = None
+    credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
 
 
 class CashSessionOpenRequest(BaseModel):
@@ -5971,4 +6013,9 @@ __all__ = [
     "SalesProjectionMetric",
     "StockoutForecastMetric",
     "HealthStatusResponse",
+    "CustomerDebtSnapshot",
+    "CreditScheduleEntry",
+    "CustomerPaymentReceiptResponse",
+    "DashboardReceivableCustomer",
+    "DashboardReceivableMetrics",
 ]

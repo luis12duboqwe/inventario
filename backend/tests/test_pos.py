@@ -1,6 +1,8 @@
 import json
 from typing import Any, Iterable
 
+import pytest
+
 from fastapi import status
 from sqlalchemy import select
 
@@ -281,6 +283,10 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
     assert sale_data["sale"]["customer_id"] == customer_id
     assert sale_data["cash_session_id"] == session_id
     assert sale_data["payment_breakdown"]["CREDITO"] == 200.0
+    assert sale_data["debt_summary"]["remaining_balance"] == pytest.approx(200.0)
+    assert sale_data["credit_schedule"]
+    assert sale_data["debt_receipt_pdf_base64"]
+    assert sale_data["payment_receipts"] == []
 
     customer_details = client.get(
         f"/customers/{customer_id}", headers=auth_headers
