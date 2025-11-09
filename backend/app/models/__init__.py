@@ -169,10 +169,6 @@ class Store(Base):
         "PriceList",
         back_populates="store",
         cascade="all, delete-orphan",
-        "PriceList", back_populates="store", cascade="all, delete-orphan"
-        "PriceList",
-        back_populates="store",
-        cascade="all, delete-orphan",
     )
     bundles: Mapped[list["ProductBundle"]] = relationship(
         "ProductBundle",
@@ -244,6 +240,13 @@ class CashSessionStatus(str, enum.Enum):
 
     ABIERTO = "ABIERTO"
     CERRADO = "CERRADO"
+
+
+class CashEntryType(str, enum.Enum):
+    """Tipos de movimientos manuales registrados en caja."""
+
+    INGRESO = "INGRESO"
+    EGRESO = "EGRESO"
 
 
 class PaymentMethod(str, enum.Enum):
@@ -498,132 +501,6 @@ class ProductBundleItem(Base):
     device: Mapped["Device"] = relationship("Device", back_populates="bundle_items")
     variant: Mapped[Optional["ProductVariant"]] = relationship(
         "ProductVariant", back_populates="bundle_items"
-    )
-
-
-class PriceList(Base):
-    __tablename__ = "price_lists"
-    __table_args__ = (
-        UniqueConstraint("name", "store_id", "customer_id", name="uq_price_lists_scope_name"),
-        Index("ix_price_lists_priority", "priority"),
-        Index("ix_price_lists_store_id", "store_id"),
-        Index("ix_price_lists_customer_id", "customer_id"),
-        Index("ix_price_lists_is_active", "is_active"),
-        Index("ix_price_lists_name", "name"),
-        Index("ix_price_lists_name", "name"),
-        Index("ix_price_lists_is_active", "is_active"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, index=True
-    )
-    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
-    store_id: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
-        nullable=True,
-    )
-    customer_id: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey("clientes.id_cliente", ondelete="SET NULL"),
-        nullable=True,
-    )
-    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
-    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
-    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
-    starts_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    ends_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
-    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
-
-    store: Mapped[Optional[Store]] = relationship(
-        "Store", back_populates="price_lists"
-    )
-    customer: Mapped[Optional["Customer"]] = relationship(
-        "Customer", back_populates="price_lists"
-    )
-    items: Mapped[list["PriceListItem"]] = relationship(
-        "PriceListItem",
-        back_populates="price_list",
-        cascade="all, delete-orphan",
-    )
-
-    @property
-    def scope(self) -> str:
-        if self.store_id is not None and self.customer_id is not None:
-            return "store_customer"
-        if self.customer_id is not None:
-            return "customer"
-        if self.store_id is not None:
-            return "store"
-        return "global"
-
-
-class PriceListItem(Base):
-    __tablename__ = "price_list_items"
-    __table_args__ = (
-        UniqueConstraint("price_list_id", "device_id", name="uq_price_list_items_device"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    price_list_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("price_lists.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    device_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("devices.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    price: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False, default=Decimal("0")
-    )
-    discount_percentage: Mapped[Decimal | None] = mapped_column(
-        Numeric(5, 2), nullable=True
-    )
-    currency: Mapped[str] = mapped_column(
-        String(8), nullable=False, default="MXN"
-    )
-    discount_percentage: Mapped[Decimal | None] = mapped_column(
-        Numeric(5, 2), nullable=True
-    )
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
-
-    price_list: Mapped[PriceList] = relationship(
-        "PriceList", back_populates="items"
-    )
-    device: Mapped[Device] = relationship(
-        "Device", back_populates="price_list_items"
     )
 
 
@@ -1663,7 +1540,6 @@ class Customer(Base):
         cascade="all, delete-orphan",
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
-        "PriceList", back_populates="customer", cascade="all, delete-orphan"
         "PriceList",
         back_populates="customer",
         cascade="all, delete-orphan",
@@ -2247,6 +2123,10 @@ class CashRegisterSession(Base):
     )
     payment_breakdown: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict)
+    denomination_breakdown: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict)
+    reconciliation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    difference_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     opened_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
@@ -2268,6 +2148,42 @@ class CashRegisterSession(Base):
     )
     sales: Mapped[list[Sale]] = relationship(
         "Sale", back_populates="cash_session")
+    entries: Mapped[list["CashRegisterEntry"]] = relationship(
+        "CashRegisterEntry",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+
+
+class CashRegisterEntry(Base):
+    __tablename__ = "cash_register_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    session_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("cash_register_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entry_type: Mapped[CashEntryType] = mapped_column(
+        Enum(CashEntryType, name="cash_entry_type"), nullable=False
+    )
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+
+    session: Mapped[CashRegisterSession] = relationship(
+        "CashRegisterSession", back_populates="entries"
+    )
+    created_by: Mapped[User | None] = relationship("User")
 
 
 class POSConfig(Base):
@@ -2497,6 +2413,8 @@ class SyncAttempt(Base):
 __all__ = [
     "CashRegisterSession",
     "CashSessionStatus",
+    "CashEntryType",
+    "CashRegisterEntry",
     "Customer",
     "AuditLog",
     "SystemLog",

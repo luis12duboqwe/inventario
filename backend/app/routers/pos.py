@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from io import BytesIO
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -12,7 +16,7 @@ from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import cash_register, pos_receipts
+from ..services import cash_register, pos_receipts, cash_reports
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -478,6 +482,11 @@ def close_cash_session_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La caja ya fue cerrada.",
             ) from exc
+        if str(exc) == "difference_reason_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Indica un motivo para la diferencia registrada.",
+            ) from exc
         raise
 
 
@@ -501,3 +510,91 @@ def list_cash_sessions_endpoint(
         offset=offset,
     )
     return sessions
+
+
+@router.post(
+    "/cash/register/entries",
+    response_model=schemas.CashRegisterEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_cash_register_entry(
+    payload: schemas.CashRegisterEntryCreate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        entry = cash_register.record_entry(
+            db,
+            payload,
+            created_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caja no encontrada",
+        ) from exc
+    except ValueError as exc:
+        if str(exc) == "cash_session_not_open":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La caja indicada no está abierta.",
+            ) from exc
+        raise
+    return entry
+
+
+@router.get(
+    "/cash/register/entries",
+    response_model=list[schemas.CashRegisterEntryResponse],
+)
+def list_cash_register_entries(
+    session_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        crud.get_cash_session(db, session_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caja no encontrada",
+        ) from exc
+    return cash_register.list_entries(db, session_id=session_id)
+
+
+@router.get(
+    "/cash/register/{session_id}/report",
+    response_model=schemas.CashSessionResponse,
+)
+def get_cash_register_report(
+    session_id: int,
+    export: Literal["json", "pdf"] = Query(default="json"),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        session = crud.get_cash_session(db, session_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caja no encontrada",
+        ) from exc
+    entries = cash_register.list_entries(db, session_id=session.id)
+    if export == "pdf":
+        pdf_bytes = cash_reports.render_cash_close_pdf(session, entries)
+        buffer = BytesIO(pdf_bytes)
+        filename = f"cierre_caja_{session_id}.pdf"
+        headers = {"Content-Disposition": f"attachment; filename={filename}"}
+        return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    return schemas.CashSessionResponse.model_validate(
+        session,
+        from_attributes=True,
+        update={"entries": entries},
+    )
