@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_SOFTMOBILE_ENABLE_2FA?: string;
   readonly VITE_SOFTMOBILE_ENABLE_HYBRID_PREP?: string;
   readonly VITE_SOFTMOBILE_ENABLE_PRICE_LISTS?: string;
+  readonly VITE_SOFTMOBILE_ENABLE_BUNDLES?: string;
+  readonly VITE_SOFTMOBILE_ENABLE_DTE?: string;
 }
 
 interface ImportMeta {

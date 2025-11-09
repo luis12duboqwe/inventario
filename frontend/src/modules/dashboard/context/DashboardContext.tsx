@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { featureFlags } from "@/config/featureFlags";
 import { syncClient } from "../../sync/services/syncClient"; // [PACK35-frontend]
 import {
   NETWORK_EVENT,
@@ -65,6 +66,8 @@ type DashboardContextValue = {
   enableTwoFactor: boolean;
   enableHybridPrep: boolean;
   enablePriceLists: boolean;
+  enableBundles: boolean;
+  enableDte: boolean;
   compactMode: boolean;
   setCompactMode: (value: boolean) => void;
   toggleCompactMode: () => void;
@@ -144,20 +147,17 @@ export type ToastMessage = {
 const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
 export function DashboardProvider({ token, children }: ProviderProps) {
-  const enableCatalogPro =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_CATALOG_PRO ?? "1") !== "0";
-  const enableTransfers =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_TRANSFERS ?? "1") !== "0";
-  const enablePurchasesSales =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_PURCHASES_SALES ?? "1") !== "0";
-  const enableAnalyticsAdv =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_ANALYTICS_ADV ?? "1") !== "0";
-  const enableTwoFactor =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_2FA ?? "0") !== "0";
-  const enableHybridPrep =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_HYBRID_PREP ?? "1") !== "0";
-  const enablePriceLists =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_PRICE_LISTS ?? "0") !== "0";
+  const {
+    catalogPro: enableCatalogPro,
+    transfers: enableTransfers,
+    purchasesSales: enablePurchasesSales,
+    analyticsAdv: enableAnalyticsAdv,
+    twoFactor: enableTwoFactor,
+    hybridPrep: enableHybridPrep,
+    priceLists: enablePriceLists,
+    bundles: enableBundles,
+    dte: enableDte,
+  } = featureFlags;
 
   const [compactModeState, setCompactModeState] = useState<boolean>(() => {
     if (typeof window === "undefined") {
@@ -930,6 +930,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableTwoFactor,
       enableHybridPrep,
       enablePriceLists,
+      enableBundles,
+      enableDte,
       compactMode: compactModeState,
       setCompactMode,
       toggleCompactMode,
@@ -1002,10 +1004,12 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableAnalyticsAdv,
       enableCatalogPro,
       enableHybridPrep,
+      enableBundles,
       enablePriceLists,
       enablePurchasesSales,
       enableTransfers,
       enableTwoFactor,
+      enableDte,
       error,
       formatCurrency,
       globalSearchTerm,
