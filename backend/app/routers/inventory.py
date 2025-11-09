@@ -18,6 +18,7 @@ from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import (
+    inventory_availability,
     inventory_catalog_export,
     inventory_import,
     inventory_labels,
@@ -27,6 +28,31 @@ from ..services import (
 from backend.schemas.common import Page, PageParams
 
 router = APIRouter(prefix="/inventory", tags=["inventario"])
+
+
+@router.get(
+    "/availability",
+    response_model=schemas.InventoryAvailabilityResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def get_inventory_availability(
+    db: Session = Depends(get_db),
+    query: str | None = Query(default=None, min_length=2, max_length=120),
+    limit: int = Query(default=50, ge=1, le=250),
+    sku: list[str] = Query(default_factory=list),
+    device_id: list[int] = Query(default_factory=list),
+) -> schemas.InventoryAvailabilityResponse:
+    normalized_query = query.strip() if query else None
+    normalized_skus = [value.strip() for value in sku if value and value.strip()]
+    normalized_ids = sorted({int(value) for value in device_id if value > 0})
+    payload = inventory_availability.get_inventory_availability(
+        db,
+        skus=normalized_skus or None,
+        device_ids=normalized_ids or None,
+        search=normalized_query,
+        limit=limit,
+    )
+    return schemas.InventoryAvailabilityResponse.model_validate(payload)
 
 
 @router.get(

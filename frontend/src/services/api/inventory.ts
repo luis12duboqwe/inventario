@@ -11,6 +11,7 @@ export {
   downloadInventoryValuePdf,
   downloadInventoryValueXlsx,
   getInventoryCurrentReport,
+  getInventoryAvailability,
   getInventoryMovementsReport,
   getInventoryValueReport,
   getSummary,
@@ -29,6 +30,10 @@ export type {
   InventoryMovementsReport,
   InventoryValueFilters,
   InventoryValueReport,
+  InventoryAvailabilityParams,
+  InventoryAvailabilityRecord,
+  InventoryAvailabilityResponse,
+  InventoryAvailabilityStore,
   MovementInput,
   Summary,
 } from "../../api";

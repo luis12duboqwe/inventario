@@ -630,6 +630,7 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
+        description="Identificador de la sucursal asociada, cuando aplica.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -719,6 +720,7 @@ class PriceListUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     priority: int | None = Field(default=None, ge=0, le=10000)
     is_active: bool | None = Field(default=None)
+    priority: int | None = Field(default=None, ge=0, le=10000)
     store_id: int | None = Field(default=None, ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     currency: str | None = Field(default=None, min_length=3, max_length=10)
@@ -756,6 +758,17 @@ class PriceListUpdate(BaseModel):
         if len(normalized) < 3:
             raise ValueError("La moneda debe contener al menos 3 caracteres.")
         return normalized
+
+
+class PriceListUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    priority: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = Field(default=None)
+    store_id: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+    starts_at: datetime | None = Field(default=None)
+    ends_at: datetime | None = Field(default=None)
 
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListUpdate":
@@ -852,6 +865,7 @@ class PriceListItemUpdate(BaseModel):
     @classmethod
     def _normalize_currency(cls, value: str | None) -> str | None:
         if value is None:
+            return value
             return None
         normalized = value.strip().upper()
         if len(normalized) < 3:
@@ -2600,6 +2614,28 @@ class InventorySummary(BaseModel):
     @classmethod
     def _serialize_total_value(cls, value: Decimal) -> float:
         return float(value)
+
+
+class InventoryAvailabilityStore(BaseModel):
+    store_id: int
+    store_name: str
+    quantity: int
+
+
+class InventoryAvailabilityRecord(BaseModel):
+    reference: str
+    sku: str | None = None
+    product_name: str
+    device_ids: list[int]
+    total_quantity: int
+    stores: list[InventoryAvailabilityStore]
+
+
+class InventoryAvailabilityResponse(BaseModel):
+    generated_at: datetime
+    items: list[InventoryAvailabilityRecord]
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InventoryCurrentStore(BaseModel):
@@ -5756,6 +5792,9 @@ __all__ = [
     "InventoryImportHistoryEntry",
     "InventoryMetricsResponse",
     "InventorySummary",
+    "InventoryAvailabilityStore",
+    "InventoryAvailabilityRecord",
+    "InventoryAvailabilityResponse",
     "DashboardChartPoint",
     "DashboardGlobalMetrics",
     "InventoryTotals",

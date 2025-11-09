@@ -365,6 +365,33 @@ export type DeviceUpdateInput = {
   completo?: boolean;
 };
 
+export type InventoryAvailabilityStore = {
+  store_id: number;
+  store_name: string;
+  quantity: number;
+};
+
+export type InventoryAvailabilityRecord = {
+  reference: string;
+  sku?: string | null;
+  product_name: string;
+  device_ids: number[];
+  total_quantity: number;
+  stores: InventoryAvailabilityStore[];
+};
+
+export type InventoryAvailabilityResponse = {
+  generated_at: string;
+  items: InventoryAvailabilityRecord[];
+};
+
+export type InventoryAvailabilityParams = {
+  query?: string;
+  skus?: string[];
+  deviceIds?: number[];
+  limit?: number;
+};
+
 export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
 
 export type ContactHistoryEntry = {
@@ -2977,6 +3004,32 @@ export function updateStore(
 
 export function getSummary(token: string): Promise<Summary[]> {
   return requestCollection<Summary>("/inventory/summary", { method: "GET" }, token);
+}
+
+export function getInventoryAvailability(
+  params: InventoryAvailabilityParams = {},
+): Promise<InventoryAvailabilityResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.query && params.query.trim().length > 0) {
+    searchParams.set("query", params.query.trim());
+  }
+  if (typeof params.limit === "number" && Number.isFinite(params.limit)) {
+    const bounded = Math.min(Math.max(Math.floor(params.limit), 1), 250);
+    searchParams.set("limit", String(bounded));
+  }
+  (params.skus ?? [])
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .forEach((value) => searchParams.append("sku", value));
+  (params.deviceIds ?? [])
+    .filter((value) => Number.isFinite(value) && Number(value) > 0)
+    .forEach((value) => searchParams.append("device_id", String(Math.trunc(value))));
+
+  const suffix = searchParams.toString();
+  return request<InventoryAvailabilityResponse>(
+    `/inventory/availability${suffix ? `?${suffix}` : ""}`,
+    { method: "GET" },
+  );
 }
 
 export function getInventoryCurrentReport(

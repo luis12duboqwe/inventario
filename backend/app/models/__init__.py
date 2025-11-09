@@ -518,6 +518,7 @@ class PriceList(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, index=True
     )

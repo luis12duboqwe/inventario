@@ -18,6 +18,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Product, ProductSearchParams, PaymentInput } from "../../../services/sales";
 import { SalesProducts } from "../../../services/sales";
+import {
+  getInventoryAvailability,
+  type InventoryAvailabilityRecord,
+} from "../../../api";
 import { usePOS } from "../hooks/usePOS";
 // [PACK22-POS-PAGE-IMPORTS-END]
 import { calcTotalsLocal } from "../utils/totals";
@@ -50,6 +54,18 @@ type Customer = {
   phone?: string;
 };
 
+const buildAvailabilityReference = (product: Product): string => {
+  const normalizedSku = product.sku?.trim().toLowerCase();
+  if (normalizedSku) {
+    return normalizedSku;
+  }
+  const numericId = Number(product.id);
+  if (Number.isFinite(numericId)) {
+    return `device:${Math.trunc(numericId)}`;
+  }
+  return String(product.id);
+};
+
 export default function POSPage() {
   type PaymentDraft = PaymentInput & { id: string };
   // [PACK26-POS-AUTHZ-STATE-START]
@@ -70,6 +86,8 @@ export default function POSPage() {
   const [page, setPage] = useState(1);
   const pageSize = 24; // ajusta a tu grid
   // [PACK22-POS-SEARCH-STATE-END]
+  const [availabilityMap, setAvailabilityMap] = useState<Record<string, InventoryAvailabilityRecord>>({});
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
   // [PACK22-POS-HOOK-USE-START]
   const pos = usePOS();
 
@@ -94,6 +112,53 @@ export default function POSPage() {
     setPayments,
     purgeOffline,
   } = pos;
+
+  const updateAvailabilityForProducts = useCallback(
+    async (items: Product[]) => {
+      const pendingSkus = new Set<string>();
+      const pendingDeviceIds = new Set<number>();
+      items.forEach((item) => {
+        const normalizedSku = item.sku?.trim();
+        if (normalizedSku) {
+          const reference = normalizedSku.toLowerCase();
+          if (!availabilityMap[reference]) {
+            pendingSkus.add(normalizedSku);
+          }
+          return;
+        }
+        const numericId = Number(item.id);
+        if (Number.isFinite(numericId)) {
+          const reference = buildAvailabilityReference(item);
+          if (!availabilityMap[reference]) {
+            pendingDeviceIds.add(Math.trunc(numericId));
+          }
+        }
+      });
+      if (pendingSkus.size === 0 && pendingDeviceIds.size === 0) {
+        return;
+      }
+      setAvailabilityLoading(true);
+      try {
+        const response = await getInventoryAvailability({
+          skus: pendingSkus.size ? Array.from(pendingSkus) : undefined,
+          deviceIds: pendingDeviceIds.size ? Array.from(pendingDeviceIds) : undefined,
+          limit: Math.max(items.length, pendingSkus.size + pendingDeviceIds.size, 1),
+        });
+        setAvailabilityMap((prev) => {
+          const next = { ...prev };
+          response.items.forEach((entry) => {
+            next[entry.reference] = entry;
+          });
+          return next;
+        });
+      } catch (error) {
+        console.warn("No se pudo consultar disponibilidad corporativa", error);
+      } finally {
+        setAvailabilityLoading(false);
+      }
+    },
+    [availabilityMap],
+  );
 
   useEffect(() => {
     priceDraft();
@@ -240,13 +305,15 @@ export default function POSPage() {
         params.page = extra.page;
       }
       const res = await SalesProducts.searchProducts(params);
-      setProducts(res.items ?? []);
+      const items = Array.isArray(res.items) ? res.items : [];
+      setProducts(items);
+      void updateAvailabilityForProducts(items);
     } catch {
       // TODO(wire): manejar error de búsqueda
     } finally {
       setLoadingSearch(false);
     }
-  }, [page, pageSize, q]);
+  }, [page, pageSize, q, updateAvailabilityForProducts]);
 
   function handleSearch(value: string) {
     setQ(value);
@@ -300,9 +367,11 @@ export default function POSPage() {
         return [candidate, ...prev];
       });
 
+      void updateAvailabilityForProducts([candidate]);
+
       return { label: candidate.name };
     },
-    [onAddToCart, setPage, setProducts, setQ],
+    [onAddToCart, setPage, setProducts, setQ, updateAvailabilityForProducts],
   );
 
   function handleQty(id: string, qty: number) {
@@ -497,6 +566,8 @@ export default function POSPage() {
                     onAddToCart(original);
                   }
                 }}
+                availabilityByReference={availabilityMap}
+                availabilityLoading={availabilityLoading}
               />
             </div>
           </>
