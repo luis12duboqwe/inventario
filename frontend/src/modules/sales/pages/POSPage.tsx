@@ -56,6 +56,11 @@ type Customer = {
   docId?: string;
 };
 
+type TerminalOption = {
+  id: string;
+  label: string;
+};
+
 const buildAvailabilityReference = (product: Product): string => {
   const normalizedSku = product.sku?.trim().toLowerCase();
   if (normalizedSku) {
@@ -84,6 +89,45 @@ export default function POSPage() {
   const [lastSale, setLastSale] = useState<{ id: string; number: string; receiptUrl?: string | null } | null>(null);
   const [lastSaleContact, setLastSaleContact] = useState<{ email?: string; phone?: string; docId?: string; name?: string } | null>(null);
   const [sendingChannel, setSendingChannel] = useState<"email" | "whatsapp" | null>(null);
+  const terminalOptions = useMemo<TerminalOption[]>(
+    () => [
+      { id: "atl-01", label: "Terminal Atlántida" },
+      { id: "fic-01", label: "Terminal Ficohsa" },
+    ],
+    [],
+  );
+  const [selectedTerminal, setSelectedTerminal] = useState<string | undefined>(
+    () => terminalOptions[0]?.id,
+  );
+  const [tipSuggestions, setTipSuggestions] = useState<number[]>(() => {
+    if (typeof window === "undefined") {
+      return [0, 5, 10];
+    }
+    try {
+      const stored = localStorage.getItem("sm_pos_tip_suggestions");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const values = parsed
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value >= 0);
+          if (values.length > 0) {
+            return values;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("No se pudieron cargar propinas configuradas", error);
+    }
+    return [0, 5, 10];
+  });
+  const [tipPresetInput, setTipPresetInput] = useState<string>(() => tipSuggestions.join(", "));
+  useEffect(() => {
+    setTipPresetInput(tipSuggestions.join(", "));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sm_pos_tip_suggestions", JSON.stringify(tipSuggestions));
+    }
+  }, [tipSuggestions]);
   // [PACK22-POS-SEARCH-STATE-START]
   const [q, setQ] = useState("");
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -258,6 +302,7 @@ export default function POSPage() {
       meta: {
         total: result?.totals?.grand ?? 0,
         lines: lines.length,
+        tips: payments.reduce((sum, payment) => sum + (payment.tipAmount ?? 0), 0),
       },
     };
 
@@ -418,13 +463,21 @@ export default function POSPage() {
 
   const handlePaymentsSubmit = async (paymentDrafts: PaymentDraft[]) => {
     if (!can(PERMS.POS_CHECKOUT)) return;
-    const payload: PaymentInput[] = paymentDrafts.map(({ type, amount, ref }) => {
-      const payment: PaymentInput = { type, amount };
-      if (ref !== undefined) {
-        payment.ref = ref;
-      }
-      return payment;
-    });
+    const payload: PaymentInput[] = paymentDrafts.map(
+      ({ type, amount, reference, tipAmount, terminalId }) => {
+        const payment: PaymentInput = { type, amount };
+        if (reference) {
+          payment.reference = reference;
+        }
+        if (typeof tipAmount === "number" && tipAmount > 0) {
+          payment.tipAmount = tipAmount;
+        }
+        if (terminalId) {
+          payment.terminalId = terminalId;
+        }
+        return payment;
+      },
+    );
     setPayments(payload);
     try {
       const result = await checkout();
@@ -569,6 +622,16 @@ export default function POSPage() {
     purgeOffline(id);
   };
 
+  const handleTipPresetBlur = () => {
+    const values = tipPresetInput
+      .split(",")
+      .map((entry) => Number(entry.trim()))
+      .filter((value) => Number.isFinite(value) && value >= 0);
+    if (values.length > 0) {
+      setTipSuggestions(values);
+    }
+  };
+
   function handleCancelSale() {
     clearCart();
     setPayments([]);
@@ -634,6 +697,49 @@ export default function POSPage() {
         </div>
       ) : null}
       {/* [PACK26-POS-HOLD-BUTTON-END] */}
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap",
+          alignItems: "center",
+          background: "rgba(30,41,59,0.6)",
+          borderRadius: 12,
+          padding: "8px 12px",
+          border: "1px solid rgba(148,163,184,0.15)",
+        }}
+      >
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+          Terminal predeterminado
+          <select
+            value={selectedTerminal ?? ""}
+            onChange={(event) => setSelectedTerminal(event.target.value || undefined)}
+            style={{ padding: 8, borderRadius: 8 }}
+          >
+            {terminalOptions.map((terminal) => (
+              <option key={terminal.id} value={terminal.id}>
+                {terminal.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+          Propinas sugeridas (%)
+          <input
+            value={tipPresetInput}
+            onChange={(event) => setTipPresetInput(event.target.value)}
+            onBlur={handleTipPresetBlur}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                handleTipPresetBlur();
+              }
+            }}
+            style={{ padding: 8, borderRadius: 8 }}
+            placeholder="0, 5, 10"
+          />
+        </label>
+      </div>
       <POSLayout
         left={
           <>
@@ -703,6 +809,9 @@ export default function POSPage() {
       <PaymentsModal
         open={paymentsOpen}
         total={totals.grand}
+        terminals={terminalOptions}
+        defaultTerminalId={selectedTerminal}
+        tipSuggestions={tipSuggestions}
         onClose={() => setPaymentsOpen(false)}
         onSubmit={(paymentsDraft) => {
           void handlePaymentsSubmit(paymentsDraft as PaymentDraft[]);

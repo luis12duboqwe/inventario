@@ -788,6 +788,22 @@ export type RepairOrderPartsPayload = {  // [PACK37-frontend]
 
 export type RepairOrderClosePayload = Partial<Pick<RepairOrderPayload, "labor_cost" | "parts">>; // [PACK37-frontend]
 
+export type CashRegisterEntry = {
+  id: number;
+  session_id: number;
+  entry_type: "INGRESO" | "EGRESO";
+  amount: number;
+  reason: string;
+  notes?: string | null;
+  created_by_id?: number | null;
+  created_at: string;
+};
+
+export type CashDenominationInput = {
+  value: number;
+  quantity: number;
+};
+
 export type CashSession = {
   id: number;
   store_id: number;
@@ -797,11 +813,15 @@ export type CashSession = {
   expected_amount: number;
   difference_amount: number;
   payment_breakdown: Record<string, number>;
+  denomination_breakdown: Record<string, number>;
+  reconciliation_notes?: string | null;
+  difference_reason?: string | null;
   notes?: string | null;
   opened_by_id?: number | null;
   closed_by_id?: number | null;
   opened_at: string;
   closed_at?: string | null;
+  entries?: CashRegisterEntry[] | null;
 };
 
 export type SaleDeviceSummary = {
@@ -1124,6 +1144,11 @@ export type PosSalePayload = {
 export type PosSalePaymentEntry = {
   method: PaymentMethod | string;
   amount: number;
+  reference?: string;
+  tipAmount?: number;
+  terminalId?: string;
+  token?: string;
+  metadata?: Record<string, string>;
 };
 
 export type PosDraft = {
@@ -1145,6 +1170,54 @@ export type PosSaleResponse = {
   receipt_pdf_base64?: string | null;
 };
 
+export type PosConnectorType = "usb" | "network";
+
+export type PosPrinterMode = "thermal" | "fiscal";
+
+export type PosConnectorSettings = {
+  type: PosConnectorType;
+  identifier: string;
+  path?: string | null;
+  host?: string | null;
+  port?: number | null;
+};
+
+export type PosPrinterSettings = {
+  name: string;
+  mode: PosPrinterMode;
+  connector: PosConnectorSettings;
+  paper_width_mm?: number | null;
+  is_default: boolean;
+  vendor?: string | null;
+  supports_qr?: boolean;
+};
+
+export type PosCashDrawerSettings = {
+  enabled: boolean;
+  connector?: PosConnectorSettings | null;
+  auto_open_on_cash_sale: boolean;
+  pulse_duration_ms: number;
+};
+
+export type PosCustomerDisplaySettings = {
+  enabled: boolean;
+  channel: "websocket" | "local";
+  brightness: number;
+  theme: "dark" | "light";
+  message_template?: string | null;
+};
+
+export type PosHardwareSettings = {
+  printers: PosPrinterSettings[];
+  cash_drawer: PosCashDrawerSettings;
+  customer_display: PosCustomerDisplaySettings;
+export type PosTerminalConfig = {
+  id: string;
+  label: string;
+  adapter: string;
+  currency: string;
+};
+
 export type PosConfig = {
   store_id: number;
   tax_rate: number;
@@ -1152,7 +1225,10 @@ export type PosConfig = {
   printer_name?: string | null;
   printer_profile?: string | null;
   quick_product_ids: number[];
+  hardware_settings: PosHardwareSettings;
   updated_at: string;
+  terminals: PosTerminalConfig[];
+  tip_suggestions: number[];
 };
 
 export type PosConfigUpdateInput = {
@@ -1162,6 +1238,7 @@ export type PosConfigUpdateInput = {
   printer_name?: string | null;
   printer_profile?: string | null;
   quick_product_ids: number[];
+  hardware_settings?: PosHardwareSettings;
 };
 
 export type PosSessionSummary = {
@@ -6388,6 +6465,80 @@ export function updatePosConfig(
   );
 }
 
+export type PosHardwareActionResponse = {
+  status: "queued" | "ok" | "error";
+  message: string;
+  details?: Record<string, unknown> | null;
+};
+
+export type PosHardwarePrintTestInput = {
+  store_id: number;
+  printer_name?: string | null;
+  mode?: PosPrinterMode;
+  sample?: string;
+};
+
+export type PosHardwareDrawerOpenInput = {
+  store_id: number;
+  connector_identifier?: string | null;
+  pulse_duration_ms?: number | null;
+};
+
+export type PosHardwareDisplayPushInput = {
+  store_id: number;
+  headline: string;
+  message?: string | null;
+  total_amount?: number | null;
+};
+
+export function testPosPrinter(
+  token: string,
+  payload: PosHardwarePrintTestInput,
+  reason = "Prueba hardware POS"
+): Promise<PosHardwareActionResponse> {
+  return request<PosHardwareActionResponse>(
+    "/pos/hardware/print-test",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function openPosCashDrawer(
+  token: string,
+  payload: PosHardwareDrawerOpenInput,
+  reason = "Apertura manual gaveta"
+): Promise<PosHardwareActionResponse> {
+  return request<PosHardwareActionResponse>(
+    "/pos/hardware/drawer/open",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function pushCustomerDisplay(
+  token: string,
+  payload: PosHardwareDisplayPushInput,
+  reason = "Mensaje pantalla cliente"
+): Promise<PosHardwareActionResponse> {
+  return request<PosHardwareActionResponse>(
+    "/pos/hardware/display/push",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
 export function openCashSession(
   token: string,
   payload: { store_id: number; opening_amount: number; notes?: string },
@@ -6402,7 +6553,15 @@ export function openCashSession(
 
 export function closeCashSession(
   token: string,
-  payload: { session_id: number; closing_amount: number; payment_breakdown?: Record<string, number>; notes?: string },
+  payload: {
+    session_id: number;
+    closing_amount: number;
+    payment_breakdown?: Record<string, number>;
+    notes?: string;
+    denominations?: CashDenominationInput[];
+    reconciliation_notes?: string;
+    difference_reason?: string;
+  },
   reason: string
 ): Promise<CashSession> {
   return request<CashSession>(
@@ -6497,10 +6656,59 @@ export function registerPosReturn(
 export function listCashSessions(
   token: string,
   storeId: number,
-  limit = 30
+  limit = 30,
+  reason = "Consulta historial de caja"
 ): Promise<CashSession[]> {
   const params = new URLSearchParams({ store_id: String(storeId), limit: String(limit) });
-  return requestCollection<CashSession>(`/pos/cash/history?${params.toString()}`, { method: "GET" }, token);
+  return requestCollection<CashSession>(
+    `/pos/cash/history?${params.toString()}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function createCashRegisterEntry(
+  token: string,
+  payload: { session_id: number; entry_type: CashRegisterEntry["entry_type"]; amount: number; reason: string; notes?: string },
+  reason: string
+): Promise<CashRegisterEntry> {
+  return request<CashRegisterEntry>(
+    "/pos/cash/register/entries",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listCashRegisterEntries(
+  token: string,
+  sessionId: number,
+  reason: string
+): Promise<CashRegisterEntry[]> {
+  return requestCollection<CashRegisterEntry>(
+    `/pos/cash/register/entries?session_id=${sessionId}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function getCashRegisterReport(
+  token: string,
+  sessionId: number,
+  reason: string,
+  exportFormat: "json" | "pdf" = "json"
+): Promise<CashSession> | Promise<Blob> {
+  if (exportFormat === "pdf") {
+    return requestBlob(
+      `/pos/cash/register/${sessionId}/report?export=pdf`,
+      { method: "GET", headers: { "X-Reason": reason } },
+      token
+    );
+  }
+  return request<CashSession>(
+    `/pos/cash/register/${sessionId}/report?export=json`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export async function downloadPosReceipt(token: string, saleId: number): Promise<Blob> {

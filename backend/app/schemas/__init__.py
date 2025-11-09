@@ -22,6 +22,7 @@ from pydantic import (
 from ..models import (
     BackupComponent,
     BackupMode,
+    CashEntryType,
     CashSessionStatus,
     CommercialState,
     RecurringOrderType,
@@ -631,6 +632,7 @@ class PriceListBase(BaseModel):
         default=None,
         ge=1,
         description="Sucursal asociada cuando la lista es específica para una tienda.",
+        description="Identificador de la sucursal asociada, cuando aplica.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -658,14 +660,6 @@ class PriceListBase(BaseModel):
     ends_at: datetime | None = Field(
         default=None,
         description="Fecha de término de vigencia en hora exacta (UTC).",
-    )
-    valid_from: date | None = Field(
-        default=None,
-        description="Fecha a partir de la cual la lista entra en vigor.",
-    )
-    valid_until: date | None = Field(
-        default=None,
-        description="Fecha límite de vigencia de la lista de precios.",
     )
 
     @field_validator("name", mode="before")
@@ -721,8 +715,6 @@ class PriceListUpdate(BaseModel):
     store_id: int | None = Field(default=None, ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     currency: str | None = Field(default=None, min_length=3, max_length=10)
-    starts_at: datetime | None = Field(default=None)
-    ends_at: datetime | None = Field(default=None)
     valid_from: date | None = Field(default=None)
     valid_until: date | None = Field(default=None)
 
@@ -753,6 +745,19 @@ class PriceListUpdate(BaseModel):
         if len(normalized) < 3:
             raise ValueError("La moneda debe contener al menos 3 caracteres.")
         return normalized
+
+
+class PriceListUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    priority: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = Field(default=None)
+    store_id: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+    starts_at: datetime | None = Field(default=None)
+    ends_at: datetime | None = Field(default=None)
+    valid_from: date | None = Field(default=None)
+    valid_until: date | None = Field(default=None)
 
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListUpdate":
@@ -835,7 +840,6 @@ class PriceListItemUpdate(BaseModel):
         ge=Decimal("0"),
         le=Decimal("100"),
     )
-    currency: str | None = Field(default=None, min_length=3, max_length=8)
     notes: str | None = Field(default=None, max_length=500)
 
     @field_validator("currency", mode="before")
@@ -3783,6 +3787,7 @@ class CashCloseReport(BaseModel):
     opening: float = Field(default=0.0)
     sales_gross: float = Field(default=0.0, alias="salesGross")
     refunds: float = Field(default=0.0)
+    incomes: float = Field(default=0.0)
     expenses: float = Field(default=0.0)
     closing_suggested: float = Field(default=0.0, alias="closingSuggested")
 
@@ -4989,6 +4994,11 @@ class POSSalePaymentInput(BaseModel):
     # // [PACK34-schema]
     method: PaymentMethod
     amount: Decimal = Field(..., ge=Decimal("0"))
+    reference: str | None = Field(default=None, max_length=64)
+    terminal_id: str | None = Field(default=None, max_length=40, alias="terminalId")
+    tip_amount: Decimal | None = Field(default=None, ge=Decimal("0"), alias="tipAmount")
+    token: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -4999,6 +5009,23 @@ class POSSalePaymentInput(BaseModel):
                     data["method"] = data[k]
                     break
         return data
+
+    @field_validator("reference", "terminal_id", "token")
+    @classmethod
+    def _normalize_optional_str(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _ensure_metadata(cls, value: Any) -> dict[str, str]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return {str(k): str(v) for k, v in value.items()}
+        raise ValueError("metadata debe ser un diccionario de texto")
 
 
 class POSSaleRequest(BaseModel):
@@ -5087,9 +5114,11 @@ class POSSaleRequest(BaseModel):
             breakdown: dict[str, Decimal] = {}
             for payment in self.payments:
                 method_key = payment.method.value
+                total_amount = Decimal(str(payment.amount))
+                if payment.tip_amount is not None:
+                    total_amount += Decimal(str(payment.tip_amount))
                 breakdown[method_key] = (
-                    breakdown.get(method_key, Decimal("0"))
-                    + Decimal(str(payment.amount))
+                    breakdown.get(method_key, Decimal("0")) + total_amount
                 )
             self.payment_breakdown = breakdown
         return self
@@ -5114,6 +5143,7 @@ class POSSaleResponse(BaseModel):
     cash_session_id: int | None = None
     payment_breakdown: dict[str, float] = Field(default_factory=dict)
     receipt_pdf_base64: str | None = Field(default=None)
+    electronic_payments: list["POSElectronicPaymentResult"] = Field(default_factory=list)
 
     @field_serializer("payment_breakdown")
     @classmethod
@@ -5132,6 +5162,25 @@ class POSSaleResponse(BaseModel):
 class POSReceiptDeliveryChannel(str, enum.Enum):
     EMAIL = "email"
     WHATSAPP = "whatsapp"
+class POSElectronicPaymentResult(BaseModel):
+    terminal_id: str
+    method: PaymentMethod
+    transaction_id: str
+    status: str
+    approval_code: str | None = None
+    reconciled: bool = Field(default=False)
+    tip_amount: Decimal | None = None
+
+    @field_serializer("tip_amount")
+    @classmethod
+    def _serialize_tip(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class POSReturnItemRequest(BaseModel):
+    """Item devuelto desde el POS identificable por producto o IMEI."""
 
 
 class POSReceiptDeliveryRequest(BaseModel):
@@ -5205,6 +5254,57 @@ class POSSaleDetailResponse(BaseModel):
     receipt_pdf_base64: str | None = None
 
 
+class CashDenominationInput(BaseModel):
+    value: Decimal = Field(..., gt=Decimal("0"))
+    quantity: int = Field(default=0, ge=0)
+
+    @field_serializer("value")
+    @classmethod
+    def _serialize_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class CashRegisterEntryBase(BaseModel):
+    session_id: int = Field(..., ge=1)
+    entry_type: CashEntryType
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    reason: str = Field(..., min_length=5, max_length=255)
+    notes: str | None = Field(default=None, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("El motivo debe tener al menos 5 caracteres.")
+        return normalized
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class CashRegisterEntryCreate(CashRegisterEntryBase):
+    pass
+
+
+class CashRegisterEntryResponse(CashRegisterEntryBase):
+    id: int
+    created_by_id: int | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
 class CashSessionOpenRequest(BaseModel):
     store_id: int = Field(..., ge=1)
     opening_amount: Decimal = Field(..., ge=Decimal("0"))
@@ -5224,6 +5324,9 @@ class CashSessionCloseRequest(BaseModel):
     closing_amount: Decimal = Field(..., ge=Decimal("0"))
     notes: str | None = Field(default=None, max_length=255)
     payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
+    denominations: list["CashDenominationInput"] = Field(default_factory=list)
+    reconciliation_notes: str | None = Field(default=None, max_length=255)
+    difference_reason: str | None = Field(default=None, max_length=255)
 
     @field_validator("notes")
     @classmethod
@@ -5248,6 +5351,14 @@ class CashSessionCloseRequest(BaseModel):
             normalized[method] = Decimal(str(amount))
         return normalized
 
+    @field_validator("reconciliation_notes", "difference_reason")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
 
 class CashSessionResponse(BaseModel):
     id: int
@@ -5258,11 +5369,15 @@ class CashSessionResponse(BaseModel):
     expected_amount: Decimal
     difference_amount: Decimal
     payment_breakdown: dict[str, float]
+    denomination_breakdown: dict[str, int]
+    reconciliation_notes: str | None
+    difference_reason: str | None
     notes: str | None
     opened_by_id: int | None
     closed_by_id: int | None
     opened_at: datetime
     closed_at: datetime | None
+    entries: list["CashRegisterEntryResponse"] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -5280,6 +5395,11 @@ class CashSessionResponse(BaseModel):
     @classmethod
     def _serialize_breakdown(cls, value: dict[str, float]) -> dict[str, float]:
         return {key: float(amount) for key, amount in value.items()}
+
+    @field_serializer("denomination_breakdown")
+    @classmethod
+    def _serialize_denominations(cls, value: dict[str, int]) -> dict[str, int]:
+        return {str(denomination): int(count) for denomination, count in value.items()}
 
 
 class POSSessionOpenPayload(BaseModel):
@@ -5368,6 +5488,9 @@ class POSSessionSummary(BaseModel):
     expected_amount: Decimal | None = None
     difference_amount: Decimal | None = None
     payment_breakdown: dict[str, float] = Field(default_factory=dict)
+    denomination_breakdown: dict[str, int] = Field(default_factory=dict)
+    reconciliation_notes: str | None = None
+    difference_reason: str | None = None
 
     @classmethod
     def from_model(cls, session: "models.CashRegisterSession") -> "POSSessionSummary":
@@ -5387,6 +5510,12 @@ class POSSessionSummary(BaseModel):
             payment_breakdown={
                 key: float(value) for key, value in (session.payment_breakdown or {}).items()
             },
+            denomination_breakdown={
+                str(key): int(count)
+                for key, count in (session.denomination_breakdown or {}).items()
+            },
+            reconciliation_notes=getattr(session, "reconciliation_notes", None),
+            difference_reason=getattr(session, "difference_reason", None),
         )
 
     @field_serializer(
@@ -5400,6 +5529,11 @@ class POSSessionSummary(BaseModel):
         if value is None:
             return None
         return float(value)
+
+    @field_serializer("denomination_breakdown")
+    @classmethod
+    def _serialize_optional_denominations(cls, value: dict[str, int]) -> dict[str, int]:
+        return {str(denomination): int(count) for denomination, count in value.items()}
 
 
 class POSTaxInfo(BaseModel):
@@ -5416,6 +5550,91 @@ class POSTaxInfo(BaseModel):
         return float(value)
 
 
+class POSConnectorType(str, enum.Enum):
+    """Tipos de conectores de hardware permitidos."""
+
+    USB = "usb"
+    NETWORK = "network"
+
+
+class POSPrinterMode(str, enum.Enum):
+    """Tipos de impresoras POS disponibles."""
+
+    THERMAL = "thermal"
+    FISCAL = "fiscal"
+
+
+class POSConnectorSettings(BaseModel):
+    """Configura el punto de conexión del dispositivo POS."""
+
+    type: POSConnectorType = Field(default=POSConnectorType.USB)
+    identifier: str = Field(default="predeterminado", max_length=120)
+    path: str | None = Field(default=None, max_length=255)
+    host: str | None = Field(default=None, max_length=255)
+    port: int | None = Field(default=None, ge=1, le=65535)
+
+    @model_validator(mode="after")
+    def _validate_target(self) -> "POSConnectorSettings":
+        if self.type is POSConnectorType.NETWORK:
+            if not self.host:
+                raise ValueError("Los conectores de red requieren host configurado.")
+        return self
+
+
+class POSPrinterSettings(BaseModel):
+    """Describe impresoras térmicas o fiscales."""
+
+    name: str = Field(..., max_length=120)
+    mode: POSPrinterMode = Field(default=POSPrinterMode.THERMAL)
+    connector: POSConnectorSettings = Field(default_factory=POSConnectorSettings)
+    paper_width_mm: int | None = Field(default=None, ge=40, le=120)
+    is_default: bool = Field(default=False)
+    vendor: str | None = Field(default=None, max_length=80)
+    supports_qr: bool = Field(default=False)
+
+
+class POSCashDrawerSettings(BaseModel):
+    """Define la gaveta de efectivo conectada al POS."""
+
+    enabled: bool = Field(default=False)
+    connector: POSConnectorSettings | None = Field(default=None)
+    auto_open_on_cash_sale: bool = Field(default=True)
+    pulse_duration_ms: int = Field(default=150, ge=50, le=500)
+
+
+class POSCustomerDisplaySettings(BaseModel):
+    """Configura la pantalla de cliente enlazada al POS."""
+
+    enabled: bool = Field(default=False)
+    channel: Literal["websocket", "local"] = Field(default="websocket")
+    brightness: int = Field(default=100, ge=10, le=100)
+    theme: Literal["dark", "light"] = Field(default="dark")
+    message_template: str | None = Field(default=None, max_length=160)
+
+
+class POSHardwareSettings(BaseModel):
+    """Agrupa la configuración de hardware POS por sucursal."""
+
+    printers: list[POSPrinterSettings] = Field(default_factory=list)
+    cash_drawer: POSCashDrawerSettings = Field(default_factory=POSCashDrawerSettings)
+    customer_display: POSCustomerDisplaySettings = Field(
+        default_factory=POSCustomerDisplaySettings
+    )
+class POSTerminalConfig(BaseModel):
+    id: str
+    label: str
+    adapter: str
+    currency: str
+
+    @field_validator("id", "label", "adapter", "currency")
+    @classmethod
+    def _normalize_terminal_str(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Los campos de terminal no pueden estar vacíos")
+        return normalized
+
+
 class POSConfigResponse(BaseModel):
     store_id: int
     tax_rate: Decimal
@@ -5423,7 +5642,12 @@ class POSConfigResponse(BaseModel):
     printer_name: str | None
     printer_profile: str | None
     quick_product_ids: list[int]
+    hardware_settings: POSHardwareSettings = Field(
+        default_factory=POSHardwareSettings
+    )
     updated_at: datetime
+    terminals: list[POSTerminalConfig] = Field(default_factory=list)
+    tip_suggestions: list[float] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -5431,6 +5655,37 @@ class POSConfigResponse(BaseModel):
     @classmethod
     def _serialize_tax(cls, value: Decimal) -> float:
         return float(value)
+
+    @classmethod
+    def from_model(
+        cls,
+        config: "models.POSConfig",
+        *,
+        terminals: dict[str, dict[str, Any]],
+        tip_suggestions: list[Decimal],
+    ) -> "POSConfigResponse":
+        from .. import models  # Importación tardía para evitar ciclos
+
+        terminals_payload = [
+            POSTerminalConfig(
+                id=terminal_id,
+                label=str(data.get("label") or terminal_id),
+                adapter=str(data.get("adapter") or "").strip() or "banco_atlantida",
+                currency=str(data.get("currency") or "HNL"),
+            )
+            for terminal_id, data in terminals.items()
+        ]
+        return cls(
+            store_id=config.store_id,
+            tax_rate=config.tax_rate,
+            invoice_prefix=config.invoice_prefix,
+            printer_name=config.printer_name,
+            printer_profile=config.printer_profile,
+            quick_product_ids=list(config.quick_product_ids or []),
+            updated_at=config.updated_at,
+            terminals=terminals_payload,
+            tip_suggestions=[float(Decimal(str(value))) for value in tip_suggestions],
+        )
 
 
 class POSConfigUpdate(BaseModel):
@@ -5440,6 +5695,7 @@ class POSConfigUpdate(BaseModel):
     printer_name: str | None = Field(default=None, max_length=120)
     printer_profile: str | None = Field(default=None, max_length=255)
     quick_product_ids: list[int] = Field(default_factory=list)
+    hardware_settings: POSHardwareSettings | None = Field(default=None)
 
     @field_validator("quick_product_ids")
     @classmethod
@@ -5451,6 +5707,40 @@ class POSConfigUpdate(BaseModel):
                     "Los identificadores rápidos deben ser positivos.")
             normalized.append(int(item))
         return normalized
+
+
+class POSHardwarePrintTestRequest(BaseModel):
+    """Solicitud de impresión de prueba."""
+
+    store_id: int = Field(..., ge=1)
+    printer_name: str | None = Field(default=None, max_length=120)
+    mode: POSPrinterMode = Field(default=POSPrinterMode.THERMAL)
+    sample: str = Field(default="*** PRUEBA DE IMPRESIÓN POS ***", max_length=512)
+
+
+class POSHardwareDrawerOpenRequest(BaseModel):
+    """Solicitud para apertura de gaveta."""
+
+    store_id: int = Field(..., ge=1)
+    connector_identifier: str | None = Field(default=None, max_length=120)
+    pulse_duration_ms: int | None = Field(default=None, ge=50, le=500)
+
+
+class POSHardwareDisplayPushRequest(BaseModel):
+    """Eventos a mostrar en la pantalla de cliente."""
+
+    store_id: int = Field(..., ge=1)
+    headline: str = Field(..., max_length=80)
+    message: str | None = Field(default=None, max_length=240)
+    total_amount: float | None = Field(default=None, ge=0)
+
+
+class POSHardwareActionResponse(BaseModel):
+    """Respuesta estandarizada para acciones de hardware."""
+
+    status: Literal["queued", "ok", "error"] = Field(default="queued")
+    message: str = Field(default="")
+    details: dict[str, Any] | None = Field(default=None)
 
 
 class BackupRunRequest(BaseModel):
@@ -5753,6 +6043,12 @@ __all__ = [
     "SalesSummaryReport",
     "SalesByProductItem",
     "CashCloseReport",
+    "CashDenominationInput",
+    "CashRegisterEntryCreate",
+    "CashRegisterEntryResponse",
+    "CashSessionOpenRequest",
+    "CashSessionCloseRequest",
+    "CashSessionResponse",
     "AuditReminderEntry",
     "AuditReminderSummary",
     "DashboardAuditAlerts",
@@ -5836,6 +6132,7 @@ __all__ = [
     "POSReturnRequest",
     "POSReturnResponse",
     "POSSaleDetailResponse",
+    "POSElectronicPaymentResult",
     "PurchaseVendorBase",
     "PurchaseVendorCreate",
     "PurchaseVendorUpdate",
@@ -5884,8 +6181,20 @@ __all__ = [
     "SalesReportGroup",
     "SalesReportProduct",
     "SalesReport",
+    "POSConnectorType",
+    "POSPrinterMode",
+    "POSConnectorSettings",
+    "POSPrinterSettings",
+    "POSCashDrawerSettings",
+    "POSCustomerDisplaySettings",
+    "POSHardwareSettings",
+    "POSHardwarePrintTestRequest",
+    "POSHardwareDrawerOpenRequest",
+    "POSHardwareDisplayPushRequest",
+    "POSHardwareActionResponse",
     "POSDraftResponse",
     "POSConfigResponse",
+    "POSTerminalConfig",
     "POSConfigUpdate",
     "ReleaseInfo",
     "RootWelcomeResponse",
@@ -5971,3 +6280,6 @@ __all__ = [
     "StockoutForecastMetric",
     "HealthStatusResponse",
 ]
+
+CashSessionCloseRequest.model_rebuild()
+CashSessionResponse.model_rebuild()

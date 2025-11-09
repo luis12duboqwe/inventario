@@ -8311,3 +8311,36 @@ ol {
   background: var(--color-neutral-soft-tint);
   color: var(--color-text-muted);
 }
+
+/* Cash register module */
+.cash-register-grid {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.cash-register-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cash-register-side textarea {
+  resize: vertical;
+}
+
+.cash-register-side label input,
+.cash-register-side label textarea {
+  width: 100%;
+}
+
+.cash-register-side label span {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.denomination-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}

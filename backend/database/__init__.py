@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+import logging
 from importlib import import_module
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from alembic.util.exc import CommandError
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -92,12 +94,26 @@ def run_migrations() -> None:
     import_module("backend.models.user")
     import_module("backend.models.pos")
     config = _build_alembic_config()
-    command.upgrade(config, "heads")
+    logger = logging.getLogger(__name__)
+
+    def _safe_upgrade(target: str) -> None:
+        try:
+            command.upgrade(config, target)
+        except OperationalError as exc:
+            message = str(exc).lower()
+            if "already exists" in message:
+                logger.warning(
+                    "Migración %s omitida: %s", target, exc, exc_info=False
+                )
+                return
+            raise
+
+    _safe_upgrade("heads")
     try:
-        command.upgrade(config, "head")
+        _safe_upgrade("head")
     except CommandError as exc:
         if "Multiple head revisions" in str(exc):
-            command.upgrade(config, "heads")
+            _safe_upgrade("heads")
         else:
             raise
     _ensure_core_user_columns()
