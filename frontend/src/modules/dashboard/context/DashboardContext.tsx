@@ -64,6 +64,7 @@ type DashboardContextValue = {
   enableAnalyticsAdv: boolean;
   enableTwoFactor: boolean;
   enableHybridPrep: boolean;
+  enablePriceLists: boolean;
   compactMode: boolean;
   setCompactMode: (value: boolean) => void;
   toggleCompactMode: () => void;
@@ -155,6 +156,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     (import.meta.env.VITE_SOFTMOBILE_ENABLE_2FA ?? "0") !== "0";
   const enableHybridPrep =
     (import.meta.env.VITE_SOFTMOBILE_ENABLE_HYBRID_PREP ?? "1") !== "0";
+  const enablePriceLists =
+    (import.meta.env.VITE_SOFTMOBILE_ENABLE_PRICE_LISTS ?? "0") !== "0";
 
   const [compactModeState, setCompactModeState] = useState<boolean>(() => {
     if (typeof window === "undefined") {
@@ -926,6 +929,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableAnalyticsAdv,
       enableTwoFactor,
       enableHybridPrep,
+      enablePriceLists,
       compactMode: compactModeState,
       setCompactMode,
       toggleCompactMode,
@@ -998,6 +1002,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableAnalyticsAdv,
       enableCatalogPro,
       enableHybridPrep,
+      enablePriceLists,
       enablePurchasesSales,
       enableTransfers,
       enableTwoFactor,

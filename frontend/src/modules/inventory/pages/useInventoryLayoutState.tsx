@@ -36,6 +36,11 @@ export type InventoryTabId =
   | "proveedores"
   | "alertas"
   | "reservas";
+  | "movimientos"
+  | "proveedores"
+  | "alertas"
+  | "reservas"
+  | "listas";
 
 const INVENTORY_TABS: Array<{
   id: InventoryTabId;
@@ -54,6 +59,7 @@ const INVENTORY_TABS: Array<{
   { id: "proveedores", label: "Proveedores", icon: <Building2 size={16} aria-hidden="true" />, path: "proveedores" },
   { id: "alertas", label: "Alertas", icon: <AlertTriangle size={16} aria-hidden="true" />, path: "alertas" },
   { id: "reservas", label: "Reservas", icon: <ShieldCheck size={16} aria-hidden="true" />, path: "reservas" },
+  { id: "listas", label: "Listas de precios", icon: <DollarSign size={16} aria-hidden="true" />, path: "listas" },
 ];
 
 export type InventoryLayoutState = {
@@ -70,7 +76,7 @@ export type InventoryLayoutState = {
   handleSubmitDeviceUpdates: (updates: DeviceUpdateInput, reason: string) => Promise<void>;
 };
 
-function resolveActiveTab(pathname: string): InventoryTabId {
+function resolveActiveTab(pathname: string, enablePriceLists: boolean): InventoryTabId {
   if (pathname.includes("/movimientos")) {
     return "movimientos";
   }
@@ -86,13 +92,17 @@ function resolveActiveTab(pathname: string): InventoryTabId {
   if (pathname.includes("/reservas")) {
     return "reservas";
   }
+  if (pathname.includes("/listas") && enablePriceLists) {
+    return "listas";
+  }
   return "productos";
 }
 
 export function useInventoryLayoutState(): InventoryLayoutState {
   const navigate = useNavigate();
   const location = useLocation();
-  const { globalSearchTerm, setGlobalSearchTerm, pushToast, setError } = useDashboard();
+  const { enablePriceLists, globalSearchTerm, setGlobalSearchTerm, pushToast, setError } =
+    useDashboard();
   const inventoryModule = useInventoryModule();
   const {
     stores,
@@ -167,6 +177,12 @@ export function useInventoryLayoutState(): InventoryLayoutState {
       setGlobalSearchTerm("");
     }
   }, [location.pathname, selectedStoreId, setGlobalSearchTerm]);
+
+  useEffect(() => {
+    if (!enablePriceLists && location.pathname.includes("/listas")) {
+      navigate("productos", { replace: true });
+    }
+  }, [enablePriceLists, location.pathname, navigate]);
 
   useEffect(() => {
     if (location.pathname.startsWith("/dashboard/inventory")) {
@@ -694,27 +710,33 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     void handleImportCatalogSubmit();
   }, [handleImportCatalogSubmit]);
 
-  const activeTab = resolveActiveTab(location.pathname);
+  const activeTab = resolveActiveTab(location.pathname, enablePriceLists);
+
+  const availableTabs = useMemo(
+    () =>
+      INVENTORY_TABS.filter((tab) => enablePriceLists || tab.id !== "listas"),
+    [enablePriceLists],
+  );
 
   const tabOptions = useMemo(
     () =>
-      INVENTORY_TABS.map((tab) => ({
+      availableTabs.map((tab) => ({
         id: tab.id,
         label: tab.label,
         icon: tab.icon,
       })),
-    [],
+    [availableTabs],
   );
 
   const handleTabChange = useCallback(
     (tabId: InventoryTabId) => {
-      const target = INVENTORY_TABS.find((tab) => tab.id === tabId);
+      const target = availableTabs.find((tab) => tab.id === tabId);
       if (!target) {
         return;
       }
       navigate(target.path, { replace: false });
     },
-    [navigate],
+    [availableTabs, navigate],
   );
 
   const contextValue = useMemo<InventoryLayoutContextValue>(

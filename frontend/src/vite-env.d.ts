@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_SOFTMOBILE_ENABLE_ANALYTICS_ADV?: string;
   readonly VITE_SOFTMOBILE_ENABLE_2FA?: string;
   readonly VITE_SOFTMOBILE_ENABLE_HYBRID_PREP?: string;
+  readonly VITE_SOFTMOBILE_ENABLE_PRICE_LISTS?: string;
 }
 
 interface ImportMeta {
