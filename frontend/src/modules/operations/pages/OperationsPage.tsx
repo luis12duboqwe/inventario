@@ -60,6 +60,18 @@ const baseOperationsNavigation: Array<{
       },
     ],
   },
+  {
+    id: "garantias",
+    title: "Garantías",
+    links: [
+      {
+        id: "garantias-panel",
+        to: "garantias",
+        label: "Gestión",
+        description: "Cobertura y reclamos",
+      },
+    ],
+  },
 ];
 
 function OperationsPage() {
@@ -75,7 +87,9 @@ function OperationsPage() {
             ? true
             : link.id === "movimientos-transferencias" && !enableTransfers
               ? true
-              : link.disabled,
+              : group.id === "garantias" && !enablePurchasesSales
+                ? true
+                : link.disabled,
       })),
     }));
   }, [enablePurchasesSales, enableTransfers]);

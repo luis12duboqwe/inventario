@@ -12,6 +12,7 @@ export default function OperationsLayout() {
       { to: "pos", label: "POS / Caja" },
       { to: "compras", label: "Compras" },
       { to: "devoluciones", label: "Devoluciones" },
+      { to: "garantias", label: "Garantías" },
       { to: "transferencias", label: "Transferencias" },
     ];
 

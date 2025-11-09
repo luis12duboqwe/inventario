@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import calendar
 import copy
 import csv
 import json
@@ -13035,6 +13036,262 @@ def delete_repair_order(
         )
 
 
+def refresh_expired_warranties(db: Session) -> int:
+    today = date.today()
+    statement = (
+        select(models.WarrantyAssignment)
+        .options(
+            joinedload(models.WarrantyAssignment.sale_item)
+        )
+        .where(
+            models.WarrantyAssignment.status == models.WarrantyStatus.ACTIVA,
+            models.WarrantyAssignment.expiration_date < today,
+        )
+    )
+    expired_assignments = list(db.scalars(statement).unique())
+    if not expired_assignments:
+        return 0
+
+    for assignment in expired_assignments:
+        assignment.status = models.WarrantyStatus.VENCIDA
+        if assignment.sale_item:
+            assignment.sale_item.warranty_status = models.WarrantyStatus.VENCIDA
+        db.add(assignment)
+
+    flush_session(db)
+    return len(expired_assignments)
+
+
+def list_warranty_assignments(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    status: models.WarrantyStatus | None = None,
+    query: str | None = None,
+    expiring_before: date | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.WarrantyAssignment]:
+    refresh_expired_warranties(db)
+
+    statement = (
+        select(models.WarrantyAssignment)
+        .join(models.WarrantyAssignment.sale_item)
+        .join(models.SaleItem.sale)
+        .join(models.WarrantyAssignment.device)
+        .options(
+            joinedload(models.WarrantyAssignment.device),
+            joinedload(models.WarrantyAssignment.sale_item)
+            .joinedload(models.SaleItem.sale)
+            .joinedload(models.Sale.customer),
+            joinedload(models.WarrantyAssignment.claims),
+        )
+        .order_by(models.WarrantyAssignment.activation_date.desc(), models.WarrantyAssignment.id.desc())
+    )
+
+    if store_id is not None:
+        statement = statement.where(models.Sale.store_id == store_id)
+    if status is not None:
+        statement = statement.where(models.WarrantyAssignment.status == status)
+    if expiring_before is not None:
+        statement = statement.where(
+            models.WarrantyAssignment.expiration_date <= expiring_before
+        )
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.where(
+            or_(
+                func.lower(models.Device.name).like(normalized),
+                func.lower(models.Device.sku).like(normalized),
+                func.lower(models.Device.imei).like(normalized),
+                func.lower(models.Device.serial).like(normalized),
+                func.lower(models.WarrantyAssignment.serial_number).like(normalized),
+                func.lower(models.Sale.customer_name).like(normalized),
+                cast(models.Sale.id, String).like(f"%{query.strip()}%"),
+            )
+        )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
+
+    return list(db.scalars(statement).unique())
+
+
+def get_warranty_assignment(
+    db: Session, assignment_id: int
+) -> models.WarrantyAssignment:
+    refresh_expired_warranties(db)
+    statement = (
+        select(models.WarrantyAssignment)
+        .where(models.WarrantyAssignment.id == assignment_id)
+        .options(
+            joinedload(models.WarrantyAssignment.device),
+            joinedload(models.WarrantyAssignment.sale_item)
+            .joinedload(models.SaleItem.sale)
+            .joinedload(models.Sale.customer),
+            joinedload(models.WarrantyAssignment.claims),
+        )
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("warranty_assignment_not_found") from exc
+
+
+def register_warranty_claim(
+    db: Session,
+    assignment_id: int,
+    payload: schemas.WarrantyClaimCreate,
+    *,
+    performed_by_id: int | None,
+    reason: str | None,
+) -> models.WarrantyAssignment:
+    assignment = get_warranty_assignment(db, assignment_id)
+    if assignment.status == models.WarrantyStatus.VENCIDA:
+        raise ValueError("warranty_expired")
+
+    with transactional_session(db):
+        claim = models.WarrantyClaim(
+            assignment_id=assignment.id,
+            claim_type=models.WarrantyClaimType(payload.claim_type),
+            status=models.WarrantyClaimStatus.ABIERTO,
+            notes=payload.notes,
+            performed_by_id=performed_by_id,
+        )
+        if payload.repair_order:
+            repair_order = create_repair_order(
+                db,
+                payload.repair_order,
+                performed_by_id=performed_by_id,
+                reason=reason,
+            )
+            claim.repair_order_id = repair_order.id
+            claim.status = models.WarrantyClaimStatus.EN_PROCESO
+        assignment.claims.append(claim)
+        assignment.status = models.WarrantyStatus.RECLAMO
+        if assignment.sale_item:
+            assignment.sale_item.warranty_status = models.WarrantyStatus.RECLAMO
+        db.add(claim)
+        db.add(assignment)
+        flush_session(db)
+
+    return get_warranty_assignment(db, assignment_id)
+
+
+def update_warranty_claim_status(
+    db: Session,
+    claim_id: int,
+    payload: schemas.WarrantyClaimStatusUpdate,
+    *,
+    performed_by_id: int | None,
+) -> models.WarrantyClaim:
+    statement = (
+        select(models.WarrantyClaim)
+        .where(models.WarrantyClaim.id == claim_id)
+        .options(
+            joinedload(models.WarrantyClaim.assignment)
+            .joinedload(models.WarrantyAssignment.sale_item)
+        )
+    )
+    try:
+        claim = db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("warranty_claim_not_found") from exc
+
+    new_status = models.WarrantyClaimStatus(payload.status)
+
+    with transactional_session(db):
+        claim.status = new_status
+        if payload.notes is not None:
+            claim.notes = payload.notes
+        if payload.repair_order_id is not None:
+            claim.repair_order_id = payload.repair_order_id
+        if new_status in {
+            models.WarrantyClaimStatus.RESUELTO,
+            models.WarrantyClaimStatus.CANCELADO,
+        }:
+            claim.resolved_at = datetime.utcnow()
+        assignment = claim.assignment
+        if assignment:
+            if new_status == models.WarrantyClaimStatus.RESUELTO:
+                assignment.status = models.WarrantyStatus.RESUELTA
+                if assignment.sale_item:
+                    assignment.sale_item.warranty_status = models.WarrantyStatus.RESUELTA
+            elif new_status == models.WarrantyClaimStatus.CANCELADO:
+                assignment.status = models.WarrantyStatus.ACTIVA
+                if assignment.sale_item:
+                    assignment.sale_item.warranty_status = models.WarrantyStatus.ACTIVA
+            else:
+                assignment.status = models.WarrantyStatus.RECLAMO
+                if assignment.sale_item:
+                    assignment.sale_item.warranty_status = models.WarrantyStatus.RECLAMO
+            assignment.updated_at = datetime.utcnow()
+            db.add(assignment)
+        claim.performed_by_id = performed_by_id or claim.performed_by_id
+        db.add(claim)
+
+    return claim
+
+
+def get_warranty_metrics(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    horizon_days: int = 30,
+) -> schemas.WarrantyMetrics:
+    refresh_expired_warranties(db)
+    filters: list[ColumnElement[bool]] = []
+    if store_id is not None:
+        filters.append(models.Sale.store_id == store_id)
+
+    statement = (
+        select(models.WarrantyAssignment)
+        .join(models.WarrantyAssignment.sale_item)
+        .join(models.SaleItem.sale)
+        .options(joinedload(models.WarrantyAssignment.claims))
+        .where(*filters)
+    )
+    assignments = list(db.scalars(statement).unique())
+
+    total = len(assignments)
+    active = sum(1 for a in assignments if a.status == models.WarrantyStatus.ACTIVA)
+    expired = sum(1 for a in assignments if a.status == models.WarrantyStatus.VENCIDA)
+    expiring_limit = date.today() + timedelta(days=max(horizon_days, 0))
+    expiring = sum(
+        1
+        for a in assignments
+        if a.status == models.WarrantyStatus.ACTIVA
+        and a.expiration_date <= expiring_limit
+    )
+    claims_open = 0
+    claims_resolved = 0
+    total_days = 0
+    for assignment in assignments:
+        coverage_days = max((assignment.expiration_date - assignment.activation_date).days, 0)
+        total_days += coverage_days
+        for claim in assignment.claims:
+            if claim.status in {
+                models.WarrantyClaimStatus.ABIERTO,
+                models.WarrantyClaimStatus.EN_PROCESO,
+            }:
+                claims_open += 1
+            if claim.status == models.WarrantyClaimStatus.RESUELTO:
+                claims_resolved += 1
+
+    average_days = float(total_days / total) if total else 0.0
+    return schemas.WarrantyMetrics(
+        total_assignments=total,
+        active_assignments=active,
+        expired_assignments=expired,
+        claims_open=claims_open,
+        claims_resolved=claims_resolved,
+        expiring_soon=expiring,
+        average_coverage_days=round(average_days, 2),
+        generated_at=datetime.utcnow(),
+    )
+
+
 def list_sales(
     db: Session,
     *,
@@ -13755,6 +14012,7 @@ def _apply_sale_items(
             total_line=net_line_total,
             reservation_id=reservation.id if reservation is not None else None,
         )
+        sale_item.warranty_status = models.WarrantyStatus.SIN_GARANTIA
         sale.items.append(sale_item)
 
         batch_code = getattr(item, "batch_code", None)
@@ -13809,6 +14067,57 @@ def _apply_sale_items(
         )
     sale.__dict__.setdefault("_batch_consumption", batch_consumption)
     return gross_total, total_discount
+
+
+def _add_months_to_date(base_date: date, months: int) -> date:
+    if months <= 0:
+        return base_date
+    month_index = base_date.month - 1 + months
+    year = base_date.year + month_index // 12
+    month = month_index % 12 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    day = min(base_date.day, last_day)
+    return date(year, month, day)
+
+
+def _resolve_warranty_serial(device: models.Device) -> str | None:
+    identifier = (device.imei or "").strip()
+    if identifier:
+        return identifier
+    serial = (device.serial or "").strip()
+    return serial or None
+
+
+def _create_warranty_assignments(
+    db: Session, sale: models.Sale
+) -> list[models.WarrantyAssignment]:
+    activation_dt = sale.created_at or datetime.utcnow()
+    activation_date = activation_dt.date()
+    assignments: list[models.WarrantyAssignment] = []
+
+    for sale_item in sale.items:
+        device = get_device(db, sale.store_id, sale_item.device_id)
+        coverage_months = int(device.garantia_meses or 0)
+        if coverage_months <= 0:
+            sale_item.warranty_status = models.WarrantyStatus.SIN_GARANTIA
+            continue
+        expiration_date = _add_months_to_date(activation_date, coverage_months)
+        assignment = models.WarrantyAssignment(
+            sale_item_id=sale_item.id,
+            device_id=device.id,
+            coverage_months=coverage_months,
+            activation_date=activation_date,
+            expiration_date=expiration_date,
+            status=models.WarrantyStatus.ACTIVA,
+            serial_number=_resolve_warranty_serial(device),
+        )
+        sale_item.warranty_status = models.WarrantyStatus.ACTIVA
+        db.add(assignment)
+        assignments.append(assignment)
+
+    if assignments:
+        flush_session(db)
+    return assignments
 
 
 def create_sale(
@@ -13938,6 +14247,9 @@ def create_sale(
         sale.total_amount = (subtotal + tax_amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
+
+        flush_session(db)
+        _create_warranty_assignments(db, sale)
 
         _recalculate_store_inventory_value(db, sale.store_id)
 

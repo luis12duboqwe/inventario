@@ -184,7 +184,6 @@ def register_pos_sale_endpoint(
         )
         adjusted_payload = promo_result.sale_request
 
-        sale, warnings, debt_context = crud.register_pos_sale(
         electronic_results: list[schemas.POSElectronicPaymentResult] = []
         if normalized_payload.payments:
             terminals_config = {
@@ -205,7 +204,7 @@ def register_pos_sale_endpoint(
                     detail=str(exc),
                 ) from exc
 
-        sale, warnings = crud.register_pos_sale(
+        sale, warnings, debt_context = crud.register_pos_sale(
             db,
             adjusted_payload,
             performed_by_id=current_user.id if current_user else None,

@@ -48,6 +48,37 @@ RETURN_DISPOSITION_ENUM = Enum(
 )
 
 
+class WarrantyStatus(str, enum.Enum):
+    """Estados del ciclo de vida de una garantía asignada."""
+
+    SIN_GARANTIA = "SIN_GARANTIA"
+    ACTIVA = "ACTIVA"
+    VENCIDA = "VENCIDA"
+    RECLAMO = "RECLAMO"
+    RESUELTA = "RESUELTA"
+
+
+class WarrantyClaimType(str, enum.Enum):
+    """Tipos de reclamo soportados por las garantías."""
+
+    REPARACION = "REPARACION"
+    REEMPLAZO = "REEMPLAZO"
+
+
+class WarrantyClaimStatus(str, enum.Enum):
+    """Estados de procesamiento para los reclamos de garantía."""
+
+    ABIERTO = "ABIERTO"
+    EN_PROCESO = "EN_PROCESO"
+    RESUELTO = "RESUELTO"
+    CANCELADO = "CANCELADO"
+
+
+WARRANTY_STATUS_ENUM = Enum(WarrantyStatus, name="warranty_status")
+WARRANTY_CLAIM_STATUS_ENUM = Enum(WarrantyClaimStatus, name="warranty_claim_status")
+WARRANTY_CLAIM_TYPE_ENUM = Enum(WarrantyClaimType, name="warranty_claim_type")
+
+
 # // [PACK38-inventory-reservations]
 class InventoryState(str, enum.Enum):
     """Estados de ciclo de vida de una reserva de inventario."""
@@ -367,6 +398,11 @@ class Device(Base):
     )
     bundle_items: Mapped[list["ProductBundleItem"]] = relationship(
         "ProductBundleItem",
+        back_populates="device",
+        cascade="all, delete-orphan",
+    )
+    warranty_assignments: Mapped[list["WarrantyAssignment"]] = relationship(
+        "WarrantyAssignment",
         back_populates="device",
         cascade="all, delete-orphan",
     )
@@ -1990,11 +2026,17 @@ class SaleItem(Base):
         nullable=True,
         index=True,
     )
+    warranty_status: Mapped[WarrantyStatus | None] = mapped_column(
+        WARRANTY_STATUS_ENUM.copy(), nullable=True
+    )
 
     sale: Mapped[Sale] = relationship("Sale", back_populates="items")
     device: Mapped[Device] = relationship("Device")
     reservation: Mapped["InventoryReservation | None"] = relationship(
         "InventoryReservation", back_populates="sale_items"
+    )
+    warranty_assignment: Mapped["WarrantyAssignment | None"] = relationship(
+        "WarrantyAssignment", back_populates="sale_item", uselist=False
     )
 
 
@@ -2037,6 +2079,94 @@ class SaleReturn(Base):
     warehouse: Mapped[Store | None] = relationship(
         "Store", foreign_keys=[warehouse_id]
     )
+
+
+class WarrantyAssignment(Base):
+    __tablename__ = "warranty_assignments"
+    __table_args__ = (
+        UniqueConstraint("sale_item_id", name="uq_warranty_sale_item"),
+        Index("ix_warranty_assignments_device_id", "device_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sale_item_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("detalle_ventas.id_detalle", ondelete="CASCADE"),
+        nullable=False,
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    coverage_months: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    activation_date: Mapped[date] = mapped_column(Date, nullable=False)
+    expiration_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[WarrantyStatus] = mapped_column(
+        WARRANTY_STATUS_ENUM.copy(), nullable=False, default=WarrantyStatus.ACTIVA
+    )
+    serial_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    activation_channel: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    sale_item: Mapped[SaleItem] = relationship(
+        "SaleItem", back_populates="warranty_assignment"
+    )
+    device: Mapped[Device] = relationship("Device", back_populates="warranty_assignments")
+    claims: Mapped[list["WarrantyClaim"]] = relationship(
+        "WarrantyClaim", back_populates="assignment", cascade="all, delete-orphan"
+    )
+
+
+class WarrantyClaim(Base):
+    __tablename__ = "warranty_claims"
+    __table_args__ = (
+        Index("ix_warranty_claim_assignment_id", "assignment_id"),
+        Index("ix_warranty_claim_repair_order_id", "repair_order_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    assignment_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("warranty_assignments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    claim_type: Mapped[WarrantyClaimType] = mapped_column(
+        WARRANTY_CLAIM_TYPE_ENUM.copy(), nullable=False
+    )
+    status: Mapped[WarrantyClaimStatus] = mapped_column(
+        WARRANTY_CLAIM_STATUS_ENUM.copy(), nullable=False, default=WarrantyClaimStatus.ABIERTO
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    opened_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    performed_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+    )
+    repair_order_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("repair_orders.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    assignment: Mapped[WarrantyAssignment] = relationship(
+        "WarrantyAssignment", back_populates="claims"
+    )
+    repair_order: Mapped["RepairOrder | None"] = relationship(
+        "RepairOrder", back_populates="warranty_claims"
+    )
+    performed_by: Mapped[User | None] = relationship("User")
 
 
 class RepairOrder(Base):
@@ -2100,6 +2230,9 @@ class RepairOrder(Base):
         "Customer", back_populates="repair_orders")
     parts: Mapped[list["RepairOrderPart"]] = relationship(
         "RepairOrderPart", back_populates="repair_order", cascade="all, delete-orphan"
+    )
+    warranty_claims: Mapped[list[WarrantyClaim]] = relationship(
+        "WarrantyClaim", back_populates="repair_order"
     )
 
 
@@ -2253,7 +2386,6 @@ class POSConfig(Base):
     promotions_config: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
-        JSON, nullable=False, default=dict)
     hardware_settings: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
@@ -2515,6 +2647,11 @@ __all__ = [
     "Sale",
     "SaleItem",
     "SaleReturn",
+    "WarrantyAssignment",
+    "WarrantyClaim",
+    "WarrantyStatus",
+    "WarrantyClaimStatus",
+    "WarrantyClaimType",
     "POSConfig",
     "POSDraftSale",
 ]
