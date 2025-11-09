@@ -32,6 +32,9 @@ from ..models import (
     RepairPartSource,
     RepairStatus,
     InventoryState,
+    WarrantyStatus,
+    WarrantyClaimStatus,
+    WarrantyClaimType,
     SyncMode,
     SyncOutboxPriority,
     SyncOutboxStatus,
@@ -4654,6 +4657,36 @@ class ReturnsOverview(BaseModel):
     totals: ReturnsTotals
 
 
+class WarrantyClaimCreate(BaseModel):
+    claim_type: WarrantyClaimType
+    notes: str | None = None
+    repair_order: "RepairOrderCreate | None" = None
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "claim_type": "REPARACION",
+            "notes": "Pantalla con píxeles muertos dentro del periodo de garantía",
+        }
+    })
+
+
+class WarrantyClaimStatusUpdate(BaseModel):
+    status: WarrantyClaimStatus
+    notes: str | None = None
+    repair_order_id: int | None = None
+
+
+class WarrantyMetrics(BaseModel):
+    total_assignments: int
+    active_assignments: int
+    expired_assignments: int
+    claims_open: int
+    claims_resolved: int
+    expiring_soon: int
+    average_coverage_days: float
+    generated_at: datetime
+
+
 class RepairOrderPartPayload(BaseModel):
     device_id: int | None = Field(default=None, ge=1)
     part_name: str | None = Field(default=None, max_length=120)
@@ -4997,6 +5030,69 @@ class SaleDeviceSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WarrantyDeviceSummary(BaseModel):
+    id: int
+    sku: str
+    name: str
+    imei: str | None = None
+    serial: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarrantySaleSummary(BaseModel):
+    id: int
+    store_id: int
+    customer_id: int | None = None
+    customer_name: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarrantyClaimResponse(BaseModel):
+    id: int
+    claim_type: WarrantyClaimType
+    status: WarrantyClaimStatus
+    notes: str | None = None
+    opened_at: datetime
+    resolved_at: datetime | None = None
+    repair_order_id: int | None = None
+    performed_by_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarrantyAssignmentResponse(BaseModel):
+    id: int
+    sale_item_id: int
+    device_id: int
+    coverage_months: int
+    activation_date: date
+    expiration_date: date
+    status: WarrantyStatus
+    serial_number: str | None = None
+    activation_channel: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    device: WarrantyDeviceSummary | None = None
+    sale: WarrantySaleSummary | None = None
+    claims: list[WarrantyClaimResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def remaining_days(self) -> int:
+        today = date.today()
+        return max((self.expiration_date - today).days, 0)
+
+    @computed_field
+    @property
+    def is_expired(self) -> bool:
+        return self.expiration_date < date.today()
+
+
 class SaleItemResponse(BaseModel):
     id: int
     sale_id: int
@@ -5007,6 +5103,8 @@ class SaleItemResponse(BaseModel):
     total_line: Decimal
     device: SaleDeviceSummary | None = None
     reservation_id: int | None = None
+    warranty_status: WarrantyStatus | None = None
+    warranty: WarrantyAssignmentResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -6558,6 +6656,13 @@ __all__ = [
     "SaleStoreSummary",
     "SaleUserSummary",
     "SaleDeviceSummary",
+    "WarrantyDeviceSummary",
+    "WarrantySaleSummary",
+    "WarrantyClaimResponse",
+    "WarrantyAssignmentResponse",
+    "WarrantyClaimCreate",
+    "WarrantyClaimStatusUpdate",
+    "WarrantyMetrics",
     "SaleResponse",
     "SaleReturnCreate",
     "SaleReturnItem",
@@ -6680,3 +6785,5 @@ __all__ = [
 
 CashSessionCloseRequest.model_rebuild()
 CashSessionResponse.model_rebuild()
+WarrantyClaimCreate.model_rebuild()
+WarrantyClaimStatusUpdate.model_rebuild()
