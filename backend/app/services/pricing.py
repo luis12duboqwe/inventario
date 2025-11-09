@@ -57,13 +57,14 @@ def _resolve_scope(
 
 
 def list_applicable_price_lists(
-def list_price_lists(
     db: Session,
     *,
     store_id: int | None = None,
     customer_id: int | None = None,
     is_active: bool | None = None,
     include_items: bool = False,
+    include_inactive: bool | None = None,
+    include_global: bool = True,
 ) -> list[schemas.PriceListResponse]:
     price_lists = crud.list_price_lists(
         db,
@@ -71,6 +72,8 @@ def list_price_lists(
         customer_id=customer_id,
         is_active=is_active,
         include_items=include_items,
+        include_inactive=include_inactive,
+        include_global=include_global,
     )
     return [
         schemas.PriceListResponse.model_validate(
@@ -336,8 +339,6 @@ def compute_effective_price(
 
 __all__ = [
     "list_applicable_price_lists",
-__all__ = [
-    "list_price_lists",
     "get_price_list",
     "create_price_list",
     "update_price_list",
