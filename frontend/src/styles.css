@@ -3263,6 +3263,33 @@ button.link:hover:not(:disabled) {
   }
 }
 
+.pos-product-card__availability {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #38bdf8;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pos-product-card__availability-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.pos-product-card__availability-values {
+  font-size: 0.78rem;
+  color: #e0f2fe;
+}
+
+.pos-product-card__availability-placeholder {
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
 .alert.success {
   background: var(--color-success-soft);
   border: 1px solid var(--color-success-border);
@@ -4253,6 +4280,92 @@ textarea:focus {
   flex-direction: column;
   gap: 0.15rem;
   font-size: 0.85rem;
+}
+
+.inventory-availability__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: rgba(15, 23, 42, 0.65);
+  color: var(--color-text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.inventory-availability__trigger:hover,
+.inventory-availability__trigger:focus-visible {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.75);
+  color: var(--color-accent);
+  outline: none;
+}
+
+.inventory-availability__trigger-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.inventory-availability__content {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.inventory-availability__error {
+  color: var(--error);
+  font-weight: 500;
+}
+
+.inventory-availability__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.inventory-availability__table th,
+.inventory-availability__table td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.18);
+  text-align: left;
+}
+
+.inventory-availability__row--active {
+  background: rgba(56, 189, 248, 0.14);
+}
+
+.inventory-availability__store {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inventory-availability__badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.2);
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.inventory-availability__qty {
+  text-align: right;
+  font-weight: 600;
+}
+
+.inventory-availability__footer {
+  display: flex;
+  justify-content: flex-end;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.inventory-availability__total strong {
+  color: var(--color-accent);
 }
 
 .status-chip {

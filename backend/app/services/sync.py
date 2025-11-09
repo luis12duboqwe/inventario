@@ -174,6 +174,13 @@ def run_sync_cycle(
         )
 
     discrepancies = detect_inventory_discrepancies(db)
+    if discrepancies:
+        logger.warning(
+            "Discrepancias de inventario detectadas tras sincronización",
+            discrepancies=discrepancies,
+            processed_entries=len(processed),
+            store_filter=store_id,
+        )
     crud.log_sync_discrepancies(db, discrepancies, performed_by_id=performed_by_id)
     return {"processed": len(processed), "discrepancies": discrepancies}
 

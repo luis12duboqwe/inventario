@@ -23,9 +23,8 @@ from backend.core.logging import logger as core_logger
 from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .core.transactions import flush_session, transactional_session
-from .services import inventory_audit
 # // [PACK30-31-BACKEND]
-from .services import inventory_accounting, inventory_audit
+from .services import inventory_accounting, inventory_audit, inventory_availability
 from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
@@ -354,7 +353,7 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "supplier": models.SyncOutboxPriority.NORMAL,
     "cash_session": models.SyncOutboxPriority.NORMAL,
     "device": models.SyncOutboxPriority.NORMAL,
-    "inventory": models.SyncOutboxPriority.NORMAL,
+    "inventory": models.SyncOutboxPriority.HIGH,
     "store": models.SyncOutboxPriority.LOW,
     "global": models.SyncOutboxPriority.LOW,
     "backup": models.SyncOutboxPriority.LOW,
@@ -7304,6 +7303,7 @@ def create_inventory_movement(
                 "ultima_accion",
                 audit_trail_utils.to_audit_trail(latest_log),
             )
+    inventory_availability.invalidate_inventory_availability_cache()
     return movement
 
 
