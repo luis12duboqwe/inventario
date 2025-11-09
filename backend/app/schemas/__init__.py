@@ -186,6 +186,16 @@ class DeviceBase(BaseModel):
         ge=Decimal("0"),
         description="Precio unitario referencial del dispositivo",
     )
+    minimum_stock: int = Field(
+        default=0,
+        ge=0,
+        description="Stock mínimo aceptable antes de escalar una alerta",
+    )
+    reorder_point: int = Field(
+        default=0,
+        ge=0,
+        description="Nivel objetivo para disparar un reabastecimiento",
+    )
     precio_venta: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
@@ -256,6 +266,14 @@ class DeviceBase(BaseModel):
         default=True,
         description="Indica si la ficha del producto cuenta con todos los datos obligatorios",
     )
+
+    @model_validator(mode="after")
+    def _validate_stock_thresholds(self) -> "DeviceBase":
+        if self.reorder_point < self.minimum_stock:
+            raise ValueError(
+                "El punto de reorden debe ser mayor o igual al stock mínimo."
+            )
+        return self
 
     @field_serializer("unit_price")
     @classmethod
@@ -380,6 +398,8 @@ class DeviceUpdate(BaseModel):
     descripcion: str | None = Field(default=None, max_length=1024)
     imagen_url: str | None = Field(default=None, max_length=255)
     completo: bool | None = Field(default=None)
+    minimum_stock: int | None = Field(default=None, ge=0)
+    reorder_point: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="before")
     @classmethod
@@ -390,6 +410,16 @@ class DeviceUpdate(BaseModel):
             if "costo_compra" in data and "costo_unitario" not in data:
                 data["costo_unitario"] = data["costo_compra"]
         return data
+
+    @model_validator(mode="after")
+    def _validate_partial_thresholds(self) -> "DeviceUpdate":
+        minimum = self.minimum_stock
+        reorder = self.reorder_point
+        if minimum is not None and reorder is not None and reorder < minimum:
+            raise ValueError(
+                "El punto de reorden debe ser mayor o igual al stock mínimo."
+            )
+        return self
 
     @field_validator("imei")
     @classmethod
@@ -444,6 +474,7 @@ class DeviceResponse(DeviceBase):
     @computed_field(return_type=float)  # type: ignore[misc]
     def inventory_value(self) -> float:
         return float(self.quantity * self.unit_price)
+
 
 
 class PriceListBase(BaseModel):
@@ -600,6 +631,11 @@ class PriceListUpdate(BaseModel):
                 "La fecha de inicio no puede ser posterior a la fecha de fin."
             )
         if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+        if (
+            self.starts_at is not None
+            and self.ends_at is not None
+            and self.ends_at <= self.starts_at
+        ):
             raise ValueError("La fecha de término debe ser posterior al inicio.")
         return self
 
@@ -2406,6 +2442,8 @@ class LowStockDevice(BaseModel):
     name: str
     quantity: int
     unit_price: Decimal
+    minimum_stock: int = Field(default=0, ge=0)
+    reorder_point: int = Field(default=0, ge=0)
 
     @field_serializer("unit_price")
     @classmethod
@@ -2416,9 +2454,18 @@ class LowStockDevice(BaseModel):
     def inventory_value(self) -> float:
         return float(self.quantity * self.unit_price)
 
+    @computed_field(return_type=int)  # type: ignore[misc]
+    def reorder_gap(self) -> int:
+        return max(self.reorder_point - self.quantity, 0)
+
 
 class InventoryAlertDevice(LowStockDevice):
     severity: Literal["critical", "warning", "notice"]
+    projected_days: int | None = None
+    average_daily_sales: float | None = None
+    trend: str | None = None
+    confidence: float | None = None
+    insights: list[str] = Field(default_factory=list)
 
 
 class InventoryAlertSummary(BaseModel):

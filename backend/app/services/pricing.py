@@ -57,6 +57,7 @@ def _resolve_scope(
 
 
 def list_applicable_price_lists(
+def list_price_lists(
     db: Session,
     *,
     store_id: int | None = None,
@@ -335,6 +336,8 @@ def compute_effective_price(
 
 __all__ = [
     "list_applicable_price_lists",
+__all__ = [
+    "list_price_lists",
     "get_price_list",
     "create_price_list",
     "update_price_list",

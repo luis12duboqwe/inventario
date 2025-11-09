@@ -65,6 +65,11 @@ def _performed_by_id(user) -> int | None:
     return getattr(user, "id", None)
 
 
+@router.get(
+    "",
+    response_model=list[schemas.PriceListResponse],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def list_price_lists_endpoint(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
@@ -101,6 +106,7 @@ def get_price_list_endpoint(
 def create_price_list_endpoint(
     payload: schemas.PriceListCreate,
     db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
     _: None = Depends(require_reason),
 ) -> schemas.PriceListResponse:
@@ -118,6 +124,11 @@ def create_price_list_endpoint(
         _raise_value_error(exc)
 
 
+@router.put(
+    "/{price_list_id}",
+    response_model=schemas.PriceListResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def update_price_list_endpoint(
     payload: schemas.PriceListUpdate,
     price_list_id: int = Path(ge=1),
@@ -156,6 +167,29 @@ def delete_price_list_endpoint(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.get(
+    "/items/{item_id}",
+    response_model=schemas.PriceListItemResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def get_price_list_item_endpoint(
+    item_id: int = Path(ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+) -> schemas.PriceListItemResponse:
+    _ensure_feature_enabled()
+    try:
+        return pricing.get_price_list_item(db, item_id)
+    except LookupError as exc:
+        _raise_lookup(exc)
+
+
+@router.post(
+    "/{price_list_id}/items",
+    response_model=schemas.PriceListItemResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def create_price_list_item_endpoint(
     payload: schemas.PriceListItemCreate,
     price_list_id: int = Path(ge=1),
@@ -177,6 +211,11 @@ def create_price_list_item_endpoint(
         _raise_value_error(exc)
 
 
+@router.put(
+    "/items/{item_id}",
+    response_model=schemas.PriceListItemResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def update_price_list_item_endpoint(
     payload: schemas.PriceListItemUpdate,
     item_id: int = Path(ge=1),
@@ -407,3 +446,5 @@ pricing_router.add_api_route(
 
 
 __all__ = ["router", "pricing_router"]
+__all__ = ["router"]
+

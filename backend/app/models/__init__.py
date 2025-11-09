@@ -268,6 +268,12 @@ class Device(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     unit_price: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0"))
+    minimum_stock: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    reorder_point: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
     imei: Mapped[str | None] = mapped_column(
         String(18), nullable=True, unique=True, index=True)
     serial: Mapped[str | None] = mapped_column(
@@ -378,6 +384,9 @@ class PriceList(Base):
         ForeignKey("clientes.id_cliente", ondelete="SET NULL"),
         nullable=True,
     )
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
+    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     starts_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

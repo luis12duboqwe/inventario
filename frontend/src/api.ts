@@ -1524,12 +1524,20 @@ export type LowStockDevice = {
   quantity: number;
   unit_price: number;
   inventory_value: number;
+  minimum_stock: number;
+  reorder_point: number;
+  reorder_gap: number;
 };
 
 export type InventoryAlertSeverity = "critical" | "warning" | "notice";
 
 export type InventoryAlertItem = LowStockDevice & {
   severity: InventoryAlertSeverity;
+  projected_days: number | null;
+  average_daily_sales: number | null;
+  trend: string | null;
+  confidence: number | null;
+  insights: string[];
 };
 
 export type InventoryAlertSummary = {

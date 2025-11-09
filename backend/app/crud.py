@@ -1476,6 +1476,8 @@ def _device_sync_payload(device: models.Device) -> dict[str, object]:
         "margen_porcentaje": float(_to_decimal(device.margen_porcentaje)),
         "estado": device.estado,
         "estado_comercial": commercial_state,
+        "minimum_stock": int(getattr(device, "minimum_stock", 0) or 0),
+        "reorder_point": int(getattr(device, "reorder_point", 0) or 0),
         "imei": device.imei,
         "serial": device.serial,
         "marca": device.marca,
@@ -5732,6 +5734,12 @@ def create_device(
     imei = payload_data.get("imei")
     serial = payload_data.get("serial")
     _ensure_unique_identifiers(db, imei=imei, serial=serial)
+    minimum_stock = int(payload_data.get("minimum_stock", 0) or 0)
+    reorder_point = int(payload_data.get("reorder_point", 0) or 0)
+    if reorder_point < minimum_stock:
+        reorder_point = minimum_stock
+        payload_data["reorder_point"] = reorder_point
+    payload_data["minimum_stock"] = minimum_stock
     unit_price = None
     if "unit_price" in provided_fields:
         unit_price = payload_data.get("unit_price")
@@ -6271,6 +6279,22 @@ def update_device(
         serial=serial,
         exclude_device_id=device.id,
     )
+    new_minimum_stock = updated_fields.get("minimum_stock")
+    new_reorder_point = updated_fields.get("reorder_point")
+    current_minimum = int(getattr(device, "minimum_stock", 0) or 0)
+    current_reorder = int(getattr(device, "reorder_point", 0) or 0)
+    if new_reorder_point is not None:
+        target_min = new_minimum_stock if new_minimum_stock is not None else current_minimum
+        if int(new_reorder_point) < int(target_min):
+            raise ValueError("reorder_point_below_minimum")
+    if new_minimum_stock is not None:
+        target_reorder = new_reorder_point if new_reorder_point is not None else current_reorder
+        if int(target_reorder) < int(new_minimum_stock):
+            updated_fields["reorder_point"] = int(new_minimum_stock)
+    if new_minimum_stock is not None:
+        updated_fields["minimum_stock"] = int(new_minimum_stock)
+    if new_reorder_point is not None:
+        updated_fields["reorder_point"] = int(updated_fields["reorder_point"])
 
     sensitive_before = {
         "costo_unitario": device.costo_unitario,
@@ -7559,6 +7583,8 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
                         "name": device.name,
                         "quantity": device.quantity,
                         "unit_price": device.unit_price or Decimal("0"),
+                        "minimum_stock": getattr(device, "minimum_stock", 0) or 0,
+                        "reorder_point": getattr(device, "reorder_point", 0) or 0,
                         "inventory_value": _device_value(device),
                     }
                 )
