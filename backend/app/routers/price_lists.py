@@ -42,16 +42,13 @@ def _raise_value_error(exc: ValueError) -> NoReturn:
         "price_list_conflict": "Ya existe una lista con los mismos criterios.",
         "price_list_item_conflict": "Ya existe un elemento con el mismo dispositivo.",
     }
-    numeric_errors = {
-        "price_list_item_price_invalid",
-        "price_list_item_discount_invalid",
-    }
     message = str(exc)
     if message in detail_map:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=detail_map[message],
         ) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail_map[message]) from exc
     if message in {"price_list_conflict", "price_list_duplicate"}:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

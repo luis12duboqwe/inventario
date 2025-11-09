@@ -633,6 +633,7 @@ class PriceListBase(BaseModel):
         default=None,
         ge=1,
         description="Sucursal asociada cuando la lista es específica para una tienda.",
+        description="Identificador de la sucursal asociada, cuando aplica.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -4459,12 +4460,33 @@ class ReturnRecord(BaseModel):
     processed_by_name: str | None = None
     partner_name: str | None = None
     occurred_at: datetime
+    refund_amount: Decimal | None = None
+    payment_method: PaymentMethod | None = None
+
+    @field_serializer("refund_amount")
+    @classmethod
+    def _serialize_refund_amount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
 
 
 class ReturnsTotals(BaseModel):
     total: int
     sales: int
     purchases: int
+    refunds_by_method: dict[str, Decimal] = Field(default_factory=dict)
+    refund_total_amount: Decimal = Field(default=Decimal("0"))
+
+    @field_serializer("refunds_by_method")
+    @classmethod
+    def _serialize_refunds(cls, value: dict[str, Decimal]) -> dict[str, float]:
+        return {key: float(amount) for key, amount in value.items()}
+
+    @field_serializer("refund_total_amount")
+    @classmethod
+    def _serialize_refund_total(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class ReturnsOverview(BaseModel):
@@ -4937,6 +4959,13 @@ class SaleReturnResponse(BaseModel):
     @computed_field(alias="fecha", return_type=datetime)
     def fecha_registro(self) -> datetime:
         return self.created_at
+
+
+class SaleHistorySearchResponse(BaseModel):
+    by_ticket: list[SaleResponse] = Field(default_factory=list)
+    by_date: list[SaleResponse] = Field(default_factory=list)
+    by_customer: list[SaleResponse] = Field(default_factory=list)
+    by_qr: list[SaleResponse] = Field(default_factory=list)
 
 
 class SalesReportFilters(BaseModel):
@@ -6373,6 +6402,7 @@ __all__ = [
     "SaleReturnCreate",
     "SaleReturnItem",
     "SaleReturnResponse",
+    "SaleHistorySearchResponse",
     "SalesReportFilters",
     "SalesReportTotals",
     "SalesReportItem",

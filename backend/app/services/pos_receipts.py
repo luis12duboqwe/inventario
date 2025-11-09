@@ -39,6 +39,8 @@ def _format_currency(value: Decimal | float | int | None) -> str:
     decimal_value = Decimal("0") if value is None else Decimal(str(value))
     quantized = decimal_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return f"{quantized:.2f}"
+
+
 def _extract_candidate(value: object | None) -> str | None:
     if value is None:
         return None
@@ -89,7 +91,13 @@ def _extract_store_tax_id(sale: models.Sale) -> str | None:
     return _extract_candidate(getattr(store, "code", None))
 
 
-def render_receipt_pdf(sale: models.Sale, config: models.POSConfig) -> bytes:
+def render_receipt_pdf(
+    sale: models.Sale,
+    config: models.POSConfig,
+    *,
+    debt_snapshot: DebtSnapshot | None = None,
+    schedule: Sequence[dict[str, object]] | None = None,
+) -> bytes:
     """Genera el PDF del recibo POS y devuelve los bytes en memoria."""
 
     # // [PACK34-receipt]

@@ -2253,6 +2253,7 @@ class POSConfig(Base):
     promotions_config: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
+        JSON, nullable=False, default=dict)
     hardware_settings: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )

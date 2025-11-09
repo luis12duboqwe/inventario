@@ -910,8 +910,24 @@ export type Sale = {
   cash_session?: CashSession | null;
   items: SaleItem[];
   returns: SaleReturn[];
+  payment_breakdown?: Record<string, number>;
   store?: SaleStoreSummary | null;
   performed_by?: SaleUserSummary | null;
+};
+
+export type SaleHistorySearchResponse = {
+  by_ticket: Sale[];
+  by_date: Sale[];
+  by_customer: Sale[];
+  by_qr: Sale[];
+};
+
+export type SaleHistorySearchFilters = {
+  ticket?: string;
+  date?: string;
+  customer?: string;
+  qr?: string;
+  limit?: number;
 };
 
 export type SalesFilters = {
@@ -991,12 +1007,16 @@ export type ReturnRecord = {
   processed_by_name?: string | null;
   partner_name?: string | null;
   occurred_at: string;
+  refund_amount?: number | null;
+  payment_method?: PaymentMethod | string | null;
 };
 
 export type ReturnsTotals = {
   total: number;
   sales: number;
   purchases: number;
+  refunds_by_method: Record<string, number>;
+  refund_total_amount: number;
 };
 
 export type ReturnsOverview = {
@@ -1254,6 +1274,8 @@ export type PosHardwareSettings = {
   printers: PosPrinterSettings[];
   cash_drawer: PosCashDrawerSettings;
   customer_display: PosCustomerDisplaySettings;
+};
+
 export type PosTerminalConfig = {
   id: string;
   label: string;
@@ -4953,6 +4975,32 @@ export function listSales(token: string, filters: SalesFilters = {}): Promise<Sa
   const query = params.toString();
   const path = `/sales?${query}`;
   return requestCollection<Sale>(path, { method: "GET" }, token);
+}
+
+export function searchSalesHistory(
+  token: string,
+  filters: SaleHistorySearchFilters = {}
+): Promise<SaleHistorySearchResponse> {
+  const params = new URLSearchParams();
+  if (filters.ticket?.trim()) {
+    params.set("ticket", filters.ticket.trim());
+  }
+  if (filters.date) {
+    params.set("date", filters.date);
+  }
+  if (filters.customer?.trim()) {
+    params.set("customer", filters.customer.trim());
+  }
+  if (filters.qr?.trim()) {
+    params.set("qr", filters.qr.trim());
+  }
+  const limitValue = typeof filters.limit === "number" ? filters.limit : undefined;
+  if (typeof limitValue === "number") {
+    params.set("limit", String(limitValue));
+  }
+  const query = params.toString();
+  const path = query ? `/sales/history/search?${query}` : "/sales/history/search";
+  return request<SaleHistorySearchResponse>(path, { method: "GET" }, token);
 }
 
 export function createSale(

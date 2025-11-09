@@ -2,6 +2,8 @@ from datetime import datetime, timedelta
 from typing import Any, Iterable
 
 import json
+from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import status
 from sqlalchemy import select
@@ -107,6 +109,12 @@ def test_sale_and_return_flow(client, db_session):
     assert return_response.status_code == status.HTTP_200_OK
     assert len(return_response.json()) == 1
 
+    sale_return_record = db_session.execute(
+        select(models.SaleReturn).where(models.SaleReturn.sale_id == sale_data["id"])
+    ).scalar_one()
+    assert sale_return_record.reason == "Cliente arrepentido"
+    assert sale_return_record.sale_id == sale_data["id"]
+
     devices_post_return = client.get(f"/stores/{store_id}/devices", headers=auth_headers)
     device_post_return = next(
         item
@@ -195,6 +203,106 @@ def test_sale_with_identifiers_marks_device_as_sold_and_cancel_restores(client, 
     assert len(movements) == 2
     assert movements[0].movement_type == models.MovementType.OUT
     assert movements[1].movement_type == models.MovementType.IN
+
+    settings.enable_purchases_sales = False
+
+
+def test_sales_history_search_filters(client, db_session):
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Historial", "location": "MX", "timezone": "America/Mexico_City"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    customer = models.Customer(
+        name="Cliente Historial",
+        phone="5550001122",
+        customer_type="minorista",
+        status="activo",
+        credit_limit=Decimal("0"),
+        outstanding_debt=Decimal("0"),
+        history=[],
+    )
+    db_session.add(customer)
+    db_session.commit()
+
+    device_payload = {
+        "sku": "SKU-HIST-001",
+        "name": "Lector QR",
+        "quantity": 3,
+        "unit_price": 450.0,
+        "costo_unitario": 280.0,
+        "margen_porcentaje": 18.0,
+    }
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=auth_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    sale_response = client.post(
+        "/sales",
+        json={
+            "store_id": store_id,
+            "customer_id": customer.id,
+            "items": [{"device_id": device_id, "quantity": 1}],
+            "notes": "Ticket preferente",
+        },
+        headers={**auth_headers, "X-Reason": "Venta historial"},
+    )
+    assert sale_response.status_code == status.HTTP_201_CREATED
+    sale_data = sale_response.json()
+    sale_id = sale_data["id"]
+
+    sale_record = db_session.execute(
+        select(models.Sale).where(models.Sale.id == sale_id)
+    ).scalar_one()
+    sale_record.created_at = datetime(2025, 2, 1, 10, 30, tzinfo=timezone.utc)
+    sale_record.customer_name = "Cliente Historial"
+    db_session.commit()
+
+    qr_payload = json.dumps(
+        {
+            "sale_id": sale_id,
+            "doc": f"FAC-{sale_id:06d}",
+            "total": f"{sale_data['total_amount']:.2f}",
+            "issued_at": sale_record.created_at.isoformat(),
+            "type": "ticket",
+        }
+    )
+
+    combined_response = client.get(
+        "/sales/history/search",
+        params={
+            "ticket": f"TCK-{sale_id:06d}",
+            "date": "2025-02-01",
+            "customer": "Historial",
+            "qr": qr_payload,
+        },
+        headers=auth_headers,
+    )
+    assert combined_response.status_code == status.HTTP_200_OK
+    payload = combined_response.json()
+    assert payload["by_ticket"][0]["id"] == sale_id
+    assert payload["by_qr"][0]["id"] == sale_id
+    assert any(item["id"] == sale_id for item in payload["by_customer"])
+    assert any(item["id"] == sale_id for item in payload["by_date"])
+
+    empty_response = client.get(
+        "/sales/history/search",
+        params={"ticket": "999999"},
+        headers=auth_headers,
+    )
+    assert empty_response.status_code == status.HTTP_200_OK
+    assert empty_response.json()["by_ticket"] == []
 
     settings.enable_purchases_sales = False
 
