@@ -564,6 +564,120 @@ class DeviceBinAssignment(Base):
     bin: Mapped[WMSBin] = relationship("WMSBin", back_populates="assignments")
 
 
+class PriceList(Base):
+    """Catálogo de precios segmentado por sucursal o cliente."""
+
+    __tablename__ = "price_lists"
+    __table_args__ = (
+        UniqueConstraint(
+            "name", "store_id", "customer_id", name="uq_price_lists_scope_name"
+        ),
+        Index("ix_price_lists_name", "name"),
+        Index("ix_price_lists_is_active", "is_active"),
+        Index("ix_price_lists_priority", "priority"),
+        Index("ix_price_lists_store_id", "store_id"),
+        Index("ix_price_lists_customer_id", "customer_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    store_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+    )
+    customer_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("clientes.id_cliente", ondelete="SET NULL"),
+        nullable=True,
+    )
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    store: Mapped[Store | None] = relationship("Store", back_populates="price_lists")
+    customer: Mapped[Optional["Customer"]] = relationship(
+        "Customer", back_populates="price_lists"
+    )
+    items: Mapped[list["PriceListItem"]] = relationship(
+        "PriceListItem", back_populates="price_list", cascade="all, delete-orphan"
+    )
+
+    @property
+    def scope(self) -> str:
+        if self.store_id is not None and self.customer_id is not None:
+            return "store_customer"
+        if self.customer_id is not None:
+            return "customer"
+        if self.store_id is not None:
+            return "store"
+        return "global"
+
+
+class PriceListItem(Base):
+    """Precio específico de un dispositivo dentro de una lista."""
+
+    __tablename__ = "price_list_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "price_list_id", "device_id", name="uq_price_list_items_price_device"
+        ),
+        Index("ix_price_list_items_list_device", "price_list_id", "device_id"),
+        Index("ix_price_list_items_price_list", "price_list_id"),
+        Index("ix_price_list_items_device", "device_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    price_list_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("price_lists.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
+    discount_percentage: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    price_list: Mapped[PriceList] = relationship(
+        "PriceList", back_populates="items"
+    )
+    device: Mapped[Device] = relationship(
+        "Device", back_populates="price_list_items"
+    )
+
+
 class Role(Base):
     __tablename__ = "roles"
 

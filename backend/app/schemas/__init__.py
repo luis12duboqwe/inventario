@@ -499,7 +499,7 @@ class PriceListBase(BaseModel):
     )
     is_active: bool = Field(
         default=True,
-        description="Indica si la lista puede aplicarse en cálculos de precios.",
+        description="Indica si la lista está habilitada para resolver precios.",
     )
     store_id: int | None = Field(
         default=None,
@@ -532,6 +532,14 @@ class PriceListBase(BaseModel):
     ends_at: datetime | None = Field(
         default=None,
         description="Fecha de término de vigencia en hora exacta (UTC).",
+    )
+    valid_from: date | None = Field(
+        default=None,
+        description="Fecha a partir de la cual la lista entra en vigor.",
+    )
+    valid_until: date | None = Field(
+        default=None,
+        description="Fecha límite de vigencia de la lista de precios.",
     )
 
     @field_validator("name", mode="before")
@@ -578,6 +586,7 @@ class PriceListCreate(PriceListBase):
 
 
 class PriceListUpdate(BaseModel):
+    """Campos disponibles para modificar una lista de precios existente."""
     """Campos opcionales disponibles para actualizar una lista de precios."""
 
     name: str | None = Field(default=None, min_length=3, max_length=120)
@@ -587,6 +596,8 @@ class PriceListUpdate(BaseModel):
     store_id: int | None = Field(default=None, ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     currency: str | None = Field(default=None, min_length=3, max_length=10)
+    starts_at: datetime | None = Field(default=None)
+    ends_at: datetime | None = Field(default=None)
     valid_from: date | None = Field(default=None)
     valid_until: date | None = Field(default=None)
     starts_at: datetime | None = Field(default=None)
@@ -617,7 +628,7 @@ class PriceListUpdate(BaseModel):
             return None
         normalized = value.strip().upper()
         if len(normalized) < 3:
-            raise ValueError("La moneda debe tener al menos 3 caracteres.")
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
         return normalized
 
     @model_validator(mode="after")
@@ -665,6 +676,12 @@ class PriceListItemBase(BaseModel):
         max_length=8,
         description="Moneda ISO 4217 asociada al precio.",
     )
+    discount_percentage: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        le=Decimal("100"),
+        description="Descuento porcentual adicional aplicado al precio base.",
+    )
     notes: str | None = Field(
         default=None,
         max_length=500,
@@ -696,6 +713,7 @@ class PriceListItemUpdate(BaseModel):
     """Campos disponibles para actualizar un precio de catálogo."""
 
     price: Decimal | None = Field(default=None, gt=Decimal("0"))
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
     discount_percentage: Decimal | None = Field(
         default=None,
         ge=Decimal("0"),
@@ -2326,6 +2344,96 @@ class InventoryReservationCreate(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
     expires_at: datetime
+
+
+class InventoryReceivingLine(BaseModel):
+    device_id: int | None = Field(default=None, ge=1)
+    imei: str | None = Field(default=None, min_length=3, max_length=64)
+    serial: str | None = Field(default=None, min_length=3, max_length=64)
+    quantity: int = Field(..., ge=1)
+    unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+    comment: str | None = Field(default=None, min_length=5, max_length=255)
+
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "InventoryReceivingLine":
+        if self.device_id is None and not (self.imei or self.serial):
+            raise ValueError(
+                "Cada línea debe incluir `device_id`, `imei` o `serial`."
+            )
+        return self
+
+
+class InventoryReceivingRequest(BaseModel):
+    store_id: int = Field(..., ge=1)
+    note: str = Field(..., min_length=5, max_length=255)
+    responsible: str | None = Field(default=None, max_length=120)
+    reference: str | None = Field(default=None, max_length=120)
+    lines: list[InventoryReceivingLine] = Field(..., min_length=1)
+
+
+class InventoryReceivingSummary(BaseModel):
+    lines: int = Field(..., ge=0)
+    total_quantity: int = Field(..., ge=0)
+
+
+class InventoryReceivingProcessed(BaseModel):
+    identifier: str
+    device_id: int
+    quantity: int
+    movement: MovementResponse
+
+
+class InventoryReceivingResult(BaseModel):
+    store_id: int
+    processed: list[InventoryReceivingProcessed]
+    totals: InventoryReceivingSummary
+
+
+class InventoryCountLine(BaseModel):
+    device_id: int | None = Field(default=None, ge=1)
+    imei: str | None = Field(default=None, min_length=3, max_length=64)
+    serial: str | None = Field(default=None, min_length=3, max_length=64)
+    counted: int = Field(..., ge=0)
+    comment: str | None = Field(default=None, min_length=5, max_length=255)
+
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "InventoryCountLine":
+        if self.device_id is None and not (self.imei or self.serial):
+            raise ValueError(
+                "Cada línea debe incluir `device_id`, `imei` o `serial`."
+            )
+        return self
+
+
+class InventoryCycleCountRequest(BaseModel):
+    store_id: int = Field(..., ge=1)
+    note: str = Field(..., min_length=5, max_length=255)
+    responsible: str | None = Field(default=None, max_length=120)
+    reference: str | None = Field(default=None, max_length=120)
+    lines: list[InventoryCountLine] = Field(..., min_length=1)
+
+
+class InventoryCountDiscrepancy(BaseModel):
+    device_id: int
+    sku: str | None = None
+    expected: int
+    counted: int
+    delta: int
+    movement: MovementResponse | None = None
+    identifier: str | None = None
+
+
+class InventoryCycleCountSummary(BaseModel):
+    lines: int = Field(..., ge=0)
+    adjusted: int = Field(..., ge=0)
+    matched: int = Field(..., ge=0)
+    total_variance: int = Field(...)
+
+
+class InventoryCycleCountResult(BaseModel):
+    store_id: int
+    adjustments: list[InventoryCountDiscrepancy]
+    totals: InventoryCycleCountSummary
 
 
 class InventoryReservationRenew(BaseModel):

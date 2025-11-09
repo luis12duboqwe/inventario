@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Iterable
 
+from sqlalchemy import or_, select
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,10 @@ _QUANTIZER = Decimal("0.01")
 
 def _quantize(value: Decimal) -> Decimal:
     return value.quantize(_QUANTIZER, rounding=ROUND_HALF_UP)
+
+
+def _utc_now() -> datetime:
+    return datetime.utcnow()
 
 
 def _scope_rank(price_list: PriceList) -> int:
@@ -73,9 +78,7 @@ def list_price_lists(
         include_items=include_items,
     )
     return [
-        schemas.PriceListResponse.model_validate(
-            price_list, from_attributes=True
-        )
+        schemas.PriceListResponse.model_validate(price_list, from_attributes=True)
         for price_list in price_lists
     ]
 
@@ -86,9 +89,7 @@ def get_price_list(
     *,
     include_items: bool = True,
 ) -> schemas.PriceListResponse:
-    price_list = crud.get_price_list(
-        db, price_list_id, include_items=include_items
-    )
+    price_list = crud.get_price_list(db, price_list_id, include_items=include_items)
     return schemas.PriceListResponse.model_validate(
         price_list, from_attributes=True
     )
@@ -105,9 +106,7 @@ def create_price_list(
         db, payload, performed_by_id=performed_by_id
     )
     if include_items:
-        price_list = crud.get_price_list(
-            db, price_list.id, include_items=True
-        )
+        price_list = crud.get_price_list(db, price_list.id, include_items=True)
     return schemas.PriceListResponse.model_validate(
         price_list, from_attributes=True
     )
@@ -128,9 +127,7 @@ def update_price_list(
         performed_by_id=performed_by_id,
     )
     if include_items:
-        price_list = crud.get_price_list(
-            db, price_list.id, include_items=True
-        )
+        price_list = crud.get_price_list(db, price_list.id, include_items=True)
     return schemas.PriceListResponse.model_validate(
         price_list, from_attributes=True
     )
@@ -142,9 +139,7 @@ def delete_price_list(
     *,
     performed_by_id: int | None = None,
 ) -> None:
-    crud.delete_price_list(
-        db, price_list_id, performed_by_id=performed_by_id
-    )
+    crud.delete_price_list(db, price_list_id, performed_by_id=performed_by_id)
 
 
 def get_price_list_item(
@@ -152,9 +147,7 @@ def get_price_list_item(
     item_id: int,
 ) -> schemas.PriceListItemResponse:
     item = crud.get_price_list_item(db, item_id)
-    return schemas.PriceListItemResponse.model_validate(
-        item, from_attributes=True
-    )
+    return schemas.PriceListItemResponse.model_validate(item, from_attributes=True)
 
 
 def create_price_list_item(
@@ -170,9 +163,7 @@ def create_price_list_item(
         payload,
         performed_by_id=performed_by_id,
     )
-    return schemas.PriceListItemResponse.model_validate(
-        item, from_attributes=True
-    )
+    return schemas.PriceListItemResponse.model_validate(item, from_attributes=True)
 
 
 def update_price_list_item(
@@ -188,9 +179,7 @@ def update_price_list_item(
         payload,
         performed_by_id=performed_by_id,
     )
-    return schemas.PriceListItemResponse.model_validate(
-        item, from_attributes=True
-    )
+    return schemas.PriceListItemResponse.model_validate(item, from_attributes=True)
 
 
 def delete_price_list_item(
@@ -199,9 +188,73 @@ def delete_price_list_item(
     *,
     performed_by_id: int | None = None,
 ) -> None:
-    crud.delete_price_list_item(
-        db, item_id, performed_by_id=performed_by_id
+    crud.delete_price_list_item(db, item_id, performed_by_id=performed_by_id)
+
+
+def list_applicable_price_lists(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+    include_inactive: bool = False,
+) -> list[PriceList]:
+    now = _utc_now()
+    statement = select(PriceList).order_by(PriceList.priority.asc(), PriceList.id.asc())
+
+    if not include_inactive:
+        statement = statement.where(PriceList.is_active.is_(True))
+
+    statement = statement.where(
+        or_(PriceList.starts_at.is_(None), PriceList.starts_at <= now),
+        or_(PriceList.ends_at.is_(None), PriceList.ends_at >= now),
     )
+
+    if store_id is None:
+        statement = statement.where(PriceList.store_id.is_(None))
+    else:
+        statement = statement.where(
+            or_(PriceList.store_id == store_id, PriceList.store_id.is_(None))
+        )
+
+    if customer_id is None:
+        statement = statement.where(PriceList.customer_id.is_(None))
+    else:
+        statement = statement.where(
+            or_(PriceList.customer_id == customer_id, PriceList.customer_id.is_(None))
+        )
+
+    return list(db.scalars(statement))
+
+
+def resolve_price_for_device(
+    db: Session,
+    device: Device,
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+) -> tuple[PriceList, PriceListItem] | None:
+    price_lists = list_applicable_price_lists(
+        db,
+        store_id=store_id,
+        customer_id=customer_id,
+        include_inactive=False,
+    )
+    if not price_lists:
+        return None
+
+    statement = (
+        select(PriceListItem)
+        .where(PriceListItem.price_list_id.in_([pl.id for pl in price_lists]))
+        .where(PriceListItem.device_id == device.id)
+    )
+    items = {item.price_list_id: item for item in db.scalars(statement)}
+    for price_list in sorted(
+        price_lists, key=lambda pl: (_scope_rank(pl), pl.priority, pl.id)
+    ):
+        item = items.get(price_list.id)
+        if item is not None:
+            return price_list, item
+    return None
 
 
 def resolve_device_price(
@@ -346,6 +399,9 @@ __all__ = [
     "create_price_list_item",
     "update_price_list_item",
     "delete_price_list_item",
+    "list_applicable_price_lists",
+    "resolve_price_for_device",
+    "resolve_device_price",
     "resolve_device_price",
     "resolve_prices_for_devices",
     "resolve_price_for_device",

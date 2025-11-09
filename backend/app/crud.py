@@ -6222,6 +6222,65 @@ def resolve_device_for_pos(
     raise LookupError("device_not_found")
 
 
+def resolve_device_for_inventory(
+    db: Session,
+    *,
+    store_id: int,
+    device_id: int | None = None,
+    imei: str | None = None,
+    serial: str | None = None,
+) -> models.Device:
+    """Localiza un dispositivo para recepciones o conteos cíclicos.
+
+    Prioriza `device_id` explícito, luego IMEI (incluyendo identificadores
+    secundarios) y finalmente serial, siempre acotado a la sucursal indicada.
+    """
+
+    if device_id:
+        return get_device(db, store_id, device_id)
+
+    normalized_imei = imei.strip() if imei else None
+    if normalized_imei:
+        try:
+            return resolve_device_for_pos(
+                db,
+                store_id=store_id,
+                device_id=None,
+                imei=normalized_imei,
+            )
+        except LookupError:
+            pass
+
+    if serial:
+        normalized_serial = serial.strip()
+    else:
+        normalized_serial = None
+
+    if normalized_serial:
+        statement = select(models.Device).where(
+            models.Device.store_id == store_id,
+            func.lower(models.Device.serial) == normalized_serial.lower(),
+        )
+        device = db.scalars(statement).first()
+        if device is not None:
+            return device
+
+        identifier_stmt = (
+            select(models.Device)
+            .join(models.DeviceIdentifier)
+            .where(models.Device.store_id == store_id)
+            .where(
+                func.lower(models.DeviceIdentifier.numero_serie)
+                == normalized_serial.lower()
+            )
+        )
+        device = db.scalars(identifier_stmt).first()
+        if device is not None:
+            return device
+
+    raise LookupError("device_not_found")
+
+
 def find_device_for_import(
     db: Session,
     *,

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import csv
 from datetime import datetime
 from decimal import Decimal
-from io import BytesIO
+from io import BytesIO, StringIO
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -261,6 +262,77 @@ def render_inventory_movements_pdf(report: schemas.InventoryMovementsReport) -> 
 
     document.build(elements)
     buffer.seek(0)
+    return buffer.getvalue()
+
+
+def render_inventory_adjustments_pdf(report: schemas.InventoryMovementsReport) -> bytes:
+    elements, document, buffer = _build_document("Softmobile - Ajustes de inventario")
+    styles = getSampleStyleSheet()
+
+    elements.append(
+        Paragraph(
+            "Resumen de ajustes registrados durante el periodo seleccionado.",
+            styles["Italic"],
+        )
+    )
+    elements.append(Spacer(1, 12))
+
+    resumen = report.resumen
+    summary_table = _build_table(
+        [
+            ["Indicador", "Valor"],
+            ["Total de ajustes", _format_units(resumen.total_movimientos)],
+            ["Unidades ajustadas", _format_units(resumen.total_unidades)],
+            ["Valor referencial", _format_currency(resumen.total_valor)],
+        ]
+    )
+    elements.append(summary_table)
+    elements.append(Spacer(1, 18))
+
+    table_data: list[list[str]] = [
+        ["Fecha", "Sucursal", "Cantidad", "Referencia", "Comentario"],
+    ]
+    for entry in report.movimientos:
+        table_data.append(
+            [
+                entry.fecha.strftime("%d/%m/%Y %H:%M"),
+                entry.sucursal_destino or "-",
+                _format_units(entry.cantidad),
+                _format_reference(entry.referencia_tipo, entry.referencia_id),
+                entry.comentario or "-",
+            ]
+        )
+
+    elements.append(_build_table(table_data))
+    document.build(elements)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def serialize_inventory_adjustments_csv(report: schemas.InventoryMovementsReport) -> str:
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "fecha",
+            "sucursal",
+            "cantidad",
+            "usuario",
+            "referencia",
+            "comentario",
+        ]
+    )
+    for entry in report.movimientos:
+        writer.writerow(
+            [
+                entry.fecha.isoformat(),
+                entry.sucursal_destino or "-",
+                entry.cantidad,
+                entry.usuario or "-",
+                _format_reference(entry.referencia_tipo, entry.referencia_id),
+                entry.comentario or "-",
+            ]
+        )
     return buffer.getvalue()
 
 

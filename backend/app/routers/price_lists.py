@@ -1,3 +1,4 @@
+"""Endpoints de administración y resolución de listas de precios."""
 """Endpoints protegidos para la administración de listas de precios."""
 
 from __future__ import annotations
@@ -79,6 +80,7 @@ def list_price_lists_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> list[schemas.PriceListResponse]:
     _ensure_feature_enabled()
+    price_lists = pricing.list_price_lists(
     return pricing.list_applicable_price_lists(
         db,
         store_id=store_id,
@@ -86,8 +88,53 @@ def list_price_lists_endpoint(
         is_active=is_active,
         include_items=include_items,
     )
+    if not include_inactive:
+        price_lists = [pl for pl in price_lists if pl.is_active]
+    if not include_global:
+        price_lists = [
+            pl
+            for pl in price_lists
+            if pl.store_id is not None or pl.customer_id is not None
+        ]
+    return price_lists
 
 
+@router.get(
+    "/resolve",
+    response_model=schemas.PriceResolution | None,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def resolve_device_price_endpoint(
+    device_id: int = Query(ge=1),
+    store_id: int | None = Query(default=None, ge=1),
+    customer_id: int | None = Query(default=None, ge=1),
+    reference_date: date | None = Query(default=None),
+    default_price: Decimal | None = Query(default=None, gt=Decimal("0")),
+    default_currency: str = Query(default="MXN", min_length=3, max_length=8),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.PriceResolution | None:
+    _ensure_feature_enabled()
+    try:
+        resolution = pricing.resolve_device_price(
+            db,
+            device_id=device_id,
+            store_id=store_id,
+            customer_id=customer_id,
+            reference_date=reference_date,
+            default_price=default_price,
+            default_currency=default_currency,
+        )
+    except LookupError as exc:
+        _raise_lookup(exc)
+    return resolution
+
+
+@router.get(
+    "/{price_list_id}",
+    response_model=schemas.PriceListResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def get_price_list_endpoint(
     price_list_id: int = Path(ge=1),
     include_items: bool = Query(default=True),
@@ -115,11 +162,10 @@ def create_price_list_endpoint(
         return pricing.create_price_list(
             db,
             payload,
+            performed_by_id=getattr(current_user, "id", None),
             performed_by_id=_performed_by_id(current_user),
             include_items=True,
         )
-    except LookupError as exc:
-        _raise_lookup(exc)
     except ValueError as exc:
         _raise_value_error(exc)
 
@@ -142,6 +188,7 @@ def update_price_list_endpoint(
             db,
             price_list_id,
             payload,
+            performed_by_id=getattr(current_user, "id", None),
             performed_by_id=_performed_by_id(current_user),
             include_items=True,
         )
@@ -160,6 +207,9 @@ def delete_price_list_endpoint(
     _ensure_feature_enabled()
     try:
         pricing.delete_price_list(
+            db,
+            price_list_id,
+            performed_by_id=getattr(current_user, "id", None),
             db, price_list_id, performed_by_id=_performed_by_id(current_user)
         )
     except LookupError as exc:
@@ -203,6 +253,7 @@ def create_price_list_item_endpoint(
             db,
             price_list_id,
             payload,
+            performed_by_id=getattr(current_user, "id", None),
             performed_by_id=_performed_by_id(current_user),
         )
     except LookupError as exc:
@@ -229,6 +280,7 @@ def update_price_list_item_endpoint(
             db,
             item_id,
             payload,
+            performed_by_id=getattr(current_user, "id", None),
             performed_by_id=_performed_by_id(current_user),
         )
     except LookupError as exc:
@@ -246,6 +298,9 @@ def delete_price_list_item_endpoint(
     _ensure_feature_enabled()
     try:
         pricing.delete_price_list_item(
+            db,
+            item_id,
+            performed_by_id=getattr(current_user, "id", None),
             db, item_id, performed_by_id=_performed_by_id(current_user)
         )
     except LookupError as exc:
@@ -253,6 +308,7 @@ def delete_price_list_item_endpoint(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+__all__ = ["router"]
 def resolve_device_price_endpoint(
     device_id: int = Query(ge=1),
     store_id: int | None = Query(default=None, ge=1),

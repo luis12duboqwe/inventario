@@ -6,6 +6,10 @@ import {
   downloadInventoryMovementsCsv,
   downloadInventoryMovementsPdf,
   downloadInventoryMovementsXlsx,
+  downloadInventoryAdjustmentsCsv,
+  downloadInventoryAdjustmentsPdf,
+  downloadInventoryAuditCsv,
+  downloadInventoryAuditPdf,
   downloadInventoryPdf,
   downloadInventoryValueCsv,
   downloadInventoryValuePdf,
@@ -27,6 +31,8 @@ import {
   renewInventoryReservation,
   cancelInventoryReservation,
   registerMovement,
+  registerInventoryReceiving,
+  registerInventoryCycleCount,
   smartInventoryImport,
   getSmartImportHistory,
 } from "../../../api";
@@ -48,6 +54,11 @@ import type {
   PaginatedResponse,
   SupplierBatchOverviewItem,
   TopProductsReport,
+  InventoryReceivingRequest,
+  InventoryReceivingResult,
+  InventoryCycleCountRequest,
+  InventoryCycleCountResult,
+  InventoryAuditFilters,
 } from "../../../api";
 
 export const inventoryService = {
@@ -58,6 +69,16 @@ export const inventoryService = {
     payload: MovementInput,
     comment: string,
   ) => registerMovement(token, storeId, payload, comment),
+  registerReceiving: (
+    token: string,
+    payload: InventoryReceivingRequest,
+    reason: string,
+  ): Promise<InventoryReceivingResult> => registerInventoryReceiving(token, payload, reason),
+  registerCycleCount: (
+    token: string,
+    payload: InventoryCycleCountRequest,
+    reason: string,
+  ): Promise<InventoryCycleCountResult> => registerInventoryCycleCount(token, payload, reason),
   downloadInventoryReport: (token: string, reason: string) =>
     downloadInventoryPdf(token, reason),
   downloadInventoryCsv: (token: string, reason: string) =>
@@ -181,6 +202,26 @@ export const inventoryService = {
     reason: string,
     filters: InventoryMovementsFilters = {},
   ) => downloadInventoryMovementsXlsx(token, reason, filters),
+  downloadInventoryAdjustmentsCsv: (
+    token: string,
+    reason: string,
+    filters: InventoryMovementsFilters = {},
+  ) => downloadInventoryAdjustmentsCsv(token, reason, filters),
+  downloadInventoryAdjustmentsPdf: (
+    token: string,
+    reason: string,
+    filters: InventoryMovementsFilters = {},
+  ) => downloadInventoryAdjustmentsPdf(token, reason, filters),
+  downloadInventoryAuditCsv: (
+    token: string,
+    reason: string,
+    filters: InventoryAuditFilters = {},
+  ) => downloadInventoryAuditCsv(token, reason, filters),
+  downloadInventoryAuditPdf: (
+    token: string,
+    reason: string,
+    filters: InventoryAuditFilters = {},
+  ) => downloadInventoryAuditPdf(token, reason, filters),
   downloadTopProductsCsv: (
     token: string,
     reason: string,
