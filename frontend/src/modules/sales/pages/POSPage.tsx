@@ -32,6 +32,7 @@ import { logUI } from "../../../services/audit";
 // [PACK27-PRINT-POS-IMPORT-START]
 import { openPrintable } from "@/lib/print";
 // [PACK27-PRINT-POS-IMPORT-END]
+import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 type HoldSale = {
   id: string;
@@ -90,6 +91,7 @@ export default function POSPage() {
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   // [PACK22-POS-HOOK-USE-START]
   const pos = usePOS();
+  const { token: accessToken } = useDashboard();
 
   const {
     lines,
@@ -139,7 +141,7 @@ export default function POSPage() {
       }
       setAvailabilityLoading(true);
       try {
-        const response = await getInventoryAvailability({
+        const response = await getInventoryAvailability(accessToken, {
           skus: pendingSkus.size ? Array.from(pendingSkus) : undefined,
           deviceIds: pendingDeviceIds.size ? Array.from(pendingDeviceIds) : undefined,
           limit: Math.max(items.length, pendingSkus.size + pendingDeviceIds.size, 1),
@@ -157,7 +159,7 @@ export default function POSPage() {
         setAvailabilityLoading(false);
       }
     },
-    [availabilityMap],
+    [accessToken, availabilityMap],
   );
 
   useEffect(() => {

@@ -3007,8 +3007,19 @@ export function getSummary(token: string): Promise<Summary[]> {
 }
 
 export function getInventoryAvailability(
-  params: InventoryAvailabilityParams = {},
+  params?: InventoryAvailabilityParams,
+): Promise<InventoryAvailabilityResponse>;
+export function getInventoryAvailability(
+  token: string,
+  params?: InventoryAvailabilityParams,
+): Promise<InventoryAvailabilityResponse>;
+export function getInventoryAvailability(
+  tokenOrParams: string | InventoryAvailabilityParams = {},
+  maybeParams: InventoryAvailabilityParams = {},
 ): Promise<InventoryAvailabilityResponse> {
+  const hasToken = typeof tokenOrParams === "string";
+  const token = hasToken ? tokenOrParams : undefined;
+  const params = hasToken ? maybeParams ?? {} : (tokenOrParams ?? {});
   const searchParams = new URLSearchParams();
   if (params.query && params.query.trim().length > 0) {
     searchParams.set("query", params.query.trim());
@@ -3029,6 +3040,7 @@ export function getInventoryAvailability(
   return request<InventoryAvailabilityResponse>(
     `/inventory/availability${suffix ? `?${suffix}` : ""}`,
     { method: "GET" },
+    token,
   );
 }
 

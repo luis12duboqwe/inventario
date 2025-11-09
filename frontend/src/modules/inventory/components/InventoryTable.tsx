@@ -67,7 +67,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
 
   const pageSizeOptions = useMemo(() => [25, 50, 100, 250], []);
   const {
-    module: { selectedStoreId },
+    module: { selectedStoreId, token: accessToken },
   } = useInventoryLayout();
   const [availabilityRecords, setAvailabilityRecords] = useState<Record<string, InventoryAvailabilityRecord>>({});
   const [availabilityTarget, setAvailabilityTarget] = useState<Device | null>(null);
@@ -104,7 +104,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
       }
       setAvailabilityLoading(true);
       try {
-        const response = await getInventoryAvailability({
+        const response = await getInventoryAvailability(accessToken, {
           skus: device.sku ? [device.sku] : undefined,
           deviceIds: device.sku ? undefined : [device.id],
           limit: 10,
@@ -124,7 +124,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
         setAvailabilityLoading(false);
       }
     },
-    [availabilityRecords],
+    [accessToken, availabilityRecords],
   );
 
   const handlePrintLabel = useCallback(async (device: Device) => {
