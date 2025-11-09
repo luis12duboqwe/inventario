@@ -19,6 +19,7 @@ describe("POSPage - entrada rápida", () => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     localStorage.clear();
+    vi.spyOn(SalesPOS, "sendReceipt").mockResolvedValue({ channel: "email", status: "sent" });
   });
 
   it("agrega el producto al carrito al recibir un código de escáner", async () => {

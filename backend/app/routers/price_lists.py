@@ -1,3 +1,8 @@
+"""Endpoints protegidos para la administración de listas de precios."""
+"""Endpoints para la administración de listas de precios corporativas."""
+
+from __future__ import annotations
+
 from datetime import date
 from decimal import Decimal
 from typing import NoReturn
@@ -50,6 +55,22 @@ def _raise_value_error(exc: ValueError) -> NoReturn:
     if message in detail_map:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail_map[message]) from exc
     if message in numeric_errors:
+    if message in {"price_list_conflict", "price_list_duplicate"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe una lista de precios con los mismos criterios.",
+        ) from exc
+    if message in {"price_list_item_conflict", "price_list_item_duplicate"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe un elemento con los mismos criterios.",
+        ) from exc
+    if message == "price_list_item_invalid_store":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El dispositivo no pertenece a la sucursal configurada.",
+        ) from exc
+    if message in {"price_list_item_price_invalid", "price_list_item_discount_invalid"}:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Los valores numéricos proporcionados no son válidos.",
@@ -61,24 +82,83 @@ def _performed_by_id(user) -> int | None:
     return getattr(user, "id", None)
 
 
+@router.get("", response_model=list[schemas.PriceListResponse])
 def list_price_lists_endpoint(
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
     is_active: bool | None = Query(default=None),
     include_items: bool = Query(default=False),
+    include_inactive: bool = Query(default=False),
+    include_global: bool = Query(default=True),
+    include_inactive: bool = Query(default=True),
+    include_global: bool = Query(default=True),
+    include_items: bool = Query(default=True),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> list[schemas.PriceListResponse]:
     _ensure_feature_enabled()
     return pricing.list_price_lists(
+    active_filter = is_active
+    if active_filter is None and not include_inactive:
+        active_filter = True
+    price_lists = pricing.list_price_lists(
         db,
         store_id=store_id,
         customer_id=customer_id,
-        is_active=is_active,
+        is_active=active_filter,
         include_items=include_items,
     )
 
 
+    if not include_global:
+        price_lists = [
+            price_list
+            for price_list in price_lists
+            if price_list.store_id is not None or price_list.customer_id is not None
+        ]
+    return price_lists
+    return pricing.list_price_lists(
+        db,
+        store_id=store_id,
+        customer_id=customer_id,
+        include_inactive=include_inactive,
+        include_global=include_global,
+        include_items=include_items,
+    )
+
+
+@router.get(
+    "/resolve",
+    response_model=schemas.PriceResolution | None,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+@router.get("/resolve", response_model=schemas.PriceResolution | None)
+def resolve_device_price_endpoint(
+    device_id: int = Query(ge=1),
+    store_id: int | None = Query(default=None, ge=1),
+    customer_id: int | None = Query(default=None, ge=1),
+    reference_date: date | None = Query(default=None),
+    default_price: Decimal | None = Query(default=None, gt=Decimal("0")),
+    default_currency: str = Query(default="MXN", min_length=3, max_length=8),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.PriceResolution | None:
+    _ensure_feature_enabled()
+    try:
+        return pricing.resolve_device_price(
+            db,
+            device_id=device_id,
+            store_id=store_id,
+            customer_id=customer_id,
+            reference_date=reference_date,
+            default_price=default_price,
+            default_currency=default_currency,
+        )
+    except LookupError as exc:
+        _raise_lookup(exc)
+
+
+@router.get("/{price_list_id}", response_model=schemas.PriceListResponse)
 def get_price_list_endpoint(
     price_list_id: int = Path(ge=1),
     include_items: bool = Query(default=True),
@@ -88,10 +168,21 @@ def get_price_list_endpoint(
     _ensure_feature_enabled()
     try:
         return pricing.get_price_list(db, price_list_id, include_items=include_items)
+        return pricing.get_price_list(
+            db,
+            price_list_id,
+            include_items=include_items,
+        )
     except LookupError as exc:
         _raise_lookup(exc)
 
 
+@router.post(
+    "",
+    response_model=schemas.PriceListResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def create_price_list_endpoint(
     payload: schemas.PriceListCreate,
     db: Session = Depends(get_db),
@@ -106,14 +197,19 @@ def create_price_list_endpoint(
             performed_by_id=_performed_by_id(current_user),
             include_items=True,
         )
+    except LookupError as exc:
+        _raise_lookup(exc)
     except ValueError as exc:
         _raise_value_error(exc)
 
 
+@router.put("/{price_list_id}", response_model=schemas.PriceListResponse)
 def update_price_list_endpoint(
     payload: schemas.PriceListUpdate,
     price_list_id: int = Path(ge=1),
     db: Session = Depends(get_db),
+    _: str = Depends(require_reason),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
     _: str = Depends(require_reason),
 ) -> schemas.PriceListResponse:
@@ -132,9 +228,20 @@ def update_price_list_endpoint(
         _raise_value_error(exc)
 
 
+@router.delete(
+    "/{price_list_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def delete_price_list_endpoint(
     price_list_id: int = Path(ge=1),
     db: Session = Depends(get_db),
+    _: str = Depends(require_reason),
+@router.delete("/{price_list_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_price_list_endpoint(
+    price_list_id: int = Path(ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
     _: str = Depends(require_reason),
 ) -> Response:
@@ -150,6 +257,7 @@ def delete_price_list_endpoint(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.get("/items/{item_id}", response_model=schemas.PriceListItemResponse)
 def get_price_list_item_endpoint(
     item_id: int = Path(ge=1),
     db: Session = Depends(get_db),
@@ -162,10 +270,17 @@ def get_price_list_item_endpoint(
         _raise_lookup(exc)
 
 
+@router.post(
+    "/{price_list_id}/items",
+    response_model=schemas.PriceListItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_price_list_item_endpoint(
     payload: schemas.PriceListItemCreate,
     price_list_id: int = Path(ge=1),
     db: Session = Depends(get_db),
+    _: str = Depends(require_reason),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
     _: str = Depends(require_reason),
 ) -> schemas.PriceListItemResponse:
@@ -183,10 +298,13 @@ def create_price_list_item_endpoint(
         _raise_value_error(exc)
 
 
+@router.put("/items/{item_id}", response_model=schemas.PriceListItemResponse)
 def update_price_list_item_endpoint(
     payload: schemas.PriceListItemUpdate,
     item_id: int = Path(ge=1),
     db: Session = Depends(get_db),
+    _: str = Depends(require_reason),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
     _: str = Depends(require_reason),
 ) -> schemas.PriceListItemResponse:
@@ -204,9 +322,20 @@ def update_price_list_item_endpoint(
         _raise_value_error(exc)
 
 
+@router.delete(
+    "/items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
 def delete_price_list_item_endpoint(
     item_id: int = Path(ge=1),
     db: Session = Depends(get_db),
+    _: str = Depends(require_reason),
+@router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_price_list_item_endpoint(
+    item_id: int = Path(ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
     _: str = Depends(require_reason),
 ) -> Response:
@@ -254,13 +383,18 @@ def resolve_device_price_endpoint(
     return resolution
 
 
+@router.get(
+    "/evaluation",
+    response_model=schemas.PriceEvaluationResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+@pricing_router.get(
+    "/price-evaluation",
+    response_model=schemas.PriceEvaluationResponse,
+)
 def evaluate_device_price_endpoint(
     device_id: int = Query(ge=1),
     store_id: int | None = Query(default=None, ge=1),
     customer_id: int | None = Query(default=None, ge=1),
-    reference_date: date | None = Query(default=None),
-    default_price: Decimal | None = Query(default=None, gt=Decimal("0")),
-    default_currency: str = Query(default="MXN", min_length=3, max_length=8),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ) -> schemas.PriceEvaluationResponse:
@@ -271,9 +405,8 @@ def evaluate_device_price_endpoint(
             device_id=device_id,
             store_id=store_id,
             customer_id=customer_id,
-            reference_date=reference_date,
-            default_price=default_price,
-            default_currency=default_currency,
+            reference_date=None,
+            default_price=None,
         )
     except LookupError as exc:
         _raise_lookup(exc)
@@ -288,10 +421,10 @@ def evaluate_device_price_endpoint(
         )
 
     return schemas.PriceEvaluationResponse(
-        device_id=device_id,
+        device_id=resolution.device_id,
         price_list_id=resolution.price_list_id,
         scope=resolution.scope,
-        price=float(resolution.final_price),
+        price=resolution.price,
         currency=resolution.currency,
     )
 
@@ -367,11 +500,13 @@ router.add_api_route(
 )
 
 # Modern `/pricing/*` registration for compatibility
+# Rutas espejo bajo `/pricing`
 pricing_router.add_api_route(
     "/price-lists",
     list_price_lists_endpoint,
     methods=["GET"],
     response_model=list[schemas.PriceListResponse],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 pricing_router.add_api_route(
     "/price-lists",
@@ -379,24 +514,35 @@ pricing_router.add_api_route(
     methods=["POST"],
     response_model=schemas.PriceListResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 pricing_router.add_api_route(
     "/price-lists/{price_list_id}",
     get_price_list_endpoint,
     methods=["GET"],
     response_model=schemas.PriceListResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 pricing_router.add_api_route(
     "/price-lists/{price_list_id}",
     update_price_list_endpoint,
     methods=["PUT"],
     response_model=schemas.PriceListResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 pricing_router.add_api_route(
     "/price-lists/{price_list_id}",
     delete_price_list_endpoint,
     methods=["DELETE"],
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+pricing_router.add_api_route(
+    "/price-lists/items/{item_id}",
+    get_price_list_item_endpoint,
+    methods=["GET"],
+    response_model=schemas.PriceListItemResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 pricing_router.add_api_route(
     "/price-lists/{price_list_id}/items",
@@ -404,6 +550,13 @@ pricing_router.add_api_route(
     methods=["POST"],
     response_model=schemas.PriceListItemResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+pricing_router.add_api_route(
+    "/price-lists/items/{item_id}",
+    get_price_list_item_endpoint,
+    methods=["GET"],
+    response_model=schemas.PriceListItemResponse,
 )
 pricing_router.add_api_route(
     "/price-lists/items/{item_id}",
@@ -416,12 +569,14 @@ pricing_router.add_api_route(
     update_price_list_item_endpoint,
     methods=["PUT"],
     response_model=schemas.PriceListItemResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 pricing_router.add_api_route(
     "/price-lists/items/{item_id}",
     delete_price_list_item_endpoint,
     methods=["DELETE"],
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 pricing_router.add_api_route(
     "/price-resolution",
@@ -432,8 +587,19 @@ pricing_router.add_api_route(
 pricing_router.add_api_route(
     "/price-evaluation",
     evaluate_device_price_endpoint,
+    "/price-lists/resolve",
+    resolve_device_price_endpoint,
+    methods=["GET"],
+    response_model=schemas.PriceResolution | None,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+pricing_router.add_api_route(
+    "/price-lists/resolve",
+    resolve_device_price_endpoint,
     methods=["GET"],
     response_model=schemas.PriceEvaluationResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+    response_model=schemas.PriceResolution | None,
 )
 
 __all__ = ["router", "pricing_router"]

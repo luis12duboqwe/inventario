@@ -17,7 +17,7 @@ import {
 // [PACK22-POS-PAGE-IMPORTS-START]
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Product, ProductSearchParams, PaymentInput } from "../../../services/sales";
-import { SalesProducts } from "../../../services/sales";
+import { SalesProducts, SalesPOS } from "../../../services/sales";
 import {
   getInventoryAvailability,
   type InventoryAvailabilityRecord,
@@ -52,6 +52,13 @@ type Customer = {
   id: string;
   name: string;
   phone?: string;
+  email?: string;
+  docId?: string;
+};
+
+type TerminalOption = {
+  id: string;
+  label: string;
 };
 
 const buildAvailabilityReference = (product: Product): string => {
@@ -79,6 +86,48 @@ export default function POSPage() {
   const [fastCustomerOpen, setFastCustomerOpen] = useState<boolean>(false);
   const [offlineDrawerOpen, setOfflineDrawerOpen] = useState<boolean>(false);
   const [holdItems, setHoldItems] = useState<HoldSale[]>([]);
+  const [lastSale, setLastSale] = useState<{ id: string; number: string; receiptUrl?: string | null } | null>(null);
+  const [lastSaleContact, setLastSaleContact] = useState<{ email?: string; phone?: string; docId?: string; name?: string } | null>(null);
+  const [sendingChannel, setSendingChannel] = useState<"email" | "whatsapp" | null>(null);
+  const terminalOptions = useMemo<TerminalOption[]>(
+    () => [
+      { id: "atl-01", label: "Terminal Atlántida" },
+      { id: "fic-01", label: "Terminal Ficohsa" },
+    ],
+    [],
+  );
+  const [selectedTerminal, setSelectedTerminal] = useState<string | undefined>(
+    () => terminalOptions[0]?.id,
+  );
+  const [tipSuggestions, setTipSuggestions] = useState<number[]>(() => {
+    if (typeof window === "undefined") {
+      return [0, 5, 10];
+    }
+    try {
+      const stored = localStorage.getItem("sm_pos_tip_suggestions");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const values = parsed
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value >= 0);
+          if (values.length > 0) {
+            return values;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("No se pudieron cargar propinas configuradas", error);
+    }
+    return [0, 5, 10];
+  });
+  const [tipPresetInput, setTipPresetInput] = useState<string>(() => tipSuggestions.join(", "));
+  useEffect(() => {
+    setTipPresetInput(tipSuggestions.join(", "));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sm_pos_tip_suggestions", JSON.stringify(tipSuggestions));
+    }
+  }, [tipSuggestions]);
   // [PACK22-POS-SEARCH-STATE-START]
   const [q, setQ] = useState("");
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -97,6 +146,7 @@ export default function POSPage() {
     payments,
     banner,
     pendingOffline,
+    docType,
     addProduct,
     updateQty,
     removeLine,
@@ -111,6 +161,8 @@ export default function POSPage() {
     setCustomerId,
     setPayments,
     purgeOffline,
+    setDocType,
+    pushBanner,
   } = pos;
 
   const updateAvailabilityForProducts = useCallback(
@@ -169,6 +221,10 @@ export default function POSPage() {
   useEffect(() => {
     setCustomerId(customer?.id ?? null);
   }, [customer, setCustomerId]);
+
+  useEffect(() => {
+    setDocType(customer?.docId ? "INVOICE" : "TICKET");
+  }, [customer, setDocType]);
 
   const productCards = useMemo(
     () =>
@@ -246,6 +302,7 @@ export default function POSPage() {
       meta: {
         total: result?.totals?.grand ?? 0,
         lines: lines.length,
+        tips: payments.reduce((sum, payment) => sum + (payment.tipAmount ?? 0), 0),
       },
     };
 
@@ -406,17 +463,41 @@ export default function POSPage() {
 
   const handlePaymentsSubmit = async (paymentDrafts: PaymentDraft[]) => {
     if (!can(PERMS.POS_CHECKOUT)) return;
-    const payload: PaymentInput[] = paymentDrafts.map(({ type, amount, ref }) => {
-      const payment: PaymentInput = { type, amount };
-      if (ref !== undefined) {
-        payment.ref = ref;
-      }
-      return payment;
-    });
+    const payload: PaymentInput[] = paymentDrafts.map(
+      ({ type, amount, reference, tipAmount, terminalId }) => {
+        const payment: PaymentInput = { type, amount };
+        if (reference) {
+          payment.reference = reference;
+        }
+        if (typeof tipAmount === "number" && tipAmount > 0) {
+          payment.tipAmount = tipAmount;
+        }
+        if (terminalId) {
+          payment.terminalId = terminalId;
+        }
+        return payment;
+      },
+    );
     setPayments(payload);
     try {
       const result = await checkout();
       await onAfterCheckout(result);
+      if (result?.saleId) {
+        const saleIdStr = String(result.saleId);
+        setLastSale({
+          id: saleIdStr,
+          number: result.number,
+          receiptUrl: result.printable?.pdfUrl ?? null,
+        });
+        setLastSaleContact((prev) => ({
+          email: customer?.email ?? prev?.email,
+          phone: customer?.phone ?? prev?.phone,
+          docId: customer?.docId ?? prev?.docId,
+          name: customer?.name ?? prev?.name,
+        }));
+      } else {
+        setLastSale(null);
+      }
       // [PACK22-POS-PRINT-START]
       if (result?.printable?.pdfUrl) window.open(result.printable.pdfUrl, "_blank");
       else if (result?.printable?.html) {
@@ -428,10 +509,69 @@ export default function POSPage() {
       }
       // [PACK27-PRINT-POS-END]
       setCustomer(null);
+      setDocType("TICKET");
     } finally {
       setPaymentsOpen(false);
     }
   };
+
+  const handleSend = useCallback(
+    async (channel: "email" | "whatsapp") => {
+      if (!lastSale) {
+        pushBanner({ type: "warn", msg: "Registra una venta antes de enviar el recibo." });
+        return;
+      }
+      const contact = channel === "email"
+        ? lastSaleContact?.email ?? customer?.email
+        : lastSaleContact?.phone ?? customer?.phone;
+      if (!contact) {
+        pushBanner({ type: "error", msg: "No hay datos de contacto para enviar el recibo." });
+        return;
+      }
+      setSendingChannel(channel);
+      try {
+        const reason = "Envio recibo inmediato";
+        const message = channel === "email"
+          ? `Adjuntamos el comprobante ${lastSale.number}.`
+          : `Recibo ${lastSale.number}. Descarga: ${lastSale.receiptUrl ?? `/pos/receipt/${lastSale.id}`}`;
+        await SalesPOS.sendReceipt(
+          lastSale.id,
+          {
+            channel,
+            recipient: contact,
+            message,
+            subject: channel === "email" ? `Recibo ${lastSale.number}` : undefined,
+          },
+          reason,
+        );
+        await logUI({
+          ts: Date.now(),
+          userId: user?.id ?? null,
+          module: "POS",
+          action: `receipt.send.${channel}`,
+          entityId: lastSale.id,
+          meta: { contact },
+        });
+        pushBanner({
+          type: "success",
+          msg: channel === "email" ? "Recibo enviado por correo." : "Recibo enviado por WhatsApp.",
+        });
+      } catch (error) {
+        pushBanner({ type: "error", msg: "No se pudo enviar el recibo." });
+      } finally {
+        setSendingChannel(null);
+      }
+    },
+    [customer, lastSale, lastSaleContact, pushBanner, user],
+  );
+
+  const handleSendEmail = useCallback(() => {
+    void handleSend("email");
+  }, [handleSend]);
+
+  const handleSendWhatsApp = useCallback(() => {
+    void handleSend("whatsapp");
+  }, [handleSend]);
 
   async function onHold() {
     if (!can(PERMS.POS_HOLD)) return;
@@ -480,6 +620,16 @@ export default function POSPage() {
 
   const handleOfflinePurge = (id?: string) => {
     purgeOffline(id);
+  };
+
+  const handleTipPresetBlur = () => {
+    const values = tipPresetInput
+      .split(",")
+      .map((entry) => Number(entry.trim()))
+      .filter((value) => Number.isFinite(value) && value >= 0);
+    if (values.length > 0) {
+      setTipSuggestions(values);
+    }
   };
 
   function handleCancelSale() {
@@ -547,6 +697,49 @@ export default function POSPage() {
         </div>
       ) : null}
       {/* [PACK26-POS-HOLD-BUTTON-END] */}
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap",
+          alignItems: "center",
+          background: "rgba(30,41,59,0.6)",
+          borderRadius: 12,
+          padding: "8px 12px",
+          border: "1px solid rgba(148,163,184,0.15)",
+        }}
+      >
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+          Terminal predeterminado
+          <select
+            value={selectedTerminal ?? ""}
+            onChange={(event) => setSelectedTerminal(event.target.value || undefined)}
+            style={{ padding: 8, borderRadius: 8 }}
+          >
+            {terminalOptions.map((terminal) => (
+              <option key={terminal.id} value={terminal.id}>
+                {terminal.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+          Propinas sugeridas (%)
+          <input
+            value={tipPresetInput}
+            onChange={(event) => setTipPresetInput(event.target.value)}
+            onBlur={handleTipPresetBlur}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                handleTipPresetBlur();
+              }
+            }}
+            style={{ padding: 8, borderRadius: 8 }}
+            placeholder="0, 5, 10"
+          />
+        </label>
+      </div>
       <POSLayout
         left={
           <>
@@ -593,6 +786,10 @@ export default function POSPage() {
                 }}
                 onOffline={() => setOfflineDrawerOpen(true)}
                 onCancel={handleCancelSale}
+                onSendEmail={handleSendEmail}
+                onSendWhatsapp={handleSendWhatsApp}
+                canSend={!!lastSale}
+                sendingChannel={sendingChannel}
               />
             </div>
           </>
@@ -612,6 +809,9 @@ export default function POSPage() {
       <PaymentsModal
         open={paymentsOpen}
         total={totals.grand}
+        terminals={terminalOptions}
+        defaultTerminalId={selectedTerminal}
+        tipSuggestions={tipSuggestions}
         onClose={() => setPaymentsOpen(false)}
         onSubmit={(paymentsDraft) => {
           void handlePaymentsSubmit(paymentsDraft as PaymentDraft[]);
@@ -634,6 +834,12 @@ export default function POSPage() {
             const nextCustomer: Customer = { id: `fast-${Date.now()}`, name: payload.name };
             if (payload.phone) {
               nextCustomer.phone = payload.phone;
+            }
+            if (payload.email) {
+              nextCustomer.email = payload.email;
+            }
+            if (payload.docId) {
+              nextCustomer.docId = payload.docId;
             }
             return nextCustomer;
           });

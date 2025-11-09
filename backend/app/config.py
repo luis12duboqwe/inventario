@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import json
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Annotated
 
@@ -200,6 +202,106 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    notifications_email_from: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_EMAIL_FROM",
+                "SOFTMOBILE_NOTIFICATIONS_EMAIL_FROM",
+            ),
+        ),
+    ]
+    notifications_email_host: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_EMAIL_HOST",
+                "SOFTMOBILE_NOTIFICATIONS_EMAIL_HOST",
+            ),
+        ),
+    ]
+    notifications_email_port: Annotated[
+        int,
+        Field(
+            default=587,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_EMAIL_PORT",
+                "SOFTMOBILE_NOTIFICATIONS_EMAIL_PORT",
+            ),
+        ),
+    ]
+    notifications_email_username: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_EMAIL_USERNAME",
+                "SOFTMOBILE_NOTIFICATIONS_EMAIL_USERNAME",
+            ),
+        ),
+    ]
+    notifications_email_password: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_EMAIL_PASSWORD",
+                "SOFTMOBILE_NOTIFICATIONS_EMAIL_PASSWORD",
+            ),
+        ),
+    ]
+    notifications_email_use_tls: Annotated[
+        bool,
+        Field(
+            default=True,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_EMAIL_USE_TLS",
+                "SOFTMOBILE_NOTIFICATIONS_EMAIL_USE_TLS",
+            ),
+        ),
+    ]
+    notifications_whatsapp_api_url: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_WHATSAPP_API_URL",
+                "SOFTMOBILE_NOTIFICATIONS_WHATSAPP_API_URL",
+            ),
+        ),
+    ]
+    notifications_whatsapp_token: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_WHATSAPP_TOKEN",
+                "SOFTMOBILE_NOTIFICATIONS_WHATSAPP_TOKEN",
+            ),
+        ),
+    ]
+    notifications_whatsapp_sender: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_WHATSAPP_SENDER",
+                "SOFTMOBILE_NOTIFICATIONS_WHATSAPP_SENDER",
+            ),
+        ),
+    ]
+    notifications_whatsapp_timeout: Annotated[
+        int,
+        Field(
+            default=10,
+            validation_alias=AliasChoices(
+                "NOTIFICATIONS_WHATSAPP_TIMEOUT",
+                "SOFTMOBILE_NOTIFICATIONS_WHATSAPP_TIMEOUT",
+            ),
+        ),
+    ]
     enable_backup_scheduler: Annotated[
         bool,
         Field(
@@ -247,6 +349,41 @@ class Settings(BaseSettings):
             validation_alias=AliasChoices(
                 "ENABLE_PURCHASES_SALES",
                 "SOFTMOBILE_ENABLE_PURCHASES_SALES",
+            ),
+        ),
+    ]
+    pos_payment_terminals: Annotated[
+        dict[str, dict[str, Any]],
+        Field(
+            default_factory=lambda: {
+                "atl-01": {
+                    "label": "Terminal Atlántida",
+                    "adapter": "banco_atlantida",
+                    "currency": "HNL",
+                },
+                "fic-01": {
+                    "label": "Terminal Ficohsa",
+                    "adapter": "banco_ficohsa",
+                    "currency": "HNL",
+                },
+            },
+            validation_alias=AliasChoices(
+                "POS_PAYMENT_TERMINALS",
+                "SOFTMOBILE_POS_PAYMENT_TERMINALS",
+            ),
+        ),
+    ]
+    pos_tip_suggestions: Annotated[
+        list[Decimal],
+        Field(
+            default_factory=lambda: [
+                Decimal("0"),
+                Decimal("5"),
+                Decimal("10"),
+            ],
+            validation_alias=AliasChoices(
+                "POS_TIP_SUGGESTIONS",
+                "SOFTMOBILE_POS_TIP_SUGGESTIONS",
             ),
         ),
     ]
@@ -433,6 +570,79 @@ class Settings(BaseSettings):
         ),
     ]
 
+    @field_validator("pos_payment_terminals", mode="before")
+    @classmethod
+    def _parse_pos_terminals(
+        cls, value: Any, info: ValidationInfo
+    ) -> dict[str, dict[str, Any]]:
+        if value is None:
+            return {}
+        data: Any = value
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return {}
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "POS_PAYMENT_TERMINALS debe ser JSON válido"
+                ) from exc
+        if not isinstance(data, dict):
+            raise ValueError(
+                "POS_PAYMENT_TERMINALS debe ser un objeto JSON con terminales",
+            )
+        normalized: dict[str, dict[str, Any]] = {}
+        for key, cfg in data.items():
+            if not isinstance(cfg, dict):
+                raise ValueError(
+                    f"Configuración inválida para el terminal {key!r}",
+                )
+            normalized[key] = cfg
+        return normalized
+
+    @field_validator("pos_tip_suggestions", mode="before")
+    @classmethod
+    def _parse_tip_suggestions(cls, value: Any) -> list[Decimal]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return []
+            parts = [part.strip() for part in raw.split(",") if part.strip()]
+            return [Decimal(part) for part in parts]
+        if isinstance(value, (list, tuple)):
+            return [Decimal(str(part)) for part in value]
+        raise ValueError("POS_TIP_SUGGESTIONS debe ser una lista o CSV de números")
+
+    @field_validator("pos_tip_suggestions")
+    @classmethod
+    def _validate_tip_suggestions(
+        cls, value: list[Decimal]
+    ) -> list[Decimal]:
+        normalized: list[Decimal] = []
+        for amount in value:
+            decimal_value = Decimal(str(amount))
+            if decimal_value < Decimal("0"):
+                raise ValueError("Las propinas sugeridas deben ser no negativas")
+            normalized.append(decimal_value.quantize(Decimal("0.01")))
+        return normalized
+
+    @field_validator("pos_payment_terminals")
+    @classmethod
+    def _validate_pos_terminals(
+        cls, value: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        normalized: dict[str, dict[str, Any]] = {}
+        for key, cfg in value.items():
+            if "adapter" not in cfg:
+                raise ValueError(
+                    f"El terminal {key!r} debe indicar el adaptador bancario",
+                )
+            normalized[key] = cfg
+        return normalized
+
     @model_validator(mode="after")
     def _ensure_testing_flag(self) -> "Settings":
         if bool(os.getenv("PYTEST_CURRENT_TEST")):
@@ -531,6 +741,29 @@ class Settings(BaseSettings):
         if value is None:
             return False
         return _is_truthy(str(value))
+
+    @field_validator("notifications_email_use_tls", mode="before")
+    @classmethod
+    def _coerce_notifications_tls(cls, value: bool | str | int | None) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return value != 0
+        if value is None:
+            return True
+        return _is_truthy(str(value))
+
+    @field_validator("notifications_whatsapp_timeout", mode="before")
+    @classmethod
+    def _normalize_whatsapp_timeout(cls, value: int | str | None) -> int:
+        if isinstance(value, int):
+            return value
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return 10
+        try:
+            return int(str(value).strip())
+        except ValueError as exc:  # pragma: no cover - validación defensiva
+            raise ValueError("notifications_whatsapp_timeout_invalid") from exc
 
     @model_validator(mode="after")
     def _validate_required(self) -> "Settings":

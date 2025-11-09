@@ -51,6 +51,34 @@ def close_session(
     return session
 
 
+def record_entry(
+    db: Session,
+    payload: schemas.CashRegisterEntryCreate,
+    *,
+    created_by_id: int | None,
+    reason: str | None,
+) -> models.CashRegisterEntry:
+    """Registra un movimiento manual de caja."""
+
+    entry = crud.record_cash_entry(
+        db,
+        payload,
+        created_by_id=created_by_id,
+        reason=_normalize_reason(reason),
+    )
+    return entry
+
+
+def list_entries(
+    db: Session,
+    *,
+    session_id: int,
+) -> list[models.CashRegisterEntry]:
+    """Obtiene el historial de movimientos manuales de una sesión."""
+
+    return crud.list_cash_entries(db, session_id=session_id)
+
+
 def last_session_for_store(db: Session, *, store_id: int) -> models.CashRegisterSession:
     """Obtiene la última sesión registrada para la sucursal."""
 
@@ -81,6 +109,8 @@ def to_summary(session: models.CashRegisterSession) -> schemas.POSSessionSummary
 __all__ = [
     "open_session",
     "close_session",
+    "record_entry",
+    "list_entries",
     "last_session_for_store",
     "list_sessions",
     "to_summary",
