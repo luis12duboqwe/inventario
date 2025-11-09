@@ -1,9 +1,9 @@
+"""Servicios de negocio relacionados con listas de precios y resolución de tarifas."""
 
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import ROUND_HALF_UP, Decimal
-from typing import Iterable
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -15,14 +15,20 @@ _QUANTIZER = Decimal("0.01")
 
 
 def _quantize(value: Decimal) -> Decimal:
+    """Normaliza los valores monetarios a dos decimales con redondeo corporativo."""
+
     return value.quantize(_QUANTIZER, rounding=ROUND_HALF_UP)
 
 
 def _utc_now() -> datetime:
+    """Retorna la marca de tiempo actual en UTC."""
+
     return datetime.utcnow()
 
 
 def _scope_rank(price_list: PriceList) -> int:
+    """Determina la prioridad de alcance de una lista de precios."""
+
     if price_list.store_id is not None and price_list.customer_id is not None:
         return 0
     if price_list.customer_id is not None:
@@ -37,6 +43,8 @@ def _resolve_scope(
     store_id: int | None,
     customer_id: int | None,
 ) -> str:
+    """Calcula el alcance efectivo de la lista según la combinación solicitada."""
+
     if (
         store_id is not None
         and customer_id is not None
@@ -64,20 +72,30 @@ def list_price_lists(
     *,
     store_id: int | None = None,
     customer_id: int | None = None,
-    is_active: bool | None = None,
-    include_items: bool = False,
+    include_inactive: bool = True,
+    include_global: bool = True,
+    include_items: bool = True,
 ) -> list[schemas.PriceListResponse]:
+    """Lista las configuraciones de precios disponibles según los filtros.
+
+    Los resultados se devuelven como modelos Pydantic listos para exposición en la API.
+    """
+
     price_lists = crud.list_price_lists(
         db,
         store_id=store_id,
         customer_id=customer_id,
-        is_active=is_active,
-        include_items=include_items,
+        include_inactive=include_inactive,
+        include_global=include_global,
     )
-    return [
+    responses = [
         schemas.PriceListResponse.model_validate(price_list, from_attributes=True)
         for price_list in price_lists
     ]
+    if not include_items:
+        for response in responses:
+            response.items = []
+    return responses
 
 
 def get_price_list(
@@ -86,10 +104,15 @@ def get_price_list(
     *,
     include_items: bool = True,
 ) -> schemas.PriceListResponse:
-    price_list = crud.get_price_list(db, price_list_id, include_items=include_items)
-    return schemas.PriceListResponse.model_validate(
+    """Obtiene el detalle de una lista de precios específica."""
+
+    price_list = crud.get_price_list(db, price_list_id)
+    response = schemas.PriceListResponse.model_validate(
         price_list, from_attributes=True
     )
+    if not include_items:
+        response.items = []
+    return response
 
 
 def create_price_list(
@@ -99,14 +122,19 @@ def create_price_list(
     performed_by_id: int | None = None,
     include_items: bool = True,
 ) -> schemas.PriceListResponse:
+    """Registra una nueva lista de precios y devuelve su representación serializada."""
+
     price_list = crud.create_price_list(
         db, payload, performed_by_id=performed_by_id
     )
     if include_items:
-        price_list = crud.get_price_list(db, price_list.id, include_items=True)
-    return schemas.PriceListResponse.model_validate(
+        price_list = crud.get_price_list(db, price_list.id)
+    response = schemas.PriceListResponse.model_validate(
         price_list, from_attributes=True
     )
+    if not include_items:
+        response.items = []
+    return response
 
 
 def update_price_list(
@@ -117,6 +145,8 @@ def update_price_list(
     performed_by_id: int | None = None,
     include_items: bool = True,
 ) -> schemas.PriceListResponse:
+    """Actualiza una lista de precios y retorna el resultado normalizado."""
+
     price_list = crud.update_price_list(
         db,
         price_list_id,
@@ -124,10 +154,13 @@ def update_price_list(
         performed_by_id=performed_by_id,
     )
     if include_items:
-        price_list = crud.get_price_list(db, price_list.id, include_items=True)
-    return schemas.PriceListResponse.model_validate(
+        price_list = crud.get_price_list(db, price_list.id)
+    response = schemas.PriceListResponse.model_validate(
         price_list, from_attributes=True
     )
+    if not include_items:
+        response.items = []
+    return response
 
 
 def delete_price_list(
@@ -136,6 +169,8 @@ def delete_price_list(
     *,
     performed_by_id: int | None = None,
 ) -> None:
+    """Elimina una lista de precios existente."""
+
     crud.delete_price_list(db, price_list_id, performed_by_id=performed_by_id)
 
 
@@ -143,6 +178,8 @@ def get_price_list_item(
     db: Session,
     item_id: int,
 ) -> schemas.PriceListItemResponse:
+    """Obtiene un elemento concreto de una lista de precios."""
+
     item = crud.get_price_list_item(db, item_id)
     return schemas.PriceListItemResponse.model_validate(item, from_attributes=True)
 
@@ -154,6 +191,8 @@ def create_price_list_item(
     *,
     performed_by_id: int | None = None,
 ) -> schemas.PriceListItemResponse:
+    """Registra un nuevo precio dentro de una lista."""
+
     item = crud.create_price_list_item(
         db,
         price_list_id,
@@ -170,6 +209,8 @@ def update_price_list_item(
     *,
     performed_by_id: int | None = None,
 ) -> schemas.PriceListItemResponse:
+    """Actualiza un elemento de lista y devuelve la versión consolidada."""
+
     item = crud.update_price_list_item(
         db,
         item_id,
@@ -185,6 +226,8 @@ def delete_price_list_item(
     *,
     performed_by_id: int | None = None,
 ) -> None:
+    """Elimina un precio asociado a una lista."""
+
     crud.delete_price_list_item(db, item_id, performed_by_id=performed_by_id)
 
 
@@ -195,6 +238,8 @@ def list_applicable_price_lists(
     customer_id: int | None = None,
     include_inactive: bool = False,
 ) -> list[PriceList]:
+    """Obtiene las listas aplicables considerando vigencias y alcance."""
+
     now = _utc_now()
     statement = select(PriceList).order_by(PriceList.priority, PriceList.id)
 
@@ -233,6 +278,8 @@ def resolve_price_for_device(
     store_id: int | None = None,
     customer_id: int | None = None,
 ) -> tuple[PriceList, PriceListItem] | None:
+    """Encuentra la mejor lista de precios para el dispositivo indicado."""
+
     price_lists = list_applicable_price_lists(
         db,
         store_id=store_id,
@@ -258,6 +305,25 @@ def resolve_price_for_device(
     return None
 
 
+def resolve_prices_for_devices(
+    db: Session,
+    devices: Iterable[Device],
+    *,
+    store_id: int | None = None,
+    customer_id: int | None = None,
+) -> dict[int, tuple[PriceList, PriceListItem]]:
+    """Determina precios aplicables para un conjunto de dispositivos."""
+
+    mapping: dict[int, tuple[PriceList, PriceListItem]] = {}
+    for device in devices:
+        resolved = resolve_price_for_device(
+            db, device, store_id=store_id, customer_id=customer_id
+        )
+        if resolved:
+            mapping[device.id] = resolved
+    return mapping
+
+
 def resolve_device_price(
     db: Session,
     *,
@@ -268,6 +334,8 @@ def resolve_device_price(
     default_price: Decimal | None = None,
     default_currency: str = "MXN",
 ) -> schemas.PriceResolution | None:
+    """Obtiene la resolución de precio para el dispositivo solicitado."""
+
     resolution = crud.resolve_price_for_device(
         db,
         device_id=device_id,
@@ -348,6 +416,8 @@ def compute_effective_price(
     store_id: int | None = None,
     customer_id: int | None = None,
 ) -> Decimal:
+    """Entrega el precio efectivo de un dispositivo considerando listas aplicables."""
+
     resolved = resolve_price_for_device(
         db, device, store_id=store_id, customer_id=customer_id
     )
@@ -371,5 +441,7 @@ __all__ = [
     "resolve_price_for_device",
     "resolve_device_price",
     "resolve_prices_for_devices",
+    "resolve_prices_for_devices",
+    "resolve_device_price",
     "compute_effective_price",
 ]

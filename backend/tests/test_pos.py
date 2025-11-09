@@ -1,6 +1,8 @@
 import json
 from typing import Any, Iterable
 
+import pytest
+
 from fastapi import status
 from sqlalchemy import select
 
@@ -8,6 +10,7 @@ from backend.app import models
 
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN, OPERADOR
+from backend.app.services import notifications
 
 
 def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
@@ -127,6 +130,8 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     assert config_response.status_code == 200
     default_config = config_response.json()
     assert default_config["store_id"] == store_id
+    assert default_config["hardware_settings"]["printers"] == []
+    assert default_config["hardware_settings"]["cash_drawer"]["enabled"] is False
 
     update_payload = {
         "store_id": store_id,
@@ -135,6 +140,37 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
         "printer_name": "TM-88V",
         "printer_profile": "USB",
         "quick_product_ids": [device_id],
+        "hardware_settings": {
+            "printers": [
+                {
+                    "name": "TM-88V",
+                    "mode": "thermal",
+                    "is_default": True,
+                    "connector": {
+                        "type": "usb",
+                        "identifier": "TM-88V",
+                    },
+                    "paper_width_mm": 80,
+                    "supports_qr": True,
+                }
+            ],
+            "cash_drawer": {
+                "enabled": True,
+                "connector": {
+                    "type": "usb",
+                    "identifier": "Drawer-01",
+                },
+                "auto_open_on_cash_sale": True,
+                "pulse_duration_ms": 200,
+            },
+            "customer_display": {
+                "enabled": True,
+                "channel": "websocket",
+                "brightness": 85,
+                "theme": "dark",
+                "message_template": "Gracias por tu compra",
+            },
+        },
     }
     update_response = client.put(
         "/pos/config",
@@ -145,6 +181,8 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     updated_config = update_response.json()
     assert updated_config["tax_rate"] == 16.0
     assert updated_config["invoice_prefix"] == "POSCDMX"
+    assert updated_config["hardware_settings"]["printers"][0]["name"] == "TM-88V"
+    assert updated_config["hardware_settings"]["cash_drawer"]["enabled"] is True
 
     customer_response = client.post(
         "/customers",
@@ -209,6 +247,97 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
         item for item in _extract_items(devices_after.json()) if item["id"] == device_id
     )
     assert remaining["quantity"] == 1
+
+    settings.enable_purchases_sales = False
+
+
+def test_pos_receipt_delivery_records_audit(client, db_session, monkeypatch):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "POS Notificaciones", "location": "TEG", "timezone": "America/Tegucigalpa"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "NOTIF-001",
+            "name": "Impresora POS",
+            "quantity": 1,
+            "unit_price": 50.0,
+            "costo_unitario": 30.0,
+        },
+        headers={**auth_headers, "X-Reason": "Alta dispositivo"},
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "payment_method": "EFECTIVO",
+        "items": [{"device_id": device_id, "quantity": 1}],
+        "confirm": True,
+    }
+    sale_response = client.post(
+        "/pos/sale",
+        json=sale_payload,
+        headers={**auth_headers, "X-Reason": "Registrar venta"},
+    )
+    assert sale_response.status_code == status.HTTP_201_CREATED
+    sale_id = sale_response.json()["sale"]["id"]
+
+    email_called: dict[str, Any] = {}
+    whatsapp_called: dict[str, Any] = {}
+
+    def fake_email_notification(**kwargs):
+        email_called.update(kwargs)
+
+    async def fake_whatsapp_notification(**kwargs):
+        whatsapp_called.update(kwargs)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(notifications, "send_email_notification", fake_email_notification)
+    monkeypatch.setattr(notifications, "send_whatsapp_message", fake_whatsapp_notification)
+
+    send_headers = {**auth_headers, "X-Reason": "Enviar recibo"}
+    email_response = client.post(
+        f"/pos/receipt/{sale_id}/send",
+        json={"channel": "email", "recipient": "cliente@test.com", "message": "Gracias"},
+        headers=send_headers,
+    )
+    assert email_response.status_code == status.HTTP_202_ACCEPTED
+    assert email_called["recipients"] == ["cliente@test.com"]
+
+    log_entry = db_session.execute(
+        select(models.AuditLog)
+        .where(models.AuditLog.entity_type == "sale")
+        .order_by(models.AuditLog.created_at.desc())
+    ).scalar_one()
+    assert json.loads(log_entry.details)["canal"] == "email"
+
+    whatsapp_response = client.post(
+        f"/pos/receipt/{sale_id}/send",
+        json={"channel": "whatsapp", "recipient": "+50499998888"},
+        headers=send_headers,
+    )
+    assert whatsapp_response.status_code == status.HTTP_202_ACCEPTED
+    assert whatsapp_called["to_number"] == "+50499998888"
+
+    latest_log = db_session.execute(
+        select(models.AuditLog)
+        .where(models.AuditLog.action == "pos_receipt_sent")
+        .order_by(models.AuditLog.created_at.desc())
+    ).scalars().first()
+    assert latest_log is not None
+    details = json.loads(latest_log.details)
+    assert details["canal"] == "whatsapp"
+    assert details["destinatario"] == "+50499998888"
 
     settings.enable_purchases_sales = False
 
@@ -281,6 +410,10 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
     assert sale_data["sale"]["customer_id"] == customer_id
     assert sale_data["cash_session_id"] == session_id
     assert sale_data["payment_breakdown"]["CREDITO"] == 200.0
+    assert sale_data["debt_summary"]["remaining_balance"] == pytest.approx(200.0)
+    assert sale_data["credit_schedule"]
+    assert sale_data["debt_receipt_pdf_base64"]
+    assert sale_data["payment_receipts"] == []
 
     customer_details = client.get(
         f"/customers/{customer_id}", headers=auth_headers
@@ -311,6 +444,80 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
     assert history_response.status_code == 200
     history_items = _extract_items(history_response.json())
     assert any(item["id"] == session_id for item in history_items)
+
+    settings.enable_purchases_sales = False
+
+
+def test_pos_electronic_payment_with_tip_and_terminal(client, db_session):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Pago electrónico POS"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "POS Atlántida", "location": "TGU", "timezone": "America/Tegucigalpa"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == 201
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "ATL-001",
+            "name": "Teléfono Premium",
+            "quantity": 2,
+            "unit_price": 250.0,
+            "costo_unitario": 140.0,
+        },
+        headers=reason_headers,
+    )
+    assert device_response.status_code == 201
+    device_id = device_response.json()["id"]
+
+    open_response = client.post(
+        "/pos/cash/open",
+        json={"store_id": store_id, "opening_amount": 300.0, "notes": "Turno mañana"},
+        headers=reason_headers,
+    )
+    assert open_response.status_code == 201
+    session_id = open_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "payment_method": "TARJETA",
+        "items": [{"device_id": device_id, "quantity": 1}],
+        "confirm": True,
+        "cash_session_id": session_id,
+        "payments": [
+            {
+                "method": "TARJETA",
+                "amount": 250.0,
+                "terminalId": "atl-01",
+                "tipAmount": 15.0,
+                "reference": "1234",
+            }
+        ],
+    }
+    sale_response = client.post(
+        "/pos/sale",
+        json=sale_payload,
+        headers=reason_headers,
+    )
+    assert sale_response.status_code == 201, sale_response.text
+    sale_data = sale_response.json()
+    assert sale_data["status"] == "registered"
+    assert sale_data["payment_breakdown"]["TARJETA"] == 265.0
+    electronic = sale_data.get("electronic_payments", [])
+    assert electronic and electronic[0]["terminal_id"] == "atl-01"
+    assert electronic[0]["status"]
+
+    session_model = db_session.get(models.CashRegisterSession, session_id)
+    assert session_model is not None
+    breakdown = session_model.payment_breakdown or {}
+    assert breakdown.get("cobrado_TARJETA") == 265.0
+    assert breakdown.get("propina_TARJETA") == 15.0
 
     settings.enable_purchases_sales = False
 
@@ -455,6 +662,109 @@ def test_pos_config_requires_reason_and_audit(client, db_session):
         details = json.loads(audit_entry.details)
         assert details["store_id"] == store_id
         assert details["reason"] == "Auditar POS"
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
+def test_pos_hardware_channels_and_drawer(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Prueba hardware POS"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Hardware POS", "location": "MTY", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        config_payload = {
+            "store_id": store_id,
+            "tax_rate": 16.0,
+            "invoice_prefix": "POSHW",
+            "printer_name": "TM-HW",
+            "printer_profile": "USB",
+            "quick_product_ids": [],
+            "hardware_settings": {
+                "printers": [
+                    {
+                        "name": "TM-HW",
+                        "mode": "thermal",
+                        "is_default": True,
+                        "connector": {
+                            "type": "usb",
+                            "identifier": "TM-HW",
+                        },
+                    }
+                ],
+                "cash_drawer": {
+                    "enabled": True,
+                    "connector": {
+                        "type": "usb",
+                        "identifier": "Drawer-HW",
+                    },
+                    "auto_open_on_cash_sale": True,
+                    "pulse_duration_ms": 180,
+                },
+                "customer_display": {
+                    "enabled": True,
+                    "channel": "websocket",
+                    "brightness": 90,
+                    "theme": "dark",
+                },
+            },
+        }
+        config_response = client.put(
+            "/pos/config",
+            json=config_payload,
+            headers=reason_headers,
+        )
+        assert config_response.status_code == status.HTTP_200_OK
+
+        with client.websocket_connect(f"/pos/hardware/ws?storeId={store_id}") as websocket:
+            ready_message = websocket.receive_json()
+            assert ready_message["event"] == "hardware.ready"
+
+            print_response = client.post(
+                "/pos/hardware/print-test",
+                json={
+                    "store_id": store_id,
+                    "printer_name": "TM-HW",
+                    "mode": "thermal",
+                },
+                headers=reason_headers,
+            )
+            assert print_response.status_code == status.HTTP_200_OK
+            assert print_response.json()["status"] == "ok"
+
+            drawer_response = client.post(
+                "/pos/hardware/drawer/open",
+                json={"store_id": store_id},
+                headers=reason_headers,
+            )
+            assert drawer_response.status_code == status.HTTP_200_OK
+            drawer_event = websocket.receive_json()
+            assert drawer_event["event"] == "cash_drawer.open"
+            assert drawer_event["store_id"] == store_id
+
+            display_response = client.post(
+                "/pos/hardware/display/push",
+                json={
+                    "store_id": store_id,
+                    "headline": "Gracias",
+                    "message": "Total a pagar",
+                    "total_amount": 199.99,
+                },
+                headers=reason_headers,
+            )
+            assert display_response.status_code == status.HTTP_200_OK
+            display_event = websocket.receive_json()
+            assert display_event["event"] == "customer_display.message"
+            assert display_event["headline"] == "Gracias"
     finally:
         settings.enable_purchases_sales = original_flag
 

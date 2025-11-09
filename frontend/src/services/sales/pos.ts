@@ -1,11 +1,14 @@
 // src/services/sales/pos.ts
 import { httpPost, httpGet, httpPut } from "../http";
+import { httpPost, httpGet } from "../http";
 import {
   Totals,
   CheckoutRequest,
   CheckoutResponse,
   PosPromotionsConfig,
   PosPromotionsUpdate,
+  ReceiptDeliveryPayload,
+  ReceiptDeliveryResponse,
 } from "./types";
 import { apiMap } from "./apiMap";
 
@@ -39,5 +42,13 @@ export async function updatePromotions(dto: PosPromotionsUpdate): Promise<PosPro
   return httpPut<PosPromotionsConfig>(apiMap.pos.promotions, dto, {
     withAuth: true,
     headers: PROMOTION_REASON_HEADER,
+export async function sendReceipt(
+  saleId: string | number,
+  payload: ReceiptDeliveryPayload,
+  reason: string,
+): Promise<ReceiptDeliveryResponse> {
+  return httpPost<ReceiptDeliveryResponse>(apiMap.pos.sendReceipt(saleId), payload, {
+    withAuth: true,
+    headers: { "X-Reason": reason },
   });
 }

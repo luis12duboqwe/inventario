@@ -22,6 +22,7 @@ import PaymentsPanel, { type PaymentLine } from "../components/pos/PaymentsPanel
 import ReceiptViewer from "../components/pos/ReceiptViewer";
 import SalesHistory from "../components/pos/SalesHistory";
 import { useOperationsModule } from "../hooks/useOperationsModule";
+import CreditSchedule from "../../pos/components/CreditSchedule";
 
 type StoreSummary = {
   id: number;
@@ -220,6 +221,16 @@ export default function OperationsPOS() {
         if (response.receipt_pdf_base64 != null) {
           detail.receipt_pdf_base64 = response.receipt_pdf_base64;
         }
+        if (response.debt_summary) {
+          detail.debt_summary = response.debt_summary;
+        }
+        detail.credit_schedule = response.credit_schedule ?? [];
+        if (response.debt_receipt_pdf_base64 != null) {
+          detail.debt_receipt_pdf_base64 = response.debt_receipt_pdf_base64;
+        }
+        if (response.payment_receipts) {
+          detail.payment_receipts = response.payment_receipts;
+        }
         setSaleResult(detail);
       }
       setCartItems([]);
@@ -381,6 +392,12 @@ export default function OperationsPOS() {
             {...(saleResult?.receipt_pdf_base64 != null
               ? { receiptPdfBase64: saleResult.receipt_pdf_base64 }
               : {})}
+          />
+          <CreditSchedule
+            debtSummary={saleResult?.debt_summary ?? null}
+            schedule={saleResult?.credit_schedule ?? []}
+            debtReceiptBase64={saleResult?.debt_receipt_pdf_base64 ?? null}
+            paymentReceipts={saleResult?.payment_receipts ?? []}
           />
           <SalesHistory
             loading={historyLoading}

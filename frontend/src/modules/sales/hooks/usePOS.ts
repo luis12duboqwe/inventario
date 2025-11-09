@@ -14,6 +14,7 @@ export function usePOS() {
   const [totals, setTotals] = useState<Totals>(() => calcTotalsLocal([]));
   const [loading, setLoading] = useState(false);
   const [banner, setBanner] = useState<PosBanner | null>(null);
+  const [docType, setDocType] = useState<"TICKET" | "INVOICE">("TICKET");
   type OfflineItem = { ts: number; dto: any };
   const [pendingOffline, setPendingOffline] = useState<OfflineItem[]>(() => {
     try { return JSON.parse(localStorage.getItem("sm_offline_sales") || "[]") as OfflineItem[]; }
@@ -78,6 +79,10 @@ export function usePOS() {
     try {
       setLoading(true);
       const dto = asCheckoutRequest(lines, payments, customerId ?? undefined, coupons);
+      const dto = asCheckoutRequest(lines, payments, {
+        customerId: customerId ?? undefined,
+        docType,
+      });
       const t = await SalesPOS.priceDraft(dto);
       setTotals(t);
     } catch (e: any) {
@@ -91,6 +96,13 @@ export function usePOS() {
 
   const holdSale = useCallback(async () => {
     const dto = asCheckoutRequest(lines, payments, customerId ?? undefined, coupons);
+  }, [lines, payments, customerId, docType, refreshTotalsLocal]);
+
+  const holdSale = useCallback(async () => {
+    const dto = asCheckoutRequest(lines, payments, {
+      customerId: customerId ?? undefined,
+      docType,
+    });
     setLoading(true);
     try {
       const r = await SalesPOS.holdSale(dto);
@@ -103,6 +115,7 @@ export function usePOS() {
       setLoading(false);
     }
   }, [lines, payments, customerId, coupons]);
+  }, [lines, payments, customerId, docType]);
 
   const resumeHold = useCallback(async (holdId: string) => {
     setLoading(true);
@@ -112,6 +125,9 @@ export function usePOS() {
       setPayments(dto.payments || []);
       setCustomerId(dto.customerId || null);
       setCoupons(dto.coupons || []);
+      if (dto.docType) {
+        setDocType(dto.docType);
+      }
       await priceDraft();
     } catch (e: any) {
       setBanner({ type: "error", msg: "No se pudo recuperar venta en espera." });
@@ -123,6 +139,10 @@ export function usePOS() {
 
   const checkout = useCallback(async () => {
     const dto = asCheckoutRequest(lines, payments, customerId ?? undefined, coupons);
+    const dto = asCheckoutRequest(lines, payments, {
+      customerId: customerId ?? undefined,
+      docType,
+    });
     setLoading(true);
     try {
       const r = await SalesPOS.checkout(dto);
@@ -145,6 +165,7 @@ export function usePOS() {
       setLoading(false);
     }
   }, [lines, payments, customerId, coupons, clearCart]);
+  }, [lines, payments, customerId, docType, clearCart]);
 
   const retryOffline = useCallback(async () => {
     const raw = localStorage.getItem("sm_offline_sales");
@@ -176,11 +197,37 @@ export function usePOS() {
     return filtered;
   }, []);
 
+  const pushBanner = useCallback((entry: PosBanner | null) => setBanner(entry), []);
+
   return {
     lines, payments, totals, loading, banner, customerId, pendingOffline, coupons,
     setCustomerId, setPayments, setCoupons,
     addProduct, updateQty, removeLine, setDiscount, overridePrice, clearCart,
     priceDraft, checkout, holdSale, resumeHold, retryOffline, purgeOffline,
+    lines,
+    payments,
+    totals,
+    loading,
+    banner,
+    customerId,
+    pendingOffline,
+    docType,
+    setCustomerId,
+    setPayments,
+    setDocType,
+    addProduct,
+    updateQty,
+    removeLine,
+    setDiscount,
+    overridePrice,
+    clearCart,
+    priceDraft,
+    checkout,
+    holdSale,
+    resumeHold,
+    retryOffline,
+    purgeOffline,
+    pushBanner,
   };
 }
 // [PACK22-POS-HOOK-END]

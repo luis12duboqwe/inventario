@@ -25,7 +25,17 @@ price_list_items_uq = "uq_price_list_items_price_device"
 currency_default = sa.text("'MXN'")
 
 
+def _table_exists(table_name: str) -> bool:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    return table_name in inspector.get_table_names()
+
+
 def upgrade() -> None:
+    if _table_exists("price_list_items"):
+        op.drop_table("price_list_items")
+    if _table_exists("price_lists"):
+        op.drop_table("price_lists")
     op.create_table(
         "price_lists",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -123,13 +133,19 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_price_list_items_device", table_name="price_list_items")
-    op.drop_index("ix_price_list_items_price_list", table_name="price_list_items")
-    op.drop_index("ix_price_list_items_list_device", table_name="price_list_items")
-    op.drop_table("price_list_items")
+    if _table_exists("price_list_items"):
+        op.drop_index("ix_price_list_items_device", table_name="price_list_items")
+        op.drop_index(
+            "ix_price_list_items_price_list", table_name="price_list_items"
+        )
+        op.drop_index(
+            "ix_price_list_items_list_device", table_name="price_list_items"
+        )
+        op.drop_table("price_list_items")
 
-    op.drop_index("ix_price_lists_customer_id", table_name="price_lists")
-    op.drop_index("ix_price_lists_store_id", table_name="price_lists")
-    op.drop_index("ix_price_lists_is_active", table_name="price_lists")
-    op.drop_index("ix_price_lists_name", table_name="price_lists")
-    op.drop_table("price_lists")
+    if _table_exists("price_lists"):
+        op.drop_index("ix_price_lists_customer_id", table_name="price_lists")
+        op.drop_index("ix_price_lists_store_id", table_name="price_lists")
+        op.drop_index("ix_price_lists_is_active", table_name="price_lists")
+        op.drop_index("ix_price_lists_name", table_name="price_lists")
+        op.drop_table("price_lists")

@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -9,6 +11,7 @@ from ..core.roles import MOVEMENT_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import credit, pos_receipts
 
 _ERROR_MESSAGES = {
     "customer_payment_no_debt": (
@@ -84,7 +87,7 @@ def get_payment_center(
 
 @router.post(
     "/center/payment",
-    response_model=schemas.CustomerLedgerEntryResponse,
+    response_model=schemas.CustomerPaymentReceiptResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def register_payment_center_payment(
@@ -92,11 +95,11 @@ def register_payment_center_payment(
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*MOVEMENT_ROLES)),
-) -> schemas.CustomerLedgerEntryResponse:
+) -> schemas.CustomerPaymentReceiptResponse:
     _ensure_feature_enabled()
     _ = reason
     try:
-        ledger_entry = crud.register_customer_payment(
+        outcome = crud.register_customer_payment(
             db,
             payload.customer_id,
             payload,
@@ -104,7 +107,39 @@ def register_payment_center_payment(
         )
     except ValueError as exc:
         raise _map_value_error(exc, "No fue posible registrar el pago.") from exc
-    return schemas.CustomerLedgerEntryResponse.model_validate(ledger_entry)
+    snapshot = credit.build_debt_snapshot(
+        previous_balance=outcome.previous_debt,
+        new_charges=Decimal("0"),
+        payments_applied=outcome.applied_amount,
+    )
+    schedule = credit.build_credit_schedule(
+        base_date=outcome.ledger_entry.created_at,
+        remaining_balance=snapshot.remaining_balance,
+    )
+    debt_summary = schemas.CustomerDebtSnapshot(
+        previous_balance=snapshot.previous_balance,
+        new_charges=snapshot.new_charges,
+        payments_applied=snapshot.payments_applied,
+        remaining_balance=snapshot.remaining_balance,
+    )
+    schedule_payload = [
+        schemas.CreditScheduleEntry.model_validate(entry)
+        for entry in schedule
+    ]
+    receipt_pdf = pos_receipts.render_debt_receipt_base64(
+        outcome.customer,
+        outcome.ledger_entry,
+        snapshot,
+        schedule,
+    )
+    return schemas.CustomerPaymentReceiptResponse(
+        ledger_entry=schemas.CustomerLedgerEntryResponse.model_validate(
+            outcome.ledger_entry
+        ),
+        debt_summary=debt_summary,
+        credit_schedule=schedule_payload,
+        receipt_pdf_base64=receipt_pdf,
+    )
 
 
 @router.post(

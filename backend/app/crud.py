@@ -6,6 +6,7 @@ import csv
 import json
 import math
 import secrets
+from dataclasses import dataclass
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
@@ -30,6 +31,7 @@ from .services import (
     inventory_availability,
     promotions,
 )
+from .services import credit, inventory_accounting, inventory_audit, inventory_availability
 from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
@@ -1384,15 +1386,46 @@ def build_cash_close_report(
         store_id=store_id,
     )
 
+    entries_stmt = (
+        select(
+            models.CashRegisterEntry.entry_type,
+            func.coalesce(func.sum(models.CashRegisterEntry.amount), 0),
+        )
+        .select_from(models.CashRegisterEntry)
+        .join(
+            models.CashRegisterSession,
+            models.CashRegisterEntry.session_id == models.CashRegisterSession.id,
+        )
+        .where(
+            models.CashRegisterEntry.created_at >= date_from,
+            models.CashRegisterEntry.created_at < date_to,
+        )
+    )
+    if store_id is not None:
+        entries_stmt = entries_stmt.where(
+            models.CashRegisterSession.store_id == store_id
+        )
+    entries_stmt = entries_stmt.group_by(models.CashRegisterEntry.entry_type)
+    incomes_total = Decimal("0.00")
     expenses_total = Decimal("0.00")
+    for entry_type, total in db.execute(entries_stmt):
+        normalized_total = _to_decimal(total).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if entry_type == models.CashEntryType.INGRESO:
+            incomes_total = normalized_total
+        elif entry_type == models.CashEntryType.EGRESO:
+            expenses_total = normalized_total
+
     closing_suggested = (
-        opening_total + sales_total - refund_total - expenses_total
+        opening_total + sales_total + incomes_total - refund_total - expenses_total
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     return schemas.CashCloseReport(
         opening=float(opening_total),
         sales_gross=float(sales_total),
         refunds=float(refund_total),
+        incomes=float(incomes_total),
         expenses=float(expenses_total),
         closing_suggested=float(closing_suggested),
     )
@@ -1624,6 +1657,31 @@ def _repair_payload(order: models.RepairOrder) -> dict[str, object]:
     }
 
 
+def _merge_defaults(default: object, provided: object) -> object:
+    if isinstance(default, dict) and isinstance(provided, dict):
+        merged: dict[str, object] = {key: _merge_defaults(value, provided.get(key)) for key, value in default.items()}
+        for key, value in provided.items():
+            if key not in merged:
+                merged[key] = value
+            elif isinstance(value, (dict, list)):
+                merged[key] = _merge_defaults(merged[key], value)
+            elif value is not None:
+                merged[key] = value
+        return merged
+    if isinstance(default, list) and isinstance(provided, list):
+        return provided or default
+    return provided if provided is not None else default
+
+
+def _normalize_hardware_settings(
+    raw: dict[str, object] | None,
+) -> dict[str, object]:
+    default_settings = schemas.POSHardwareSettings().model_dump()
+    if not raw:
+        return default_settings
+    return _merge_defaults(default_settings, raw)
+
+
 def _pos_config_payload(config: models.POSConfig) -> dict[str, object]:
     return {
         "store_id": config.store_id,
@@ -1633,6 +1691,7 @@ def _pos_config_payload(config: models.POSConfig) -> dict[str, object]:
         "printer_profile": config.printer_profile,
         "quick_product_ids": config.quick_product_ids,
         "promotions_config": config.promotions_config,
+        "hardware_settings": config.hardware_settings,
         "updated_at": config.updated_at.isoformat(),
     }
 
@@ -4019,13 +4078,22 @@ def append_customer_note(
     return customer
 
 
+@dataclass(slots=True)
+class CustomerPaymentOutcome:
+    ledger_entry: models.CustomerLedgerEntry
+    customer: models.Customer
+    previous_debt: Decimal
+    applied_amount: Decimal
+    requested_amount: Decimal
+
+
 def register_customer_payment(
     db: Session,
     customer_id: int,
     payload: schemas.CustomerPaymentCreate,
     *,
     performed_by_id: int | None = None,
-) -> models.CustomerLedgerEntry:
+) -> CustomerPaymentOutcome:
     customer = get_customer(db, customer_id)
     current_debt = _to_decimal(customer.outstanding_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -4114,7 +4182,15 @@ def register_customer_payment(
             payload=_customer_payload(customer),
         )
         _sync_customer_ledger_entry(db, ledger_entry)
-    return ledger_entry
+
+    outcome = CustomerPaymentOutcome(
+        ledger_entry=ledger_entry,
+        customer=customer,
+        previous_debt=current_debt,
+        applied_amount=applied_amount,
+        requested_amount=amount,
+    )
+    return outcome
 
 
 def list_payment_center_transactions(
@@ -8139,6 +8215,48 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         for status, count in sorted(repair_status_counts.items())
     ]
 
+    receivable_row = db.execute(
+        select(
+            func.count(models.Customer.id).label("customers_with_debt"),
+            func.coalesce(
+                func.sum(models.Customer.outstanding_debt), Decimal("0")
+            ).label("total_outstanding_debt"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (models.Customer.status == "moroso", 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("moroso_flagged"),
+        ).where(models.Customer.outstanding_debt > 0)
+    ).one()
+    total_outstanding = Decimal(receivable_row.total_outstanding_debt or 0).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    top_delinquent = build_customer_portfolio(
+        db,
+        category="delinquent",
+        limit=3,
+    )
+    top_debtors = [
+        {
+            "customer_id": item.customer_id,
+            "name": item.name,
+            "outstanding_debt": item.outstanding_debt,
+            "available_credit": item.available_credit,
+        }
+        for item in top_delinquent.items[:3]
+        if item.outstanding_debt > 0
+    ]
+    accounts_receivable = {
+        "total_outstanding_debt": float(total_outstanding),
+        "customers_with_debt": int(receivable_row.customers_with_debt or 0),
+        "moroso_flagged": int(receivable_row.moroso_flagged or 0),
+        "top_debtors": top_debtors,
+    }
+
     audit_logs_stmt = (
         select(models.AuditLog)
         .order_by(models.AuditLog.created_at.desc())
@@ -8271,6 +8389,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
             "open_repairs": open_repairs,
             "gross_profit": float(total_profit),
         },
+        "accounts_receivable": accounts_receivable,
         "sales_trend": sales_trend,
         "stock_breakdown": stock_breakdown,
         "repair_mix": repair_mix,
@@ -14767,6 +14886,34 @@ def open_cash_session(
     return session
 
 
+def _cash_entries_totals(
+    db: Session,
+    *,
+    session_id: int,
+) -> tuple[Decimal, Decimal]:
+    """Resume los ingresos y egresos registrados en la sesión."""
+
+    entries_stmt = (
+        select(
+            models.CashRegisterEntry.entry_type,
+            func.coalesce(func.sum(models.CashRegisterEntry.amount), 0),
+        )
+        .where(models.CashRegisterEntry.session_id == session_id)
+        .group_by(models.CashRegisterEntry.entry_type)
+    )
+    incomes = Decimal("0")
+    expenses = Decimal("0")
+    for entry_type, total in db.execute(entries_stmt):
+        normalized_total = _to_decimal(total).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if entry_type == models.CashEntryType.INGRESO:
+            incomes = normalized_total
+        elif entry_type == models.CashEntryType.EGRESO:
+            expenses = normalized_total
+    return incomes, expenses
+
+
 def close_cash_session(
     db: Session,
     payload: schemas.CashSessionCloseRequest,
@@ -14795,13 +14942,25 @@ def close_cash_session(
     session.closed_by_id = closed_by_id
     session.closed_at = datetime.utcnow()
     session.status = models.CashSessionStatus.CERRADO
-    session.payment_breakdown = {key: float(
-        value) for key, value in sales_totals.items()}
+    breakdown_snapshot = dict(session.payment_breakdown or {})
+    for key, value in sales_totals.items():
+        breakdown_snapshot[key] = float(value)
 
     for method_key, reported_amount in payload.payment_breakdown.items():
-        session.payment_breakdown[f"reportado_{method_key.upper()}"] = float(
+        breakdown_snapshot[f"reportado_{method_key.upper()}"] = float(
             Decimal(str(reported_amount))
         )
+
+    incomes_total, expenses_total = _cash_entries_totals(
+        db, session_id=session.id
+    )
+    expected_cash = (
+        session.opening_amount
+        + sales_totals.get(models.PaymentMethod.EFECTIVO.value, Decimal("0"))
+        + incomes_total
+        - expenses_total
+    )
+    session.payment_breakdown = breakdown_snapshot
 
     expected_cash = session.opening_amount + \
         sales_totals.get(models.PaymentMethod.EFECTIVO.value, Decimal("0"))
@@ -14810,6 +14969,24 @@ def close_cash_session(
     session.difference_amount = (
         session.closing_amount - session.expected_amount
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    session.reconciliation_notes = payload.reconciliation_notes
+
+    if session.difference_amount != Decimal("0") and not payload.difference_reason:
+        raise ValueError("difference_reason_required")
+    session.difference_reason = payload.difference_reason
+
+    denomination_breakdown: dict[str, int] = {}
+    for denomination in payload.denominations:
+        value = _to_decimal(denomination.value).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        quantity = max(0, int(denomination.quantity))
+        if quantity <= 0:
+            continue
+        key = f"{value:.2f}"
+        denomination_breakdown[key] = quantity
+    session.denomination_breakdown = denomination_breakdown
+
     if payload.notes:
         session.notes = (session.notes or "") + \
             f"\n{payload.notes}" if session.notes else payload.notes
@@ -14828,6 +15005,8 @@ def close_cash_session(
             details=json.dumps(
                 {
                     "difference": float(session.difference_amount),
+                    "difference_reason": session.difference_reason,
+                    "denominations": denomination_breakdown,
                     "reason": reason,
                 }
             ),
@@ -14835,6 +15014,76 @@ def close_cash_session(
         flush_session(db)
         db.refresh(session)
     return session
+
+
+def record_cash_entry(
+    db: Session,
+    payload: schemas.CashRegisterEntryCreate,
+    *,
+    created_by_id: int | None,
+    reason: str | None = None,
+) -> models.CashRegisterEntry:
+    session = get_cash_session(db, payload.session_id)
+    if session.status != models.CashSessionStatus.ABIERTO:
+        raise ValueError("cash_session_not_open")
+
+    amount = _to_decimal(payload.amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    entry = models.CashRegisterEntry(
+        session_id=session.id,
+        entry_type=payload.entry_type,
+        amount=amount,
+        reason=payload.reason,
+        notes=payload.notes,
+        created_by_id=created_by_id,
+    )
+
+    with transactional_session(db):
+        db.add(entry)
+
+        expected_delta = amount if payload.entry_type == models.CashEntryType.INGRESO else -amount
+        session.expected_amount = (
+            session.expected_amount + expected_delta
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        db.add(session)
+        flush_session(db)
+        db.refresh(entry)
+        db.refresh(session)
+
+        _log_action(
+            db,
+            action="cash_entry_recorded",
+            entity_type="cash_session",
+            entity_id=str(session.id),
+            performed_by_id=created_by_id,
+            details=json.dumps(
+                {
+                    "entry_type": payload.entry_type,
+                    "amount": float(amount),
+                    "reason": payload.reason,
+                    "notes": payload.notes,
+                    "reason_header": reason,
+                }
+            ),
+        )
+        flush_session(db)
+        db.refresh(entry)
+    return entry
+
+
+def list_cash_entries(
+    db: Session,
+    *,
+    session_id: int,
+) -> list[models.CashRegisterEntry]:
+    statement = (
+        select(models.CashRegisterEntry)
+        .where(models.CashRegisterEntry.session_id == session_id)
+        .order_by(models.CashRegisterEntry.created_at.desc())
+    )
+    return list(db.scalars(statement))
 
 
 def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
@@ -14853,6 +15102,17 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
             db.refresh(config)
     else:
         db.refresh(config)
+    normalized_hardware = _normalize_hardware_settings(
+        config.hardware_settings if isinstance(config.hardware_settings, dict) else None
+    )
+    if config.hardware_settings != normalized_hardware:
+        with transactional_session(db):
+            config.hardware_settings = normalized_hardware
+            db.add(config)
+            flush_session(db)
+            db.refresh(config)
+    else:
+        config.hardware_settings = normalized_hardware
     return config
 
 
@@ -14874,6 +15134,12 @@ def update_pos_config(
             payload.printer_profile.strip() if payload.printer_profile else None
         )
         config.quick_product_ids = payload.quick_product_ids
+        if payload.hardware_settings is not None:
+            config.hardware_settings = payload.hardware_settings.model_dump()
+        else:
+            config.hardware_settings = _normalize_hardware_settings(
+                config.hardware_settings
+            )
         db.add(config)
         flush_session(db)
         db.refresh(config)
@@ -15096,7 +15362,7 @@ def register_pos_sale(
     *,
     performed_by_id: int,
     reason: str | None = None,
-) -> tuple[models.Sale, list[str]]:
+) -> tuple[models.Sale, list[str], dict[str, object] | None]:
     if not payload.confirm:
         raise ValueError("pos_confirmation_required")
 
@@ -15157,13 +15423,107 @@ def register_pos_sale(
             sale.cash_session_id = session.id
             db.add(sale)
             flush_session(db)
+            if payload.payments:
+                breakdown = dict(session.payment_breakdown or {})
+                for payment in payload.payments:
+                    try:
+                        total_amount = Decimal(str(payment.amount))
+                    except (TypeError, ValueError):
+                        continue
+                    tip_value = Decimal("0")
+                    if getattr(payment, "tip_amount", None) is not None:
+                        tip_value = Decimal(str(payment.tip_amount))
+                        tip_key = f"propina_{payment.method.value}"
+                        breakdown[tip_key] = float(
+                            Decimal(str(breakdown.get(tip_key, 0))) + tip_value
+                        )
+                    collected_key = f"cobrado_{payment.method.value}"
+                    breakdown[collected_key] = float(
+                        Decimal(str(breakdown.get(collected_key, 0)))
+                        + total_amount
+                        + tip_value
+                    )
+                session.payment_breakdown = breakdown
+                db.add(session)
+                flush_session(db)
         db.refresh(sale)
+
+    payments_applied_total = Decimal("0")
+    payment_outcomes: list[CustomerPaymentOutcome] = []
+    if payload.payments and sale.customer_id:
+        for payment in payload.payments:
+            payment_amount = _to_decimal(payment.amount).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if payment_amount <= Decimal("0"):
+                continue
+            method_value = (
+                payment.method.value
+                if isinstance(payment.method, models.PaymentMethod)
+                else str(payment.method).strip()
+            )
+            if not method_value:
+                method_value = "manual"
+            note_source = payload.notes or "Abono registrado desde POS"
+            payment_payload = schemas.CustomerPaymentCreate(
+                amount=payment_amount,
+                method=method_value,
+                sale_id=sale.id,
+                note=note_source,
+            )
+            outcome = register_customer_payment(
+                db,
+                sale.customer_id,
+                payment_payload,
+                performed_by_id=performed_by_id,
+            )
+            payment_outcomes.append(outcome)
+            payments_applied_total += outcome.applied_amount
+
+    customer_after_operations: models.Customer | None = None
+    if sale.customer_id:
+        try:
+            customer_after_operations = get_customer(db, sale.customer_id)
+        except LookupError:
+            customer_after_operations = None
+
+    debt_context: dict[str, object] | None = None
+    if customer_after_operations is not None:
+        remaining_balance = _to_decimal(
+            customer_after_operations.outstanding_debt
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        new_charge = (
+            _to_decimal(sale.total_amount).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if sale.payment_method == models.PaymentMethod.CREDITO
+            else Decimal("0.00")
+        )
+        previous_balance = (
+            remaining_balance + payments_applied_total - new_charge
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        snapshot = credit.build_debt_snapshot(
+            previous_balance=previous_balance,
+            new_charges=new_charge,
+            payments_applied=payments_applied_total,
+        )
+        schedule = credit.build_credit_schedule(
+            base_date=sale.created_at,
+            remaining_balance=snapshot.remaining_balance,
+        )
+        debt_context = {
+            "snapshot": snapshot,
+            "schedule": schedule,
+            "payments": payment_outcomes,
+            "customer": customer_after_operations,
+        }
+
     _attach_last_audit_trails(
         db,
         entity_type="sale",
         records=[sale],
     )
-    return sale, warnings
+    return sale, warnings, debt_context
 
 
 def list_backup_jobs(
@@ -15189,6 +15549,30 @@ def register_pos_receipt_download(
     _log_action(
         db,
         action="pos_receipt_downloaded",
+        entity_type="sale",
+        entity_id=str(sale_id),
+        performed_by_id=performed_by_id,
+        details=detalles,
+    )
+
+
+def register_pos_receipt_delivery(
+    db: Session,
+    *,
+    sale_id: int,
+    performed_by_id: int | None,
+    reason: str,
+    channel: str,
+    recipient: str,
+) -> None:
+    detalles = {
+        "motivo": reason.strip(),
+        "canal": channel,
+        "destinatario": recipient,
+    }
+    _log_action(
+        db,
+        action="pos_receipt_sent",
         entity_type="sale",
         entity_id=str(sale_id),
         performed_by_id=performed_by_id,

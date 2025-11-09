@@ -48,6 +48,15 @@ function GlobalMetrics() {
     open_repairs: 0,
     gross_profit: 0,
   };
+  const receivables = metrics?.accounts_receivable ?? {
+    total_outstanding_debt: 0,
+    customers_with_debt: 0,
+    moroso_flagged: 0,
+    top_debtors: [],
+  };
+  const receivableTotal = safeNumber(receivables.total_outstanding_debt);
+  const receivableCustomers = safeNumber(receivables.customers_with_debt);
+  const receivableMorosos = safeNumber(receivables.moroso_flagged);
   const auditAlerts = metrics?.audit_alerts ?? {
     // [PACK36-metrics]
     total: 0,
@@ -87,6 +96,16 @@ function GlobalMetrics() {
     warning: "Preventiva",
     info: "Informativa",
   };
+  type ReceivableCustomer = {
+    customer_id: number;
+    name: string;
+    outstanding_debt: number;
+    available_credit?: number | null;
+  };
+  const topDebtors = safeArray(receivables.top_debtors) as ReceivableCustomer[];
+  const receivableCaption = receivableCustomers > 0
+    ? `${receivableCustomers} clientes con saldo${receivableMorosos > 0 ? ` · ${receivableMorosos} morosos` : ""}`
+    : "Sin cuentas por cobrar activas";
   const alertsTone = (pendingCount > 0 || criticalCount > 0)
     ? ("alert" as const)
     : (warningCount > 0 ? ("info" as const) : ("good" as const));
@@ -112,6 +131,13 @@ function GlobalMetrics() {
           ? "Margen positivo"
           : "Atiende descuentos excesivos",
       tone: resolveStatusTone(safeNumber(performance.gross_profit), 0),
+    },
+    {
+      id: "receivables",
+      title: "Cuentas por cobrar",
+      value: formatCurrency(receivableTotal),
+      caption: receivableCaption,
+      tone: receivableTotal > 0 ? ("alert" as const) : ("good" as const),
     },
     {
       id: "stock",
@@ -206,6 +232,52 @@ function GlobalMetrics() {
           </div>
 
           <div className="metric-charts">
+            <article className="chart-card receivables-panel">
+              <header>
+                <h3>Cartera por cobrar</h3>
+                <span className="chart-caption">{receivableCaption}</span>
+              </header>
+              <dl className="receivables-summary">
+                <div>
+                  <dt>Saldo pendiente</dt>
+                  <dd>{formatCurrency(receivableTotal)}</dd>
+                </div>
+                <div>
+                  <dt>Clientes con saldo</dt>
+                  <dd>{receivableCustomers}</dd>
+                </div>
+                <div>
+                  <dt>Morosos</dt>
+                  <dd>{receivableMorosos}</dd>
+                </div>
+              </dl>
+              {topDebtors.length > 0 ? (
+                <ul className="receivables-list" role="list">
+                  {topDebtors.map((debtor) => {
+                    const outstanding = formatCurrency(safeNumber(debtor.outstanding_debt));
+                    const available = debtor.available_credit;
+                    return (
+                      <li key={debtor.customer_id} className="receivables-item" role="listitem">
+                        <div className="receivables-item__header">
+                          <span className="receivables-name">{safeString(debtor.name, "Cliente")}</span>
+                          <span className="receivables-amount">{outstanding}</span>
+                        </div>
+                        {available != null ? (
+                          <span className="receivables-credit">
+                            Crédito disponible: {formatCurrency(safeNumber(available))}
+                          </span>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="muted-text">Sin deudores destacados en este periodo.</p>
+              )}
+              <Link to="/dashboard/operations/pos" className="btn btn--link receivables-link">
+                Gestionar abonos en POS
+              </Link>
+            </article>
             <article className="chart-card audit-alerts-card">
               <header>
                 <h3>Alertas y respuestas rápidas</h3>

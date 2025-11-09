@@ -92,7 +92,15 @@ export interface PosAppliedPromotion {
 }
 
 export type PaymentType = "CASH" | "CARD" | "TRANSFER" | "OTHER";
-export interface PaymentInput { type: PaymentType; amount: number; ref?: string; }
+export interface PaymentInput {
+  type: PaymentType;
+  amount: number;
+  reference?: string;
+  tipAmount?: number;
+  terminalId?: string;
+  token?: string;
+  metadata?: Record<string, string>;
+}
 
 export interface CheckoutRequest {
   customerId?: ID | null;
@@ -119,6 +127,18 @@ export interface CheckoutResponse {
   // para impresión rápida
   printable?: PrintableResource | null;
   appliedPromotions?: PosAppliedPromotion[];
+}
+
+export interface ReceiptDeliveryPayload {
+  channel: "email" | "whatsapp";
+  recipient: string;
+  message?: string;
+  subject?: string;
+}
+
+export interface ReceiptDeliveryResponse {
+  channel: "email" | "whatsapp";
+  status: string;
 }
 
 export interface Quote {

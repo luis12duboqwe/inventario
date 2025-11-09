@@ -244,8 +244,15 @@ def test_customer_payments_and_summary(client):
         )
         assert payment_response.status_code == status.HTTP_201_CREATED
         payment_data = payment_response.json()
-        assert payment_data["details"]["sale_id"] == sale_data["id"]
-        assert payment_data["balance_after"] == pytest.approx(sale_data["total_amount"] - 80.0)
+        ledger_entry = payment_data["ledger_entry"]
+        assert ledger_entry["details"]["sale_id"] == sale_data["id"]
+        assert ledger_entry["balance_after"] == pytest.approx(
+            sale_data["total_amount"] - 80.0
+        )
+        assert payment_data["debt_summary"]["remaining_balance"] == pytest.approx(
+            sale_data["total_amount"] - 80.0
+        )
+        assert payment_data["receipt_pdf_base64"]
 
         summary_response = client.get(
             f"/customers/{customer_id}/summary", headers=auth_headers
