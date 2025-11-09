@@ -12,7 +12,7 @@ from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import cash_register, pos_receipts
+from ..services import cash_register, pos_receipts, notifications
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -174,6 +174,93 @@ def download_pos_receipt(
         content=pdf_bytes,
         media_type=metadata.media_type,
         headers=metadata.content_disposition(disposition="inline"),
+    )
+
+
+@router.post(
+    "/receipt/{sale_id}/send",
+    response_model=schemas.POSReceiptDeliveryResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def send_pos_receipt(
+    sale_id: int,
+    payload: schemas.POSReceiptDeliveryRequest,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        sale = crud.get_sale(db, sale_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Venta no encontrada",
+        ) from exc
+
+    config = crud.get_pos_config(db, sale.store_id)
+    pdf_bytes = pos_receipts.render_receipt_pdf(sale, config)
+    document_number = f"{config.invoice_prefix}-{sale.id:06d}"
+    receipt_filename = f"recibo_{document_number}.pdf"
+    receipt_path = f"/pos/receipt/{sale.id}"
+
+    try:
+        if payload.channel is schemas.POSReceiptDeliveryChannel.EMAIL:
+            subject = payload.subject or f"Recibo {document_number}"
+            body = payload.message or (
+                "Hola, adjuntamos tu comprobante de compra "
+                f"{document_number}."
+            )
+            attachment = notifications.Attachment(
+                filename=receipt_filename,
+                content=pdf_bytes,
+                content_type="application/pdf",
+            )
+            notifications.send_email_notification(
+                recipients=[payload.recipient],
+                subject=subject,
+                body=body,
+                attachments=[attachment],
+            )
+        else:
+            message = payload.message or (
+                "Gracias por tu compra. Recibo "
+                f"{document_number}: {receipt_path}"
+            )
+            await notifications.send_whatsapp_message(
+                to_number=payload.recipient,
+                message=message,
+                media_url=None,
+                reference=document_number,
+            )
+    except notifications.EmailNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="El envío por correo no está configurado.",
+        ) from exc
+    except notifications.WhatsAppNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="El envío por WhatsApp no está configurado.",
+        ) from exc
+    except notifications.NotificationDeliveryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No fue posible entregar la notificación.",
+        ) from exc
+
+    crud.register_pos_receipt_delivery(
+        db,
+        sale_id=sale.id,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+        channel=payload.channel.value,
+        recipient=payload.recipient,
+    )
+
+    return schemas.POSReceiptDeliveryResponse(
+        channel=payload.channel,
+        status="sent",
     )
 
 

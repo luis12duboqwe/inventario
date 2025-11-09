@@ -68,6 +68,18 @@ export interface CheckoutResponse {
   printable?: PrintableResource | null;
 }
 
+export interface ReceiptDeliveryPayload {
+  channel: "email" | "whatsapp";
+  recipient: string;
+  message?: string;
+  subject?: string;
+}
+
+export interface ReceiptDeliveryResponse {
+  channel: "email" | "whatsapp";
+  status: string;
+}
+
 export interface Quote {
   id: ID;
   number: string;

@@ -630,7 +630,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada, cuando aplica.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -713,14 +712,12 @@ class PriceListCreate(PriceListBase):
 
 
 class PriceListUpdate(BaseModel):
-    """Campos disponibles para modificar una lista de precios existente."""
     """Campos opcionales disponibles para actualizar una lista de precios."""
 
     name: str | None = Field(default=None, min_length=3, max_length=120)
     description: str | None = Field(default=None, max_length=500)
     priority: int | None = Field(default=None, ge=0, le=10000)
     is_active: bool | None = Field(default=None)
-    priority: int | None = Field(default=None, ge=0, le=10000)
     store_id: int | None = Field(default=None, ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     currency: str | None = Field(default=None, min_length=3, max_length=10)
@@ -728,8 +725,6 @@ class PriceListUpdate(BaseModel):
     ends_at: datetime | None = Field(default=None)
     valid_from: date | None = Field(default=None)
     valid_until: date | None = Field(default=None)
-    starts_at: datetime | None = Field(default=None)
-    ends_at: datetime | None = Field(default=None)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -759,17 +754,6 @@ class PriceListUpdate(BaseModel):
             raise ValueError("La moneda debe contener al menos 3 caracteres.")
         return normalized
 
-
-class PriceListUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=3, max_length=120)
-    description: str | None = Field(default=None, max_length=500)
-    priority: int | None = Field(default=None, ge=0, le=10000)
-    is_active: bool | None = Field(default=None)
-    store_id: int | None = Field(default=None, ge=1)
-    customer_id: int | None = Field(default=None, ge=1)
-    starts_at: datetime | None = Field(default=None)
-    ends_at: datetime | None = Field(default=None)
-
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListUpdate":
         if (
@@ -780,7 +764,6 @@ class PriceListUpdate(BaseModel):
             raise ValueError(
                 "La fecha de inicio no puede ser posterior a la fecha de fin."
             )
-        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
         if (
             self.starts_at is not None
             and self.ends_at is not None
@@ -814,12 +797,6 @@ class PriceListItemBase(BaseModel):
         min_length=3,
         max_length=8,
         description="Moneda ISO 4217 asociada al precio.",
-    )
-    discount_percentage: Decimal | None = Field(
-        default=None,
-        ge=Decimal("0"),
-        le=Decimal("100"),
-        description="Descuento porcentual adicional aplicado al precio base.",
     )
     notes: str | None = Field(
         default=None,
@@ -865,7 +842,6 @@ class PriceListItemUpdate(BaseModel):
     @classmethod
     def _normalize_currency(cls, value: str | None) -> str | None:
         if value is None:
-            return value
             return None
         normalized = value.strip().upper()
         if len(normalized) < 3:
@@ -2326,31 +2302,57 @@ class SessionRevokeRequest(BaseModel):
 
 
 class POSReturnItemRequest(BaseModel):
-    """Elemento individual a devolver desde POS (sin warnings de alias)."""
+    """Item devuelto desde el POS identificable por producto, línea o IMEI."""
 
-    sale_item_id: int = Field(..., ge=1)
-    imei: str | None = Field(default=None, max_length=18)
-    qty: int = Field(..., ge=1)
+    sale_item_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "sale_item_id",
+                "saleItemId",
+                "item_id",
+                "itemId",
+            ),
+        ),
+    ]
+    product_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "product_id",
+                "productId",
+                "device_id",
+            ),
+        ),
+    ]
+    imei: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=18,
+            validation_alias=AliasChoices("imei", "imei_1"),
+        ),
+    ]
+    qty: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("quantity", "qty"),
+        ),
+    ]
 
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_return_item_aliases(cls, data: Any) -> Any:  # pragma: no cover
-        if not isinstance(data, dict):
-            return data
-        mapping = {
-            "sale_item_id": ["saleItemId", "item_id", "itemId"],
-            "imei": ["imei_1"],
-            "qty": ["quantity"],
-        }
-        for target, sources in mapping.items():
-            if target not in data:
-                for s in sources:
-                    if s in data:
-                        data[target] = data[s]
-                        break
-        return data
-    # Eliminamos bloque residual de MovementBase que se insertó por error durante refactor.
-
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "POSReturnItemRequest":
+        if not (self.sale_item_id or self.product_id or self.imei):
+            raise ValueError(
+                "Debes proporcionar sale_item_id, product_id o imei para la devolución."
+            )
+        return self
 
 class MovementBase(BaseModel):
     """Base para registrar movimientos de inventario (entradas/salidas/ajustes).
@@ -5127,35 +5129,29 @@ class POSSaleResponse(BaseModel):
         return 0.0
 
 
-class POSReturnItemRequest(BaseModel):
-    """Item devuelto desde el POS identificable por producto o IMEI."""
+class POSReceiptDeliveryChannel(str, enum.Enum):
+    EMAIL = "email"
+    WHATSAPP = "whatsapp"
 
-    # // [PACK34-schema]
-    product_id: Annotated[
-        int | None,
-        Field(
-            default=None,
-            ge=1,
-            validation_alias=AliasChoices(
-                "product_id", "productId", "device_id"),
-        ),
-    ]
-    imei: Annotated[
-        str | None,
-        Field(
-            default=None,
-            max_length=18,
-            validation_alias=AliasChoices("imei", "imei_1"),
-        ),
-    ]
-    qty: Annotated[
-        int,
-        Field(
-            ...,
-            ge=1,
-            validation_alias=AliasChoices("quantity", "qty"),
-        ),
-    ]
+
+class POSReceiptDeliveryRequest(BaseModel):
+    channel: POSReceiptDeliveryChannel
+    recipient: str = Field(..., min_length=5, max_length=255)
+    message: str | None = Field(default=None, max_length=500)
+    subject: str | None = Field(default=None, max_length=120)
+
+    @field_validator("recipient")
+    @classmethod
+    def _normalize_recipient(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("recipient_required")
+        return normalized
+
+
+class POSReceiptDeliveryResponse(BaseModel):
+    channel: POSReceiptDeliveryChannel
+    status: str
 
 
 class POSReturnRequest(BaseModel):
@@ -5820,6 +5816,9 @@ __all__ = [
     "POSSalePaymentInput",
     "POSSaleRequest",
     "POSSaleResponse",
+    "POSReceiptDeliveryChannel",
+    "POSReceiptDeliveryRequest",
+    "POSReceiptDeliveryResponse",
     "POSSessionOpenPayload",
     "POSSessionClosePayload",
     "POSSessionSummary",

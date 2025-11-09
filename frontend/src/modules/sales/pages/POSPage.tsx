@@ -17,7 +17,7 @@ import {
 // [PACK22-POS-PAGE-IMPORTS-START]
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Product, ProductSearchParams, PaymentInput } from "../../../services/sales";
-import { SalesProducts } from "../../../services/sales";
+import { SalesProducts, SalesPOS } from "../../../services/sales";
 import {
   getInventoryAvailability,
   type InventoryAvailabilityRecord,
@@ -52,6 +52,8 @@ type Customer = {
   id: string;
   name: string;
   phone?: string;
+  email?: string;
+  docId?: string;
 };
 
 const buildAvailabilityReference = (product: Product): string => {
@@ -79,6 +81,9 @@ export default function POSPage() {
   const [fastCustomerOpen, setFastCustomerOpen] = useState<boolean>(false);
   const [offlineDrawerOpen, setOfflineDrawerOpen] = useState<boolean>(false);
   const [holdItems, setHoldItems] = useState<HoldSale[]>([]);
+  const [lastSale, setLastSale] = useState<{ id: string; number: string; receiptUrl?: string | null } | null>(null);
+  const [lastSaleContact, setLastSaleContact] = useState<{ email?: string; phone?: string; docId?: string; name?: string } | null>(null);
+  const [sendingChannel, setSendingChannel] = useState<"email" | "whatsapp" | null>(null);
   // [PACK22-POS-SEARCH-STATE-START]
   const [q, setQ] = useState("");
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -97,6 +102,7 @@ export default function POSPage() {
     payments,
     banner,
     pendingOffline,
+    docType,
     addProduct,
     updateQty,
     removeLine,
@@ -111,6 +117,8 @@ export default function POSPage() {
     setCustomerId,
     setPayments,
     purgeOffline,
+    setDocType,
+    pushBanner,
   } = pos;
 
   const updateAvailabilityForProducts = useCallback(
@@ -169,6 +177,10 @@ export default function POSPage() {
   useEffect(() => {
     setCustomerId(customer?.id ?? null);
   }, [customer, setCustomerId]);
+
+  useEffect(() => {
+    setDocType(customer?.docId ? "INVOICE" : "TICKET");
+  }, [customer, setDocType]);
 
   const productCards = useMemo(
     () =>
@@ -417,6 +429,22 @@ export default function POSPage() {
     try {
       const result = await checkout();
       await onAfterCheckout(result);
+      if (result?.saleId) {
+        const saleIdStr = String(result.saleId);
+        setLastSale({
+          id: saleIdStr,
+          number: result.number,
+          receiptUrl: result.printable?.pdfUrl ?? null,
+        });
+        setLastSaleContact((prev) => ({
+          email: customer?.email ?? prev?.email,
+          phone: customer?.phone ?? prev?.phone,
+          docId: customer?.docId ?? prev?.docId,
+          name: customer?.name ?? prev?.name,
+        }));
+      } else {
+        setLastSale(null);
+      }
       // [PACK22-POS-PRINT-START]
       if (result?.printable?.pdfUrl) window.open(result.printable.pdfUrl, "_blank");
       else if (result?.printable?.html) {
@@ -428,10 +456,69 @@ export default function POSPage() {
       }
       // [PACK27-PRINT-POS-END]
       setCustomer(null);
+      setDocType("TICKET");
     } finally {
       setPaymentsOpen(false);
     }
   };
+
+  const handleSend = useCallback(
+    async (channel: "email" | "whatsapp") => {
+      if (!lastSale) {
+        pushBanner({ type: "warn", msg: "Registra una venta antes de enviar el recibo." });
+        return;
+      }
+      const contact = channel === "email"
+        ? lastSaleContact?.email ?? customer?.email
+        : lastSaleContact?.phone ?? customer?.phone;
+      if (!contact) {
+        pushBanner({ type: "error", msg: "No hay datos de contacto para enviar el recibo." });
+        return;
+      }
+      setSendingChannel(channel);
+      try {
+        const reason = "Envio recibo inmediato";
+        const message = channel === "email"
+          ? `Adjuntamos el comprobante ${lastSale.number}.`
+          : `Recibo ${lastSale.number}. Descarga: ${lastSale.receiptUrl ?? `/pos/receipt/${lastSale.id}`}`;
+        await SalesPOS.sendReceipt(
+          lastSale.id,
+          {
+            channel,
+            recipient: contact,
+            message,
+            subject: channel === "email" ? `Recibo ${lastSale.number}` : undefined,
+          },
+          reason,
+        );
+        await logUI({
+          ts: Date.now(),
+          userId: user?.id ?? null,
+          module: "POS",
+          action: `receipt.send.${channel}`,
+          entityId: lastSale.id,
+          meta: { contact },
+        });
+        pushBanner({
+          type: "success",
+          msg: channel === "email" ? "Recibo enviado por correo." : "Recibo enviado por WhatsApp.",
+        });
+      } catch (error) {
+        pushBanner({ type: "error", msg: "No se pudo enviar el recibo." });
+      } finally {
+        setSendingChannel(null);
+      }
+    },
+    [customer, lastSale, lastSaleContact, pushBanner, user],
+  );
+
+  const handleSendEmail = useCallback(() => {
+    void handleSend("email");
+  }, [handleSend]);
+
+  const handleSendWhatsApp = useCallback(() => {
+    void handleSend("whatsapp");
+  }, [handleSend]);
 
   async function onHold() {
     if (!can(PERMS.POS_HOLD)) return;
@@ -593,6 +680,10 @@ export default function POSPage() {
                 }}
                 onOffline={() => setOfflineDrawerOpen(true)}
                 onCancel={handleCancelSale}
+                onSendEmail={handleSendEmail}
+                onSendWhatsapp={handleSendWhatsApp}
+                canSend={!!lastSale}
+                sendingChannel={sendingChannel}
               />
             </div>
           </>
@@ -634,6 +725,12 @@ export default function POSPage() {
             const nextCustomer: Customer = { id: `fast-${Date.now()}`, name: payload.name };
             if (payload.phone) {
               nextCustomer.phone = payload.phone;
+            }
+            if (payload.email) {
+              nextCustomer.email = payload.email;
+            }
+            if (payload.docId) {
+              nextCustomer.docId = payload.docId;
             }
             return nextCustomer;
           });
