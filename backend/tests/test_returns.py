@@ -40,52 +40,59 @@ def test_returns_overview_includes_reasons(client, db_session):
     original_flag = settings.enable_purchases_sales
     original_defective_store = settings.defective_returns_store_id
     settings.enable_purchases_sales = True
-    token, user_id = _bootstrap_admin(client, db_session)
-    auth_headers = {"Authorization": f"Bearer {token}"}
+    try:
+        token, user_id = _bootstrap_admin(client, db_session)
+        auth_headers = {"Authorization": f"Bearer {token}"}
 
-    store_response = client.post(
-        "/stores",
-        json={"name": "Sucursal Auditoría", "location": "MX", "timezone": "America/Mexico_City"},
-        headers=auth_headers,
-    )
-    assert store_response.status_code == status.HTTP_201_CREATED
-    store_id = store_response.json()["id"]
+        store_response = client.post(
+            "/stores",
+            json={
+                "name": "Sucursal Auditoría",
+                "location": "MX",
+                "timezone": "America/Mexico_City",
+            },
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
 
         device_response = client.post(
             f"/stores/{store_id}/devices",
             json={
                 "sku": "RET-001",
                 "name": "Lector Inventario",
-            "quantity": 0,
-            "unit_price": 120.0,
-            "costo_unitario": 80.0,
-            "margen_porcentaje": 20.0,
-        },
-        headers=auth_headers,
-    )
-    assert device_response.status_code == status.HTTP_201_CREATED
-    device_id = device_response.json()["id"]
+                "quantity": 0,
+                "unit_price": 120.0,
+                "costo_unitario": 80.0,
+                "margen_porcentaje": 20.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
 
-    purchase_payload = {
-        "store_id": store_id,
-        "supplier": "Proveedor Central",
-        "items": [{"device_id": device_id, "quantity_ordered": 5, "unit_cost": 90.0}],
-    }
-    purchase_response = client.post(
-        "/purchases",
-        json=purchase_payload,
-        headers={**auth_headers, "X-Reason": "Planeación inventario"},
-    )
-    assert purchase_response.status_code == status.HTTP_201_CREATED
-    order_id = purchase_response.json()["id"]
+        purchase_payload = {
+            "store_id": store_id,
+            "supplier": "Proveedor Central",
+            "items": [
+                {"device_id": device_id, "quantity_ordered": 5, "unit_cost": 90.0}
+            ],
+        }
+        purchase_response = client.post(
+            "/purchases",
+            json=purchase_payload,
+            headers={**auth_headers, "X-Reason": "Planeación inventario"},
+        )
+        assert purchase_response.status_code == status.HTTP_201_CREATED
+        order_id = purchase_response.json()["id"]
 
-    receive_payload = {"items": [{"device_id": device_id, "quantity": 5}]}
-    receive_response = client.post(
-        f"/purchases/{order_id}/receive",
-        json=receive_payload,
-        headers={**auth_headers, "X-Reason": "Recepción inicial"},
-    )
-    assert receive_response.status_code == status.HTTP_200_OK
+        receive_payload = {"items": [{"device_id": device_id, "quantity": 5}]}
+        receive_response = client.post(
+            f"/purchases/{order_id}/receive",
+            json=receive_payload,
+            headers={**auth_headers, "X-Reason": "Recepción inicial"},
+        )
+        assert receive_response.status_code == status.HTTP_200_OK
 
         defective_store_response = client.post(
             "/stores",
@@ -105,25 +112,25 @@ def test_returns_overview_includes_reasons(client, db_session):
             "quantity": 2,
             "reason": "Proveedor defectuoso",
         }
-    purchase_return_response = client.post(
-        f"/purchases/{order_id}/returns",
-        json=purchase_return_payload,
-        headers={**auth_headers, "X-Reason": "Devolución a proveedor"},
-    )
-    assert purchase_return_response.status_code == status.HTTP_200_OK
+        purchase_return_response = client.post(
+            f"/purchases/{order_id}/returns",
+            json=purchase_return_payload,
+            headers={**auth_headers, "X-Reason": "Devolución a proveedor"},
+        )
+        assert purchase_return_response.status_code == status.HTTP_200_OK
 
-    sale_payload = {
-        "store_id": store_id,
-        "payment_method": "EFECTIVO",
-        "items": [{"device_id": device_id, "quantity": 2}],
-    }
-    sale_response = client.post(
-        "/sales",
-        json=sale_payload,
-        headers={**auth_headers, "X-Reason": "Venta mostrador"},
-    )
-    assert sale_response.status_code == status.HTTP_201_CREATED
-    sale_id = sale_response.json()["id"]
+        sale_payload = {
+            "store_id": store_id,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": device_id, "quantity": 2}],
+        }
+        sale_response = client.post(
+            "/sales",
+            json=sale_payload,
+            headers={**auth_headers, "X-Reason": "Venta mostrador"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+        sale_id = sale_response.json()["id"]
 
         sale_return_payload = {
             "sale_id": sale_id,
@@ -133,7 +140,7 @@ def test_returns_overview_includes_reasons(client, db_session):
                     "quantity": 1,
                     "reason": "Cliente arrepentido",
                     "disposition": "defectuoso",
-                },
+                }
             ],
         }
         sale_return_response = client.post(
@@ -148,10 +155,9 @@ def test_returns_overview_includes_reasons(client, db_session):
         assert first_sale_return["disposition"] == "defectuoso"
         assert first_sale_return["warehouse_id"] == defective_store_id
 
-        try:
-            returns_response = client.get(
-                "/returns",
-                params={"store_id": store_id, "limit": 10},
+        returns_response = client.get(
+            "/returns",
+            params={"store_id": store_id, "limit": 10},
             headers=auth_headers,
         )
         assert returns_response.status_code == status.HTTP_200_OK

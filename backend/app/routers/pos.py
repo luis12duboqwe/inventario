@@ -184,7 +184,6 @@ def register_pos_sale_endpoint(
         )
         adjusted_payload = promo_result.sale_request
 
-        sale, warnings, debt_context = crud.register_pos_sale(
         electronic_results: list[schemas.POSElectronicPaymentResult] = []
         if normalized_payload.payments:
             terminals_config = {
@@ -205,7 +204,7 @@ def register_pos_sale_endpoint(
                     detail=str(exc),
                 ) from exc
 
-        sale, warnings = crud.register_pos_sale(
+        sale, warnings, debt_context = crud.register_pos_sale(
             db,
             adjusted_payload,
             performed_by_id=current_user.id if current_user else None,
@@ -344,6 +343,21 @@ def register_pos_sale_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="El cliente excede el límite de crédito disponible.",
+            ) from exc
+        if detail == "store_credit_requires_customer":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Asocia un cliente para aplicar notas de crédito.",
+            ) from exc
+        if detail == "store_credit_insufficient_balance":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La suma de notas de crédito supera el saldo disponible.",
+            ) from exc
+        if detail == "store_credit_invalid_amount":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El monto de la nota de crédito debe ser mayor a cero.",
             ) from exc
         raise
 

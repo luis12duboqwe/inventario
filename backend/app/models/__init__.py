@@ -270,6 +270,7 @@ class PaymentMethod(str, enum.Enum):
     TARJETA = "TARJETA"
     CREDITO = "CREDITO"
     TRANSFERENCIA = "TRANSFERENCIA"
+    NOTA_CREDITO = "NOTA_CREDITO"
     OTRO = "OTRO"
 
 
@@ -1556,6 +1557,11 @@ class Customer(Base):
         back_populates="customer",
         cascade="all, delete-orphan",
     )
+    store_credits: Mapped[list["StoreCredit"]] = relationship(
+        "StoreCredit",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+    )
     price_lists: Mapped[list["PriceList"]] = relationship(
         "PriceList",
         back_populates="customer",
@@ -1570,6 +1576,8 @@ class CustomerLedgerEntryType(str, enum.Enum):
     PAYMENT = "payment"
     ADJUSTMENT = "adjustment"
     NOTE = "note"
+    STORE_CREDIT_ISSUED = "store_credit_issued"
+    STORE_CREDIT_REDEEMED = "store_credit_redeemed"
 
 
 class CustomerLedgerEntry(Base):
@@ -1607,6 +1615,114 @@ class CustomerLedgerEntry(Base):
 
     customer: Mapped["Customer"] = relationship(
         "Customer", back_populates="ledger_entries"
+    )
+    created_by: Mapped[Optional["User"]] = relationship("User")
+
+
+class StoreCreditStatus(str, enum.Enum):
+    """Estados operativos de las notas de crédito emitidas."""
+
+    ACTIVO = "ACTIVO"
+    PARCIAL = "PARCIAL"
+    REDIMIDO = "REDIMIDO"
+    CANCELADO = "CANCELADO"
+
+
+class StoreCredit(Base):
+    __tablename__ = "store_credits"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_store_credit_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    customer_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("clientes.id_cliente", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    issued_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    balance_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    status: Mapped[StoreCreditStatus] = mapped_column(
+        Enum(StoreCreditStatus, name="store_credit_status"),
+        nullable=False,
+        default=StoreCreditStatus.ACTIVO,
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    context: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+    redeemed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    issued_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    customer: Mapped["Customer"] = relationship(
+        "Customer", back_populates="store_credits"
+    )
+    issued_by: Mapped[Optional["User"]] = relationship("User")
+    redemptions: Mapped[list["StoreCreditRedemption"]] = relationship(
+        "StoreCreditRedemption",
+        back_populates="store_credit",
+        cascade="all, delete-orphan",
+    )
+
+
+class StoreCreditRedemption(Base):
+    __tablename__ = "store_credit_redemptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_credit_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("store_credits.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sale_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    store_credit: Mapped["StoreCredit"] = relationship(
+        "StoreCredit", back_populates="redemptions"
+    )
+    sale: Mapped[Optional["Sale"]] = relationship(
+        "Sale", back_populates="store_credit_redemptions"
     )
     created_by: Mapped[Optional["User"]] = relationship("User")
 
@@ -1953,6 +2069,11 @@ class Sale(Base):
     returns: Mapped[list["SaleReturn"]] = relationship(
         "SaleReturn", back_populates="sale", cascade="all, delete-orphan"
     )
+    store_credit_redemptions: Mapped[list["StoreCreditRedemption"]] = relationship(
+        "StoreCreditRedemption",
+        back_populates="sale",
+        cascade="all, delete-orphan",
+    )
 
 
 class SaleItem(Base):
@@ -2253,7 +2374,6 @@ class POSConfig(Base):
     promotions_config: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
-        JSON, nullable=False, default=dict)
     hardware_settings: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
@@ -2467,7 +2587,10 @@ __all__ = [
     "CashSessionStatus",
     "CashEntryType",
     "CashRegisterEntry",
-    "Customer",
+    "Customer", 
+    "StoreCredit",
+    "StoreCreditStatus",
+    "StoreCreditRedemption",
     "AuditLog",
     "SystemLog",
     "SystemError",
