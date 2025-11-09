@@ -454,17 +454,11 @@ class PriceListBase(BaseModel):
         min_length=3,
         max_length=120,
         description="Nombre visible para identificar la lista de precios.",
-        description="Nombre visible de la lista de precios.",
     )
     description: str | None = Field(
         default=None,
         max_length=500,
         description="Descripción opcional del alcance o uso de la lista.",
-    )
-    is_active: bool = Field(
-        default=True,
-        description="Indica si la lista está habilitada para resolver precios.",
-        description="Descripción interna para identificar la lista.",
     )
     priority: int = Field(
         default=100,
@@ -474,36 +468,23 @@ class PriceListBase(BaseModel):
     )
     is_active: bool = Field(
         default=True,
-        description="Indica si la lista puede aplicarse en cálculos de precios.",
+        description="Indica si la lista está habilitada para resolver precios.",
     )
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada, cuando aplica.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador del cliente asociado, cuando aplica.",
+        description="Cliente corporativo preferente ligado a la lista.",
     )
     currency: str = Field(
         default="MXN",
         min_length=3,
         max_length=10,
         description="Moneda en la que se expresan los precios.",
-    )
-    valid_from: date | None = Field(
-        default=None,
-        description="Fecha a partir de la cual la lista entra en vigor.",
-    )
-    valid_until: date | None = Field(
-        default=None,
-        description="Fecha límite de vigencia de la lista de precios.",
-    )
-
-    @field_validator("name")
-        description="Cliente corporativo preferente ligado a la lista.",
     )
     starts_at: datetime | None = Field(
         default=None,
@@ -512,6 +493,14 @@ class PriceListBase(BaseModel):
     ends_at: datetime | None = Field(
         default=None,
         description="Fecha de término de vigencia (UTC).",
+    )
+    valid_from: date | None = Field(
+        default=None,
+        description="Fecha a partir de la cual la lista entra en vigor.",
+    )
+    valid_until: date | None = Field(
+        default=None,
+        description="Fecha límite de vigencia de la lista de precios.",
     )
 
     @field_validator("name", mode="before")
@@ -530,13 +519,12 @@ class PriceListBase(BaseModel):
         normalized = value.strip()
         return normalized or None
 
-    @field_validator("currency")
+    @field_validator("currency", mode="before")
     @classmethod
     def _normalize_currency(cls, value: str) -> str:
         normalized = value.strip().upper()
         if len(normalized) < 3:
             raise ValueError("La moneda debe tener al menos 3 caracteres.")
-            raise ValueError("El nombre de la lista debe tener al menos 3 caracteres.")
         return normalized
 
     @model_validator(mode="after")
@@ -559,18 +547,21 @@ class PriceListCreate(PriceListBase):
 
 
 class PriceListUpdate(BaseModel):
-    """Campos disponibles para actualizar una lista de precios."""
+    """Campos disponibles para modificar una lista de precios existente."""
 
     name: str | None = Field(default=None, min_length=3, max_length=120)
     description: str | None = Field(default=None, max_length=500)
+    priority: int | None = Field(default=None, ge=0, le=10000)
     is_active: bool | None = Field(default=None)
     store_id: int | None = Field(default=None, ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     currency: str | None = Field(default=None, min_length=3, max_length=10)
+    starts_at: datetime | None = Field(default=None)
+    ends_at: datetime | None = Field(default=None)
     valid_from: date | None = Field(default=None)
     valid_until: date | None = Field(default=None)
 
-    @field_validator("name")
+    @field_validator("name", mode="before")
     @classmethod
     def _normalize_name(cls, value: str | None) -> str | None:
         if value is None:
@@ -588,27 +579,15 @@ class PriceListUpdate(BaseModel):
         normalized = value.strip()
         return normalized or None
 
-    @field_validator("currency")
+    @field_validator("currency", mode="before")
     @classmethod
     def _normalize_currency(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip().upper()
         if len(normalized) < 3:
-            raise ValueError("La moneda debe tener al menos 3 caracteres.")
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
         return normalized
-    pass
-
-
-class PriceListUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=3, max_length=120)
-    description: str | None = Field(default=None, max_length=500)
-    priority: int | None = Field(default=None, ge=0, le=10000)
-    is_active: bool | None = Field(default=None)
-    store_id: int | None = Field(default=None, ge=1)
-    customer_id: int | None = Field(default=None, ge=1)
-    starts_at: datetime | None = Field(default=None)
-    ends_at: datetime | None = Field(default=None)
 
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListUpdate":
@@ -620,6 +599,7 @@ class PriceListUpdate(BaseModel):
             raise ValueError(
                 "La fecha de inicio no puede ser posterior a la fecha de fin."
             )
+        if (
             self.starts_at is not None
             and self.ends_at is not None
             and self.ends_at <= self.starts_at
@@ -634,26 +614,11 @@ class PriceListItemBase(BaseModel):
     device_id: int = Field(
         ...,
         ge=1,
-        description="Identificador del dispositivo dentro del catálogo.",
-    )
-    price: Decimal = Field(
-        ...,
-        gt=Decimal("0"),
-        description="Precio base asignado al dispositivo.",
-    )
-    discount_percentage: Decimal | None = Field(
-        default=None,
-        ge=Decimal("0"),
-        le=Decimal("100"),
-        description="Descuento porcentual adicional aplicado al precio base.",
-    device_id: int = Field(
-        ...,
-        ge=1,
         description="Identificador del dispositivo dentro del catálogo corporativo.",
     )
     price: Decimal = Field(
         ...,
-        ge=Decimal("0"),
+        gt=Decimal("0"),
         description="Precio específico definido en la lista.",
     )
     currency: str = Field(
@@ -662,11 +627,25 @@ class PriceListItemBase(BaseModel):
         max_length=8,
         description="Moneda ISO 4217 asociada al precio.",
     )
+    discount_percentage: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        le=Decimal("100"),
+        description="Descuento porcentual adicional aplicado al precio base.",
+    )
     notes: str | None = Field(
         default=None,
         max_length=500,
         description="Notas internas sobre la regla de precios.",
     )
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
+        return normalized
 
     @field_validator("notes", mode="before")
     @classmethod
@@ -685,10 +664,23 @@ class PriceListItemUpdate(BaseModel):
     """Campos disponibles para actualizar un precio de catálogo."""
 
     price: Decimal | None = Field(default=None, gt=Decimal("0"))
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
     discount_percentage: Decimal | None = Field(
-        default=None, ge=Decimal("0"), le=Decimal("100")
+        default=None,
+        ge=Decimal("0"),
+        le=Decimal("100"),
     )
     notes: str | None = Field(default=None, max_length=500)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
+        return normalized
 
     @field_validator("notes", mode="before")
     @classmethod
@@ -703,36 +695,6 @@ class PriceListItemUpdate(BaseModel):
         if self.price is not None and self.price <= Decimal("0"):
             raise ValueError("El precio debe ser mayor a cero.")
         return self
-        description="Comentarios internos sobre el ajuste de precio.",
-    )
-
-    @field_validator("currency", mode="before")
-    @classmethod
-    def _normalize_currency(cls, value: str) -> str:
-        normalized = value.strip().upper()
-        if len(normalized) < 3:
-            raise ValueError("La moneda debe contener al menos 3 caracteres.")
-        return normalized
-
-
-class PriceListItemCreate(PriceListItemBase):
-    pass
-
-
-class PriceListItemUpdate(BaseModel):
-    price: Decimal | None = Field(default=None, ge=Decimal("0"))
-    currency: str | None = Field(default=None, min_length=3, max_length=8)
-    notes: str | None = Field(default=None, max_length=500)
-
-    @field_validator("currency", mode="before")
-    @classmethod
-    def _normalize_currency(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-        normalized = value.strip().upper()
-        if len(normalized) < 3:
-            raise ValueError("La moneda debe contener al menos 3 caracteres.")
-        return normalized
 
 
 class PriceListItemResponse(PriceListItemBase):
@@ -755,9 +717,6 @@ class PriceListItemResponse(PriceListItemBase):
             return None
         return float(value)
 
-
-class PriceListResponse(PriceListBase):
-    id: int
 
 class PriceListResponse(PriceListBase):
     id: int
@@ -2335,6 +2294,96 @@ class InventoryReservationCreate(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
     expires_at: datetime
+
+
+class InventoryReceivingLine(BaseModel):
+    device_id: int | None = Field(default=None, ge=1)
+    imei: str | None = Field(default=None, min_length=3, max_length=64)
+    serial: str | None = Field(default=None, min_length=3, max_length=64)
+    quantity: int = Field(..., ge=1)
+    unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+    comment: str | None = Field(default=None, min_length=5, max_length=255)
+
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "InventoryReceivingLine":
+        if self.device_id is None and not (self.imei or self.serial):
+            raise ValueError(
+                "Cada línea debe incluir `device_id`, `imei` o `serial`."
+            )
+        return self
+
+
+class InventoryReceivingRequest(BaseModel):
+    store_id: int = Field(..., ge=1)
+    note: str = Field(..., min_length=5, max_length=255)
+    responsible: str | None = Field(default=None, max_length=120)
+    reference: str | None = Field(default=None, max_length=120)
+    lines: list[InventoryReceivingLine] = Field(..., min_length=1)
+
+
+class InventoryReceivingSummary(BaseModel):
+    lines: int = Field(..., ge=0)
+    total_quantity: int = Field(..., ge=0)
+
+
+class InventoryReceivingProcessed(BaseModel):
+    identifier: str
+    device_id: int
+    quantity: int
+    movement: MovementResponse
+
+
+class InventoryReceivingResult(BaseModel):
+    store_id: int
+    processed: list[InventoryReceivingProcessed]
+    totals: InventoryReceivingSummary
+
+
+class InventoryCountLine(BaseModel):
+    device_id: int | None = Field(default=None, ge=1)
+    imei: str | None = Field(default=None, min_length=3, max_length=64)
+    serial: str | None = Field(default=None, min_length=3, max_length=64)
+    counted: int = Field(..., ge=0)
+    comment: str | None = Field(default=None, min_length=5, max_length=255)
+
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "InventoryCountLine":
+        if self.device_id is None and not (self.imei or self.serial):
+            raise ValueError(
+                "Cada línea debe incluir `device_id`, `imei` o `serial`."
+            )
+        return self
+
+
+class InventoryCycleCountRequest(BaseModel):
+    store_id: int = Field(..., ge=1)
+    note: str = Field(..., min_length=5, max_length=255)
+    responsible: str | None = Field(default=None, max_length=120)
+    reference: str | None = Field(default=None, max_length=120)
+    lines: list[InventoryCountLine] = Field(..., min_length=1)
+
+
+class InventoryCountDiscrepancy(BaseModel):
+    device_id: int
+    sku: str | None = None
+    expected: int
+    counted: int
+    delta: int
+    movement: MovementResponse | None = None
+    identifier: str | None = None
+
+
+class InventoryCycleCountSummary(BaseModel):
+    lines: int = Field(..., ge=0)
+    adjusted: int = Field(..., ge=0)
+    matched: int = Field(..., ge=0)
+    total_variance: int = Field(...)
+
+
+class InventoryCycleCountResult(BaseModel):
+    store_id: int
+    adjustments: list[InventoryCountDiscrepancy]
+    totals: InventoryCycleCountSummary
 
 
 class InventoryReservationRenew(BaseModel):

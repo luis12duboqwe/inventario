@@ -166,8 +166,9 @@ class Store(Base):
         "InventoryReservation", back_populates="store", cascade="all, delete-orphan"
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
-        "PriceList", back_populates="store"
-        "PriceList", back_populates="store", cascade="all, delete-orphan"
+        "PriceList",
+        back_populates="store",
+        cascade="all, delete-orphan",
     )
 
 
@@ -325,7 +326,6 @@ class Device(Base):
         "PriceListItem",
         back_populates="device",
         cascade="all, delete-orphan",
-        "PriceListItem", back_populates="device", cascade="all, delete-orphan"
     )
 
     @property
@@ -348,112 +348,6 @@ class Device(Base):
     def precio_venta(self, value: Decimal) -> None:
         self.unit_price = value
 
-
-class PriceList(Base):
-    __tablename__ = "price_lists"
-    __table_args__ = (
-        UniqueConstraint("name", "store_id", "customer_id", name="uq_price_lists_scope_name"),
-        Index("ix_price_lists_priority", "priority"),
-        Index("ix_price_lists_store_id", "store_id"),
-        Index("ix_price_lists_customer_id", "customer_id"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    store_id: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
-        nullable=True,
-    )
-    customer_id: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey("clientes.id_cliente", ondelete="SET NULL"),
-        nullable=True,
-    )
-    starts_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    ends_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
-
-    store: Mapped[Optional[Store]] = relationship(
-        "Store", back_populates="price_lists"
-    )
-    customer: Mapped[Optional["Customer"]] = relationship(
-        "Customer", back_populates="price_lists"
-    )
-    items: Mapped[list["PriceListItem"]] = relationship(
-        "PriceListItem",
-        back_populates="price_list",
-        cascade="all, delete-orphan",
-    )
-
-    @property
-    def scope(self) -> str:
-        if self.store_id is not None and self.customer_id is not None:
-            return "store_customer"
-        if self.customer_id is not None:
-            return "customer"
-        if self.store_id is not None:
-            return "store"
-        return "global"
-
-
-class PriceListItem(Base):
-    __tablename__ = "price_list_items"
-    __table_args__ = (
-        UniqueConstraint("price_list_id", "device_id", name="uq_price_list_items_device"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    price_list_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("price_lists.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    device_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("devices.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    price: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2), nullable=False, default=Decimal("0")
-    )
-    currency: Mapped[str] = mapped_column(
-        String(8), nullable=False, default="MXN"
-    )
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
-
-    price_list: Mapped[PriceList] = relationship(
-        "PriceList", back_populates="items"
-    )
-    device: Mapped[Device] = relationship(
-        "Device", back_populates="price_list_items"
-    )
 
 
 class DeviceIdentifier(Base):
@@ -553,25 +447,31 @@ class PriceList(Base):
         UniqueConstraint(
             "name", "store_id", "customer_id", name="uq_price_lists_scope_name"
         ),
+        Index("ix_price_lists_name", "name"),
+        Index("ix_price_lists_is_active", "is_active"),
+        Index("ix_price_lists_priority", "priority"),
+        Index("ix_price_lists_store_id", "store_id"),
+        Index("ix_price_lists_customer_id", "customer_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     store_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
         nullable=True,
-        index=True,
     )
     customer_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("clientes.id_cliente", ondelete="SET NULL"),
         nullable=True,
-        index=True,
     )
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -592,6 +492,16 @@ class PriceList(Base):
         "PriceListItem", back_populates="price_list", cascade="all, delete-orphan"
     )
 
+    @property
+    def scope(self) -> str:
+        if self.store_id is not None and self.customer_id is not None:
+            return "store_customer"
+        if self.customer_id is not None:
+            return "customer"
+        if self.store_id is not None:
+            return "store"
+        return "global"
+
 
 class PriceListItem(Base):
     """Precio específico de un dispositivo dentro de una lista."""
@@ -601,6 +511,9 @@ class PriceListItem(Base):
         UniqueConstraint(
             "price_list_id", "device_id", name="uq_price_list_items_price_device"
         ),
+        Index("ix_price_list_items_list_device", "price_list_id", "device_id"),
+        Index("ix_price_list_items_price_list", "price_list_id"),
+        Index("ix_price_list_items_device", "device_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -617,6 +530,7 @@ class PriceListItem(Base):
         index=True,
     )
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
     discount_percentage: Mapped[Decimal | None] = mapped_column(
         Numeric(5, 2), nullable=True
     )
@@ -1472,8 +1386,9 @@ class Customer(Base):
         cascade="all, delete-orphan",
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
-        "PriceList", back_populates="customer"
-        "PriceList", back_populates="customer", cascade="all, delete-orphan"
+        "PriceList",
+        back_populates="customer",
+        cascade="all, delete-orphan",
     )
 
 
