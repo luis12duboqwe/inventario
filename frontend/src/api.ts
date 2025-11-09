@@ -966,6 +966,42 @@ export type PurchaseImportResponse = {
   errors: string[];
 };
 
+export type PurchaseSuggestionItem = {
+  store_id: number;
+  store_name: string;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  device_id: number;
+  sku: string;
+  name: string;
+  current_quantity: number;
+  minimum_stock: number;
+  suggested_quantity: number;
+  average_daily_sales: number;
+  projected_coverage_days: number | null;
+  last_30_days_sales: number;
+  unit_cost: number;
+  reason: "below_minimum" | "projected_consumption";
+  suggested_value: number;
+};
+
+export type PurchaseSuggestionStore = {
+  store_id: number;
+  store_name: string;
+  total_suggested: number;
+  total_value: number;
+  items: PurchaseSuggestionItem[];
+};
+
+export type PurchaseSuggestionsResponse = {
+  generated_at: string;
+  lookback_days: number;
+  planning_horizon_days: number;
+  minimum_stock: number;
+  total_items: number;
+  stores: PurchaseSuggestionStore[];
+};
+
 export type RecurringOrderType = "purchase" | "transfer";
 
 export type RecurringOrder = {
@@ -1256,6 +1292,88 @@ export type MovementInput = {
   sucursal_origen_id?: number | null;
   sucursal_destino_id?: number | null;
   unit_cost?: number;
+};
+
+export type InventoryMovement = {
+  id: number;
+  producto_id: number;
+  tipo_movimiento: MovementInput["tipo_movimiento"];
+  cantidad: number;
+  comentario?: string | null;
+  sucursal_origen_id?: number | null;
+  sucursal_origen?: string | null;
+  sucursal_destino_id?: number | null;
+  sucursal_destino?: string | null;
+  usuario_id?: number | null;
+  usuario?: string | null;
+  referencia_tipo?: string | null;
+  referencia_id?: string | null;
+  fecha: string;
+  unit_cost?: number | null;
+  store_inventory_value: number;
+  ultima_accion?: unknown;
+};
+
+export type InventoryReceivingLineInput = {
+  device_id?: number;
+  imei?: string;
+  serial?: string;
+  quantity: number;
+  unit_cost?: number;
+  comment?: string;
+};
+
+export type InventoryReceivingRequest = {
+  store_id: number;
+  note: string;
+  responsible?: string;
+  reference?: string;
+  lines: InventoryReceivingLineInput[];
+};
+
+export type InventoryReceivingProcessed = {
+  identifier: string;
+  device_id: number;
+  quantity: number;
+  movement: InventoryMovement;
+};
+
+export type InventoryReceivingResult = {
+  store_id: number;
+  processed: InventoryReceivingProcessed[];
+  totals: { lines: number; total_quantity: number };
+};
+
+export type InventoryCountLineInput = {
+  device_id?: number;
+  imei?: string;
+  serial?: string;
+  counted: number;
+  comment?: string;
+};
+
+export type InventoryCycleCountRequest = {
+  store_id: number;
+  note: string;
+  responsible?: string;
+  reference?: string;
+  lines: InventoryCountLineInput[];
+};
+
+export type InventoryCountDiscrepancy = {
+  device_id: number;
+  sku?: string | null;
+  expected: number;
+  counted: number;
+  delta: number;
+  identifier?: string | null;
+  movement: InventoryMovement | null;
+};
+
+export type InventoryCycleCountResult = {
+  store_id: number;
+  adjustments: InventoryCountDiscrepancy[];
+  totals: { lines: number; adjusted: number; matched: number; total_variance: number };
 };
 
 export type InventoryReservationState =
@@ -1573,12 +1691,20 @@ export type LowStockDevice = {
   quantity: number;
   unit_price: number;
   inventory_value: number;
+  minimum_stock: number;
+  reorder_point: number;
+  reorder_gap: number;
 };
 
 export type InventoryAlertSeverity = "critical" | "warning" | "notice";
 
 export type InventoryAlertItem = LowStockDevice & {
   severity: InventoryAlertSeverity;
+  projected_days: number | null;
+  average_daily_sales: number | null;
+  trend: string | null;
+  confidence: number | null;
+  insights: string[];
 };
 
 export type InventoryAlertSummary = {
@@ -1711,6 +1837,14 @@ export type InventoryMovementsFilters = InventoryCurrentFilters & {
   dateFrom?: string;
   dateTo?: string;
   movementType?: MovementInput["tipo_movimiento"];
+};
+
+export type InventoryAuditFilters = {
+  performedById?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
 };
 
 export type InventoryTopProductsFilters = InventoryCurrentFilters & {
@@ -2997,6 +3131,26 @@ function buildInventoryMovementsParams(filters: InventoryMovementsFilters = {}):
   return params;
 }
 
+function buildInventoryAuditParams(filters: InventoryAuditFilters = {}): URLSearchParams {
+  const params = new URLSearchParams();
+  if (typeof filters.performedById === "number") {
+    params.append("performed_by_id", String(filters.performedById));
+  }
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (typeof filters.limit === "number") {
+    params.append("limit", String(filters.limit));
+  }
+  if (typeof filters.offset === "number") {
+    params.append("offset", String(filters.offset));
+  }
+  return params;
+}
+
 function buildTopProductsParams(filters: InventoryTopProductsFilters = {}): URLSearchParams {
   const params = buildInventoryValueParams(filters);
   if (filters.dateFrom) {
@@ -3742,6 +3896,40 @@ export function importPurchaseOrdersCsv(
       body: formData,
       headers: { "X-Reason": reason },
     },
+    token
+  );
+}
+
+export function getPurchaseSuggestions(
+  token: string,
+  params: { storeId?: number; lookbackDays?: number; minimumStock?: number; planningHorizonDays?: number } = {},
+): Promise<PurchaseSuggestionsResponse> {
+  const query = new URLSearchParams();
+  if (params.storeId != null) {
+    query.set("store_id", String(params.storeId));
+  }
+  if (params.lookbackDays != null) {
+    query.set("lookback_days", String(params.lookbackDays));
+  }
+  if (params.minimumStock != null) {
+    query.set("minimum_stock", String(params.minimumStock));
+  }
+  if (params.planningHorizonDays != null) {
+    query.set("planning_horizon_days", String(params.planningHorizonDays));
+  }
+  const suffix = query.toString();
+  const path = suffix ? `/purchases/suggestions?${suffix}` : "/purchases/suggestions";
+  return request<PurchaseSuggestionsResponse>(path, { method: "GET" }, token);
+}
+
+export function createPurchaseOrderFromSuggestion(
+  token: string,
+  payload: PurchaseOrderCreateInput,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    "/purchases/suggestions/orders",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
     token
   );
 }
@@ -4534,6 +4722,38 @@ export function registerMovement(
   }, token);
 }
 
+export function registerInventoryReceiving(
+  token: string,
+  payload: InventoryReceivingRequest,
+  reason: string,
+): Promise<InventoryReceivingResult> {
+  return request<InventoryReceivingResult>(
+    "/inventory/counts/receipts",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function registerInventoryCycleCount(
+  token: string,
+  payload: InventoryCycleCountRequest,
+  reason: string,
+): Promise<InventoryCycleCountResult> {
+  return request<InventoryCycleCountResult>(
+    "/inventory/counts/cycle",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
 export function listSales(token: string, filters: SalesFilters = {}): Promise<Sale[]> {
   const params = buildSalesFilterParams(filters);
   const limit = typeof filters.limit === "number" ? filters.limit : 50;
@@ -5283,6 +5503,130 @@ export async function downloadInventoryMovementsXlsx(
   const link = document.createElement("a");
   link.href = url;
   link.download = "softmobile_movimientos.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAdjustmentsCsv(
+  token: string,
+  reason: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<void> {
+  const params = buildInventoryMovementsParams(filters);
+  params.set("format", "csv");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/adjustments/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar los ajustes de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_ajustes.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAdjustmentsPdf(
+  token: string,
+  reason: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<void> {
+  const params = buildInventoryMovementsParams(filters);
+  params.set("format", "pdf");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/adjustments/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de ajustes");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_ajustes.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAuditCsv(
+  token: string,
+  reason: string,
+  filters: InventoryAuditFilters = {},
+): Promise<void> {
+  const params = buildInventoryAuditParams(filters);
+  params.set("format", "csv");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/audit/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar la auditoría de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_auditoria_inventario.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAuditPdf(
+  token: string,
+  reason: string,
+  filters: InventoryAuditFilters = {},
+): Promise<void> {
+  const params = buildInventoryAuditParams(filters);
+  params.set("format", "pdf");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/audit/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de auditoría de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_auditoria_inventario.pdf";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

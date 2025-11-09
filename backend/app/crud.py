@@ -30,6 +30,7 @@ from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
+from .core.settings import inventory_alert_settings
 from .utils import audit as audit_utils
 from .utils import audit_trail as audit_trail_utils
 from .utils.cache import TTLCache
@@ -1475,6 +1476,8 @@ def _device_sync_payload(device: models.Device) -> dict[str, object]:
         "margen_porcentaje": float(_to_decimal(device.margen_porcentaje)),
         "estado": device.estado,
         "estado_comercial": commercial_state,
+        "minimum_stock": int(getattr(device, "minimum_stock", 0) or 0),
+        "reorder_point": int(getattr(device, "reorder_point", 0) or 0),
         "imei": device.imei,
         "serial": device.serial,
         "marca": device.marca,
@@ -5085,6 +5088,205 @@ def update_purchase_vendor(
     return vendor
 
 
+def compute_purchase_suggestions(
+    db: Session,
+    *,
+    store_ids: Sequence[int] | None = None,
+    lookback_days: int = 30,
+    minimum_stock: int | None = None,
+    planning_horizon_days: int = 14,
+) -> schemas.PurchaseSuggestionsResponse:
+    """Calcula sugerencias de compra agrupadas por sucursal."""
+
+    normalized_lookback = max(int(lookback_days or 30), 7)
+    normalized_horizon = max(int(planning_horizon_days or 14), 7)
+    settings_alerts = inventory_alert_settings
+    threshold = settings_alerts.clamp_threshold(minimum_stock)
+
+    since = datetime.utcnow() - timedelta(days=normalized_lookback)
+
+    device_stmt = (
+        select(
+            models.Device.id,
+            models.Device.store_id,
+            models.Store.name.label("store_name"),
+            models.Device.sku,
+            models.Device.name,
+            models.Device.quantity,
+            models.Device.proveedor,
+            models.Device.costo_unitario,
+        )
+        .join(models.Store, models.Store.id == models.Device.store_id)
+        .order_by(models.Store.name.asc(), models.Device.name.asc())
+    )
+    if store_ids:
+        device_stmt = device_stmt.where(models.Device.store_id.in_(store_ids))
+
+    device_rows = list(db.execute(device_stmt))
+    if not device_rows:
+        return schemas.PurchaseSuggestionsResponse(
+            generated_at=datetime.utcnow(),
+            lookback_days=normalized_lookback,
+            planning_horizon_days=normalized_horizon,
+            minimum_stock=threshold,
+            total_items=0,
+            stores=[],
+        )
+
+    device_ids = [int(row.id) for row in device_rows]
+
+    sales_stmt = (
+        select(
+            models.SaleItem.device_id,
+            func.sum(models.SaleItem.quantity).label("sold_units"),
+            func.min(models.Sale.created_at).label("first_sale"),
+            func.max(models.Sale.created_at).label("last_sale"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .where(models.SaleItem.device_id.in_(device_ids))
+        .where(func.upper(models.Sale.status) != "CANCELADA")
+        .group_by(models.SaleItem.device_id)
+    )
+    if store_ids:
+        sales_stmt = sales_stmt.where(models.Sale.store_id.in_(store_ids))
+    sales_stmt = sales_stmt.where(models.Sale.created_at >= since)
+
+    sales_map: dict[int, dict[str, object]] = {}
+    for row in db.execute(sales_stmt):
+        sold_units = int(row.sold_units or 0)
+        first_sale = row.first_sale
+        last_sale = row.last_sale
+        span_days = normalized_lookback
+        if first_sale and last_sale:
+            first_dt = max(first_sale, since)
+            span_days = max(
+                1,
+                min(
+                    normalized_lookback,
+                    (last_sale.date() - first_dt.date()).days + 1,
+                ),
+            )
+        sales_map[int(row.device_id)] = {
+            "sold_units": sold_units,
+            "span_days": span_days,
+        }
+
+    supplier_candidates = {
+        row.proveedor.strip().lower()
+        for row in device_rows
+        if getattr(row, "proveedor", None) and row.proveedor.strip()
+    }
+    vendor_map: dict[str, tuple[int, str]] = {}
+    if supplier_candidates:
+        vendor_stmt = (
+            select(
+                models.Proveedor.id_proveedor,
+                models.Proveedor.nombre,
+                func.lower(models.Proveedor.nombre).label("normalized"),
+            )
+            .where(func.lower(models.Proveedor.nombre).in_(tuple(supplier_candidates)))
+            .order_by(models.Proveedor.nombre.asc())
+        )
+        for vendor in db.execute(vendor_stmt):
+            vendor_map[vendor.normalized] = (
+                int(vendor.id_proveedor),
+                vendor.nombre,
+            )
+
+    stores_payload: dict[int, list[schemas.PurchaseSuggestionItem]] = defaultdict(list)
+    store_value_totals: dict[int, Decimal] = defaultdict(lambda: Decimal("0"))
+    total_items = 0
+
+    for row in device_rows:
+        device_id = int(row.id)
+        quantity = int(row.quantity or 0)
+        unit_cost = _to_decimal(getattr(row, "costo_unitario", None) or Decimal("0"))
+        supplier_name = (row.proveedor or "").strip() or None
+
+        sales_info = sales_map.get(device_id)
+        sold_units = int(sales_info["sold_units"]) if sales_info else 0
+        span_days = int(sales_info["span_days"]) if sales_info else normalized_lookback
+        average_daily = float(sold_units) / span_days if span_days > 0 else 0.0
+        projected_coverage = (
+            max(int(math.ceil(quantity / average_daily)), 0)
+            if average_daily > 0
+            else None
+        )
+
+        buffer_units = int(math.ceil(average_daily * normalized_horizon)) if average_daily > 0 else 0
+        target_stock = max(threshold, buffer_units)
+        if target_stock <= 0:
+            continue
+        if quantity >= target_stock:
+            continue
+
+        suggested_quantity = target_stock - quantity
+        if suggested_quantity <= 0:
+            continue
+
+        reason = "below_minimum" if quantity <= threshold else "projected_consumption"
+
+        supplier_id: int | None = None
+        supplier_display = supplier_name
+        if supplier_name:
+            normalized_supplier = supplier_name.lower()
+            vendor_entry = vendor_map.get(normalized_supplier)
+            if vendor_entry:
+                supplier_id, official_name = vendor_entry
+                supplier_display = official_name
+
+        item = schemas.PurchaseSuggestionItem(
+            store_id=int(row.store_id),
+            store_name=row.store_name,
+            supplier_id=supplier_id,
+            supplier_name=supplier_display,
+            device_id=device_id,
+            sku=row.sku,
+            name=row.name,
+            current_quantity=quantity,
+            minimum_stock=threshold,
+            suggested_quantity=suggested_quantity,
+            average_daily_sales=round(average_daily, 2),
+            projected_coverage_days=projected_coverage,
+            last_30_days_sales=sold_units,
+            unit_cost=unit_cost,
+            reason=reason,
+        )
+
+        stores_payload[int(row.store_id)].append(item)
+        store_value_totals[int(row.store_id)] += (
+            unit_cost * Decimal(suggested_quantity)
+        )
+        total_items += 1
+
+    stores: list[schemas.PurchaseSuggestionStore] = []
+    for store_id, items in stores_payload.items():
+        items.sort(key=lambda entry: (entry.suggested_quantity, entry.name), reverse=True)
+        total_recommended = sum(item.suggested_quantity for item in items)
+        total_value = float(store_value_totals[store_id])
+        store_name = items[0].store_name if items else ""
+        stores.append(
+            schemas.PurchaseSuggestionStore(
+                store_id=store_id,
+                store_name=store_name,
+                total_suggested=total_recommended,
+                total_value=total_value,
+                items=items,
+            )
+        )
+
+    stores.sort(key=lambda store: (-store.total_value, store.store_name))
+
+    return schemas.PurchaseSuggestionsResponse(
+        generated_at=datetime.utcnow(),
+        lookback_days=normalized_lookback,
+        planning_horizon_days=normalized_horizon,
+        minimum_stock=threshold,
+        total_items=total_items,
+        stores=stores,
+    )
+
+
 def set_purchase_vendor_status(
     db: Session,
     vendor_id: int,
@@ -5532,6 +5734,12 @@ def create_device(
     imei = payload_data.get("imei")
     serial = payload_data.get("serial")
     _ensure_unique_identifiers(db, imei=imei, serial=serial)
+    minimum_stock = int(payload_data.get("minimum_stock", 0) or 0)
+    reorder_point = int(payload_data.get("reorder_point", 0) or 0)
+    if reorder_point < minimum_stock:
+        reorder_point = minimum_stock
+        payload_data["reorder_point"] = reorder_point
+    payload_data["minimum_stock"] = minimum_stock
     unit_price = None
     if "unit_price" in provided_fields:
         unit_price = payload_data.get("unit_price")
@@ -6380,6 +6588,65 @@ def resolve_device_for_pos(
     raise LookupError("device_not_found")
 
 
+def resolve_device_for_inventory(
+    db: Session,
+    *,
+    store_id: int,
+    device_id: int | None = None,
+    imei: str | None = None,
+    serial: str | None = None,
+) -> models.Device:
+    """Localiza un dispositivo para recepciones o conteos cíclicos.
+
+    Prioriza `device_id` explícito, luego IMEI (incluyendo identificadores
+    secundarios) y finalmente serial, siempre acotado a la sucursal indicada.
+    """
+
+    if device_id:
+        return get_device(db, store_id, device_id)
+
+    normalized_imei = imei.strip() if imei else None
+    if normalized_imei:
+        try:
+            return resolve_device_for_pos(
+                db,
+                store_id=store_id,
+                device_id=None,
+                imei=normalized_imei,
+            )
+        except LookupError:
+            pass
+
+    if serial:
+        normalized_serial = serial.strip()
+    else:
+        normalized_serial = None
+
+    if normalized_serial:
+        statement = select(models.Device).where(
+            models.Device.store_id == store_id,
+            func.lower(models.Device.serial) == normalized_serial.lower(),
+        )
+        device = db.scalars(statement).first()
+        if device is not None:
+            return device
+
+        identifier_stmt = (
+            select(models.Device)
+            .join(models.DeviceIdentifier)
+            .where(models.Device.store_id == store_id)
+            .where(
+                func.lower(models.DeviceIdentifier.numero_serie)
+                == normalized_serial.lower()
+            )
+        )
+        device = db.scalars(identifier_stmt).first()
+        if device is not None:
+            return device
+
+    raise LookupError("device_not_found")
+
+
 def find_device_for_import(
     db: Session,
     *,
@@ -6437,6 +6704,22 @@ def update_device(
         serial=serial,
         exclude_device_id=device.id,
     )
+    new_minimum_stock = updated_fields.get("minimum_stock")
+    new_reorder_point = updated_fields.get("reorder_point")
+    current_minimum = int(getattr(device, "minimum_stock", 0) or 0)
+    current_reorder = int(getattr(device, "reorder_point", 0) or 0)
+    if new_reorder_point is not None:
+        target_min = new_minimum_stock if new_minimum_stock is not None else current_minimum
+        if int(new_reorder_point) < int(target_min):
+            raise ValueError("reorder_point_below_minimum")
+    if new_minimum_stock is not None:
+        target_reorder = new_reorder_point if new_reorder_point is not None else current_reorder
+        if int(target_reorder) < int(new_minimum_stock):
+            updated_fields["reorder_point"] = int(new_minimum_stock)
+    if new_minimum_stock is not None:
+        updated_fields["minimum_stock"] = int(new_minimum_stock)
+    if new_reorder_point is not None:
+        updated_fields["reorder_point"] = int(updated_fields["reorder_point"])
 
     sensitive_before = {
         "costo_unitario": device.costo_unitario,
@@ -7728,6 +8011,8 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
                         "name": device.name,
                         "quantity": device.quantity,
                         "unit_price": device.unit_price or Decimal("0"),
+                        "minimum_stock": getattr(device, "minimum_stock", 0) or 0,
+                        "reorder_point": getattr(device, "reorder_point", 0) or 0,
                         "inventory_value": _device_value(device),
                     }
                 )
@@ -11564,6 +11849,45 @@ def create_purchase_order(
             operation="UPSERT",
             payload=_purchase_order_payload(order),
         )
+    return order
+
+
+def create_purchase_order_from_suggestion(
+    db: Session,
+    payload: schemas.PurchaseOrderCreate,
+    *,
+    created_by_id: int | None = None,
+    reason: str,
+) -> models.PurchaseOrder:
+    """Genera una orden de compra desde una sugerencia automatizada."""
+
+    order = create_purchase_order(db, payload, created_by_id=created_by_id)
+
+    items_details = [
+        {"device_id": item.device_id, "quantity_ordered": item.quantity_ordered}
+        for item in order.items
+    ]
+
+    with transactional_session(db):
+        _log_action(
+            db,
+            action="purchase_order_generated_from_suggestion",
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            performed_by_id=created_by_id,
+            details=json.dumps(
+                {
+                    "store_id": order.store_id,
+                    "supplier": order.supplier,
+                    "reason": reason,
+                    "source": "purchase_suggestion",
+                    "items": items_details,
+                }
+            ),
+        )
+        flush_session(db)
+
+    db.refresh(order)
     return order
 
 

@@ -17,7 +17,15 @@ type ProductDetail = {
   sku?: string;
   status?: "ACTIVE" | "INACTIVE" | string;
   images?: Array<{ id: string; url: string }>;
-  variants?: Array<{ id: string; sku: string; attrs: string; price: number; stock: number }>;
+  variants?: Array<{
+    id: string;
+    sku: string;
+    attrs: string;
+    price: number;
+    stock: number;
+    minimumStock: number;
+    reorderPoint: number;
+  }>;
   events?: Array<{ id: string; date: string; message: string }>;
   note?: string;
   attributes?: Array<{ key: string; value: string }>;
