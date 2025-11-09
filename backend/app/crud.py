@@ -13318,6 +13318,93 @@ def get_sale(db: Session, sale_id: int) -> models.Sale:
     return sale
 
 
+def get_sale_debt_context(
+    db: Session, sale: models.Sale
+) -> dict[str, object] | None:
+    """Reconstruye el estado de crédito histórico de una venta desde el ledger."""
+
+    if (
+        sale.customer_id is None
+        or sale.payment_method != models.PaymentMethod.CREDITO
+    ):
+        return None
+
+    statement = (
+        select(models.CustomerLedgerEntry)
+        .where(models.CustomerLedgerEntry.customer_id == sale.customer_id)
+        .where(models.CustomerLedgerEntry.reference_type == "sale")
+        .where(models.CustomerLedgerEntry.reference_id == str(sale.id))
+        .order_by(
+            models.CustomerLedgerEntry.created_at.asc(),
+            models.CustomerLedgerEntry.id.asc(),
+        )
+    )
+    ledger_entries = list(db.scalars(statement).unique())
+    if not ledger_entries:
+        return None
+
+    sale_entry = next(
+        (
+            entry
+            for entry in ledger_entries
+            if entry.entry_type == models.CustomerLedgerEntryType.SALE
+        ),
+        None,
+    )
+    if sale_entry is None:
+        return None
+
+    new_charge = _to_decimal(sale_entry.amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    previous_balance = (
+        _to_decimal(sale_entry.balance_after) - new_charge
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if previous_balance < Decimal("0"):
+        previous_balance = Decimal("0.00")
+
+    payment_entries = [
+        entry
+        for entry in ledger_entries
+        if entry.entry_type == models.CustomerLedgerEntryType.PAYMENT
+    ]
+    payments_applied = Decimal("0.00")
+    for entry in payment_entries:
+        details = entry.details or {}
+        applied_detail = details.get("applied_amount")
+        if applied_detail is not None:
+            try:
+                applied_amount = _to_decimal(applied_detail)
+            except (TypeError, ValueError, ArithmeticError):
+                applied_amount = Decimal("0")
+        else:
+            applied_amount = (-_to_decimal(entry.amount)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        payments_applied += applied_amount.quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+    payments_applied = payments_applied.quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    snapshot = credit.build_debt_snapshot(
+        previous_balance=previous_balance,
+        new_charges=new_charge,
+        payments_applied=payments_applied,
+    )
+    schedule = credit.build_credit_schedule(
+        base_date=sale.created_at,
+        remaining_balance=snapshot.remaining_balance,
+    )
+    return {
+        "snapshot": snapshot,
+        "schedule": schedule,
+        "payments": payment_entries,
+    }
+
+
 def _normalize_reservation_reason(reason: str | None) -> str:
     normalized = (reason or "").strip()
     if len(normalized) < 5:

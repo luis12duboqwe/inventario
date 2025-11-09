@@ -113,6 +113,41 @@ def _queue_hardware_events(
         hardware_channels.schedule_broadcast(background_tasks, store_id, display_event)
 
 
+def _resolve_sale_debt_context(
+    db: Session, sale: models.Sale
+) -> tuple[credit.DebtSnapshot | None, list[dict[str, object]]]:
+    ledger_context = crud.get_sale_debt_context(db, sale)
+    if ledger_context:
+        snapshot = ledger_context.get("snapshot")
+        schedule_data = list(ledger_context.get("schedule") or [])
+        return snapshot, schedule_data
+
+    if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO:
+        remaining = Decimal(sale.customer.outstanding_debt or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        new_charge = Decimal(sale.total_amount or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        previous_balance = (remaining - new_charge).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if previous_balance < Decimal("0"):
+            previous_balance = Decimal("0.00")
+        snapshot = credit.build_debt_snapshot(
+            previous_balance=previous_balance,
+            new_charges=new_charge,
+            payments_applied=Decimal("0"),
+        )
+        schedule_data = credit.build_credit_schedule(
+            base_date=sale.created_at,
+            remaining_balance=snapshot.remaining_balance,
+        )
+        return snapshot, schedule_data
+
+    return None, []
+
+
 @router.post(
     "/sale",
     response_model=schemas.POSSaleResponse,
@@ -343,29 +378,7 @@ def download_pos_receipt(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venta no encontrada") from exc
 
     config = crud.get_pos_config(db, sale.store_id)
-    snapshot = None
-    schedule_data: list[dict[str, object]] = []
-    if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO:
-        remaining = Decimal(sale.customer.outstanding_debt or 0).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        new_charge = Decimal(sale.total_amount or 0).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        previous_balance = (remaining - new_charge).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        if previous_balance < Decimal("0"):
-            previous_balance = Decimal("0.00")
-        snapshot = credit.build_debt_snapshot(
-            previous_balance=previous_balance,
-            new_charges=new_charge,
-            payments_applied=Decimal("0"),
-        )
-        schedule_data = credit.build_credit_schedule(
-            base_date=sale.created_at,
-            remaining_balance=snapshot.remaining_balance,
-        )
+    snapshot, schedule_data = _resolve_sale_debt_context(db, sale)
     pdf_bytes = pos_receipts.render_receipt_pdf(
         sale,
         config,
@@ -671,30 +684,9 @@ def read_pos_sale_detail_endpoint(
             detail="Venta no encontrada.",
         ) from exc
     config = crud.get_pos_config(db, sale.store_id)
-    snapshot = None
-    schedule_data: list[dict[str, object]] = []
+    snapshot, schedule_data = _resolve_sale_debt_context(db, sale)
     debt_summary = None
-    if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO:
-        remaining = Decimal(sale.customer.outstanding_debt or 0).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        new_charge = Decimal(sale.total_amount or 0).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        previous_balance = (remaining - new_charge).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        if previous_balance < Decimal("0"):
-            previous_balance = Decimal("0.00")
-        snapshot = credit.build_debt_snapshot(
-            previous_balance=previous_balance,
-            new_charges=new_charge,
-            payments_applied=Decimal("0"),
-        )
-        schedule_data = credit.build_credit_schedule(
-            base_date=sale.created_at,
-            remaining_balance=snapshot.remaining_balance,
-        )
+    if snapshot is not None:
         debt_summary = schemas.CustomerDebtSnapshot(
             previous_balance=snapshot.previous_balance,
             new_charges=snapshot.new_charges,
