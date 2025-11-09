@@ -1650,6 +1650,31 @@ def _repair_payload(order: models.RepairOrder) -> dict[str, object]:
     }
 
 
+def _merge_defaults(default: object, provided: object) -> object:
+    if isinstance(default, dict) and isinstance(provided, dict):
+        merged: dict[str, object] = {key: _merge_defaults(value, provided.get(key)) for key, value in default.items()}
+        for key, value in provided.items():
+            if key not in merged:
+                merged[key] = value
+            elif isinstance(value, (dict, list)):
+                merged[key] = _merge_defaults(merged[key], value)
+            elif value is not None:
+                merged[key] = value
+        return merged
+    if isinstance(default, list) and isinstance(provided, list):
+        return provided or default
+    return provided if provided is not None else default
+
+
+def _normalize_hardware_settings(
+    raw: dict[str, object] | None,
+) -> dict[str, object]:
+    default_settings = schemas.POSHardwareSettings().model_dump()
+    if not raw:
+        return default_settings
+    return _merge_defaults(default_settings, raw)
+
+
 def _pos_config_payload(config: models.POSConfig) -> dict[str, object]:
     return {
         "store_id": config.store_id,
@@ -1658,6 +1683,7 @@ def _pos_config_payload(config: models.POSConfig) -> dict[str, object]:
         "printer_name": config.printer_name,
         "printer_profile": config.printer_profile,
         "quick_product_ids": config.quick_product_ids,
+        "hardware_settings": config.hardware_settings,
         "updated_at": config.updated_at.isoformat(),
     }
 
@@ -14994,6 +15020,17 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
             db.refresh(config)
     else:
         db.refresh(config)
+    normalized_hardware = _normalize_hardware_settings(
+        config.hardware_settings if isinstance(config.hardware_settings, dict) else None
+    )
+    if config.hardware_settings != normalized_hardware:
+        with transactional_session(db):
+            config.hardware_settings = normalized_hardware
+            db.add(config)
+            flush_session(db)
+            db.refresh(config)
+    else:
+        config.hardware_settings = normalized_hardware
     return config
 
 
@@ -15015,6 +15052,12 @@ def update_pos_config(
             payload.printer_profile.strip() if payload.printer_profile else None
         )
         config.quick_product_ids = payload.quick_product_ids
+        if payload.hardware_settings is not None:
+            config.hardware_settings = payload.hardware_settings.model_dump()
+        else:
+            config.hardware_settings = _normalize_hardware_settings(
+                config.hardware_settings
+            )
         db.add(config)
         flush_session(db)
         db.refresh(config)

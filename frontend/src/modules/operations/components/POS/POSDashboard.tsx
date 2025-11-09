@@ -164,6 +164,9 @@ function POSDashboard(props: Props) {
         config={settings.config}
         devices={settings.devices}
         onSave={settings.onSave}
+        onTestPrinter={settings.onTestPrinter}
+        onOpenDrawer={settings.onOpenDrawer}
+        onDisplayPreview={settings.onDisplayPreview}
         loading={settings.loading}
       />
 

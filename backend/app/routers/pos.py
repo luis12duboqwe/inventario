@@ -1,7 +1,19 @@
 """Endpoints dedicados al punto de venta con control de stock y recibos."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from io import BytesIO
 from typing import Literal
 
@@ -16,6 +28,8 @@ from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import cash_register, pos_receipts
+from ..services.hardware import hardware_channels, receipt_printer_service
 from ..services import cash_register, pos_receipts, cash_reports
 from ..services import cash_register, payments, pos_receipts
 
@@ -30,6 +44,72 @@ def _ensure_feature_enabled() -> None:
         )
 
 
+def _sale_display_payload(sale: object) -> dict[str, object]:
+    items_payload: list[dict[str, object]] = []
+    for item in getattr(sale, "items", []) or []:
+        name = getattr(getattr(item, "device", None), "name", None) or getattr(
+            item, "description", None
+        )
+        items_payload.append(
+            {
+                "device_id": getattr(item, "device_id", None),
+                "name": name or f"Producto #{getattr(item, 'device_id', 'N/D')}",
+                "quantity": getattr(item, "quantity", 0),
+                "unit_price": float(getattr(item, "unit_price", 0)),
+                "total": float(getattr(item, "total_line", 0)),
+            }
+        )
+    total_amount = getattr(sale, "total_amount", None)
+    created_at = getattr(sale, "created_at", None)
+    created_at_iso = None
+    if isinstance(created_at, datetime):
+        created_at_iso = created_at.astimezone(timezone.utc).isoformat()
+    return {
+        "id": getattr(sale, "id", None),
+        "items": items_payload,
+        "total": float(total_amount) if total_amount is not None else None,
+        "created_at": created_at_iso,
+    }
+
+
+def _queue_hardware_events(
+    background_tasks: BackgroundTasks,
+    sale: object,
+    payment_method: object,
+    hardware_config: schemas.POSHardwareSettings,
+) -> None:
+    normalized_method = (
+        payment_method.value
+        if isinstance(payment_method, schemas.PaymentMethod)
+        else str(payment_method)
+    ).upper()
+    store_id = getattr(sale, "store_id", None)
+    if (
+        store_id is not None
+        and hardware_config.cash_drawer.enabled
+        and hardware_config.cash_drawer.auto_open_on_cash_sale
+        and normalized_method == schemas.PaymentMethod.EFECTIVO.value
+    ):
+        drawer_event: dict[str, object] = {
+            "event": "cash_drawer.open",
+            "requested_at": datetime.now(timezone.utc).isoformat(),
+            "pulse_duration_ms": hardware_config.cash_drawer.pulse_duration_ms,
+        }
+        if hardware_config.cash_drawer.connector:
+            drawer_event["connector"] = hardware_config.cash_drawer.connector.model_dump()
+        hardware_channels.schedule_broadcast(background_tasks, store_id, drawer_event)
+
+    if store_id is not None and hardware_config.customer_display.enabled:
+        sale_payload = _sale_display_payload(sale)
+        display_event: dict[str, object] = {
+            "event": "customer_display.sale",
+            "headline": f"Ticket #{sale_payload['id']}",
+            "sale": sale_payload,
+            "total": sale_payload["total"],
+        }
+        hardware_channels.schedule_broadcast(background_tasks, store_id, display_event)
+
+
 @router.post(
     "/sale",
     response_model=schemas.POSSaleResponse,
@@ -37,6 +117,7 @@ def _ensure_feature_enabled() -> None:
 )
 def register_pos_sale_endpoint(
     payload: schemas.POSSaleRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
@@ -113,6 +194,15 @@ def register_pos_sale_endpoint(
         sale_detail = crud.get_sale(db, sale.id)
         config = crud.get_pos_config(db, sale_detail.store_id)
         receipt_pdf = pos_receipts.render_receipt_base64(sale_detail, config)
+        hardware_config = schemas.POSHardwareSettings.model_validate(
+            config.hardware_settings
+        )
+        _queue_hardware_events(
+            background_tasks,
+            sale_detail,
+            normalized_payload.payment_method,
+            hardware_config,
+        )
         return schemas.POSSaleResponse(
             status="registered",
             sale=sale_detail,
@@ -429,6 +519,154 @@ def read_pos_config(
         terminals=settings.pos_payment_terminals,
         tip_suggestions=settings.pos_tip_suggestions,
     )
+
+
+@router.post(
+    "/hardware/print-test",
+    response_model=schemas.POSHardwareActionResponse,
+)
+async def trigger_pos_print_test(
+    payload: schemas.POSHardwarePrintTestRequest,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    config = crud.get_pos_config(db, payload.store_id)
+    hardware_config = schemas.POSHardwareSettings.model_validate(
+        config.hardware_settings
+    )
+    if not hardware_config.printers:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay impresoras registradas en la sucursal.",
+        )
+    printer = None
+    if payload.printer_name:
+        printer = next(
+            (
+                item
+                for item in hardware_config.printers
+                if item.name.lower() == payload.printer_name.lower()
+            ),
+            None,
+        )
+    if printer is None:
+        printer = next((item for item in hardware_config.printers if item.is_default), None)
+    if printer is None:
+        printer = hardware_config.printers[0]
+    result = await receipt_printer_service.print_sample(
+        printer.model_dump(),
+        sample=payload.sample,
+        metadata={
+            "mode": payload.mode.value,
+            "requested_by": current_user.id if current_user else None,
+            "reason": reason,
+        },
+    )
+    status_value = "ok" if result.success else "error"
+    return schemas.POSHardwareActionResponse(
+        status=status_value,
+        message=result.message,
+        details=result.payload,
+    )
+
+
+@router.post(
+    "/hardware/drawer/open",
+    response_model=schemas.POSHardwareActionResponse,
+)
+def trigger_cash_drawer_open(
+    payload: schemas.POSHardwareDrawerOpenRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    config = crud.get_pos_config(db, payload.store_id)
+    hardware_config = schemas.POSHardwareSettings.model_validate(
+        config.hardware_settings
+    )
+    if not hardware_config.cash_drawer.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La gaveta de efectivo no está habilitada en la sucursal.",
+        )
+    drawer_event: dict[str, object] = {
+        "event": "cash_drawer.open",
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        "pulse_duration_ms": payload.pulse_duration_ms
+        or hardware_config.cash_drawer.pulse_duration_ms,
+        "triggered_by": current_user.id if current_user else None,
+        "reason": reason,
+    }
+    connector = hardware_config.cash_drawer.connector
+    if payload.connector_identifier:
+        drawer_event["connector"] = {
+            "identifier": payload.connector_identifier,
+        }
+    elif connector:
+        drawer_event["connector"] = connector.model_dump()
+    hardware_channels.schedule_broadcast(background_tasks, payload.store_id, drawer_event)
+    return schemas.POSHardwareActionResponse(
+        status="queued",
+        message="Apertura de gaveta encolada.",
+        details=drawer_event,
+    )
+
+
+@router.post(
+    "/hardware/display/push",
+    response_model=schemas.POSHardwareActionResponse,
+)
+def push_customer_display_event(
+    payload: schemas.POSHardwareDisplayPushRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    config = crud.get_pos_config(db, payload.store_id)
+    hardware_config = schemas.POSHardwareSettings.model_validate(
+        config.hardware_settings
+    )
+    if not hardware_config.customer_display.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La pantalla de cliente no está habilitada en la sucursal.",
+        )
+    event_payload: dict[str, object] = {
+        "event": "customer_display.message",
+        "headline": payload.headline,
+        "message": payload.message,
+        "total": payload.total_amount,
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        "triggered_by": current_user.id if current_user else None,
+        "reason": reason,
+    }
+    hardware_channels.schedule_broadcast(background_tasks, payload.store_id, event_payload)
+    return schemas.POSHardwareActionResponse(
+        status="queued",
+        message="Mensaje enviado a pantallas de cliente.",
+        details=event_payload,
+    )
+
+
+@router.websocket("/hardware/ws")
+async def hardware_events_websocket(
+    websocket: WebSocket,
+    store_id: int = Query(..., alias="storeId", ge=1),
+):
+    await hardware_channels.connect(store_id, websocket)
+    try:
+        while True:
+            message = await websocket.receive_json()
+            if isinstance(message, dict):
+                await hardware_channels.handle_incoming(store_id, websocket, message)
+    except WebSocketDisconnect:
+        await hardware_channels.disconnect(store_id, websocket)
 
 
 @router.put(

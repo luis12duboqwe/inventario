@@ -420,6 +420,8 @@ __all__ = [
     "delete_price_list_item",
     "list_applicable_price_lists",
     "resolve_price_for_device",
+    "resolve_device_price",
+    "resolve_prices_for_devices",
     "resolve_prices_for_devices",
     "resolve_device_price",
     "compute_effective_price",

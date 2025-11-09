@@ -2293,6 +2293,8 @@ class POSConfig(Base):
         String(255), nullable=True)
     quick_product_ids: Mapped[list[int]] = mapped_column(
         JSON, nullable=False, default=list)
+    hardware_settings: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
     )

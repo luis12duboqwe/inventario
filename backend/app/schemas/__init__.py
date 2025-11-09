@@ -631,6 +631,7 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
+        description="Sucursal asociada cuando la lista es específica para una tienda.",
         description="Identificador de la sucursal asociada, cuando aplica.",
     )
     customer_id: int | None = Field(
@@ -746,6 +747,19 @@ class PriceListUpdate(BaseModel):
         if len(normalized) < 3:
             raise ValueError("La moneda debe contener al menos 3 caracteres.")
         return normalized
+
+
+class PriceListUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    priority: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = Field(default=None)
+    store_id: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+    starts_at: datetime | None = Field(default=None)
+    ends_at: datetime | None = Field(default=None)
+    valid_from: date | None = Field(default=None)
+    valid_until: date | None = Field(default=None)
 
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListUpdate":
@@ -5516,6 +5530,76 @@ class POSTaxInfo(BaseModel):
         return float(value)
 
 
+class POSConnectorType(str, enum.Enum):
+    """Tipos de conectores de hardware permitidos."""
+
+    USB = "usb"
+    NETWORK = "network"
+
+
+class POSPrinterMode(str, enum.Enum):
+    """Tipos de impresoras POS disponibles."""
+
+    THERMAL = "thermal"
+    FISCAL = "fiscal"
+
+
+class POSConnectorSettings(BaseModel):
+    """Configura el punto de conexión del dispositivo POS."""
+
+    type: POSConnectorType = Field(default=POSConnectorType.USB)
+    identifier: str = Field(default="predeterminado", max_length=120)
+    path: str | None = Field(default=None, max_length=255)
+    host: str | None = Field(default=None, max_length=255)
+    port: int | None = Field(default=None, ge=1, le=65535)
+
+    @model_validator(mode="after")
+    def _validate_target(self) -> "POSConnectorSettings":
+        if self.type is POSConnectorType.NETWORK:
+            if not self.host:
+                raise ValueError("Los conectores de red requieren host configurado.")
+        return self
+
+
+class POSPrinterSettings(BaseModel):
+    """Describe impresoras térmicas o fiscales."""
+
+    name: str = Field(..., max_length=120)
+    mode: POSPrinterMode = Field(default=POSPrinterMode.THERMAL)
+    connector: POSConnectorSettings = Field(default_factory=POSConnectorSettings)
+    paper_width_mm: int | None = Field(default=None, ge=40, le=120)
+    is_default: bool = Field(default=False)
+    vendor: str | None = Field(default=None, max_length=80)
+    supports_qr: bool = Field(default=False)
+
+
+class POSCashDrawerSettings(BaseModel):
+    """Define la gaveta de efectivo conectada al POS."""
+
+    enabled: bool = Field(default=False)
+    connector: POSConnectorSettings | None = Field(default=None)
+    auto_open_on_cash_sale: bool = Field(default=True)
+    pulse_duration_ms: int = Field(default=150, ge=50, le=500)
+
+
+class POSCustomerDisplaySettings(BaseModel):
+    """Configura la pantalla de cliente enlazada al POS."""
+
+    enabled: bool = Field(default=False)
+    channel: Literal["websocket", "local"] = Field(default="websocket")
+    brightness: int = Field(default=100, ge=10, le=100)
+    theme: Literal["dark", "light"] = Field(default="dark")
+    message_template: str | None = Field(default=None, max_length=160)
+
+
+class POSHardwareSettings(BaseModel):
+    """Agrupa la configuración de hardware POS por sucursal."""
+
+    printers: list[POSPrinterSettings] = Field(default_factory=list)
+    cash_drawer: POSCashDrawerSettings = Field(default_factory=POSCashDrawerSettings)
+    customer_display: POSCustomerDisplaySettings = Field(
+        default_factory=POSCustomerDisplaySettings
+    )
 class POSTerminalConfig(BaseModel):
     id: str
     label: str
@@ -5538,6 +5622,9 @@ class POSConfigResponse(BaseModel):
     printer_name: str | None
     printer_profile: str | None
     quick_product_ids: list[int]
+    hardware_settings: POSHardwareSettings = Field(
+        default_factory=POSHardwareSettings
+    )
     updated_at: datetime
     terminals: list[POSTerminalConfig] = Field(default_factory=list)
     tip_suggestions: list[float] = Field(default_factory=list)
@@ -5588,6 +5675,7 @@ class POSConfigUpdate(BaseModel):
     printer_name: str | None = Field(default=None, max_length=120)
     printer_profile: str | None = Field(default=None, max_length=255)
     quick_product_ids: list[int] = Field(default_factory=list)
+    hardware_settings: POSHardwareSettings | None = Field(default=None)
 
     @field_validator("quick_product_ids")
     @classmethod
@@ -5599,6 +5687,40 @@ class POSConfigUpdate(BaseModel):
                     "Los identificadores rápidos deben ser positivos.")
             normalized.append(int(item))
         return normalized
+
+
+class POSHardwarePrintTestRequest(BaseModel):
+    """Solicitud de impresión de prueba."""
+
+    store_id: int = Field(..., ge=1)
+    printer_name: str | None = Field(default=None, max_length=120)
+    mode: POSPrinterMode = Field(default=POSPrinterMode.THERMAL)
+    sample: str = Field(default="*** PRUEBA DE IMPRESIÓN POS ***", max_length=512)
+
+
+class POSHardwareDrawerOpenRequest(BaseModel):
+    """Solicitud para apertura de gaveta."""
+
+    store_id: int = Field(..., ge=1)
+    connector_identifier: str | None = Field(default=None, max_length=120)
+    pulse_duration_ms: int | None = Field(default=None, ge=50, le=500)
+
+
+class POSHardwareDisplayPushRequest(BaseModel):
+    """Eventos a mostrar en la pantalla de cliente."""
+
+    store_id: int = Field(..., ge=1)
+    headline: str = Field(..., max_length=80)
+    message: str | None = Field(default=None, max_length=240)
+    total_amount: float | None = Field(default=None, ge=0)
+
+
+class POSHardwareActionResponse(BaseModel):
+    """Respuesta estandarizada para acciones de hardware."""
+
+    status: Literal["queued", "ok", "error"] = Field(default="queued")
+    message: str = Field(default="")
+    details: dict[str, Any] | None = Field(default=None)
 
 
 class BackupRunRequest(BaseModel):
@@ -6036,6 +6158,17 @@ __all__ = [
     "SalesReportGroup",
     "SalesReportProduct",
     "SalesReport",
+    "POSConnectorType",
+    "POSPrinterMode",
+    "POSConnectorSettings",
+    "POSPrinterSettings",
+    "POSCashDrawerSettings",
+    "POSCustomerDisplaySettings",
+    "POSHardwareSettings",
+    "POSHardwarePrintTestRequest",
+    "POSHardwareDrawerOpenRequest",
+    "POSHardwareDisplayPushRequest",
+    "POSHardwareActionResponse",
     "POSDraftResponse",
     "POSConfigResponse",
     "POSTerminalConfig",
