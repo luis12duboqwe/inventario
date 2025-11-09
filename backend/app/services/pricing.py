@@ -88,15 +88,12 @@ def list_price_lists(
         customer_id=customer_id,
         include_inactive=include_inactive,
         include_global=include_global,
+        include_items=include_items,
     )
-    responses = [
+    return [
         schemas.PriceListResponse.model_validate(price_list, from_attributes=True)
         for price_list in price_lists
     ]
-    if not include_items:
-        for response in responses:
-            response.items = []
-    return responses
 
 
 def get_price_list(
