@@ -51,12 +51,7 @@ const INVENTORY_TABS: Array<{
   path: string;
 }> = [
   { id: "productos", label: "Productos", icon: <Boxes size={16} aria-hidden="true" />, path: "productos" },
-  {
-    id: "listas",
-    label: "Listas de precios",
-    icon: <DollarSign size={16} aria-hidden="true" />,
-    path: "listas-precios",
-  },
+  { id: "listas", label: "Listas de precios", icon: <DollarSign size={16} aria-hidden="true" />, path: "listas" },
   { id: "movimientos", label: "Movimientos", icon: <RefreshCcw size={16} aria-hidden="true" />, path: "movimientos" },
   { id: "proveedores", label: "Proveedores", icon: <Building2 size={16} aria-hidden="true" />, path: "proveedores" },
   { id: "alertas", label: "Alertas", icon: <AlertTriangle size={16} aria-hidden="true" />, path: "alertas" },
@@ -489,6 +484,32 @@ export function useInventoryLayoutState(): InventoryLayoutState {
     stores.forEach((store) => mapping.set(store.id, store.name));
     return mapping;
   }, [stores]);
+
+  const [labelingDevice, setLabelingDevice] = useState<Device | null>(null);
+  const [labelingStoreId, setLabelingStoreId] = useState<number | null>(null);
+  const [labelingStoreName, setLabelingStoreName] = useState<string | null>(null);
+  const [isLabelPrinterOpen, setIsLabelPrinterOpen] = useState(false);
+
+  const openLabelPrinter = useCallback(
+    (target: Device) => {
+      const resolvedStoreId = target.store_id ?? selectedStoreId ?? null;
+      setLabelingDevice(target);
+      setLabelingStoreId(resolvedStoreId);
+      const resolvedName =
+        (resolvedStoreId != null ? storeNameById.get(resolvedStoreId) : null) ??
+        target.store_name ??
+        selectedStore?.name ??
+        null;
+      setLabelingStoreName(resolvedName);
+      setIsLabelPrinterOpen(true);
+    },
+    [selectedStoreId, selectedStore, storeNameById],
+  );
+
+  const closeLabelPrinter = useCallback(() => {
+    setIsLabelPrinterOpen(false);
+    setLabelingDevice(null);
+  }, []);
 
   const highlightedDevices = useMemo(
     () => new Set(lowStockDevices.map((entry) => entry.device_id)),
@@ -1053,6 +1074,14 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         resolvePendingFields,
         resolveLowStockSeverity,
       },
+      labeling: {
+        open: isLabelPrinterOpen,
+        device: labelingDevice,
+        storeId: labelingStoreId,
+        storeName: labelingStoreName,
+        openLabelPrinter,
+        closeLabelPrinter,
+      },
       reservations: {
         items: reservations,
         meta: reservationsMeta,
@@ -1139,6 +1168,12 @@ export function useInventoryLayoutState(): InventoryLayoutState {
       renewInventoryReservation,
       cancelInventoryReservation,
       expiringReservations,
+      isLabelPrinterOpen,
+      labelingDevice,
+      labelingStoreId,
+      labelingStoreName,
+      openLabelPrinter,
+      closeLabelPrinter,
       variants,
       variantsLoading,
       variantsIncludeInactive,
