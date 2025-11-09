@@ -8,6 +8,8 @@ import {
 import { syncClient } from "../../../sync/services/syncClient"; // [PACK35-frontend]
 
 import type {
+  CashDenominationInput,
+  CashRegisterEntry,
   CashSession,
   Customer,
   Device,
@@ -20,10 +22,13 @@ import type {
 } from "../../../../api";
 import {
   closeCashSession,
+  createCashRegisterEntry,
   createCustomer,
+  getCashRegisterReport,
   getDevices,
   getPosConfig,
   listCashSessions,
+  listCashRegisterEntries,
   listCustomers,
   submitPosSale,
   updatePosConfig,
@@ -119,6 +124,27 @@ type CashHistoryState = {
   activeSessionId: number | null;
 };
 
+type CashRegisterState = {
+  session: CashSession | null;
+  entries: CashRegisterEntry[];
+  loading: boolean;
+  error: string | null;
+  denominations: Record<string, number>;
+  onDenominationChange: (value: number, quantity: number) => void;
+  reconciliationNotes: string;
+  onReconciliationNotesChange: (value: string) => void;
+  differenceReason: string;
+  onDifferenceReasonChange: (value: string) => void;
+  onRegisterEntry: (payload: {
+    type: CashRegisterEntry["entry_type"];
+    amount: number;
+    reason: string;
+    notes?: string;
+  }) => Promise<void>;
+  onRefreshEntries: () => Promise<void>;
+  onDownloadReport: () => Promise<void>;
+};
+
 type ReceiptState = {
   sale: Sale | null;
   receiptUrl: string | null;
@@ -156,6 +182,7 @@ export type UsePosDashboardControllerReturn = {
   cart: CartState;
   paymentModal: PaymentModalProps;
   cashHistory: CashHistoryState;
+  cashRegister: CashRegisterState;
   receipt: ReceiptState;
   settings: SettingsState;
   configReasonModal: ConfigReasonModalState;
@@ -191,6 +218,12 @@ export function usePosDashboardController({
   const [customerLoading, setCustomerLoading] = useState(false);
   const [cashSessions, setCashSessions] = useState<CashSession[]>([]);
   const [cashLoading, setCashLoading] = useState(false);
+  const [cashEntries, setCashEntries] = useState<CashRegisterEntry[]>([]);
+  const [cashRegisterLoading, setCashRegisterLoading] = useState(false);
+  const [cashRegisterError, setCashRegisterError] = useState<string | null>(null);
+  const [denominations, setDenominations] = useState<Record<string, number>>({});
+  const [reconciliationNotes, setReconciliationNotes] = useState("");
+  const [differenceReason, setDifferenceReason] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [configReasonOpen, setConfigReasonOpen] = useState(false);
   const [configReason, setConfigReason] = useState("Ajuste configuración POS");
@@ -224,12 +257,54 @@ export function usePosDashboardController({
     [token],
   );
 
+  const loadCashEntries = useCallback(
+    async (sessionId: number) => {
+      try {
+        setCashRegisterLoading(true);
+        setCashRegisterError(null);
+        const data = await listCashRegisterEntries(
+          token,
+          sessionId,
+          "Consulta movimientos manuales de caja",
+        );
+        setCashEntries(data);
+      } catch (err) {
+        setCashRegisterError(
+          err instanceof Error
+            ? err.message
+            : "No fue posible cargar los movimientos de caja.",
+        );
+      } finally {
+        setCashRegisterLoading(false);
+      }
+    },
+    [token],
+  );
+
   const refreshCashSessions = useCallback(
     async (storeId: number) => {
       try {
         setCashLoading(true);
         const history = await listCashSessions(token, storeId, 20);
         setCashSessions(history);
+        const opened = history.find((session) => session.status === "ABIERTO") ?? null;
+        if (opened) {
+          setReconciliationNotes(opened.reconciliation_notes ?? "");
+          setDifferenceReason(opened.difference_reason ?? "");
+          setDenominations(
+            Object.fromEntries(
+              Object.entries(opened.denomination_breakdown ?? {}).map(
+                ([value, quantity]) => [value, Number(quantity)],
+              ),
+            ),
+          );
+          await loadCashEntries(opened.id);
+        } else {
+          setCashEntries([]);
+          setDenominations({});
+          setReconciliationNotes("");
+          setDifferenceReason("");
+        }
       } catch {
         setError((current) =>
           current ?? "No fue posible cargar las sesiones de caja.",
@@ -238,7 +313,7 @@ export function usePosDashboardController({
         setCashLoading(false);
       }
     },
-    [token],
+    [token, loadCashEntries],
   );
 
   useEffect(() => {
@@ -769,6 +844,10 @@ export function usePosDashboardController({
       setMessage("Caja abierta correctamente.");
       setCashSessions((current) => [session, ...current]);
       setPayment((current) => ({ ...current, cashSessionId: session.id }));
+      setDenominations({});
+      setReconciliationNotes("");
+      setDifferenceReason("");
+      setCashEntries([]);
     } catch (err) {
       setError(
         err instanceof Error
@@ -821,7 +900,6 @@ export function usePosDashboardController({
         breakdown[method] = Number(parsed.toFixed(2));
       }
     }
-    const notes = window.prompt("Notas de cierre (opcional)", "Cierre turno POS");
     const reason = window.prompt(
       "Motivo corporativo para cerrar caja",
       "Cierre de caja POS",
@@ -838,9 +916,30 @@ export function usePosDashboardController({
       if (Object.keys(breakdown).length > 0) {
         closePayload.payment_breakdown = breakdown;
       }
-      const normalizedNotes = notes?.trim();
-      if (normalizedNotes) {
-        closePayload.notes = normalizedNotes;
+      const normalizedDenominations: CashDenominationInput[] = Object.entries(
+        denominations,
+      )
+        .map(([value, qty]) => ({ value: Number(value), quantity: qty }))
+        .filter((item) => item.quantity > 0);
+      if (normalizedDenominations.length > 0) {
+        closePayload.denominations = normalizedDenominations;
+      }
+      const trimmedNotes = reconciliationNotes.trim();
+      if (trimmedNotes) {
+        closePayload.reconciliation_notes = trimmedNotes;
+      }
+      const trimmedDifference = differenceReason.trim();
+      const expectedDifference =
+        Number(closingAmount.toFixed(2)) -
+        Number(activeCashSession.expected_amount ?? 0);
+      if (Math.abs(expectedDifference) >= 0.01 && trimmedDifference.length < 5) {
+        setError(
+          "Describe un motivo corporativo para la diferencia antes de cerrar la caja.",
+        );
+        return;
+      }
+      if (trimmedDifference) {
+        closePayload.difference_reason = trimmedDifference;
       }
       const closed = await closeCashSession(
         token,
@@ -852,6 +951,9 @@ export function usePosDashboardController({
         current.map((session) => (session.id === closed.id ? closed : session)),
       );
       setPayment((current) => ({ ...current, cashSessionId: null }));
+      setDenominations(closed.denomination_breakdown ?? {});
+      setReconciliationNotes(closed.reconciliation_notes ?? "");
+      setDifferenceReason(closed.difference_reason ?? "");
       await refreshCashSessions(selectedStoreId);
     } catch (err) {
       setError(
@@ -890,6 +992,118 @@ export function usePosDashboardController({
         paymentBreakdown: next,
       };
     });
+  };
+
+  const handleDenominationChange = (value: number, quantity: number) => {
+    const key = value.toFixed(2);
+    setDenominations((current) => {
+      const next = { ...current };
+      if (quantity <= 0) {
+        delete next[key];
+      } else {
+        next[key] = quantity;
+      }
+      return next;
+    });
+  };
+
+  const handleRefreshCashEntries = useCallback(async () => {
+    if (!activeCashSession) {
+      setCashEntries([]);
+      return;
+    }
+    await loadCashEntries(activeCashSession.id);
+  }, [activeCashSession, loadCashEntries]);
+
+  const handleRegisterCashEntry = async ({
+    type,
+    amount,
+    reason: entryReason,
+    notes,
+  }: {
+    type: CashRegisterEntry["entry_type"];
+    amount: number;
+    reason: string;
+    notes?: string;
+  }) => {
+    if (!activeCashSession) {
+      setCashRegisterError("Abre una sesión de caja para registrar movimientos.");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setCashRegisterError("Indica un monto válido para el movimiento de caja.");
+      return;
+    }
+    const normalizedReason = entryReason.trim();
+    if (normalizedReason.length < 5) {
+      setCashRegisterError("Describe un motivo corporativo de al menos 5 caracteres.");
+      return;
+    }
+    try {
+      setCashRegisterLoading(true);
+      setCashRegisterError(null);
+      await createCashRegisterEntry(
+        token,
+        {
+          session_id: activeCashSession.id,
+          entry_type: type,
+          amount: Number(Number(amount).toFixed(2)),
+          reason: normalizedReason,
+          notes: notes?.trim() || undefined,
+        },
+        type === "INGRESO"
+          ? "Registro ingreso manual de caja"
+          : "Registro egreso manual de caja",
+      );
+      setMessage(
+        type === "INGRESO"
+          ? "Ingreso de caja registrado correctamente."
+          : "Egreso de caja registrado correctamente.",
+      );
+      await loadCashEntries(activeCashSession.id);
+      if (selectedStoreId) {
+        await refreshCashSessions(selectedStoreId);
+      }
+    } catch (err) {
+      setCashRegisterError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible registrar el movimiento de caja.",
+      );
+    } finally {
+      setCashRegisterLoading(false);
+    }
+  };
+
+  const handleDownloadCashReport = async () => {
+    const session = activeCashSession;
+    if (!session) {
+      setCashRegisterError("No hay una sesión de caja abierta para descargar el reporte.");
+      return;
+    }
+    try {
+      setCashRegisterError(null);
+      const blob = (await getCashRegisterReport(
+        token,
+        session.id,
+        "Descarga reporte de cierre de caja",
+        "pdf",
+      )) as Blob;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `cierre_caja_${session.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setCashRegisterError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible descargar el reporte de cierre de caja.",
+      );
+    }
   };
 
   const handleRefreshCashHistory = () => {
@@ -985,6 +1199,22 @@ export function usePosDashboardController({
     activeSessionId: activeCashSession?.id ?? null,
   };
 
+  const cashRegisterState: CashRegisterState = {
+    session: activeCashSession,
+    entries: cashEntries,
+    loading: cashRegisterLoading,
+    error: cashRegisterError,
+    denominations,
+    onDenominationChange: handleDenominationChange,
+    reconciliationNotes,
+    onReconciliationNotesChange: setReconciliationNotes,
+    differenceReason,
+    onDifferenceReasonChange: setDifferenceReason,
+    onRegisterEntry: handleRegisterCashEntry,
+    onRefreshEntries: handleRefreshCashEntries,
+    onDownloadReport: handleDownloadCashReport,
+  };
+
   const receiptState: ReceiptState = {
     sale: lastSale,
     receiptUrl,
@@ -1018,6 +1248,7 @@ export function usePosDashboardController({
     cart: cartState,
     paymentModal: paymentModalProps,
     cashHistory: cashHistoryState,
+    cashRegister: cashRegisterState,
     receipt: receiptState,
     settings: settingsState,
     configReasonModal: configReasonModalState,

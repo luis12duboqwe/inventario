@@ -1379,15 +1379,46 @@ def build_cash_close_report(
         store_id=store_id,
     )
 
+    entries_stmt = (
+        select(
+            models.CashRegisterEntry.entry_type,
+            func.coalesce(func.sum(models.CashRegisterEntry.amount), 0),
+        )
+        .select_from(models.CashRegisterEntry)
+        .join(
+            models.CashRegisterSession,
+            models.CashRegisterEntry.session_id == models.CashRegisterSession.id,
+        )
+        .where(
+            models.CashRegisterEntry.created_at >= date_from,
+            models.CashRegisterEntry.created_at < date_to,
+        )
+    )
+    if store_id is not None:
+        entries_stmt = entries_stmt.where(
+            models.CashRegisterSession.store_id == store_id
+        )
+    entries_stmt = entries_stmt.group_by(models.CashRegisterEntry.entry_type)
+    incomes_total = Decimal("0.00")
     expenses_total = Decimal("0.00")
+    for entry_type, total in db.execute(entries_stmt):
+        normalized_total = _to_decimal(total).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if entry_type == models.CashEntryType.INGRESO:
+            incomes_total = normalized_total
+        elif entry_type == models.CashEntryType.EGRESO:
+            expenses_total = normalized_total
+
     closing_suggested = (
-        opening_total + sales_total - refund_total - expenses_total
+        opening_total + sales_total + incomes_total - refund_total - expenses_total
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     return schemas.CashCloseReport(
         opening=float(opening_total),
         sales_gross=float(sales_total),
         refunds=float(refund_total),
+        incomes=float(incomes_total),
         expenses=float(expenses_total),
         closing_suggested=float(closing_suggested),
     )
@@ -14747,6 +14778,34 @@ def open_cash_session(
     return session
 
 
+def _cash_entries_totals(
+    db: Session,
+    *,
+    session_id: int,
+) -> tuple[Decimal, Decimal]:
+    """Resume los ingresos y egresos registrados en la sesión."""
+
+    entries_stmt = (
+        select(
+            models.CashRegisterEntry.entry_type,
+            func.coalesce(func.sum(models.CashRegisterEntry.amount), 0),
+        )
+        .where(models.CashRegisterEntry.session_id == session_id)
+        .group_by(models.CashRegisterEntry.entry_type)
+    )
+    incomes = Decimal("0")
+    expenses = Decimal("0")
+    for entry_type, total in db.execute(entries_stmt):
+        normalized_total = _to_decimal(total).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if entry_type == models.CashEntryType.INGRESO:
+            incomes = normalized_total
+        elif entry_type == models.CashEntryType.EGRESO:
+            expenses = normalized_total
+    return incomes, expenses
+
+
 def close_cash_session(
     db: Session,
     payload: schemas.CashSessionCloseRequest,
@@ -14784,6 +14843,15 @@ def close_cash_session(
             Decimal(str(reported_amount))
         )
 
+    incomes_total, expenses_total = _cash_entries_totals(
+        db, session_id=session.id
+    )
+    expected_cash = (
+        session.opening_amount
+        + sales_totals.get(models.PaymentMethod.EFECTIVO.value, Decimal("0"))
+        + incomes_total
+        - expenses_total
+    )
     session.payment_breakdown = breakdown_snapshot
 
     expected_cash = session.opening_amount + \
@@ -14793,6 +14861,24 @@ def close_cash_session(
     session.difference_amount = (
         session.closing_amount - session.expected_amount
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    session.reconciliation_notes = payload.reconciliation_notes
+
+    if session.difference_amount != Decimal("0") and not payload.difference_reason:
+        raise ValueError("difference_reason_required")
+    session.difference_reason = payload.difference_reason
+
+    denomination_breakdown: dict[str, int] = {}
+    for denomination in payload.denominations:
+        value = _to_decimal(denomination.value).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        quantity = max(0, int(denomination.quantity))
+        if quantity <= 0:
+            continue
+        key = f"{value:.2f}"
+        denomination_breakdown[key] = quantity
+    session.denomination_breakdown = denomination_breakdown
+
     if payload.notes:
         session.notes = (session.notes or "") + \
             f"\n{payload.notes}" if session.notes else payload.notes
@@ -14811,6 +14897,8 @@ def close_cash_session(
             details=json.dumps(
                 {
                     "difference": float(session.difference_amount),
+                    "difference_reason": session.difference_reason,
+                    "denominations": denomination_breakdown,
                     "reason": reason,
                 }
             ),
@@ -14818,6 +14906,76 @@ def close_cash_session(
         flush_session(db)
         db.refresh(session)
     return session
+
+
+def record_cash_entry(
+    db: Session,
+    payload: schemas.CashRegisterEntryCreate,
+    *,
+    created_by_id: int | None,
+    reason: str | None = None,
+) -> models.CashRegisterEntry:
+    session = get_cash_session(db, payload.session_id)
+    if session.status != models.CashSessionStatus.ABIERTO:
+        raise ValueError("cash_session_not_open")
+
+    amount = _to_decimal(payload.amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    entry = models.CashRegisterEntry(
+        session_id=session.id,
+        entry_type=payload.entry_type,
+        amount=amount,
+        reason=payload.reason,
+        notes=payload.notes,
+        created_by_id=created_by_id,
+    )
+
+    with transactional_session(db):
+        db.add(entry)
+
+        expected_delta = amount if payload.entry_type == models.CashEntryType.INGRESO else -amount
+        session.expected_amount = (
+            session.expected_amount + expected_delta
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        db.add(session)
+        flush_session(db)
+        db.refresh(entry)
+        db.refresh(session)
+
+        _log_action(
+            db,
+            action="cash_entry_recorded",
+            entity_type="cash_session",
+            entity_id=str(session.id),
+            performed_by_id=created_by_id,
+            details=json.dumps(
+                {
+                    "entry_type": payload.entry_type,
+                    "amount": float(amount),
+                    "reason": payload.reason,
+                    "notes": payload.notes,
+                    "reason_header": reason,
+                }
+            ),
+        )
+        flush_session(db)
+        db.refresh(entry)
+    return entry
+
+
+def list_cash_entries(
+    db: Session,
+    *,
+    session_id: int,
+) -> list[models.CashRegisterEntry]:
+    statement = (
+        select(models.CashRegisterEntry)
+        .where(models.CashRegisterEntry.session_id == session_id)
+        .order_by(models.CashRegisterEntry.created_at.desc())
+    )
+    return list(db.scalars(statement))
 
 
 def get_pos_config(db: Session, store_id: int) -> models.POSConfig:

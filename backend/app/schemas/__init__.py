@@ -22,6 +22,7 @@ from pydantic import (
 from ..models import (
     BackupComponent,
     BackupMode,
+    CashEntryType,
     CashSessionStatus,
     CommercialState,
     RecurringOrderType,
@@ -3748,6 +3749,7 @@ class CashCloseReport(BaseModel):
     opening: float = Field(default=0.0)
     sales_gross: float = Field(default=0.0, alias="salesGross")
     refunds: float = Field(default=0.0)
+    incomes: float = Field(default=0.0)
     expenses: float = Field(default=0.0)
     closing_suggested: float = Field(default=0.0, alias="closingSuggested")
 
@@ -5218,6 +5220,57 @@ class POSSaleDetailResponse(BaseModel):
     receipt_pdf_base64: str | None = None
 
 
+class CashDenominationInput(BaseModel):
+    value: Decimal = Field(..., gt=Decimal("0"))
+    quantity: int = Field(default=0, ge=0)
+
+    @field_serializer("value")
+    @classmethod
+    def _serialize_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class CashRegisterEntryBase(BaseModel):
+    session_id: int = Field(..., ge=1)
+    entry_type: CashEntryType
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    reason: str = Field(..., min_length=5, max_length=255)
+    notes: str | None = Field(default=None, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("El motivo debe tener al menos 5 caracteres.")
+        return normalized
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class CashRegisterEntryCreate(CashRegisterEntryBase):
+    pass
+
+
+class CashRegisterEntryResponse(CashRegisterEntryBase):
+    id: int
+    created_by_id: int | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+
 class CashSessionOpenRequest(BaseModel):
     store_id: int = Field(..., ge=1)
     opening_amount: Decimal = Field(..., ge=Decimal("0"))
@@ -5237,6 +5290,9 @@ class CashSessionCloseRequest(BaseModel):
     closing_amount: Decimal = Field(..., ge=Decimal("0"))
     notes: str | None = Field(default=None, max_length=255)
     payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
+    denominations: list["CashDenominationInput"] = Field(default_factory=list)
+    reconciliation_notes: str | None = Field(default=None, max_length=255)
+    difference_reason: str | None = Field(default=None, max_length=255)
 
     @field_validator("notes")
     @classmethod
@@ -5261,6 +5317,14 @@ class CashSessionCloseRequest(BaseModel):
             normalized[method] = Decimal(str(amount))
         return normalized
 
+    @field_validator("reconciliation_notes", "difference_reason")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
 
 class CashSessionResponse(BaseModel):
     id: int
@@ -5271,11 +5335,15 @@ class CashSessionResponse(BaseModel):
     expected_amount: Decimal
     difference_amount: Decimal
     payment_breakdown: dict[str, float]
+    denomination_breakdown: dict[str, int]
+    reconciliation_notes: str | None
+    difference_reason: str | None
     notes: str | None
     opened_by_id: int | None
     closed_by_id: int | None
     opened_at: datetime
     closed_at: datetime | None
+    entries: list["CashRegisterEntryResponse"] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -5293,6 +5361,11 @@ class CashSessionResponse(BaseModel):
     @classmethod
     def _serialize_breakdown(cls, value: dict[str, float]) -> dict[str, float]:
         return {key: float(amount) for key, amount in value.items()}
+
+    @field_serializer("denomination_breakdown")
+    @classmethod
+    def _serialize_denominations(cls, value: dict[str, int]) -> dict[str, int]:
+        return {str(denomination): int(count) for denomination, count in value.items()}
 
 
 class POSSessionOpenPayload(BaseModel):
@@ -5381,6 +5454,9 @@ class POSSessionSummary(BaseModel):
     expected_amount: Decimal | None = None
     difference_amount: Decimal | None = None
     payment_breakdown: dict[str, float] = Field(default_factory=dict)
+    denomination_breakdown: dict[str, int] = Field(default_factory=dict)
+    reconciliation_notes: str | None = None
+    difference_reason: str | None = None
 
     @classmethod
     def from_model(cls, session: "models.CashRegisterSession") -> "POSSessionSummary":
@@ -5400,6 +5476,12 @@ class POSSessionSummary(BaseModel):
             payment_breakdown={
                 key: float(value) for key, value in (session.payment_breakdown or {}).items()
             },
+            denomination_breakdown={
+                str(key): int(count)
+                for key, count in (session.denomination_breakdown or {}).items()
+            },
+            reconciliation_notes=getattr(session, "reconciliation_notes", None),
+            difference_reason=getattr(session, "difference_reason", None),
         )
 
     @field_serializer(
@@ -5413,6 +5495,11 @@ class POSSessionSummary(BaseModel):
         if value is None:
             return None
         return float(value)
+
+    @field_serializer("denomination_breakdown")
+    @classmethod
+    def _serialize_optional_denominations(cls, value: dict[str, int]) -> dict[str, int]:
+        return {str(denomination): int(count) for denomination, count in value.items()}
 
 
 class POSTaxInfo(BaseModel):
@@ -5814,6 +5901,12 @@ __all__ = [
     "SalesSummaryReport",
     "SalesByProductItem",
     "CashCloseReport",
+    "CashDenominationInput",
+    "CashRegisterEntryCreate",
+    "CashRegisterEntryResponse",
+    "CashSessionOpenRequest",
+    "CashSessionCloseRequest",
+    "CashSessionResponse",
     "AuditReminderEntry",
     "AuditReminderSummary",
     "DashboardAuditAlerts",
@@ -6031,3 +6124,6 @@ __all__ = [
     "StockoutForecastMetric",
     "HealthStatusResponse",
 ]
+
+CashSessionCloseRequest.model_rebuild()
+CashSessionResponse.model_rebuild()
