@@ -160,6 +160,40 @@ function InventoryAlerts({
                   {item.name} · {item.store_name}
                 </span>
                 <span className="muted-text">Severidad: {severityLabels[item.severity]}</span>
+                <div className="low-stock-tags" aria-label="Indicadores de reposición">
+                  <span className="stock-tag tag-minimum">Mínimo {item.minimum_stock} uds</span>
+                  <span className="stock-tag tag-reorder">Reorden {item.reorder_point} uds</span>
+                  {item.reorder_gap > 0 ? (
+                    <span className="stock-tag tag-gap">Faltan {item.reorder_gap} uds</span>
+                  ) : (
+                    <span className="stock-tag tag-gap safe">En rango</span>
+                  )}
+                  {item.projected_days !== null ? (
+                    <span
+                      className={`stock-tag tag-forecast ${
+                        item.projected_days <= 3
+                          ? "critical"
+                          : item.projected_days <= 7
+                            ? "warning"
+                            : "notice"
+                      }`}
+                    >
+                      Pronóstico {item.projected_days}d
+                    </span>
+                  ) : (
+                    <span className="stock-tag tag-forecast notice">Sin pronóstico</span>
+                  )}
+                  {item.average_daily_sales !== null ? (
+                    <span className="stock-tag tag-avg">
+                      Venta diaria {item.average_daily_sales.toFixed(1)} uds
+                    </span>
+                  ) : null}
+                  {item.insights.map((insight, index) => (
+                    <span key={`${item.device_id}-insight-${index}`} className="stock-tag tag-insight">
+                      {insight}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="low-stock-meta">
                 <span className="low-stock-quantity">{item.quantity} uds</span>

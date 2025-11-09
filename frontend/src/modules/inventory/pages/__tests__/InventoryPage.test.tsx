@@ -274,6 +274,14 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     cancel: vi.fn().mockResolvedValue(undefined),
     expiringSoon: [],
   },
+  labeling: {
+    open: false,
+    device: null,
+    storeId: null,
+    storeName: null,
+    openLabelPrinter: vi.fn(),
+    closeLabelPrinter: vi.fn(),
+  },
 });
 
 describe("InventoryPage", () => {

@@ -22,6 +22,7 @@ import {
 import BackToTopButton from "../../../shared/components/BackToTopButton";
 import CompactModeToggle from "../../../shared/components/CompactModeToggle";
 import GlobalMetrics from "../components/GlobalMetrics";
+import StockAlertsWidget from "../components/StockAlertsWidget";
 import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
 import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
@@ -613,6 +614,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
           />
 
           <GlobalMetrics />
+          <StockAlertsWidget />
 
           <AnimatePresence>
             {message ? (
