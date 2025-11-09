@@ -14447,6 +14447,7 @@ def register_sale_return(
     items_by_device = {item.device_id: item for item in sale.items}
     ledger_entry: models.CustomerLedgerEntry | None = None
     customer_to_sync: models.Customer | None = None
+    stores_to_recalculate: set[int] = {sale.store_id}
 
     non_sellable_dispositions = {
         schemas.ReturnDisposition.DEFECTUOSO,
@@ -14487,15 +14488,60 @@ def register_sale_return(
                 else:
                     warehouse_store = get_store(db, warehouse_id)
 
+            movement_store_id = warehouse_id or sale.store_id
+            stores_to_recalculate.add(movement_store_id)
+            target_device = device
+            if warehouse_id is not None and warehouse_id != sale.store_id:
+                if device.imei or device.serial:
+                    device.store_id = warehouse_id
+                    flush_session(db)
+                    target_device = device
+                else:
+                    destination_statement = select(models.Device).where(
+                        models.Device.store_id == warehouse_id,
+                        models.Device.sku == device.sku,
+                    )
+                    destination_device = db.scalars(destination_statement).first()
+                    if destination_device is None:
+                        destination_device = models.Device(
+                            store_id=warehouse_id,
+                            sku=device.sku,
+                            name=device.name,
+                            quantity=0,
+                            unit_price=device.unit_price,
+                            marca=device.marca,
+                            modelo=device.modelo,
+                            categoria=device.categoria,
+                            condicion=device.condicion,
+                            color=device.color,
+                            capacidad_gb=device.capacidad_gb,
+                            capacidad=device.capacidad,
+                            estado=device.estado,
+                            proveedor=device.proveedor,
+                            costo_unitario=_quantize_currency(previous_cost),
+                            margen_porcentaje=device.margen_porcentaje,
+                            garantia_meses=device.garantia_meses,
+                            lote=device.lote,
+                            fecha_compra=device.fecha_compra,
+                            fecha_ingreso=device.fecha_ingreso,
+                            ubicacion=device.ubicacion,
+                            completo=device.completo,
+                            descripcion=device.descripcion,
+                            imagen_url=device.imagen_url,
+                        )
+                        db.add(destination_device)
+                        flush_session(db)
+                    target_device = destination_device
+
             movement = _register_inventory_movement(
                 db,
-                store_id=sale.store_id,
-                device_id=item.device_id,
+                store_id=movement_store_id,
+                device_id=target_device.id,
                 movement_type=models.MovementType.IN,
                 quantity=item.quantity,
                 comment=_build_sale_return_comment(
                     sale,
-                    device,
+                    target_device,
                     item.reason or reason,
                     disposition=disposition,
                     warehouse_name=warehouse_store.name if warehouse_store else None,
@@ -14505,7 +14551,7 @@ def register_sale_return(
                 reference_type="sale_return",
                 reference_id=str(sale.id),
             )
-            movement_device = movement.device or device
+            movement_device = movement.device or target_device
             if (
                 disposition == schemas.ReturnDisposition.VENDIBLE
                 and movement_device.quantity > 0
@@ -14533,7 +14579,8 @@ def register_sale_return(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
 
-        _recalculate_store_inventory_value(db, sale.store_id)
+        for store_id in stores_to_recalculate:
+            _recalculate_store_inventory_value(db, store_id)
 
         flush_session(db)
         for sale_return in returns:
