@@ -1,7 +1,7 @@
 """Endpoints para ventas y devoluciones."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -100,6 +100,31 @@ def list_sales_endpoint(
         performed_by_id=performed_by_id,
         product_id=product_id,
         query=search,
+    )
+
+
+@router.get(
+    "/history/search",
+    response_model=schemas.SaleHistorySearchResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def search_sales_history_endpoint(
+    ticket: str | None = Query(default=None, min_length=1, max_length=120),
+    search_date: date | None = Query(default=None, alias="date"),
+    customer: str | None = Query(default=None, min_length=2, max_length=120),
+    qr: str | None = Query(default=None, min_length=10, max_length=2048),
+    limit: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+):
+    _ensure_feature_enabled()
+    return crud.search_sales_history(
+        db,
+        ticket=ticket,
+        date_value=search_date,
+        customer=customer,
+        qr=qr,
+        limit=limit,
     )
 
 

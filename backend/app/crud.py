@@ -1,10 +1,13 @@
 """Operaciones de base de datos para las entidades principales."""
 from __future__ import annotations
 
+import base64
+import binascii
 import copy
 import csv
 import json
 import math
+import re
 import secrets
 from dataclasses import dataclass
 from collections import defaultdict
@@ -13337,6 +13340,140 @@ def get_sale(db: Session, sale_id: int) -> models.Sale:
         records=[sale],
     )
     return sale
+
+
+def _extract_sale_id(value: object | None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str):
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if normalized.isdigit():
+            return int(normalized)
+        digits = re.findall(r"\d+", normalized)
+        if digits:
+            try:
+                return int(digits[-1])
+            except ValueError:
+                return None
+    return None
+
+
+def _parse_qr_payload(raw: str | None) -> dict[str, object] | None:
+    if not raw:
+        return None
+    normalized = raw.strip()
+    if not normalized:
+        return None
+
+    candidates = [normalized]
+    try:
+        decoded = base64.b64decode(normalized).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        decoded = None
+    if decoded and decoded not in candidates:
+        candidates.append(decoded)
+
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
+
+
+def _load_sales_for_statement(db: Session, statement: Select, *, limit: int) -> list[models.Sale]:
+    final_statement = statement.limit(limit)
+    sales = list(db.scalars(final_statement).unique())
+    _attach_last_audit_trails(
+        db,
+        entity_type="sale",
+        records=sales,
+    )
+    return sales
+
+
+def search_sales_history(
+    db: Session,
+    *,
+    ticket: str | None = None,
+    date_value: date | None = None,
+    customer: str | None = None,
+    qr: str | None = None,
+    limit: int = 25,
+) -> schemas.SaleHistorySearchResponse:
+    bucket_ticket: list[models.Sale] = []
+    bucket_date: list[models.Sale] = []
+    bucket_customer: list[models.Sale] = []
+    bucket_qr: list[models.Sale] = []
+
+    if ticket:
+        sale_id = _extract_sale_id(ticket)
+        if sale_id:
+            try:
+                bucket_ticket = [get_sale(db, sale_id)]
+            except LookupError:
+                bucket_ticket = []
+
+    if date_value is not None:
+        start_dt = datetime.combine(date_value, datetime.min.time()).replace(tzinfo=None)
+        end_dt = datetime.combine(date_value, datetime.max.time()).replace(tzinfo=None)
+        bucket_date = list_sales(
+            db,
+            date_from=start_dt,
+            date_to=end_dt,
+            limit=limit,
+        )
+
+    if customer:
+        normalized = f"%{customer.strip().lower()}%"
+        if normalized.strip("%"):
+            statement = (
+                select(models.Sale)
+                .options(
+                    joinedload(models.Sale.store),
+                    joinedload(models.Sale.items).joinedload(models.SaleItem.device),
+                    joinedload(models.Sale.returns),
+                    joinedload(models.Sale.customer),
+                    joinedload(models.Sale.cash_session),
+                    joinedload(models.Sale.performed_by),
+                )
+                .outerjoin(models.Customer)
+                .where(
+                    or_(
+                        func.lower(models.Sale.customer_name).like(normalized),
+                        func.lower(models.Customer.name).like(normalized),
+                        func.lower(models.Customer.contact_name).like(normalized),
+                    )
+                )
+                .order_by(models.Sale.created_at.desc())
+            )
+            bucket_customer = _load_sales_for_statement(db, statement, limit=limit)
+
+    if qr:
+        payload = _parse_qr_payload(qr)
+        sale_id = None
+        if payload:
+            sale_id = _extract_sale_id(payload.get("sale_id"))
+            if sale_id is None:
+                sale_id = _extract_sale_id(payload.get("doc"))
+        if sale_id:
+            try:
+                bucket_qr = [get_sale(db, sale_id)]
+            except LookupError:
+                bucket_qr = []
+
+    return schemas.SaleHistorySearchResponse(
+        by_ticket=bucket_ticket,
+        by_date=bucket_date,
+        by_customer=bucket_customer,
+        by_qr=bucket_qr,
+    )
 
 
 def _normalize_reservation_reason(reason: str | None) -> str:
