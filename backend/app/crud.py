@@ -2565,6 +2565,18 @@ def list_users(
     return list(db.scalars(statement).unique())
 
 
+def count_users(
+    db: Session,
+    *,
+    include_inactive: bool = True,
+) -> int:
+    statement = select(func.count()).select_from(models.User)
+    if not include_inactive:
+        statement = statement.where(models.User.is_active.is_(True))
+    total = db.scalar(statement)
+    return int(total or 0)
+
+
 def set_user_roles(
     db: Session,
     user: models.User,

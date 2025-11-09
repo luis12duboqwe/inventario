@@ -166,8 +166,9 @@ class Store(Base):
         "InventoryReservation", back_populates="store", cascade="all, delete-orphan"
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
-        "PriceList", back_populates="store"
-        "PriceList", back_populates="store", cascade="all, delete-orphan"
+        "PriceList",
+        back_populates="store",
+        cascade="all, delete-orphan",
     )
 
 
@@ -325,7 +326,6 @@ class Device(Base):
         "PriceListItem",
         back_populates="device",
         cascade="all, delete-orphan",
-        "PriceListItem", back_populates="device", cascade="all, delete-orphan"
     )
 
     @property
@@ -1472,8 +1472,9 @@ class Customer(Base):
         cascade="all, delete-orphan",
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
-        "PriceList", back_populates="customer"
-        "PriceList", back_populates="customer", cascade="all, delete-orphan"
+        "PriceList",
+        back_populates="customer",
+        cascade="all, delete-orphan",
     )
 
 

@@ -10,6 +10,7 @@ import type {
 } from "../../../../api";
 import type { ToastMessage } from "../../../dashboard/context/DashboardContext";
 import { promptCorporateReason } from "../../../../utils/corporateReason";
+import megasupplierTemplateXlsxBase64 from "../../../../assets/importacion/plantilla_megasupplier.xlsx.b64?raw";
 
 export type SmartImportManagerDeps = {
   smartImportInventory: (
@@ -25,6 +26,49 @@ export type SmartImportManagerDeps = {
   pushToast: (toast: Omit<ToastMessage, "id">) => void;
   setError: (message: string | null) => void;
 };
+
+export type SmartImportVendorTemplate = {
+  id: string;
+  proveedor: string;
+  descripcion: string;
+  downloads: Array<{ label: string; url: string }>;
+  overrides: Record<string, string>;
+};
+
+const SMART_IMPORT_GUIDE_URL = "/docs/importacion/proveedores";
+
+const MEGASUPPLIER_XLSX_DATA_URL = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${megasupplierTemplateXlsxBase64.trim()}`;
+
+const SMART_IMPORT_VENDOR_TEMPLATES: SmartImportVendorTemplate[] = [
+  {
+    id: "megasupplier",
+    proveedor: "MegaSupplier",
+    descripcion:
+      "Plantilla con margen, garantía, imagen y descripción extendida alineadas al catálogo pro.",
+    downloads: [
+      { label: "Descargar CSV", url: "/importacion/plantilla_megasupplier.csv" },
+      { label: "Descargar XLSX", url: MEGASUPPLIER_XLSX_DATA_URL },
+    ],
+    overrides: {
+      sku: "SKU Proveedor",
+      name: "Nombre Catálogo",
+      marca: "Marca",
+      modelo: "Modelo",
+      color: "Color",
+      capacidad_gb: "Storage (GB)",
+      imei: "IMEI",
+      cantidad: "Unidades",
+      precio: "Precio Publico",
+      costo: "Costo Distribuidor",
+      garantia_meses: "Warranty (months)",
+      margen_porcentaje: "Margin %",
+      imagen_url: "Image URL",
+      descripcion: "Descripción extendida",
+      proveedor: "Proveedor",
+      tienda: "Sucursal",
+    },
+  },
+];
 
 export function useSmartImportManager({
   smartImportInventory,
@@ -49,6 +93,14 @@ export function useSmartImportManager({
   const [pendingDevicesLoading, setPendingDevicesLoading] = useState(false);
   const [smartPreviewDirty, setSmartPreviewDirty] = useState(false);
   const smartFileInputRef = useRef<HTMLInputElement | null>(null);
+  const vendorTemplates = useMemo(
+    () =>
+      SMART_IMPORT_VENDOR_TEMPLATES.map((template) => ({
+        ...template,
+        downloads: [...template.downloads],
+      })),
+    [],
+  );
 
   const ensureSmartReason = useCallback((): string | null => {
     const defaultReason = selectedStore
@@ -110,6 +162,23 @@ export function useSmartImportManager({
   useEffect(() => {
     void refreshSmartImportHistory();
   }, [refreshSmartImportHistory]);
+
+  const applyVendorTemplate = useCallback(
+    (templateId: string) => {
+      const template = vendorTemplates.find((entry) => entry.id === templateId);
+      if (!template) {
+        pushToast({ message: "Selecciona una plantilla válida.", variant: "error" });
+        return;
+      }
+      setSmartImportOverrides((current) => ({ ...current, ...template.overrides }));
+      setSmartPreviewDirty(true);
+      pushToast({
+        message: `Plantilla ${template.proveedor} aplicada. Reanaliza el archivo para confirmar coincidencias.`,
+        variant: "info",
+      });
+    },
+    [pushToast, vendorTemplates],
+  );
 
   const handleSmartOverrideChange = useCallback((field: string, header: string) => {
     setSmartImportOverrides((current) => {
@@ -257,5 +326,8 @@ export function useSmartImportManager({
     handleSmartPreview,
     handleSmartCommit,
     resetSmartImportContext,
+    vendorTemplates,
+    applyVendorTemplate,
+    smartImportGuideUrl: SMART_IMPORT_GUIDE_URL,
   };
 }
