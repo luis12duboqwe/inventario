@@ -17,6 +17,7 @@ from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import cash_register, pos_receipts, cash_reports
+from ..services import cash_register, payments, pos_receipts
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -83,6 +84,26 @@ def register_pos_sale_endpoint(
             )
         normalized_payload = payload.model_copy(update={"items": normalized_items})
 
+        electronic_results: list[schemas.POSElectronicPaymentResult] = []
+        if normalized_payload.payments:
+            terminals_config = {
+                key: dict(value)
+                for key, value in settings.pos_payment_terminals.items()
+            }
+            try:
+                electronic_results = payments.process_electronic_payments(
+                    db,
+                    payments=normalized_payload.payments,
+                    payload=normalized_payload,
+                    user_id=current_user.id if current_user else None,
+                    terminals_config=terminals_config,
+                )
+            except payments.ElectronicPaymentError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=str(exc),
+                ) from exc
+
         sale, warnings = crud.register_pos_sale(
             db,
             normalized_payload,
@@ -106,6 +127,7 @@ def register_pos_sale_endpoint(
             if payload.payment_breakdown
             else {},
             receipt_pdf_base64=receipt_pdf,
+            electronic_payments=electronic_results,
         )
     except LookupError as exc:
         raise HTTPException(
@@ -402,7 +424,11 @@ def read_pos_config(
             performed_by_id=current_user.id if current_user else None,
             reason=reason,
         )
-    return config
+    return schemas.POSConfigResponse.from_model(
+        config,
+        terminals=settings.pos_payment_terminals,
+        tip_suggestions=settings.pos_tip_suggestions,
+    )
 
 
 @router.put(
@@ -425,7 +451,11 @@ def update_pos_config_endpoint(
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada") from exc
-    return config
+    return schemas.POSConfigResponse.from_model(
+        config,
+        terminals=settings.pos_payment_terminals,
+        tip_suggestions=settings.pos_tip_suggestions,
+    )
 
 
 @router.post(

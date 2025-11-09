@@ -660,14 +660,6 @@ class PriceListBase(BaseModel):
         default=None,
         description="Fecha de término de vigencia en hora exacta (UTC).",
     )
-    valid_from: date | None = Field(
-        default=None,
-        description="Fecha a partir de la cual la lista entra en vigor.",
-    )
-    valid_until: date | None = Field(
-        default=None,
-        description="Fecha límite de vigencia de la lista de precios.",
-    )
 
     @field_validator("name", mode="before")
     @classmethod
@@ -713,19 +705,15 @@ class PriceListCreate(PriceListBase):
 
 
 class PriceListUpdate(BaseModel):
-    """Campos disponibles para modificar una lista de precios existente."""
     """Campos opcionales disponibles para actualizar una lista de precios."""
 
     name: str | None = Field(default=None, min_length=3, max_length=120)
     description: str | None = Field(default=None, max_length=500)
     priority: int | None = Field(default=None, ge=0, le=10000)
     is_active: bool | None = Field(default=None)
-    priority: int | None = Field(default=None, ge=0, le=10000)
     store_id: int | None = Field(default=None, ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     currency: str | None = Field(default=None, min_length=3, max_length=10)
-    starts_at: datetime | None = Field(default=None)
-    ends_at: datetime | None = Field(default=None)
     valid_from: date | None = Field(default=None)
     valid_until: date | None = Field(default=None)
     starts_at: datetime | None = Field(default=None)
@@ -758,17 +746,6 @@ class PriceListUpdate(BaseModel):
         if len(normalized) < 3:
             raise ValueError("La moneda debe contener al menos 3 caracteres.")
         return normalized
-
-
-class PriceListUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=3, max_length=120)
-    description: str | None = Field(default=None, max_length=500)
-    priority: int | None = Field(default=None, ge=0, le=10000)
-    is_active: bool | None = Field(default=None)
-    store_id: int | None = Field(default=None, ge=1)
-    customer_id: int | None = Field(default=None, ge=1)
-    starts_at: datetime | None = Field(default=None)
-    ends_at: datetime | None = Field(default=None)
 
     @model_validator(mode="after")
     def _validate_dates(self) -> "PriceListUpdate":
@@ -814,12 +791,6 @@ class PriceListItemBase(BaseModel):
         max_length=8,
         description="Moneda ISO 4217 asociada al precio.",
     )
-    discount_percentage: Decimal | None = Field(
-        default=None,
-        ge=Decimal("0"),
-        le=Decimal("100"),
-        description="Descuento porcentual adicional aplicado al precio base.",
-    )
     notes: str | None = Field(
         default=None,
         max_length=500,
@@ -857,14 +828,12 @@ class PriceListItemUpdate(BaseModel):
         ge=Decimal("0"),
         le=Decimal("100"),
     )
-    currency: str | None = Field(default=None, min_length=3, max_length=8)
     notes: str | None = Field(default=None, max_length=500)
 
     @field_validator("currency", mode="before")
     @classmethod
     def _normalize_currency(cls, value: str | None) -> str | None:
         if value is None:
-            return value
             return None
         normalized = value.strip().upper()
         if len(normalized) < 3:
@@ -4987,6 +4956,11 @@ class POSSalePaymentInput(BaseModel):
     # // [PACK34-schema]
     method: PaymentMethod
     amount: Decimal = Field(..., ge=Decimal("0"))
+    reference: str | None = Field(default=None, max_length=64)
+    terminal_id: str | None = Field(default=None, max_length=40, alias="terminalId")
+    tip_amount: Decimal | None = Field(default=None, ge=Decimal("0"), alias="tipAmount")
+    token: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -4997,6 +4971,23 @@ class POSSalePaymentInput(BaseModel):
                     data["method"] = data[k]
                     break
         return data
+
+    @field_validator("reference", "terminal_id", "token")
+    @classmethod
+    def _normalize_optional_str(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _ensure_metadata(cls, value: Any) -> dict[str, str]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return {str(k): str(v) for k, v in value.items()}
+        raise ValueError("metadata debe ser un diccionario de texto")
 
 
 class POSSaleRequest(BaseModel):
@@ -5085,9 +5076,11 @@ class POSSaleRequest(BaseModel):
             breakdown: dict[str, Decimal] = {}
             for payment in self.payments:
                 method_key = payment.method.value
+                total_amount = Decimal(str(payment.amount))
+                if payment.tip_amount is not None:
+                    total_amount += Decimal(str(payment.tip_amount))
                 breakdown[method_key] = (
-                    breakdown.get(method_key, Decimal("0"))
-                    + Decimal(str(payment.amount))
+                    breakdown.get(method_key, Decimal("0")) + total_amount
                 )
             self.payment_breakdown = breakdown
         return self
@@ -5112,6 +5105,7 @@ class POSSaleResponse(BaseModel):
     cash_session_id: int | None = None
     payment_breakdown: dict[str, float] = Field(default_factory=dict)
     receipt_pdf_base64: str | None = Field(default=None)
+    electronic_payments: list["POSElectronicPaymentResult"] = Field(default_factory=list)
 
     @field_serializer("payment_breakdown")
     @classmethod
@@ -5125,6 +5119,23 @@ class POSSaleResponse(BaseModel):
         if self.payment_breakdown:
             return float(sum(self.payment_breakdown.values()))
         return 0.0
+
+
+class POSElectronicPaymentResult(BaseModel):
+    terminal_id: str
+    method: PaymentMethod
+    transaction_id: str
+    status: str
+    approval_code: str | None = None
+    reconciled: bool = Field(default=False)
+    tip_amount: Decimal | None = None
+
+    @field_serializer("tip_amount")
+    @classmethod
+    def _serialize_tip(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
 
 
 class POSReturnItemRequest(BaseModel):
@@ -5505,6 +5516,21 @@ class POSTaxInfo(BaseModel):
         return float(value)
 
 
+class POSTerminalConfig(BaseModel):
+    id: str
+    label: str
+    adapter: str
+    currency: str
+
+    @field_validator("id", "label", "adapter", "currency")
+    @classmethod
+    def _normalize_terminal_str(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Los campos de terminal no pueden estar vacíos")
+        return normalized
+
+
 class POSConfigResponse(BaseModel):
     store_id: int
     tax_rate: Decimal
@@ -5513,6 +5539,8 @@ class POSConfigResponse(BaseModel):
     printer_profile: str | None
     quick_product_ids: list[int]
     updated_at: datetime
+    terminals: list[POSTerminalConfig] = Field(default_factory=list)
+    tip_suggestions: list[float] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -5520,6 +5548,37 @@ class POSConfigResponse(BaseModel):
     @classmethod
     def _serialize_tax(cls, value: Decimal) -> float:
         return float(value)
+
+    @classmethod
+    def from_model(
+        cls,
+        config: "models.POSConfig",
+        *,
+        terminals: dict[str, dict[str, Any]],
+        tip_suggestions: list[Decimal],
+    ) -> "POSConfigResponse":
+        from .. import models  # Importación tardía para evitar ciclos
+
+        terminals_payload = [
+            POSTerminalConfig(
+                id=terminal_id,
+                label=str(data.get("label") or terminal_id),
+                adapter=str(data.get("adapter") or "").strip() or "banco_atlantida",
+                currency=str(data.get("currency") or "HNL"),
+            )
+            for terminal_id, data in terminals.items()
+        ]
+        return cls(
+            store_id=config.store_id,
+            tax_rate=config.tax_rate,
+            invoice_prefix=config.invoice_prefix,
+            printer_name=config.printer_name,
+            printer_profile=config.printer_profile,
+            quick_product_ids=list(config.quick_product_ids or []),
+            updated_at=config.updated_at,
+            terminals=terminals_payload,
+            tip_suggestions=[float(Decimal(str(value))) for value in tip_suggestions],
+        )
 
 
 class POSConfigUpdate(BaseModel):
@@ -5928,6 +5987,7 @@ __all__ = [
     "POSReturnRequest",
     "POSReturnResponse",
     "POSSaleDetailResponse",
+    "POSElectronicPaymentResult",
     "PurchaseVendorBase",
     "PurchaseVendorCreate",
     "PurchaseVendorUpdate",
@@ -5978,6 +6038,7 @@ __all__ = [
     "SalesReport",
     "POSDraftResponse",
     "POSConfigResponse",
+    "POSTerminalConfig",
     "POSConfigUpdate",
     "ReleaseInfo",
     "RootWelcomeResponse",

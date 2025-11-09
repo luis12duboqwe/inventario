@@ -315,6 +315,80 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
     settings.enable_purchases_sales = False
 
 
+def test_pos_electronic_payment_with_tip_and_terminal(client, db_session):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Pago electrónico POS"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "POS Atlántida", "location": "TGU", "timezone": "America/Tegucigalpa"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == 201
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "ATL-001",
+            "name": "Teléfono Premium",
+            "quantity": 2,
+            "unit_price": 250.0,
+            "costo_unitario": 140.0,
+        },
+        headers=reason_headers,
+    )
+    assert device_response.status_code == 201
+    device_id = device_response.json()["id"]
+
+    open_response = client.post(
+        "/pos/cash/open",
+        json={"store_id": store_id, "opening_amount": 300.0, "notes": "Turno mañana"},
+        headers=reason_headers,
+    )
+    assert open_response.status_code == 201
+    session_id = open_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "payment_method": "TARJETA",
+        "items": [{"device_id": device_id, "quantity": 1}],
+        "confirm": True,
+        "cash_session_id": session_id,
+        "payments": [
+            {
+                "method": "TARJETA",
+                "amount": 250.0,
+                "terminalId": "atl-01",
+                "tipAmount": 15.0,
+                "reference": "1234",
+            }
+        ],
+    }
+    sale_response = client.post(
+        "/pos/sale",
+        json=sale_payload,
+        headers=reason_headers,
+    )
+    assert sale_response.status_code == 201, sale_response.text
+    sale_data = sale_response.json()
+    assert sale_data["status"] == "registered"
+    assert sale_data["payment_breakdown"]["TARJETA"] == 265.0
+    electronic = sale_data.get("electronic_payments", [])
+    assert electronic and electronic[0]["terminal_id"] == "atl-01"
+    assert electronic[0]["status"]
+
+    session_model = db_session.get(models.CashRegisterSession, session_id)
+    assert session_model is not None
+    breakdown = session_model.payment_breakdown or {}
+    assert breakdown.get("cobrado_TARJETA") == 265.0
+    assert breakdown.get("propina_TARJETA") == 15.0
+
+    settings.enable_purchases_sales = False
+
+
 def test_pos_requires_auth_reason_and_roles(client):
     original_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True

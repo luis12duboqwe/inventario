@@ -1144,6 +1144,11 @@ export type PosSalePayload = {
 export type PosSalePaymentEntry = {
   method: PaymentMethod | string;
   amount: number;
+  reference?: string;
+  tipAmount?: number;
+  terminalId?: string;
+  token?: string;
+  metadata?: Record<string, string>;
 };
 
 export type PosDraft = {
@@ -1165,6 +1170,13 @@ export type PosSaleResponse = {
   receipt_pdf_base64?: string | null;
 };
 
+export type PosTerminalConfig = {
+  id: string;
+  label: string;
+  adapter: string;
+  currency: string;
+};
+
 export type PosConfig = {
   store_id: number;
   tax_rate: number;
@@ -1173,6 +1185,8 @@ export type PosConfig = {
   printer_profile?: string | null;
   quick_product_ids: number[];
   updated_at: string;
+  terminals: PosTerminalConfig[];
+  tip_suggestions: number[];
 };
 
 export type PosConfigUpdateInput = {
