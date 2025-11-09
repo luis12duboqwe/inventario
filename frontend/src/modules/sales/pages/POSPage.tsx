@@ -21,8 +21,8 @@ import type {
   ProductSearchParams,
   PaymentInput,
   PosPromotionsConfig,
+  PosPromotionsUpdateRequest,
 } from "../../../services/sales";
-import type { Product, ProductSearchParams, PaymentInput } from "../../../services/sales";
 import { SalesProducts, SalesPOS } from "../../../services/sales";
 import {
   getInventoryAvailability,
@@ -495,32 +495,32 @@ export default function POSPage() {
       setPromotionsError("Selecciona una sucursal válida.");
       return;
     }
-    const payload = {
-      storeId: storeNumeric,
-      featureFlags: { ...promotionsDraft.featureFlags },
-      volumePromotions: promotionsDraft.volumePromotions.map((rule) => ({
+    const requestPayload: PosPromotionsUpdateRequest = {
+      store_id: storeNumeric,
+      feature_flags: { ...promotionsDraft.featureFlags },
+      volume_promotions: promotionsDraft.volumePromotions.map((rule) => ({
         id: rule.id,
-        deviceId: Number(rule.deviceId),
-        minQuantity: Number(rule.minQuantity),
-        discountPercent: Number(rule.discountPercent),
+        device_id: Number(rule.deviceId),
+        min_quantity: Number(rule.minQuantity),
+        discount_percent: Number(rule.discountPercent),
       })),
-      comboPromotions: promotionsDraft.comboPromotions.map((rule) => ({
+      combo_promotions: promotionsDraft.comboPromotions.map((rule) => ({
         id: rule.id,
+        discount_percent: Number(rule.discountPercent),
         items: rule.items.map((item) => ({
-          deviceId: Number(item.deviceId),
+          device_id: Number(item.deviceId),
           quantity: Number(item.quantity) || 1,
         })),
-        discountPercent: Number(rule.discountPercent),
       })),
       coupons: promotionsDraft.coupons.map((coupon) => ({
         code: coupon.code,
-        discountPercent: Number(coupon.discountPercent),
+        discount_percent: Number(coupon.discountPercent),
         description: coupon.description ?? null,
       })),
     };
     setPromotionsLoading(true);
     try {
-      await SalesPOS.updatePromotions(payload);
+      await SalesPOS.updatePromotions(requestPayload);
       await fetchPromotions(storeNumeric);
       setPromotionsEditorOpen(false);
       setPromotionsError(null);
