@@ -81,6 +81,30 @@ export interface PosPromotionsConfig {
 
 export type PosPromotionsUpdate = Omit<PosPromotionsConfig, "updatedAt">;
 
+export interface PosPromotionsUpdateRequest {
+  store_id: number;
+  feature_flags: PosPromotionFeatureFlags;
+  volume_promotions: Array<{
+    id: string;
+    device_id: number;
+    min_quantity: number;
+    discount_percent: number;
+  }>;
+  combo_promotions: Array<{
+    id: string;
+    discount_percent: number;
+    items: Array<{
+      device_id: number;
+      quantity: number;
+    }>;
+  }>;
+  coupons: Array<{
+    code: string;
+    discount_percent: number;
+    description: string | null;
+  }>;
+}
+
 export interface PosAppliedPromotion {
   id: string;
   promotionType: "volume" | "combo" | "coupon";
