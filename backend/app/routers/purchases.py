@@ -59,6 +59,30 @@ def _prepare_purchase_report(
     return purchase_reports.build_purchase_report(purchases, filters)
 
 
+@router.get(
+    "/suggestions",
+    response_model=schemas.PurchaseSuggestionsResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def get_purchase_suggestions_endpoint(
+    store_id: int | None = Query(default=None, ge=1),
+    lookback_days: int = Query(default=30, ge=7, le=90),
+    planning_horizon_days: int = Query(default=14, ge=7, le=60),
+    minimum_stock: int | None = Query(default=None, ge=0, le=500),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+) -> schemas.PurchaseSuggestionsResponse:
+    _ensure_feature_enabled()
+    store_ids = [store_id] if store_id else None
+    return crud.compute_purchase_suggestions(
+        db,
+        store_ids=store_ids,
+        lookback_days=lookback_days,
+        minimum_stock=minimum_stock,
+        planning_horizon_days=planning_horizon_days,
+    )
+
+
 @router.get("/vendors", response_model=Page[schemas.PurchaseVendorResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def list_purchase_vendors_endpoint(
     q: str | None = Query(default=None, min_length=1, max_length=120),
@@ -88,6 +112,43 @@ def list_purchase_vendors_endpoint(
         offset=page_offset,
     )
     return Page.from_items(vendors, page=pagination.page, size=page_size, total=total)
+
+
+@router.post(
+    "/suggestions/orders",
+    response_model=schemas.PurchaseOrderResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def create_order_from_suggestion_endpoint(
+    payload: schemas.PurchaseOrderCreate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        return crud.create_purchase_order_from_suggestion(
+            db,
+            payload,
+            created_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado") from exc
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "purchase_items_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Debes incluir artículos en la orden.",
+            ) from exc
+        if detail == "purchase_invalid_quantity":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cantidad inválida en la orden.",
+            ) from exc
+        raise
 
 
 @router.post("/vendors", response_model=schemas.PurchaseVendorResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
