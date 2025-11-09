@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from sqlalchemy import and_, case, cast, desc, func, literal, or_, select, tuple_, String
 from sqlalchemy.exc import IntegrityError, NoResultFound
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql import ColumnElement, Select
 
 from backend.core.logging import logger as core_logger
@@ -30,6 +30,7 @@ from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
+from .core.settings import inventory_alert_settings
 from .utils import audit as audit_utils
 from .utils import audit_trail as audit_trail_utils
 from .utils.cache import TTLCache
@@ -1475,6 +1476,8 @@ def _device_sync_payload(device: models.Device) -> dict[str, object]:
         "margen_porcentaje": float(_to_decimal(device.margen_porcentaje)),
         "estado": device.estado,
         "estado_comercial": commercial_state,
+        "minimum_stock": int(getattr(device, "minimum_stock", 0) or 0),
+        "reorder_point": int(getattr(device, "reorder_point", 0) or 0),
         "imei": device.imei,
         "serial": device.serial,
         "marca": device.marca,
@@ -5085,6 +5088,205 @@ def update_purchase_vendor(
     return vendor
 
 
+def compute_purchase_suggestions(
+    db: Session,
+    *,
+    store_ids: Sequence[int] | None = None,
+    lookback_days: int = 30,
+    minimum_stock: int | None = None,
+    planning_horizon_days: int = 14,
+) -> schemas.PurchaseSuggestionsResponse:
+    """Calcula sugerencias de compra agrupadas por sucursal."""
+
+    normalized_lookback = max(int(lookback_days or 30), 7)
+    normalized_horizon = max(int(planning_horizon_days or 14), 7)
+    settings_alerts = inventory_alert_settings
+    threshold = settings_alerts.clamp_threshold(minimum_stock)
+
+    since = datetime.utcnow() - timedelta(days=normalized_lookback)
+
+    device_stmt = (
+        select(
+            models.Device.id,
+            models.Device.store_id,
+            models.Store.name.label("store_name"),
+            models.Device.sku,
+            models.Device.name,
+            models.Device.quantity,
+            models.Device.proveedor,
+            models.Device.costo_unitario,
+        )
+        .join(models.Store, models.Store.id == models.Device.store_id)
+        .order_by(models.Store.name.asc(), models.Device.name.asc())
+    )
+    if store_ids:
+        device_stmt = device_stmt.where(models.Device.store_id.in_(store_ids))
+
+    device_rows = list(db.execute(device_stmt))
+    if not device_rows:
+        return schemas.PurchaseSuggestionsResponse(
+            generated_at=datetime.utcnow(),
+            lookback_days=normalized_lookback,
+            planning_horizon_days=normalized_horizon,
+            minimum_stock=threshold,
+            total_items=0,
+            stores=[],
+        )
+
+    device_ids = [int(row.id) for row in device_rows]
+
+    sales_stmt = (
+        select(
+            models.SaleItem.device_id,
+            func.sum(models.SaleItem.quantity).label("sold_units"),
+            func.min(models.Sale.created_at).label("first_sale"),
+            func.max(models.Sale.created_at).label("last_sale"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .where(models.SaleItem.device_id.in_(device_ids))
+        .where(func.upper(models.Sale.status) != "CANCELADA")
+        .group_by(models.SaleItem.device_id)
+    )
+    if store_ids:
+        sales_stmt = sales_stmt.where(models.Sale.store_id.in_(store_ids))
+    sales_stmt = sales_stmt.where(models.Sale.created_at >= since)
+
+    sales_map: dict[int, dict[str, object]] = {}
+    for row in db.execute(sales_stmt):
+        sold_units = int(row.sold_units or 0)
+        first_sale = row.first_sale
+        last_sale = row.last_sale
+        span_days = normalized_lookback
+        if first_sale and last_sale:
+            first_dt = max(first_sale, since)
+            span_days = max(
+                1,
+                min(
+                    normalized_lookback,
+                    (last_sale.date() - first_dt.date()).days + 1,
+                ),
+            )
+        sales_map[int(row.device_id)] = {
+            "sold_units": sold_units,
+            "span_days": span_days,
+        }
+
+    supplier_candidates = {
+        row.proveedor.strip().lower()
+        for row in device_rows
+        if getattr(row, "proveedor", None) and row.proveedor.strip()
+    }
+    vendor_map: dict[str, tuple[int, str]] = {}
+    if supplier_candidates:
+        vendor_stmt = (
+            select(
+                models.Proveedor.id_proveedor,
+                models.Proveedor.nombre,
+                func.lower(models.Proveedor.nombre).label("normalized"),
+            )
+            .where(func.lower(models.Proveedor.nombre).in_(tuple(supplier_candidates)))
+            .order_by(models.Proveedor.nombre.asc())
+        )
+        for vendor in db.execute(vendor_stmt):
+            vendor_map[vendor.normalized] = (
+                int(vendor.id_proveedor),
+                vendor.nombre,
+            )
+
+    stores_payload: dict[int, list[schemas.PurchaseSuggestionItem]] = defaultdict(list)
+    store_value_totals: dict[int, Decimal] = defaultdict(lambda: Decimal("0"))
+    total_items = 0
+
+    for row in device_rows:
+        device_id = int(row.id)
+        quantity = int(row.quantity or 0)
+        unit_cost = _to_decimal(getattr(row, "costo_unitario", None) or Decimal("0"))
+        supplier_name = (row.proveedor or "").strip() or None
+
+        sales_info = sales_map.get(device_id)
+        sold_units = int(sales_info["sold_units"]) if sales_info else 0
+        span_days = int(sales_info["span_days"]) if sales_info else normalized_lookback
+        average_daily = float(sold_units) / span_days if span_days > 0 else 0.0
+        projected_coverage = (
+            max(int(math.ceil(quantity / average_daily)), 0)
+            if average_daily > 0
+            else None
+        )
+
+        buffer_units = int(math.ceil(average_daily * normalized_horizon)) if average_daily > 0 else 0
+        target_stock = max(threshold, buffer_units)
+        if target_stock <= 0:
+            continue
+        if quantity >= target_stock:
+            continue
+
+        suggested_quantity = target_stock - quantity
+        if suggested_quantity <= 0:
+            continue
+
+        reason = "below_minimum" if quantity <= threshold else "projected_consumption"
+
+        supplier_id: int | None = None
+        supplier_display = supplier_name
+        if supplier_name:
+            normalized_supplier = supplier_name.lower()
+            vendor_entry = vendor_map.get(normalized_supplier)
+            if vendor_entry:
+                supplier_id, official_name = vendor_entry
+                supplier_display = official_name
+
+        item = schemas.PurchaseSuggestionItem(
+            store_id=int(row.store_id),
+            store_name=row.store_name,
+            supplier_id=supplier_id,
+            supplier_name=supplier_display,
+            device_id=device_id,
+            sku=row.sku,
+            name=row.name,
+            current_quantity=quantity,
+            minimum_stock=threshold,
+            suggested_quantity=suggested_quantity,
+            average_daily_sales=round(average_daily, 2),
+            projected_coverage_days=projected_coverage,
+            last_30_days_sales=sold_units,
+            unit_cost=unit_cost,
+            reason=reason,
+        )
+
+        stores_payload[int(row.store_id)].append(item)
+        store_value_totals[int(row.store_id)] += (
+            unit_cost * Decimal(suggested_quantity)
+        )
+        total_items += 1
+
+    stores: list[schemas.PurchaseSuggestionStore] = []
+    for store_id, items in stores_payload.items():
+        items.sort(key=lambda entry: (entry.suggested_quantity, entry.name), reverse=True)
+        total_recommended = sum(item.suggested_quantity for item in items)
+        total_value = float(store_value_totals[store_id])
+        store_name = items[0].store_name if items else ""
+        stores.append(
+            schemas.PurchaseSuggestionStore(
+                store_id=store_id,
+                store_name=store_name,
+                total_suggested=total_recommended,
+                total_value=total_value,
+                items=items,
+            )
+        )
+
+    stores.sort(key=lambda store: (-store.total_value, store.store_name))
+
+    return schemas.PurchaseSuggestionsResponse(
+        generated_at=datetime.utcnow(),
+        lookback_days=normalized_lookback,
+        planning_horizon_days=normalized_horizon,
+        minimum_stock=threshold,
+        total_items=total_items,
+        stores=stores,
+    )
+
+
 def set_purchase_vendor_status(
     db: Session,
     vendor_id: int,
@@ -5532,6 +5734,12 @@ def create_device(
     imei = payload_data.get("imei")
     serial = payload_data.get("serial")
     _ensure_unique_identifiers(db, imei=imei, serial=serial)
+    minimum_stock = int(payload_data.get("minimum_stock", 0) or 0)
+    reorder_point = int(payload_data.get("reorder_point", 0) or 0)
+    if reorder_point < minimum_stock:
+        reorder_point = minimum_stock
+        payload_data["reorder_point"] = reorder_point
+    payload_data["minimum_stock"] = minimum_stock
     unit_price = None
     if "unit_price" in provided_fields:
         unit_price = payload_data.get("unit_price")
@@ -5593,21 +5801,387 @@ def create_device(
 
 
 def get_device(db: Session, store_id: int, device_id: int) -> models.Device:
-    statement = select(models.Device).where(
-        models.Device.id == device_id,
-        models.Device.store_id == store_id,
+    statement = (
+        select(models.Device)
+        .options(
+            joinedload(models.Device.identifier),
+            selectinload(models.Device.variants),
+        )
+        .where(
+            models.Device.id == device_id,
+            models.Device.store_id == store_id,
+        )
     )
     try:
-        return db.scalars(statement).one()
+        return db.scalars(statement).unique().one()
     except NoResultFound as exc:
         raise LookupError("device_not_found") from exc
 
 
 def get_device_global(db: Session, device_id: int) -> models.Device:
-    device = db.get(models.Device, device_id)
-    if device is None:
-        raise LookupError("device_not_found")
-    return device
+    statement = (
+        select(models.Device)
+        .options(
+            joinedload(models.Device.identifier),
+            selectinload(models.Device.variants),
+        )
+        .where(models.Device.id == device_id)
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("device_not_found") from exc
+
+
+def list_product_variants(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    device_id: int | None = None,
+    include_inactive: bool = False,
+) -> list[models.ProductVariant]:
+    statement = (
+        select(models.ProductVariant)
+        .options(joinedload(models.ProductVariant.device))
+        .order_by(models.ProductVariant.variant_sku.asc())
+    )
+    if device_id is not None:
+        statement = statement.where(models.ProductVariant.device_id == device_id)
+    if store_id is not None:
+        statement = statement.join(models.ProductVariant.device).where(
+            models.Device.store_id == store_id
+        )
+    if not include_inactive:
+        statement = statement.where(models.ProductVariant.is_active.is_(True))
+    return list(db.scalars(statement).unique())
+
+
+def get_product_variant(db: Session, variant_id: int) -> models.ProductVariant:
+    statement = (
+        select(models.ProductVariant)
+        .options(joinedload(models.ProductVariant.device))
+        .where(models.ProductVariant.id == variant_id)
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("product_variant_not_found") from exc
+
+
+def _unset_default_variant(db: Session, device_id: int, keep_id: int | None = None) -> None:
+    query = db.query(models.ProductVariant).filter(
+        models.ProductVariant.device_id == device_id
+    )
+    if keep_id is not None:
+        query = query.filter(models.ProductVariant.id != keep_id)
+    query.update({"is_default": False}, synchronize_session=False)
+
+
+def create_product_variant(
+    db: Session,
+    device_id: int,
+    payload: schemas.ProductVariantCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductVariant:
+    device = get_device_global(db, device_id)
+    payload_data = payload.model_dump()
+    if payload_data.get("unit_price_override") is not None:
+        payload_data["unit_price_override"] = _to_decimal(
+            payload_data["unit_price_override"]
+        )
+    with transactional_session(db):
+        variant = models.ProductVariant(device_id=device.id, **payload_data)
+        db.add(variant)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("product_variant_conflict") from exc
+        if variant.is_default:
+            _unset_default_variant(db, device.id, keep_id=variant.id)
+        db.refresh(variant)
+
+        _log_action(
+            db,
+            action="product_variant_created",
+            entity_type="product_variant",
+            entity_id=str(variant.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({
+                "device_id": device.id,
+                "variant_sku": variant.variant_sku,
+            }),
+        )
+        flush_session(db)
+        db.refresh(variant)
+    return variant
+
+
+def update_product_variant(
+    db: Session,
+    variant_id: int,
+    payload: schemas.ProductVariantUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductVariant:
+    variant = get_product_variant(db, variant_id)
+    updates = payload.model_dump(exclude_unset=True)
+    sanitized: dict[str, Any] = {}
+    for field, value in updates.items():
+        if field == "unit_price_override" and value is not None:
+            sanitized[field] = _to_decimal(value)
+        else:
+            sanitized[field] = value
+    if not sanitized:
+        return variant
+
+    with transactional_session(db):
+        for field, value in sanitized.items():
+            setattr(variant, field, value)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("product_variant_conflict") from exc
+        if sanitized.get("is_default"):
+            _unset_default_variant(db, variant.device_id, keep_id=variant.id)
+        db.refresh(variant)
+
+        _log_action(
+            db,
+            action="product_variant_updated",
+            entity_type="product_variant",
+            entity_id=str(variant.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"updated_fields": sorted(sanitized.keys())}),
+        )
+        flush_session(db)
+        db.refresh(variant)
+    return variant
+
+
+def archive_product_variant(
+    db: Session,
+    variant_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductVariant:
+    variant = get_product_variant(db, variant_id)
+    if not variant.is_active:
+        return variant
+    with transactional_session(db):
+        variant.is_active = False
+        flush_session(db)
+        db.refresh(variant)
+
+        _log_action(
+            db,
+            action="product_variant_archived",
+            entity_type="product_variant",
+            entity_id=str(variant.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"device_id": variant.device_id}),
+        )
+        flush_session(db)
+        db.refresh(variant)
+    return variant
+
+
+def list_product_bundles(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    include_inactive: bool = False,
+) -> list[models.ProductBundle]:
+    statement = (
+        select(models.ProductBundle)
+        .options(
+            joinedload(models.ProductBundle.store),
+            selectinload(models.ProductBundle.items).joinedload(
+                models.ProductBundleItem.device
+            ),
+            selectinload(models.ProductBundle.items).joinedload(
+                models.ProductBundleItem.variant
+            ),
+        )
+        .order_by(models.ProductBundle.bundle_sku.asc())
+    )
+    if store_id is not None:
+        statement = statement.where(models.ProductBundle.store_id == store_id)
+    if not include_inactive:
+        statement = statement.where(models.ProductBundle.is_active.is_(True))
+    return list(db.scalars(statement).unique())
+
+
+def get_product_bundle(db: Session, bundle_id: int) -> models.ProductBundle:
+    statement = (
+        select(models.ProductBundle)
+        .options(
+            joinedload(models.ProductBundle.store),
+            selectinload(models.ProductBundle.items).joinedload(
+                models.ProductBundleItem.device
+            ),
+            selectinload(models.ProductBundle.items).joinedload(
+                models.ProductBundleItem.variant
+            ),
+        )
+        .where(models.ProductBundle.id == bundle_id)
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("product_bundle_not_found") from exc
+
+
+def _build_bundle_item(
+    db: Session,
+    item: schemas.ProductBundleItemCreate,
+    *,
+    expected_store_id: int | None,
+) -> models.ProductBundleItem:
+    device = get_device_global(db, item.device_id)
+    if expected_store_id is not None and device.store_id != expected_store_id:
+        raise ValueError("bundle_device_store_mismatch")
+    variant_id = item.variant_id
+    if variant_id is not None:
+        variant = get_product_variant(db, variant_id)
+        if variant.device_id != device.id:
+            raise ValueError("bundle_variant_device_mismatch")
+    return models.ProductBundleItem(
+        device_id=device.id,
+        variant_id=variant_id,
+        quantity=item.quantity,
+    )
+
+
+def _replace_bundle_items(
+    db: Session,
+    bundle: models.ProductBundle,
+    items: Sequence[schemas.ProductBundleItemCreate],
+    *,
+    expected_store_id: int | None,
+) -> None:
+    bundle.items[:] = []
+    for item in items:
+        bundle.items.append(
+            _build_bundle_item(db, item, expected_store_id=expected_store_id)
+        )
+
+
+def create_product_bundle(
+    db: Session,
+    payload: schemas.ProductBundleCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductBundle:
+    if not payload.items:
+        raise ValueError("bundle_items_required")
+    if payload.store_id is not None:
+        get_store(db, payload.store_id)
+    data = payload.model_dump(exclude={"items"})
+    data["base_price"] = _to_decimal(data.get("base_price"))
+    with transactional_session(db):
+        bundle = models.ProductBundle(**data)
+        db.add(bundle)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("product_bundle_conflict") from exc
+        _replace_bundle_items(
+            db,
+            bundle,
+            payload.items,
+            expected_store_id=bundle.store_id,
+        )
+        flush_session(db)
+        db.refresh(bundle)
+
+        _log_action(
+            db,
+            action="product_bundle_created",
+            entity_type="product_bundle",
+            entity_id=str(bundle.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"bundle_sku": bundle.bundle_sku}),
+        )
+        flush_session(db)
+        db.refresh(bundle)
+    return bundle
+
+
+def update_product_bundle(
+    db: Session,
+    bundle_id: int,
+    payload: schemas.ProductBundleUpdate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductBundle:
+    bundle = get_product_bundle(db, bundle_id)
+    updates = payload.model_dump(exclude_unset=True)
+    items = updates.pop("items", None)
+    if "base_price" in updates and updates["base_price"] is not None:
+        updates["base_price"] = _to_decimal(updates["base_price"])
+    if not updates and items is None:
+        return bundle
+
+    with transactional_session(db):
+        for field, value in updates.items():
+            setattr(bundle, field, value)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            raise ValueError("product_bundle_conflict") from exc
+        target_store_id = bundle.store_id
+        if items is not None:
+            if not items:
+                raise ValueError("bundle_items_required")
+            _replace_bundle_items(
+                db,
+                bundle,
+                items,
+                expected_store_id=target_store_id,
+            )
+        flush_session(db)
+        db.refresh(bundle)
+
+        changed_fields = sorted(list(updates.keys()) + (["items"] if items is not None else []))
+        _log_action(
+            db,
+            action="product_bundle_updated",
+            entity_type="product_bundle",
+            entity_id=str(bundle.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"updated_fields": changed_fields}),
+        )
+        flush_session(db)
+        db.refresh(bundle)
+    return bundle
+
+
+def archive_product_bundle(
+    db: Session,
+    bundle_id: int,
+    *,
+    performed_by_id: int | None = None,
+) -> models.ProductBundle:
+    bundle = get_product_bundle(db, bundle_id)
+    if not bundle.is_active:
+        return bundle
+    with transactional_session(db):
+        bundle.is_active = False
+        flush_session(db)
+        db.refresh(bundle)
+
+        _log_action(
+            db,
+            action="product_bundle_archived",
+            entity_type="product_bundle",
+            entity_id=str(bundle.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({"store_id": bundle.store_id}),
+        )
+        flush_session(db)
+        db.refresh(bundle)
+    return bundle
 
 
 def list_price_lists(
@@ -6014,6 +6588,65 @@ def resolve_device_for_pos(
     raise LookupError("device_not_found")
 
 
+def resolve_device_for_inventory(
+    db: Session,
+    *,
+    store_id: int,
+    device_id: int | None = None,
+    imei: str | None = None,
+    serial: str | None = None,
+) -> models.Device:
+    """Localiza un dispositivo para recepciones o conteos cíclicos.
+
+    Prioriza `device_id` explícito, luego IMEI (incluyendo identificadores
+    secundarios) y finalmente serial, siempre acotado a la sucursal indicada.
+    """
+
+    if device_id:
+        return get_device(db, store_id, device_id)
+
+    normalized_imei = imei.strip() if imei else None
+    if normalized_imei:
+        try:
+            return resolve_device_for_pos(
+                db,
+                store_id=store_id,
+                device_id=None,
+                imei=normalized_imei,
+            )
+        except LookupError:
+            pass
+
+    if serial:
+        normalized_serial = serial.strip()
+    else:
+        normalized_serial = None
+
+    if normalized_serial:
+        statement = select(models.Device).where(
+            models.Device.store_id == store_id,
+            func.lower(models.Device.serial) == normalized_serial.lower(),
+        )
+        device = db.scalars(statement).first()
+        if device is not None:
+            return device
+
+        identifier_stmt = (
+            select(models.Device)
+            .join(models.DeviceIdentifier)
+            .where(models.Device.store_id == store_id)
+            .where(
+                func.lower(models.DeviceIdentifier.numero_serie)
+                == normalized_serial.lower()
+            )
+        )
+        device = db.scalars(identifier_stmt).first()
+        if device is not None:
+            return device
+
+    raise LookupError("device_not_found")
+
+
 def find_device_for_import(
     db: Session,
     *,
@@ -6071,6 +6704,22 @@ def update_device(
         serial=serial,
         exclude_device_id=device.id,
     )
+    new_minimum_stock = updated_fields.get("minimum_stock")
+    new_reorder_point = updated_fields.get("reorder_point")
+    current_minimum = int(getattr(device, "minimum_stock", 0) or 0)
+    current_reorder = int(getattr(device, "reorder_point", 0) or 0)
+    if new_reorder_point is not None:
+        target_min = new_minimum_stock if new_minimum_stock is not None else current_minimum
+        if int(new_reorder_point) < int(target_min):
+            raise ValueError("reorder_point_below_minimum")
+    if new_minimum_stock is not None:
+        target_reorder = new_reorder_point if new_reorder_point is not None else current_reorder
+        if int(target_reorder) < int(new_minimum_stock):
+            updated_fields["reorder_point"] = int(new_minimum_stock)
+    if new_minimum_stock is not None:
+        updated_fields["minimum_stock"] = int(new_minimum_stock)
+    if new_reorder_point is not None:
+        updated_fields["reorder_point"] = int(updated_fields["reorder_point"])
 
     sensitive_before = {
         "costo_unitario": device.costo_unitario,
@@ -6677,7 +7326,10 @@ def list_devices(
     get_store(db, store_id)
     statement = (
         select(models.Device)
-        .options(joinedload(models.Device.identifier))
+        .options(
+            joinedload(models.Device.identifier),
+            selectinload(models.Device.variants),
+        )
         .where(models.Device.store_id == store_id)
     )
     if estado is not None:
@@ -7359,6 +8011,8 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
                         "name": device.name,
                         "quantity": device.quantity,
                         "unit_price": device.unit_price or Decimal("0"),
+                        "minimum_stock": getattr(device, "minimum_stock", 0) or 0,
+                        "reorder_point": getattr(device, "reorder_point", 0) or 0,
                         "inventory_value": _device_value(device),
                     }
                 )
@@ -11195,6 +11849,45 @@ def create_purchase_order(
             operation="UPSERT",
             payload=_purchase_order_payload(order),
         )
+    return order
+
+
+def create_purchase_order_from_suggestion(
+    db: Session,
+    payload: schemas.PurchaseOrderCreate,
+    *,
+    created_by_id: int | None = None,
+    reason: str,
+) -> models.PurchaseOrder:
+    """Genera una orden de compra desde una sugerencia automatizada."""
+
+    order = create_purchase_order(db, payload, created_by_id=created_by_id)
+
+    items_details = [
+        {"device_id": item.device_id, "quantity_ordered": item.quantity_ordered}
+        for item in order.items
+    ]
+
+    with transactional_session(db):
+        _log_action(
+            db,
+            action="purchase_order_generated_from_suggestion",
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            performed_by_id=created_by_id,
+            details=json.dumps(
+                {
+                    "store_id": order.store_id,
+                    "supplier": order.supplier,
+                    "reason": reason,
+                    "source": "purchase_suggestion",
+                    "items": items_details,
+                }
+            ),
+        )
+        flush_session(db)
+
+    db.refresh(order)
     return order
 
 

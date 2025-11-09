@@ -7,6 +7,7 @@ from fastapi import status
 from backend.app import models, schemas
 from backend.app.core.settings import InventoryAlertSettings
 from backend.app.services.inventory_alerts import InventoryAlertsService
+from backend.app.services.stock_alerts import StockAlertsService
 
 
 def _bootstrap_admin(client):
@@ -43,6 +44,8 @@ def _seed_inventory_alerts_dataset(
             name="Teléfono A",
             quantity=1,
             unit_price=Decimal("120.00"),
+            minimum_stock=2,
+            reorder_point=3,
         ),
         models.Device(
             store_id=store_central.id,
@@ -50,6 +53,8 @@ def _seed_inventory_alerts_dataset(
             name="Teléfono B",
             quantity=3,
             unit_price=Decimal("80.00"),
+            minimum_stock=2,
+            reorder_point=4,
         ),
         models.Device(
             store_id=store_central.id,
@@ -57,6 +62,8 @@ def _seed_inventory_alerts_dataset(
             name="Teléfono C",
             quantity=6,
             unit_price=Decimal("70.00"),
+            minimum_stock=2,
+            reorder_point=5,
         ),
         models.Device(
             store_id=store_norte.id,
@@ -64,6 +71,8 @@ def _seed_inventory_alerts_dataset(
             name="Tablet Norte",
             quantity=2,
             unit_price=Decimal("150.00"),
+            minimum_stock=1,
+            reorder_point=2,
         ),
     ]
     db_session.add_all(devices)
@@ -93,6 +102,8 @@ def test_inventory_alerts_service_evaluation() -> None:
             name="Alpha",
             quantity=1,
             unit_price=Decimal("120.00"),
+            minimum_stock=2,
+            reorder_point=3,
         ),
         schemas.LowStockDevice(
             store_id=1,
@@ -102,6 +113,8 @@ def test_inventory_alerts_service_evaluation() -> None:
             name="Beta",
             quantity=3,
             unit_price=Decimal("95.00"),
+            minimum_stock=2,
+            reorder_point=4,
         ),
         schemas.LowStockDevice(
             store_id=2,
@@ -111,6 +124,8 @@ def test_inventory_alerts_service_evaluation() -> None:
             name="Gamma",
             quantity=5,
             unit_price=Decimal("80.00"),
+            minimum_stock=1,
+            reorder_point=6,
         ),
     ]
 
@@ -138,6 +153,11 @@ def test_inventory_alerts_endpoint_returns_summary(client, db_session) -> None:
     assert payload["summary"]["total"] == 3
     severities = {item["severity"] for item in payload["items"]}
     assert severities == {"critical", "warning"}
+    first_item = payload["items"][0]
+    assert "minimum_stock" in first_item
+    assert "reorder_point" in first_item
+    assert "projected_days" in first_item
+    assert isinstance(first_item.get("insights"), list)
 
     response_store = client.get(
         f"/alerts/inventory?store_id={store_central.id}&threshold=3",
@@ -153,6 +173,10 @@ def test_inventory_alerts_endpoint_returns_summary(client, db_session) -> None:
         "notice": 0,
     }
     assert {item["sku"] for item in store_payload["items"]} == {"AL-001", "AL-002"}
+    for item in store_payload["items"]:
+        assert item["minimum_stock"] >= 0
+        assert item["reorder_point"] >= item["minimum_stock"]
+        assert isinstance(item.get("insights"), list)
 
 
 def test_inventory_alerts_endpoint_clamps_threshold_range(
@@ -180,3 +204,16 @@ def test_inventory_alerts_endpoint_clamps_threshold_range(
         "warning": 0,
         "notice": 0,
     }
+
+
+def test_stock_alerts_service_generates_insights(db_session) -> None:
+    store_central, _, _ = _seed_inventory_alerts_dataset(db_session)
+    service = StockAlertsService()
+
+    result = service.generate(db_session, store_id=store_central.id, threshold=3)
+
+    assert result.settings.threshold == 3
+    assert result.summary.total == 2
+    critical_item = next(item for item in result.items if item.severity == "critical")
+    assert critical_item.minimum_stock == 2
+    assert "Por debajo del stock mínimo" in critical_item.insights

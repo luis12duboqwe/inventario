@@ -4,15 +4,17 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import schemas
 from ..core.roles import MOVEMENT_ROLES
 from ..database import get_db
 from ..security import require_roles
 from ..services.inventory_alerts import InventoryAlertsService
+from ..services.stock_alerts import StockAlertsService
 
 router = APIRouter(prefix="/alerts", tags=["alertas"])
 
 _alerts_service = InventoryAlertsService()
+_stock_alerts_service = StockAlertsService(_alerts_service)
 
 
 @router.get(
@@ -31,33 +33,20 @@ def list_inventory_alerts(
     ),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(MOVEMENT_ROLES)),
-    service: InventoryAlertsService = Depends(lambda: _alerts_service),
+    service: StockAlertsService = Depends(lambda: _stock_alerts_service),
 ) -> schemas.InventoryAlertsResponse:
-    """Devuelve las alertas de inventario considerando el umbral solicitado."""
+    """Devuelve las alertas de inventario combinando stock y pronósticos."""
 
-    normalized_threshold = service.normalize_threshold(threshold)
-    metrics = crud.compute_inventory_metrics(
-        db, low_stock_threshold=normalized_threshold
+    result = service.generate(
+        db,
+        store_id=store_id,
+        threshold=threshold,
+        performed_by_id=getattr(current_user, "id", None),
     )
-    raw_devices = metrics.get("low_stock_devices", [])
-    devices = [
-        schemas.LowStockDevice.model_validate(entry)
-        for entry in raw_devices
-        if store_id is None or entry["store_id"] == store_id
-    ]
-
-    evaluation = service.evaluate(devices, threshold=normalized_threshold)
     return schemas.InventoryAlertsResponse(
-        settings=schemas.InventoryAlertSettingsResponse(
-            threshold=evaluation.thresholds.threshold,
-            minimum_threshold=service.min_threshold,
-            maximum_threshold=service.max_threshold,
-            warning_cutoff=evaluation.thresholds.warning,
-            critical_cutoff=evaluation.thresholds.critical,
-            adjustment_variance_threshold=service.adjustment_variance_threshold,
-        ),
-        summary=evaluation.summary,
-        items=evaluation.items,
+        settings=result.settings,
+        summary=result.summary,
+        items=result.items,
     )
 
 

@@ -180,9 +180,9 @@ export type DeviceIdentifierInput = {
 };
 
 export type Device = {
-    id: number;
-    sku: string;
-    name: string;
+  id: number;
+  sku: string;
+  name: string;
   quantity: number;
   store_id: number;
   unit_price: number;
@@ -212,6 +212,91 @@ export type Device = {
   imagen_url?: string | null;
   precio_venta?: number;
   identifier?: DeviceIdentifier | null;
+  variant_count?: number;
+  has_variants?: boolean;
+};
+
+export type ProductVariant = {
+  id: number;
+  device_id: number;
+  store_id: number;
+  name: string;
+  variant_sku: string;
+  barcode?: string | null;
+  unit_price_override?: number | null;
+  is_default: boolean;
+  is_active: boolean;
+  device_sku: string;
+  device_name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductVariantCreateInput = {
+  name: string;
+  variant_sku: string;
+  barcode?: string | null;
+  unit_price_override?: number | null;
+  is_default?: boolean;
+  is_active?: boolean;
+};
+
+export type ProductVariantUpdateInput = {
+  name?: string | null;
+  variant_sku?: string | null;
+  barcode?: string | null;
+  unit_price_override?: number | null;
+  is_default?: boolean;
+  is_active?: boolean;
+};
+
+export type ProductBundleItem = {
+  id: number;
+  device_id: number;
+  variant_id?: number | null;
+  quantity: number;
+  device_sku: string;
+  device_name: string;
+  variant_name?: string | null;
+};
+
+export type ProductBundle = {
+  id: number;
+  store_id: number | null;
+  name: string;
+  bundle_sku: string;
+  description?: string | null;
+  base_price: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  items: ProductBundleItem[];
+};
+
+export type ProductBundleItemInput = {
+  device_id: number;
+  variant_id?: number | null;
+  quantity?: number;
+};
+
+export type ProductBundleCreateInput = {
+  store_id?: number | null;
+  name: string;
+  bundle_sku: string;
+  description?: string | null;
+  base_price?: number | null;
+  is_active?: boolean;
+  items: ProductBundleItemInput[];
+};
+
+export type ProductBundleUpdateInput = {
+  store_id?: number | null;
+  name?: string | null;
+  bundle_sku?: string | null;
+  description?: string | null;
+  base_price?: number | null;
+  is_active?: boolean;
+  items?: ProductBundleItemInput[];
 };
 
 export type CatalogDevice = Device & { store_name: string };
@@ -881,6 +966,42 @@ export type PurchaseImportResponse = {
   errors: string[];
 };
 
+export type PurchaseSuggestionItem = {
+  store_id: number;
+  store_name: string;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  device_id: number;
+  sku: string;
+  name: string;
+  current_quantity: number;
+  minimum_stock: number;
+  suggested_quantity: number;
+  average_daily_sales: number;
+  projected_coverage_days: number | null;
+  last_30_days_sales: number;
+  unit_cost: number;
+  reason: "below_minimum" | "projected_consumption";
+  suggested_value: number;
+};
+
+export type PurchaseSuggestionStore = {
+  store_id: number;
+  store_name: string;
+  total_suggested: number;
+  total_value: number;
+  items: PurchaseSuggestionItem[];
+};
+
+export type PurchaseSuggestionsResponse = {
+  generated_at: string;
+  lookback_days: number;
+  planning_horizon_days: number;
+  minimum_stock: number;
+  total_items: number;
+  stores: PurchaseSuggestionStore[];
+};
+
 export type RecurringOrderType = "purchase" | "transfer";
 
 export type RecurringOrder = {
@@ -1171,6 +1292,88 @@ export type MovementInput = {
   sucursal_origen_id?: number | null;
   sucursal_destino_id?: number | null;
   unit_cost?: number;
+};
+
+export type InventoryMovement = {
+  id: number;
+  producto_id: number;
+  tipo_movimiento: MovementInput["tipo_movimiento"];
+  cantidad: number;
+  comentario?: string | null;
+  sucursal_origen_id?: number | null;
+  sucursal_origen?: string | null;
+  sucursal_destino_id?: number | null;
+  sucursal_destino?: string | null;
+  usuario_id?: number | null;
+  usuario?: string | null;
+  referencia_tipo?: string | null;
+  referencia_id?: string | null;
+  fecha: string;
+  unit_cost?: number | null;
+  store_inventory_value: number;
+  ultima_accion?: unknown;
+};
+
+export type InventoryReceivingLineInput = {
+  device_id?: number;
+  imei?: string;
+  serial?: string;
+  quantity: number;
+  unit_cost?: number;
+  comment?: string;
+};
+
+export type InventoryReceivingRequest = {
+  store_id: number;
+  note: string;
+  responsible?: string;
+  reference?: string;
+  lines: InventoryReceivingLineInput[];
+};
+
+export type InventoryReceivingProcessed = {
+  identifier: string;
+  device_id: number;
+  quantity: number;
+  movement: InventoryMovement;
+};
+
+export type InventoryReceivingResult = {
+  store_id: number;
+  processed: InventoryReceivingProcessed[];
+  totals: { lines: number; total_quantity: number };
+};
+
+export type InventoryCountLineInput = {
+  device_id?: number;
+  imei?: string;
+  serial?: string;
+  counted: number;
+  comment?: string;
+};
+
+export type InventoryCycleCountRequest = {
+  store_id: number;
+  note: string;
+  responsible?: string;
+  reference?: string;
+  lines: InventoryCountLineInput[];
+};
+
+export type InventoryCountDiscrepancy = {
+  device_id: number;
+  sku?: string | null;
+  expected: number;
+  counted: number;
+  delta: number;
+  identifier?: string | null;
+  movement: InventoryMovement | null;
+};
+
+export type InventoryCycleCountResult = {
+  store_id: number;
+  adjustments: InventoryCountDiscrepancy[];
+  totals: { lines: number; adjusted: number; matched: number; total_variance: number };
 };
 
 export type InventoryReservationState =
@@ -1488,12 +1691,20 @@ export type LowStockDevice = {
   quantity: number;
   unit_price: number;
   inventory_value: number;
+  minimum_stock: number;
+  reorder_point: number;
+  reorder_gap: number;
 };
 
 export type InventoryAlertSeverity = "critical" | "warning" | "notice";
 
 export type InventoryAlertItem = LowStockDevice & {
   severity: InventoryAlertSeverity;
+  projected_days: number | null;
+  average_daily_sales: number | null;
+  trend: string | null;
+  confidence: number | null;
+  insights: string[];
 };
 
 export type InventoryAlertSummary = {
@@ -1626,6 +1837,14 @@ export type InventoryMovementsFilters = InventoryCurrentFilters & {
   dateFrom?: string;
   dateTo?: string;
   movementType?: MovementInput["tipo_movimiento"];
+};
+
+export type InventoryAuditFilters = {
+  performedById?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
 };
 
 export type InventoryTopProductsFilters = InventoryCurrentFilters & {
@@ -2912,6 +3131,26 @@ function buildInventoryMovementsParams(filters: InventoryMovementsFilters = {}):
   return params;
 }
 
+function buildInventoryAuditParams(filters: InventoryAuditFilters = {}): URLSearchParams {
+  const params = new URLSearchParams();
+  if (typeof filters.performedById === "number") {
+    params.append("performed_by_id", String(filters.performedById));
+  }
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (typeof filters.limit === "number") {
+    params.append("limit", String(filters.limit));
+  }
+  if (typeof filters.offset === "number") {
+    params.append("offset", String(filters.offset));
+  }
+  return params;
+}
+
 function buildTopProductsParams(filters: InventoryTopProductsFilters = {}): URLSearchParams {
   const params = buildInventoryValueParams(filters);
   if (filters.dateFrom) {
@@ -2935,6 +3174,144 @@ export function getDevices(
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   return requestCollection<Device>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
+}
+
+export function getProductVariants(
+  token: string,
+  params: { storeId?: number; deviceId?: number; includeInactive?: boolean } = {},
+): Promise<ProductVariant[]> {
+  const queryParams = new URLSearchParams();
+  if (typeof params.storeId === "number") {
+    queryParams.set("store_id", String(params.storeId));
+  }
+  if (typeof params.deviceId === "number") {
+    queryParams.set("device_id", String(params.deviceId));
+  }
+  if (params.includeInactive) {
+    queryParams.set("include_inactive", "true");
+  }
+  const suffix = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  return requestCollection<ProductVariant>(
+    `/inventory/variants${suffix}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function createProductVariant(
+  token: string,
+  deviceId: number,
+  payload: ProductVariantCreateInput,
+  reason: string,
+): Promise<ProductVariant> {
+  return request<ProductVariant>(
+    `/inventory/devices/${deviceId}/variants`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function updateProductVariant(
+  token: string,
+  variantId: number,
+  payload: ProductVariantUpdateInput,
+  reason: string,
+): Promise<ProductVariant> {
+  return request<ProductVariant>(
+    `/inventory/variants/${variantId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function archiveProductVariant(
+  token: string,
+  variantId: number,
+  reason: string,
+): Promise<ProductVariant> {
+  return request<ProductVariant>(
+    `/inventory/variants/${variantId}`,
+    {
+      method: "DELETE",
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function getProductBundles(
+  token: string,
+  params: { storeId?: number; includeInactive?: boolean } = {},
+): Promise<ProductBundle[]> {
+  const queryParams = new URLSearchParams();
+  if (typeof params.storeId === "number") {
+    queryParams.set("store_id", String(params.storeId));
+  }
+  if (params.includeInactive) {
+    queryParams.set("include_inactive", "true");
+  }
+  const suffix = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  return requestCollection<ProductBundle>(
+    `/inventory/bundles${suffix}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function createProductBundle(
+  token: string,
+  payload: ProductBundleCreateInput,
+  reason: string,
+): Promise<ProductBundle> {
+  return request<ProductBundle>(
+    "/inventory/bundles",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function updateProductBundle(
+  token: string,
+  bundleId: number,
+  payload: ProductBundleUpdateInput,
+  reason: string,
+): Promise<ProductBundle> {
+  return request<ProductBundle>(
+    `/inventory/bundles/${bundleId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function archiveProductBundle(
+  token: string,
+  bundleId: number,
+  reason: string,
+): Promise<ProductBundle> {
+  return request<ProductBundle>(
+    `/inventory/bundles/${bundleId}`,
+    {
+      method: "DELETE",
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
 }
 
 export function getInventoryReservations(
@@ -3519,6 +3896,40 @@ export function importPurchaseOrdersCsv(
       body: formData,
       headers: { "X-Reason": reason },
     },
+    token
+  );
+}
+
+export function getPurchaseSuggestions(
+  token: string,
+  params: { storeId?: number; lookbackDays?: number; minimumStock?: number; planningHorizonDays?: number } = {},
+): Promise<PurchaseSuggestionsResponse> {
+  const query = new URLSearchParams();
+  if (params.storeId != null) {
+    query.set("store_id", String(params.storeId));
+  }
+  if (params.lookbackDays != null) {
+    query.set("lookback_days", String(params.lookbackDays));
+  }
+  if (params.minimumStock != null) {
+    query.set("minimum_stock", String(params.minimumStock));
+  }
+  if (params.planningHorizonDays != null) {
+    query.set("planning_horizon_days", String(params.planningHorizonDays));
+  }
+  const suffix = query.toString();
+  const path = suffix ? `/purchases/suggestions?${suffix}` : "/purchases/suggestions";
+  return request<PurchaseSuggestionsResponse>(path, { method: "GET" }, token);
+}
+
+export function createPurchaseOrderFromSuggestion(
+  token: string,
+  payload: PurchaseOrderCreateInput,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    "/purchases/suggestions/orders",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
     token
   );
 }
@@ -4311,6 +4722,38 @@ export function registerMovement(
   }, token);
 }
 
+export function registerInventoryReceiving(
+  token: string,
+  payload: InventoryReceivingRequest,
+  reason: string,
+): Promise<InventoryReceivingResult> {
+  return request<InventoryReceivingResult>(
+    "/inventory/counts/receipts",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function registerInventoryCycleCount(
+  token: string,
+  payload: InventoryCycleCountRequest,
+  reason: string,
+): Promise<InventoryCycleCountResult> {
+  return request<InventoryCycleCountResult>(
+    "/inventory/counts/cycle",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
 export function listSales(token: string, filters: SalesFilters = {}): Promise<Sale[]> {
   const params = buildSalesFilterParams(filters);
   const limit = typeof filters.limit === "number" ? filters.limit : 50;
@@ -5060,6 +5503,130 @@ export async function downloadInventoryMovementsXlsx(
   const link = document.createElement("a");
   link.href = url;
   link.download = "softmobile_movimientos.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAdjustmentsCsv(
+  token: string,
+  reason: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<void> {
+  const params = buildInventoryMovementsParams(filters);
+  params.set("format", "csv");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/adjustments/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar los ajustes de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_ajustes.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAdjustmentsPdf(
+  token: string,
+  reason: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<void> {
+  const params = buildInventoryMovementsParams(filters);
+  params.set("format", "pdf");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/adjustments/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de ajustes");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_ajustes.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAuditCsv(
+  token: string,
+  reason: string,
+  filters: InventoryAuditFilters = {},
+): Promise<void> {
+  const params = buildInventoryAuditParams(filters);
+  params.set("format", "csv");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/audit/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar la auditoría de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_auditoria_inventario.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAuditPdf(
+  token: string,
+  reason: string,
+  filters: InventoryAuditFilters = {},
+): Promise<void> {
+  const params = buildInventoryAuditParams(filters);
+  params.set("format", "pdf");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/audit/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de auditoría de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_auditoria_inventario.pdf";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
