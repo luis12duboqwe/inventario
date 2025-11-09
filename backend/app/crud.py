@@ -6252,29 +6252,6 @@ def archive_product_bundle(
     return bundle
 
 
-def list_price_lists(
-    db: Session,
-    *,
-    store_id: int | None = None,
-    customer_id: int | None = None,
-    is_active: bool | None = None,
-    include_items: bool = False,
-) -> list[models.PriceList]:
-    statement = select(models.PriceList).order_by(models.PriceList.name.asc())
-    if store_id is not None:
-        statement = statement.where(models.PriceList.store_id == store_id)
-    if customer_id is not None:
-        statement = statement.where(models.PriceList.customer_id == customer_id)
-    if is_active is not None:
-        statement = statement.where(models.PriceList.is_active.is_(is_active))
-    if include_items:
-        statement = statement.options(joinedload(models.PriceList.items))
-    result = db.scalars(statement)
-    if include_items:
-        result = result.unique()
-    return list(result)
-
-
 def get_price_list(
     db: Session,
     price_list_id: int,
@@ -7049,14 +7026,18 @@ def list_price_lists(
     customer_id: int | None = None,
     include_inactive: bool = True,
     include_global: bool = True,
+    include_items: bool = True,
+    is_active: bool | None = None,
 ) -> list[models.PriceList]:
-    statement = (
-        select(models.PriceList)
-        .options(joinedload(models.PriceList.items))
-        .order_by(models.PriceList.priority.asc(), models.PriceList.id.asc())
+    statement = select(models.PriceList).order_by(
+        models.PriceList.priority.asc(), models.PriceList.id.asc()
     )
-    if not include_inactive:
+
+    if is_active is not None:
+        statement = statement.where(models.PriceList.is_active.is_(is_active))
+    elif not include_inactive:
         statement = statement.where(models.PriceList.is_active.is_(True))
+
     if store_id is not None:
         if include_global:
             statement = statement.where(
@@ -7069,6 +7050,7 @@ def list_price_lists(
             statement = statement.where(models.PriceList.store_id == store_id)
     elif not include_global:
         statement = statement.where(models.PriceList.store_id.isnot(None))
+
     if customer_id is not None:
         if include_global:
             statement = statement.where(
@@ -7083,7 +7065,14 @@ def list_price_lists(
             )
     elif not include_global:
         statement = statement.where(models.PriceList.customer_id.isnot(None))
-    return list(db.scalars(statement))
+
+    if include_items:
+        statement = statement.options(joinedload(models.PriceList.items))
+
+    result = db.scalars(statement)
+    if include_items:
+        result = result.unique()
+    return list(result)
 
 
 def get_price_list(db: Session, price_list_id: int) -> models.PriceList:
