@@ -19,6 +19,8 @@ const OperationsPOS = lazyWithRetry(() => import("../operations/pages/Operations
 const OperationsPurchases = lazyWithRetry(() => import("../operations/pages/OperationsPurchases"));
 const OperationsReturns = lazyWithRetry(() => import("../operations/pages/OperationsReturns"));
 const OperationsTransfers = lazyWithRetry(() => import("../operations/pages/OperationsTransfers"));
+const OperationsBundles = lazyWithRetry(() => import("../operations/pages/OperationsBundles"));
+const OperationsDte = lazyWithRetry(() => import("../operations/pages/OperationsDte"));
 const AnalyticsPage = lazyWithRetry(() => import("../analytics/pages/AnalyticsPage"));
 const SecurityPage = lazyWithRetry(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazyWithRetry(() => import("../sync/pages/SyncPage"));
@@ -147,6 +149,8 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           <Route path="compras" element={<OperationsPurchases />} />
           <Route path="devoluciones" element={<OperationsReturns />} />
           <Route path="transferencias" element={<OperationsTransfers />} />
+          <Route path="paquetes" element={<OperationsBundles />} />
+          <Route path="dte" element={<OperationsDte />} />
         </Route>
         <Route
           path="/sales/*"
