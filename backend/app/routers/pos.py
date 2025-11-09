@@ -5,7 +5,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import GESTION_ROLES
 from ..core.transactions import transactional_session
@@ -23,6 +23,10 @@ def _ensure_feature_enabled() -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Funcionalidad no disponible",
         )
+
+
+class _SaleValidationRollback(RuntimeError):
+    """Permite abortar la transacción de validación sin efectos colaterales."""
 
 
 @router.post(
@@ -79,8 +83,29 @@ def register_pos_sale_endpoint(
             )
         normalized_payload = payload.model_copy(update={"items": normalized_items})
 
+        payments_payload = list(normalized_payload.payments or [])
         electronic_results: list[schemas.POSElectronicPaymentResult] = []
-        if normalized_payload.payments:
+        has_electronic_payments = any(
+            payment.method
+            in {models.PaymentMethod.TARJETA, models.PaymentMethod.TRANSFERENCIA}
+            for payment in payments_payload
+        )
+
+        if has_electronic_payments:
+            try:
+                with transactional_session(db):
+                    crud.register_pos_sale(
+                        db,
+                        normalized_payload,
+                        performed_by_id=current_user.id if current_user else None,
+                        reason=reason,
+                    )
+                    raise _SaleValidationRollback()
+            except _SaleValidationRollback:
+                db.rollback()
+                db.expire_all()
+
+        if payments_payload:
             terminals_config = {
                 key: dict(value)
                 for key, value in settings.pos_payment_terminals.items()
@@ -88,7 +113,7 @@ def register_pos_sale_endpoint(
             try:
                 electronic_results = payments.process_electronic_payments(
                     db,
-                    payments=normalized_payload.payments,
+                    payments=payments_payload,
                     payload=normalized_payload,
                     user_id=current_user.id if current_user else None,
                     terminals_config=terminals_config,
