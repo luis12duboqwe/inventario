@@ -446,6 +446,28 @@ export type CustomerLedgerEntry = {
   created_by?: string | null;
 };
 
+export type CustomerDebtSnapshot = {
+  previous_balance: number;
+  new_charges: number;
+  payments_applied: number;
+  remaining_balance: number;
+};
+
+export type CreditScheduleEntry = {
+  sequence: number;
+  due_date: string;
+  amount: number;
+  status: "pending" | "due_soon" | "overdue";
+  reminder?: string | null;
+};
+
+export type CustomerPaymentReceipt = {
+  ledger_entry: CustomerLedgerEntry;
+  debt_summary: CustomerDebtSnapshot;
+  credit_schedule: CreditScheduleEntry[];
+  receipt_pdf_base64: string;
+};
+
 export type CustomerSaleSummary = {
   sale_id: number;
   store_id: number;
@@ -1168,6 +1190,10 @@ export type PosSaleResponse = {
   cash_session_id?: number | null;
   payment_breakdown?: PaymentBreakdown;
   receipt_pdf_base64?: string | null;
+  debt_summary?: CustomerDebtSnapshot | null;
+  credit_schedule?: CreditScheduleEntry[];
+  debt_receipt_pdf_base64?: string | null;
+  payment_receipts?: CustomerPaymentReceipt[];
 };
 
 export type PosConnectorType = "usb" | "network";
@@ -1314,6 +1340,10 @@ export type PosSaleDetailResponse = {
   sale: Sale;
   receipt_url: string;
   receipt_pdf_base64?: string | null;
+  debt_summary?: CustomerDebtSnapshot | null;
+  credit_schedule?: CreditScheduleEntry[];
+  debt_receipt_pdf_base64?: string | null;
+  payment_receipts?: CustomerPaymentReceipt[];
 };
 
 export type DeviceSearchFilters = {
@@ -1962,6 +1992,20 @@ export type DashboardPoint = {
   value: number;
 };
 
+export type DashboardReceivableCustomer = {
+  customer_id: number;
+  name: string;
+  outstanding_debt: number;
+  available_credit?: number | null;
+};
+
+export type DashboardReceivableMetrics = {
+  total_outstanding_debt: number;
+  customers_with_debt: number;
+  moroso_flagged: number;
+  top_debtors: DashboardReceivableCustomer[];
+};
+
 export type AuditHighlight = {
   id: number;
   action: string;
@@ -2134,6 +2178,7 @@ export type InventoryMetrics = {
     open_repairs: number;
     gross_profit: number;
   };
+  accounts_receivable: DashboardReceivableMetrics;
   sales_trend: DashboardPoint[];
   stock_breakdown: DashboardPoint[];
   repair_mix: DashboardPoint[];
@@ -4557,8 +4602,8 @@ export function registerCustomerPayment(
   customerId: number,
   payload: CustomerPaymentPayload,
   reason: string
-): Promise<CustomerLedgerEntry> {
-  return request<CustomerLedgerEntry>(
+): Promise<CustomerPaymentReceipt> {
+  return request<CustomerPaymentReceipt>(
     `/customers/${customerId}/payments`,
     {
       method: "POST",

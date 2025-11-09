@@ -1,6 +1,7 @@
 """Endpoints dedicados al punto de venta con control de stock y recibos."""
 from __future__ import annotations
 
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timezone
 from decimal import Decimal
 from fastapi import (
@@ -21,13 +22,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import crud, schemas, models
 from ..config import settings
 from ..core.roles import GESTION_ROLES
 from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
+from ..services import cash_register, pos_receipts, credit
 from ..services import cash_register, pos_receipts, notifications
 from ..services import cash_register, pos_receipts
 from ..services.hardware import hardware_channels, receipt_printer_service
@@ -166,6 +168,7 @@ def register_pos_sale_endpoint(
             )
         normalized_payload = payload.model_copy(update={"items": normalized_items})
 
+        sale, warnings, debt_context = crud.register_pos_sale(
         electronic_results: list[schemas.POSElectronicPaymentResult] = []
         if normalized_payload.payments:
             terminals_config = {
@@ -194,6 +197,70 @@ def register_pos_sale_endpoint(
         )
         sale_detail = crud.get_sale(db, sale.id)
         config = crud.get_pos_config(db, sale_detail.store_id)
+        snapshot = None
+        schedule_data: list[dict[str, object]] = []
+        debt_summary: schemas.CustomerDebtSnapshot | None = None
+        credit_schedule: list[schemas.CreditScheduleEntry] = []
+        debt_receipt_pdf_base64: str | None = None
+        payment_receipts: list[schemas.CustomerPaymentReceiptResponse] = []
+
+        if debt_context:
+            snapshot = debt_context.get("snapshot")
+            schedule_data = list(debt_context.get("schedule") or [])
+            if snapshot is not None:
+                debt_summary = schemas.CustomerDebtSnapshot(
+                    previous_balance=snapshot.previous_balance,
+                    new_charges=snapshot.new_charges,
+                    payments_applied=snapshot.payments_applied,
+                    remaining_balance=snapshot.remaining_balance,
+                )
+            credit_schedule = [
+                schemas.CreditScheduleEntry.model_validate(entry)
+                for entry in schedule_data
+            ]
+            payment_outcomes = debt_context.get("payments") or []
+            for outcome in payment_outcomes:
+                payment_snapshot = credit.build_debt_snapshot(
+                    previous_balance=outcome.previous_debt,
+                    new_charges=Decimal("0"),
+                    payments_applied=outcome.applied_amount,
+                )
+                payment_schedule = credit.build_credit_schedule(
+                    base_date=outcome.ledger_entry.created_at,
+                    remaining_balance=payment_snapshot.remaining_balance,
+                )
+                payment_receipts.append(
+                    schemas.CustomerPaymentReceiptResponse(
+                        ledger_entry=schemas.CustomerLedgerEntryResponse.model_validate(
+                            outcome.ledger_entry
+                        ),
+                        debt_summary=schemas.CustomerDebtSnapshot(
+                            previous_balance=payment_snapshot.previous_balance,
+                            new_charges=payment_snapshot.new_charges,
+                            payments_applied=payment_snapshot.payments_applied,
+                            remaining_balance=payment_snapshot.remaining_balance,
+                        ),
+                        credit_schedule=[
+                            schemas.CreditScheduleEntry.model_validate(entry)
+                            for entry in payment_schedule
+                        ],
+                        receipt_pdf_base64=pos_receipts.render_debt_receipt_base64(
+                            outcome.customer,
+                            outcome.ledger_entry,
+                            payment_snapshot,
+                            payment_schedule,
+                        ),
+                    )
+                )
+
+        receipt_pdf = pos_receipts.render_receipt_base64(
+            sale_detail,
+            config,
+            debt_snapshot=snapshot,
+            schedule=schedule_data,
+        )
+        if snapshot is not None:
+            debt_receipt_pdf_base64 = receipt_pdf
         receipt_pdf = pos_receipts.render_receipt_base64(sale_detail, config)
         hardware_config = schemas.POSHardwareSettings.model_validate(
             config.hardware_settings
@@ -218,6 +285,10 @@ def register_pos_sale_endpoint(
             if payload.payment_breakdown
             else {},
             receipt_pdf_base64=receipt_pdf,
+            debt_summary=debt_summary,
+            credit_schedule=credit_schedule,
+            debt_receipt_pdf_base64=debt_receipt_pdf_base64,
+            payment_receipts=payment_receipts,
             electronic_payments=electronic_results,
         )
     except LookupError as exc:
@@ -272,7 +343,35 @@ def download_pos_receipt(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venta no encontrada") from exc
 
     config = crud.get_pos_config(db, sale.store_id)
-    pdf_bytes = pos_receipts.render_receipt_pdf(sale, config)  # // [PACK34-receipt]
+    snapshot = None
+    schedule_data: list[dict[str, object]] = []
+    if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO:
+        remaining = Decimal(sale.customer.outstanding_debt or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        new_charge = Decimal(sale.total_amount or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        previous_balance = (remaining - new_charge).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if previous_balance < Decimal("0"):
+            previous_balance = Decimal("0.00")
+        snapshot = credit.build_debt_snapshot(
+            previous_balance=previous_balance,
+            new_charges=new_charge,
+            payments_applied=Decimal("0"),
+        )
+        schedule_data = credit.build_credit_schedule(
+            base_date=sale.created_at,
+            remaining_balance=snapshot.remaining_balance,
+        )
+    pdf_bytes = pos_receipts.render_receipt_pdf(
+        sale,
+        config,
+        debt_snapshot=snapshot,
+        schedule=schedule_data,
+    )  # // [PACK34-receipt]
     filename = f"recibo_{config.invoice_prefix}_{sale.id}.pdf"
 
     with transactional_session(db):
@@ -572,11 +671,52 @@ def read_pos_sale_detail_endpoint(
             detail="Venta no encontrada.",
         ) from exc
     config = crud.get_pos_config(db, sale.store_id)
-    receipt_pdf = pos_receipts.render_receipt_base64(sale, config)
+    snapshot = None
+    schedule_data: list[dict[str, object]] = []
+    debt_summary = None
+    if sale.customer and sale.payment_method == models.PaymentMethod.CREDITO:
+        remaining = Decimal(sale.customer.outstanding_debt or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        new_charge = Decimal(sale.total_amount or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        previous_balance = (remaining - new_charge).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if previous_balance < Decimal("0"):
+            previous_balance = Decimal("0.00")
+        snapshot = credit.build_debt_snapshot(
+            previous_balance=previous_balance,
+            new_charges=new_charge,
+            payments_applied=Decimal("0"),
+        )
+        schedule_data = credit.build_credit_schedule(
+            base_date=sale.created_at,
+            remaining_balance=snapshot.remaining_balance,
+        )
+        debt_summary = schemas.CustomerDebtSnapshot(
+            previous_balance=snapshot.previous_balance,
+            new_charges=snapshot.new_charges,
+            payments_applied=snapshot.payments_applied,
+            remaining_balance=snapshot.remaining_balance,
+        )
+    receipt_pdf = pos_receipts.render_receipt_base64(
+        sale,
+        config,
+        debt_snapshot=snapshot,
+        schedule=schedule_data,
+    )
+    credit_schedule = [
+        schemas.CreditScheduleEntry.model_validate(entry)
+        for entry in schedule_data
+    ]
     return schemas.POSSaleDetailResponse(
         sale=sale,
         receipt_url=f"/pos/receipt/{sale.id}",
         receipt_pdf_base64=receipt_pdf,
+        debt_summary=debt_summary,
+        credit_schedule=credit_schedule,
     )
 
 

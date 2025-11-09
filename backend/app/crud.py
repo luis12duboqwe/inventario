@@ -6,6 +6,7 @@ import csv
 import json
 import math
 import secrets
+from dataclasses import dataclass
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
@@ -24,7 +25,7 @@ from . import models, schemas, telemetry
 from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .core.transactions import flush_session, transactional_session
 # // [PACK30-31-BACKEND]
-from .services import inventory_accounting, inventory_audit, inventory_availability
+from .services import credit, inventory_accounting, inventory_audit, inventory_availability
 from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
@@ -4056,13 +4057,22 @@ def append_customer_note(
     return customer
 
 
+@dataclass(slots=True)
+class CustomerPaymentOutcome:
+    ledger_entry: models.CustomerLedgerEntry
+    customer: models.Customer
+    previous_debt: Decimal
+    applied_amount: Decimal
+    requested_amount: Decimal
+
+
 def register_customer_payment(
     db: Session,
     customer_id: int,
     payload: schemas.CustomerPaymentCreate,
     *,
     performed_by_id: int | None = None,
-) -> models.CustomerLedgerEntry:
+) -> CustomerPaymentOutcome:
     customer = get_customer(db, customer_id)
     current_debt = _to_decimal(customer.outstanding_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -4151,7 +4161,15 @@ def register_customer_payment(
             payload=_customer_payload(customer),
         )
         _sync_customer_ledger_entry(db, ledger_entry)
-    return ledger_entry
+
+    outcome = CustomerPaymentOutcome(
+        ledger_entry=ledger_entry,
+        customer=customer,
+        previous_debt=current_debt,
+        applied_amount=applied_amount,
+        requested_amount=amount,
+    )
+    return outcome
 
 
 def list_payment_center_transactions(
@@ -8176,6 +8194,48 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         for status, count in sorted(repair_status_counts.items())
     ]
 
+    receivable_row = db.execute(
+        select(
+            func.count(models.Customer.id).label("customers_with_debt"),
+            func.coalesce(
+                func.sum(models.Customer.outstanding_debt), Decimal("0")
+            ).label("total_outstanding_debt"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (models.Customer.status == "moroso", 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("moroso_flagged"),
+        ).where(models.Customer.outstanding_debt > 0)
+    ).one()
+    total_outstanding = Decimal(receivable_row.total_outstanding_debt or 0).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    top_delinquent = build_customer_portfolio(
+        db,
+        category="delinquent",
+        limit=3,
+    )
+    top_debtors = [
+        {
+            "customer_id": item.customer_id,
+            "name": item.name,
+            "outstanding_debt": item.outstanding_debt,
+            "available_credit": item.available_credit,
+        }
+        for item in top_delinquent.items[:3]
+        if item.outstanding_debt > 0
+    ]
+    accounts_receivable = {
+        "total_outstanding_debt": float(total_outstanding),
+        "customers_with_debt": int(receivable_row.customers_with_debt or 0),
+        "moroso_flagged": int(receivable_row.moroso_flagged or 0),
+        "top_debtors": top_debtors,
+    }
+
     audit_logs_stmt = (
         select(models.AuditLog)
         .order_by(models.AuditLog.created_at.desc())
@@ -8308,6 +8368,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
             "open_repairs": open_repairs,
             "gross_profit": float(total_profit),
         },
+        "accounts_receivable": accounts_receivable,
         "sales_trend": sales_trend,
         "stock_breakdown": stock_breakdown,
         "repair_mix": repair_mix,
@@ -15231,7 +15292,7 @@ def register_pos_sale(
     *,
     performed_by_id: int,
     reason: str | None = None,
-) -> tuple[models.Sale, list[str]]:
+) -> tuple[models.Sale, list[str], dict[str, object] | None]:
     if not payload.confirm:
         raise ValueError("pos_confirmation_required")
 
@@ -15316,12 +15377,83 @@ def register_pos_sale(
                 db.add(session)
                 flush_session(db)
         db.refresh(sale)
+
+    payments_applied_total = Decimal("0")
+    payment_outcomes: list[CustomerPaymentOutcome] = []
+    if payload.payments and sale.customer_id:
+        for payment in payload.payments:
+            payment_amount = _to_decimal(payment.amount).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if payment_amount <= Decimal("0"):
+                continue
+            method_value = (
+                payment.method.value
+                if isinstance(payment.method, models.PaymentMethod)
+                else str(payment.method).strip()
+            )
+            if not method_value:
+                method_value = "manual"
+            note_source = payload.notes or "Abono registrado desde POS"
+            payment_payload = schemas.CustomerPaymentCreate(
+                amount=payment_amount,
+                method=method_value,
+                sale_id=sale.id,
+                note=note_source,
+            )
+            outcome = register_customer_payment(
+                db,
+                sale.customer_id,
+                payment_payload,
+                performed_by_id=performed_by_id,
+            )
+            payment_outcomes.append(outcome)
+            payments_applied_total += outcome.applied_amount
+
+    customer_after_operations: models.Customer | None = None
+    if sale.customer_id:
+        try:
+            customer_after_operations = get_customer(db, sale.customer_id)
+        except LookupError:
+            customer_after_operations = None
+
+    debt_context: dict[str, object] | None = None
+    if customer_after_operations is not None:
+        remaining_balance = _to_decimal(
+            customer_after_operations.outstanding_debt
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        new_charge = (
+            _to_decimal(sale.total_amount).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if sale.payment_method == models.PaymentMethod.CREDITO
+            else Decimal("0.00")
+        )
+        previous_balance = (
+            remaining_balance + payments_applied_total - new_charge
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        snapshot = credit.build_debt_snapshot(
+            previous_balance=previous_balance,
+            new_charges=new_charge,
+            payments_applied=payments_applied_total,
+        )
+        schedule = credit.build_credit_schedule(
+            base_date=sale.created_at,
+            remaining_balance=snapshot.remaining_balance,
+        )
+        debt_context = {
+            "snapshot": snapshot,
+            "schedule": schedule,
+            "payments": payment_outcomes,
+            "customer": customer_after_operations,
+        }
+
     _attach_last_audit_trails(
         db,
         entity_type="sale",
         records=[sale],
     )
-    return sale, warnings
+    return sale, warnings, debt_context
 
 
 def list_backup_jobs(

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import ROUND_HALF_UP, Decimal
-from typing import Iterable
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session

@@ -95,6 +95,9 @@ def test_payments_center_flow(client):
             headers=reason_headers,
         )
         assert payment_response.status_code == status.HTTP_201_CREATED
+        payment_data = payment_response.json()
+        assert payment_data["ledger_entry"]["details"]["sale_id"] == sale_id
+        assert payment_data["receipt_pdf_base64"]
 
         refund_payload = {
             "customer_id": customer_id,

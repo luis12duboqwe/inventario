@@ -504,6 +504,9 @@ class ProductBundleItem(Base):
     )
 
 
+
+
+
 class DeviceIdentifier(Base):
     __tablename__ = "device_identifiers"
     __table_args__ = (

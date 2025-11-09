@@ -115,9 +115,10 @@ def test_customer_ledger_composite_flow(client):
         )
         assert payment_resp.status_code == status.HTTP_201_CREATED, payment_resp.text
         payment_entry = payment_resp.json()
-        assert payment_entry["details"]["applied_amount"] == pytest.approx(
+        assert payment_entry["ledger_entry"]["details"]["applied_amount"] == pytest.approx(
             120.0)
-        assert payment_entry["balance_after"] == pytest.approx(380.0)
+        assert payment_entry["ledger_entry"]["balance_after"] == pytest.approx(380.0)
+        assert payment_entry["receipt_pdf_base64"]
 
         # Obtener resumen y ledger
         summary_resp = client.get(

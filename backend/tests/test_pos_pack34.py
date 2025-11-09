@@ -112,6 +112,8 @@ def test_pack34_pos_end_to_end(client, db_session):
     sale_data = sale_response.json()
     assert sale_data["status"] == "registered"
     assert sale_data["receipt_pdf_base64"]
+    assert sale_data.get("debt_summary") is None
+    assert sale_data.get("payment_receipts") == []
     sale_id = sale_data["sale"]["id"]
 
     detail_response = client.get(
@@ -122,6 +124,7 @@ def test_pack34_pos_end_to_end(client, db_session):
     detail_data = detail_response.json()
     assert detail_data["sale"]["id"] == sale_id
     assert detail_data["receipt_pdf_base64"]
+    assert detail_data.get("debt_summary") is None
 
     taxes_response = client.get(
         "/pos/taxes",

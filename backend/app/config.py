@@ -465,6 +465,26 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    default_credit_installments: Annotated[
+        int,
+        Field(
+            default=4,
+            validation_alias=AliasChoices(
+                "DEFAULT_CREDIT_INSTALLMENTS",
+                "SOFTMOBILE_CREDIT_INSTALLMENTS",
+            ),
+        ),
+    ]
+    default_credit_frequency_days: Annotated[
+        int,
+        Field(
+            default=15,
+            validation_alias=AliasChoices(
+                "DEFAULT_CREDIT_FREQUENCY_DAYS",
+                "SOFTMOBILE_CREDIT_FREQUENCY_DAYS",
+            ),
+        ),
+    ]
     cost_method: Annotated[
         str,
         Field(
