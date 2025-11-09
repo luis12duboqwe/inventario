@@ -788,6 +788,22 @@ export type RepairOrderPartsPayload = {  // [PACK37-frontend]
 
 export type RepairOrderClosePayload = Partial<Pick<RepairOrderPayload, "labor_cost" | "parts">>; // [PACK37-frontend]
 
+export type CashRegisterEntry = {
+  id: number;
+  session_id: number;
+  entry_type: "INGRESO" | "EGRESO";
+  amount: number;
+  reason: string;
+  notes?: string | null;
+  created_by_id?: number | null;
+  created_at: string;
+};
+
+export type CashDenominationInput = {
+  value: number;
+  quantity: number;
+};
+
 export type CashSession = {
   id: number;
   store_id: number;
@@ -797,11 +813,15 @@ export type CashSession = {
   expected_amount: number;
   difference_amount: number;
   payment_breakdown: Record<string, number>;
+  denomination_breakdown: Record<string, number>;
+  reconciliation_notes?: string | null;
+  difference_reason?: string | null;
   notes?: string | null;
   opened_by_id?: number | null;
   closed_by_id?: number | null;
   opened_at: string;
   closed_at?: string | null;
+  entries?: CashRegisterEntry[] | null;
 };
 
 export type SaleDeviceSummary = {
@@ -1124,6 +1144,11 @@ export type PosSalePayload = {
 export type PosSalePaymentEntry = {
   method: PaymentMethod | string;
   amount: number;
+  reference?: string;
+  tipAmount?: number;
+  terminalId?: string;
+  token?: string;
+  metadata?: Record<string, string>;
 };
 
 export type PosDraft = {
@@ -1186,6 +1211,11 @@ export type PosHardwareSettings = {
   printers: PosPrinterSettings[];
   cash_drawer: PosCashDrawerSettings;
   customer_display: PosCustomerDisplaySettings;
+export type PosTerminalConfig = {
+  id: string;
+  label: string;
+  adapter: string;
+  currency: string;
 };
 
 export type PosConfig = {
@@ -1197,6 +1227,8 @@ export type PosConfig = {
   quick_product_ids: number[];
   hardware_settings: PosHardwareSettings;
   updated_at: string;
+  terminals: PosTerminalConfig[];
+  tip_suggestions: number[];
 };
 
 export type PosConfigUpdateInput = {
@@ -6521,7 +6553,15 @@ export function openCashSession(
 
 export function closeCashSession(
   token: string,
-  payload: { session_id: number; closing_amount: number; payment_breakdown?: Record<string, number>; notes?: string },
+  payload: {
+    session_id: number;
+    closing_amount: number;
+    payment_breakdown?: Record<string, number>;
+    notes?: string;
+    denominations?: CashDenominationInput[];
+    reconciliation_notes?: string;
+    difference_reason?: string;
+  },
   reason: string
 ): Promise<CashSession> {
   return request<CashSession>(
@@ -6616,10 +6656,59 @@ export function registerPosReturn(
 export function listCashSessions(
   token: string,
   storeId: number,
-  limit = 30
+  limit = 30,
+  reason = "Consulta historial de caja"
 ): Promise<CashSession[]> {
   const params = new URLSearchParams({ store_id: String(storeId), limit: String(limit) });
-  return requestCollection<CashSession>(`/pos/cash/history?${params.toString()}`, { method: "GET" }, token);
+  return requestCollection<CashSession>(
+    `/pos/cash/history?${params.toString()}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function createCashRegisterEntry(
+  token: string,
+  payload: { session_id: number; entry_type: CashRegisterEntry["entry_type"]; amount: number; reason: string; notes?: string },
+  reason: string
+): Promise<CashRegisterEntry> {
+  return request<CashRegisterEntry>(
+    "/pos/cash/register/entries",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listCashRegisterEntries(
+  token: string,
+  sessionId: number,
+  reason: string
+): Promise<CashRegisterEntry[]> {
+  return requestCollection<CashRegisterEntry>(
+    `/pos/cash/register/entries?session_id=${sessionId}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function getCashRegisterReport(
+  token: string,
+  sessionId: number,
+  reason: string,
+  exportFormat: "json" | "pdf" = "json"
+): Promise<CashSession> | Promise<Blob> {
+  if (exportFormat === "pdf") {
+    return requestBlob(
+      `/pos/cash/register/${sessionId}/report?export=pdf`,
+      { method: "GET", headers: { "X-Reason": reason } },
+      token
+    );
+  }
+  return request<CashSession>(
+    `/pos/cash/register/${sessionId}/report?export=json`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export async function downloadPosReceipt(token: string, saleId: number): Promise<Blob> {

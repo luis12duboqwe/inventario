@@ -41,7 +41,15 @@ export interface Totals {
 }
 
 export type PaymentType = "CASH" | "CARD" | "TRANSFER" | "OTHER";
-export interface PaymentInput { type: PaymentType; amount: number; ref?: string; }
+export interface PaymentInput {
+  type: PaymentType;
+  amount: number;
+  reference?: string;
+  tipAmount?: number;
+  terminalId?: string;
+  token?: string;
+  metadata?: Record<string, string>;
+}
 
 export interface CheckoutRequest {
   customerId?: ID | null;

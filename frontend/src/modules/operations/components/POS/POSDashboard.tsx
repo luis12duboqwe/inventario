@@ -8,6 +8,7 @@ import ProductGrid from "../../../../pages/pos/components/ProductGrid";
 import QuickSaleForm from "../../../../pages/pos/components/QuickSaleForm";
 import ReceiptPreview from "../../../../pages/pos/components/ReceiptPreview";
 import Toolbar from "../../../../pages/pos/components/Toolbar";
+import CashRegisterModule from "../../cash/CashRegister";
 import POSSettings from "./POSSettings";
 import {
   usePosDashboardController,
@@ -24,6 +25,7 @@ function POSDashboard(props: Props) {
     cart,
     paymentModal,
     cashHistory,
+    cashRegister,
     receipt,
     settings,
     configReasonModal,
@@ -139,6 +141,22 @@ function POSDashboard(props: Props) {
           </div>
         )}
       </section>
+
+      <CashRegisterModule
+        session={cashRegister.session}
+        entries={cashRegister.entries}
+        loading={cashRegister.loading}
+        error={cashRegister.error}
+        denominations={cashRegister.denominations}
+        onDenominationChange={cashRegister.onDenominationChange}
+        reconciliationNotes={cashRegister.reconciliationNotes}
+        onReconciliationNotesChange={cashRegister.onReconciliationNotesChange}
+        differenceReason={cashRegister.differenceReason}
+        onDifferenceReasonChange={cashRegister.onDifferenceReasonChange}
+        onRegisterEntry={cashRegister.onRegisterEntry}
+        onRefreshEntries={cashRegister.onRefreshEntries}
+        onDownloadReport={cashRegister.onDownloadReport}
+      />
 
       <ReceiptPreview token={props.token} sale={receipt.sale} receiptUrl={receipt.receiptUrl} />
 

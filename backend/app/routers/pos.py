@@ -14,6 +14,11 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
+from io import BytesIO
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
@@ -25,6 +30,8 @@ from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import cash_register, pos_receipts
 from ..services.hardware import hardware_channels, receipt_printer_service
+from ..services import cash_register, pos_receipts, cash_reports
+from ..services import cash_register, payments, pos_receipts
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -158,6 +165,26 @@ def register_pos_sale_endpoint(
             )
         normalized_payload = payload.model_copy(update={"items": normalized_items})
 
+        electronic_results: list[schemas.POSElectronicPaymentResult] = []
+        if normalized_payload.payments:
+            terminals_config = {
+                key: dict(value)
+                for key, value in settings.pos_payment_terminals.items()
+            }
+            try:
+                electronic_results = payments.process_electronic_payments(
+                    db,
+                    payments=normalized_payload.payments,
+                    payload=normalized_payload,
+                    user_id=current_user.id if current_user else None,
+                    terminals_config=terminals_config,
+                )
+            except payments.ElectronicPaymentError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=str(exc),
+                ) from exc
+
         sale, warnings = crud.register_pos_sale(
             db,
             normalized_payload,
@@ -190,6 +217,7 @@ def register_pos_sale_endpoint(
             if payload.payment_breakdown
             else {},
             receipt_pdf_base64=receipt_pdf,
+            electronic_payments=electronic_results,
         )
     except LookupError as exc:
         raise HTTPException(
@@ -486,7 +514,11 @@ def read_pos_config(
             performed_by_id=current_user.id if current_user else None,
             reason=reason,
         )
-    return config
+    return schemas.POSConfigResponse.from_model(
+        config,
+        terminals=settings.pos_payment_terminals,
+        tip_suggestions=settings.pos_tip_suggestions,
+    )
 
 
 @router.post(
@@ -657,7 +689,11 @@ def update_pos_config_endpoint(
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada") from exc
-    return config
+    return schemas.POSConfigResponse.from_model(
+        config,
+        terminals=settings.pos_payment_terminals,
+        tip_suggestions=settings.pos_tip_suggestions,
+    )
 
 
 @router.post(
@@ -714,6 +750,11 @@ def close_cash_session_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La caja ya fue cerrada.",
             ) from exc
+        if str(exc) == "difference_reason_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Indica un motivo para la diferencia registrada.",
+            ) from exc
         raise
 
 
@@ -737,3 +778,91 @@ def list_cash_sessions_endpoint(
         offset=offset,
     )
     return sessions
+
+
+@router.post(
+    "/cash/register/entries",
+    response_model=schemas.CashRegisterEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_cash_register_entry(
+    payload: schemas.CashRegisterEntryCreate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        entry = cash_register.record_entry(
+            db,
+            payload,
+            created_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caja no encontrada",
+        ) from exc
+    except ValueError as exc:
+        if str(exc) == "cash_session_not_open":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La caja indicada no está abierta.",
+            ) from exc
+        raise
+    return entry
+
+
+@router.get(
+    "/cash/register/entries",
+    response_model=list[schemas.CashRegisterEntryResponse],
+)
+def list_cash_register_entries(
+    session_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        crud.get_cash_session(db, session_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caja no encontrada",
+        ) from exc
+    return cash_register.list_entries(db, session_id=session_id)
+
+
+@router.get(
+    "/cash/register/{session_id}/report",
+    response_model=schemas.CashSessionResponse,
+)
+def get_cash_register_report(
+    session_id: int,
+    export: Literal["json", "pdf"] = Query(default="json"),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        session = crud.get_cash_session(db, session_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caja no encontrada",
+        ) from exc
+    entries = cash_register.list_entries(db, session_id=session.id)
+    if export == "pdf":
+        pdf_bytes = cash_reports.render_cash_close_pdf(session, entries)
+        buffer = BytesIO(pdf_bytes)
+        filename = f"cierre_caja_{session_id}.pdf"
+        headers = {"Content-Disposition": f"attachment; filename={filename}"}
+        return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
+    return schemas.CashSessionResponse.model_validate(
+        session,
+        from_attributes=True,
+        update={"entries": entries},
+    )
