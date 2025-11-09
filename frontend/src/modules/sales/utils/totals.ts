@@ -14,12 +14,21 @@ export function calcTotalsLocal(lines: CartLineInput[], taxRate = 0): Totals {
   return { sub: +sub.toFixed(2), disc: +disc.toFixed(2), tax, grand };
 }
 
-export function paidAmount(payments: PaymentInput[]): number {
-  return +payments.reduce((s, p) => s + (p.amount || 0), 0).toFixed(2);
+export function paidAmount(payments: PaymentInput[], includeTips = false): number {
+  const total = payments.reduce((s, p) => {
+    const base = p.amount || 0;
+    const tip = includeTips ? p.tipAmount || 0 : 0;
+    return s + base + tip;
+  }, 0);
+  return +total.toFixed(2);
 }
 
 export function calcChange(grand: number, payments: PaymentInput[]): number {
   return +(paidAmount(payments) - grand).toFixed(2);
+}
+
+export function tipsTotal(payments: PaymentInput[]): number {
+  return +payments.reduce((s, p) => s + (p.tipAmount || 0), 0).toFixed(2);
 }
 
 export function asCheckoutRequest(lines: CartLineInput[], payments: PaymentInput[], customerId?: string | null): CheckoutRequest {

@@ -14775,13 +14775,16 @@ def close_cash_session(
     session.closed_by_id = closed_by_id
     session.closed_at = datetime.utcnow()
     session.status = models.CashSessionStatus.CERRADO
-    session.payment_breakdown = {key: float(
-        value) for key, value in sales_totals.items()}
+    breakdown_snapshot = dict(session.payment_breakdown or {})
+    for key, value in sales_totals.items():
+        breakdown_snapshot[key] = float(value)
 
     for method_key, reported_amount in payload.payment_breakdown.items():
-        session.payment_breakdown[f"reportado_{method_key.upper()}"] = float(
+        breakdown_snapshot[f"reportado_{method_key.upper()}"] = float(
             Decimal(str(reported_amount))
         )
+
+    session.payment_breakdown = breakdown_snapshot
 
     expected_cash = session.opening_amount + \
         sales_totals.get(models.PaymentMethod.EFECTIVO.value, Decimal("0"))
@@ -15088,6 +15091,29 @@ def register_pos_sale(
             sale.cash_session_id = session.id
             db.add(sale)
             flush_session(db)
+            if payload.payments:
+                breakdown = dict(session.payment_breakdown or {})
+                for payment in payload.payments:
+                    try:
+                        total_amount = Decimal(str(payment.amount))
+                    except (TypeError, ValueError):
+                        continue
+                    tip_value = Decimal("0")
+                    if getattr(payment, "tip_amount", None) is not None:
+                        tip_value = Decimal(str(payment.tip_amount))
+                        tip_key = f"propina_{payment.method.value}"
+                        breakdown[tip_key] = float(
+                            Decimal(str(breakdown.get(tip_key, 0))) + tip_value
+                        )
+                    collected_key = f"cobrado_{payment.method.value}"
+                    breakdown[collected_key] = float(
+                        Decimal(str(breakdown.get(collected_key, 0)))
+                        + total_amount
+                        + tip_value
+                    )
+                session.payment_breakdown = breakdown
+                db.add(session)
+                flush_session(db)
         db.refresh(sale)
     _attach_last_audit_trails(
         db,
