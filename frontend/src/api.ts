@@ -663,9 +663,19 @@ export type CustomerPaymentPayload = {
   sale_id?: number | null;
 };
 
+export type SupplierContact = {
+  name?: string | null;
+  position?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+};
+
 export type Supplier = {
   id: number;
   name: string;
+  rtn?: string | null;
+  payment_terms?: string | null;
   contact_name?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -673,12 +683,16 @@ export type Supplier = {
   notes?: string | null;
   outstanding_debt: number;
   history: ContactHistoryEntry[];
+  contact_info: SupplierContact[];
+  products_supplied: string[];
   created_at: string;
   updated_at: string;
 };
 
 export type SupplierPayload = {
   name: string;
+  rtn?: string;
+  payment_terms?: string;
   contact_name?: string;
   email?: string;
   phone?: string;
@@ -686,6 +700,8 @@ export type SupplierPayload = {
   notes?: string;
   outstanding_debt?: number;
   history?: ContactHistoryEntry[];
+  contact_info?: SupplierContact[];
+  products_supplied?: string[];
 };
 
 export type SupplierBatch = {
@@ -723,6 +739,46 @@ export type SupplierBatchOverviewItem = {
   latest_purchase_date: string;
   latest_batch_code?: string | null;
   latest_unit_cost?: number | null;
+};
+
+export type SupplierAccountsPayableBucket = {
+  label: string;
+  days_from: number;
+  days_to: number | null;
+  amount: number;
+  percentage: number;
+  count: number;
+};
+
+export type SupplierAccountsPayableSupplier = {
+  supplier_id: number;
+  supplier_name: string;
+  rtn?: string | null;
+  payment_terms?: string | null;
+  outstanding_debt: number;
+  bucket_label: string;
+  bucket_from: number;
+  bucket_to: number | null;
+  days_outstanding: number;
+  last_activity?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  products_supplied: string[];
+  contact_info: SupplierContact[];
+};
+
+export type SupplierAccountsPayableSummary = {
+  total_balance: number;
+  total_overdue: number;
+  supplier_count: number;
+  generated_at: string;
+  buckets: SupplierAccountsPayableBucket[];
+};
+
+export type SupplierAccountsPayableResponse = {
+  summary: SupplierAccountsPayableSummary;
+  suppliers: SupplierAccountsPayableSupplier[];
 };
 
 export type PurchaseVendor = {
@@ -1159,6 +1215,9 @@ export type PurchaseReturn = {
   reason_category: ReturnReasonCategory;
   disposition: ReturnDisposition;
   warehouse_id?: number | null;
+  supplier_ledger_entry_id?: number | null;
+  corporate_reason?: string | null;
+  credit_note_amount: number;
   processed_by_id: number | null;
   approved_by_id?: number | null;
   approved_by_name?: string | null;
@@ -1190,6 +1249,8 @@ export type ReturnRecord = {
   occurred_at: string;
   refund_amount?: number | null;
   payment_method?: PaymentMethod | string | null;
+  corporate_reason?: string | null;
+  credit_note_amount?: number | null;
 };
 
 export type ReturnsTotals = {
@@ -1198,6 +1259,7 @@ export type ReturnsTotals = {
   purchases: number;
   refunds_by_method: Record<string, number>;
   refund_total_amount: number;
+  credit_notes_total: number;
   categories: Record<string, number>;
 };
 
@@ -1713,6 +1775,11 @@ export type InventoryMovement = {
   ultima_accion?: unknown;
 };
 
+export type InventoryReceivingDistributionInput = {
+  store_id: number;
+  quantity: number;
+};
+
 export type InventoryReceivingLineInput = {
   device_id?: number;
   imei?: string;
@@ -1720,6 +1787,7 @@ export type InventoryReceivingLineInput = {
   quantity: number;
   unit_cost?: number;
   comment?: string;
+  distributions?: InventoryReceivingDistributionInput[];
 };
 
 export type InventoryReceivingRequest = {
@@ -1741,6 +1809,7 @@ export type InventoryReceivingResult = {
   store_id: number;
   processed: InventoryReceivingProcessed[];
   totals: { lines: number; total_quantity: number };
+  auto_transfers?: TransferOrder[] | null;
 };
 
 export type InventoryCountLineInput = {
@@ -2582,6 +2651,25 @@ export type AnalyticsAlerts = {
   items: AnalyticsAlert[];
 };
 
+export type PurchaseSupplierMetric = {
+  store_id: number;
+  store_name: string;
+  supplier: string;
+  device_count: number;
+  total_ordered: number;
+  total_received: number;
+  pending_backorders: number;
+  total_cost: number;
+  average_unit_cost: number;
+  average_rotation: number;
+  average_days_in_stock: number;
+  last_purchase_at: string | null;
+};
+
+export type PurchaseAnalytics = {
+  items: PurchaseSupplierMetric[];
+};
+
 export type StoreRealtimeWidget = {
   store_id: number;
   store_name: string;
@@ -2609,6 +2697,7 @@ export type AnalyticsFilters = {
   dateFrom?: string;
   dateTo?: string;
   category?: string;
+  supplier?: string;
 };
 
 export type TOTPStatus = {
@@ -2975,6 +3064,9 @@ function buildAnalyticsQuery(filters?: AnalyticsFilters): string {
   }
   if (filters.category) {
     params.set("category", filters.category);
+  }
+  if (filters.supplier) {
+    params.set("supplier", filters.supplier);
   }
   const queryString = params.toString();
   return queryString ? `?${queryString}` : "";
@@ -4361,8 +4453,8 @@ export function registerPurchaseReturn(
   orderId: number,
   payload: PurchaseReturnInput,
   reason: string
-): Promise<void> {
-  return request<void>(
+): Promise<PurchaseReturn> {
+  return request<PurchaseReturn>(
     `/purchases/${orderId}/returns`,
     {
       method: "POST",
@@ -5008,6 +5100,16 @@ export function listSuppliers(
     params.append("q", query);
   }
   return requestCollection<Supplier>(`/suppliers?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function getSuppliersAccountsPayable(
+  token: string
+): Promise<SupplierAccountsPayableResponse> {
+  return request<SupplierAccountsPayableResponse>(
+    "/suppliers/accounts-payable",
+    { method: "GET" },
+    token
+  );
 }
 
 export function exportSuppliersCsv(token: string, query?: string): Promise<Blob> {
@@ -6671,6 +6773,14 @@ export function getAnalyticsRealtime(
 ): Promise<AnalyticsRealtime> {
   const query = buildAnalyticsQuery(filters);
   return request<AnalyticsRealtime>(`/reports/analytics/realtime${query}`, { method: "GET" }, token);
+}
+
+export function getPurchaseAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<PurchaseAnalytics> {
+  const query = buildAnalyticsQuery(filters);
+  return request<PurchaseAnalytics>(`/reports/purchases${query}`, { method: "GET" }, token);
 }
 
 export function getTotpStatus(token: string): Promise<TOTPStatus> {

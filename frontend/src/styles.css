@@ -1749,6 +1749,24 @@ button.link:hover:not(:disabled) {
   background: rgba(31, 107, 255, 0.08);
 }
 
+.analytics-comparative {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.analytics-comparative__section {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(56, 189, 248, 0.22);
+}
+
+.analytics-comparative__section h4 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+  color: #38bdf8;
+  font-weight: 600;
+}
+
 .user-filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

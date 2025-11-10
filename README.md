@@ -278,6 +278,7 @@ La carpeta `.devcontainer/` incorpora una configuración lista para códigos uni
 - **POS avanzado con arqueos y ventas a crédito** incluyendo sesiones de caja, desglose por método de pago, recibos PDF y devoluciones controladas desde el último ticket.
 - **Analítica comparativa multi-sucursal** con endpoints `/reports/analytics/comparative`, `/reports/analytics/profit_margin` y `/reports/analytics/sales_forecast`, exportación CSV consolidada y tablero React con filtros por sucursal.
 - **Analítica predictiva en tiempo real** con regresión lineal para agotamiento/ventas, alertas automáticas (`/reports/analytics/alerts`), categorías dinámicas y widget en vivo por sucursal (`/reports/analytics/realtime`) integrado en `AnalyticsBoard.tsx`.
+- **Reportes de compras multifuente** que combinan rotación, costos y proveedores vía `/reports/purchases`, con filtros por sucursal, categoría y proveedor en `AnalyticsBoard.tsx`, además de métricas de tiempo en stock promedio y backorders consolidadas.
 - **Sincronización híbrida priorizada** mediante `sync_outbox` con niveles HIGH/NORMAL/LOW, estadísticas por entidad y reintentos auditados desde el panel.
 - **Métricas ejecutivas en vivo** con tablero global que consolida ventas, ganancias, inventario y reparaciones, acompañado de mini-gráficos (línea, barras y pastel) generados con Recharts.
 - **Gestión visual de usuarios corporativos** con checkboxes para roles `ADMIN`/`GERENTE`/`OPERADOR`, control de activación y validación de motivos antes de persistir cambios.
