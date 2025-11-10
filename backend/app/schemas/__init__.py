@@ -637,7 +637,6 @@ class PriceListBase(BaseModel):
         default=None,
         ge=1,
         description="Sucursal asociada cuando la lista es específica para una tienda.",
-        description="Identificador de la sucursal asociada, cuando aplica.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -1319,6 +1318,9 @@ class CustomerBase(BaseModel):
     customer_type: str = Field(
         default="minorista", min_length=3, max_length=30)
     status: str = Field(default="activo", min_length=3, max_length=20)
+    tax_id: str = Field(..., min_length=5, max_length=30)
+    segment_category: str | None = Field(default=None, max_length=60)
+    tags: list[str] = Field(default_factory=list)
     credit_limit: Decimal = Field(default=Decimal("0"))
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal = Field(default=Decimal("0"))
@@ -1332,6 +1334,7 @@ class CustomerBase(BaseModel):
         "customer_type",
         "status",
         "notes",
+        "segment_category",
         mode="before",
     )
     @classmethod
@@ -1340,6 +1343,43 @@ class CustomerBase(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("tax_id", mode="before")
+    @classmethod
+    def _normalize_tax_id(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        normalized = normalized.replace(" ", "")
+        if len(normalized) < 5:
+            raise ValueError("El RTN debe tener al menos 5 caracteres.")
+        return normalized
+
+    @field_validator("segment_category", mode="before")
+    @classmethod
+    def _normalize_segment_category(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _normalize_tags(
+        cls, value: list[str] | str | None
+    ) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            raw_items = value
+        normalized: list[str] = []
+        for item in raw_items:
+            if not isinstance(item, str):
+                continue
+            cleaned = item.strip().lower()
+            if cleaned and cleaned not in normalized:
+                normalized.append(cleaned)
+        return normalized
 
     @field_serializer("outstanding_debt")
     @classmethod
@@ -1380,6 +1420,9 @@ class CustomerUpdate(BaseModel):
     address: str | None = Field(default=None, max_length=255)
     customer_type: str | None = Field(default=None, max_length=30)
     status: str | None = Field(default=None, max_length=20)
+    tax_id: str | None = Field(default=None, min_length=5, max_length=30)
+    segment_category: str | None = Field(default=None, max_length=60)
+    tags: list[str] | None = Field(default=None)
     credit_limit: Decimal | None = Field(default=None)
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal | None = Field(default=None)
@@ -1394,6 +1437,7 @@ class CustomerUpdate(BaseModel):
         "customer_type",
         "status",
         "notes",
+        "segment_category",
         mode="before",
     )
     @classmethod
@@ -1402,6 +1446,44 @@ class CustomerUpdate(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("tax_id", mode="before")
+    @classmethod
+    def _normalize_update_tax_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper().replace(" ", "")
+        if len(normalized) < 5:
+            raise ValueError("El RTN debe tener al menos 5 caracteres.")
+        return normalized
+
+    @field_validator("segment_category", mode="before")
+    @classmethod
+    def _normalize_update_segment_category(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _normalize_update_tags(
+        cls, value: list[str] | str | None
+    ) -> list[str] | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            raw_items = value
+        normalized: list[str] = []
+        for item in raw_items:
+            if not isinstance(item, str):
+                continue
+            cleaned = item.strip().lower()
+            if cleaned and cleaned not in normalized:
+                normalized.append(cleaned)
+        return normalized
 
 
 class CustomerResponse(CustomerBase):
