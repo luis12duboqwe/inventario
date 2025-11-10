@@ -256,7 +256,10 @@ class TransferStatus(str, enum.Enum):
 class PurchaseStatus(str, enum.Enum):
     """Estados de avance para las órdenes de compra."""
 
+    BORRADOR = "BORRADOR"
     PENDIENTE = "PENDIENTE"
+    APROBADA = "APROBADA"
+    ENVIADA = "ENVIADA"
     PARCIAL = "PARCIAL"
     COMPLETADA = "COMPLETADA"
     CANCELADA = "CANCELADA"
@@ -2258,6 +2261,18 @@ class PurchaseOrder(Base):
     returns: Mapped[list["PurchaseReturn"]] = relationship(
         "PurchaseReturn", back_populates="order", cascade="all, delete-orphan"
     )
+    documents: Mapped[list["PurchaseOrderDocument"]] = relationship(
+        "PurchaseOrderDocument",
+        back_populates="order",
+        cascade="all, delete-orphan",
+        order_by="desc(PurchaseOrderDocument.uploaded_at)",
+    )
+    status_events: Mapped[list["PurchaseOrderStatusEvent"]] = relationship(
+        "PurchaseOrderStatusEvent",
+        back_populates="order",
+        cascade="all, delete-orphan",
+        order_by="PurchaseOrderStatusEvent.created_at",
+    )
 
 
 class PurchaseOrderItem(Base):
@@ -2350,6 +2365,58 @@ class PurchaseReturn(Base):
     warehouse: Mapped[Store | None] = relationship(
         "Store", foreign_keys=[warehouse_id]
     )
+
+
+class PurchaseOrderDocument(Base):
+    __tablename__ = "purchase_order_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    purchase_order_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("purchase_orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    storage_backend: Mapped[str] = mapped_column(String(20), nullable=False)
+    object_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    uploaded_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+
+    order: Mapped[PurchaseOrder] = relationship("PurchaseOrder", back_populates="documents")
+    uploaded_by: Mapped[User | None] = relationship("User")
+
+
+class PurchaseOrderStatusEvent(Base):
+    __tablename__ = "purchase_order_status_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    purchase_order_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("purchase_orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[PurchaseStatus] = mapped_column(
+        Enum(PurchaseStatus, name="purchase_status"), nullable=False
+    )
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+
+    order: Mapped[PurchaseOrder] = relationship(
+        "PurchaseOrder", back_populates="status_events"
+    )
+    created_by: Mapped[User | None] = relationship("User")
 
 
 class Sale(Base):
@@ -3090,6 +3157,8 @@ __all__ = [
     "PaymentMethod",
     "PurchaseOrder",
     "PurchaseOrderItem",
+    "PurchaseOrderDocument",
+    "PurchaseOrderStatusEvent",
     "PurchaseReturn",
     "PurchaseStatus",
     "SupplierLedgerEntry",

@@ -38,6 +38,7 @@ from .services import (
     inventory_accounting,
     inventory_audit,
     inventory_availability,
+    purchase_documents,
     promotions,
 )
 from .services.purchases import assign_supplier_batch
@@ -1620,6 +1621,33 @@ def _inventory_movement_payload(movement: models.InventoryMovement) -> dict[str,
     }
 
 
+def _normalize_optional_note(note: str | None) -> str | None:
+    if note is None:
+        return None
+    normalized = note.strip()
+    return normalized or None
+
+
+def _register_purchase_status_event(
+    db: Session,
+    order: models.PurchaseOrder,
+    *,
+    status: models.PurchaseStatus,
+    note: str | None = None,
+    created_by_id: int | None = None,
+) -> models.PurchaseOrderStatusEvent:
+    event = models.PurchaseOrderStatusEvent(
+        purchase_order_id=order.id,
+        status=status,
+        note=_normalize_optional_note(note),
+        created_by_id=created_by_id,
+    )
+    db.add(event)
+    flush_session(db)
+    db.refresh(event)
+    return event
+
+
 def _purchase_order_payload(order: models.PurchaseOrder) -> dict[str, object]:
     """Serializa una orden de compra para la cola de sincronización."""
 
@@ -1645,6 +1673,26 @@ def _purchase_order_payload(order: models.PurchaseOrder) -> dict[str, object]:
         "updated_at": order.updated_at.isoformat() if order.updated_at else None,
         "closed_at": order.closed_at.isoformat() if order.closed_at else None,
         "items": items_payload,
+        "documents": [
+            {
+                "id": document.id,
+                "filename": document.filename,
+                "content_type": document.content_type,
+                "storage_backend": document.storage_backend,
+                "uploaded_at": document.uploaded_at.isoformat(),
+            }
+            for document in getattr(order, "documents", [])
+        ],
+        "status_history": [
+            {
+                "id": event.id,
+                "status": getattr(event.status, "value", event.status),
+                "note": event.note,
+                "created_at": event.created_at.isoformat(),
+                "created_by_id": event.created_by_id,
+            }
+            for event in getattr(order, "status_events", [])
+        ],
     }
 
 
@@ -13738,6 +13786,10 @@ def get_purchase_order(db: Session, order_id: int) -> models.PurchaseOrder:
         .options(
             joinedload(models.PurchaseOrder.items),
             joinedload(models.PurchaseOrder.returns),
+            joinedload(models.PurchaseOrder.documents),
+            joinedload(models.PurchaseOrder.status_events).joinedload(
+                models.PurchaseOrderStatusEvent.created_by
+            ),
         )
     )
     try:
@@ -13785,14 +13837,24 @@ def create_purchase_order(
 
         db.refresh(order)
 
+        _register_purchase_status_event(
+            db,
+            order,
+            status=order.status,
+            created_by_id=created_by_id,
+            note="Creación de orden",
+        )
+        db.refresh(order)
+
         _log_action(
             db,
             action="purchase_order_created",
             entity_type="purchase_order",
             entity_id=str(order.id),
             performed_by_id=created_by_id,
-            details=json.dumps({"store_id": order.store_id,
-                               "supplier": order.supplier}),
+            details=json.dumps(
+                {"store_id": order.store_id, "supplier": order.supplier}
+            ),
         )
         db.refresh(order)
         enqueue_sync_outbox(
@@ -13802,6 +13864,7 @@ def create_purchase_order(
             operation="UPSERT",
             payload=_purchase_order_payload(order),
         )
+    db.refresh(order)
     return order
 
 
@@ -13948,6 +14011,14 @@ def receive_purchase_order(
 
         flush_session(db)
         db.refresh(order)
+        _register_purchase_status_event(
+            db,
+            order,
+            status=order.status,
+            created_by_id=received_by_id,
+            note=reason,
+        )
+        db.refresh(order)
         _recalculate_store_inventory_value(db, order.store_id)
 
         _log_action(
@@ -14052,6 +14123,14 @@ def cancel_purchase_order(
                 f" | Cancelación: {reason}" if order.notes else reason
 
         flush_session(db)
+        db.refresh(order)
+        _register_purchase_status_event(
+            db,
+            order,
+            status=order.status,
+            created_by_id=cancelled_by_id,
+            note=reason,
+        )
         db.refresh(order)
 
         _log_action(
@@ -14258,6 +14337,193 @@ def register_purchase_return(
             payload=_purchase_order_payload(order),
         )
     return purchase_return
+
+
+def add_purchase_order_document(
+    db: Session,
+    order_id: int,
+    *,
+    filename: str,
+    content_type: str,
+    content: bytes,
+    uploaded_by_id: int | None = None,
+) -> models.PurchaseOrderDocument:
+    order = get_purchase_order(db, order_id)
+    normalized_filename = (filename or "documento.pdf").strip() or "documento.pdf"
+    normalized_type = (content_type or "").lower()
+    if not normalized_filename.lower().endswith(".pdf") or "pdf" not in normalized_type:
+        raise ValueError("purchase_document_not_pdf")
+
+    storage = purchase_documents.get_storage()
+    stored = storage.save(
+        filename=normalized_filename,
+        content_type="application/pdf",
+        content=content,
+    )
+    document = models.PurchaseOrderDocument(
+        purchase_order_id=order.id,
+        filename=normalized_filename,
+        content_type="application/pdf",
+        storage_backend=stored.backend,
+        object_path=stored.path,
+        uploaded_by_id=uploaded_by_id,
+    )
+
+    with transactional_session(db):
+        db.add(document)
+        flush_session(db)
+        db.refresh(document)
+        _log_action(
+            db,
+            action="purchase_order_document_uploaded",
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            performed_by_id=uploaded_by_id,
+            details=json.dumps(
+                {
+                    "document_id": document.id,
+                    "filename": document.filename,
+                    "storage_backend": document.storage_backend,
+                }
+            ),
+        )
+        db.refresh(order)
+        enqueue_sync_outbox(
+            db,
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            operation="UPSERT",
+            payload=_purchase_order_payload(order),
+        )
+
+    return document
+
+
+def load_purchase_order_document(
+    db: Session, order_id: int, document_id: int
+) -> tuple[models.PurchaseOrderDocument, bytes]:
+    statement = (
+        select(models.PurchaseOrderDocument)
+        .where(
+            models.PurchaseOrderDocument.id == document_id,
+            models.PurchaseOrderDocument.purchase_order_id == order_id,
+        )
+        .options(joinedload(models.PurchaseOrderDocument.uploaded_by))
+    )
+    document = db.scalars(statement).one_or_none()
+    if document is None:
+        raise LookupError("purchase_document_not_found")
+    storage = purchase_documents.get_storage()
+    content = storage.open(document.object_path)
+    return document, content
+
+
+def transition_purchase_order_status(
+    db: Session,
+    order_id: int,
+    *,
+    status: models.PurchaseStatus,
+    note: str | None = None,
+    performed_by_id: int | None = None,
+) -> models.PurchaseOrder:
+    allowed_statuses = {
+        models.PurchaseStatus.BORRADOR,
+        models.PurchaseStatus.PENDIENTE,
+        models.PurchaseStatus.APROBADA,
+        models.PurchaseStatus.ENVIADA,
+    }
+    if status not in allowed_statuses:
+        raise ValueError("purchase_status_not_allowed")
+
+    order = get_purchase_order(db, order_id)
+    if order.status in {
+        models.PurchaseStatus.CANCELADA,
+        models.PurchaseStatus.COMPLETADA,
+    }:
+        raise ValueError("purchase_status_locked")
+    if order.status == status:
+        raise ValueError("purchase_status_noop")
+
+    with transactional_session(db):
+        order.status = status
+        order.updated_at = datetime.utcnow()
+        flush_session(db)
+        db.refresh(order)
+        _register_purchase_status_event(
+            db,
+            order,
+            status=status,
+            note=note,
+            created_by_id=performed_by_id,
+        )
+        db.refresh(order)
+        _log_action(
+            db,
+            action="purchase_order_status_transition",
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "status": status.value,
+                    "note": _normalize_optional_note(note),
+                }
+            ),
+        )
+        db.refresh(order)
+        enqueue_sync_outbox(
+            db,
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            operation="UPSERT",
+            payload=_purchase_order_payload(order),
+        )
+
+    return order
+
+
+def send_purchase_order_email(
+    db: Session,
+    order_id: int,
+    *,
+    recipients: Sequence[str],
+    message: str | None = None,
+    include_documents: bool = False,
+    requested_by_id: int | None = None,
+) -> models.PurchaseOrder:
+    order = get_purchase_order(db, order_id)
+    normalized_recipients = [
+        recipient.strip()
+        for recipient in recipients
+        if isinstance(recipient, str) and recipient.strip()
+    ]
+    if not normalized_recipients:
+        raise ValueError("purchase_email_recipients_required")
+
+    purchase_documents.send_purchase_order_email(
+        order=order,
+        recipients=normalized_recipients,
+        message=_normalize_optional_note(message),
+        include_documents=include_documents,
+    )
+
+    with transactional_session(db):
+        _log_action(
+            db,
+            action="purchase_order_email_sent",
+            entity_type="purchase_order",
+            entity_id=str(order.id),
+            performed_by_id=requested_by_id,
+            details=json.dumps(
+                {
+                    "recipients": normalized_recipients,
+                    "include_documents": include_documents,
+                }
+            ),
+        )
+        flush_session(db)
+
+    return order
 
 
 def import_purchase_orders_from_csv(

@@ -18,13 +18,20 @@ import {
   cancelPurchaseOrder,
   getPurchaseOrder,
   receivePurchaseOrder,
+  sendPurchaseOrderEmail,
+  transitionPurchaseOrderStatus,
+  uploadPurchaseOrderDocument,
   type PurchaseOrder,
   type PurchaseOrderItem,
+  type PurchaseOrderStatus,
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
-const STATUS_LABELS: Record<PurchaseOrder["status"], string> = {
+const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
+  BORRADOR: "Borrador",
   PENDIENTE: "Pendiente",
+  APROBADA: "Aprobada",
+  ENVIADA: "Enviada al proveedor",
   PARCIAL: "Recepción parcial",
   COMPLETADA: "Completada",
   CANCELADA: "Cancelada",
@@ -73,6 +80,9 @@ function PurchaseDetailPage() {
   const [landedCostOpen, setLandedCostOpen] = useState(false);
   const [processingReceive, setProcessingReceive] = useState(false);
   const [processingCancel, setProcessingCancel] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const numericId = Number(orderId);
 
@@ -192,51 +202,56 @@ function PurchaseDetailPage() {
       });
   }, [deviceLookup, order]);
 
+  const attachmentsView = useMemo(() => {
+    if (!order) {
+      return [];
+    }
+    return (order.documents ?? []).map((document) => ({
+      id: String(document.id),
+      name: document.filename,
+      url: document.download_url ?? undefined,
+    }));
+  }, [order]);
+
   const timelineView = useMemo(() => {
     if (!order) {
       return [];
     }
-    const events: Array<{ id: string; date: string; message: string }> = [
-      { id: `created-${order.id}`, date: order.created_at, message: "Orden creada" },
-    ];
-    if (order.status === "PARCIAL") {
-      events.push({
-        id: `partial-${order.id}`,
-        date: order.updated_at || order.created_at,
-        message: "Recepción parcial registrada",
-      });
-    }
-    if (order.status === "COMPLETADA") {
-      events.push({
-        id: `completed-${order.id}`,
-        date: order.closed_at || order.updated_at || order.created_at,
-        message: "Orden recibida por completo",
-      });
-    }
-    if (order.status === "CANCELADA") {
-      events.push({
-        id: `cancelled-${order.id}`,
-        date: order.updated_at || order.created_at,
-        message: "Orden cancelada",
-      });
-    }
-    (order.returns ?? []).forEach((entry) => {
+    const statusEvents = (order.status_history ?? []).map((event) => {
+      const label = STATUS_LABELS[event.status] ?? event.status;
+      const details: string[] = [];
+      if (event.created_by_name) {
+        details.push(event.created_by_name);
+      }
+      if (event.note) {
+        details.push(event.note);
+      }
+      const message = details.length > 0 ? `${label} · ${details.join(" · ")}` : label;
+      return {
+        id: `status-${event.id}`,
+        date: event.created_at,
+        message,
+      };
+    });
+
+    const returnEvents = (order.returns ?? []).map((entry) => {
       const device = deviceLookup.get(entry.device_id);
       const label = device ? `${device.sku} · ${device.name}` : `Producto #${entry.device_id}`;
-      events.push({
+      return {
         id: `return-${entry.id}`,
         date: entry.created_at,
         message: `Devolución de ${entry.quantity} unidad(es) (${label})`,
-      });
+      };
     });
-    return events
+
+    return [...statusEvents, ...returnEvents]
       .map((event) => {
         const parsed = new Date(event.date);
         const sortKey = Number.isNaN(parsed.getTime()) ? Number.MAX_SAFE_INTEGER : parsed.getTime();
         return { ...event, sortKey };
       })
-    .sort((a, b) => a.sortKey - b.sortKey)
-    .map((e) => ({ id: e.id, date: e.date, message: e.message }));
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .map((event) => ({ id: event.id, date: event.date, message: event.message }));
   }, [deviceLookup, order]);
 
   const modalLines = useMemo(() => {
@@ -268,7 +283,13 @@ function PurchaseDetailPage() {
   }, [deviceLookup, order]);
 
   const statusLabel = order ? STATUS_LABELS[order.status] ?? order.status : "";
-  const canReceive = Boolean(order && ["PENDIENTE", "PARCIAL"].includes(order.status));
+  const canReceiveStatuses: PurchaseOrderStatus[] = [
+    "PENDIENTE",
+    "APROBADA",
+    "ENVIADA",
+    "PARCIAL",
+  ];
+  const canReceive = Boolean(order && canReceiveStatuses.includes(order.status));
   const canCancel = Boolean(order && !["COMPLETADA", "CANCELADA"].includes(order.status));
 
   const handleReceiveSubmit = async ({ qtys }: ReceivePayload) => {
@@ -365,6 +386,131 @@ function PurchaseDetailPage() {
     });
   }, [pushToast]);
 
+  const handleAttachmentUpload = useCallback(
+    async (file: File) => {
+      if (!order) {
+        return;
+      }
+      if (file.type !== "application/pdf") {
+        setError("Solo se permiten documentos PDF.");
+        return;
+      }
+      const reason = window.prompt(
+        "Motivo corporativo para adjuntar el PDF",
+        "Adjuntar documentación de compra",
+      );
+      if (!reason || reason.trim().length < 5) {
+        setError("Debes indicar un motivo corporativo válido.");
+        return;
+      }
+      try {
+        setUploadingAttachment(true);
+        await uploadPurchaseOrderDocument(token, order.id, file, reason.trim());
+        setMessage("Documento adjuntado correctamente.");
+        pushToast?.({ message: "PDF adjuntado", variant: "success" });
+        await loadOrder();
+      } catch (err) {
+        const friendly =
+          err instanceof Error ? err.message : "No fue posible adjuntar el documento.";
+        setError(friendly);
+        setDashError(friendly);
+      } finally {
+        setUploadingAttachment(false);
+      }
+    },
+    [loadOrder, order, pushToast, setDashError, token],
+  );
+
+  const handleChangeStatus = useCallback(async () => {
+    if (!order) {
+      return;
+    }
+    const manualStatuses: PurchaseOrderStatus[] = [
+      "BORRADOR",
+      "PENDIENTE",
+      "APROBADA",
+      "ENVIADA",
+    ];
+    const nextStatusRaw = window.prompt(
+      "Nuevo estado (BORRADOR, PENDIENTE, APROBADA, ENVIADA)",
+      order.status,
+    );
+    if (!nextStatusRaw) {
+      return;
+    }
+    const normalized = nextStatusRaw.trim().toUpperCase();
+    if (!manualStatuses.includes(normalized as PurchaseOrderStatus)) {
+      setError("Estado inválido. Usa BORRADOR, PENDIENTE, APROBADA o ENVIADA.");
+      return;
+    }
+    const reason = window.prompt(
+      "Motivo corporativo para actualizar el estado",
+      "Actualización de estado de compra",
+    );
+    if (!reason || reason.trim().length < 5) {
+      setError("Debes indicar un motivo corporativo válido.");
+      return;
+    }
+    try {
+      setUpdatingStatus(true);
+      await transitionPurchaseOrderStatus(
+        token,
+        order.id,
+        { status: normalized as PurchaseOrderStatus },
+        reason.trim(),
+      );
+      setMessage("Estado actualizado correctamente.");
+      pushToast?.({ message: "Estado actualizado", variant: "info" });
+      await loadOrder();
+    } catch (err) {
+      const friendly =
+        err instanceof Error ? err.message : "No fue posible actualizar el estado.";
+      setError(friendly);
+      setDashError(friendly);
+    } finally {
+      setUpdatingStatus(false);
+    }
+  }, [loadOrder, order, pushToast, setDashError, token]);
+
+  const handleSendEmail = useCallback(async () => {
+    if (!order) {
+      return;
+    }
+    const recipientsRaw = window.prompt(
+      "Correos destino (separados por coma)",
+      "compras@example.com",
+    );
+    if (!recipientsRaw) {
+      return;
+    }
+    const recipients = recipientsRaw
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (recipients.length === 0) {
+      setError("Debes indicar al menos un destinatario.");
+      return;
+    }
+    const messageBody = window.prompt("Mensaje opcional", "Adjuntamos la orden de compra");
+    try {
+      setSendingEmail(true);
+      await sendPurchaseOrderEmail(token, order.id, {
+        recipients,
+        message: messageBody?.trim() || undefined,
+        include_documents: true,
+      });
+      setMessage("Orden enviada por correo electrónico.");
+      pushToast?.({ message: "Correo enviado", variant: "success" });
+      await loadOrder();
+    } catch (err) {
+      const friendly = err instanceof Error ? err.message : "No fue posible enviar el correo.";
+      setError(friendly);
+      setDashError(friendly);
+    } finally {
+      setSendingEmail(false);
+    }
+  }, [loadOrder, order, pushToast, setDashError, token]);
+
   const handleCloseMessage = () => setMessage(null);
   const handleDismissError = () => setError(null);
 
@@ -408,9 +554,12 @@ function PurchaseDetailPage() {
     headerProps.onCancel = handleCancel;
   }
 
+  const statusChangeBlocked = ["COMPLETADA", "CANCELADA"].includes(order.status);
   const actionsProps: React.ComponentProps<typeof POActionsBar> = {
     receiveDisabled: processingReceive,
     cancelDisabled: processingCancel,
+    statusDisabled: updatingStatus || statusChangeBlocked,
+    sendDisabled: sendingEmail,
   };
   if (canReceive) {
     actionsProps.onReceive = handleOpenReceiveDialog;
@@ -420,6 +569,10 @@ function PurchaseDetailPage() {
   if (canCancel) {
     actionsProps.onCancel = handleCancel;
   }
+  if (!statusChangeBlocked) {
+    actionsProps.onChangeStatus = handleChangeStatus;
+  }
+  actionsProps.onSend = handleSendEmail;
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -467,7 +620,11 @@ function PurchaseDetailPage() {
               Costos indirectos
             </button>
           </div>
-          <POAttachments items={[]} />
+          <POAttachments
+            items={attachmentsView}
+            onUpload={handleAttachmentUpload}
+            uploading={uploadingAttachment}
+          />
           <POTimeline items={timelineView} />
         </div>
       </div>

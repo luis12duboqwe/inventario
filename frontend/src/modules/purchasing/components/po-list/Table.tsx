@@ -1,6 +1,13 @@
 import React from "react";
 
-type PurchaseStatus = "PENDIENTE" | "PARCIAL" | "COMPLETADA" | "CANCELADA";
+type PurchaseStatus =
+  | "BORRADOR"
+  | "PENDIENTE"
+  | "APROBADA"
+  | "ENVIADA"
+  | "PARCIAL"
+  | "COMPLETADA"
+  | "CANCELADA";
 
 type Row = {
   id: string;

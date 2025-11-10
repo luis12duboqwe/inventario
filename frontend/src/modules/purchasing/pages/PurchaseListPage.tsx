@@ -17,7 +17,10 @@ import { useDashboard } from "../../dashboard/context/DashboardContext";
 const PAGE_SIZE = 10;
 
 const STATUS_LABELS: Record<PurchaseOrder["status"], string> = {
+  BORRADOR: "Borrador",
   PENDIENTE: "Pendiente",
+  APROBADA: "Aprobada",
+  ENVIADA: "Enviada",
   PARCIAL: "Recepción parcial",
   COMPLETADA: "Completada",
   CANCELADA: "Cancelada",
@@ -121,7 +124,13 @@ function buildSummaryCards(rows: EnrichedRow[]): SummaryCard[] {
   const totalAmount = rows.reduce((sum, row) => sum + row.total, 0);
   const receivedAmount = rows.reduce((sum, row) => sum + row.received, 0);
   const partialCount = rows.filter((row) => row.statusCode === "PARCIAL").length;
-  const pendingCount = rows.filter((row) => row.statusCode === "PENDIENTE").length;
+  const pendingStatuses: PurchaseOrder["status"][] = [
+    "BORRADOR",
+    "PENDIENTE",
+    "APROBADA",
+    "ENVIADA",
+  ];
+  const pendingCount = rows.filter((row) => pendingStatuses.includes(row.statusCode)).length;
   const percentagePartial = ((partialCount / rows.length) * 100).toFixed(0);
   const average = rows.length > 0 ? totalAmount / rows.length : 0;
 

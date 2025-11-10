@@ -158,6 +158,14 @@ Nota: La matriz se materializa en la tabla `permisos`. Las funciones `ensure_rol
   3. `GET /auth/me` — incluye `Authorization: Bearer <jwt>` para recuperar los datos del usuario autenticado.
 - ✅ **Compatibilidad heredada**: se mantiene el soporte para `/auth/token` y `/auth/verify` para los clientes existentes, aprovechando el mismo backend de autenticación basado en JWT.
 
+### Documentos oficiales de órdenes de compra
+
+- **Dependencia adicional**: `boto3` forma parte de `requirements.txt` para habilitar cargas y descargas contra S3 compatibles. Ejecuta `pip install -r requirements.txt` tras actualizar el repositorio para incorporarla al entorno virtual.
+- **Almacenamiento local** (predeterminado): ajusta `PURCHASES_DOCUMENTS_BACKEND=local` y, opcionalmente, `PURCHASES_DOCUMENTS_LOCAL_PATH` para definir la carpeta raíz donde se guardarán los PDF. Si no se indica, se usará `backups/purchase_orders` dentro del proyecto. Puedes exponer la ruta públicamente configurando `PURCHASES_DOCUMENTS_PUBLIC_URL` con el dominio/base URL desde el que se servirán los archivos.
+- **Almacenamiento S3 o compatible**: define `PURCHASES_DOCUMENTS_BACKEND=s3` junto con `PURCHASES_DOCUMENTS_S3_BUCKET`, `PURCHASES_DOCUMENTS_S3_REGION` y, si aplica, `PURCHASES_DOCUMENTS_S3_ENDPOINT`. Proporciona credenciales mediante `PURCHASES_DOCUMENTS_S3_ACCESS_KEY` y `PURCHASES_DOCUMENTS_S3_SECRET_KEY`; ajusta `PURCHASES_DOCUMENTS_S3_PREFIX` para reutilizar un subdirectorio dentro del bucket.
+- **Limpieza de caché en pruebas**: al modificar dinámicamente las variables anteriores dentro de tests automatizados utiliza `purchase_documents.get_storage.cache_clear()` para forzar la reconstrucción del backend de archivos antes de cada escenario.
+- **PDF oficial y correos**: el backend genera el documento oficial de la orden con ReportLab y reutiliza el servicio de notificaciones para enviar correos (`POST /purchases/{id}/send`). El flag `include_documents` adjunta los PDFs subidos a la orden además del documento oficial.
+
 ### Ejemplos rápidos con `curl`
 
 ```bash

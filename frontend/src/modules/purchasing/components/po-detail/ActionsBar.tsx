@@ -5,10 +5,14 @@ type Props = {
   onInvoice?: () => void;
   onRTV?: () => void;
   onCancel?: () => void;
+  onSend?: () => void;
+  onChangeStatus?: () => void;
   receiveDisabled?: boolean;
   invoiceDisabled?: boolean;
   rtvDisabled?: boolean;
   cancelDisabled?: boolean;
+  sendDisabled?: boolean;
+  statusDisabled?: boolean;
 };
 
 const containerStyle: React.CSSProperties = {
@@ -30,15 +34,21 @@ export default function ActionsBar({
   onInvoice,
   onRTV,
   onCancel,
+  onSend,
+  onChangeStatus,
   receiveDisabled = false,
   invoiceDisabled = false,
   rtvDisabled = false,
   cancelDisabled = false,
+  sendDisabled = false,
+  statusDisabled = false,
 }: Props) {
   const receiveInactive = receiveDisabled || !onReceive;
   const invoiceInactive = invoiceDisabled || !onInvoice;
   const rtvInactive = rtvDisabled || !onRTV;
   const cancelInactive = cancelDisabled || !onCancel;
+  const sendInactive = sendDisabled || !onSend;
+  const statusInactive = statusDisabled || !onChangeStatus;
 
   return (
     <div style={containerStyle}>
@@ -77,6 +87,30 @@ export default function ActionsBar({
         }}
       >
         Devolución
+      </button>
+      <button
+        type="button"
+        disabled={statusInactive}
+        onClick={statusInactive ? undefined : onChangeStatus}
+        style={{
+          ...buttonStyle,
+          opacity: statusInactive ? 0.4 : 1,
+          cursor: statusInactive ? "not-allowed" : "pointer",
+        }}
+      >
+        Actualizar estado
+      </button>
+      <button
+        type="button"
+        disabled={sendInactive}
+        onClick={sendInactive ? undefined : onSend}
+        style={{
+          ...buttonStyle,
+          opacity: sendInactive ? 0.4 : 1,
+          cursor: sendInactive ? "not-allowed" : "pointer",
+        }}
+      >
+        Enviar por correo
       </button>
       <button
         type="button"
