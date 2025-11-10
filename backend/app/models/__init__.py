@@ -2489,6 +2489,27 @@ class PurchaseOrderStatusEvent(Base):
     created_by: Mapped[User | None] = relationship("User")
 
 
+class DTEStatus(str, enum.Enum):
+    """Estados operativos de un documento tributario electrónico."""
+
+    PENDIENTE = "PENDIENTE"
+    EMITIDO = "EMITIDO"
+    RECHAZADO = "RECHAZADO"
+    ANULADO = "ANULADO"
+
+
+class DTEDispatchStatus(str, enum.Enum):
+    """Estados de la cola de envío de documentos tributarios."""
+
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
+DTE_STATUS_ENUM = Enum(DTEStatus, name="dte_status")
+DTEDISPATCH_STATUS_ENUM = Enum(DTEDispatchStatus, name="dte_dispatch_status")
+
+
 class Sale(Base):
     __tablename__ = "ventas"
 
@@ -2551,6 +2572,12 @@ class Sale(Base):
     created_at: Mapped[datetime] = mapped_column(
         "fecha", DateTime(timezone=True), default=datetime.utcnow
     )
+    dte_status: Mapped[DTEStatus] = mapped_column(
+        DTE_STATUS_ENUM.copy(), nullable=False, default=DTEStatus.PENDIENTE
+    )
+    dte_reference: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, index=True
+    )
     performed_by_id: Mapped[int | None] = mapped_column(
         "usuario_id",
         Integer,
@@ -2587,6 +2614,9 @@ class Sale(Base):
         "LoyaltyTransaction",
         back_populates="sale",
         cascade="all, delete-orphan",
+    )
+    dte_documents: Mapped[list["DTEDocument"]] = relationship(
+        "DTEDocument", back_populates="sale", cascade="all, delete-orphan"
     )
 
 
@@ -3209,6 +3239,170 @@ class SyncAttempt(Base):
         "SyncQueue", back_populates="attempt_logs")
 
 
+class DTEAuthorization(Base):
+    __tablename__ = "dte_authorizations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    document_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    serie: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
+    range_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    range_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    cai: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    expiration_date: Mapped[date] = mapped_column(Date, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    store: Mapped[Store | None] = relationship("Store")
+    documents: Mapped[list["DTEDocument"]] = relationship(
+        "DTEDocument", back_populates="authorization", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "document_type",
+            "serie",
+            "store_id",
+            name="uq_dte_authorization_scope",
+        ),
+    )
+
+
+class DTEDocument(Base):
+    __tablename__ = "dte_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sale_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    authorization_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("dte_authorizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    document_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    serie: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
+    correlative: Mapped[int] = mapped_column(Integer, nullable=False)
+    control_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    cai: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    xml_content: Mapped[str] = mapped_column(Text, nullable=False)
+    signature: Mapped[str] = mapped_column(String(256), nullable=False)
+    status: Mapped[DTEStatus] = mapped_column(
+        DTE_STATUS_ENUM.copy(), nullable=False, default=DTEStatus.PENDIENTE
+    )
+    reference_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    ack_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    ack_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    sale: Mapped[Sale] = relationship("Sale", back_populates="dte_documents")
+    authorization: Mapped[DTEAuthorization | None] = relationship(
+        "DTEAuthorization", back_populates="documents"
+    )
+    events: Mapped[list["DTEEvent"]] = relationship(
+        "DTEEvent", back_populates="document", cascade="all, delete-orphan"
+    )
+    dispatch_entries: Mapped[list["DTEDispatchQueue"]] = relationship(
+        "DTEDispatchQueue", back_populates="document", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "serie",
+            "correlative",
+            name="uq_dte_documents_series_number",
+        ),
+    )
+
+
+class DTEEvent(Base):
+    __tablename__ = "dte_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("dte_documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    status: Mapped[DTEStatus] = mapped_column(
+        DTE_STATUS_ENUM.copy(), nullable=False, default=DTEStatus.PENDIENTE
+    )
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    performed_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    document: Mapped[DTEDocument] = relationship(
+        "DTEDocument", back_populates="events"
+    )
+    performed_by: Mapped[User | None] = relationship("User")
+
+
+class DTEDispatchQueue(Base):
+    __tablename__ = "dte_dispatch_queue"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("dte_documents.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    status: Mapped[DTEDispatchStatus] = mapped_column(
+        DTEDISPATCH_STATUS_ENUM.copy(),
+        nullable=False,
+        default=DTEDispatchStatus.PENDING,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    document: Mapped[DTEDocument] = relationship(
+        "DTEDocument", back_populates="dispatch_entries"
+    )
+
+
 __all__ = [
     "CashRegisterSession",
     "CashSessionStatus",
@@ -3266,9 +3460,15 @@ __all__ = [
     "User",
     "UserRole",
     "Permission",
+    "DTEStatus",
+    "DTEDispatchStatus",
     "Sale",
     "SaleItem",
     "SaleReturn",
+    "DTEAuthorization",
+    "DTEDocument",
+    "DTEEvent",
+    "DTEDispatchQueue",
     "WarrantyAssignment",
     "WarrantyClaim",
     "WarrantyStatus",
