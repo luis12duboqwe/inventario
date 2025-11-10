@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
 from ..config import settings
-from ..core.roles import ADMIN, MOVEMENT_ROLES
+from ..core.roles import ADMIN, GERENTE, MOVEMENT_ROLES
+from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -42,6 +43,22 @@ def _decorate_comment(base: str, responsible: str | None, suffix: str | None = N
     return comment[:255]
 
 
+def _user_can_override_transfer(current_user, store_id: int) -> bool:
+    """Determina si el usuario puede forzar transferencias sin membresía explícita."""
+
+    role_assignments = getattr(current_user, "roles", []) or []
+    user_roles = {
+        assignment.role.name
+        for assignment in role_assignments
+        if getattr(assignment, "role", None) is not None
+    }
+    if ADMIN in user_roles:
+        return True
+    if GERENTE in user_roles and getattr(current_user, "store_id", None) == store_id:
+        return True
+    return False
+
+
 @router.post(
     "/receipts",
     response_model=schemas.InventoryReceivingResult,
@@ -62,127 +79,167 @@ def register_inventory_receiving(
     auto_transfers: list[schemas.TransferOrderResponse] = []
     distribution_plan: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
 
-    if any(line.distributions for line in payload.lines) and not settings.enable_transfers:
+    has_distributions = any(line.distributions for line in payload.lines)
+    if has_distributions and not settings.enable_transfers:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Las transferencias automáticas están deshabilitadas.",
         )
 
-    for line in payload.lines:
-        try:
-            device = crud.resolve_device_for_inventory(
-                db,
-                store_id=payload.store_id,
-                device_id=line.device_id,
-                imei=line.imei,
-                serial=line.serial,
-            )
-        except LookupError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="device_not_found",
-            ) from exc
-
-        comment_base = line.comment or payload.note
-        comment = _decorate_comment(comment_base, payload.responsible)
-        movement_payload = schemas.MovementCreate(
-            producto_id=device.id,
-            tipo_movimiento=models.MovementType.IN,
-            cantidad=line.quantity,
-            comentario=comment,
-            unit_cost=line.unit_cost,
-        )
-
-        try:
-            movement = crud.create_inventory_movement(
-                db,
-                payload.store_id,
-                movement_payload,
-                performed_by_id=performer_id,
-                reference_type="inventory_receiving",
-                reference_id=payload.reference or _resolve_identifier(line),
-            )
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(exc),
-            ) from exc
-
-        processed.append(
-            schemas.InventoryReceivingProcessed(
-                identifier=_resolve_identifier(line),
-                device_id=device.id,
-                quantity=line.quantity,
-                movement=schemas.MovementResponse.model_validate(movement),
-            )
-        )
-        total_quantity += line.quantity
-
-        if line.distributions:
-            for allocation in line.distributions:
+    if has_distributions:
+        distribution_targets: set[int] = set()
+        for line in payload.lines:
+            for allocation in line.distributions or []:
                 if allocation.store_id == payload.store_id:
                     raise HTTPException(
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                         detail="La distribución automática no puede usar la misma sucursal de origen.",
                     )
-                distribution_plan[allocation.store_id][device.id] += allocation.quantity
+                distribution_targets.add(allocation.store_id)
 
-    totals = schemas.InventoryReceivingSummary(lines=len(processed), total_quantity=total_quantity)
-    if distribution_plan:
-        transfer_reason_base = payload.note.strip()
-        transfer_reason = f"{transfer_reason_base} · distribución automática"[:255]
-        for destination_store_id, device_map in distribution_plan.items():
-            items = [
-                schemas.TransferOrderItemCreate(device_id=device_id, quantity=quantity)
-                for device_id, quantity in device_map.items()
-                if quantity > 0
-            ]
-            if not items:
-                continue
-            transfer_payload = schemas.TransferOrderCreate(
-                origin_store_id=payload.store_id,
-                destination_store_id=destination_store_id,
-                reason=transfer_reason,
-                items=items,
-            )
+        for destination_store_id in distribution_targets:
             try:
-                order = crud.create_transfer_order(
-                    db,
-                    transfer_payload,
-                    requested_by_id=performer_id,
-                )
-            except PermissionError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No tienes permisos para transferir desde la sucursal seleccionada.",
-                ) from exc
+                crud.get_store(db, destination_store_id)
             except LookupError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="La distribución apunta a una sucursal inexistente.",
                 ) from exc
+
+        if performer_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para transferir desde la sucursal seleccionada.",
+            )
+
+        membership = crud.get_store_membership(
+            db, user_id=performer_id, store_id=payload.store_id
+        )
+        normalized_reason = (payload.note or "").strip()
+        has_override = len(normalized_reason) >= 5 and _user_can_override_transfer(
+            current_user, payload.store_id
+        )
+        if (membership is None or not membership.can_create_transfer) and not has_override:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para transferir desde la sucursal seleccionada.",
+            )
+
+    totals: schemas.InventoryReceivingSummary | None = None
+
+    with transactional_session(db):
+        for line in payload.lines:
+            try:
+                device = crud.resolve_device_for_inventory(
+                    db,
+                    store_id=payload.store_id,
+                    device_id=line.device_id,
+                    imei=line.imei,
+                    serial=line.serial,
+                )
+            except LookupError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="device_not_found",
+                ) from exc
+
+            comment_base = line.comment or payload.note
+            comment = _decorate_comment(comment_base, payload.responsible)
+            movement_payload = schemas.MovementCreate(
+                producto_id=device.id,
+                tipo_movimiento=models.MovementType.IN,
+                cantidad=line.quantity,
+                comentario=comment,
+                unit_cost=line.unit_cost,
+            )
+
+            try:
+                movement = crud.create_inventory_movement(
+                    db,
+                    payload.store_id,
+                    movement_payload,
+                    performed_by_id=performer_id,
+                    reference_type="inventory_receiving",
+                    reference_id=payload.reference or _resolve_identifier(line),
+                )
             except ValueError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=str(exc),
                 ) from exc
 
-            try:
-                order = crud.dispatch_transfer_order(
-                    db,
-                    order.id,
-                    performed_by_id=performer_id,
-                    reason=transfer_reason,
-                )
-            except (PermissionError, ValueError):
-                order = crud.get_transfer_order(db, order.id)
-
-            auto_transfers.append(
-                schemas.TransferOrderResponse.model_validate(
-                    order,
-                    from_attributes=True,
+            processed.append(
+                schemas.InventoryReceivingProcessed(
+                    identifier=_resolve_identifier(line),
+                    device_id=device.id,
+                    quantity=line.quantity,
+                    movement=schemas.MovementResponse.model_validate(movement),
                 )
             )
+            total_quantity += line.quantity
+
+            if line.distributions:
+                for allocation in line.distributions:
+                    distribution_plan[allocation.store_id][device.id] += allocation.quantity
+
+        totals = schemas.InventoryReceivingSummary(
+            lines=len(processed), total_quantity=total_quantity
+        )
+        if distribution_plan:
+            transfer_reason_base = (payload.note or "").strip()
+            transfer_reason = f"{transfer_reason_base} · distribución automática"[:255]
+            for destination_store_id, device_map in distribution_plan.items():
+                items = [
+                    schemas.TransferOrderItemCreate(device_id=device_id, quantity=quantity)
+                    for device_id, quantity in device_map.items()
+                    if quantity > 0
+                ]
+                if not items:
+                    continue
+                transfer_payload = schemas.TransferOrderCreate(
+                    origin_store_id=payload.store_id,
+                    destination_store_id=destination_store_id,
+                    reason=transfer_reason,
+                    items=items,
+                )
+                try:
+                    order = crud.create_transfer_order(
+                        db,
+                        transfer_payload,
+                        requested_by_id=performer_id,
+                    )
+                except PermissionError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="No tienes permisos para transferir desde la sucursal seleccionada.",
+                    ) from exc
+                except LookupError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="La distribución apunta a una sucursal inexistente.",
+                    ) from exc
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=str(exc),
+                    ) from exc
+
+                try:
+                    order = crud.dispatch_transfer_order(
+                        db,
+                        order.id,
+                        performed_by_id=performer_id,
+                        reason=transfer_reason,
+                    )
+                except (PermissionError, ValueError):
+                    order = crud.get_transfer_order(db, order.id)
+
+                auto_transfers.append(
+                    schemas.TransferOrderResponse.model_validate(
+                        order,
+                        from_attributes=True,
+                    )
+                )
 
     return schemas.InventoryReceivingResult(
         store_id=payload.store_id,
