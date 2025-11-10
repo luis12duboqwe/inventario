@@ -663,9 +663,19 @@ export type CustomerPaymentPayload = {
   sale_id?: number | null;
 };
 
+export type SupplierContact = {
+  name?: string | null;
+  position?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+};
+
 export type Supplier = {
   id: number;
   name: string;
+  rtn?: string | null;
+  payment_terms?: string | null;
   contact_name?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -673,12 +683,16 @@ export type Supplier = {
   notes?: string | null;
   outstanding_debt: number;
   history: ContactHistoryEntry[];
+  contact_info: SupplierContact[];
+  products_supplied: string[];
   created_at: string;
   updated_at: string;
 };
 
 export type SupplierPayload = {
   name: string;
+  rtn?: string;
+  payment_terms?: string;
   contact_name?: string;
   email?: string;
   phone?: string;
@@ -686,6 +700,8 @@ export type SupplierPayload = {
   notes?: string;
   outstanding_debt?: number;
   history?: ContactHistoryEntry[];
+  contact_info?: SupplierContact[];
+  products_supplied?: string[];
 };
 
 export type SupplierBatch = {
@@ -723,6 +739,46 @@ export type SupplierBatchOverviewItem = {
   latest_purchase_date: string;
   latest_batch_code?: string | null;
   latest_unit_cost?: number | null;
+};
+
+export type SupplierAccountsPayableBucket = {
+  label: string;
+  days_from: number;
+  days_to: number | null;
+  amount: number;
+  percentage: number;
+  count: number;
+};
+
+export type SupplierAccountsPayableSupplier = {
+  supplier_id: number;
+  supplier_name: string;
+  rtn?: string | null;
+  payment_terms?: string | null;
+  outstanding_debt: number;
+  bucket_label: string;
+  bucket_from: number;
+  bucket_to: number | null;
+  days_outstanding: number;
+  last_activity?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  products_supplied: string[];
+  contact_info: SupplierContact[];
+};
+
+export type SupplierAccountsPayableSummary = {
+  total_balance: number;
+  total_overdue: number;
+  supplier_count: number;
+  generated_at: string;
+  buckets: SupplierAccountsPayableBucket[];
+};
+
+export type SupplierAccountsPayableResponse = {
+  summary: SupplierAccountsPayableSummary;
+  suppliers: SupplierAccountsPayableSupplier[];
 };
 
 export type PurchaseVendor = {
@@ -4920,6 +4976,16 @@ export function listSuppliers(
     params.append("q", query);
   }
   return requestCollection<Supplier>(`/suppliers?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function getSuppliersAccountsPayable(
+  token: string
+): Promise<SupplierAccountsPayableResponse> {
+  return request<SupplierAccountsPayableResponse>(
+    "/suppliers/accounts-payable",
+    { method: "GET" },
+    token
+  );
 }
 
 export function exportSuppliersCsv(token: string, query?: string): Promise<Blob> {

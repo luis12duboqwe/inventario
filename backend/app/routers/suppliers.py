@@ -31,6 +31,17 @@ def list_suppliers_endpoint(
     return suppliers
 
 
+@router.get(
+    "/accounts-payable",
+    response_model=schemas.SupplierAccountsPayableResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def get_suppliers_accounts_payable_endpoint(
+    db: Session = Depends(get_db),
+):
+    return crud.get_suppliers_accounts_payable(db)
+
+
 @router.post("/", response_model=schemas.SupplierResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_supplier_endpoint(
     payload: schemas.SupplierCreate,

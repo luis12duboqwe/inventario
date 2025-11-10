@@ -2049,12 +2049,18 @@ class Supplier(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(
         String(120), nullable=False, unique=True, index=True)
+    rtn: Mapped[str | None] = mapped_column(String(30), nullable=True, unique=True)
+    payment_terms: Mapped[str | None] = mapped_column(String(80), nullable=True)
     contact_name: Mapped[str | None] = mapped_column(
         String(120), nullable=True)
     email: Mapped[str | None] = mapped_column(String(120), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    contact_info: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list)
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    products_supplied: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list)
     history: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, nullable=False, default=list)
     outstanding_debt: Mapped[Decimal] = mapped_column(
