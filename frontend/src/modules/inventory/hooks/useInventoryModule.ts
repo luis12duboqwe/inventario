@@ -5,6 +5,8 @@ import type {
   InventoryMovementsFilters,
   InventoryTopProductsFilters,
   InventoryValueFilters,
+  InactiveProductsFilters,
+  SyncDiscrepancyFilters,
   InventoryReservation,
   InventoryReservationInput,
   InventoryReservationRenewInput,
@@ -372,6 +374,12 @@ export function useInventoryModule() {
     [dashboard.token],
   );
 
+  const fetchInactiveProductsReport = useCallback(
+    (filters: InactiveProductsFilters = {}) =>
+      inventoryService.fetchInactiveProductsReport(dashboard.token, filters),
+    [dashboard.token],
+  );
+
   const fetchInventoryMovementsReport = useCallback(
     (filters: InventoryMovementsFilters = {}) =>
       inventoryService.fetchInventoryMovementsReport(dashboard.token, filters),
@@ -381,6 +389,12 @@ export function useInventoryModule() {
   const fetchTopProductsReport = useCallback(
     (filters: InventoryTopProductsFilters = {}) =>
       inventoryService.fetchTopProductsReport(dashboard.token, filters),
+    [dashboard.token],
+  );
+
+  const fetchSyncDiscrepancyReport = useCallback(
+    (filters: SyncDiscrepancyFilters = {}) =>
+      inventoryService.fetchSyncDiscrepancyReport(dashboard.token, filters),
     [dashboard.token],
   );
 
@@ -500,8 +514,10 @@ export function useInventoryModule() {
     downloadInventoryCurrentPdf,
     downloadInventoryCurrentXlsx,
     fetchInventoryValueReport,
+    fetchInactiveProductsReport,
     fetchInventoryMovementsReport,
     fetchTopProductsReport,
+    fetchSyncDiscrepancyReport,
     downloadInventoryValueCsv,
     downloadInventoryValuePdf,
     downloadInventoryValueXlsx,

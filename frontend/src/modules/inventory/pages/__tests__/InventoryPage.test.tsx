@@ -158,6 +158,8 @@ const createContextValue = (): InventoryLayoutContextValue => ({
     fetchInventoryValueReport: vi.fn(),
     fetchInventoryMovementsReport: vi.fn(),
     fetchTopProductsReport: vi.fn(),
+    fetchInactiveProductsReport: vi.fn(),
+    fetchSyncDiscrepancyReport: vi.fn(),
     downloadInventoryValueCsv: vi.fn(),
     downloadInventoryValuePdf: vi.fn(),
     downloadInventoryValueXlsx: vi.fn(),

@@ -1095,6 +1095,30 @@ def inventory_value(
 
 
 @router.get(
+    "/inventory/inactive-products",
+    response_model=schemas.InactiveProductReport,
+)
+def inventory_inactive_products(
+    store_ids: list[int] | None = Query(default=None),
+    categories: list[str] | None = Query(default=None),
+    min_days_without_movement: int = Query(default=30, ge=0, le=365),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    normalized_categories = [category for category in categories or [] if category]
+    return crud.get_inactive_products_report(
+        db,
+        store_ids=store_ids,
+        categories=normalized_categories if normalized_categories else None,
+        min_days_without_movement=min_days_without_movement,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
     "/inventory/movements",
     response_model=schemas.InventoryMovementsReport
 )
@@ -1121,6 +1145,33 @@ def inventory_movements(
         date_from=date_from,
         date_to=date_to,
         movement_type=movement_enum,
+    )
+
+
+@router.get(
+    "/inventory/sync-discrepancies",
+    response_model=schemas.SyncDiscrepancyReport,
+)
+def inventory_sync_discrepancies(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    severity: schemas.SyncBranchHealth | None = Query(default=None),
+    min_difference: int | None = Query(default=None, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    return crud.get_sync_discrepancies_report(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+        min_difference=min_difference,
+        limit=limit,
+        offset=offset,
     )
 
 

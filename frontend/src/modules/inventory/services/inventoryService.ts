@@ -26,6 +26,8 @@ import {
   getInventoryValueReport,
   getSupplierBatchOverview,
   getTopProductsReport,
+  getInactiveProductsReport,
+  getSyncDiscrepancyReport,
   getProductVariants,
   getProductBundles,
   createProductVariant,
@@ -55,6 +57,10 @@ import type {
   InventoryTopProductsFilters,
   InventoryValueFilters,
   InventoryValueReport,
+  InactiveProductsFilters,
+  InactiveProductsReport,
+  SyncDiscrepancyFilters,
+  SyncDiscrepancyReport,
   InventoryReservation,
   InventoryReservationInput,
   InventoryReservationRenewInput,
@@ -204,6 +210,10 @@ export const inventoryService = {
     token: string,
     filters: InventoryValueFilters = {},
   ): Promise<InventoryValueReport> => getInventoryValueReport(token, filters),
+  fetchInactiveProductsReport: (
+    token: string,
+    filters: InactiveProductsFilters = {},
+  ): Promise<InactiveProductsReport> => getInactiveProductsReport(token, filters),
   fetchInventoryMovementsReport: (
     token: string,
     filters: InventoryMovementsFilters = {},
@@ -212,6 +222,10 @@ export const inventoryService = {
     token: string,
     filters: InventoryTopProductsFilters = {},
   ): Promise<TopProductsReport> => getTopProductsReport(token, filters),
+  fetchSyncDiscrepancyReport: (
+    token: string,
+    filters: SyncDiscrepancyFilters = {},
+  ): Promise<SyncDiscrepancyReport> => getSyncDiscrepancyReport(token, filters),
   downloadInventoryCurrentCsv: (
     token: string,
     reason: string,

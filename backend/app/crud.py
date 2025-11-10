@@ -10523,6 +10523,101 @@ def get_inventory_value_report(
     return schemas.InventoryValueReport(stores=stores, totals=totals)
 
 
+def get_inactive_products_report(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    categories: Iterable[str] | None = None,
+    min_days_without_movement: int = 30,
+    limit: int = 50,
+    offset: int = 0,
+) -> schemas.InactiveProductReport:
+    min_days = max(int(min_days_without_movement), 0)
+    valuations = calculate_inventory_valuation(
+        db, store_ids=store_ids, categories=categories
+    )
+
+    filtered = [
+        entry
+        for entry in valuations
+        if entry.quantity > 0
+        and (
+            entry.dias_sin_movimiento is None
+            or int(entry.dias_sin_movimiento) >= min_days
+        )
+    ]
+
+    normalized_offset = max(offset, 0)
+    normalized_limit = max(limit, 0)
+    paginated = (
+        filtered[normalized_offset : normalized_offset + normalized_limit]
+        if normalized_limit
+        else filtered[normalized_offset:]
+    )
+
+    items = [
+        schemas.InactiveProductEntry(
+            store_id=entry.store_id,
+            store_name=entry.store_name,
+            device_id=entry.device_id,
+            sku=entry.sku,
+            device_name=entry.device_name,
+            categoria=entry.categoria,
+            quantity=entry.quantity,
+            valor_total_producto=_to_decimal(entry.valor_total_producto),
+            ultima_venta=entry.ultima_venta,
+            ultima_compra=entry.ultima_compra,
+            ultimo_movimiento=entry.ultimo_movimiento,
+            dias_sin_movimiento=entry.dias_sin_movimiento,
+            ventas_30_dias=entry.ventas_30_dias,
+            ventas_90_dias=entry.ventas_90_dias,
+            rotacion_30_dias=_to_decimal(entry.rotacion_30_dias),
+            rotacion_90_dias=_to_decimal(entry.rotacion_90_dias),
+            rotacion_total=_to_decimal(entry.rotacion_total),
+        )
+        for entry in paginated
+    ]
+
+    total_units = sum((entry.quantity for entry in filtered), 0)
+    total_value = sum(
+        (_to_decimal(entry.valor_total_producto) for entry in filtered),
+        Decimal("0"),
+    )
+    days_values = [
+        int(entry.dias_sin_movimiento)
+        for entry in filtered
+        if entry.dias_sin_movimiento is not None
+    ]
+    average_days: float | None = None
+    if days_values:
+        average_days = round(sum(days_values) / len(days_values), 2)
+    max_days: int | None = max(days_values) if days_values else None
+
+    totals = schemas.InactiveProductReportTotals(
+        total_products=len(filtered),
+        total_units=total_units,
+        total_value=total_value,
+        average_days_without_movement=average_days,
+        max_days_without_movement=max_days,
+    )
+
+    normalized_stores = sorted({int(store_id) for store_id in store_ids or []})
+    normalized_categories = [category for category in categories or [] if category]
+
+    filters = schemas.InactiveProductReportFilters(
+        store_ids=normalized_stores,
+        categories=normalized_categories,
+        min_days_without_movement=min_days,
+    )
+
+    return schemas.InactiveProductReport(
+        generated_at=datetime.utcnow(),
+        filters=filters,
+        totals=totals,
+        items=items,
+    )
+
+
 def calculate_rotation_analytics(
     db: Session,
     store_ids: Iterable[int] | None = None,
@@ -12853,6 +12948,101 @@ def list_sync_conflicts(
             break
 
     return results
+
+
+def get_sync_discrepancies_report(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    severity: schemas.SyncBranchHealth | None = None,
+    min_difference: int | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> schemas.SyncDiscrepancyReport:
+    normalized_store_ids = sorted(
+        {
+            int(store_id)
+            for store_id in store_ids or []
+            if isinstance(store_id, int) or str(store_id).isdigit()
+        }
+    )
+    store_filter: int | None = None
+    if len(normalized_store_ids) == 1:
+        store_filter = normalized_store_ids[0]
+
+    fetch_limit = max(limit * 3, 200)
+    base_conflicts = list_sync_conflicts(
+        db,
+        store_id=store_filter,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+        limit=fetch_limit,
+        offset=0,
+    )
+
+    conflicts = base_conflicts
+    if normalized_store_ids and store_filter is None:
+        store_set = set(normalized_store_ids)
+
+        def _matches(conflict: schemas.SyncConflictLog) -> bool:
+            stores = conflict.stores_max + conflict.stores_min
+            return any(detail.store_id in store_set for detail in stores)
+
+        conflicts = [conflict for conflict in conflicts if _matches(conflict)]
+
+    if min_difference is not None:
+        min_diff = max(int(min_difference), 0)
+        conflicts = [
+            conflict for conflict in conflicts if conflict.difference >= min_diff
+        ]
+
+    if offset:
+        conflicts = conflicts[offset:]
+    if limit:
+        conflicts = conflicts[:limit]
+
+    warnings = sum(
+        1
+        for conflict in conflicts
+        if conflict.severity is schemas.SyncBranchHealth.WARNING
+    )
+    critical = sum(
+        1
+        for conflict in conflicts
+        if conflict.severity is schemas.SyncBranchHealth.CRITICAL
+    )
+    max_difference = (
+        max((conflict.difference for conflict in conflicts), default=None)
+        if conflicts
+        else None
+    )
+    affected_skus = len({conflict.sku for conflict in conflicts})
+
+    totals = schemas.SyncDiscrepancyReportTotals(
+        total_conflicts=len(conflicts),
+        warnings=warnings,
+        critical=critical,
+        max_difference=max_difference,
+        affected_skus=affected_skus,
+    )
+
+    filters = schemas.SyncDiscrepancyReportFilters(
+        store_ids=normalized_store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+        min_difference=min_difference,
+    )
+
+    return schemas.SyncDiscrepancyReport(
+        generated_at=datetime.utcnow(),
+        filters=filters,
+        totals=totals,
+        items=conflicts,
+    )
 
 
 def get_store_membership(db: Session, *, user_id: int, store_id: int) -> models.StoreMembership | None:

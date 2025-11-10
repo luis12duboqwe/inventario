@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { BarChart3, Download, FileSpreadsheet, FileText, RefreshCcw } from "lucide-react";
+import {
+  AlertTriangle,
+  BarChart3,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Filter,
+  RefreshCcw,
+  TrendingUp,
+  Clock,
+} from "lucide-react";
 import { Skeleton } from "@/ui/Skeleton"; // [PACK36-inventory-reports]
 import { safeArray, safeNumber } from "@/utils/safeValues"; // [PACK36-inventory-reports]
 
@@ -12,7 +22,12 @@ import type {
   InventoryTopProductsFilters,
   InventoryValueFilters,
   InventoryValueReport,
+  InactiveProductsFilters,
+  InactiveProductsReport,
   Store,
+  SyncConflictLog,
+  SyncDiscrepancyFilters,
+  SyncDiscrepancyReport,
   TopProductsReport,
 } from "../../../api";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
@@ -44,6 +59,49 @@ type TopProductItemRow = {
   nombre: string;
   unidades_vendidas?: number | null;
   store_name: string;
+};
+
+type InactiveProductRow = {
+  store_id: number;
+  store_name: string;
+  device_id: number;
+  sku: string;
+  device_name: string;
+  categoria: string;
+  quantity: number;
+  valor_total_producto: number;
+  ultima_venta: string | null;
+  ultima_compra: string | null;
+  ultimo_movimiento: string | null;
+  dias_sin_movimiento: number | null;
+  ventas_30_dias: number;
+  ventas_90_dias: number;
+  rotacion_30_dias: number;
+  rotacion_90_dias: number;
+  rotacion_total: number;
+};
+
+type SyncSeverityFilter = "todas" | SyncConflictLog["severity"];
+
+const severityLabels: Record<SyncConflictLog["severity"], string> = {
+  alerta: "Alerta",
+  critica: "Crítica",
+  operativa: "Operativa",
+  sin_registros: "Sin registros",
+};
+
+const formatDateTime = (value: string | null): string => {
+  if (!value) {
+    return "Sin registro";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Sin registro";
+  }
+  return date.toLocaleString("es-MX", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
 };
 
 const formatDateInput = (date: Date): string => date.toISOString().slice(0, 10);
@@ -78,6 +136,12 @@ type InventoryReportsPanelProps = {
   fetchInventoryValueReport: (filters: InventoryValueFilters) => Promise<InventoryValueReport>;
   fetchInventoryMovementsReport: (filters: InventoryMovementsFilters) => Promise<InventoryMovementsReport>;
   fetchTopProductsReport: (filters: InventoryTopProductsFilters) => Promise<TopProductsReport>;
+  fetchInactiveProductsReport: (
+    filters: InactiveProductsFilters,
+  ) => Promise<InactiveProductsReport>;
+  fetchSyncDiscrepancyReport: (
+    filters: SyncDiscrepancyFilters,
+  ) => Promise<SyncDiscrepancyReport>;
   requestDownloadWithReason: (
     downloader: (reason: string) => Promise<void>,
     successMessage: string,
@@ -110,6 +174,8 @@ function InventoryReportsPanel({
   fetchInventoryValueReport,
   fetchInventoryMovementsReport,
   fetchTopProductsReport,
+  fetchInactiveProductsReport,
+  fetchSyncDiscrepancyReport,
   requestDownloadWithReason,
   downloadInventoryValueCsv,
   downloadInventoryValuePdf,
@@ -136,6 +202,30 @@ function InventoryReportsPanel({
   const [valueReport, setValueReport] = useState<InventoryValueReport | null>(null);
   const [movementsReport, setMovementsReport] = useState<InventoryMovementsReport | null>(null);
   const [topProductsReport, setTopProductsReport] = useState<TopProductsReport | null>(null);
+  const [inactiveReport, setInactiveReport] = useState<InactiveProductsReport | null>(null);
+  const [syncDiscrepancyReport, setSyncDiscrepancyReport] =
+    useState<SyncDiscrepancyReport | null>(null);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [pendingCategory, setPendingCategory] = useState("");
+  const [minInactivityDays, setMinInactivityDays] = useState(30);
+  const [minSyncDifference, setMinSyncDifference] = useState(5);
+  const [selectedSeverity, setSelectedSeverity] = useState<SyncSeverityFilter>("todas");
+
+  const handleAddCategory = useCallback(() => {
+    const normalized = pendingCategory.trim();
+    if (!normalized) {
+      return;
+    }
+    setSelectedCategories((current) =>
+      current.includes(normalized) ? current : [...current, normalized],
+    );
+    setPendingCategory("");
+  }, [pendingCategory]);
+
+  const handleRemoveCategory = useCallback((category: string) => {
+    setSelectedCategories((current) => current.filter((item) => item !== category));
+  }, []);
 
   const filters = useMemo<InventoryCurrentFilters>(() => {
     if (storeFilter === "ALL") {
@@ -143,6 +233,15 @@ function InventoryReportsPanel({
     }
     return { storeIds: [storeFilter] };
   }, [storeFilter]);
+
+  const valueFilters = useMemo<InventoryValueFilters>(() => {
+    const base: InventoryValueFilters =
+      storeFilter === "ALL" ? {} : { storeIds: [storeFilter] };
+    if (selectedCategories.length > 0) {
+      return { ...base, categories: selectedCategories };
+    }
+    return base;
+  }, [selectedCategories, storeFilter]);
 
   const movementsFilters = useMemo<InventoryMovementsFilters>(
     () => ({
@@ -161,6 +260,27 @@ function InventoryReportsPanel({
       limit: 5,
     }),
     [filters, dateFrom, dateTo],
+  );
+
+  const inactiveFilters = useMemo<InactiveProductsFilters>(
+    () => ({
+      ...valueFilters,
+      minDaysWithoutMovement: minInactivityDays,
+      limit: 50,
+    }),
+    [minInactivityDays, valueFilters],
+  );
+
+  const syncFilters = useMemo<SyncDiscrepancyFilters>(
+    () => ({
+      storeIds: storeFilter === "ALL" ? undefined : [storeFilter],
+      dateFrom,
+      dateTo,
+      severity: selectedSeverity === "todas" ? undefined : selectedSeverity,
+      minDifference: minSyncDifference,
+      limit: 50,
+    }),
+    [dateFrom, dateTo, minSyncDifference, selectedSeverity, storeFilter],
   );
   const currentStores = useMemo<CurrentStoreRow[]>( // [PACK36-inventory-reports]
     () => safeArray(currentReport?.stores) as CurrentStoreRow[],
@@ -197,6 +317,30 @@ function InventoryReportsPanel({
     total_ingresos: safeNumber(topProductsReport?.total_ingresos),
   };
   const hasTopProducts = topProductsReport !== null && topProductItems.length > 0; // [PACK36-inventory-reports]
+  const inactiveItems = useMemo<InactiveProductRow[]>(
+    () => safeArray(inactiveReport?.items) as InactiveProductRow[],
+    [inactiveReport],
+  );
+  const syncItems = useMemo<SyncConflictLog[]>(
+    () => safeArray(syncDiscrepancyReport?.items) as SyncConflictLog[],
+    [syncDiscrepancyReport],
+  );
+  const inactiveTotals = {
+    total_products: safeNumber(inactiveReport?.totals?.total_products),
+    total_units: safeNumber(inactiveReport?.totals?.total_units),
+    total_value: safeNumber(inactiveReport?.totals?.total_value),
+    average_days: inactiveReport?.totals?.average_days_without_movement ?? null,
+    max_days: inactiveReport?.totals?.max_days_without_movement ?? null,
+  };
+  const syncTotals = {
+    total_conflicts: safeNumber(syncDiscrepancyReport?.totals?.total_conflicts),
+    warnings: safeNumber(syncDiscrepancyReport?.totals?.warnings),
+    critical: safeNumber(syncDiscrepancyReport?.totals?.critical),
+    max_difference: syncDiscrepancyReport?.totals?.max_difference ?? null,
+    affected_skus: safeNumber(syncDiscrepancyReport?.totals?.affected_skus),
+  };
+  const hasInactiveProducts = inactiveReport !== null && inactiveItems.length > 0;
+  const hasSyncConflicts = syncDiscrepancyReport !== null && syncItems.length > 0;
 
   useEffect(() => {
     let active = true;
@@ -206,11 +350,13 @@ function InventoryReportsPanel({
     });
     void Promise.all([
       fetchInventoryCurrentReport(filters),
-      fetchInventoryValueReport(filters),
+      fetchInventoryValueReport(valueFilters),
       fetchInventoryMovementsReport(movementsFilters),
       fetchTopProductsReport(topProductsFilters),
+      fetchInactiveProductsReport(inactiveFilters),
+      fetchSyncDiscrepancyReport(syncFilters),
     ])
-      .then(([current, value, movements, top]) => {
+      .then(([current, value, movements, top, inactive, sync]) => {
         if (!active) {
           return;
         }
@@ -218,6 +364,8 @@ function InventoryReportsPanel({
         setValueReport(value);
         setMovementsReport(movements);
         setTopProductsReport(top);
+        setInactiveReport(inactive);
+        setSyncDiscrepancyReport(sync);
       })
       .catch((error) => {
         if (!active) {
@@ -245,28 +393,33 @@ function InventoryReportsPanel({
     fetchInventoryValueReport,
     fetchInventoryMovementsReport,
     fetchTopProductsReport,
+    fetchInactiveProductsReport,
+    fetchSyncDiscrepancyReport,
     filters,
+    valueFilters,
     movementsFilters,
     topProductsFilters,
+    inactiveFilters,
+    syncFilters,
   ]);
 
   const handleValueDownload = async () => {
     await requestDownloadWithReason(
-      (reason) => downloadInventoryValueCsv(reason, filters),
+      (reason) => downloadInventoryValueCsv(reason, valueFilters),
       "CSV de valoración descargado",
     );
   };
 
   const handleValuePdfDownload = async () => {
     await requestDownloadWithReason(
-      (reason) => downloadInventoryValuePdf(reason, filters),
+      (reason) => downloadInventoryValuePdf(reason, valueFilters),
       "PDF de valoración descargado",
     );
   };
 
   const handleValueExcelDownload = async () => {
     await requestDownloadWithReason(
-      (reason) => downloadInventoryValueXlsx(reason, filters),
+      (reason) => downloadInventoryValueXlsx(reason, valueFilters),
       "Excel de valoración descargado",
     );
   };
@@ -379,15 +532,113 @@ function InventoryReportsPanel({
               onChange={(event) => setDateRange((current) => ({ ...current, to: event.target.value }))}
             />
           </label>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            aria-pressed={advancedFiltersOpen}
+            onClick={() => setAdvancedFiltersOpen((current) => !current)}
+          >
+            <Filter size={16} aria-hidden />
+            {advancedFiltersOpen ? "Ocultar filtros" : "Filtros avanzados"}
+          </button>
         </div>
       </header>
+      {advancedFiltersOpen ? (
+        <div className="advanced-report-filters" role="region" aria-label="Filtros avanzados de reportes">
+          <div className="advanced-filter-group">
+            <h3>Categorías analizadas</h3>
+            <form
+              className="advanced-filter-row"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleAddCategory();
+              }}
+            >
+              <label className="form-field">
+                <span>Nueva categoría</span>
+                <input
+                  type="text"
+                  value={pendingCategory}
+                  onChange={(event) => setPendingCategory(event.target.value)}
+                  placeholder="Ej. Smartphones"
+                />
+              </label>
+              <button type="submit" className="btn btn--ghost">
+                <TrendingUp size={16} aria-hidden />
+                Agregar
+              </button>
+            </form>
+            {selectedCategories.length > 0 ? (
+              <ul className="chip-list">
+                {selectedCategories.map((category) => (
+                  <li key={category} className="chip-item">
+                    <span>{category}</span>
+                    <button
+                      type="button"
+                      className="chip-remove"
+                      onClick={() => handleRemoveCategory(category)}
+                      aria-label={`Quitar categoría ${category}`}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted-text">Sin categorías adicionales seleccionadas.</p>
+            )}
+          </div>
+          <div className="advanced-filter-group">
+            <label className="form-field">
+              <span>Días sin movimiento</span>
+              <input
+                type="number"
+                min={0}
+                max={365}
+                value={minInactivityDays}
+                onChange={(event) =>
+                  setMinInactivityDays(
+                    Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                  )
+                }
+              />
+            </label>
+            <label className="form-field">
+              <span>Severidad</span>
+              <select
+                value={selectedSeverity}
+                onChange={(event) =>
+                  setSelectedSeverity(event.target.value as SyncSeverityFilter)
+                }
+              >
+                <option value="todas">Todas</option>
+                <option value="alerta">Alertas</option>
+                <option value="critica">Críticas</option>
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Diferencia mínima</span>
+              <input
+                type="number"
+                min={0}
+                value={minSyncDifference}
+                onChange={(event) =>
+                  setMinSyncDifference(
+                    Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                  )
+                }
+              />
+            </label>
+          </div>
+        </div>
+      ) : null}
       {loading ? (
         <div className="reports-loading" role="status" aria-busy="true">
           <p className="muted-text">
             <RefreshCcw className="spin" size={18} aria-hidden /> Cargando reportes…
           </p>
           <div className="section-grid reports-grid" aria-hidden>
-            {Array.from({ length: 4 }).map((_, index) => (
+            {Array.from({ length: 6 }).map((_, index) => (
               <section key={`report-skeleton-${index}`} className="card report-card">
                 <header className="card-header">
                   <Skeleton lines={2} />
@@ -596,6 +847,109 @@ function InventoryReportsPanel({
               </div>
             ) : (
               <p className="muted-text">No se registran ventas en el periodo seleccionado.</p>
+            )}
+          </section>
+
+          <section className="card report-card">
+            <header className="card-header">
+              <div>
+                <h3>Productos sin movimiento</h3>
+                <p className="card-subtitle">Detecta unidades inmovilizadas y su última actividad.</p>
+              </div>
+              <span className="report-icon" aria-hidden>
+                <Clock size={18} />
+              </span>
+            </header>
+            {hasInactiveProducts ? (
+              <div className="card-content">
+                <p className="report-highlight">
+                  {inactiveTotals.total_products.toLocaleString("es-MX")}
+                  <small>productos</small>
+                </p>
+                <p className="muted-text">
+                  Unidades detenidas: {inactiveTotals.total_units.toLocaleString("es-MX")} · Valor inmovilizado: {formatCurrency(inactiveTotals.total_value)}
+                </p>
+                {inactiveTotals.average_days !== null ? (
+                  <p className="muted-text">
+                    Promedio inactivo: {inactiveTotals.average_days.toLocaleString("es-MX")} días
+                    {inactiveTotals.max_days !== null
+                      ? ` · Máximo: ${inactiveTotals.max_days.toLocaleString("es-MX")} días`
+                      : null}
+                  </p>
+                ) : (
+                  <p className="muted-text">Sin historial suficiente para calcular promedios.</p>
+                )}
+                <ul className="report-list">
+                  {inactiveItems.slice(0, 5).map((item) => {
+                    const inactivityLabel =
+                      item.dias_sin_movimiento !== null
+                        ? `${item.dias_sin_movimiento.toLocaleString("es-MX")} días`
+                        : "Sin datos";
+                    const lastActivity = formatDateTime(
+                      item.ultimo_movimiento
+                        ?? item.ultima_venta
+                        ?? item.ultima_compra,
+                    );
+                    return (
+                      <li key={`${item.store_id}-${item.device_id}`}>
+                        <strong>{item.device_name}</strong>
+                        <span>{inactivityLabel}</span>
+                        <span className="muted-text">
+                          {item.store_name} · {lastActivity}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="muted-text">No se detectaron productos inactivos con los filtros seleccionados.</p>
+            )}
+          </section>
+
+          <section className="card report-card">
+            <header className="card-header">
+              <div>
+                <h3>Discrepancias de sincronización</h3>
+                <p className="card-subtitle">Conflictos detectados entre sucursales y diferencias de inventario.</p>
+              </div>
+              <span className="report-icon" aria-hidden>
+                <AlertTriangle size={18} />
+              </span>
+            </header>
+            {hasSyncConflicts ? (
+              <div className="card-content">
+                <p className="report-highlight">
+                  {syncTotals.total_conflicts.toLocaleString("es-MX")}
+                  <small>conflictos</small>
+                </p>
+                <p className="muted-text">
+                  SKUs afectados: {syncTotals.affected_skus.toLocaleString("es-MX")} · Máxima diferencia: {syncTotals.max_difference !== null ? syncTotals.max_difference.toLocaleString("es-MX") : "s/d"}
+                </p>
+                <ul className="report-list">
+                  {syncItems.slice(0, 5).map((conflict) => {
+                    const storeNames = Array.from(
+                      new Set(
+                        [...conflict.stores_max, ...conflict.stores_min]
+                          .map((detail) => detail.store_name)
+                          .filter(Boolean),
+                      ),
+                    );
+                    return (
+                      <li key={conflict.id}>
+                        <strong>{conflict.product_name ?? conflict.sku}</strong>
+                        <span>{conflict.difference.toLocaleString("es-MX")} unidades</span>
+                        <span className="muted-text">
+                          {severityLabels[conflict.severity]} · {formatDateTime(conflict.detected_at)}
+                        </span>
+                        <span className="muted-text">{storeNames.join(" · ") || "Sucursales no identificadas"}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="muted-text">Sin discrepancias registradas con los filtros actuales.</p>
             )}
           </section>
         </div>
