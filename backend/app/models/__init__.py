@@ -1604,6 +1604,15 @@ class Customer(Base):
     notes: Mapped[str | None] = mapped_column("notas", Text, nullable=True)
     history: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, nullable=False, default=list)
+    segment_category: Mapped[str | None] = mapped_column(
+        "segmento_categoria", String(60), nullable=True, index=True
+    )
+    tags: Mapped[list[str]] = mapped_column(
+        "segmento_etiquetas", JSON, nullable=False, default=list
+    )
+    tax_id: Mapped[str] = mapped_column(
+        "rtn", String(30), nullable=False, unique=True, index=True
+    )
     last_interaction_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -1636,10 +1645,41 @@ class Customer(Base):
     )
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
         "LoyaltyAccount",
+    segment_snapshot: Mapped[Optional["CustomerSegmentSnapshot"]] = relationship(
+        "CustomerSegmentSnapshot",
         back_populates="customer",
         cascade="all, delete-orphan",
         uselist=False,
     )
+
+    @property
+    def annual_purchase_amount(self) -> Decimal:
+        snapshot = getattr(self, "segment_snapshot", None)
+        if snapshot and snapshot.annual_amount is not None:
+            return Decimal(snapshot.annual_amount)
+        return Decimal("0")
+
+    @property
+    def orders_last_year(self) -> int:
+        snapshot = getattr(self, "segment_snapshot", None)
+        return int(snapshot.orders_last_year) if snapshot else 0
+
+    @property
+    def purchase_frequency(self) -> str:
+        snapshot = getattr(self, "segment_snapshot", None)
+        return snapshot.frequency_label if snapshot else "sin_datos"
+
+    @property
+    def segment_labels(self) -> list[str]:
+        snapshot = getattr(self, "segment_snapshot", None)
+        if snapshot and snapshot.segment_labels:
+            return list(snapshot.segment_labels)
+        return []
+
+    @property
+    def last_purchase_at(self) -> datetime | None:
+        snapshot = getattr(self, "segment_snapshot", None)
+        return snapshot.last_sale_at if snapshot else None
 
 
 class CustomerLedgerEntryType(str, enum.Enum):
@@ -1870,6 +1910,42 @@ class StoreCredit(Base):
         "StoreCreditRedemption",
         back_populates="store_credit",
         cascade="all, delete-orphan",
+    )
+
+
+class CustomerSegmentSnapshot(Base):
+    __tablename__ = "customer_segment_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    customer_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("clientes.id_cliente", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    annual_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False, default=Decimal("0")
+    )
+    orders_last_year: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    average_ticket: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    frequency_label: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="sin_datos"
+    )
+    segment_labels: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    last_sale_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+
+    customer: Mapped[Customer] = relationship(
+        "Customer", back_populates="segment_snapshot"
     )
 
 

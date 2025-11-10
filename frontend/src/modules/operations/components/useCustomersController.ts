@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import type {
   ContactHistoryEntry,
   Customer,
+  CustomerAccountsReceivable,
   CustomerDashboardMetrics,
   CustomerLedgerEntry,
   CustomerPaymentPayload,
@@ -17,11 +18,14 @@ import {
   exportCustomerPortfolioExcel,
   exportCustomerPortfolioPdf,
   exportCustomersCsv,
+  exportCustomerSegment,
   getCustomerDashboardMetrics,
   getCustomerPortfolio,
+  getCustomerAccountsReceivable,
   getCustomerSummary,
   listCustomers,
   registerCustomerPayment,
+  downloadCustomerStatement,
   updateCustomer,
 } from "../../../api";
 import type {
@@ -30,6 +34,7 @@ import type {
   DashboardFilters,
   LedgerEntryWithDetails,
   PortfolioFilters,
+  CustomerSegmentDefinition,
 } from "../../../types/customers";
 
 export const CUSTOMER_TYPES: { value: string; label: string }[] = [
@@ -60,6 +65,27 @@ export const LEDGER_LABELS: Record<CustomerLedgerEntry["entry_type"], string> = 
   note: "Nota",
 };
 
+export const CUSTOMER_SEGMENT_EXPORTS: CustomerSegmentDefinition[] = [
+  {
+    key: "alto_valor",
+    label: "Clientes de alto valor",
+    description: "Clientes con compras anuales superiores al umbral corporativo.",
+    channel: "Mailchimp",
+  },
+  {
+    key: "recuperacion",
+    label: "Campaña de recuperación",
+    description: "Clientes sin compras recientes que se envían a seguimiento SMS.",
+    channel: "SMS",
+  },
+  {
+    key: "valor_medio",
+    label: "Valor medio",
+    description: "Listado general para campañas manuales o CRM externo.",
+    channel: "Archivo",
+  },
+];
+
 const initialFormState: CustomerFormState = {
   name: "",
   contactName: "",
@@ -68,6 +94,9 @@ const initialFormState: CustomerFormState = {
   address: "",
   customerType: "minorista",
   status: "activo",
+  taxId: "",
+  segmentCategory: "",
+  tags: "",
   creditLimit: 0,
   outstandingDebt: 0,
   notes: "",
@@ -91,6 +120,8 @@ const initialCustomerFilters: CustomerFilters = {
   status: "todos",
   customerType: "todos",
   debt: "todos",
+  segmentCategory: "",
+  tags: "",
 };
 
 const useReasonPrompt = (setError: (message: string | null) => void) => {
@@ -169,6 +200,12 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
+  const [accountsReceivable, setAccountsReceivable] = useState<CustomerAccountsReceivable | null>(
+    null,
+  );
+  const [receivableLoading, setReceivableLoading] = useState(false);
+  const [receivableError, setReceivableError] = useState<string | null>(null);
+
   const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
     ...initialPortfolioFilters,
   });
@@ -183,6 +220,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   const [dashboardFilters, setDashboardFilters] = useState<DashboardFilters>({
     ...initialDashboardFilters,
   });
+  const [exportingSegment, setExportingSegment] = useState<string | null>(null);
 
   const askReason = useReasonPrompt(setError);
   const downloadBlob = useBlobDownloader();
@@ -230,13 +268,26 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       } else if (customerFilters.debt === "sin_deuda") {
         options.hasDebt = false;
       }
+      const categoryFilter = customerFilters.segmentCategory.trim().toLowerCase();
+      if (categoryFilter) {
+        options.segmentCategory = categoryFilter;
+      }
+      const tagsFilter = customerFilters.tags
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+      if (tagsFilter.length > 0) {
+        options.tags = tagsFilter;
+      }
       return options;
     },
     [
       customerFilters.customerType,
       customerFilters.debt,
+      customerFilters.segmentCategory,
       customerFilters.search,
       customerFilters.status,
+      customerFilters.tags,
     ]
   );
 
@@ -266,10 +317,37 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     [buildCustomerListOptions, token, selectedCustomerId],
   );
 
+  const refreshReceivable = useCallback(
+    async (customerId?: number | null) => {
+      if (!customerId) {
+        setAccountsReceivable(null);
+        setReceivableError(null);
+        return;
+      }
+      try {
+        setReceivableLoading(true);
+        setReceivableError(null);
+        const data = await getCustomerAccountsReceivable(token, customerId);
+        setAccountsReceivable(data);
+      } catch (err) {
+        setReceivableError(
+          err instanceof Error
+            ? err.message
+            : "No fue posible obtener las cuentas por cobrar del cliente.",
+        );
+      } finally {
+        setReceivableLoading(false);
+      }
+    },
+    [token],
+  );
+
   const refreshSummary = useCallback(
     async (customerId?: number | null) => {
       if (!customerId) {
         setCustomerSummary(null);
+        setSummaryError(null);
+        void refreshReceivable(null);
         return;
       }
       try {
@@ -277,6 +355,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         setSummaryError(null);
         const data = await getCustomerSummary(token, customerId);
         setCustomerSummary(data);
+        void refreshReceivable(customerId);
       } catch (err) {
         setSummaryError(
           err instanceof Error ? err.message : "No fue posible cargar el resumen del cliente.",
@@ -285,7 +364,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         setSummaryLoading(false);
       }
     },
-    [token],
+    [token, refreshReceivable],
   );
 
   const refreshPortfolio = useCallback(async () => {
@@ -341,6 +420,17 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   }, [customerFilters.search, refreshCustomers]);
 
   useEffect(() => {
+    void refreshCustomers();
+  }, [
+    customerFilters.status,
+    customerFilters.customerType,
+    customerFilters.debt,
+    customerFilters.segmentCategory,
+    customerFilters.tags,
+    refreshCustomers,
+  ]);
+
+  useEffect(() => {
     void refreshPortfolio();
   }, [refreshPortfolio]);
 
@@ -375,6 +465,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       address: customer.address ?? "",
       customerType: customer.customer_type ?? "minorista",
       status: customer.status ?? "activo",
+      taxId: customer.tax_id ?? "",
+      segmentCategory: customer.segment_category ?? "",
+      tags: (customer.tags ?? []).join(", "),
       creditLimit: Number(customer.credit_limit ?? 0),
       outstandingDebt: Number(customer.outstanding_debt ?? 0),
       notes: customer.notes ?? "",
@@ -467,6 +560,25 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     }
   };
 
+  const handleDownloadStatement = async (customer: Customer) => {
+    const reason = askReason("Motivo corporativo para descargar el estado de cuenta");
+    if (!reason) {
+      return;
+    }
+    try {
+      const blob = await downloadCustomerStatement(token, customer.id, reason);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadBlob(blob, `estado_cuenta_${customer.id}_${timestamp}.pdf`);
+      setMessage("Estado de cuenta descargado correctamente.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible descargar el estado de cuenta del cliente.",
+      );
+    }
+  };
+
   const handleRegisterPayment = async (customer: Customer) => {
     const amountRaw = window.prompt("Monto del pago", "0.00");
     if (amountRaw === null) {
@@ -533,17 +645,23 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       setError("Indica un teléfono de contacto.");
       return;
     }
+    if (!formState.taxId.trim() || formState.taxId.trim().length < 5) {
+      setError("Indica un RTN válido (mínimo 5 caracteres).");
+      return;
+    }
     const reason = askReason(
       editingId ? "Motivo corporativo para actualizar al cliente" : "Motivo corporativo para crear al cliente",
     );
     if (!reason) {
       return;
     }
+    const normalizedTaxId = formState.taxId.trim().toUpperCase();
     const payload: CustomerPayload = {
       name: formState.name.trim(),
       phone: formState.phone.trim(),
       customer_type: formState.customerType,
       status: formState.status,
+      tax_id: normalizedTaxId,
       credit_limit: Number(formState.creditLimit ?? 0),
       outstanding_debt: Number(formState.outstandingDebt ?? 0),
     };
@@ -559,9 +677,34 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     if (address) {
       payload.address = address;
     }
+    const segmentCategory = formState.segmentCategory.trim().toLowerCase();
+    if (segmentCategory) {
+      payload.segment_category = segmentCategory;
+    } else if (editingId) {
+      payload.segment_category = "";
+    }
+    const tagsList = formState.tags
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+    payload.tags = tagsList;
     const notes = formState.notes.trim();
     if (notes) {
       payload.notes = notes;
+    }
+    const historyNote = formState.historyNote.trim();
+    if (historyNote) {
+      const entry = { timestamp: new Date().toISOString(), note: historyNote } satisfies ContactHistoryEntry;
+      if (editingId) {
+        const existing = customers.find((item) => item.id === editingId);
+        if (existing) {
+          payload.history = [...existing.history, entry];
+        } else {
+          payload.history = [entry];
+        }
+      } else {
+        payload.history = [entry];
+      }
     }
     try {
       setSavingCustomer(true);
@@ -656,6 +799,31 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     }
   };
 
+  const handleExportSegment = async (segment: CustomerSegmentDefinition) => {
+    const reason = askReason(
+      `Motivo corporativo para exportar el segmento "${segment.label}"`,
+    );
+    if (!reason) {
+      return;
+    }
+    try {
+      setExportingSegment(segment.key);
+      const blob = await exportCustomerSegment(token, segment.key, reason);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `segmento_${segment.key}_${timestamp}.csv`;
+      downloadBlob(blob, filename);
+      setMessage(`Segmento ${segment.label} exportado correctamente.`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible exportar el segmento seleccionado.",
+      );
+    } finally {
+      setExportingSegment(null);
+    }
+  };
+
   const totalDebt = useMemo(() => {
     return customers.reduce((acc, customer) => acc + Number(customer.outstanding_debt ?? 0), 0);
   }, [customers]);
@@ -689,12 +857,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     if (!customerSummary?.customer?.history) {
       return [] as ContactHistoryEntry[];
     }
-    return [...customerSummary.customer.history]
-      .sort(
-        (left, right) =>
-          new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
-      )
-      .slice(0, 6);
+    return [...customerSummary.customer.history].sort(
+      (left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
+    );
   }, [customerSummary]);
 
   const recentInvoices = useMemo(() => {
@@ -723,6 +888,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     customerSummary,
     summaryLoading,
     summaryError,
+    accountsReceivable,
+    receivableLoading,
+    receivableError,
     portfolio,
     portfolioFilters,
     portfolioLoading,
@@ -749,12 +917,16 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     handleAddNote,
     handleRegisterPayment,
     handleAdjustDebt,
+    handleDownloadStatement,
     handleDelete,
     handlePortfolioFiltersChange,
     refreshPortfolio,
     handleExportPortfolio,
     handleDashboardFiltersChange,
     refreshDashboard,
+    handleExportSegment,
+    exportingSegment,
+    customerSegmentExports: CUSTOMER_SEGMENT_EXPORTS,
   } as const;
 };
 

@@ -414,6 +414,9 @@ export type Customer = {
   address?: string | null;
   customer_type: string;
   status: string;
+  segment_category?: string | null;
+  tags: string[];
+  tax_id: string;
   credit_limit: number;
   notes?: string | null;
   outstanding_debt: number;
@@ -421,6 +424,11 @@ export type Customer = {
   last_interaction_at?: string | null;
   created_at: string;
   updated_at: string;
+  annual_purchase_amount: number;
+  orders_last_year: number;
+  purchase_frequency: string;
+  segment_labels: string[];
+  last_purchase_at?: string | null;
 };
 
 export type CustomerPayload = {
@@ -431,6 +439,9 @@ export type CustomerPayload = {
   address?: string;
   customer_type?: string;
   status?: string;
+  tax_id: string;
+  segment_category?: string;
+  tags?: string[];
   credit_limit?: number;
   notes?: string;
   outstanding_debt?: number;
@@ -465,6 +476,50 @@ export type CreditScheduleEntry = {
   amount: number;
   status: "pending" | "due_soon" | "overdue";
   reminder?: string | null;
+};
+
+export type AccountsReceivableEntry = {
+  ledger_entry_id: number;
+  reference_type?: string | null;
+  reference_id?: string | null;
+  reference?: string | null;
+  issued_at: string;
+  original_amount: number;
+  balance_due: number;
+  days_outstanding: number;
+  status: "current" | "overdue";
+  note?: string | null;
+  details?: Record<string, unknown> | null;
+};
+
+export type AccountsReceivableBucket = {
+  label: string;
+  days_from: number;
+  days_to?: number | null;
+  amount: number;
+  percentage: number;
+  count: number;
+};
+
+export type AccountsReceivableSummary = {
+  total_outstanding: number;
+  available_credit: number;
+  credit_limit: number;
+  last_payment_at?: string | null;
+  next_due_date?: string | null;
+  average_days_outstanding: number;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+};
+
+export type CustomerAccountsReceivable = {
+  customer: Customer;
+  summary: AccountsReceivableSummary;
+  aging: AccountsReceivableBucket[];
+  open_entries: AccountsReceivableEntry[];
+  credit_schedule: CreditScheduleEntry[];
+  recent_activity: CustomerLedgerEntry[];
+  generated_at: string;
 };
 
 export type CustomerPaymentReceipt = {
@@ -4548,6 +4603,8 @@ type CustomerListOptions = {
   hasDebt?: boolean;
   statusFilter?: string;
   customerTypeFilter?: string;
+  segmentCategory?: string;
+  tags?: string[];
 };
 
 export function listCustomers(
@@ -4573,6 +4630,16 @@ export function listCustomers(
   }
   if (options.customerTypeFilter) {
     params.append("customer_type_filter", options.customerTypeFilter);
+  }
+  if (options.segmentCategory) {
+    params.append("segment_category", options.segmentCategory);
+  }
+  if (Array.isArray(options.tags)) {
+    options.tags.forEach((tag) => {
+      if (tag.trim()) {
+        params.append("tags", tag.trim());
+      }
+    });
   }
   const queryString = params.toString();
   return requestCollection<Customer>(`/customers?${queryString}`, { method: "GET" }, token);
@@ -4602,9 +4669,34 @@ export function exportCustomersCsv(
   if (options.customerTypeFilter) {
     params.append("customer_type_filter", options.customerTypeFilter);
   }
+  if (options.segmentCategory) {
+    params.append("segment_category", options.segmentCategory);
+  }
+  if (Array.isArray(options.tags)) {
+    options.tags.forEach((tag) => {
+      if (tag.trim()) {
+        params.append("tags", tag.trim());
+      }
+    });
+  }
   const queryString = params.toString();
   return request<Blob>(
     `/customers?${queryString}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function exportCustomerSegment(
+  token: string,
+  segment: string,
+  reason: string,
+  format: "csv" = "csv"
+): Promise<Blob> {
+  const params = new URLSearchParams({ segment, format });
+  const queryString = params.toString();
+  return request<Blob>(
+    `/customers/segments/export?${queryString}`,
     { method: "GET", headers: { "X-Reason": reason } },
     token
   );
@@ -4786,6 +4878,29 @@ export function getCustomerSummary(token: string, customerId: number): Promise<C
     `/customers/${customerId}/summary`,
     { method: "GET" },
     token
+  );
+}
+
+export function getCustomerAccountsReceivable(
+  token: string,
+  customerId: number,
+): Promise<CustomerAccountsReceivable> {
+  return request<CustomerAccountsReceivable>(
+    `/customers/${customerId}/accounts-receivable`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function downloadCustomerStatement(
+  token: string,
+  customerId: number,
+  reason: string,
+): Promise<Blob> {
+  return request<Blob>(
+    `/customers/${customerId}/accounts-receivable/statement.pdf`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token,
   );
 }
 

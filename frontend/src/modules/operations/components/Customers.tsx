@@ -5,6 +5,7 @@ import {
   CustomersSummaryCards,
   CustomersTable,
   CustomersToolbar,
+  CustomersSegmentExports,
 } from "./customers";
 import {
   CUSTOMER_STATUSES,
@@ -32,6 +33,9 @@ function Customers({ token }: Props) {
     customerSummary,
     summaryLoading,
     summaryError,
+    accountsReceivable,
+    receivableLoading,
+    receivableError,
     portfolio,
     portfolioFilters,
     portfolioLoading,
@@ -58,12 +62,16 @@ function Customers({ token }: Props) {
     handleAddNote,
     handleRegisterPayment,
     handleAdjustDebt,
+    handleDownloadStatement,
     handleDelete,
     handlePortfolioFiltersChange,
     refreshPortfolio,
     handleExportPortfolio,
     handleDashboardFiltersChange,
     refreshDashboard,
+    customerSegmentExports,
+    handleExportSegment,
+    exportingSegment,
   } = useCustomersController({ token });
 
   const customerList = Array.isArray(customers) ? customers : [];
@@ -73,7 +81,17 @@ function Customers({ token }: Props) {
 
   return (
     <section className="customers-module">
-      <CustomersToolbar error={error} message={message} />
+      <CustomersToolbar
+        error={error}
+        message={message}
+        extraContent={
+          <CustomersSegmentExports
+            segments={customerSegmentExports}
+            exportingKey={exportingSegment}
+            onExport={handleExportSegment}
+          />
+        }
+      />
 
       <CustomersFormModal
         formState={formState}
@@ -135,12 +153,16 @@ function Customers({ token }: Props) {
           summary={customerSummary}
           summaryLoading={summaryLoading}
           summaryError={summaryError}
+          receivable={accountsReceivable}
+          receivableLoading={receivableLoading}
+          receivableError={receivableError}
           customerHistory={historyList}
           customerNotes={notesList}
           recentInvoices={invoicesList}
           ledgerLabels={LEDGER_LABELS}
           resolveDetails={resolveDetails}
           formatCurrency={formatCurrency}
+          onDownloadStatement={handleDownloadStatement}
         />
       </div>
 
