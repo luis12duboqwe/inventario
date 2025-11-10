@@ -1,4 +1,4 @@
-"""Add authorization columns for returns and supervisor PIN hash
+"""Agrega columnas de autorización para devoluciones y hash de PIN de supervisor.
 
 Revision ID: 202511070007_return_authorizations
 Revises: 202511070006_return_dispositions
