@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import type {
   PurchaseOrder,
   ReturnDisposition,
-  ReturnRecord,
+  ReturnReasonCategory,
   ReturnRecord,
   ReturnsTotals,
   Sale,
@@ -32,6 +33,7 @@ type PurchaseReturnForm = {
   reason: string;
   disposition: ReturnDisposition;
   warehouseId: number | null;
+  category: ReturnReasonCategory;
 };
 
 type SaleReturnForm = {
@@ -42,6 +44,9 @@ type SaleReturnForm = {
   reason: string;
   disposition: ReturnDisposition;
   warehouseId: number | null;
+  category: ReturnReasonCategory;
+  supervisorUsername: string;
+  supervisorPin: string;
 };
 
 const initialPurchaseReturn: PurchaseReturnForm = {
@@ -52,6 +57,7 @@ const initialPurchaseReturn: PurchaseReturnForm = {
   reason: "Equipo defectuoso",
   disposition: "defectuoso",
   warehouseId: null,
+  category: "defecto",
 };
 
 const initialSaleReturn: SaleReturnForm = {
@@ -62,6 +68,9 @@ const initialSaleReturn: SaleReturnForm = {
   reason: "Reingreso cliente",
   disposition: "vendible",
   warehouseId: null,
+  category: "cliente",
+  supervisorUsername: "",
+  supervisorPin: "",
 };
 
 const dispositionOptions: { value: ReturnDisposition; label: string }[] = [
@@ -71,8 +80,21 @@ const dispositionOptions: { value: ReturnDisposition; label: string }[] = [
   { value: "reparacion", label: "En revisión" },
 ];
 
+const categoryOptions: { value: ReturnReasonCategory; label: string }[] = [
+  { value: "defecto", label: "Falla de calidad" },
+  { value: "logistica", label: "Logística / envío" },
+  { value: "cliente", label: "Cambio del cliente" },
+  { value: "precio", label: "Ajuste comercial" },
+  { value: "otro", label: "Otro" },
+];
+
 function dispositionLabel(value: ReturnDisposition): string {
   const match = dispositionOptions.find((option) => option.value === value);
+  return match ? match.label : value;
+}
+
+function categoryLabel(value: ReturnReasonCategory | string): string {
+  const match = categoryOptions.find((option) => option.value === value);
   return match ? match.label : value;
 }
 const initialHistoryTotals: ReturnsTotals = {
@@ -81,6 +103,7 @@ const initialHistoryTotals: ReturnsTotals = {
   purchases: 0,
   refunds_by_method: {},
   refund_total_amount: 0,
+  categories: {},
 };
 
 function Returns({ token, stores, defaultStoreId = null, onInventoryRefresh }: Props) {
@@ -111,6 +134,16 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
   const [history, setHistory] = useState<ReturnRecord[]>([]);
   const [historyTotals, setHistoryTotals] = useState<ReturnsTotals>(initialHistoryTotals);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [saleApprovalRequired, setSaleApprovalRequired] = useState(false);
+  const [saleApprovalVisible, setSaleApprovalVisible] = useState(false);
+
+  const parseErrorMessage = useCallback((message: string) => {
+    const match = message.match(/^\[([^\]]+)]\s*(.*)$/);
+    if (match) {
+      return { code: match[1], text: match[2] || match[1] };
+    }
+    return { code: null, text: message };
+  }, []);
 
   const formatCurrency = useCallback(
     (value: number) =>
@@ -130,6 +163,12 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
     () => sales.find((sale) => sale.id === saleForm.saleId) ?? null,
     [sales, saleForm.saleId]
   );
+
+  const showSupervisorFields =
+    saleApprovalVisible ||
+    saleApprovalRequired ||
+    saleForm.supervisorUsername.trim().length > 0 ||
+    saleForm.supervisorPin.trim().length > 0;
 
   const refreshOrders = useCallback(async (storeId?: number | null) => {
     if (!storeId) {
@@ -180,7 +219,14 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
           limit: 25,
         });
         setHistory(overview.items);
-        setHistoryTotals(overview.totals ?? initialHistoryTotals);
+        const totals = overview.totals ?? initialHistoryTotals;
+        setHistoryTotals({
+          ...initialHistoryTotals,
+          ...totals,
+          refunds_by_method: totals.refunds_by_method ?? {},
+          categories: totals.categories ?? {},
+          refund_total_amount: totals.refund_total_amount ?? 0,
+        });
       } catch (err) {
         setError(
           err instanceof Error
@@ -208,7 +254,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
     setSaleForm((current) => ({ ...current, ...updates }));
   };
 
-  const handlePurchaseReturn = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handlePurchaseReturn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!purchaseForm.storeId || !purchaseForm.orderId || !purchaseForm.deviceId) {
       setError("Selecciona orden y dispositivo para la devolución.");
@@ -228,6 +274,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
           quantity: Math.max(1, purchaseForm.quantity),
           reason: purchaseForm.reason.trim(),
           disposition: purchaseForm.disposition,
+          category: purchaseForm.category,
           ...(purchaseForm.warehouseId ? { warehouse_id: purchaseForm.warehouseId } : {}),
         },
         purchaseForm.reason.trim()
@@ -241,7 +288,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
     }
   };
 
-  const handleSaleReturn = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSaleReturn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!saleForm.storeId || !saleForm.saleId || !saleForm.deviceId) {
       setError("Selecciona la venta y el dispositivo a devolver.");
@@ -251,6 +298,18 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
       setError("El motivo debe contener al menos 5 caracteres.");
       return;
     }
+    const trimmedReason = saleForm.reason.trim();
+    const supervisorUsername = saleForm.supervisorUsername.trim();
+    const supervisorPin = saleForm.supervisorPin.trim();
+    const shouldSendApproval = saleApprovalVisible || saleApprovalRequired;
+    if (saleApprovalRequired && (!supervisorUsername || !supervisorPin)) {
+      setError("Captura el usuario y PIN del supervisor para autorizar la devolución.");
+      return;
+    }
+    const approval =
+      shouldSendApproval && supervisorUsername && supervisorPin
+        ? { supervisor_username: supervisorUsername, pin: supervisorPin }
+        : undefined;
     try {
       setError(null);
       await registerSaleReturn(
@@ -261,20 +320,38 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
             {
               device_id: saleForm.deviceId,
               quantity: Math.max(1, saleForm.quantity),
-              reason: saleForm.reason.trim(),
+              reason: trimmedReason,
               disposition: saleForm.disposition,
+              category: saleForm.category,
               ...(saleForm.warehouseId ? { warehouse_id: saleForm.warehouseId } : {}),
             },
           ],
+          ...(approval ? { approval } : {}),
         },
-        saleForm.reason.trim()
+        trimmedReason
       );
       setMessage("Devolución de cliente registrada correctamente");
       await refreshSales(saleForm.storeId);
       await refreshHistory(historyStoreId);
       onInventoryRefresh?.();
+      setSaleForm((current) => ({
+        ...current,
+        supervisorUsername: "",
+        supervisorPin: "",
+      }));
+      setSaleApprovalRequired(false);
+      setSaleApprovalVisible(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible registrar la devolución de venta");
+      const { code, text } = parseErrorMessage(
+        err instanceof Error ? err.message : "No fue posible registrar la devolución de venta"
+      );
+      setError(text);
+      if (code && code.startsWith("sale_return_supervisor_")) {
+        setSaleApprovalVisible(true);
+        if (code === "sale_return_supervisor_required") {
+          setSaleApprovalRequired(true);
+        }
+      }
     }
   };
 
@@ -370,6 +447,23 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
             </select>
           </label>
           <label>
+            Categoría del motivo
+            <select
+              value={purchaseForm.category}
+              onChange={(event) =>
+                updatePurchaseForm({
+                  category: event.target.value as ReturnReasonCategory,
+                })
+              }
+            >
+              {categoryOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Almacén destino
             <select
               value={purchaseForm.warehouseId ?? ""}
@@ -406,12 +500,18 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
             Sucursal
             <select
               value={saleForm.storeId ?? ""}
-              onChange={(event) => updateSaleForm({
-                storeId: event.target.value ? Number(event.target.value) : null,
-                saleId: null,
-                deviceId: null,
-                warehouseId: null,
-              })}
+              onChange={(event) => {
+                setSaleApprovalRequired(false);
+                setSaleApprovalVisible(false);
+                updateSaleForm({
+                  storeId: event.target.value ? Number(event.target.value) : null,
+                  saleId: null,
+                  deviceId: null,
+                  warehouseId: null,
+                  supervisorUsername: "",
+                  supervisorPin: "",
+                });
+              }}
             >
               <option value="">Selecciona una sucursal</option>
               {stores.map((store) => (
@@ -481,6 +581,21 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
             </select>
           </label>
           <label>
+            Categoría del motivo
+            <select
+              value={saleForm.category}
+              onChange={(event) =>
+                updateSaleForm({ category: event.target.value as ReturnReasonCategory })
+              }
+            >
+              {categoryOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Almacén destino
             <select
               value={saleForm.warehouseId ?? ""}
@@ -506,6 +621,41 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
               placeholder="Describe el motivo"
             />
           </label>
+          {showSupervisorFields ? (
+            <fieldset className="returns-approval">
+              <legend>Autorización de supervisor</legend>
+              <label>
+                Usuario supervisor
+                <input
+                  value={saleForm.supervisorUsername}
+                  onChange={(event) => updateSaleForm({ supervisorUsername: event.target.value })}
+                  placeholder="correo@supervisor"
+                />
+              </label>
+              <label>
+                PIN de supervisor
+                <input
+                  type="password"
+                  value={saleForm.supervisorPin}
+                  onChange={(event) => updateSaleForm({ supervisorPin: event.target.value })}
+                  placeholder="••••"
+                />
+              </label>
+              {saleApprovalRequired ? (
+                <p className="muted-text">
+                  Esta devolución superó el límite corporativo y requiere autorización.
+                </p>
+              ) : null}
+            </fieldset>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setSaleApprovalVisible(true)}
+            >
+              Capturar autorización de supervisor
+            </button>
+          )}
           <button type="submit" className="btn btn--primary">
             Registrar devolución de cliente
           </button>
@@ -561,6 +711,15 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
               ))}
             </div>
           ) : null}
+          {Object.keys(historyTotals.categories ?? {}).length > 0 ? (
+            <div className="returns-history__categories muted-text" aria-live="polite">
+              {Object.entries(historyTotals.categories).map(([category, count]) => (
+                <span key={category}>
+                  {categoryLabel(category as ReturnReasonCategory)}: {count}
+                </span>
+              ))}
+            </div>
+          ) : null}
           {historyLoading ? (
             <div className="table-wrapper" role="status" aria-busy="true">
               <p>Cargando historial de devoluciones…</p>
@@ -580,6 +739,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
                     <th>Dispositivo</th>
                     <th>Cantidad</th>
                     <th>Motivo</th>
+                    <th>Categoría</th>
                     <th>Estado</th>
                     <th>Almacén</th>
                     <th>Relacionado</th>
@@ -599,6 +759,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
                       <td>{record.device_name ?? `#${record.device_id}`}</td>
                       <td>{record.quantity}</td>
                       <td>{record.reason}</td>
+                      <td>{categoryLabel(record.reason_category)}</td>
                       <td>{dispositionLabel(record.disposition)}</td>
                       <td>{record.warehouse_name ?? (record.warehouse_id ? `#${record.warehouse_id}` : "Sin asignar")}</td>
                       <td>{record.partner_name ?? "Sin asociación"}</td>

@@ -990,6 +990,7 @@ export type SaleItem = {
 };
 
 export type ReturnDisposition = "vendible" | "defectuoso" | "no_vendible" | "reparacion";
+export type ReturnReasonCategory = "defecto" | "logistica" | "cliente" | "precio" | "otro";
 
 export type SaleReturn = {
   id: number;
@@ -997,9 +998,12 @@ export type SaleReturn = {
   device_id: number;
   quantity: number;
   reason: string;
+  reason_category: ReturnReasonCategory;
   disposition: ReturnDisposition;
   warehouse_id?: number | null;
   processed_by_id?: number | null;
+  approved_by_id?: number | null;
+  approved_by_name?: string | null;
   created_at: string;
 };
 
@@ -1074,7 +1078,12 @@ export type SaleReturnInput = {
     reason: string;
     disposition?: ReturnDisposition;
     warehouse_id?: number | null;
+    category?: ReturnReasonCategory;
   }[];
+  approval?: {
+    supervisor_username: string;
+    pin: string;
+  };
 };
 
 export type PurchaseOrderItem = {
@@ -1092,9 +1101,12 @@ export type PurchaseReturn = {
   device_id: number;
   quantity: number;
   reason: string;
+  reason_category: ReturnReasonCategory;
   disposition: ReturnDisposition;
   warehouse_id?: number | null;
   processed_by_id: number | null;
+  approved_by_id?: number | null;
+  approved_by_name?: string | null;
   created_at: string;
 };
 
@@ -1113,9 +1125,12 @@ export type ReturnRecord = {
   device_name?: string | null;
   quantity: number;
   reason: string;
+  reason_category: ReturnReasonCategory;
   disposition: ReturnDisposition;
   processed_by_id?: number | null;
   processed_by_name?: string | null;
+  approved_by_id?: number | null;
+  approved_by_name?: string | null;
   partner_name?: string | null;
   occurred_at: string;
   refund_amount?: number | null;
@@ -1128,6 +1143,7 @@ export type ReturnsTotals = {
   purchases: number;
   refunds_by_method: Record<string, number>;
   refund_total_amount: number;
+  categories: Record<string, number>;
 };
 
 export type ReturnsOverview = {
@@ -1175,6 +1191,7 @@ export type PurchaseReturnInput = {
   reason: string;
   disposition?: ReturnDisposition;
   warehouse_id?: number | null;
+  category?: ReturnReasonCategory;
 };
 
 export type PurchaseImportResponse = {

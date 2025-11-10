@@ -12,6 +12,7 @@ from .. import crud, schemas
 from ..config import settings
 from ..core.roles import MOVEMENT_ROLES
 from ..core.transactions import transactional_session
+from ..core.settings import return_policy_settings
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -331,6 +332,34 @@ def register_sale_return_endpoint(
                 detail="Selecciona un almacén válido para la devolución.",
             ) from exc
         raise
+    except PermissionError as exc:
+        code = str(exc)
+        limit_days = return_policy_settings.sale_without_supervisor_days
+        roles = ", ".join(return_policy_settings.authorizer_roles)
+        messages: dict[str, str] = {
+            "sale_return_supervisor_required": (
+                f"[sale_return_supervisor_required] La devolución supera el límite de {limit_days}"
+                " días y requiere la autorización de un supervisor (roles: "
+                f"{roles})."
+            ),
+            "sale_return_supervisor_not_found": (
+                "[sale_return_supervisor_not_found] No se encontró al supervisor indicado para autorizar la devolución."
+            ),
+            "sale_return_supervisor_not_authorized": (
+                "[sale_return_supervisor_not_authorized] El supervisor indicado no cuenta con un rol autorizado."
+            ),
+            "sale_return_supervisor_pin_not_configured": (
+                "[sale_return_supervisor_pin_not_configured] El supervisor seleccionado no tiene un PIN configurado."
+            ),
+            "sale_return_invalid_supervisor_pin": (
+                "[sale_return_invalid_supervisor_pin] El PIN de supervisor es inválido."
+            ),
+        }
+        message = messages.get(
+            code,
+            "[sale_return_supervisor_error] No fue posible validar la autorización del supervisor.",
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message) from exc
 
 
 @router.put(

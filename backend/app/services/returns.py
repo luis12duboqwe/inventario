@@ -11,8 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
-
-_DEFAULT_WINDOW_DAYS = 30
+from ..core.settings import return_policy_settings
 
 
 @dataclass(slots=True)
@@ -28,7 +27,8 @@ def _normalize_range(
     date_to: datetime | None,
 ) -> tuple[datetime, datetime]:
     now = datetime.utcnow()
-    start = date_from or (now - timedelta(days=_DEFAULT_WINDOW_DAYS))
+    default_window = max(1, return_policy_settings.history_window_days)
+    start = date_from or (now - timedelta(days=default_window))
     end = date_to or now
     if start > end:
         start, end = end, start
@@ -90,6 +90,7 @@ def _serialize_sale_return(
     store = sale.store if sale else None
     device = sale_return.device
     processed_by = sale_return.processed_by
+    approved_by = sale_return.approved_by
     warehouse = sale_return.warehouse
     refund_amount = _sale_return_amount(sale_return)
     payment_method = sale.payment_method if sale else None
@@ -106,9 +107,12 @@ def _serialize_sale_return(
         device_name=device.name if device else None,
         quantity=sale_return.quantity,
         reason=sale_return.reason,
+        reason_category=sale_return.reason_category,
         disposition=sale_return.disposition,
         processed_by_id=sale_return.processed_by_id,
         processed_by_name=_user_display_name(processed_by),
+        approved_by_id=sale_return.approved_by_id,
+        approved_by_name=_user_display_name(approved_by),
         partner_name=_customer_display_name(sale),
         occurred_at=sale_return.created_at,
         refund_amount=refund_amount,
@@ -123,6 +127,7 @@ def _serialize_purchase_return(
     store = order.store if order else None
     device = purchase_return.device
     processed_by = purchase_return.processed_by
+    approved_by = purchase_return.approved_by
     warehouse = purchase_return.warehouse
     store_id = order.store_id if order else 0
     supplier_name = order.supplier if order else None
@@ -139,9 +144,12 @@ def _serialize_purchase_return(
         device_name=device.name if device else None,
         quantity=purchase_return.quantity,
         reason=purchase_return.reason,
+        reason_category=purchase_return.reason_category,
         disposition=purchase_return.disposition,
         processed_by_id=purchase_return.processed_by_id,
         processed_by_name=_user_display_name(processed_by),
+        approved_by_id=purchase_return.approved_by_id,
+        approved_by_name=_user_display_name(approved_by),
         partner_name=supplier_name,
         occurred_at=purchase_return.created_at,
     )
@@ -194,6 +202,7 @@ def _list_sale_returns(
             joinedload(models.SaleReturn.sale).joinedload(models.Sale.items),
             joinedload(models.SaleReturn.device),
             joinedload(models.SaleReturn.processed_by),
+            joinedload(models.SaleReturn.approved_by),
             joinedload(models.SaleReturn.warehouse),
         )
         .where(models.SaleReturn.created_at.between(filters.start, filters.end))
@@ -238,6 +247,7 @@ def _list_purchase_returns(
             joinedload(models.PurchaseReturn.order).joinedload(models.PurchaseOrder.store),
             joinedload(models.PurchaseReturn.device),
             joinedload(models.PurchaseReturn.processed_by),
+            joinedload(models.PurchaseReturn.approved_by),
             joinedload(models.PurchaseReturn.warehouse),
         )
         .where(models.PurchaseReturn.created_at.between(filters.start, filters.end))
@@ -285,6 +295,9 @@ def list_returns(
     purchase_returns = _list_purchase_returns(db, filters, limit, offset)
 
     combined = _merge_returns(sale_returns, purchase_returns)
+    category_counts: dict[str, int] = defaultdict(int)
+    for record in combined:
+        category_counts[record.reason_category.value] += 1
     paginated = combined[offset : offset + limit]
 
     totals = schemas.ReturnsTotals(
@@ -293,6 +306,7 @@ def list_returns(
         purchases=purchase_count,
         refunds_by_method=refunds_by_method,
         refund_total_amount=refund_total_amount,
+        categories=dict(category_counts),
     )
     return schemas.ReturnsOverview(items=list(paginated), totals=totals)
 
