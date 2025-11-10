@@ -13806,7 +13806,7 @@ def _register_supplier_credit_note(
         db,
         supplier=supplier,
         entry_type=models.SupplierLedgerEntryType.CREDIT_NOTE,
-        amount=-applied_amount,
+        amount=-normalized_amount,
         note=corporate_reason,
         reference_type="purchase_return",
         reference_id=str(purchase_order_id),
