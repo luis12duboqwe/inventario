@@ -181,6 +181,28 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    config_sync_enabled: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "CONFIG_SYNC_ENABLED",
+                "SOFTMOBILE_CONFIG_SYNC_ENABLED",
+            ),
+        ),
+    ]
+    config_sync_directory: Annotated[
+        str,
+        Field(
+            default="ops/config_sync",
+            validation_alias=AliasChoices(
+                "CONFIG_SYNC_DIRECTORY",
+                "SOFTMOBILE_CONFIG_SYNC_DIRECTORY",
+                "CONFIG_SYNC_PATH",
+                "SOFTMOBILE_CONFIG_SYNC_PATH",
+            ),
+        ),
+    ]
     # // [PACK35-backend]
     sync_remote_url: Annotated[
         str | None,
@@ -1064,6 +1086,7 @@ class Settings(BaseSettings):
     @field_validator(
         "enable_background_scheduler",
         "enable_backup_scheduler",
+        "config_sync_enabled",
         "enable_catalog_pro",
         "enable_transfers",
         "enable_purchases_sales",
@@ -1098,6 +1121,16 @@ class Settings(BaseSettings):
         if value is None:
             return True
         return _is_truthy(str(value))
+
+    @property
+    def config_sync_path(self) -> Path:
+        """Devuelve la ruta absoluta al directorio de sincronización de YAML."""
+
+        directory = Path(self.config_sync_directory)
+        if directory.is_absolute():
+            return directory
+        base_path = Path(__file__).resolve().parents[2]
+        return base_path / directory
 
     @field_validator("notifications_whatsapp_timeout", mode="before")
     @classmethod
