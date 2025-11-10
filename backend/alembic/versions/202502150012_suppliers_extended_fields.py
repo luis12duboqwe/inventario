@@ -24,6 +24,147 @@ def _json_default(bind):
     return sa.text("'[]'::jsonb")
 
 
+def _drop_proveedores_alias(bind, *, is_sqlite: bool) -> None:
+    inspector = sa.inspect(bind)
+    try:
+        view_names = set(inspector.get_view_names())
+    except NotImplementedError:
+        view_names = set()
+
+    if "proveedores" in view_names:
+        if is_sqlite:
+            for trigger in (
+                "proveedores_insert",
+                "proveedores_update",
+                "proveedores_delete",
+            ):
+                op.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+        op.execute("DROP VIEW IF EXISTS proveedores")
+
+
+def _create_proveedores_alias(bind, *, is_sqlite: bool) -> None:
+    inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+    try:
+        views = set(inspector.get_view_names())
+    except NotImplementedError:
+        views = set()
+
+    if "suppliers" not in tables or "proveedores" in tables:
+        return
+
+    if "proveedores" in views:
+        _drop_proveedores_alias(bind, is_sqlite=is_sqlite)
+
+    op.execute(
+        """
+        CREATE VIEW proveedores AS
+        SELECT
+            id AS id_proveedor,
+            name AS nombre,
+            phone AS telefono,
+            email AS correo,
+            address AS direccion,
+            notes AS notas,
+            tipo,
+            estado,
+            rtn,
+            payment_terms,
+            contact_name,
+            contact_info,
+            products_supplied,
+            history,
+            outstanding_debt,
+            created_at,
+            updated_at
+        FROM suppliers
+        """
+    )
+
+    if is_sqlite:
+        op.execute(
+            """
+            CREATE TRIGGER proveedores_insert
+            INSTEAD OF INSERT ON proveedores
+            BEGIN
+                INSERT INTO suppliers (
+                    id,
+                    name,
+                    phone,
+                    email,
+                    address,
+                    tipo,
+                    estado,
+                    notes,
+                    rtn,
+                    payment_terms,
+                    contact_name,
+                    contact_info,
+                    products_supplied,
+                    history,
+                    outstanding_debt,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    NEW.id_proveedor,
+                    NEW.nombre,
+                    NEW.telefono,
+                    NEW.correo,
+                    NEW.direccion,
+                    NEW.tipo,
+                    COALESCE(NEW.estado, 'activo'),
+                    NEW.notas,
+                    NEW.rtn,
+                    NEW.payment_terms,
+                    NEW.contact_name,
+                    COALESCE(NEW.contact_info, '[]'),
+                    COALESCE(NEW.products_supplied, '[]'),
+                    COALESCE(NEW.history, '[]'),
+                    COALESCE(NEW.outstanding_debt, 0),
+                    COALESCE(NEW.created_at, CURRENT_TIMESTAMP),
+                    COALESCE(NEW.updated_at, CURRENT_TIMESTAMP)
+                );
+            END
+            """
+        )
+        op.execute(
+            """
+            CREATE TRIGGER proveedores_update
+            INSTEAD OF UPDATE ON proveedores
+            BEGIN
+                UPDATE suppliers
+                SET
+                    name = COALESCE(NEW.nombre, name),
+                    phone = COALESCE(NEW.telefono, phone),
+                    email = COALESCE(NEW.correo, email),
+                    address = COALESCE(NEW.direccion, address),
+                    tipo = COALESCE(NEW.tipo, tipo),
+                    estado = COALESCE(NEW.estado, estado),
+                    notes = COALESCE(NEW.notas, notes),
+                    rtn = COALESCE(NEW.rtn, rtn),
+                    payment_terms = COALESCE(NEW.payment_terms, payment_terms),
+                    contact_name = COALESCE(NEW.contact_name, contact_name),
+                    contact_info = COALESCE(NEW.contact_info, contact_info),
+                    products_supplied = COALESCE(NEW.products_supplied, products_supplied),
+                    history = COALESCE(NEW.history, history),
+                    outstanding_debt = COALESCE(NEW.outstanding_debt, outstanding_debt),
+                    created_at = COALESCE(NEW.created_at, created_at),
+                    updated_at = COALESCE(NEW.updated_at, CURRENT_TIMESTAMP)
+                WHERE id = OLD.id_proveedor;
+            END
+            """
+        )
+        op.execute(
+            """
+            CREATE TRIGGER proveedores_delete
+            INSTEAD OF DELETE ON proveedores
+            BEGIN
+                DELETE FROM suppliers WHERE id = OLD.id_proveedor;
+            END
+            """
+        )
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
@@ -54,6 +195,13 @@ def upgrade() -> None:
             sa.Column("contact_name", sa.String(length=120), nullable=True),
             sa.Column("email", sa.String(length=120), nullable=True),
             sa.Column("phone", sa.String(length=40), nullable=True),
+            sa.Column("tipo", sa.String(length=60), nullable=True),
+            sa.Column(
+                "estado",
+                sa.String(length=40),
+                nullable=False,
+                server_default="activo",
+            ),
             sa.Column(
                 "contact_info",
                 json_type,
@@ -214,12 +362,12 @@ def upgrade() -> None:
         if "ix_suppliers_name" not in indexes:
             op.create_index("ix_suppliers_name", "suppliers", ["name"], unique=True)
 
-    op.create_index(
-        "ix_suppliers_rtn",
-        "suppliers",
-        ["rtn"],
-        unique=True,
-    )
+    inspector = _refresh_inspector()
+    indexes = {index["name"] for index in inspector.get_indexes("suppliers")}
+    if "ix_suppliers_rtn" not in indexes:
+        op.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_suppliers_rtn ON suppliers (rtn)")
+
+    _create_proveedores_alias(bind, is_sqlite=is_sqlite)
 
     if not is_sqlite:
         for column in ("contact_info", "products_supplied", "history"):
@@ -229,6 +377,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    is_sqlite = bind.dialect.name == "sqlite"
+
+    _drop_proveedores_alias(bind, is_sqlite=is_sqlite)
 
     if inspector.has_table("suppliers"):
         op.drop_index("ix_suppliers_rtn", table_name="suppliers")
