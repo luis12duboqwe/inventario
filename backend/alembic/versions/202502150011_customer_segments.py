@@ -5,8 +5,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = "202502150011"
-down_revision = "202502150010"
+revision = "202502150011_customer_segments"
+down_revision = "202502150010_inventory_movements_enhancements"
 branch_labels: tuple[str, ...] | None = None
 depends_on: tuple[str, ...] | None = None
 

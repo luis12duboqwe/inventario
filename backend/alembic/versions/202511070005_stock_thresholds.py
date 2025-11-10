@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Connection
 
 # revision identifiers, used by Alembic.
-revision = "202511070005"
+revision = "202511070005_stock_thresholds"
 down_revision = "202511070004"
 branch_labels: tuple[str, ...] | None = None
 depends_on: tuple[str, ...] | None = None

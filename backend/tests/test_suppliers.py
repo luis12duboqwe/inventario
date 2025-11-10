@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 from fastapi import status
 
 from fastapi import status
@@ -32,13 +33,28 @@ def test_supplier_crud_flow(client):
 
     create_payload = {
         "name": "Refacciones Globales",
+        "rtn": "08011999000123",
+        "payment_terms": "30 días",
         "contact_name": "Pilar Ortega",
         "email": "pilar@refacciones.com",
         "phone": "+52 81 1234 5678",
+        "contact_info": [
+            {
+                "name": "Pilar Ortega",
+                "position": "Compras",
+                "email": "pilar@refacciones.com",
+                "phone": "+52 81 1234 5678",
+            }
+        ],
+        "products_supplied": ["Refacciones", "Herramientas"],
     }
     create_response = client.post("/suppliers", json=create_payload, headers=headers)
     assert create_response.status_code == status.HTTP_201_CREATED
     supplier_id = create_response.json()["id"]
+    assert create_response.json()["rtn"] == "08011999000123"
+    assert create_response.json()["payment_terms"] == "30 días"
+    assert create_response.json()["products_supplied"] == ["Refacciones", "Herramientas"]
+    assert create_response.json()["contact_info"][0]["position"] == "Compras"
 
     list_response = client.get(
         "/suppliers",
@@ -55,13 +71,20 @@ def test_supplier_crud_flow(client):
     )
     assert csv_response.status_code == status.HTTP_200_OK
     assert "Refacciones Globales" in csv_response.text
+    assert "08011999000123" in csv_response.text
 
-    update_payload = {"notes": "Proveedor prioritario"}
+    update_payload = {
+        "notes": "Proveedor prioritario",
+        "payment_terms": "45 días",
+        "products_supplied": ["Refacciones"],
+    }
     update_response = client.put(
         f"/suppliers/{supplier_id}", json=update_payload, headers=headers
     )
     assert update_response.status_code == status.HTTP_200_OK
     assert update_response.json()["notes"] == "Proveedor prioritario"
+    assert update_response.json()["payment_terms"] == "45 días"
+    assert update_response.json()["products_supplied"] == ["Refacciones"]
 
     delete_response = client.delete(f"/suppliers/{supplier_id}", headers=headers)
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
@@ -193,3 +216,64 @@ def test_supplier_batches_and_inventory_value(client):
     )
     assert batches_after_delete.status_code == status.HTTP_200_OK
     assert batches_after_delete.json() == []
+
+
+def test_suppliers_accounts_payable_summary(client):
+    token = _bootstrap_admin(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**headers, "X-Reason": "Cuentas por pagar"}
+
+    legacy_payload = {
+        "name": "Tecnología Histórica",
+        "rtn": "08011999000999",
+        "payment_terms": "60 días",
+        "contact_name": "Andrea Salas",
+        "email": "andrea@legacytech.com",
+        "outstanding_debt": 1500,
+        "products_supplied": ["Tarjetas madre"],
+        "history": [
+            {"timestamp": "2020-01-01T00:00:00Z", "note": "Factura 100"},
+        ],
+    }
+    legacy_response = client.post(
+        "/suppliers",
+        json=legacy_payload,
+        headers=reason_headers,
+    )
+    assert legacy_response.status_code == status.HTTP_201_CREATED
+    legacy_id = legacy_response.json()["id"]
+
+    recent_payload = {
+        "name": "Componentes Modernos",
+        "payment_terms": "15 días",
+        "outstanding_debt": 320,
+        "history": [
+            {"timestamp": datetime.utcnow().isoformat(), "note": "Factura 302"},
+        ],
+    }
+    recent_response = client.post(
+        "/suppliers",
+        json=recent_payload,
+        headers=reason_headers,
+    )
+    assert recent_response.status_code == status.HTTP_201_CREATED
+    recent_id = recent_response.json()["id"]
+
+    summary_response = client.get(
+        "/suppliers/accounts-payable",
+        headers=headers,
+    )
+    assert summary_response.status_code == status.HTTP_200_OK
+    data = summary_response.json()
+
+    assert data["summary"]["total_balance"] == pytest.approx(1820.0)
+    assert data["summary"]["total_overdue"] == pytest.approx(1500.0)
+
+    buckets = {bucket["label"]: bucket for bucket in data["summary"]["buckets"]}
+    assert buckets["90+ días"]["amount"] >= 1500.0
+    assert buckets["0-30 días"]["count"] >= 1
+
+    suppliers_map = {item["supplier_id"]: item for item in data["suppliers"]}
+    assert suppliers_map[legacy_id]["bucket_label"] == "90+ días"
+    assert suppliers_map[legacy_id]["products_supplied"] == ["Tarjetas madre"]
+    assert suppliers_map[recent_id]["bucket_label"] == "0-30 días"

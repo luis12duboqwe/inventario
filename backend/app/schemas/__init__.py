@@ -4,7 +4,7 @@ from __future__ import annotations
 import enum
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Iterable, Literal
 
 from pydantic import (
     AliasChoices,
@@ -637,7 +637,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada, cuando aplica.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -1310,6 +1309,22 @@ class ContactHistoryEntry(BaseModel):
     @classmethod
     def _serialize_timestamp(cls, value: datetime) -> str:
         return value.isoformat()
+
+
+class SupplierContact(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    position: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    notes: str | None = Field(default=None, max_length=255)
+
+    @field_validator("name", "position", "email", "phone", "notes", mode="before")
+    @classmethod
+    def _normalize_contact_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class CustomerBase(BaseModel):
@@ -2156,6 +2171,8 @@ class CustomerDashboardMetrics(BaseModel):
 
 
 class SupplierBase(BaseModel):
+    rtn: str | None = Field(default=None, max_length=30)
+    payment_terms: str | None = Field(default=None, max_length=80)
     contact_name: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
@@ -2163,14 +2180,45 @@ class SupplierBase(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal = Field(default=Decimal("0"))
     history: list[ContactHistoryEntry] = Field(default_factory=list)
+    contact_info: list[SupplierContact] = Field(default_factory=list)
+    products_supplied: list[str] = Field(default_factory=list)
 
-    @field_validator("contact_name", "email", "phone", "address", "notes", mode="before")
+    @field_validator(
+        "rtn",
+        "payment_terms",
+        "contact_name",
+        "email",
+        "phone",
+        "address",
+        "notes",
+        mode="before",
+    )
     @classmethod
     def _normalize_optional_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("products_supplied", mode="before")
+    @classmethod
+    def _normalize_products(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (str, bytes)):
+            candidates = [value]
+        else:
+            candidates = list(value) if isinstance(value, Iterable) else [value]
+        normalized: list[str] = []
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            text = str(candidate).strip()
+            if not text:
+                continue
+            if text not in normalized:
+                normalized.append(text)
+        return normalized
 
     @field_serializer("outstanding_debt")
     @classmethod
@@ -2192,6 +2240,8 @@ class SupplierCreate(SupplierBase):
 
 class SupplierUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
+    rtn: str | None = Field(default=None, max_length=30)
+    payment_terms: str | None = Field(default=None, max_length=80)
     contact_name: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
@@ -2199,14 +2249,46 @@ class SupplierUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal | None = Field(default=None)
     history: list[ContactHistoryEntry] | None = Field(default=None)
+    contact_info: list[SupplierContact] | None = Field(default=None)
+    products_supplied: list[str] | None = Field(default=None)
 
-    @field_validator("name", "contact_name", "email", "phone", "address", "notes", mode="before")
+    @field_validator(
+        "name",
+        "rtn",
+        "payment_terms",
+        "contact_name",
+        "email",
+        "phone",
+        "address",
+        "notes",
+        mode="before",
+    )
     @classmethod
     def _normalize_update_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("products_supplied", mode="before")
+    @classmethod
+    def _normalize_products_update(cls, value: object) -> list[str] | None:
+        if value is None:
+            return None
+        if isinstance(value, (str, bytes)):
+            candidates = [value]
+        else:
+            candidates = list(value) if isinstance(value, Iterable) else [value]
+        normalized: list[str] = []
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            text = str(candidate).strip()
+            if not text:
+                continue
+            if text not in normalized:
+                normalized.append(text)
+        return normalized
 
 
 class SupplierResponse(SupplierBase):
@@ -2216,6 +2298,46 @@ class SupplierResponse(SupplierBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SupplierAccountsPayableBucket(BaseModel):
+    label: str
+    days_from: int
+    days_to: int | None
+    amount: float
+    percentage: float
+    count: int
+
+
+class SupplierAccountsPayableSupplier(BaseModel):
+    supplier_id: int
+    supplier_name: str
+    rtn: str | None
+    payment_terms: str | None
+    outstanding_debt: float
+    bucket_label: str
+    bucket_from: int
+    bucket_to: int | None
+    days_outstanding: int
+    last_activity: datetime | None
+    contact_name: str | None
+    contact_email: str | None
+    contact_phone: str | None
+    products_supplied: list[str]
+    contact_info: list[SupplierContact] = Field(default_factory=list)
+
+
+class SupplierAccountsPayableSummary(BaseModel):
+    total_balance: float
+    total_overdue: float
+    supplier_count: int
+    generated_at: datetime
+    buckets: list[SupplierAccountsPayableBucket]
+
+
+class SupplierAccountsPayableResponse(BaseModel):
+    summary: SupplierAccountsPayableSummary
+    suppliers: list[SupplierAccountsPayableSupplier]
 
 
 class SupplierBatchBase(BaseModel):
@@ -7055,6 +7177,7 @@ __all__ = [
     "StoreUpdate",
     "StoreValueMetric",
     "StoreComparativeMetric",
+    "SupplierContact",
     "SupplierBase",
     "SupplierBatchBase",
     "SupplierBatchCreate",
@@ -7062,6 +7185,10 @@ __all__ = [
     "SupplierBatchResponse",
     "SupplierBatchUpdate",
     "SupplierCreate",
+    "SupplierAccountsPayableBucket",
+    "SupplierAccountsPayableResponse",
+    "SupplierAccountsPayableSummary",
+    "SupplierAccountsPayableSupplier",
     "SupplierResponse",
     "SupplierUpdate",
     "SyncRequest",
