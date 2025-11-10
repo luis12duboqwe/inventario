@@ -15,7 +15,7 @@ from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import ADMIN
 from ..database import get_db
-from ..routers.dependencies import require_reason, require_reason_optional
+from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import analytics as analytics_service
 from ..services import audit as audit_service
@@ -199,7 +199,7 @@ def get_fiscal_book_report(
     export_format: Literal["json", "pdf", "xlsx", "xml"] = Query(default="json", alias="format"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
-    reason: str | None = Depends(require_reason_optional),
+    reason: str = Depends(require_reason),
 ):
     _ensure_fiscal_reports_enabled()
     try:
@@ -227,9 +227,6 @@ def get_fiscal_book_report(
             date_to=end_dt,
         )
         report = fiscal_books_service.build_purchases_fiscal_book(purchases, filters)
-
-    if export_format != "json" and not reason:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reason header requerido")
 
     if export_format == "json":
         return report
