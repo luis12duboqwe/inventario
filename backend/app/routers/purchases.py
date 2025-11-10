@@ -601,6 +601,11 @@ async def upload_purchase_order_document_endpoint(
                 detail="Solo se admiten documentos PDF.",
             ) from exc
         raise
+    except LookupError as exc:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail="Orden de compra no encontrada.",
+        ) from exc
     except purchase_documents.PurchaseDocumentStorageError as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -694,6 +699,7 @@ def send_purchase_order_email_endpoint(
     payload: schemas.PurchaseOrderEmailRequest,
     order_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
