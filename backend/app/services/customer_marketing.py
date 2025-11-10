@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -129,7 +129,7 @@ def push_to_mailchimp(
     payload = {
         "segment": segment_key,
         "generated_at": generated_at.isoformat(),
-        "customers": [customer.__dict__ for customer in customer_list],
+        "customers": [asdict(customer) for customer in customer_list],
         "export_path": str(file_path) if file_path else None,
     }
 
