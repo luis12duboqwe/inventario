@@ -637,7 +637,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada, cuando aplica.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -2988,6 +2987,11 @@ class InventoryReservationCreate(BaseModel):
     expires_at: datetime
 
 
+class InventoryReceivingDistribution(BaseModel):
+    store_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
 class InventoryReceivingLine(BaseModel):
     device_id: int | None = Field(default=None, ge=1)
     imei: str | None = Field(default=None, min_length=3, max_length=64)
@@ -2995,6 +2999,7 @@ class InventoryReceivingLine(BaseModel):
     quantity: int = Field(..., ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
     comment: str | None = Field(default=None, min_length=5, max_length=255)
+    distributions: list[InventoryReceivingDistribution] | None = None
 
     @model_validator(mode="after")
     def _ensure_identifier(self) -> "InventoryReceivingLine":
@@ -3002,6 +3007,29 @@ class InventoryReceivingLine(BaseModel):
             raise ValueError(
                 "Cada línea debe incluir `device_id`, `imei` o `serial`."
             )
+        if self.distributions:
+            store_ids: set[int] = set()
+            total_assigned = 0
+            for allocation in self.distributions:
+                if allocation.store_id in store_ids:
+                    raise ValueError(
+                        "Cada sucursal destino debe aparecer solo una vez por línea."
+                    )
+                store_ids.add(allocation.store_id)
+                total_assigned += allocation.quantity
+            if total_assigned > self.quantity:
+                raise ValueError(
+                    "La cantidad distribuida excede la recepción capturada."
+                )
+            if (self.imei or self.serial) and self.distributions:
+                if len(self.distributions) != 1:
+                    raise ValueError(
+                        "Los dispositivos con IMEI o serie solo pueden asignarse a una sucursal."
+                    )
+                if self.distributions[0].quantity != self.quantity:
+                    raise ValueError(
+                        "Los dispositivos con IMEI o serie deben transferirse completos."
+                    )
         return self
 
 
@@ -3029,6 +3057,7 @@ class InventoryReceivingResult(BaseModel):
     store_id: int
     processed: list[InventoryReceivingProcessed]
     totals: InventoryReceivingSummary
+    auto_transfers: list[TransferOrderResponse] | None = None
 
 
 class InventoryCountLine(BaseModel):

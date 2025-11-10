@@ -1645,6 +1645,10 @@ class Customer(Base):
     )
     loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
         "LoyaltyAccount",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
     segment_snapshot: Mapped[Optional["CustomerSegmentSnapshot"]] = relationship(
         "CustomerSegmentSnapshot",
         back_populates="customer",

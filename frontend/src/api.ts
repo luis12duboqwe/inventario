@@ -1670,6 +1670,11 @@ export type InventoryMovement = {
   ultima_accion?: unknown;
 };
 
+export type InventoryReceivingDistributionInput = {
+  store_id: number;
+  quantity: number;
+};
+
 export type InventoryReceivingLineInput = {
   device_id?: number;
   imei?: string;
@@ -1677,6 +1682,7 @@ export type InventoryReceivingLineInput = {
   quantity: number;
   unit_cost?: number;
   comment?: string;
+  distributions?: InventoryReceivingDistributionInput[];
 };
 
 export type InventoryReceivingRequest = {
@@ -1698,6 +1704,7 @@ export type InventoryReceivingResult = {
   store_id: number;
   processed: InventoryReceivingProcessed[];
   totals: { lines: number; total_quantity: number };
+  auto_transfers?: TransferOrder[] | null;
 };
 
 export type InventoryCountLineInput = {

@@ -1628,6 +1628,53 @@ def _purchase_order_payload(order: models.PurchaseOrder) -> dict[str, object]:
     }
 
 
+def _transfer_order_payload(order: models.TransferOrder) -> dict[str, object]:
+    """Serializa una orden de transferencia para la cola híbrida."""
+
+    origin_store = getattr(order, "origin_store", None)
+    destination_store = getattr(order, "destination_store", None)
+    requested_by = getattr(order, "requested_by", None)
+    dispatched_by = getattr(order, "dispatched_by", None)
+    received_by = getattr(order, "received_by", None)
+    cancelled_by = getattr(order, "cancelled_by", None)
+    items_payload = []
+    for item in getattr(order, "items", []) or []:
+        device = getattr(item, "device", None)
+        items_payload.append(
+            {
+                "device_id": item.device_id,
+                "quantity": item.quantity,
+                "sku": getattr(device, "sku", None),
+                "imei": getattr(device, "imei", None),
+                "serial": getattr(device, "serial", None),
+            }
+        )
+    status_value = getattr(order.status, "value", order.status)
+    return {
+        "id": order.id,
+        "origin_store_id": order.origin_store_id,
+        "origin_store_name": getattr(origin_store, "name", None),
+        "destination_store_id": order.destination_store_id,
+        "destination_store_name": getattr(destination_store, "name", None),
+        "status": status_value,
+        "reason": order.reason,
+        "requested_by_id": order.requested_by_id,
+        "requested_by_name": _user_display_name(requested_by),
+        "dispatched_by_id": order.dispatched_by_id,
+        "dispatched_by_name": _user_display_name(dispatched_by),
+        "received_by_id": order.received_by_id,
+        "received_by_name": _user_display_name(received_by),
+        "cancelled_by_id": order.cancelled_by_id,
+        "cancelled_by_name": _user_display_name(cancelled_by),
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "updated_at": order.updated_at.isoformat() if order.updated_at else None,
+        "dispatched_at": order.dispatched_at.isoformat() if order.dispatched_at else None,
+        "received_at": order.received_at.isoformat() if order.received_at else None,
+        "cancelled_at": order.cancelled_at.isoformat() if order.cancelled_at else None,
+        "items": items_payload,
+    }
+
+
 def _hydrate_movement_references(
     db: Session, movements: Sequence[models.InventoryMovement]
 ) -> None:
@@ -12150,6 +12197,15 @@ def create_transfer_order(
             }),
         )
     db.refresh(order)
+    order = get_transfer_order(db, order.id)
+    enqueue_sync_outbox(
+        db,
+        entity_type="transfer_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_transfer_order_payload(order),
+        priority=models.SyncOutboxPriority.HIGH,
+    )
     return order
 
 
@@ -12207,6 +12263,15 @@ def dispatch_transfer_order(
         )
 
         db.refresh(order)
+    order = get_transfer_order(db, order.id)
+    enqueue_sync_outbox(
+        db,
+        entity_type="transfer_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_transfer_order_payload(order),
+        priority=models.SyncOutboxPriority.HIGH,
+    )
     return order
 
 
@@ -12431,6 +12496,15 @@ def receive_transfer_order(
         )
 
         db.refresh(order)
+    order = get_transfer_order(db, order.id)
+    enqueue_sync_outbox(
+        db,
+        entity_type="transfer_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_transfer_order_payload(order),
+        priority=models.SyncOutboxPriority.HIGH,
+    )
     return order
 
 
@@ -12471,6 +12545,15 @@ def cancel_transfer_order(
         )
 
         db.refresh(order)
+    order = get_transfer_order(db, order.id)
+    enqueue_sync_outbox(
+        db,
+        entity_type="transfer_order",
+        entity_id=str(order.id),
+        operation="UPSERT",
+        payload=_transfer_order_payload(order),
+        priority=models.SyncOutboxPriority.HIGH,
+    )
     return order
 
 
