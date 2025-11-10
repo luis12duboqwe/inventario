@@ -6,11 +6,16 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any, Mapping, TYPE_CHECKING
 
 from fastapi import BackgroundTasks
-from starlette.websockets import WebSocketState
 from fastapi import WebSocket
+from starlette.websockets import WebSocketState
+
+from .fiscal_printers import FiscalPrinterContext, fiscal_printer_registry
+
+if TYPE_CHECKING:  # pragma: no cover - sólo para tipado
+    from ...schemas import POSFiscalPrinterProfile
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,21 @@ class ConnectorConfig:
         host = self.host or "localhost"
         port = self.port or 9100
         return f"NET:{host}:{port}"
+
+    def as_payload(self) -> dict[str, Any]:
+        """Serializa el conector para ser consumido por adaptadores."""
+
+        payload: dict[str, Any] = {
+            "type": self.type.value,
+            "identifier": self.identifier,
+        }
+        if self.path:
+            payload["path"] = self.path
+        if self.host:
+            payload["host"] = self.host
+        if self.port is not None:
+            payload["port"] = self.port
+        return payload
 
 
 @dataclass(slots=True)
@@ -88,7 +108,16 @@ class ThermalPrinter(BasePrinter):
 
 
 class FiscalPrinter(BasePrinter):
-    """Simula una impresora fiscal con registro de comprobantes."""
+    """Opera una impresora fiscal apoyándose en adaptadores específicos."""
+
+    def __init__(
+        self,
+        name: str,
+        connector: ConnectorConfig,
+        profile: "POSFiscalPrinterProfile | None",
+    ) -> None:
+        super().__init__(name, connector)
+        self.profile = profile
 
     async def print_text(self, text: str, **metadata: Any) -> ReceiptPrintResult:
         logger.info(
@@ -96,13 +125,43 @@ class FiscalPrinter(BasePrinter):
             self.name,
             self.connector.describe(),
         )
+        metadata_payload = dict(metadata)
+        if not self.profile:
+            payload = {
+                "mode": PrinterMode.FISCAL.value,
+                "connector": self.connector.describe(),
+                "text": text,
+                "metadata": metadata_payload,
+                "simulated": True,
+                "reason": "missing_profile",
+            }
+            message = "Impresión fiscal simulada por falta de perfil configurado."
+            logger.warning(
+                "Perfil fiscal no configurado para %s; se ejecutará simulación.",
+                self.name,
+            )
+            return ReceiptPrintResult(True, message, payload)
+
+        context = FiscalPrinterContext(
+            name=self.name,
+            connector=self.connector.as_payload(),
+            profile=self.profile,
+        )
+        execution = await fiscal_printer_registry.print_test(
+            context,
+            text,
+            metadata_payload,
+        )
         payload = {
             "mode": PrinterMode.FISCAL.value,
             "connector": self.connector.describe(),
-            "text": text,
-            "metadata": metadata,
+            "adapter": self.profile.adapter,
+            "profile": self.profile.model_dump(),
+            "commands": [command.to_payload() for command in execution.commands],
+            "metadata": metadata_payload,
+            "simulated": execution.simulated,
         }
-        return ReceiptPrintResult(True, "Impresión fiscal simulada correctamente.", payload)
+        return ReceiptPrintResult(execution.success, execution.message, payload)
 
 
 class ReceiptPrinterService:
@@ -113,10 +172,13 @@ class ReceiptPrinterService:
 
     async def _build_printer(
         self,
-        printer_name: str,
-        connector: Mapping[str, Any],
-        mode: PrinterMode,
+        printer_settings: Mapping[str, Any],
     ) -> BasePrinter:
+        printer_name = str(printer_settings.get("name", "Desconocida"))
+        mode = PrinterMode(
+            printer_settings.get("mode", PrinterMode.THERMAL.value)
+        )
+        connector = printer_settings.get("connector") or {}
         connector_config = ConnectorConfig(
             type=ConnectorType(connector.get("type", ConnectorType.USB.value)),
             identifier=str(connector.get("identifier", printer_name)),
@@ -125,7 +187,15 @@ class ReceiptPrinterService:
             port=connector.get("port"),
         )
         if mode is PrinterMode.FISCAL:
-            return FiscalPrinter(printer_name, connector_config)
+            fiscal_profile_data = printer_settings.get("fiscal_profile")
+            fiscal_profile: "POSFiscalPrinterProfile | None" = None
+            if fiscal_profile_data:
+                from ... import schemas  # Importación perezosa
+
+                fiscal_profile = schemas.POSFiscalPrinterProfile.model_validate(
+                    fiscal_profile_data
+                )
+            return FiscalPrinter(printer_name, connector_config, fiscal_profile)
         return ThermalPrinter(printer_name, connector_config)
 
     async def print_sample(
@@ -138,11 +208,8 @@ class ReceiptPrinterService:
         """Genera una impresión de prueba en la impresora indicada."""
 
         metadata = dict(metadata or {})
-        printer_name = str(printer_settings.get("name", "Desconocida"))
-        mode = PrinterMode(printer_settings.get("mode", PrinterMode.THERMAL.value))
-        connector = printer_settings.get("connector") or {}
         async with self._lock:
-            printer = await self._build_printer(printer_name, connector, mode)
+            printer = await self._build_printer(printer_settings)
             result = await printer.print_text(sample, **metadata)
         return result
 

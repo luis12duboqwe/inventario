@@ -1,3 +1,5 @@
+import { isFeatureEnabled } from "@/config/featureFlags";
+
 import {
   CustomersFiltersPanel,
   CustomersFormModal,
@@ -26,6 +28,7 @@ function Customers({ token }: Props) {
     savingCustomer,
     error,
     message,
+    privacyProcessing,
     formState,
     editingId,
     selectedCustomer,
@@ -60,6 +63,8 @@ function Customers({ token }: Props) {
     handleSelectCustomer,
     handleEdit,
     handleAddNote,
+    handleRegisterPrivacyConsent,
+    handleRegisterPrivacyAnonymization,
     handleRegisterPayment,
     handleAdjustDebt,
     handleDownloadStatement,
@@ -73,6 +78,8 @@ function Customers({ token }: Props) {
     handleExportSegment,
     exportingSegment,
   } = useCustomersController({ token });
+
+  const privacyCenterEnabled = isFeatureEnabled("privacyCenter");
 
   const customerList = Array.isArray(customers) ? customers : [];
   const notesList = Array.isArray(customerNotes) ? customerNotes : [];
@@ -163,6 +170,14 @@ function Customers({ token }: Props) {
           resolveDetails={resolveDetails}
           formatCurrency={formatCurrency}
           onDownloadStatement={handleDownloadStatement}
+          privacyEnabled={privacyCenterEnabled}
+          privacyProcessing={privacyProcessing}
+          onRegisterConsent={(customer) => {
+            void handleRegisterPrivacyConsent(customer);
+          }}
+          onRegisterAnonymization={(customer) => {
+            void handleRegisterPrivacyAnonymization(customer);
+          }}
         />
       </div>
 

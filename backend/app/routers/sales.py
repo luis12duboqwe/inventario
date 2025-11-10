@@ -467,4 +467,9 @@ def cancel_sale_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La venta ya se encuentra anulada.",
             ) from exc
+        if str(exc) == "sale_reported_requires_customer":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La venta requiere un cliente asociado para emitir la nota de crédito.",
+            ) from exc
         raise

@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_SOFTMOBILE_ENABLE_PRICE_LISTS?: string;
   readonly VITE_SOFTMOBILE_ENABLE_BUNDLES?: string;
   readonly VITE_SOFTMOBILE_ENABLE_DTE?: string;
+  readonly VITE_SOFTMOBILE_ENABLE_PRIVACY_CENTER?: string;
 }
 
 interface ImportMeta {

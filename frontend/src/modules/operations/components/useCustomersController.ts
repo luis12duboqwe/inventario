@@ -14,6 +14,7 @@ import type {
 import {
   appendCustomerNote,
   createCustomer,
+  createCustomerPrivacyRequest,
   deleteCustomer,
   exportCustomerPortfolioExcel,
   exportCustomerPortfolioPdf,
@@ -28,6 +29,8 @@ import {
   downloadCustomerStatement,
   updateCustomer,
 } from "../../../api";
+import { normalizeRtn, RTN_ERROR_MESSAGE } from "../utils/rtn";
+
 import type {
   CustomerFilters,
   CustomerFormState,
@@ -189,6 +192,8 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const [privacyProcessing, setPrivacyProcessing] = useState(false);
 
   const [formState, setFormState] = useState<CustomerFormState>({
     ...initialFormState,
@@ -579,6 +584,132 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     }
   };
 
+  const handleRegisterPrivacyConsent = async (customer: Customer) => {
+    if (privacyProcessing) {
+      return;
+    }
+    const consentRaw = window.prompt(
+      "Consentimientos a actualizar (ej. marketing:si,sms:no)",
+      "marketing:si,sms:no"
+    );
+    if (consentRaw === null) {
+      return;
+    }
+    const consentEntries: Record<string, boolean> = {};
+    consentRaw
+      .split(/[\n;,]/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+      .forEach((entry) => {
+        const [rawKey, rawValue] = entry.split(":");
+        const key = (rawKey ?? "").trim().toLowerCase();
+        const value = (rawValue ?? "").trim().toLowerCase();
+        if (!key) {
+          return;
+        }
+        if (["si", "sí", "true", "1", "on", "acepta"].includes(value)) {
+          consentEntries[key] = true;
+        } else if (["no", "false", "0", "off", "rechaza"].includes(value)) {
+          consentEntries[key] = false;
+        }
+      });
+    if (Object.keys(consentEntries).length === 0) {
+      setError("Debes indicar al menos un consentimiento válido (ejemplo: marketing:si).");
+      return;
+    }
+    const detailsInput = window.prompt(
+      "Detalle de la solicitud (opcional)",
+      "Consentimientos actualizados en mostrador"
+    );
+    const details = detailsInput ? detailsInput.trim() : "";
+    const reason = askReason("Motivo corporativo para registrar la solicitud de privacidad");
+    if (!reason) {
+      return;
+    }
+    try {
+      setPrivacyProcessing(true);
+      setError(null);
+      await createCustomerPrivacyRequest(
+        token,
+        customer.id,
+        {
+          request_type: "consent",
+          details: details || undefined,
+          consent: consentEntries,
+        },
+        reason
+      );
+      setMessage("Consentimientos actualizados correctamente.");
+      const trimmed = customerFilters.search.trim();
+      await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
+      if (customer.id === selectedCustomerId) {
+        void refreshSummary(customer.id);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible registrar la solicitud de privacidad."
+      );
+    } finally {
+      setPrivacyProcessing(false);
+    }
+  };
+
+  const handleRegisterPrivacyAnonymization = async (customer: Customer) => {
+    if (privacyProcessing) {
+      return;
+    }
+    const fieldsRaw = window.prompt(
+      "Campos a anonimizar (ej. email,phone,address)",
+      "email,phone"
+    );
+    if (fieldsRaw === null) {
+      return;
+    }
+    const maskFields = fieldsRaw
+      .split(/[\n;,]/)
+      .map((field) => field.trim().toLowerCase())
+      .filter((field) => field.length > 0);
+    const detailsInput = window.prompt(
+      "Detalle de la solicitud (opcional)",
+      "Anonimización parcial aprobada"
+    );
+    const details = detailsInput ? detailsInput.trim() : "";
+    const reason = askReason("Motivo corporativo para aplicar anonimización");
+    if (!reason) {
+      return;
+    }
+    try {
+      setPrivacyProcessing(true);
+      setError(null);
+      await createCustomerPrivacyRequest(
+        token,
+        customer.id,
+        {
+          request_type: "anonymization",
+          details: details || undefined,
+          mask_fields: maskFields,
+        },
+        reason
+      );
+      setMessage("Anonimización aplicada correctamente.");
+      const trimmed = customerFilters.search.trim();
+      await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
+      if (customer.id === selectedCustomerId) {
+        void refreshSummary(customer.id);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible aplicar la anonimización solicitada."
+      );
+    } finally {
+      setPrivacyProcessing(false);
+    }
+  };
+
   const handleRegisterPayment = async (customer: Customer) => {
     const amountRaw = window.prompt("Monto del pago", "0.00");
     if (amountRaw === null) {
@@ -645,8 +776,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       setError("Indica un teléfono de contacto.");
       return;
     }
-    if (!formState.taxId.trim() || formState.taxId.trim().length < 5) {
-      setError("Indica un RTN válido (mínimo 5 caracteres).");
+    const normalizedTaxId = normalizeRtn(formState.taxId);
+    if (!normalizedTaxId) {
+      setError(RTN_ERROR_MESSAGE);
       return;
     }
     const reason = askReason(
@@ -655,7 +787,6 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     if (!reason) {
       return;
     }
-    const normalizedTaxId = formState.taxId.trim().toUpperCase();
     const payload: CustomerPayload = {
       name: formState.name.trim(),
       phone: formState.phone.trim(),
@@ -881,6 +1012,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     savingCustomer,
     error,
     message,
+    privacyProcessing,
     formState,
     editingId,
     selectedCustomer,
@@ -915,6 +1047,8 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     handleSelectCustomer,
     handleEdit,
     handleAddNote,
+    handleRegisterPrivacyConsent,
+    handleRegisterPrivacyAnonymization,
     handleRegisterPayment,
     handleAdjustDebt,
     handleDownloadStatement,

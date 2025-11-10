@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import enum
+import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Annotated, Any, Iterable, Literal
+from typing import Annotated, Any, ClassVar, Iterable, Literal
 
 from pydantic import (
     AliasChoices,
@@ -29,6 +30,8 @@ from ..models import (
     MovementType,
     PaymentMethod,
     PurchaseStatus,
+    PrivacyRequestStatus,
+    PrivacyRequestType,
     RepairPartSource,
     RepairStatus,
     InventoryState,
@@ -39,6 +42,8 @@ from ..models import (
     SyncOutboxPriority,
     SyncOutboxStatus,
     SyncQueueStatus,
+    DTEStatus,
+    DTEDispatchStatus,
     SyncStatus,
     TransferStatus,
     CustomerLedgerEntryType,
@@ -46,6 +51,24 @@ from ..models import (
     SystemLogLevel,
     LoyaltyTransactionType,
 )
+
+_RTN_TEMPLATE = "{0}-{1}-{2}"
+
+
+def _normalize_rtn_value(value: str | None) -> str:
+    digits = re.sub(r"[^0-9]", "", value or "")
+    if len(digits) != 14:
+        raise ValueError("El RTN debe contener 14 dígitos (formato ####-####-######).")
+    return _RTN_TEMPLATE.format(digits[:4], digits[4:8], digits[8:])
+
+
+def _normalize_optional_rtn_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    return _normalize_rtn_value(cleaned)
 from ..utils import audit as audit_utils
 
 
@@ -638,6 +661,7 @@ class PriceListBase(BaseModel):
         default=None,
         ge=1,
         description="Identificador de la sucursal asociada cuando la lista es específica para una tienda.",
+        description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -1364,11 +1388,7 @@ class CustomerBase(BaseModel):
     @field_validator("tax_id", mode="before")
     @classmethod
     def _normalize_tax_id(cls, value: str) -> str:
-        normalized = value.strip().upper()
-        normalized = normalized.replace(" ", "")
-        if len(normalized) < 5:
-            raise ValueError("El RTN debe tener al menos 5 caracteres.")
-        return normalized
+        return _normalize_rtn_value(value)
 
     @field_validator("segment_category", mode="before")
     @classmethod
@@ -1467,12 +1487,7 @@ class CustomerUpdate(BaseModel):
     @field_validator("tax_id", mode="before")
     @classmethod
     def _normalize_update_tax_id(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip().upper().replace(" ", "")
-        if len(normalized) < 5:
-            raise ValueError("El RTN debe tener al menos 5 caracteres.")
-        return normalized
+        return _normalize_optional_rtn_value(value)
 
     @field_validator("segment_category", mode="before")
     @classmethod
@@ -1626,6 +1641,9 @@ class CustomerResponse(CustomerBase):
     last_interaction_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    privacy_consents: dict[str, bool] = Field(default_factory=dict)
+    privacy_metadata: dict[str, Any] = Field(default_factory=dict)
+    privacy_last_request_at: datetime | None = None
     loyalty_account: LoyaltyAccountResponse | None = None
     annual_purchase_amount: float = Field(default=0.0)
     orders_last_year: int = Field(default=0)
@@ -2014,6 +2032,76 @@ class CustomerSummaryResponse(BaseModel):
     payments: list[CustomerLedgerEntryResponse]
     ledger: list[CustomerLedgerEntryResponse]
     store_credits: list[StoreCreditResponse]
+    privacy_requests: list["CustomerPrivacyRequestResponse"] = Field(default_factory=list)
+
+
+class CustomerPrivacyRequestResponse(BaseModel):
+    id: int
+    customer_id: int
+    request_type: PrivacyRequestType
+    status: PrivacyRequestStatus
+    details: str | None = None
+    consent_snapshot: dict[str, bool] = Field(default_factory=dict)
+    masked_fields: list[str] = Field(default_factory=list)
+    created_at: datetime
+    processed_at: datetime | None = None
+    processed_by_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerPrivacyRequestCreate(BaseModel):
+    request_type: PrivacyRequestType
+    details: str | None = Field(default=None, max_length=255)
+    consent: dict[str, bool] | None = None
+    mask_fields: list[str] = Field(default_factory=list)
+
+    @field_validator("consent", mode="before")
+    @classmethod
+    def _normalize_consent(
+        cls, value: dict[str, object] | None
+    ) -> dict[str, bool] | None:
+        if value is None:
+            return None
+        normalized: dict[str, bool] = {}
+        for key, raw in value.items():
+            name = str(key).strip().lower()
+            if not name:
+                continue
+            normalized[name] = bool(raw)
+        return normalized
+
+    @field_validator("mask_fields", mode="before")
+    @classmethod
+    def _normalize_mask_fields(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            items = list(value)
+        else:
+            items = str(value).split(",")
+        normalized: list[str] = []
+        for item in items:
+            text = str(item).strip().lower()
+            if text and text not in normalized:
+                normalized.append(text)
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_payload(self) -> "CustomerPrivacyRequestCreate":
+        if self.request_type == PrivacyRequestType.CONSENT:
+            if not self.consent:
+                raise ValueError(
+                    "Debes proporcionar al menos un consentimiento a actualizar."
+                )
+        elif not self.mask_fields:
+            self.mask_fields = ["email", "phone", "address"]
+        return self
+
+
+class CustomerPrivacyActionResponse(BaseModel):
+    customer: CustomerResponse
+    request: CustomerPrivacyRequestResponse
 
 
 class PaymentCenterSummary(BaseModel):
@@ -2200,6 +2288,11 @@ class SupplierBase(BaseModel):
         normalized = value.strip()
         return normalized or None
 
+    @field_validator("rtn", mode="before")
+    @classmethod
+    def _normalize_rtn(cls, value: str | None) -> str | None:
+        return _normalize_optional_rtn_value(value)
+
     @field_validator("products_supplied", mode="before")
     @classmethod
     def _normalize_products(cls, value: object) -> list[str]:
@@ -2269,6 +2362,11 @@ class SupplierUpdate(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("rtn", mode="before")
+    @classmethod
+    def _normalize_update_rtn(cls, value: str | None) -> str | None:
+        return _normalize_optional_rtn_value(value)
 
     @field_validator("products_supplied", mode="before")
     @classmethod
@@ -5766,6 +5864,10 @@ class SaleResponse(BaseModel):
     loyalty_points_redeemed: Decimal = Field(default=Decimal("0"))
     status: str
     notes: str | None
+    invoice_reported: bool = False
+    invoice_reported_at: datetime | None = None
+    invoice_annulled_at: datetime | None = None
+    invoice_credit_note_code: str | None = None
     created_at: datetime
     performed_by_id: int | None
     cash_session_id: int | None
@@ -5775,6 +5877,8 @@ class SaleResponse(BaseModel):
     returns: list["SaleReturnResponse"] = []
     store: SaleStoreSummary | None = None
     performed_by: SaleUserSummary | None = None
+    dte_status: DTEStatus | None = None
+    dte_reference: str | None = None
     ultima_accion: AuditTrailInfo | None = None
     loyalty_account: LoyaltyAccountSummary | None = None
 
@@ -5863,6 +5967,222 @@ class SaleHistorySearchResponse(BaseModel):
     by_customer: list[SaleResponse] = Field(default_factory=list)
     by_qr: list[SaleResponse] = Field(default_factory=list)
 
+
+class DTEIssuerInfo(BaseModel):
+    rtn: str = Field(..., min_length=5, max_length=40)
+    name: str = Field(..., min_length=3, max_length=120)
+    address: str = Field(..., min_length=3, max_length=255)
+
+    @field_validator("rtn", "name", "address")
+    @classmethod
+    def _normalize_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El campo es obligatorio.")
+        return normalized
+
+
+class DTESignerCredentials(BaseModel):
+    certificate_serial: str = Field(..., min_length=3, max_length=120)
+    private_key: str = Field(..., min_length=8, max_length=255)
+
+    @field_validator("certificate_serial")
+    @classmethod
+    def _normalize_certificate(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Debes indicar el número de certificado.")
+        return normalized
+
+    @field_validator("private_key")
+    @classmethod
+    def _normalize_key(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 8:
+            raise ValueError("La llave privada debe tener al menos 8 caracteres.")
+        return normalized
+
+
+class DTEAuthorizationBase(BaseModel):
+    document_type: str = Field(..., min_length=2, max_length=30)
+    serie: str = Field(..., min_length=1, max_length=12)
+    range_start: int = Field(..., ge=1, le=99999999)
+    range_end: int = Field(..., ge=1, le=99999999)
+    expiration_date: date
+    cai: str = Field(..., min_length=8, max_length=40)
+    store_id: int | None = Field(default=None, ge=1)
+    notes: str | None = Field(default=None, max_length=255)
+    active: bool = Field(default=True)
+
+    @field_validator("document_type")
+    @classmethod
+    def _normalize_document_type(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Debes especificar el tipo de documento.")
+        return normalized.upper()
+
+    @field_validator("serie")
+    @classmethod
+    def _normalize_serie(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Debes indicar la serie autorizada.")
+        return normalized.upper()
+
+    @field_validator("cai")
+    @classmethod
+    def _normalize_cai(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 8:
+            raise ValueError("El CAI debe contener al menos 8 caracteres.")
+        return normalized.upper()
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_range(self) -> "DTEAuthorizationBase":
+        if self.range_end < self.range_start:
+            raise ValueError("El rango autorizado es inválido.")
+        return self
+
+
+class DTEAuthorizationCreate(DTEAuthorizationBase):
+    pass
+
+
+class DTEAuthorizationUpdate(BaseModel):
+    expiration_date: date | None = None
+    notes: str | None = Field(default=None, max_length=255)
+    active: bool | None = None
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_update_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class DTEAuthorizationResponse(DTEAuthorizationBase):
+    id: int
+    current_number: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(return_type=int)
+    def remaining(self) -> int:
+        next_number = max(self.current_number, self.range_start)
+        if next_number > self.range_end:
+            return 0
+        return self.range_end - next_number + 1
+
+
+class DTEGenerationRequest(BaseModel):
+    sale_id: int = Field(..., ge=1)
+    authorization_id: int = Field(..., ge=1)
+    issuer: DTEIssuerInfo
+    signer: DTESignerCredentials
+    offline: bool = Field(default=False)
+
+
+class DTEEventResponse(BaseModel):
+    id: int
+    document_id: int
+    event_type: str
+    status: DTEStatus
+    detail: str | None
+    created_at: datetime
+    performed_by_id: int | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DTEDispatchQueueEntryResponse(BaseModel):
+    id: int
+    document_id: int
+    status: DTEDispatchStatus
+    attempts: int
+    last_error: str | None
+    scheduled_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DTEDocumentResponse(BaseModel):
+    id: int
+    sale_id: int
+    authorization_id: int | None
+    document_type: str
+    serie: str
+    correlative: int
+    control_number: str
+    cai: str
+    status: DTEStatus
+    reference_code: str | None
+    ack_code: str | None
+    ack_message: str | None
+    sent_at: datetime | None
+    acknowledged_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    xml_content: str
+    signature: str
+    events: list[DTEEventResponse] = Field(default_factory=list)
+    queue: list[DTEDispatchQueueEntryResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(alias="numero_documento", return_type=str)
+    def document_number(self) -> str:
+        return f"{self.serie}-{self.correlative:08d}"
+
+
+class DTEDispatchRequest(BaseModel):
+    mode: Literal["ONLINE", "OFFLINE"] = Field(default="ONLINE")
+    error_message: str | None = Field(default=None, max_length=255)
+
+    @field_validator("mode")
+    @classmethod
+    def _normalize_mode(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"ONLINE", "OFFLINE"}:
+            raise ValueError("Modo de envío inválido.")
+        return normalized
+
+    @field_validator("error_message")
+    @classmethod
+    def _normalize_error(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class DTEAckRegistration(BaseModel):
+    status: DTEStatus = Field(default=DTEStatus.EMITIDO)
+    code: str | None = Field(default=None, max_length=80)
+    detail: str | None = Field(default=None, max_length=255)
+    received_at: datetime | None = None
+
+    @field_validator("code", "detail")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 class SalesReportFilters(BaseModel):
     store_id: int | None = None
@@ -6613,6 +6933,59 @@ class POSPrinterMode(str, enum.Enum):
     FISCAL = "fiscal"
 
 
+class POSFiscalPrinterProfile(BaseModel):
+    """Perfil técnico necesario para operar una impresora fiscal."""
+
+    adapter: Literal["hasar", "epson", "bematech", "simulated"] = Field(
+        default="simulated"
+    )
+    sdk_module: str | None = Field(default=None, max_length=120)
+    model: str | None = Field(default=None, max_length=80)
+    serial_number: str | None = Field(default=None, max_length=80)
+    taxpayer_id: str | None = Field(default=None, max_length=32)
+    document_type: Literal["ticket", "invoice", "credit_note"] = Field(
+        default="ticket"
+    )
+    timeout_s: float = Field(default=6.0, ge=0.5, le=30.0)
+    simulate_only: bool = Field(default=False)
+    extra_settings: dict[str, Any] = Field(default_factory=dict)
+
+    _DEFAULT_SDK_MODULES: ClassVar[dict[str, str | None]] = {
+        "hasar": "pyhasar",
+        "epson": "pyfiscalprinter",
+        "bematech": "bemafiscal",
+        "simulated": None,
+    }
+
+    @field_validator("sdk_module", "model", "serial_number", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = str(value).strip()
+        return trimmed or None
+
+    @field_validator("taxpayer_id", mode="before")
+    @classmethod
+    def _normalize_taxpayer(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().upper()
+        return normalized or None
+
+    @field_validator("extra_settings")
+    @classmethod
+    def _normalize_extra_settings(
+        cls, value: dict[str, Any]
+    ) -> dict[str, Any]:
+        return {str(key): item for key, item in (value or {}).items()}
+
+    def resolved_sdk_module(self) -> str | None:
+        """Devuelve el módulo SDK preferido según el adaptador configurado."""
+
+        return self.sdk_module or self._DEFAULT_SDK_MODULES.get(self.adapter)
+
+
 class POSConnectorSettings(BaseModel):
     """Configura el punto de conexión del dispositivo POS."""
 
@@ -6640,6 +7013,16 @@ class POSPrinterSettings(BaseModel):
     is_default: bool = Field(default=False)
     vendor: str | None = Field(default=None, max_length=80)
     supports_qr: bool = Field(default=False)
+    fiscal_profile: POSFiscalPrinterProfile | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _ensure_fiscal_profile(self) -> "POSPrinterSettings":
+        if self.mode is POSPrinterMode.FISCAL:
+            if self.fiscal_profile is None:
+                self.fiscal_profile = POSFiscalPrinterProfile()
+        else:
+            self.fiscal_profile = None
+        return self
 
 
 class POSCashDrawerSettings(BaseModel):
@@ -7342,6 +7725,7 @@ __all__ = [
     "POSConnectorType",
     "POSPrinterMode",
     "POSConnectorSettings",
+    "POSFiscalPrinterProfile",
     "POSPrinterSettings",
     "POSCashDrawerSettings",
     "POSCustomerDisplaySettings",
@@ -7453,6 +7837,10 @@ __all__ = [
     "CustomerStatementLine",
     "CustomerStatementReport",
     "CustomerPaymentReceiptResponse",
+    "CustomerPrivacyRequestCreate",
+    "CustomerPrivacyRequestResponse",
+    "CustomerPrivacyActionResponse",
+    "CustomerSummaryResponse",
     "StoreCreditResponse",
     "StoreCreditRedemptionResponse",
     "StoreCreditIssueRequest",
