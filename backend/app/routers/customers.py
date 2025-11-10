@@ -9,7 +9,7 @@ from ..core.roles import GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import credit, pos_receipts
+from ..services import credit, customer_reports, pos_receipts
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -318,3 +318,50 @@ def get_customer_summary_endpoint(
         return crud.get_customer_summary(db, customer_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado") from exc
+
+
+@router.get(
+    "/{customer_id}/accounts-receivable",
+    response_model=schemas.CustomerAccountsReceivableResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def get_customer_accounts_receivable_endpoint(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    try:
+        return crud.get_customer_accounts_receivable(db, customer_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado",
+        ) from exc
+
+
+@router.get(
+    "/{customer_id}/accounts-receivable/statement.pdf",
+    response_model=None,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def download_customer_statement_endpoint(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    del reason  # motivo registrado a nivel middleware/auditoría
+    try:
+        report = crud.build_customer_statement_report(db, customer_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado",
+        ) from exc
+    pdf_bytes = customer_reports.render_customer_statement_pdf(report)
+    filename = f"estado_cuenta_cliente_{customer_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

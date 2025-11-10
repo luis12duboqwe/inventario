@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import type {
   ContactHistoryEntry,
   Customer,
+  CustomerAccountsReceivable,
   CustomerDashboardMetrics,
   CustomerLedgerEntry,
   CustomerPaymentPayload,
@@ -19,9 +20,11 @@ import {
   exportCustomersCsv,
   getCustomerDashboardMetrics,
   getCustomerPortfolio,
+  getCustomerAccountsReceivable,
   getCustomerSummary,
   listCustomers,
   registerCustomerPayment,
+  downloadCustomerStatement,
   updateCustomer,
 } from "../../../api";
 import type {
@@ -169,6 +172,12 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
+  const [accountsReceivable, setAccountsReceivable] = useState<CustomerAccountsReceivable | null>(
+    null,
+  );
+  const [receivableLoading, setReceivableLoading] = useState(false);
+  const [receivableError, setReceivableError] = useState<string | null>(null);
+
   const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
     ...initialPortfolioFilters,
   });
@@ -266,10 +275,37 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     [buildCustomerListOptions, token, selectedCustomerId],
   );
 
+  const refreshReceivable = useCallback(
+    async (customerId?: number | null) => {
+      if (!customerId) {
+        setAccountsReceivable(null);
+        setReceivableError(null);
+        return;
+      }
+      try {
+        setReceivableLoading(true);
+        setReceivableError(null);
+        const data = await getCustomerAccountsReceivable(token, customerId);
+        setAccountsReceivable(data);
+      } catch (err) {
+        setReceivableError(
+          err instanceof Error
+            ? err.message
+            : "No fue posible obtener las cuentas por cobrar del cliente.",
+        );
+      } finally {
+        setReceivableLoading(false);
+      }
+    },
+    [token],
+  );
+
   const refreshSummary = useCallback(
     async (customerId?: number | null) => {
       if (!customerId) {
         setCustomerSummary(null);
+        setSummaryError(null);
+        void refreshReceivable(null);
         return;
       }
       try {
@@ -277,6 +313,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         setSummaryError(null);
         const data = await getCustomerSummary(token, customerId);
         setCustomerSummary(data);
+        void refreshReceivable(customerId);
       } catch (err) {
         setSummaryError(
           err instanceof Error ? err.message : "No fue posible cargar el resumen del cliente.",
@@ -285,7 +322,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         setSummaryLoading(false);
       }
     },
-    [token],
+    [token, refreshReceivable],
   );
 
   const refreshPortfolio = useCallback(async () => {
@@ -463,6 +500,25 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "No fue posible actualizar el saldo pendiente.",
+      );
+    }
+  };
+
+  const handleDownloadStatement = async (customer: Customer) => {
+    const reason = askReason("Motivo corporativo para descargar el estado de cuenta");
+    if (!reason) {
+      return;
+    }
+    try {
+      const blob = await downloadCustomerStatement(token, customer.id, reason);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadBlob(blob, `estado_cuenta_${customer.id}_${timestamp}.pdf`);
+      setMessage("Estado de cuenta descargado correctamente.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible descargar el estado de cuenta del cliente.",
       );
     }
   };
@@ -723,6 +779,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     customerSummary,
     summaryLoading,
     summaryError,
+    accountsReceivable,
+    receivableLoading,
+    receivableError,
     portfolio,
     portfolioFilters,
     portfolioLoading,
@@ -749,6 +808,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     handleAddNote,
     handleRegisterPayment,
     handleAdjustDebt,
+    handleDownloadStatement,
     handleDelete,
     handlePortfolioFiltersChange,
     refreshPortfolio,

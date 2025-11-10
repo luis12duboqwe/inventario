@@ -467,6 +467,50 @@ export type CreditScheduleEntry = {
   reminder?: string | null;
 };
 
+export type AccountsReceivableEntry = {
+  ledger_entry_id: number;
+  reference_type?: string | null;
+  reference_id?: string | null;
+  reference?: string | null;
+  issued_at: string;
+  original_amount: number;
+  balance_due: number;
+  days_outstanding: number;
+  status: "current" | "overdue";
+  note?: string | null;
+  details?: Record<string, unknown> | null;
+};
+
+export type AccountsReceivableBucket = {
+  label: string;
+  days_from: number;
+  days_to?: number | null;
+  amount: number;
+  percentage: number;
+  count: number;
+};
+
+export type AccountsReceivableSummary = {
+  total_outstanding: number;
+  available_credit: number;
+  credit_limit: number;
+  last_payment_at?: string | null;
+  next_due_date?: string | null;
+  average_days_outstanding: number;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+};
+
+export type CustomerAccountsReceivable = {
+  customer: Customer;
+  summary: AccountsReceivableSummary;
+  aging: AccountsReceivableBucket[];
+  open_entries: AccountsReceivableEntry[];
+  credit_schedule: CreditScheduleEntry[];
+  recent_activity: CustomerLedgerEntry[];
+  generated_at: string;
+};
+
 export type CustomerPaymentReceipt = {
   ledger_entry: CustomerLedgerEntry;
   debt_summary: CustomerDebtSnapshot;
@@ -4786,6 +4830,29 @@ export function getCustomerSummary(token: string, customerId: number): Promise<C
     `/customers/${customerId}/summary`,
     { method: "GET" },
     token
+  );
+}
+
+export function getCustomerAccountsReceivable(
+  token: string,
+  customerId: number,
+): Promise<CustomerAccountsReceivable> {
+  return request<CustomerAccountsReceivable>(
+    `/customers/${customerId}/accounts-receivable`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function downloadCustomerStatement(
+  token: string,
+  customerId: number,
+  reason: string,
+): Promise<Blob> {
+  return request<Blob>(
+    `/customers/${customerId}/accounts-receivable/statement.pdf`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token,
   );
 }
 

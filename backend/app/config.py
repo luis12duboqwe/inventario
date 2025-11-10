@@ -561,6 +561,36 @@ class Settings(BaseSettings):
                 "BACKUP_DIR", "SOFTMOBILE_BACKUP_DIR"),
         ),
     ]
+    accounts_receivable_reminders_enabled: Annotated[
+        bool,
+        Field(
+            default=True,
+            validation_alias=AliasChoices(
+                "ACCOUNTS_RECEIVABLE_REMINDERS_ENABLED",
+                "SOFTMOBILE_ACCOUNTS_RECEIVABLE_REMINDERS_ENABLED",
+            ),
+        ),
+    ]
+    accounts_receivable_reminder_interval_seconds: Annotated[
+        int,
+        Field(
+            default=21600,
+            validation_alias=AliasChoices(
+                "ACCOUNTS_RECEIVABLE_REMINDER_INTERVAL_SECONDS",
+                "SOFTMOBILE_ACCOUNTS_RECEIVABLE_REMINDER_INTERVAL_SECONDS",
+            ),
+        ),
+    ]
+    accounts_receivable_reminder_days_before_due: Annotated[
+        int,
+        Field(
+            default=3,
+            validation_alias=AliasChoices(
+                "ACCOUNTS_RECEIVABLE_REMINDER_DAYS_BEFORE_DUE",
+                "SOFTMOBILE_ACCOUNTS_RECEIVABLE_REMINDER_DAYS",
+            ),
+        ),
+    ]
     update_feed_path: Annotated[
         str,
         Field(

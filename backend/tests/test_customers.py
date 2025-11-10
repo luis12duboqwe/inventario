@@ -668,3 +668,82 @@ def test_customer_list_filters_by_status_and_type(client):
     assert "estado de cliente" in invalid_status_response.json()["detail"].lower()
 
 
+def test_customer_accounts_receivable_endpoints(client):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Operaciones cuentas por cobrar"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Sucursal Centro", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "SKU-CXC-001",
+                "name": "Terminal Crédito",
+                "quantity": 10,
+                "unit_price": 1200.0,
+                "costo_unitario": 950.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        customer_response = client.post(
+            "/customers",
+            json={
+                "name": "Cliente CXC",
+                "phone": "555-700-8080",
+                "email": "cxc@example.com",
+                "customer_type": "corporativo",
+                "credit_limit": 5000.0,
+            },
+            headers=reason_headers,
+        )
+        assert customer_response.status_code == status.HTTP_201_CREATED
+        customer_id = customer_response.json()["id"]
+
+        sale_response = client.post(
+            "/sales",
+            json={
+                "store_id": store_id,
+                "customer_id": customer_id,
+                "payment_method": "CREDITO",
+                "items": [{"device_id": device_id, "quantity": 1}],
+                "notes": "Venta inicial",
+            },
+            headers={**auth_headers, "X-Reason": "Venta crédito cxc"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+
+        receivable_response = client.get(
+            f"/customers/{customer_id}/accounts-receivable",
+            headers=auth_headers,
+        )
+        assert receivable_response.status_code == status.HTTP_200_OK
+        payload = receivable_response.json()
+        assert payload["customer"]["id"] == customer_id
+        assert payload["summary"]["total_outstanding"] > 0
+        assert isinstance(payload["aging"], list) and payload["aging"]
+        assert isinstance(payload["credit_schedule"], list) and payload["credit_schedule"]
+
+        statement_response = client.get(
+            f"/customers/{customer_id}/accounts-receivable/statement.pdf",
+            headers=reason_headers,
+        )
+        assert statement_response.status_code == status.HTTP_200_OK
+        assert statement_response.headers["content-type"] == "application/pdf"
+        assert statement_response.content.startswith(b"%PDF")
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+

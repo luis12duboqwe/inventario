@@ -5125,6 +5125,341 @@ def get_customer_summary(
     )
 
 
+def _resolve_sale_references(
+    db: Session, sale_ids: set[int]
+) -> tuple[dict[int, models.Sale], dict[int, models.POSConfig]]:
+    if not sale_ids:
+        return {}, {}
+    sale_stmt = (
+        select(models.Sale)
+        .options(joinedload(models.Sale.store))
+        .where(models.Sale.id.in_(sale_ids))
+    )
+    sale_map = {sale.id: sale for sale in db.scalars(sale_stmt)}
+    store_ids = {sale.store_id for sale in sale_map.values()}
+    if not store_ids:
+        return sale_map, {}
+    config_stmt = select(models.POSConfig).where(
+        models.POSConfig.store_id.in_(store_ids)
+    )
+    config_map = {config.store_id: config for config in db.scalars(config_stmt)}
+    return sale_map, config_map
+
+
+def _format_sale_reference(
+    sale_id: int,
+    sale_map: Mapping[int, models.Sale],
+    config_map: Mapping[int, models.POSConfig],
+) -> str:
+    sale = sale_map.get(sale_id)
+    if sale is None:
+        return f"Venta #{sale_id}"
+    prefix = None
+    if sale.store_id in config_map:
+        prefix = config_map[sale.store_id].invoice_prefix
+    if prefix:
+        return f"{prefix}-{sale.id:06d}"
+    return f"Venta #{sale.id}"
+
+
+def _ledger_entry_label(entry: models.CustomerLedgerEntry) -> str:
+    mapping = {
+        models.CustomerLedgerEntryType.SALE: "Cargo por venta",
+        models.CustomerLedgerEntryType.PAYMENT: "Pago registrado",
+        models.CustomerLedgerEntryType.ADJUSTMENT: "Ajuste",
+        models.CustomerLedgerEntryType.NOTE: "Nota",
+        models.CustomerLedgerEntryType.STORE_CREDIT_ISSUED: "Nota de crédito emitida",
+        models.CustomerLedgerEntryType.STORE_CREDIT_REDEEMED: "Nota de crédito aplicada",
+    }
+    base = mapping.get(entry.entry_type, entry.entry_type.value.replace("_", " ").title())
+    if entry.note:
+        return f"{base} — {entry.note}" if entry.note.strip() else base
+    return base
+
+
+def get_customer_accounts_receivable(
+    db: Session, customer_id: int
+) -> schemas.CustomerAccountsReceivableResponse:
+    customer = get_customer(db, customer_id)
+
+    ledger_entries = list(
+        db.scalars(
+            select(models.CustomerLedgerEntry)
+            .where(models.CustomerLedgerEntry.customer_id == customer.id)
+            .order_by(
+                models.CustomerLedgerEntry.created_at.asc(),
+                models.CustomerLedgerEntry.id.asc(),
+            )
+        )
+    )
+
+    charges: list[dict[str, object]] = []
+    last_payment_at: datetime | None = None
+    for entry in ledger_entries:
+        amount = _to_decimal(entry.amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        if amount > Decimal("0"):
+            charges.append({
+                "entry": entry,
+                "original": amount,
+                "remaining": amount,
+            })
+        elif amount < Decimal("0"):
+            credit = -amount
+            for charge in charges:
+                remaining = charge["remaining"]  # type: ignore[index]
+                if remaining <= Decimal("0"):
+                    continue
+                allocation = min(remaining, credit)
+                charge["remaining"] = remaining - allocation  # type: ignore[index]
+                credit -= allocation
+                if credit <= Decimal("0"):
+                    break
+        if entry.entry_type == models.CustomerLedgerEntryType.PAYMENT:
+            if last_payment_at is None or entry.created_at > last_payment_at:
+                last_payment_at = entry.created_at
+
+    outstanding_total = sum(
+        _to_decimal(charge["remaining"])  # type: ignore[index]
+        for charge in charges
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if outstanding_total < Decimal("0"):
+        outstanding_total = Decimal("0.00")
+
+    credit_limit = _to_decimal(customer.credit_limit).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    available_credit = (credit_limit - outstanding_total).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if available_credit < Decimal("0"):
+        available_credit = Decimal("0.00")
+
+    sale_ids: set[int] = set()
+    for charge in charges:
+        entry: models.CustomerLedgerEntry = charge["entry"]  # type: ignore[index]
+        if (
+            entry.reference_type == "sale"
+            and entry.reference_id
+            and entry.reference_id.isdigit()
+        ):
+            sale_ids.add(int(entry.reference_id))
+
+    sale_map, config_map = _resolve_sale_references(db, sale_ids)
+
+    bucket_defs: list[tuple[str, int, int | None]] = [
+        ("0-30 días", 0, 30),
+        ("31-60 días", 31, 60),
+        ("61-90 días", 61, 90),
+        ("90+ días", 91, None),
+    ]
+    bucket_totals: list[dict[str, object]] = [
+        {"label": label, "from": start, "to": end, "amount": Decimal("0.00"), "count": 0}
+        for label, start, end in bucket_defs
+    ]
+
+    today = datetime.utcnow().date()
+    weighted_days = Decimal("0.00")
+    open_entries: list[schemas.AccountsReceivableEntry] = []
+    for charge in charges:
+        entry: models.CustomerLedgerEntry = charge["entry"]  # type: ignore[index]
+        remaining: Decimal = charge["remaining"]  # type: ignore[index]
+        original: Decimal = charge["original"]  # type: ignore[index]
+        if remaining <= Decimal("0"):
+            continue
+        days_outstanding = max(
+            (today - entry.created_at.date()).days,
+            0,
+        )
+        bucket_index = 0
+        for idx, (_, start, end) in enumerate(bucket_defs):
+            if end is None:
+                bucket_index = idx
+                break
+            if days_outstanding <= end:
+                if days_outstanding >= start:
+                    bucket_index = idx
+                    break
+            elif idx == len(bucket_defs) - 1:
+                bucket_index = idx
+        bucket = bucket_totals[bucket_index]
+        bucket["amount"] = _to_decimal(bucket["amount"]) + remaining  # type: ignore[index]
+        bucket["count"] = int(bucket["count"]) + 1  # type: ignore[index]
+
+        weighted_days += remaining * Decimal(days_outstanding)
+
+        reference_label: str | None = None
+        if entry.reference_type == "sale" and entry.reference_id and entry.reference_id.isdigit():
+            sale_id = int(entry.reference_id)
+            reference_label = _format_sale_reference(sale_id, sale_map, config_map)
+        elif entry.reference_id:
+            reference_label = f"{entry.reference_type} #{entry.reference_id}" if entry.reference_type else entry.reference_id
+
+        details_payload = entry.details if isinstance(entry.details, dict) else None
+        status = "overdue" if days_outstanding > 30 else "current"
+        open_entries.append(
+            schemas.AccountsReceivableEntry(
+                ledger_entry_id=entry.id,
+                reference_type=entry.reference_type,
+                reference_id=entry.reference_id,
+                reference=reference_label,
+                issued_at=entry.created_at,
+                original_amount=float(original),
+                balance_due=float(remaining.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                days_outstanding=days_outstanding,
+                status=status,  # type: ignore[arg-type]
+                note=entry.note,
+                details=details_payload or None,
+            )
+        )
+
+    aging = []
+    for bucket, (label, start, end) in zip(bucket_totals, bucket_defs):
+        amount_decimal = _to_decimal(bucket["amount"])  # type: ignore[index]
+        percentage = (
+            float(
+                (amount_decimal / outstanding_total * Decimal("100"))
+                .quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            )
+            if outstanding_total > Decimal("0")
+            else 0.0
+        )
+        aging.append(
+            schemas.AccountsReceivableBucket(
+                label=label,
+                days_from=start,
+                days_to=end,
+                amount=float(amount_decimal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                percentage=percentage,
+                count=int(bucket["count"]),  # type: ignore[index]
+            )
+        )
+
+    average_days = 0.0
+    if outstanding_total > Decimal("0"):
+        average_days = float(
+            (weighted_days / outstanding_total)
+            .quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        )
+
+    schedule_entries: list[schemas.CreditScheduleEntry] = []
+    next_due_date: datetime | None = None
+    if outstanding_total > Decimal("0"):
+        base_date = None
+        for charge in reversed(charges):
+            if _to_decimal(charge["remaining"]) > Decimal("0"):  # type: ignore[index]
+                entry: models.CustomerLedgerEntry = charge["entry"]  # type: ignore[index]
+                base_date = entry.created_at
+                break
+        schedule = credit.build_credit_schedule(
+            base_date=base_date,
+            remaining_balance=outstanding_total,
+        )
+        if schedule:
+            next_due_date = schedule[0]["due_date"]
+        schedule_entries = [
+            schemas.CreditScheduleEntry.model_validate(item) for item in schedule
+        ]
+
+    recent_entries = list(
+        db.scalars(
+            select(models.CustomerLedgerEntry)
+            .where(models.CustomerLedgerEntry.customer_id == customer.id)
+            .order_by(models.CustomerLedgerEntry.created_at.desc())
+            .limit(20)
+        )
+    )
+    recent_activity = [
+        schemas.CustomerLedgerEntryResponse.model_validate(entry)
+        for entry in recent_entries
+    ]
+
+    summary = schemas.AccountsReceivableSummary(
+        total_outstanding=float(outstanding_total),
+        available_credit=float(available_credit),
+        credit_limit=float(credit_limit),
+        last_payment_at=last_payment_at,
+        next_due_date=next_due_date,
+        average_days_outstanding=average_days,
+        contact_email=customer.email,
+        contact_phone=customer.phone,
+    )
+
+    customer_schema = schemas.CustomerResponse.model_validate(customer)
+    generated_at = datetime.utcnow()
+    return schemas.CustomerAccountsReceivableResponse(
+        customer=customer_schema,
+        summary=summary,
+        aging=aging,
+        open_entries=sorted(
+            open_entries,
+            key=lambda item: (item.issued_at, item.ledger_entry_id),
+        ),
+        credit_schedule=schedule_entries,
+        recent_activity=recent_activity,
+        generated_at=generated_at,
+    )
+
+
+def build_customer_statement_report(
+    db: Session, customer_id: int
+) -> schemas.CustomerStatementReport:
+    receivable = get_customer_accounts_receivable(db, customer_id)
+
+    ledger_entries = list(
+        db.scalars(
+            select(models.CustomerLedgerEntry)
+            .where(models.CustomerLedgerEntry.customer_id == customer_id)
+            .order_by(
+                models.CustomerLedgerEntry.created_at.asc(),
+                models.CustomerLedgerEntry.id.asc(),
+            )
+        )
+    )
+
+    sale_ids: set[int] = set()
+    for entry in ledger_entries:
+        if entry.reference_type == "sale" and entry.reference_id and entry.reference_id.isdigit():
+            sale_ids.add(int(entry.reference_id))
+    sale_map, config_map = _resolve_sale_references(db, sale_ids)
+
+    lines: list[schemas.CustomerStatementLine] = []
+    for entry in ledger_entries:
+        reference: str | None = None
+        if entry.reference_type == "sale" and entry.reference_id and entry.reference_id.isdigit():
+            reference = _format_sale_reference(int(entry.reference_id), sale_map, config_map)
+        elif entry.reference_id:
+            reference = (
+                f"{entry.reference_type} #{entry.reference_id}"
+                if entry.reference_type
+                else entry.reference_id
+            )
+        amount_value = _to_decimal(entry.amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        balance_after = _to_decimal(entry.balance_after).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        lines.append(
+            schemas.CustomerStatementLine(
+                created_at=entry.created_at,
+                description=_ledger_entry_label(entry),
+                reference=reference,
+                entry_type=entry.entry_type,
+                amount=float(amount_value),
+                balance_after=float(balance_after),
+            )
+        )
+
+    return schemas.CustomerStatementReport(
+        customer=receivable.customer,
+        summary=receivable.summary,
+        lines=lines,
+        generated_at=datetime.utcnow(),
+    )
+
+
 def _customer_sales_stats_subquery(
     *, date_from: date | None = None, date_to: date | None = None
 ):

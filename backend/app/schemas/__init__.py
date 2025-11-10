@@ -636,7 +636,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Sucursal asociada cuando la lista es específica para una tienda.",
         description="Identificador de la sucursal asociada, cuando aplica.",
     )
     customer_id: int | None = Field(
@@ -1657,6 +1656,91 @@ class CreditScheduleEntry(BaseModel):
     @field_serializer("due_date")
     @classmethod
     def _serialize_due_date(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AccountsReceivableEntry(BaseModel):
+    ledger_entry_id: int
+    reference_type: str | None = None
+    reference_id: str | None = None
+    reference: str | None = None
+    issued_at: datetime
+    original_amount: float
+    balance_due: float
+    days_outstanding: int
+    status: Literal["current", "overdue"]
+    note: str | None = None
+    details: dict[str, Any] | None = None
+
+    @field_serializer("issued_at")
+    @classmethod
+    def _serialize_issued_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AccountsReceivableBucket(BaseModel):
+    label: str
+    days_from: int
+    days_to: int | None = None
+    amount: float
+    percentage: float
+    count: int
+
+
+class AccountsReceivableSummary(BaseModel):
+    total_outstanding: float
+    available_credit: float
+    credit_limit: float
+    last_payment_at: datetime | None = None
+    next_due_date: datetime | None = None
+    average_days_outstanding: float
+    contact_email: str | None = None
+    contact_phone: str | None = None
+
+    @field_serializer("last_payment_at", "next_due_date")
+    @classmethod
+    def _serialize_optional_datetime(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class CustomerAccountsReceivableResponse(BaseModel):
+    customer: CustomerResponse
+    summary: AccountsReceivableSummary
+    aging: list[AccountsReceivableBucket] = Field(default_factory=list)
+    open_entries: list[AccountsReceivableEntry] = Field(default_factory=list)
+    credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
+    recent_activity: list[CustomerLedgerEntryResponse] = Field(default_factory=list)
+    generated_at: datetime
+
+    @field_serializer("generated_at")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class CustomerStatementLine(BaseModel):
+    created_at: datetime
+    description: str
+    reference: str | None = None
+    entry_type: CustomerLedgerEntryType
+    amount: float
+    balance_after: float
+
+    @field_serializer("created_at")
+    @classmethod
+    def _serialize_created_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class CustomerStatementReport(BaseModel):
+    customer: CustomerResponse
+    summary: AccountsReceivableSummary
+    lines: list[CustomerStatementLine] = Field(default_factory=list)
+    generated_at: datetime
+
+    @field_serializer("generated_at")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
         return value.isoformat()
 
 
@@ -6807,6 +6891,12 @@ __all__ = [
     "HealthStatusResponse",
     "CustomerDebtSnapshot",
     "CreditScheduleEntry",
+    "AccountsReceivableEntry",
+    "AccountsReceivableBucket",
+    "AccountsReceivableSummary",
+    "CustomerAccountsReceivableResponse",
+    "CustomerStatementLine",
+    "CustomerStatementReport",
     "CustomerPaymentReceiptResponse",
     "StoreCreditResponse",
     "StoreCreditRedemptionResponse",
