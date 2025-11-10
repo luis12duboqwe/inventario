@@ -74,6 +74,22 @@ def test_returns_overview_includes_reasons(client, db_session):
         assert device_response.status_code == status.HTTP_201_CREATED
         device_id = device_response.json()["id"]
 
+        supplier_payload = {
+            "name": "Proveedor Central",
+            "contact_name": "Compras Centro",
+            "email": "compras@central.mx",
+            "phone": "+52 55 5555 0000",
+            "address": "CDMX",
+            "outstanding_debt": 500.0,
+        }
+        supplier_response = client.post(
+            "/suppliers",
+            json=supplier_payload,
+            headers={**auth_headers, "X-Reason": "Alta proveedor para devoluciones"},
+        )
+        assert supplier_response.status_code == status.HTTP_201_CREATED
+        supplier_id = supplier_response.json()["id"]
+
         purchase_payload = {
             "store_id": store_id,
             "supplier": "Proveedor Central",
@@ -123,6 +139,9 @@ def test_returns_overview_includes_reasons(client, db_session):
             headers={**auth_headers, "X-Reason": "Devolución a proveedor"},
         )
         assert purchase_return_response.status_code == status.HTTP_200_OK
+        purchase_return_body = purchase_return_response.json()
+        assert purchase_return_body["credit_note_amount"] == pytest.approx(180.0)
+        assert purchase_return_body["corporate_reason"] == "Devolución a proveedor"
 
         sale_payload = {
             "store_id": store_id,
@@ -171,6 +190,7 @@ def test_returns_overview_includes_reasons(client, db_session):
         assert payload["totals"]["total"] == 2
         assert payload["totals"]["sales"] == 1
         assert payload["totals"]["purchases"] == 1
+        assert payload["totals"]["credit_notes_total"] == pytest.approx(180.0)
         assert payload["totals"]["categories"]["cliente"] == 1
         assert payload["totals"]["categories"]["defecto"] == 1
 
@@ -195,6 +215,8 @@ def test_returns_overview_includes_reasons(client, db_session):
         )
         assert purchase_record is not None
         assert purchase_record["reason_category"] == "defecto"
+        assert purchase_record["credit_note_amount"] == pytest.approx(180.0)
+        assert purchase_record["corporate_reason"] == "Devolución a proveedor"
 
         sale_item = db_session.execute(
             select(models.SaleItem).where(
@@ -216,6 +238,22 @@ def test_returns_overview_includes_reasons(client, db_session):
         assert payload["totals"]["refunds_by_method"]["EFECTIVO"] == pytest.approx(
             float(expected_refund)
         )
+
+        supplier = db_session.execute(
+            select(models.Supplier).where(models.Supplier.id == supplier_id)
+        ).scalar_one()
+        assert supplier.outstanding_debt == Decimal("320.00")
+
+        ledger_entry = db_session.execute(
+            select(models.SupplierLedgerEntry)
+            .where(models.SupplierLedgerEntry.supplier_id == supplier_id)
+            .order_by(models.SupplierLedgerEntry.created_at.desc())
+        ).scalar_one()
+        assert ledger_entry.entry_type == models.SupplierLedgerEntryType.CREDIT_NOTE
+        assert ledger_entry.reference_type == "purchase_return"
+        assert ledger_entry.reference_id == str(order_id)
+        assert ledger_entry.amount == Decimal("-180.00")
+        assert ledger_entry.note == "Devolución a proveedor"
     finally:
         settings.enable_purchases_sales = original_flag
         settings.defective_returns_store_id = original_defective_store

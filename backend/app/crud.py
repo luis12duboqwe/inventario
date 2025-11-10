@@ -19,6 +19,8 @@ from io import StringIO
 from typing import Any, Literal
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from passlib.context import CryptContext
 from sqlalchemy import and_, case, cast, desc, func, literal, or_, select, tuple_, String
 from sqlalchemy.exc import IntegrityError, NoResultFound
@@ -229,6 +231,22 @@ def _to_decimal(value: Decimal | float | int | None) -> Decimal:
     return Decimal(str(value))
 
 
+def _get_supplier_by_name(
+    db: Session, supplier_name: str | None
+) -> models.Supplier | None:
+    if not supplier_name:
+        return None
+    normalized = supplier_name.strip().lower()
+    if not normalized:
+        return None
+    statement = (
+        select(models.Supplier)
+        .where(func.lower(models.Supplier.name) == normalized)
+        .limit(1)
+    )
+    return db.scalars(statement).first()
+
+
 def _quantize_currency(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -387,6 +405,7 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "repair_order": models.SyncOutboxPriority.NORMAL,
     "customer": models.SyncOutboxPriority.NORMAL,
     "customer_ledger_entry": models.SyncOutboxPriority.NORMAL,
+    "supplier_ledger_entry": models.SyncOutboxPriority.NORMAL,
     "pos_config": models.SyncOutboxPriority.NORMAL,
     "supplier": models.SyncOutboxPriority.NORMAL,
     "cash_session": models.SyncOutboxPriority.NORMAL,
@@ -419,6 +438,7 @@ _SYSTEM_MODULE_MAP: dict[str, str] = {
     "auth": "usuarios",
     "store": "inventario",
     "customer": "clientes",
+    "supplier_ledger_entry": "proveedores",
     "supplier": "proveedores",
     "transfer_order": "inventario",
     "purchase_order": "compras",
@@ -1830,6 +1850,48 @@ def _history_to_json(
     return normalized
 
 
+def _contacts_to_json(
+    contacts: list[schemas.SupplierContact] | list[dict[str, object]] | None,
+) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
+    if not contacts:
+        return normalized
+    for contact in contacts:
+        if isinstance(contact, schemas.SupplierContact):
+            payload = contact.model_dump(exclude_none=True)
+        elif isinstance(contact, Mapping):
+            payload = {
+                key: value
+                for key, value in contact.items()
+                if isinstance(key, str)
+            }
+        else:
+            continue
+        record: dict[str, object] = {}
+        for key in ("name", "position", "email", "phone", "notes"):
+            value = payload.get(key)
+            if isinstance(value, str):
+                value = value.strip()
+            if value:
+                record[key] = value
+        if record:
+            normalized.append(record)
+    return normalized
+
+
+def _products_to_json(products: Sequence[str] | None) -> list[str]:
+    if not products:
+        return []
+    normalized: list[str] = []
+    for product in products:
+        text = (product or "").strip()
+        if not text:
+            continue
+        if text not in normalized:
+            normalized.append(text)
+    return normalized
+
+
 def _last_history_timestamp(history: list[dict[str, object]]) -> datetime | None:
     timestamps = []
     for entry in history:
@@ -1981,6 +2043,22 @@ def _customer_ledger_payload(entry: models.CustomerLedgerEntry) -> dict[str, obj
     }
 
 
+def _supplier_ledger_payload(entry: models.SupplierLedgerEntry) -> dict[str, object]:
+    return {
+        "id": entry.id,
+        "supplier_id": entry.supplier_id,
+        "entry_type": entry.entry_type.value,
+        "reference_type": entry.reference_type,
+        "reference_id": entry.reference_id,
+        "amount": float(entry.amount),
+        "balance_after": float(entry.balance_after),
+        "note": entry.note,
+        "details": entry.details,
+        "created_at": entry.created_at.isoformat(),
+        "created_by_id": entry.created_by_id,
+    }
+
+
 def _create_customer_ledger_entry(
     db: Session,
     *,
@@ -2001,6 +2079,36 @@ def _create_customer_ledger_entry(
         amount=_to_decimal(amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP),
         balance_after=_to_decimal(customer.outstanding_debt).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        ),
+        note=note,
+        details=details or {},
+        created_by_id=created_by_id,
+    )
+    db.add(entry)
+    flush_session(db)
+    return entry
+
+
+def _create_supplier_ledger_entry(
+    db: Session,
+    *,
+    supplier: models.Supplier,
+    entry_type: models.SupplierLedgerEntryType,
+    amount: Decimal,
+    note: str | None = None,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+    details: dict[str, object] | None = None,
+    created_by_id: int | None = None,
+) -> models.SupplierLedgerEntry:
+    entry = models.SupplierLedgerEntry(
+        supplier_id=supplier.id,
+        entry_type=entry_type,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        amount=_to_decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        balance_after=_to_decimal(supplier.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         ),
         note=note,
@@ -2989,6 +3097,19 @@ def _sync_customer_ledger_entry(db: Session, entry: models.CustomerLedgerEntry) 
             entity_id=str(entry.id),
             operation="UPSERT",
             payload=_customer_ledger_payload(entry),
+        )
+
+
+def _sync_supplier_ledger_entry(db: Session, entry: models.SupplierLedgerEntry) -> None:
+    with transactional_session(db):
+        db.refresh(entry)
+        db.refresh(entry, attribute_names=["created_by"])
+        enqueue_sync_outbox(
+            db,
+            entity_type="supplier_ledger_entry",
+            entity_id=str(entry.id),
+            operation="UPSERT",
+            payload=_supplier_ledger_payload(entry),
         )
 
 
@@ -6351,6 +6472,10 @@ def list_suppliers(
                 func.lower(models.Supplier.name).like(normalized),
                 func.lower(models.Supplier.contact_name).like(normalized),
                 func.lower(models.Supplier.email).like(normalized),
+                func.lower(models.Supplier.phone).like(normalized),
+                func.lower(models.Supplier.rtn).like(normalized),
+                func.lower(models.Supplier.payment_terms).like(normalized),
+                func.lower(models.Supplier.notes).like(normalized),
             )
         )
     return list(db.scalars(statement))
@@ -6374,13 +6499,17 @@ def create_supplier(
     history = _history_to_json(payload.history)
     supplier = models.Supplier(
         name=payload.name,
+        rtn=payload.rtn,
+        payment_terms=payload.payment_terms,
         contact_name=payload.contact_name,
         email=payload.email,
         phone=payload.phone,
+        contact_info=_contacts_to_json(payload.contact_info),
         address=payload.address,
         notes=payload.notes,
         history=history,
         outstanding_debt=_to_decimal(payload.outstanding_debt),
+        products_supplied=_products_to_json(payload.products_supplied),
     )
     try:
         with transactional_session(db):
@@ -6414,6 +6543,12 @@ def update_supplier(
     if payload.name is not None:
         supplier.name = payload.name
         updated_fields["name"] = payload.name
+    if payload.rtn is not None:
+        supplier.rtn = payload.rtn
+        updated_fields["rtn"] = payload.rtn
+    if payload.payment_terms is not None:
+        supplier.payment_terms = payload.payment_terms
+        updated_fields["payment_terms"] = payload.payment_terms
     if payload.contact_name is not None:
         supplier.contact_name = payload.contact_name
         updated_fields["contact_name"] = payload.contact_name
@@ -6436,6 +6571,14 @@ def update_supplier(
         history = _history_to_json(payload.history)
         supplier.history = history
         updated_fields["history"] = history
+    if payload.contact_info is not None:
+        contacts = _contacts_to_json(payload.contact_info)
+        supplier.contact_info = contacts
+        updated_fields["contact_info"] = contacts
+    if payload.products_supplied is not None:
+        products = _products_to_json(payload.products_supplied)
+        supplier.products_supplied = products
+        updated_fields["products_supplied"] = products
     with transactional_session(db):
         db.add(supplier)
         flush_session(db)
@@ -7218,25 +7361,188 @@ def export_suppliers_csv(
     writer.writerow([
         "ID",
         "Nombre",
+        "RTN",
+        "Términos de pago",
         "Contacto",
+        "Cargo contacto",
         "Correo",
         "Teléfono",
         "Dirección",
         "Deuda",
+        "Productos suministrados",
     ])
     for supplier in suppliers:
+        contact_entry: Mapping[str, object] | None = None
+        if supplier.contact_info:
+            first_entry = supplier.contact_info[0]
+            if isinstance(first_entry, Mapping):
+                contact_entry = first_entry
         writer.writerow(
             [
                 supplier.id,
                 supplier.name,
-                supplier.contact_name or "",
+                supplier.rtn or "",
+                supplier.payment_terms or "",
+                (contact_entry.get("name") if contact_entry else supplier.contact_name or ""),
+                (contact_entry.get("position") if contact_entry else ""),
                 supplier.email or "",
                 supplier.phone or "",
                 supplier.address or "",
                 float(supplier.outstanding_debt),
+                ", ".join(_products_to_json(supplier.products_supplied)),
             ]
         )
     return buffer.getvalue()
+
+
+def get_suppliers_accounts_payable(
+    db: Session,
+) -> schemas.SupplierAccountsPayableResponse:
+    suppliers = list(
+        db.scalars(select(models.Supplier).order_by(models.Supplier.name.asc()))
+    )
+
+    bucket_defs: list[tuple[str, int, int | None]] = [
+        ("0-30 días", 0, 30),
+        ("31-60 días", 31, 60),
+        ("61-90 días", 61, 90),
+        ("90+ días", 91, None),
+    ]
+    bucket_totals: list[dict[str, object]] = [
+        {"label": label, "from": start, "to": end, "amount": Decimal("0.00"), "count": 0}
+        for label, start, end in bucket_defs
+    ]
+
+    total_balance = Decimal("0.00")
+    total_overdue = Decimal("0.00")
+    items: list[schemas.SupplierAccountsPayableSupplier] = []
+    today = datetime.utcnow().date()
+
+    for supplier in suppliers:
+        balance = _to_decimal(supplier.outstanding_debt).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        history = (
+            supplier.history
+            if isinstance(supplier.history, list)
+            else []
+        )
+        last_history = _last_history_timestamp(history)
+        last_activity = last_history or supplier.updated_at or supplier.created_at
+
+        days_outstanding = 0
+        if last_activity is not None:
+            days_outstanding = max(
+                (today - last_activity.date()).days,
+                0,
+            )
+
+        bucket_index = 0
+        for idx, (_, start, end) in enumerate(bucket_defs):
+            if end is None or days_outstanding <= end:
+                if end is None or days_outstanding >= start:
+                    bucket_index = idx
+                    break
+
+        bucket = bucket_totals[bucket_index]
+        bucket["amount"] = _to_decimal(bucket["amount"]) + balance  # type: ignore[index]
+        if balance > Decimal("0"):
+            bucket["count"] = int(bucket["count"]) + 1  # type: ignore[index]
+
+        total_balance += balance
+        if days_outstanding > 30:
+            total_overdue += balance
+
+        contact_name = supplier.contact_name
+        contact_email = supplier.email
+        contact_phone = supplier.phone
+        sanitized_contacts = _contacts_to_json(
+            supplier.contact_info
+            if isinstance(supplier.contact_info, list)
+            else []
+        )
+        if sanitized_contacts:
+            primary = sanitized_contacts[0]
+            if isinstance(primary, Mapping):
+                contact_name = (primary.get("name") or contact_name) if contact_name else primary.get("name")
+                contact_email = (
+                    primary.get("email") or contact_email
+                ) if contact_email else primary.get("email")
+                contact_phone = (
+                    primary.get("phone") or contact_phone
+                ) if contact_phone else primary.get("phone")
+
+        contact_schemas: list[schemas.SupplierContact] = []
+        for entry in sanitized_contacts:
+            try:
+                contact_schemas.append(schemas.SupplierContact.model_validate(entry))
+            except ValidationError:
+                continue
+
+        products = _products_to_json(
+            supplier.products_supplied
+            if isinstance(supplier.products_supplied, Sequence)
+            else []
+        )
+
+        items.append(
+            schemas.SupplierAccountsPayableSupplier(
+                supplier_id=supplier.id,
+                supplier_name=supplier.name,
+                rtn=supplier.rtn,
+                payment_terms=supplier.payment_terms,
+                outstanding_debt=float(balance),
+                bucket_label=bucket_defs[bucket_index][0],
+                bucket_from=bucket_defs[bucket_index][1],
+                bucket_to=bucket_defs[bucket_index][2],
+                days_outstanding=days_outstanding,
+                last_activity=last_activity,
+                contact_name=contact_name,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
+                products_supplied=products,
+                contact_info=contact_schemas,
+            )
+        )
+
+    aging_buckets: list[schemas.SupplierAccountsPayableBucket] = []
+    for bucket_data, (label, start, end) in zip(bucket_totals, bucket_defs):
+        amount_decimal = _to_decimal(bucket_data["amount"])  # type: ignore[index]
+        percentage = 0.0
+        if total_balance > Decimal("0"):
+            percentage = float(
+                (amount_decimal / total_balance * Decimal("100"))
+                .quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            )
+        aging_buckets.append(
+            schemas.SupplierAccountsPayableBucket(
+                label=label,
+                days_from=start,
+                days_to=end,
+                amount=float(
+                    amount_decimal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                ),
+                percentage=percentage,
+                count=int(bucket_data["count"]),  # type: ignore[index]
+            )
+        )
+
+    summary = schemas.SupplierAccountsPayableSummary(
+        total_balance=float(total_balance.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        total_overdue=float(total_overdue.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        supplier_count=len(suppliers),
+        generated_at=datetime.utcnow(),
+        buckets=aging_buckets,
+    )
+
+    return schemas.SupplierAccountsPayableResponse(
+        summary=summary,
+        suppliers=sorted(
+            items,
+            key=lambda item: (item.bucket_from, -item.outstanding_debt, item.supplier_name.lower()),
+        ),
+    )
 
 
 def get_store(db: Session, store_id: int) -> models.Store:
@@ -9942,6 +10248,7 @@ def calculate_rotation_analytics(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -9965,6 +10272,8 @@ def calculate_rotation_analytics(
             models.Device.store_id.in_(store_filter))
     if category:
         device_stmt = device_stmt.where(category_expr == category)
+    if supplier:
+        device_stmt = device_stmt.where(models.Device.proveedor == supplier)
     if offset:
         device_stmt = device_stmt.offset(offset)
     if limit is not None:
@@ -9997,6 +10306,8 @@ def calculate_rotation_analytics(
         sale_stats = sale_stats.where(models.Sale.created_at <= end_dt)
     if category:
         sale_stats = sale_stats.where(category_expr == category)
+    if supplier:
+        sale_stats = sale_stats.where(models.Device.proveedor == supplier)
 
     purchase_stats = (
         select(
@@ -10024,6 +10335,8 @@ def calculate_rotation_analytics(
             models.PurchaseOrder.created_at <= end_dt)
     if category:
         purchase_stats = purchase_stats.where(category_expr == category)
+    if supplier:
+        purchase_stats = purchase_stats.where(models.Device.proveedor == supplier)
 
     sold_map = {
         row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)
@@ -10062,6 +10375,7 @@ def calculate_aging_analytics(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10094,6 +10408,8 @@ def calculate_aging_analytics(
         device_stmt = device_stmt.where(models.Device.fecha_compra <= date_to)
     if category:
         device_stmt = device_stmt.where(category_expr == category)
+    if supplier:
+        device_stmt = device_stmt.where(models.Device.proveedor == supplier)
 
     if offset:
         device_stmt = device_stmt.offset(offset)
@@ -10130,6 +10446,7 @@ def calculate_stockout_forecast(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10154,6 +10471,8 @@ def calculate_stockout_forecast(
             models.Device.store_id.in_(store_filter))
     if category:
         device_stmt = device_stmt.where(category_expr == category)
+    if supplier:
+        device_stmt = device_stmt.where(models.Device.proveedor == supplier)
     if offset:
         device_stmt = device_stmt.offset(offset)
     if limit is not None:
@@ -10193,6 +10512,9 @@ def calculate_stockout_forecast(
     if category:
         sales_summary_stmt = sales_summary_stmt.where(
             category_expr == category)
+    if supplier:
+        sales_summary_stmt = sales_summary_stmt.where(
+            models.Device.proveedor == supplier)
 
     day_column = func.date(models.Sale.created_at)
     daily_sales_stmt = (
@@ -10220,6 +10542,9 @@ def calculate_stockout_forecast(
             models.Sale.created_at <= end_dt)
     if category:
         daily_sales_stmt = daily_sales_stmt.where(category_expr == category)
+    if supplier:
+        daily_sales_stmt = daily_sales_stmt.where(
+            models.Device.proveedor == supplier)
 
     sales_map: dict[int, dict[str, object]] = {}
     for row in db.execute(sales_summary_stmt):
@@ -10315,6 +10640,7 @@ def calculate_store_comparatives(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10344,6 +10670,8 @@ def calculate_store_comparatives(
             models.Store.id.in_(store_filter))
     if category:
         inventory_stmt = inventory_stmt.where(category_expr == category)
+    if supplier:
+        inventory_stmt = inventory_stmt.where(models.Device.proveedor == supplier)
     if offset:
         inventory_stmt = inventory_stmt.offset(offset)
     if limit is not None:
@@ -10361,6 +10689,7 @@ def calculate_store_comparatives(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=None,
         offset=0,
     )
@@ -10370,6 +10699,7 @@ def calculate_store_comparatives(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=None,
         offset=0,
     )
@@ -10421,6 +10751,8 @@ def calculate_store_comparatives(
         sales_stmt = sales_stmt.where(models.Sale.created_at <= end_dt)
     if category:
         sales_stmt = sales_stmt.where(category_expr == category)
+    if supplier:
+        sales_stmt = sales_stmt.where(models.Device.proveedor == supplier)
 
     sales_map: dict[int, dict[str, Decimal]] = {}
     for row in db.execute(sales_stmt):
@@ -10459,6 +10791,7 @@ def calculate_profit_margin(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10493,6 +10826,8 @@ def calculate_profit_margin(
         stmt = stmt.where(models.Sale.created_at <= end_dt)
     if category:
         stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
     if offset:
         stmt = stmt.offset(offset)
     if limit is not None:
@@ -10526,6 +10861,7 @@ def calculate_sales_projection(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10579,6 +10915,8 @@ def calculate_sales_projection(
         daily_stmt = daily_stmt.where(models.Sale.created_at <= end_dt)
     if category:
         daily_stmt = daily_stmt.where(category_expr == category)
+    if supplier:
+        daily_stmt = daily_stmt.where(models.Device.proveedor == supplier)
 
     stores_data: dict[int, dict[str, object]] = {}
     for row in db.execute(daily_stmt):
@@ -10706,6 +11044,7 @@ def generate_analytics_alerts(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10717,6 +11056,7 @@ def generate_analytics_alerts(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=window,
         offset=0,
     )
@@ -10749,6 +11089,7 @@ def generate_analytics_alerts(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         horizon_days=14,
         limit=window,
         offset=0,
@@ -10785,6 +11126,7 @@ def calculate_realtime_store_widget(
     *,
     store_ids: Iterable[int] | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     low_stock_threshold: int = 5,
     limit: int | None = None,
     offset: int = 0,
@@ -10822,6 +11164,8 @@ def calculate_realtime_store_widget(
         )
     if category:
         low_stock_stmt = low_stock_stmt.where(category_expr == category)
+    if supplier:
+        low_stock_stmt = low_stock_stmt.where(models.Device.proveedor == supplier)
 
     sales_today_stmt = (
         select(
@@ -10841,6 +11185,9 @@ def calculate_realtime_store_widget(
             models.Store.id.in_(store_ids_window))
     if category:
         sales_today_stmt = sales_today_stmt.where(category_expr == category)
+    if supplier:
+        sales_today_stmt = sales_today_stmt.where(
+            models.Device.proveedor == supplier)
 
     repairs_stmt = (
         select(
@@ -10894,6 +11241,7 @@ def calculate_realtime_store_widget(
             db,
             store_ids=store_ids_window,
             category=category,
+            supplier=supplier,
             horizon_days=7,
             limit=None,
             offset=0,
@@ -10923,6 +11271,210 @@ def calculate_realtime_store_widget(
         )
 
     return widgets
+
+
+def calculate_purchase_supplier_metrics(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    supplier_expr = func.coalesce(
+        models.PurchaseOrder.supplier,
+        models.Device.proveedor,
+        literal("Sin proveedor"),
+    )
+
+    purchase_stmt = (
+        select(
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+            models.Device.id.label("device_id"),
+            models.Device.sku,
+            models.Device.name,
+            supplier_expr.label("supplier_name"),
+            func.coalesce(func.sum(models.PurchaseOrderItem.quantity_ordered), 0).label(
+                "ordered_units"
+            ),
+            func.coalesce(func.sum(models.PurchaseOrderItem.quantity_received), 0).label(
+                "received_units"
+            ),
+            func.coalesce(
+                func.sum(
+                    models.PurchaseOrderItem.quantity_received
+                    * models.PurchaseOrderItem.unit_cost
+                ),
+                0,
+            ).label("received_cost"),
+            func.max(models.PurchaseOrder.created_at).label("last_purchase_at"),
+        )
+        .join(
+            models.PurchaseOrder,
+            models.PurchaseOrder.id == models.PurchaseOrderItem.purchase_order_id,
+        )
+        .join(models.Store, models.Store.id == models.PurchaseOrder.store_id)
+        .join(models.Device, models.Device.id == models.PurchaseOrderItem.device_id)
+        .group_by(
+            models.Store.id,
+            models.Store.name,
+            models.Device.id,
+            models.Device.sku,
+            models.Device.name,
+            supplier_expr,
+        )
+        .order_by(func.max(models.PurchaseOrder.created_at).desc())
+    )
+    if store_filter:
+        purchase_stmt = purchase_stmt.where(models.Store.id.in_(store_filter))
+    if start_dt:
+        purchase_stmt = purchase_stmt.where(models.PurchaseOrder.created_at >= start_dt)
+    if end_dt:
+        purchase_stmt = purchase_stmt.where(models.PurchaseOrder.created_at <= end_dt)
+    if category:
+        purchase_stmt = purchase_stmt.where(category_expr == category)
+    if supplier:
+        purchase_stmt = purchase_stmt.where(supplier_expr == supplier)
+    if offset:
+        purchase_stmt = purchase_stmt.offset(offset)
+    if limit is not None:
+        purchase_stmt = purchase_stmt.limit(limit)
+
+    rows = list(db.execute(purchase_stmt))
+    if not rows:
+        return []
+
+    store_ids_window = sorted({int(row.store_id) for row in rows})
+
+    rotation = calculate_rotation_analytics(
+        db,
+        store_ids=store_ids_window,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=None,
+        offset=0,
+    )
+    aging = calculate_aging_analytics(
+        db,
+        store_ids=store_ids_window,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=None,
+        offset=0,
+    )
+
+    rotation_map: dict[tuple[int, int], float] = {
+        (int(item["store_id"]), int(item["device_id"])): float(item["rotation_rate"])
+        for item in rotation
+        if item.get("device_id") is not None and item.get("store_id") is not None
+    }
+    aging_map: dict[tuple[int, int], float] = {
+        (int(item["store_id"]), int(item["device_id"])): float(item["days_in_stock"])
+        for item in aging
+        if item.get("device_id") is not None and item.get("store_id") is not None
+    }
+
+    aggregates: dict[tuple[int, str], dict[str, object]] = {}
+    for row in rows:
+        store_id = int(row.store_id)
+        supplier_name = row.supplier_name or "Sin proveedor"
+        device_id = int(row.device_id)
+        ordered_units = int(row.ordered_units or 0)
+        received_units = int(row.received_units or 0)
+        pending_units = max(ordered_units - received_units, 0)
+        cost_value = Decimal(row.received_cost or 0)
+        rotation_value = rotation_map.get((store_id, device_id))
+        aging_value = aging_map.get((store_id, device_id))
+
+        key = (store_id, supplier_name)
+        entry = aggregates.setdefault(
+            key,
+            {
+                "store_name": row.store_name,
+                "device_ids": set(),
+                "total_ordered": 0,
+                "total_received": 0,
+                "pending_backorders": 0,
+                "total_cost": Decimal("0"),
+                "rotation_sum": 0.0,
+                "rotation_count": 0,
+                "aging_sum": 0.0,
+                "aging_count": 0,
+                "last_purchase_at": None,
+            },
+        )
+        entry["device_ids"].add(device_id)
+        entry["total_ordered"] += ordered_units
+        entry["total_received"] += received_units
+        entry["pending_backorders"] += pending_units
+        entry["total_cost"] += cost_value
+        if rotation_value is not None:
+            entry["rotation_sum"] += rotation_value
+            entry["rotation_count"] += 1
+        if aging_value is not None:
+            entry["aging_sum"] += aging_value
+            entry["aging_count"] += 1
+        last_purchase_at = row.last_purchase_at
+        current_last = entry["last_purchase_at"]
+        if last_purchase_at is not None and (
+            current_last is None or last_purchase_at > current_last
+        ):
+            entry["last_purchase_at"] = last_purchase_at
+
+    items: list[dict[str, object]] = []
+    for (store_id, supplier_name), payload in aggregates.items():
+        total_received = int(payload["total_received"])
+        total_cost_value: Decimal = payload["total_cost"]
+        average_unit_cost = (
+            float(total_cost_value / total_received)
+            if total_received > 0
+            else 0.0
+        )
+        rotation_count = int(payload["rotation_count"] or 0)
+        aging_count = int(payload["aging_count"] or 0)
+        average_rotation = (
+            float(payload["rotation_sum"]) / rotation_count
+            if rotation_count > 0
+            else 0.0
+        )
+        average_days = (
+            float(payload["aging_sum"]) / aging_count if aging_count > 0 else 0.0
+        )
+
+        items.append(
+            {
+                "store_id": store_id,
+                "store_name": payload["store_name"],
+                "supplier": supplier_name,
+                "device_count": len(payload["device_ids"]),
+                "total_ordered": int(payload["total_ordered"]),
+                "total_received": total_received,
+                "pending_backorders": int(payload["pending_backorders"]),
+                "total_cost": float(total_cost_value),
+                "average_unit_cost": round(average_unit_cost, 2),
+                "average_rotation": round(average_rotation, 2),
+                "average_days_in_stock": round(average_days, 1),
+                "last_purchase_at": payload["last_purchase_at"],
+            }
+        )
+
+    items.sort(key=lambda item: item["total_cost"], reverse=True)
+    if offset:
+        items = items[offset:]
+    if limit is not None:
+        items = items[:limit]
+    return items
 
 
 def record_sync_session(
@@ -13527,6 +14079,61 @@ def cancel_purchase_order(
     return order
 
 
+def _register_supplier_credit_note(
+    db: Session,
+    *,
+    supplier_name: str | None,
+    purchase_order_id: int,
+    credit_amount: Decimal,
+    corporate_reason: str | None,
+    processed_by_id: int | None,
+) -> models.SupplierLedgerEntry | None:
+    supplier = _get_supplier_by_name(db, supplier_name)
+    if supplier is None:
+        return None
+
+    normalized_amount = _to_decimal(credit_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if normalized_amount <= Decimal("0"):
+        return None
+
+    current_debt = _to_decimal(supplier.outstanding_debt).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    new_debt = (current_debt - normalized_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if new_debt < Decimal("0"):
+        new_debt = Decimal("0")
+
+    supplier.outstanding_debt = new_debt
+    db.add(supplier)
+    flush_session(db)
+
+    details: dict[str, object] = {
+        "source": "purchase_return",
+        "purchase_order_id": purchase_order_id,
+        "credit_amount": float(normalized_amount),
+    }
+    if corporate_reason:
+        details["corporate_reason"] = corporate_reason
+
+    entry = _create_supplier_ledger_entry(
+        db,
+        supplier=supplier,
+        entry_type=models.SupplierLedgerEntryType.CREDIT_NOTE,
+        amount=-normalized_amount,
+        note=corporate_reason,
+        reference_type="purchase_return",
+        reference_id=str(purchase_order_id),
+        details=details,
+        created_by_id=processed_by_id,
+    )
+    _sync_supplier_ledger_entry(db, entry)
+    return entry
+
+
 def register_purchase_return(
     db: Session,
     order_id: int,
@@ -13562,6 +14169,11 @@ def register_purchase_return(
             warehouse_store = get_store(db, warehouse_id)
     if device.quantity < payload.quantity:
         raise ValueError("purchase_return_insufficient_stock")
+    unit_cost = _to_decimal(order_item.unit_cost)
+    credit_note_amount = (
+        unit_cost * _to_decimal(payload.quantity)
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    corporate_reason = reason.strip() if isinstance(reason, str) else None
     with transactional_session(db):
         movement_reason = payload.reason or reason
         if movement_reason:
@@ -13595,6 +14207,15 @@ def register_purchase_return(
             reference_id=str(order.id),
         )
 
+        ledger_entry = _register_supplier_credit_note(
+            db,
+            supplier_name=order.supplier,
+            purchase_order_id=order.id,
+            credit_amount=credit_note_amount,
+            corporate_reason=corporate_reason,
+            processed_by_id=processed_by_id,
+        )
+
         purchase_return = models.PurchaseReturn(
             purchase_order_id=order.id,
             device_id=device.id,
@@ -13604,6 +14225,9 @@ def register_purchase_return(
             disposition=disposition,
             warehouse_id=warehouse_id,
             processed_by_id=processed_by_id,
+            corporate_reason=corporate_reason,
+            credit_note_amount=credit_note_amount,
+            supplier_ledger_entry_id=ledger_entry.id if ledger_entry else None,
         )
         db.add(purchase_return)
         flush_session(db)
@@ -13621,6 +14245,7 @@ def register_purchase_return(
                     "quantity": payload.quantity,
                     "return_reason": payload.reason,
                     "request_reason": reason,
+                    "credit_note_amount": float(credit_note_amount),
                 }
             ),
         )

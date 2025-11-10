@@ -10,11 +10,10 @@ from backend.core.logging import logger as core_logger
 from .. import crud, models
 from ..config import settings
 from ..core.session_provider import SessionProvider
-from ..database import SessionLocal
 from ..core.transactions import transactional_session
-from . import customer_segments, sync as sync_service
+from ..database import SessionLocal
 from . import accounts_receivable as receivable_service
-from . import sync as sync_service
+from . import customer_segments, sync as sync_service
 from .backups import generate_backup
 
 logger = core_logger.bind(component=__name__)
@@ -106,6 +105,7 @@ class BackgroundScheduler:
                     ),
                 )
             )
+
         reminders_interval = settings.accounts_receivable_reminder_interval_seconds
         if (
             settings.accounts_receivable_reminders_enabled
