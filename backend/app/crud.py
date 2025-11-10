@@ -13772,11 +13772,19 @@ def _register_supplier_credit_note(
     current_debt = _to_decimal(supplier.outstanding_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    new_debt = (current_debt - normalized_amount).quantize(
+    applied_amount = min(normalized_amount, current_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    if new_debt < Decimal("0"):
-        new_debt = Decimal("0")
+    if applied_amount <= Decimal("0"):
+        return None
+
+    unused_credit = (normalized_amount - applied_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    new_debt = (current_debt - applied_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
     supplier.outstanding_debt = new_debt
     db.add(supplier)
@@ -13786,7 +13794,10 @@ def _register_supplier_credit_note(
         "source": "purchase_return",
         "purchase_order_id": purchase_order_id,
         "credit_amount": float(normalized_amount),
+        "applied_amount": float(applied_amount),
     }
+    if unused_credit > Decimal("0"):
+        details["unused_credit_amount"] = float(unused_credit)
     if corporate_reason:
         details["corporate_reason"] = corporate_reason
 
@@ -13794,7 +13805,7 @@ def _register_supplier_credit_note(
         db,
         supplier=supplier,
         entry_type=models.SupplierLedgerEntryType.CREDIT_NOTE,
-        amount=-normalized_amount,
+        amount=-applied_amount,
         note=corporate_reason,
         reference_type="purchase_return",
         reference_id=str(purchase_order_id),
