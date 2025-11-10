@@ -4612,12 +4612,20 @@ class PurchaseReturnResponse(BaseModel):
     reason_category: ReturnReasonCategory
     disposition: ReturnDisposition
     warehouse_id: int | None
+    supplier_ledger_entry_id: int | None = None
+    corporate_reason: str | None = None
+    credit_note_amount: Decimal = Field(default=Decimal("0"))
     processed_by_id: int | None
     approved_by_id: int | None
     approved_by_name: str | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("credit_note_amount")
+    @classmethod
+    def _serialize_credit_amount(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class PurchaseOrderResponse(BaseModel):
@@ -5057,10 +5065,19 @@ class ReturnRecord(BaseModel):
     occurred_at: datetime
     refund_amount: Decimal | None = None
     payment_method: PaymentMethod | None = None
+    corporate_reason: str | None = None
+    credit_note_amount: Decimal | None = None
 
     @field_serializer("refund_amount")
     @classmethod
     def _serialize_refund_amount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+    @field_serializer("credit_note_amount")
+    @classmethod
+    def _serialize_credit_note(cls, value: Decimal | None) -> float | None:
         if value is None:
             return None
         return float(value)
@@ -5072,6 +5089,7 @@ class ReturnsTotals(BaseModel):
     purchases: int
     refunds_by_method: dict[str, Decimal] = Field(default_factory=dict)
     refund_total_amount: Decimal = Field(default=Decimal("0"))
+    credit_notes_total: Decimal = Field(default=Decimal("0"))
     categories: dict[str, int] = Field(default_factory=dict)
 
     @field_serializer("refunds_by_method")
@@ -5082,6 +5100,11 @@ class ReturnsTotals(BaseModel):
     @field_serializer("refund_total_amount")
     @classmethod
     def _serialize_refund_total(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("credit_notes_total")
+    @classmethod
+    def _serialize_credit_total(cls, value: Decimal) -> float:
         return float(value)
 
 

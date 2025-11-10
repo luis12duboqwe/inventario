@@ -152,6 +152,8 @@ def _serialize_purchase_return(
         approved_by_name=_user_display_name(approved_by),
         partner_name=supplier_name,
         occurred_at=purchase_return.created_at,
+        corporate_reason=purchase_return.corporate_reason,
+        credit_note_amount=purchase_return.credit_note_amount,
     )
 
 
@@ -236,9 +238,9 @@ def _list_purchase_returns(
     filters: _ReturnFilters,
     limit: int,
     offset: int,
-) -> Sequence[schemas.ReturnRecord]:
+) -> tuple[list[schemas.ReturnRecord], Decimal]:
     if filters.kind is not None and filters.kind != schemas.ReturnRecordType.PURCHASE:
-        return []
+        return [], Decimal("0")
 
     fetch_limit = limit + offset
     statement = (
@@ -259,7 +261,16 @@ def _list_purchase_returns(
             models.PurchaseOrder.store_id == filters.store_id
         )
     purchase_returns = db.scalars(statement).all()
-    return [_serialize_purchase_return(item) for item in purchase_returns]
+    records: list[schemas.ReturnRecord] = []
+    credit_total = Decimal("0")
+    for item in purchase_returns:
+        record = _serialize_purchase_return(item)
+        records.append(record)
+        if record.credit_note_amount is not None:
+            credit_total = (
+                credit_total + _to_decimal(record.credit_note_amount)
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return records, credit_total
 
 
 def _merge_returns(
@@ -292,7 +303,9 @@ def list_returns(
     sale_returns, refunds_by_method, refund_total_amount = _list_sale_returns(
         db, filters, limit, offset
     )
-    purchase_returns = _list_purchase_returns(db, filters, limit, offset)
+    purchase_returns, purchase_credit_total = _list_purchase_returns(
+        db, filters, limit, offset
+    )
 
     combined = _merge_returns(sale_returns, purchase_returns)
     category_counts: dict[str, int] = defaultdict(int)
@@ -306,6 +319,7 @@ def list_returns(
         purchases=purchase_count,
         refunds_by_method=refunds_by_method,
         refund_total_amount=refund_total_amount,
+        credit_notes_total=purchase_credit_total,
         categories=dict(category_counts),
     )
     return schemas.ReturnsOverview(items=list(paginated), totals=totals)

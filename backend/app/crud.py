@@ -231,6 +231,22 @@ def _to_decimal(value: Decimal | float | int | None) -> Decimal:
     return Decimal(str(value))
 
 
+def _get_supplier_by_name(
+    db: Session, supplier_name: str | None
+) -> models.Supplier | None:
+    if not supplier_name:
+        return None
+    normalized = supplier_name.strip().lower()
+    if not normalized:
+        return None
+    statement = (
+        select(models.Supplier)
+        .where(func.lower(models.Supplier.name) == normalized)
+        .limit(1)
+    )
+    return db.scalars(statement).first()
+
+
 def _quantize_currency(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -389,6 +405,7 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "repair_order": models.SyncOutboxPriority.NORMAL,
     "customer": models.SyncOutboxPriority.NORMAL,
     "customer_ledger_entry": models.SyncOutboxPriority.NORMAL,
+    "supplier_ledger_entry": models.SyncOutboxPriority.NORMAL,
     "pos_config": models.SyncOutboxPriority.NORMAL,
     "supplier": models.SyncOutboxPriority.NORMAL,
     "cash_session": models.SyncOutboxPriority.NORMAL,
@@ -421,6 +438,7 @@ _SYSTEM_MODULE_MAP: dict[str, str] = {
     "auth": "usuarios",
     "store": "inventario",
     "customer": "clientes",
+    "supplier_ledger_entry": "proveedores",
     "supplier": "proveedores",
     "transfer_order": "inventario",
     "purchase_order": "compras",
@@ -1978,6 +1996,22 @@ def _customer_ledger_payload(entry: models.CustomerLedgerEntry) -> dict[str, obj
     }
 
 
+def _supplier_ledger_payload(entry: models.SupplierLedgerEntry) -> dict[str, object]:
+    return {
+        "id": entry.id,
+        "supplier_id": entry.supplier_id,
+        "entry_type": entry.entry_type.value,
+        "reference_type": entry.reference_type,
+        "reference_id": entry.reference_id,
+        "amount": float(entry.amount),
+        "balance_after": float(entry.balance_after),
+        "note": entry.note,
+        "details": entry.details,
+        "created_at": entry.created_at.isoformat(),
+        "created_by_id": entry.created_by_id,
+    }
+
+
 def _create_customer_ledger_entry(
     db: Session,
     *,
@@ -1998,6 +2032,36 @@ def _create_customer_ledger_entry(
         amount=_to_decimal(amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP),
         balance_after=_to_decimal(customer.outstanding_debt).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        ),
+        note=note,
+        details=details or {},
+        created_by_id=created_by_id,
+    )
+    db.add(entry)
+    flush_session(db)
+    return entry
+
+
+def _create_supplier_ledger_entry(
+    db: Session,
+    *,
+    supplier: models.Supplier,
+    entry_type: models.SupplierLedgerEntryType,
+    amount: Decimal,
+    note: str | None = None,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+    details: dict[str, object] | None = None,
+    created_by_id: int | None = None,
+) -> models.SupplierLedgerEntry:
+    entry = models.SupplierLedgerEntry(
+        supplier_id=supplier.id,
+        entry_type=entry_type,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        amount=_to_decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        balance_after=_to_decimal(supplier.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         ),
         note=note,
@@ -2986,6 +3050,19 @@ def _sync_customer_ledger_entry(db: Session, entry: models.CustomerLedgerEntry) 
             entity_id=str(entry.id),
             operation="UPSERT",
             payload=_customer_ledger_payload(entry),
+        )
+
+
+def _sync_supplier_ledger_entry(db: Session, entry: models.SupplierLedgerEntry) -> None:
+    with transactional_session(db):
+        db.refresh(entry)
+        db.refresh(entry, attribute_names=["created_by"])
+        enqueue_sync_outbox(
+            db,
+            entity_type="supplier_ledger_entry",
+            entity_id=str(entry.id),
+            operation="UPSERT",
+            payload=_supplier_ledger_payload(entry),
         )
 
 
@@ -13673,6 +13750,61 @@ def cancel_purchase_order(
     return order
 
 
+def _register_supplier_credit_note(
+    db: Session,
+    *,
+    supplier_name: str | None,
+    purchase_order_id: int,
+    credit_amount: Decimal,
+    corporate_reason: str | None,
+    processed_by_id: int | None,
+) -> models.SupplierLedgerEntry | None:
+    supplier = _get_supplier_by_name(db, supplier_name)
+    if supplier is None:
+        return None
+
+    normalized_amount = _to_decimal(credit_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if normalized_amount <= Decimal("0"):
+        return None
+
+    current_debt = _to_decimal(supplier.outstanding_debt).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    new_debt = (current_debt - normalized_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if new_debt < Decimal("0"):
+        new_debt = Decimal("0")
+
+    supplier.outstanding_debt = new_debt
+    db.add(supplier)
+    flush_session(db)
+
+    details: dict[str, object] = {
+        "source": "purchase_return",
+        "purchase_order_id": purchase_order_id,
+        "credit_amount": float(normalized_amount),
+    }
+    if corporate_reason:
+        details["corporate_reason"] = corporate_reason
+
+    entry = _create_supplier_ledger_entry(
+        db,
+        supplier=supplier,
+        entry_type=models.SupplierLedgerEntryType.CREDIT_NOTE,
+        amount=-normalized_amount,
+        note=corporate_reason,
+        reference_type="purchase_return",
+        reference_id=str(purchase_order_id),
+        details=details,
+        created_by_id=processed_by_id,
+    )
+    _sync_supplier_ledger_entry(db, entry)
+    return entry
+
+
 def register_purchase_return(
     db: Session,
     order_id: int,
@@ -13708,6 +13840,11 @@ def register_purchase_return(
             warehouse_store = get_store(db, warehouse_id)
     if device.quantity < payload.quantity:
         raise ValueError("purchase_return_insufficient_stock")
+    unit_cost = _to_decimal(order_item.unit_cost)
+    credit_note_amount = (
+        unit_cost * _to_decimal(payload.quantity)
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    corporate_reason = reason.strip() if isinstance(reason, str) else None
     with transactional_session(db):
         movement_reason = payload.reason or reason
         if movement_reason:
@@ -13741,6 +13878,15 @@ def register_purchase_return(
             reference_id=str(order.id),
         )
 
+        ledger_entry = _register_supplier_credit_note(
+            db,
+            supplier_name=order.supplier,
+            purchase_order_id=order.id,
+            credit_amount=credit_note_amount,
+            corporate_reason=corporate_reason,
+            processed_by_id=processed_by_id,
+        )
+
         purchase_return = models.PurchaseReturn(
             purchase_order_id=order.id,
             device_id=device.id,
@@ -13750,6 +13896,9 @@ def register_purchase_return(
             disposition=disposition,
             warehouse_id=warehouse_id,
             processed_by_id=processed_by_id,
+            corporate_reason=corporate_reason,
+            credit_note_amount=credit_note_amount,
+            supplier_ledger_entry_id=ledger_entry.id if ledger_entry else None,
         )
         db.add(purchase_return)
         flush_session(db)
@@ -13767,6 +13916,7 @@ def register_purchase_return(
                     "quantity": payload.quantity,
                     "return_reason": payload.reason,
                     "request_reason": reason,
+                    "credit_note_amount": float(credit_note_amount),
                 }
             ),
         )
