@@ -2458,6 +2458,101 @@ button.link:hover:not(:disabled) {
   color: rgba(148, 163, 184, 0.95);
 }
 
+.sales-ranking-card,
+.dual-chart-card,
+.operations-health-card {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.ranking-grid,
+.dual-chart-grid,
+.operations-charts {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.chart-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.chart-panel h4,
+.ranking-chart h4,
+.ranking-list-wrapper h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.sales-ranking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.sales-ranking-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.85rem;
+  align-items: start;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.ranking-position {
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.ranking-details {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.ranking-name {
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.ranking-amount {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.ranking-orders {
+  font-size: 0.82rem;
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.operations-summary {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.operations-summary .summary-label {
+  display: block;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.operations-summary .ticket-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
 .receivables-link {
   justify-self: flex-start;
 }

@@ -488,28 +488,65 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   }, [friendlyErrorMessage, pushToast, token]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      void (async () => {
-        try {
-          await refreshSummary();
-          if (selectedStoreId) {
-            const refreshedDevices = await getDevices(token, selectedStoreId);
+    if (typeof window === "undefined") {
+      return () => undefined;
+    }
+
+    let running = false;
+    let disposed = false;
+
+    const runRefresh = async () => {
+      if (running || (typeof document !== "undefined" && document.hidden)) {
+        return;
+      }
+      running = true;
+      try {
+        await refreshSummary();
+        if (selectedStoreId) {
+          const refreshedDevices = await getDevices(token, selectedStoreId);
+          if (!disposed) {
             setDevices(safeArray(refreshedDevices)); // [PACK36-guards]
             setLastInventoryRefresh(new Date());
           }
-        } catch (err) {
-          const message =
-            err instanceof Error
-              ? err.message
-              : "No fue posible actualizar el inventario en tiempo real";
-          const friendly = friendlyErrorMessage(message);
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "No fue posible actualizar el inventario en tiempo real";
+        const friendly = friendlyErrorMessage(message);
+        if (!disposed) {
           setError(friendly);
           pushToast({ message: friendly, variant: "error" }); // [PACK36-guards]
         }
-      })();
+      } finally {
+        running = false;
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      void runRefresh();
     }, 30000);
 
-    return () => window.clearInterval(interval);
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        void runRefresh();
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+
+    void runRefresh();
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+    };
   }, [friendlyErrorMessage, pushToast, refreshSummary, selectedStoreId, token]);
 
   useEffect(() => {

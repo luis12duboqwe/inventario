@@ -660,7 +660,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada cuando la lista es específica para una tienda.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -3853,6 +3852,20 @@ class DashboardGlobalMetrics(BaseModel):
     gross_profit: float
 
 
+class DashboardSalesEntityMetric(BaseModel):
+    label: str
+    value: float
+    quantity: int | None = None
+    percentage: float | None = None
+
+
+class DashboardSalesInsights(BaseModel):
+    average_ticket: float
+    top_products: list[DashboardSalesEntityMetric] = Field(default_factory=list)
+    top_customers: list[DashboardSalesEntityMetric] = Field(default_factory=list)
+    payment_mix: list[DashboardSalesEntityMetric] = Field(default_factory=list)
+
+
 class DashboardReceivableCustomer(BaseModel):
     customer_id: int
     name: str
@@ -3877,6 +3890,7 @@ class InventoryMetricsResponse(BaseModel):
     top_stores: list[StoreValueMetric]
     low_stock_devices: list[LowStockDevice]
     global_performance: DashboardGlobalMetrics
+    sales_insights: DashboardSalesInsights
     accounts_receivable: DashboardReceivableMetrics
     sales_trend: list[DashboardChartPoint] = Field(default_factory=list)
     stock_breakdown: list[DashboardChartPoint] = Field(default_factory=list)
@@ -7606,6 +7620,8 @@ __all__ = [
     "InventoryAvailabilityResponse",
     "DashboardChartPoint",
     "DashboardGlobalMetrics",
+    "DashboardSalesEntityMetric",
+    "DashboardSalesInsights",
     "InventoryTotals",
     "LowStockDevice",
     "InventoryAlertDevice",
