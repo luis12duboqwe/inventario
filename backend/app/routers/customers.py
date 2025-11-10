@@ -31,6 +31,15 @@ def list_customers_endpoint(
     customer_type_filter: str | None = Query(
         default=None, alias="customer_type_filter", description="Filtrar por tipo de cliente"
     ),
+    segment_category: str | None = Query(
+        default=None,
+        alias="segment_category",
+        description="Filtrar por categoría de segmentación",
+    ),
+    tags: list[str] | None = Query(
+        default=None,
+        description="Filtra clientes que contengan todas las etiquetas indicadas",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
@@ -45,6 +54,8 @@ def list_customers_endpoint(
             status=status_value,
             customer_type=customer_type_value,
             has_debt=has_debt,
+            segment_category=segment_category,
+            tags=tags,
         )
     except ValueError as exc:
         detail = str(exc)
@@ -58,6 +69,11 @@ def list_customers_endpoint(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Tipo de cliente inválido.",
             ) from exc
+        if detail == "customer_tax_id_invalid":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El RTN del cliente es inválido o demasiado corto.",
+            ) from exc
         raise
     if export == "csv":
         csv_content = crud.export_customers_csv(
@@ -65,6 +81,8 @@ def list_customers_endpoint(
             query=q,
             status=status_value,
             customer_type=customer_type_value,
+            segment_category=segment_category,
+            tags=tags,
         )
         return Response(
             content=csv_content,
@@ -112,6 +130,16 @@ def create_customer_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Tipo de cliente inválido.",
+            ) from exc
+        if str(exc) == "customer_tax_id_invalid":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El RTN del cliente es inválido o demasiado corto.",
+            ) from exc
+        if str(exc) == "customer_tax_id_duplicate":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El RTN del cliente ya está registrado.",
             ) from exc
         if str(exc) == "customer_credit_limit_negative":
             raise HTTPException(
@@ -172,6 +200,16 @@ def update_customer_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Tipo de cliente inválido.",
+            ) from exc
+        if detail == "customer_tax_id_invalid":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El RTN del cliente es inválido o demasiado corto.",
+            ) from exc
+        if detail == "customer_tax_id_duplicate":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El RTN del cliente ya está registrado.",
             ) from exc
         if detail == "customer_credit_limit_negative":
             raise HTTPException(

@@ -77,6 +77,11 @@ const CustomersSidePanel = ({
     current: "info",
     overdue: "danger",
   };
+  const segmentCategory = safeString(summary?.customer.segment_category, "—");
+  const taxId = safeString(summary?.customer.tax_id, "—");
+  const tagsList = Array.isArray(summary?.customer.tags)
+    ? summary?.customer.tags.filter((tag) => typeof tag === "string" && tag.trim().length > 0).join(", ") || "Sin etiquetas"
+    : "Sin etiquetas";
   const formatDateTime = (value: unknown) => { // [PACK36-customers]
     const parsed = safeDate(value);
     if (!parsed) {
@@ -144,6 +149,9 @@ const CustomersSidePanel = ({
               <h4>{summary.customer.name ?? "Cliente sin nombre"}</h4>
               <p className="muted-text">
                 Tipo {safeString(summary.customer.customer_type, "—")} · Estado {safeString(summary.customer.status, "—")}
+              </p>
+              <p className="muted-text small">
+                Categoría {segmentCategory} · Etiquetas {tagsList} · RTN {taxId}
               </p>
             </div>
             <div className="summary-financial">

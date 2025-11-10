@@ -1505,6 +1505,9 @@ def _customer_payload(customer: models.Customer) -> dict[str, object]:
         "phone": customer.phone,
         "customer_type": customer.customer_type,
         "status": customer.status,
+        "segment_category": customer.segment_category,
+        "tags": customer.tags,
+        "tax_id": customer.tax_id,
         "credit_limit": float(customer.credit_limit or Decimal("0")),
         "outstanding_debt": float(customer.outstanding_debt or Decimal("0")),
         "last_interaction_at": customer.last_interaction_at.isoformat() if customer.last_interaction_at else None,
@@ -1801,6 +1804,38 @@ def _normalize_customer_type(value: str | None) -> str:
     if normalized not in _ALLOWED_CUSTOMER_TYPES:
         raise ValueError("invalid_customer_type")
     return normalized
+
+
+def _normalize_customer_segment_category(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    return normalized or None
+
+
+def _normalize_customer_tags(tags: Sequence[str] | None) -> list[str]:
+    if not tags:
+        return []
+    normalized: list[str] = []
+    for tag in tags:
+        if not isinstance(tag, str):
+            continue
+        cleaned = tag.strip().lower()
+        if cleaned and cleaned not in normalized:
+            normalized.append(cleaned)
+    return normalized
+
+
+def _normalize_customer_tax_id(value: str) -> str:
+    normalized = value.strip().upper().replace(" ", "")
+    if len(normalized) < 5:
+        raise ValueError("customer_tax_id_invalid")
+    return normalized
+
+
+def _is_tax_id_integrity_error(error: IntegrityError) -> bool:
+    message = str(getattr(error, "orig", error)).lower()
+    return "rtn" in message or "tax_id" in message or "segmento_etiquetas" in message
 
 
 def _ensure_non_negative_decimal(value: Decimal, error_code: str) -> Decimal:
@@ -4148,6 +4183,8 @@ def list_customers(
     status: str | None = None,
     customer_type: str | None = None,
     has_debt: bool | None = None,
+    segment_category: str | None = None,
+    tags: Sequence[str] | None = None,
 ) -> list[models.Customer]:
     statement = (
         select(models.Customer)
@@ -4163,6 +4200,17 @@ def list_customers(
         normalized_type = _normalize_customer_type(customer_type)
         statement = statement.where(
             models.Customer.customer_type == normalized_type)
+    if segment_category:
+        normalized_category = _normalize_customer_segment_category(segment_category)
+        if normalized_category:
+            statement = statement.where(
+                models.Customer.segment_category == normalized_category
+            )
+    normalized_tags = _normalize_customer_tags(tags)
+    if normalized_tags:
+        tags_column = func.lower(cast(models.Customer.tags, String))
+        for tag in normalized_tags:
+            statement = statement.where(tags_column.like(f'%"{tag}"%'))
     if query:
         normalized = f"%{query.lower()}%"
         statement = statement.where(
@@ -4173,16 +4221,12 @@ def list_customers(
                 func.lower(models.Customer.phone).like(normalized),
                 func.lower(models.Customer.customer_type).like(normalized),
                 func.lower(models.Customer.status).like(normalized),
+                func.lower(func.coalesce(models.Customer.segment_category, "")).like(normalized),
                 func.lower(func.coalesce(models.Customer.notes, "")
                            ).like(normalized),
+                func.lower(cast(models.Customer.tags, String)).like(normalized),
+                func.lower(func.coalesce(models.Customer.tax_id, "")).like(normalized),
             )
-        )
-    if status:
-        statement = statement.where(func.lower(
-            models.Customer.status) == status.lower())
-    if customer_type:
-        statement = statement.where(
-            func.lower(models.Customer.customer_type) == customer_type.lower()
         )
     if has_debt is True:
         statement = statement.where(models.Customer.outstanding_debt > 0)
@@ -4210,6 +4254,11 @@ def create_customer(
         history = _history_to_json(payload.history)
         customer_type = _normalize_customer_type(payload.customer_type)
         status = _normalize_customer_status(payload.status)
+        segment_category = _normalize_customer_segment_category(
+            payload.segment_category
+        )
+        tags = _normalize_customer_tags(payload.tags)
+        tax_id = _normalize_customer_tax_id(payload.tax_id)
         credit_limit = _ensure_non_negative_decimal(
             payload.credit_limit, "customer_credit_limit_negative"
         )
@@ -4225,6 +4274,9 @@ def create_customer(
             address=payload.address,
             customer_type=customer_type,
             status=status,
+            segment_category=segment_category,
+            tags=tags,
+            tax_id=tax_id,
             credit_limit=credit_limit,
             notes=payload.notes,
             history=history,
@@ -4235,6 +4287,8 @@ def create_customer(
         try:
             flush_session(db)
         except IntegrityError as exc:
+            if _is_tax_id_integrity_error(exc):
+                raise ValueError("customer_tax_id_duplicate") from exc
             raise ValueError("customer_already_exists") from exc
         db.refresh(customer)
 
@@ -4244,7 +4298,12 @@ def create_customer(
             entity_type="customer",
             entity_id=str(customer.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"name": customer.name}),
+            details=json.dumps({
+                "name": customer.name,
+                "tax_id": customer.tax_id,
+                "segment_category": customer.segment_category,
+                "tags": customer.tags,
+            }),
         )
         flush_session(db)
         db.refresh(customer)
@@ -4299,6 +4358,20 @@ def update_customer(
             normalized_status = _normalize_customer_status(payload.status)
             customer.status = normalized_status
             updated_fields["status"] = normalized_status
+        if payload.tax_id is not None:
+            normalized_tax_id = _normalize_customer_tax_id(payload.tax_id)
+            customer.tax_id = normalized_tax_id
+            updated_fields["tax_id"] = normalized_tax_id
+        if payload.segment_category is not None:
+            normalized_category = _normalize_customer_segment_category(
+                payload.segment_category
+            )
+            customer.segment_category = normalized_category
+            updated_fields["segment_category"] = normalized_category
+        if payload.tags is not None:
+            normalized_tags = _normalize_customer_tags(payload.tags)
+            customer.tags = normalized_tags
+            updated_fields["tags"] = normalized_tags
         if payload.credit_limit is not None:
             customer.credit_limit = _ensure_non_negative_decimal(
                 payload.credit_limit, "customer_credit_limit_negative"
@@ -4355,7 +4428,12 @@ def update_customer(
                 **pending_ledger_entry_kwargs,
             )
         db.add(customer)
-        flush_session(db)
+        try:
+            flush_session(db)
+        except IntegrityError as exc:
+            if _is_tax_id_integrity_error(exc):
+                raise ValueError("customer_tax_id_duplicate") from exc
+            raise
         db.refresh(customer)
 
         if ledger_entry is not None:
@@ -4415,6 +4493,8 @@ def export_customers_csv(
     query: str | None = None,
     status: str | None = None,
     customer_type: str | None = None,
+    segment_category: str | None = None,
+    tags: Sequence[str] | None = None,
 ) -> str:
     customers = list_customers(
         db,
@@ -4423,6 +4503,8 @@ def export_customers_csv(
         offset=0,
         status=status,
         customer_type=customer_type,
+        segment_category=segment_category,
+        tags=tags,
     )
     buffer = StringIO()
     writer = csv.writer(buffer)
@@ -4432,6 +4514,9 @@ def export_customers_csv(
             "Nombre",
             "Tipo",
             "Estado",
+            "Categoría",
+            "Etiquetas",
+            "RTN",
             "Contacto",
             "Correo",
             "Teléfono",
@@ -4448,6 +4533,9 @@ def export_customers_csv(
                 customer.name,
                 customer.customer_type,
                 customer.status,
+                customer.segment_category or "",
+                ", ".join(customer.tags or []),
+                customer.tax_id,
                 customer.contact_name or "",
                 customer.email or "",
                 customer.phone or "",

@@ -414,6 +414,9 @@ export type Customer = {
   address?: string | null;
   customer_type: string;
   status: string;
+  segment_category?: string | null;
+  tags: string[];
+  tax_id: string;
   credit_limit: number;
   notes?: string | null;
   outstanding_debt: number;
@@ -431,6 +434,9 @@ export type CustomerPayload = {
   address?: string;
   customer_type?: string;
   status?: string;
+  tax_id: string;
+  segment_category?: string;
+  tags?: string[];
   credit_limit?: number;
   notes?: string;
   outstanding_debt?: number;
@@ -4592,6 +4598,8 @@ type CustomerListOptions = {
   hasDebt?: boolean;
   statusFilter?: string;
   customerTypeFilter?: string;
+  segmentCategory?: string;
+  tags?: string[];
 };
 
 export function listCustomers(
@@ -4617,6 +4625,16 @@ export function listCustomers(
   }
   if (options.customerTypeFilter) {
     params.append("customer_type_filter", options.customerTypeFilter);
+  }
+  if (options.segmentCategory) {
+    params.append("segment_category", options.segmentCategory);
+  }
+  if (Array.isArray(options.tags)) {
+    options.tags.forEach((tag) => {
+      if (tag.trim()) {
+        params.append("tags", tag.trim());
+      }
+    });
   }
   const queryString = params.toString();
   return requestCollection<Customer>(`/customers?${queryString}`, { method: "GET" }, token);
@@ -4645,6 +4663,16 @@ export function exportCustomersCsv(
   }
   if (options.customerTypeFilter) {
     params.append("customer_type_filter", options.customerTypeFilter);
+  }
+  if (options.segmentCategory) {
+    params.append("segment_category", options.segmentCategory);
+  }
+  if (Array.isArray(options.tags)) {
+    options.tags.forEach((tag) => {
+      if (tag.trim()) {
+        params.append("tags", tag.trim());
+      }
+    });
   }
   const queryString = params.toString();
   return request<Blob>(
