@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import text
 
 from backend.app.services import accounts_receivable
 from backend.app.config import settings
@@ -66,28 +67,34 @@ def test_accounts_receivable_reminder_dispatch(monkeypatch, client, db_session):
 
     # Marcar el cargo como antiguo para forzar vencimiento
     ledger_entry = db_session.execute(
-        """
-        SELECT id FROM customer_ledger_entries
-        WHERE customer_id = :customer_id AND entry_type = 'sale'
-        ORDER BY created_at ASC LIMIT 1
-        """,
+        text(
+            """
+            SELECT id FROM customer_ledger_entries
+            WHERE customer_id = :customer_id AND entry_type = 'SALE'
+            ORDER BY created_at ASC LIMIT 1
+            """
+        ),
         {"customer_id": customer_id},
     ).scalar_one()
     db_session.execute(
-        """
-        UPDATE customer_ledger_entries
-        SET created_at = :created_at
-        WHERE id = :entry_id
-        """,
+        text(
+            """
+            UPDATE customer_ledger_entries
+            SET created_at = :created_at
+            WHERE id = :entry_id
+            """
+        ),
         {
             "created_at": datetime.utcnow() - timedelta(days=45),
             "entry_id": ledger_entry,
         },
     )
     db_session.execute(
-        """
-        UPDATE clientes SET updated_at = :updated WHERE id_cliente = :cid
-        """,
+        text(
+            """
+            UPDATE clientes SET updated_at = :updated WHERE id_cliente = :cid
+            """
+        ),
         {"updated": datetime.utcnow() - timedelta(days=45), "cid": customer_id},
     )
     db_session.flush()

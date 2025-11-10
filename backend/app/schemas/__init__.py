@@ -1711,6 +1711,23 @@ class CustomerLedgerEntryResponse(BaseModel):
     def _serialize_amount(cls, value: Decimal) -> float:
         return float(value)
 
+    @field_serializer("created_by")
+    @classmethod
+    def _serialize_created_by(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        name = getattr(value, "name", None)
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+        email = getattr(value, "email", None)
+        if isinstance(email, str) and email.strip():
+            return email.strip()
+        identifier = getattr(value, "id_usuario", None) or getattr(value, "id", None)
+        return str(identifier) if identifier is not None else None
+
 
 class StoreCreditRedemptionResponse(BaseModel):
     id: int
