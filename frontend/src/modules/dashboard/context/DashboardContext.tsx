@@ -33,6 +33,7 @@ import {
   getSyncHybridForecast,
   getSyncHybridBreakdown,
   getSyncHybridOverview,
+  getObservabilitySnapshot,
   updateDevice,
 } from "../../../api";
 import { safeArray } from "../../../utils/safeValues"; // [PACK36-dashboard-guards]
@@ -55,6 +56,7 @@ import type {
   SyncHybridOverview,
   SyncStoreHistory,
   UpdateStatus,
+  ObservabilitySnapshot,
 } from "../../../api";
 
 type DashboardContextValue = {
@@ -98,6 +100,9 @@ type DashboardContextValue = {
   syncHybridForecast: SyncHybridForecast | null; // [PACK35-frontend]
   syncHybridBreakdown: SyncHybridModuleBreakdownItem[]; // [PACK35-frontend]
   syncHybridOverview: SyncHybridOverview | null; // [PACK35-frontend]
+  observability: ObservabilitySnapshot | null;
+  observabilityError: string | null;
+  observabilityLoading: boolean;
   currentUser: UserAccount | null;
   syncHistory: SyncStoreHistory[];
   syncHistoryError: string | null;
@@ -122,6 +127,7 @@ type DashboardContextValue = {
   refreshOutboxStats: () => Promise<void>;
   refreshSyncQueueSummary: () => Promise<void>;
   refreshSyncHistory: () => Promise<void>;
+  refreshObservability: () => Promise<void>;
   toasts: ToastMessage[];
   pushToast: (toast: Omit<ToastMessage, "id">) => void;
   dismissToast: (id: number) => void;
@@ -194,6 +200,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     useState<SyncHybridModuleBreakdownItem[]>([]); // [PACK35-frontend]
   const [syncHybridOverview, setSyncHybridOverview] =
     useState<SyncHybridOverview | null>(null); // [PACK35-frontend]
+  const [observability, setObservability] = useState<ObservabilitySnapshot | null>(null);
+  const [observabilityError, setObservabilityError] = useState<string | null>(null);
+  const [observabilityLoading, setObservabilityLoading] = useState(false);
   const [syncHistory, setSyncHistory] = useState<SyncStoreHistory[]>([]);
   const [syncHistoryError, setSyncHistoryError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -406,6 +415,10 @@ export function DashboardProvider({ token, children }: ProviderProps) {
 
     loadDevices();
   }, [friendlyErrorMessage, pushToast, selectedStoreId, token]);
+
+  useEffect(() => {
+    void refreshObservability();
+  }, [refreshObservability]);
 
   useEffect(() => {
     const loadOutbox = async () => {
@@ -778,6 +791,23 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }
   }, [friendlyErrorMessage, token]);
 
+  const refreshObservability = useCallback(async () => {
+    setObservabilityLoading(true);
+    try {
+      const snapshot = await getObservabilitySnapshot(token);
+      setObservability(snapshot);
+      setObservabilityError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No se pudo consultar el estado de observabilidad";
+      setObservabilityError(friendlyErrorMessage(message));
+    } finally {
+      setObservabilityLoading(false);
+    }
+  }, [friendlyErrorMessage, token]);
+
   const refreshOutbox = useCallback(async () => {
     if (!enableHybridPrep) {
       setOutbox([]);
@@ -965,6 +995,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       syncHybridForecast,
       syncHybridBreakdown,
       syncHybridOverview,
+      observability,
+      observabilityError,
+      observabilityLoading,
       currentUser,
       syncHistory,
       syncHistoryError,
@@ -988,6 +1021,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       refreshOutboxStats,
       refreshSyncQueueSummary,
       refreshSyncHistory,
+      refreshObservability,
       toasts,
       pushToast,
       dismissToast,
@@ -1014,6 +1048,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableTransfers,
       enableTwoFactor,
       enableDte,
+      observability,
+      observabilityError,
+      observabilityLoading,
       error,
       formatCurrency,
       globalSearchTerm,
@@ -1044,6 +1081,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       refreshOutboxStats,
       refreshSummary,
       refreshSyncHistory,
+      refreshObservability,
       releaseHistory,
       selectedStore,
       selectedStoreId,

@@ -2554,6 +2554,58 @@ export type GlobalReportSeriesPoint = {
   system_errors: number;
 };
 
+export type ObservabilityLatencySample = {
+  entity_type: string;
+  pending: number;
+  failed: number;
+  oldest_pending_seconds: number | null;
+  latest_update: string | null;
+};
+
+export type ObservabilityLatencySummary = {
+  average_seconds: number | null;
+  percentile_95_seconds: number | null;
+  max_seconds: number | null;
+  samples: ObservabilityLatencySample[];
+};
+
+export type ObservabilityErrorSummary = {
+  total_logs: number;
+  total_errors: number;
+  info: number;
+  warning: number;
+  error: number;
+  critical: number;
+  latest_error_at: string | null;
+};
+
+export type ObservabilitySyncSummary = {
+  outbox_stats: SyncOutboxStatsEntry[];
+  total_pending: number;
+  total_failed: number;
+  hybrid_progress: SyncHybridProgress | null;
+};
+
+export type ObservabilityNotification = {
+  id: string;
+  title: string;
+  message: string;
+  severity: SystemLogLevel;
+  occurred_at: string | null;
+  reference: string | null;
+};
+
+export type ObservabilitySnapshot = {
+  generated_at: string;
+  latency: ObservabilityLatencySummary;
+  errors: ObservabilityErrorSummary;
+  sync: ObservabilitySyncSummary;
+  logs: GlobalReportLogEntry[];
+  system_errors: GlobalReportErrorEntry[];
+  alerts: GlobalReportAlert[];
+  notifications: ObservabilityNotification[];
+};
+
 export type GlobalReportDashboard = {
   generated_at: string;
   filters: GlobalReportFiltersState;
@@ -7029,6 +7081,10 @@ export function retrySyncOutbox(token: string, ids: number[], reason: string): P
 
 export function getSyncOutboxStats(token: string): Promise<SyncOutboxStatsEntry[]> {
   return requestCollection<SyncOutboxStatsEntry>("/sync/outbox/stats", { method: "GET" }, token);
+}
+
+export function getObservabilitySnapshot(token: string): Promise<ObservabilitySnapshot> {
+  return request<ObservabilitySnapshot>("/admin/observability", { method: "GET" }, token);
 }
 
 export function getSyncQueueSummary(token: string): Promise<SyncQueueSummary> {

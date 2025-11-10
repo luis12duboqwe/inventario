@@ -46,6 +46,7 @@ from .routers import (
     inventory_counts,
     loyalty,
     monitoring,
+    observability_admin,
     operations,
     price_lists,
     payments,
@@ -587,6 +588,7 @@ def create_app() -> FastAPI:
         security_router.router,
         system_logs.router,
         monitoring.router,
+        observability_admin.router,
         audit.router,
         audit_ui.router,
         wms_bins.router,  # Los handlers verifican el flag y devuelven 404 cuando está desactivado.
