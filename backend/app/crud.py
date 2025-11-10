@@ -19,6 +19,8 @@ from io import StringIO
 from typing import Any, Literal
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from passlib.context import CryptContext
 from sqlalchemy import and_, case, cast, desc, func, literal, or_, select, tuple_, String
 from sqlalchemy.exc import IntegrityError, NoResultFound
@@ -229,6 +231,22 @@ def _to_decimal(value: Decimal | float | int | None) -> Decimal:
     return Decimal(str(value))
 
 
+def _get_supplier_by_name(
+    db: Session, supplier_name: str | None
+) -> models.Supplier | None:
+    if not supplier_name:
+        return None
+    normalized = supplier_name.strip().lower()
+    if not normalized:
+        return None
+    statement = (
+        select(models.Supplier)
+        .where(func.lower(models.Supplier.name) == normalized)
+        .limit(1)
+    )
+    return db.scalars(statement).first()
+
+
 def _quantize_currency(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -387,6 +405,7 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "repair_order": models.SyncOutboxPriority.NORMAL,
     "customer": models.SyncOutboxPriority.NORMAL,
     "customer_ledger_entry": models.SyncOutboxPriority.NORMAL,
+    "supplier_ledger_entry": models.SyncOutboxPriority.NORMAL,
     "pos_config": models.SyncOutboxPriority.NORMAL,
     "supplier": models.SyncOutboxPriority.NORMAL,
     "cash_session": models.SyncOutboxPriority.NORMAL,
@@ -419,6 +438,7 @@ _SYSTEM_MODULE_MAP: dict[str, str] = {
     "auth": "usuarios",
     "store": "inventario",
     "customer": "clientes",
+    "supplier_ledger_entry": "proveedores",
     "supplier": "proveedores",
     "transfer_order": "inventario",
     "purchase_order": "compras",
@@ -1783,6 +1803,48 @@ def _history_to_json(
     return normalized
 
 
+def _contacts_to_json(
+    contacts: list[schemas.SupplierContact] | list[dict[str, object]] | None,
+) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
+    if not contacts:
+        return normalized
+    for contact in contacts:
+        if isinstance(contact, schemas.SupplierContact):
+            payload = contact.model_dump(exclude_none=True)
+        elif isinstance(contact, Mapping):
+            payload = {
+                key: value
+                for key, value in contact.items()
+                if isinstance(key, str)
+            }
+        else:
+            continue
+        record: dict[str, object] = {}
+        for key in ("name", "position", "email", "phone", "notes"):
+            value = payload.get(key)
+            if isinstance(value, str):
+                value = value.strip()
+            if value:
+                record[key] = value
+        if record:
+            normalized.append(record)
+    return normalized
+
+
+def _products_to_json(products: Sequence[str] | None) -> list[str]:
+    if not products:
+        return []
+    normalized: list[str] = []
+    for product in products:
+        text = (product or "").strip()
+        if not text:
+            continue
+        if text not in normalized:
+            normalized.append(text)
+    return normalized
+
+
 def _last_history_timestamp(history: list[dict[str, object]]) -> datetime | None:
     timestamps = []
     for entry in history:
@@ -1934,6 +1996,22 @@ def _customer_ledger_payload(entry: models.CustomerLedgerEntry) -> dict[str, obj
     }
 
 
+def _supplier_ledger_payload(entry: models.SupplierLedgerEntry) -> dict[str, object]:
+    return {
+        "id": entry.id,
+        "supplier_id": entry.supplier_id,
+        "entry_type": entry.entry_type.value,
+        "reference_type": entry.reference_type,
+        "reference_id": entry.reference_id,
+        "amount": float(entry.amount),
+        "balance_after": float(entry.balance_after),
+        "note": entry.note,
+        "details": entry.details,
+        "created_at": entry.created_at.isoformat(),
+        "created_by_id": entry.created_by_id,
+    }
+
+
 def _create_customer_ledger_entry(
     db: Session,
     *,
@@ -1954,6 +2032,36 @@ def _create_customer_ledger_entry(
         amount=_to_decimal(amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP),
         balance_after=_to_decimal(customer.outstanding_debt).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        ),
+        note=note,
+        details=details or {},
+        created_by_id=created_by_id,
+    )
+    db.add(entry)
+    flush_session(db)
+    return entry
+
+
+def _create_supplier_ledger_entry(
+    db: Session,
+    *,
+    supplier: models.Supplier,
+    entry_type: models.SupplierLedgerEntryType,
+    amount: Decimal,
+    note: str | None = None,
+    reference_type: str | None = None,
+    reference_id: str | None = None,
+    details: dict[str, object] | None = None,
+    created_by_id: int | None = None,
+) -> models.SupplierLedgerEntry:
+    entry = models.SupplierLedgerEntry(
+        supplier_id=supplier.id,
+        entry_type=entry_type,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        amount=_to_decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        balance_after=_to_decimal(supplier.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         ),
         note=note,
@@ -2942,6 +3050,19 @@ def _sync_customer_ledger_entry(db: Session, entry: models.CustomerLedgerEntry) 
             entity_id=str(entry.id),
             operation="UPSERT",
             payload=_customer_ledger_payload(entry),
+        )
+
+
+def _sync_supplier_ledger_entry(db: Session, entry: models.SupplierLedgerEntry) -> None:
+    with transactional_session(db):
+        db.refresh(entry)
+        db.refresh(entry, attribute_names=["created_by"])
+        enqueue_sync_outbox(
+            db,
+            entity_type="supplier_ledger_entry",
+            entity_id=str(entry.id),
+            operation="UPSERT",
+            payload=_supplier_ledger_payload(entry),
         )
 
 
@@ -6304,6 +6425,10 @@ def list_suppliers(
                 func.lower(models.Supplier.name).like(normalized),
                 func.lower(models.Supplier.contact_name).like(normalized),
                 func.lower(models.Supplier.email).like(normalized),
+                func.lower(models.Supplier.phone).like(normalized),
+                func.lower(models.Supplier.rtn).like(normalized),
+                func.lower(models.Supplier.payment_terms).like(normalized),
+                func.lower(models.Supplier.notes).like(normalized),
             )
         )
     return list(db.scalars(statement))
@@ -6327,13 +6452,17 @@ def create_supplier(
     history = _history_to_json(payload.history)
     supplier = models.Supplier(
         name=payload.name,
+        rtn=payload.rtn,
+        payment_terms=payload.payment_terms,
         contact_name=payload.contact_name,
         email=payload.email,
         phone=payload.phone,
+        contact_info=_contacts_to_json(payload.contact_info),
         address=payload.address,
         notes=payload.notes,
         history=history,
         outstanding_debt=_to_decimal(payload.outstanding_debt),
+        products_supplied=_products_to_json(payload.products_supplied),
     )
     try:
         with transactional_session(db):
@@ -6367,6 +6496,12 @@ def update_supplier(
     if payload.name is not None:
         supplier.name = payload.name
         updated_fields["name"] = payload.name
+    if payload.rtn is not None:
+        supplier.rtn = payload.rtn
+        updated_fields["rtn"] = payload.rtn
+    if payload.payment_terms is not None:
+        supplier.payment_terms = payload.payment_terms
+        updated_fields["payment_terms"] = payload.payment_terms
     if payload.contact_name is not None:
         supplier.contact_name = payload.contact_name
         updated_fields["contact_name"] = payload.contact_name
@@ -6389,6 +6524,14 @@ def update_supplier(
         history = _history_to_json(payload.history)
         supplier.history = history
         updated_fields["history"] = history
+    if payload.contact_info is not None:
+        contacts = _contacts_to_json(payload.contact_info)
+        supplier.contact_info = contacts
+        updated_fields["contact_info"] = contacts
+    if payload.products_supplied is not None:
+        products = _products_to_json(payload.products_supplied)
+        supplier.products_supplied = products
+        updated_fields["products_supplied"] = products
     with transactional_session(db):
         db.add(supplier)
         flush_session(db)
@@ -7171,25 +7314,188 @@ def export_suppliers_csv(
     writer.writerow([
         "ID",
         "Nombre",
+        "RTN",
+        "Términos de pago",
         "Contacto",
+        "Cargo contacto",
         "Correo",
         "Teléfono",
         "Dirección",
         "Deuda",
+        "Productos suministrados",
     ])
     for supplier in suppliers:
+        contact_entry: Mapping[str, object] | None = None
+        if supplier.contact_info:
+            first_entry = supplier.contact_info[0]
+            if isinstance(first_entry, Mapping):
+                contact_entry = first_entry
         writer.writerow(
             [
                 supplier.id,
                 supplier.name,
-                supplier.contact_name or "",
+                supplier.rtn or "",
+                supplier.payment_terms or "",
+                (contact_entry.get("name") if contact_entry else supplier.contact_name or ""),
+                (contact_entry.get("position") if contact_entry else ""),
                 supplier.email or "",
                 supplier.phone or "",
                 supplier.address or "",
                 float(supplier.outstanding_debt),
+                ", ".join(_products_to_json(supplier.products_supplied)),
             ]
         )
     return buffer.getvalue()
+
+
+def get_suppliers_accounts_payable(
+    db: Session,
+) -> schemas.SupplierAccountsPayableResponse:
+    suppliers = list(
+        db.scalars(select(models.Supplier).order_by(models.Supplier.name.asc()))
+    )
+
+    bucket_defs: list[tuple[str, int, int | None]] = [
+        ("0-30 días", 0, 30),
+        ("31-60 días", 31, 60),
+        ("61-90 días", 61, 90),
+        ("90+ días", 91, None),
+    ]
+    bucket_totals: list[dict[str, object]] = [
+        {"label": label, "from": start, "to": end, "amount": Decimal("0.00"), "count": 0}
+        for label, start, end in bucket_defs
+    ]
+
+    total_balance = Decimal("0.00")
+    total_overdue = Decimal("0.00")
+    items: list[schemas.SupplierAccountsPayableSupplier] = []
+    today = datetime.utcnow().date()
+
+    for supplier in suppliers:
+        balance = _to_decimal(supplier.outstanding_debt).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        history = (
+            supplier.history
+            if isinstance(supplier.history, list)
+            else []
+        )
+        last_history = _last_history_timestamp(history)
+        last_activity = last_history or supplier.updated_at or supplier.created_at
+
+        days_outstanding = 0
+        if last_activity is not None:
+            days_outstanding = max(
+                (today - last_activity.date()).days,
+                0,
+            )
+
+        bucket_index = 0
+        for idx, (_, start, end) in enumerate(bucket_defs):
+            if end is None or days_outstanding <= end:
+                if end is None or days_outstanding >= start:
+                    bucket_index = idx
+                    break
+
+        bucket = bucket_totals[bucket_index]
+        bucket["amount"] = _to_decimal(bucket["amount"]) + balance  # type: ignore[index]
+        if balance > Decimal("0"):
+            bucket["count"] = int(bucket["count"]) + 1  # type: ignore[index]
+
+        total_balance += balance
+        if days_outstanding > 30:
+            total_overdue += balance
+
+        contact_name = supplier.contact_name
+        contact_email = supplier.email
+        contact_phone = supplier.phone
+        sanitized_contacts = _contacts_to_json(
+            supplier.contact_info
+            if isinstance(supplier.contact_info, list)
+            else []
+        )
+        if sanitized_contacts:
+            primary = sanitized_contacts[0]
+            if isinstance(primary, Mapping):
+                contact_name = (primary.get("name") or contact_name) if contact_name else primary.get("name")
+                contact_email = (
+                    primary.get("email") or contact_email
+                ) if contact_email else primary.get("email")
+                contact_phone = (
+                    primary.get("phone") or contact_phone
+                ) if contact_phone else primary.get("phone")
+
+        contact_schemas: list[schemas.SupplierContact] = []
+        for entry in sanitized_contacts:
+            try:
+                contact_schemas.append(schemas.SupplierContact.model_validate(entry))
+            except ValidationError:
+                continue
+
+        products = _products_to_json(
+            supplier.products_supplied
+            if isinstance(supplier.products_supplied, Sequence)
+            else []
+        )
+
+        items.append(
+            schemas.SupplierAccountsPayableSupplier(
+                supplier_id=supplier.id,
+                supplier_name=supplier.name,
+                rtn=supplier.rtn,
+                payment_terms=supplier.payment_terms,
+                outstanding_debt=float(balance),
+                bucket_label=bucket_defs[bucket_index][0],
+                bucket_from=bucket_defs[bucket_index][1],
+                bucket_to=bucket_defs[bucket_index][2],
+                days_outstanding=days_outstanding,
+                last_activity=last_activity,
+                contact_name=contact_name,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
+                products_supplied=products,
+                contact_info=contact_schemas,
+            )
+        )
+
+    aging_buckets: list[schemas.SupplierAccountsPayableBucket] = []
+    for bucket_data, (label, start, end) in zip(bucket_totals, bucket_defs):
+        amount_decimal = _to_decimal(bucket_data["amount"])  # type: ignore[index]
+        percentage = 0.0
+        if total_balance > Decimal("0"):
+            percentage = float(
+                (amount_decimal / total_balance * Decimal("100"))
+                .quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            )
+        aging_buckets.append(
+            schemas.SupplierAccountsPayableBucket(
+                label=label,
+                days_from=start,
+                days_to=end,
+                amount=float(
+                    amount_decimal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                ),
+                percentage=percentage,
+                count=int(bucket_data["count"]),  # type: ignore[index]
+            )
+        )
+
+    summary = schemas.SupplierAccountsPayableSummary(
+        total_balance=float(total_balance.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        total_overdue=float(total_overdue.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        supplier_count=len(suppliers),
+        generated_at=datetime.utcnow(),
+        buckets=aging_buckets,
+    )
+
+    return schemas.SupplierAccountsPayableResponse(
+        summary=summary,
+        suppliers=sorted(
+            items,
+            key=lambda item: (item.bucket_from, -item.outstanding_debt, item.supplier_name.lower()),
+        ),
+    )
 
 
 def get_store(db: Session, store_id: int) -> models.Store:
@@ -13690,6 +13996,61 @@ def cancel_purchase_order(
     return order
 
 
+def _register_supplier_credit_note(
+    db: Session,
+    *,
+    supplier_name: str | None,
+    purchase_order_id: int,
+    credit_amount: Decimal,
+    corporate_reason: str | None,
+    processed_by_id: int | None,
+) -> models.SupplierLedgerEntry | None:
+    supplier = _get_supplier_by_name(db, supplier_name)
+    if supplier is None:
+        return None
+
+    normalized_amount = _to_decimal(credit_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if normalized_amount <= Decimal("0"):
+        return None
+
+    current_debt = _to_decimal(supplier.outstanding_debt).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    new_debt = (current_debt - normalized_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if new_debt < Decimal("0"):
+        new_debt = Decimal("0")
+
+    supplier.outstanding_debt = new_debt
+    db.add(supplier)
+    flush_session(db)
+
+    details: dict[str, object] = {
+        "source": "purchase_return",
+        "purchase_order_id": purchase_order_id,
+        "credit_amount": float(normalized_amount),
+    }
+    if corporate_reason:
+        details["corporate_reason"] = corporate_reason
+
+    entry = _create_supplier_ledger_entry(
+        db,
+        supplier=supplier,
+        entry_type=models.SupplierLedgerEntryType.CREDIT_NOTE,
+        amount=-normalized_amount,
+        note=corporate_reason,
+        reference_type="purchase_return",
+        reference_id=str(purchase_order_id),
+        details=details,
+        created_by_id=processed_by_id,
+    )
+    _sync_supplier_ledger_entry(db, entry)
+    return entry
+
+
 def register_purchase_return(
     db: Session,
     order_id: int,
@@ -13725,6 +14086,11 @@ def register_purchase_return(
             warehouse_store = get_store(db, warehouse_id)
     if device.quantity < payload.quantity:
         raise ValueError("purchase_return_insufficient_stock")
+    unit_cost = _to_decimal(order_item.unit_cost)
+    credit_note_amount = (
+        unit_cost * _to_decimal(payload.quantity)
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    corporate_reason = reason.strip() if isinstance(reason, str) else None
     with transactional_session(db):
         movement_reason = payload.reason or reason
         if movement_reason:
@@ -13758,6 +14124,15 @@ def register_purchase_return(
             reference_id=str(order.id),
         )
 
+        ledger_entry = _register_supplier_credit_note(
+            db,
+            supplier_name=order.supplier,
+            purchase_order_id=order.id,
+            credit_amount=credit_note_amount,
+            corporate_reason=corporate_reason,
+            processed_by_id=processed_by_id,
+        )
+
         purchase_return = models.PurchaseReturn(
             purchase_order_id=order.id,
             device_id=device.id,
@@ -13767,6 +14142,9 @@ def register_purchase_return(
             disposition=disposition,
             warehouse_id=warehouse_id,
             processed_by_id=processed_by_id,
+            corporate_reason=corporate_reason,
+            credit_note_amount=credit_note_amount,
+            supplier_ledger_entry_id=ledger_entry.id if ledger_entry else None,
         )
         db.add(purchase_return)
         flush_session(db)
@@ -13784,6 +14162,7 @@ def register_purchase_return(
                     "quantity": payload.quantity,
                     "return_reason": payload.reason,
                     "request_reason": reason,
+                    "credit_note_amount": float(credit_note_amount),
                 }
             ),
         )
