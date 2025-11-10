@@ -48,6 +48,12 @@ function GlobalMetrics() {
     open_repairs: 0,
     gross_profit: 0,
   };
+  const salesInsights = metrics?.sales_insights ?? {
+    average_ticket: 0,
+    top_products: [],
+    top_customers: [],
+    payment_mix: [],
+  };
   const receivables = metrics?.accounts_receivable ?? {
     total_outstanding_debt: 0,
     customers_with_debt: 0,
@@ -103,6 +109,20 @@ function GlobalMetrics() {
     available_credit?: number | null;
   };
   const topDebtors = safeArray(receivables.top_debtors) as ReceivableCustomer[];
+  type SalesMetric = {
+    label: string;
+    value: number;
+    quantity?: number | null;
+    percentage?: number | null;
+  };
+  const topProducts = safeArray(salesInsights.top_products) as SalesMetric[];
+  const topCustomers = safeArray(salesInsights.top_customers) as SalesMetric[];
+  const paymentMix = safeArray(salesInsights.payment_mix).map((entry) => ({
+    label: safeString((entry as SalesMetric).label, "Método"),
+    value: safeNumber((entry as SalesMetric).value),
+    quantity: (entry as SalesMetric).quantity ?? null,
+    percentage: safeNumber((entry as SalesMetric).percentage ?? 0),
+  }));
   const receivableCaption = receivableCustomers > 0
     ? `${receivableCustomers} clientes con saldo${receivableMorosos > 0 ? ` · ${receivableMorosos} morosos` : ""}`
     : "Sin cuentas por cobrar activas";
@@ -182,6 +202,7 @@ function GlobalMetrics() {
     return profit.length > 0 ? profit : (stockBreakdown as Slice[]);
   }, [metrics?.profit_breakdown, stockBreakdown]);
   const repairMix = safeArray(metrics?.repair_mix);
+  const averageTicket = formatCurrency(safeNumber(salesInsights.average_ticket));
   type AcknowledgedEntity = {
     entity_type: string;
     entity_id: string | number;
@@ -390,68 +411,155 @@ function GlobalMetrics() {
               )}
             </article>
 
-            <article className="chart-card">
+            <article className="chart-card sales-ranking-card">
               <header>
-                <h3>Inventario por tienda</h3>
-                <span className="chart-caption">Unidades registradas</span>
+                <h3>Ranking de ventas</h3>
+                <span className="chart-caption">Top productos y clientes</span>
               </header>
-              {stockBreakdown.length === 0 ? (
-                <p className="muted-text">No hay tiendas registradas.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={stockBreakdown}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" />
-                    <XAxis dataKey="label" stroke="var(--text-secondary)" />
-                    <YAxis stroke="var(--text-secondary)" />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="value" fill={colors.chartIndigo} name="Unidades" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+              <div className="ranking-grid">
+                <div className="ranking-chart">
+                  <h4>Top productos</h4>
+                  {topProducts.length === 0 ? (
+                    <p className="muted-text">Aún no hay productos destacados por ventas.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={topProducts} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" />
+                        <XAxis
+                          type="number"
+                          stroke="var(--text-secondary)"
+                          tickFormatter={(value) => formatCurrency(value).replace("MX$", "")}
+                        />
+                        <YAxis type="category" dataKey="label" stroke="var(--text-secondary)" width={140} />
+                        <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                        <Legend />
+                        <Bar dataKey="value" fill={colors.chartCyan} name="Ingresos" radius={[6, 6, 6, 6]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+                <div className="ranking-list-wrapper">
+                  <h4>Top clientes</h4>
+                  {topCustomers.length === 0 ? (
+                    <p className="muted-text">Sin clientes destacados por ventas en este periodo.</p>
+                  ) : (
+                    <ul className="sales-ranking-list">
+                      {topCustomers.map((customer, index) => {
+                        const ordersCount = safeNumber(customer.quantity ?? 0);
+                        return (
+                          <li key={`${customer.label}-${index}`}>
+                            <span className="ranking-position">#{index + 1}</span>
+                            <div className="ranking-details">
+                              <span className="ranking-name">{safeString(customer.label, "Cliente")}</span>
+                              <span className="ranking-amount">{formatCurrency(safeNumber(customer.value))}</span>
+                              <span className="ranking-orders">{ordersCount.toLocaleString("es-MX")} órdenes</span>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
             </article>
 
-            <article className="chart-card">
+            <article className="chart-card dual-chart-card">
               <header>
-                <h3>Distribución de ganancias</h3>
-                <span className="chart-caption">Participación por tienda</span>
+                <h3>Inventario y ganancias</h3>
+                <span className="chart-caption">Panorama consolidado por tienda</span>
               </header>
-              {profitSlices.length === 0 ? (
-                <p className="muted-text">No hay registros de ganancias para graficar.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    <Legend />
-                    <Pie data={profitSlices} dataKey="value" nameKey="label" innerRadius={60} outerRadius={90} paddingAngle={4}>
-                      {profitSlices.map((entry, index) => (
-                        <Cell key={entry.label} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
+              <div className="dual-chart-grid">
+                <div className="chart-panel">
+                  <h4>Inventario por tienda</h4>
+                  {stockBreakdown.length === 0 ? (
+                    <p className="muted-text">No hay tiendas registradas.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={stockBreakdown}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" />
+                        <XAxis dataKey="label" stroke="var(--text-secondary)" />
+                        <YAxis stroke="var(--text-secondary)" />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="value" fill={colors.chartIndigo} name="Unidades" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+                <div className="chart-panel">
+                  <h4>Distribución de ganancias</h4>
+                  {profitSlices.length === 0 ? (
+                    <p className="muted-text">No hay registros de ganancias para graficar.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                        <Legend />
+                        <Pie data={profitSlices} dataKey="value" nameKey="label" innerRadius={60} outerRadius={90} paddingAngle={4}>
+                          {profitSlices.map((entry, index) => (
+                            <Cell key={entry.label} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
             </article>
 
-            <article className="chart-card">
+            <article className="chart-card operations-health-card">
               <header>
-                <h3>Estado de reparaciones</h3>
-                <span className="chart-caption">Resumen global</span>
+                <h3>Salud de operaciones</h3>
+                <span className="chart-caption">Pagos, ticket promedio y reparaciones</span>
               </header>
-              {repairMix.length === 0 ? (
-                <p className="muted-text">Sin órdenes de reparación registradas.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={repairMix}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" />
-                    <XAxis dataKey="label" stroke="var(--text-secondary)" />
-                    <YAxis stroke="var(--text-secondary)" />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="value" fill={colors.accentBright} name="Órdenes" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+              <div className="operations-summary">
+                <div>
+                  <span className="summary-label">Ticket promedio</span>
+                  <span className="ticket-value">{averageTicket}</span>
+                </div>
+              </div>
+              <div className="operations-charts">
+                <div className="chart-panel">
+                  <h4>Pagos crédito vs contado</h4>
+                  {paymentMix.length === 0 || paymentMix.every((entry) => entry.value === 0) ? (
+                    <p className="muted-text">Sin operaciones registradas para este periodo.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Tooltip
+                          formatter={(value: number, _name, payload) => {
+                            const percentage = safeNumber((payload as { payload?: SalesMetric })?.payload?.percentage ?? 0);
+                            return `${formatCurrency(value)} · ${percentage.toFixed(2)}%`;
+                          }}
+                        />
+                        <Legend />
+                        <Pie data={paymentMix} dataKey="value" nameKey="label" innerRadius={55} outerRadius={85} paddingAngle={4}>
+                          {paymentMix.map((entry, index) => (
+                            <Cell key={entry.label} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+                <div className="chart-panel">
+                  <h4>Estado de reparaciones</h4>
+                  {repairMix.length === 0 ? (
+                    <p className="muted-text">Sin órdenes de reparación registradas.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={repairMix}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.2)" />
+                        <XAxis dataKey="label" stroke="var(--text-secondary)" />
+                        <YAxis stroke="var(--text-secondary)" />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="value" fill={colors.accentBright} name="Órdenes" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
             </article>
           </div>
         </>

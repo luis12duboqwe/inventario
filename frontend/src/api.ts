@@ -2445,6 +2445,20 @@ export type DashboardReceivableMetrics = {
   top_debtors: DashboardReceivableCustomer[];
 };
 
+export type DashboardSalesEntityMetric = {
+  label: string;
+  value: number;
+  quantity?: number | null;
+  percentage?: number | null;
+};
+
+export type DashboardSalesInsights = {
+  average_ticket: number;
+  top_products: DashboardSalesEntityMetric[];
+  top_customers: DashboardSalesEntityMetric[];
+  payment_mix: DashboardSalesEntityMetric[];
+};
+
 export type AuditHighlight = {
   id: number;
   action: string;
@@ -2669,6 +2683,7 @@ export type InventoryMetrics = {
     open_repairs: number;
     gross_profit: number;
   };
+  sales_insights: DashboardSalesInsights;
   accounts_receivable: DashboardReceivableMetrics;
   sales_trend: DashboardPoint[];
   stock_breakdown: DashboardPoint[];

@@ -9968,6 +9968,7 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         .options(
             joinedload(models.Sale.items).joinedload(models.SaleItem.device),
             joinedload(models.Sale.store),
+            joinedload(models.Sale.customer),
         )
         .order_by(models.Sale.created_at.desc())
     )
@@ -9981,6 +9982,10 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
     sales_count = len(sales)
     sales_trend_map: dict[date, Decimal] = defaultdict(lambda: Decimal("0"))
     store_profit: dict[int, dict[str, object]] = {}
+    product_ranking: dict[int, dict[str, object]] = {}
+    customer_ranking: dict[tuple[int | None, str], dict[str, object]] = {}
+    credit_total = Decimal("0")
+    cash_total = Decimal("0")
 
     today = datetime.utcnow().date()
     window_days = [today - timedelta(days=delta) for delta in range(6, -1, -1)]
@@ -9997,6 +10002,12 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         profit = (sale.total_amount -
                   sale_cost).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         total_profit += profit
+
+        payment_method = getattr(sale, "payment_method", None)
+        if payment_method == models.PaymentMethod.CREDITO:
+            credit_total += sale.total_amount
+        else:
+            cash_total += sale.total_amount
 
         store_data = store_profit.setdefault(
             sale.store_id,
@@ -10015,6 +10026,39 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         sale_day = sale.created_at.date()
         if sale_day in window_set:
             sales_trend_map[sale_day] += sale.total_amount
+
+        for item in sale.items:
+            product_entry = product_ranking.setdefault(
+                item.device_id,
+                {
+                    "label": (
+                        getattr(item.device, "name", None)
+                        or getattr(item.device, "sku", None)
+                        or "Producto"
+                    ),
+                    "revenue": Decimal("0"),
+                    "quantity": 0,
+                },
+            )
+            product_entry["revenue"] += item.total_line
+            product_entry["quantity"] += item.quantity
+
+        customer_label = (
+            sale.customer_name
+            or (sale.customer.full_name if getattr(sale, "customer", None) and sale.customer.full_name else None)
+            or (sale.customer.username if getattr(sale, "customer", None) and getattr(sale.customer, "username", None) else None)
+            or "Venta de mostrador"
+        )
+        customer_entry = customer_ranking.setdefault(
+            (sale.customer_id, customer_label),
+            {
+                "label": customer_label,
+                "revenue": Decimal("0"),
+                "orders": 0,
+            },
+        )
+        customer_entry["revenue"] += sale.total_amount
+        customer_entry["orders"] += 1
 
     repair_status_counts: dict[str, int] = defaultdict(int)
     open_repairs = 0
@@ -10091,6 +10135,58 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         "moroso_flagged": int(receivable_row.moroso_flagged or 0),
         "top_debtors": top_debtors,
     }
+
+    average_ticket = (
+        (total_sales_amount / sales_count).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if sales_count > 0
+        else Decimal("0")
+    )
+    ranked_products = sorted(
+        (
+            {
+                "label": entry["label"],
+                "value": float(entry["revenue"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                "quantity": int(entry["quantity"]),
+            }
+            for entry in product_ranking.values()
+        ),
+        key=lambda item: (item["value"], item["quantity"]),
+        reverse=True,
+    )[:5]
+    ranked_customers = sorted(
+        (
+            {
+                "label": entry["label"],
+                "value": float(entry["revenue"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                "quantity": int(entry["orders"]),
+            }
+            for entry in customer_ranking.values()
+        ),
+        key=lambda item: (item["value"], item["quantity"]),
+        reverse=True,
+    )[:5]
+
+    total_payments = (credit_total + cash_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    def _payment_share(amount: Decimal) -> float:
+        if total_payments == 0:
+            return 0.0
+        percentage = (amount / total_payments * Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return float(percentage)
+
+    payment_mix = [
+        {
+            "label": "Crédito",
+            "value": float(credit_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+            "percentage": _payment_share(credit_total),
+        },
+        {
+            "label": "Contado",
+            "value": float(cash_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+            "percentage": _payment_share(cash_total),
+        },
+    ]
 
     audit_logs_stmt = (
         select(models.AuditLog)
@@ -10223,6 +10319,12 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
             "total_stock": total_units,
             "open_repairs": open_repairs,
             "gross_profit": float(total_profit),
+        },
+        "sales_insights": {
+            "average_ticket": float(average_ticket),
+            "top_products": ranked_products,
+            "top_customers": ranked_customers,
+            "payment_mix": payment_mix,
         },
         "accounts_receivable": accounts_receivable,
         "sales_trend": sales_trend,
