@@ -769,6 +769,94 @@ def test_pos_hardware_channels_and_drawer(client):
         settings.enable_purchases_sales = original_flag
 
 
+def test_pos_fiscal_printer_prints_sequence(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Configurar fiscal"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Fiscal POS", "location": "CDMX", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        config_payload = {
+            "store_id": store_id,
+            "tax_rate": 16.0,
+            "invoice_prefix": "FISCAL",
+            "printer_name": "TM-Default",
+            "printer_profile": "USB",
+            "quick_product_ids": [],
+            "hardware_settings": {
+                "printers": [
+                    {
+                        "name": "TM-Default",
+                        "mode": "thermal",
+                        "is_default": True,
+                        "connector": {"type": "usb", "identifier": "TM-Default"},
+                    },
+                    {
+                        "name": "HASAR-01",
+                        "mode": "fiscal",
+                        "connector": {
+                            "type": "network",
+                            "identifier": "HASAR-01",
+                            "host": "192.168.1.50",
+                            "port": 9100,
+                        },
+                        "fiscal_profile": {
+                            "adapter": "hasar",
+                            "taxpayer_id": "RTN123456789",
+                            "serial_number": "H001-XYZ",
+                            "model": "PR5F",
+                            "document_type": "ticket",
+                            "extra_settings": {"caja": "1"},
+                        },
+                    },
+                ],
+            },
+        }
+
+        config_response = client.put(
+            "/pos/config",
+            json=config_payload,
+            headers=reason_headers,
+        )
+        assert config_response.status_code == status.HTTP_200_OK
+
+        print_response = client.post(
+            "/pos/hardware/print-test",
+            json={
+                "store_id": store_id,
+                "printer_name": "HASAR-01",
+                "mode": "fiscal",
+                "sample": "PRUEBA FISCAL",
+            },
+            headers=reason_headers,
+        )
+        assert print_response.status_code == status.HTTP_200_OK
+        body = print_response.json()
+        assert body["status"] == "ok"
+        details = body["details"]
+        assert details["adapter"] == "hasar"
+        assert details["simulated"] is True
+        commands = [command["command"] for command in details["commands"]]
+        assert commands == [
+            "ABRIR_COMPROBANTE",
+            "IMPRIMIR_TEXTO",
+            "CERRAR_COMPROBANTE",
+        ]
+        assert all(command["simulated"] is True for command in details["commands"])
+        assert details["commands"][0]["payload"]["metadata"]["adapter"] == "hasar"
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
 def test_pos_cash_history_requires_reason(client):
     original_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True

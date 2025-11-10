@@ -4,7 +4,7 @@ from __future__ import annotations
 import enum
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Annotated, Any, Iterable, Literal
+from typing import Annotated, Any, ClassVar, Iterable, Literal
 
 from pydantic import (
     AliasChoices,
@@ -637,7 +637,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada cuando la lista es específica para una tienda.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -6542,6 +6541,59 @@ class POSPrinterMode(str, enum.Enum):
     FISCAL = "fiscal"
 
 
+class POSFiscalPrinterProfile(BaseModel):
+    """Perfil técnico necesario para operar una impresora fiscal."""
+
+    adapter: Literal["hasar", "epson", "bematech", "simulated"] = Field(
+        default="simulated"
+    )
+    sdk_module: str | None = Field(default=None, max_length=120)
+    model: str | None = Field(default=None, max_length=80)
+    serial_number: str | None = Field(default=None, max_length=80)
+    taxpayer_id: str | None = Field(default=None, max_length=32)
+    document_type: Literal["ticket", "invoice", "credit_note"] = Field(
+        default="ticket"
+    )
+    timeout_s: float = Field(default=6.0, ge=0.5, le=30.0)
+    simulate_only: bool = Field(default=False)
+    extra_settings: dict[str, Any] = Field(default_factory=dict)
+
+    _DEFAULT_SDK_MODULES: ClassVar[dict[str, str | None]] = {
+        "hasar": "pyhasar",
+        "epson": "pyfiscalprinter",
+        "bematech": "bemafiscal",
+        "simulated": None,
+    }
+
+    @field_validator("sdk_module", "model", "serial_number", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = str(value).strip()
+        return trimmed or None
+
+    @field_validator("taxpayer_id", mode="before")
+    @classmethod
+    def _normalize_taxpayer(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().upper()
+        return normalized or None
+
+    @field_validator("extra_settings")
+    @classmethod
+    def _normalize_extra_settings(
+        cls, value: dict[str, Any]
+    ) -> dict[str, Any]:
+        return {str(key): item for key, item in (value or {}).items()}
+
+    def resolved_sdk_module(self) -> str | None:
+        """Devuelve el módulo SDK preferido según el adaptador configurado."""
+
+        return self.sdk_module or self._DEFAULT_SDK_MODULES.get(self.adapter)
+
+
 class POSConnectorSettings(BaseModel):
     """Configura el punto de conexión del dispositivo POS."""
 
@@ -6569,6 +6621,16 @@ class POSPrinterSettings(BaseModel):
     is_default: bool = Field(default=False)
     vendor: str | None = Field(default=None, max_length=80)
     supports_qr: bool = Field(default=False)
+    fiscal_profile: POSFiscalPrinterProfile | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _ensure_fiscal_profile(self) -> "POSPrinterSettings":
+        if self.mode is POSPrinterMode.FISCAL:
+            if self.fiscal_profile is None:
+                self.fiscal_profile = POSFiscalPrinterProfile()
+        else:
+            self.fiscal_profile = None
+        return self
 
 
 class POSCashDrawerSettings(BaseModel):
@@ -7271,6 +7333,7 @@ __all__ = [
     "POSConnectorType",
     "POSPrinterMode",
     "POSConnectorSettings",
+    "POSFiscalPrinterProfile",
     "POSPrinterSettings",
     "POSCashDrawerSettings",
     "POSCustomerDisplaySettings",
