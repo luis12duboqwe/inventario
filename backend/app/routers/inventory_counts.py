@@ -1,6 +1,7 @@
 """Endpoints de recepciones y conteos cíclicos de inventario."""
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime
 from io import BytesIO
 from typing import Literal
@@ -10,6 +11,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
+from ..config import settings
 from ..core.roles import ADMIN, MOVEMENT_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
@@ -57,6 +59,14 @@ def register_inventory_receiving(
     processed: list[schemas.InventoryReceivingProcessed] = []
     total_quantity = 0
     performer_id = getattr(current_user, "id", None)
+    auto_transfers: list[schemas.TransferOrderResponse] = []
+    distribution_plan: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+
+    if any(line.distributions for line in payload.lines) and not settings.enable_transfers:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Las transferencias automáticas están deshabilitadas.",
+        )
 
     for line in payload.lines:
         try:
@@ -108,11 +118,77 @@ def register_inventory_receiving(
         )
         total_quantity += line.quantity
 
+        if line.distributions:
+            for allocation in line.distributions:
+                if allocation.store_id == payload.store_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="La distribución automática no puede usar la misma sucursal de origen.",
+                    )
+                distribution_plan[allocation.store_id][device.id] += allocation.quantity
+
     totals = schemas.InventoryReceivingSummary(lines=len(processed), total_quantity=total_quantity)
+    if distribution_plan:
+        transfer_reason_base = payload.note.strip()
+        transfer_reason = f"{transfer_reason_base} · distribución automática"[:255]
+        for destination_store_id, device_map in distribution_plan.items():
+            items = [
+                schemas.TransferOrderItemCreate(device_id=device_id, quantity=quantity)
+                for device_id, quantity in device_map.items()
+                if quantity > 0
+            ]
+            if not items:
+                continue
+            transfer_payload = schemas.TransferOrderCreate(
+                origin_store_id=payload.store_id,
+                destination_store_id=destination_store_id,
+                reason=transfer_reason,
+                items=items,
+            )
+            try:
+                order = crud.create_transfer_order(
+                    db,
+                    transfer_payload,
+                    requested_by_id=performer_id,
+                )
+            except PermissionError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permisos para transferir desde la sucursal seleccionada.",
+                ) from exc
+            except LookupError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="La distribución apunta a una sucursal inexistente.",
+                ) from exc
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=str(exc),
+                ) from exc
+
+            try:
+                order = crud.dispatch_transfer_order(
+                    db,
+                    order.id,
+                    performed_by_id=performer_id,
+                    reason=transfer_reason,
+                )
+            except (PermissionError, ValueError):
+                order = crud.get_transfer_order(db, order.id)
+
+            auto_transfers.append(
+                schemas.TransferOrderResponse.model_validate(
+                    order,
+                    from_attributes=True,
+                )
+            )
+
     return schemas.InventoryReceivingResult(
         store_id=payload.store_id,
         processed=processed,
         totals=totals,
+        auto_transfers=auto_transfers or None,
     )
 
 

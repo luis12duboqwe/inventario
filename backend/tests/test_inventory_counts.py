@@ -1,5 +1,6 @@
 from fastapi import status
 
+from backend.app import models
 from backend.app.core.roles import ADMIN
 
 
@@ -145,3 +146,78 @@ def test_inventory_receiving_and_cycle_count(client) -> None:
     )
     assert audit_pdf.status_code == status.HTTP_200_OK
     assert audit_pdf.headers["content-type"].startswith("application/pdf")
+
+
+def test_inventory_receiving_auto_distribution(client, db_session) -> None:
+    headers = _bootstrap_admin(client)
+
+    central_response = client.post(
+        "/stores",
+        json={"name": "Almacén Central", "location": "CDMX", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert central_response.status_code == status.HTTP_201_CREATED
+    central_id = central_response.json()["id"]
+
+    branch_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Test", "location": "GDL", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert branch_response.status_code == status.HTTP_201_CREATED
+    branch_id = branch_response.json()["id"]
+
+    device_payload = {
+        "sku": "SKU-DIST-001",
+        "name": "Equipo Auto Distribución",
+        "quantity": 0,
+        "unit_price": 2500.0,
+    }
+    device_response = client.post(
+        f"/stores/{central_id}/devices",
+        json=device_payload,
+        headers=headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    receiving_payload = {
+        "store_id": central_id,
+        "note": "Recepción central con distribución",
+        "responsible": "Coordinador",
+        "reference": "RCV-DIST-001",
+        "lines": [
+            {
+                "device_id": device_id,
+                "quantity": 5,
+                "unit_cost": 2100.0,
+                "distributions": [
+                    {"store_id": branch_id, "quantity": 3},
+                ],
+            }
+        ],
+    }
+    receiving_headers = {**headers, "X-Reason": receiving_payload["note"]}
+    response = client.post(
+        "/inventory/counts/receipts",
+        json=receiving_payload,
+        headers=receiving_headers,
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    data = response.json()
+    assert data["totals"]["total_quantity"] == 5
+    assert data.get("auto_transfers")
+    transfer = data["auto_transfers"][0]
+    assert transfer["destination_store_id"] == branch_id
+    assert transfer["origin_store_id"] == central_id
+    assert transfer["status"] in {"EN_TRANSITO", "SOLICITADA"}
+    assert transfer["items"][0]["device_id"] == device_id
+    assert transfer["items"][0]["quantity"] == 3
+
+    outbox_entries = (
+        db_session.query(models.SyncOutbox)
+        .filter(models.SyncOutbox.entity_type == "transfer_order")
+        .all()
+    )
+    assert outbox_entries, "Debe registrarse una transferencia en la cola de sincronización"
+    assert all(entry.priority == models.SyncOutboxPriority.HIGH for entry in outbox_entries)
