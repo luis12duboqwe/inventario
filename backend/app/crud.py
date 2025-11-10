@@ -13802,11 +13802,12 @@ def _register_supplier_credit_note(
     if corporate_reason:
         details["corporate_reason"] = corporate_reason
 
+    entry_amount = -applied_amount
     entry = _create_supplier_ledger_entry(
         db,
         supplier=supplier,
         entry_type=models.SupplierLedgerEntryType.CREDIT_NOTE,
-        amount=-normalized_amount,
+        amount=entry_amount,
         note=corporate_reason,
         reference_type="purchase_return",
         reference_id=str(purchase_order_id),
