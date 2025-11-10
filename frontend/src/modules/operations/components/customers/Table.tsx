@@ -45,10 +45,13 @@ const CustomersTable = ({
             <th>ID</th>
             <th>Nombre</th>
             <th>Tipo</th>
+            <th>Categoría</th>
+            <th>Etiquetas</th>
             <th>Estado</th>
             <th>Contacto</th>
             <th>Correo</th>
             <th>Teléfono</th>
+            <th>RTN</th>
             <th>Límite crédito</th>
             <th>Saldo</th>
             <th>Última interacción</th>
@@ -62,6 +65,8 @@ const CustomersTable = ({
               : "—";
             const creditLimit = Number(customer.credit_limit ?? 0);
             const debt = Number(customer.outstanding_debt ?? 0);
+            const category = customer.segment_category ?? "—";
+            const tags = Array.isArray(customer.tags) ? customer.tags.join(", ") : "";
             const statusClass =
               customer.status === "moroso"
                 ? "badge warning"
@@ -82,12 +87,15 @@ const CustomersTable = ({
                   </div>
                 </td>
                 <td>{customer.customer_type ?? "—"}</td>
+                <td>{category}</td>
+                <td>{tags || "—"}</td>
                 <td>
                   <span className={statusClass}>{customer.status ?? "—"}</span>
                 </td>
                 <td>{customer.contact_name ?? "—"}</td>
                 <td>{customer.email ?? "—"}</td>
                 <td>{customer.phone}</td>
+                <td>{customer.tax_id}</td>
                 <td>${formatCurrency(creditLimit)}</td>
                 <td>${formatCurrency(debt)}</td>
                 <td>{lastInteraction}</td>

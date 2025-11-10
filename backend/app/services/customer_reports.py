@@ -131,6 +131,76 @@ def render_customer_portfolio_pdf(report: schemas.CustomerPortfolioReport) -> by
     return pdf_bytes
 
 
+def render_customer_statement_pdf(report: schemas.CustomerStatementReport) -> bytes:
+    elements, document, buffer = _build_pdf_document("Softmobile - Estado de cuenta")
+    styles = getSampleStyleSheet()
+
+    customer = report.customer
+    summary = report.summary
+    header_text = f"Cliente: {customer.name}"
+    if customer.customer_type:
+        header_text += f" · Tipo {customer.customer_type.title()}"
+    elements.append(Paragraph(header_text, styles["Heading2"]))
+    elements.append(Spacer(1, 12))
+
+    contact_lines = [
+        ["Correo", customer.email or "—"],
+        ["Teléfono", customer.phone or "—"],
+        ["Saldo pendiente", _format_currency(summary.total_outstanding)],
+        ["Crédito disponible", _format_currency(summary.available_credit)],
+        ["Crédito autorizado", _format_currency(summary.credit_limit)],
+        [
+            "Último pago",
+            summary.last_payment_at.strftime("%d/%m/%Y %H:%M")
+            if summary.last_payment_at
+            else "—",
+        ],
+        [
+            "Próximo vencimiento",
+            summary.next_due_date.strftime("%d/%m/%Y %H:%M")
+            if summary.next_due_date
+            else "—",
+        ],
+        [
+            "Días promedio en cartera",
+            f"{summary.average_days_outstanding:.1f}",
+        ],
+    ]
+    summary_table = _build_pdf_table([["Dato", "Valor"], *contact_lines])
+    elements.append(summary_table)
+    elements.append(Spacer(1, 18))
+
+    ledger_table: list[list[str]] = [["Fecha", "Descripción", "Referencia", "Monto", "Saldo"]]
+    for line in report.lines:
+        amount_label = _format_currency(abs(line.amount))
+        if line.amount < 0:
+            amount_label = f"-{amount_label}"
+        balance_label = _format_currency(line.balance_after)
+        ledger_table.append(
+            [
+                line.created_at.strftime("%d/%m/%Y %H:%M"),
+                line.description,
+                line.reference or "—",
+                amount_label,
+                balance_label,
+            ]
+        )
+
+    elements.append(_build_pdf_table(ledger_table))
+    elements.append(Spacer(1, 12))
+    elements.append(
+        Paragraph(
+            f"Estado generado el {report.generated_at.strftime('%d/%m/%Y %H:%M UTC')}",
+            styles["Italic"],
+        )
+    )
+
+    document.build(elements)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
+
+
 def render_customer_portfolio_xlsx(report: schemas.CustomerPortfolioReport) -> BytesIO:
     workbook = Workbook()
     worksheet = workbook.active

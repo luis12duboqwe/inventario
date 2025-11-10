@@ -33,6 +33,9 @@ function Customers({ token }: Props) {
     customerSummary,
     summaryLoading,
     summaryError,
+    accountsReceivable,
+    receivableLoading,
+    receivableError,
     portfolio,
     portfolioFilters,
     portfolioLoading,
@@ -59,6 +62,7 @@ function Customers({ token }: Props) {
     handleAddNote,
     handleRegisterPayment,
     handleAdjustDebt,
+    handleDownloadStatement,
     handleDelete,
     handlePortfolioFiltersChange,
     refreshPortfolio,
@@ -149,12 +153,16 @@ function Customers({ token }: Props) {
           summary={customerSummary}
           summaryLoading={summaryLoading}
           summaryError={summaryError}
+          receivable={accountsReceivable}
+          receivableLoading={receivableLoading}
+          receivableError={receivableError}
           customerHistory={historyList}
           customerNotes={notesList}
           recentInvoices={invoicesList}
           ledgerLabels={LEDGER_LABELS}
           resolveDetails={resolveDetails}
           formatCurrency={formatCurrency}
+          onDownloadStatement={handleDownloadStatement}
         />
       </div>
 

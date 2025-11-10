@@ -637,6 +637,7 @@ class PriceListBase(BaseModel):
         default=None,
         ge=1,
         description="Identificador de la sucursal asociada, cuando aplica.",
+        description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -1318,6 +1319,9 @@ class CustomerBase(BaseModel):
     customer_type: str = Field(
         default="minorista", min_length=3, max_length=30)
     status: str = Field(default="activo", min_length=3, max_length=20)
+    tax_id: str = Field(..., min_length=5, max_length=30)
+    segment_category: str | None = Field(default=None, max_length=60)
+    tags: list[str] = Field(default_factory=list)
     credit_limit: Decimal = Field(default=Decimal("0"))
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal = Field(default=Decimal("0"))
@@ -1331,6 +1335,7 @@ class CustomerBase(BaseModel):
         "customer_type",
         "status",
         "notes",
+        "segment_category",
         mode="before",
     )
     @classmethod
@@ -1339,6 +1344,43 @@ class CustomerBase(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("tax_id", mode="before")
+    @classmethod
+    def _normalize_tax_id(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        normalized = normalized.replace(" ", "")
+        if len(normalized) < 5:
+            raise ValueError("El RTN debe tener al menos 5 caracteres.")
+        return normalized
+
+    @field_validator("segment_category", mode="before")
+    @classmethod
+    def _normalize_segment_category(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _normalize_tags(
+        cls, value: list[str] | str | None
+    ) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            raw_items = value
+        normalized: list[str] = []
+        for item in raw_items:
+            if not isinstance(item, str):
+                continue
+            cleaned = item.strip().lower()
+            if cleaned and cleaned not in normalized:
+                normalized.append(cleaned)
+        return normalized
 
     @field_serializer("outstanding_debt")
     @classmethod
@@ -1379,6 +1421,9 @@ class CustomerUpdate(BaseModel):
     address: str | None = Field(default=None, max_length=255)
     customer_type: str | None = Field(default=None, max_length=30)
     status: str | None = Field(default=None, max_length=20)
+    tax_id: str | None = Field(default=None, min_length=5, max_length=30)
+    segment_category: str | None = Field(default=None, max_length=60)
+    tags: list[str] | None = Field(default=None)
     credit_limit: Decimal | None = Field(default=None)
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal | None = Field(default=None)
@@ -1393,6 +1438,7 @@ class CustomerUpdate(BaseModel):
         "customer_type",
         "status",
         "notes",
+        "segment_category",
         mode="before",
     )
     @classmethod
@@ -1401,6 +1447,44 @@ class CustomerUpdate(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("tax_id", mode="before")
+    @classmethod
+    def _normalize_update_tax_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper().replace(" ", "")
+        if len(normalized) < 5:
+            raise ValueError("El RTN debe tener al menos 5 caracteres.")
+        return normalized
+
+    @field_validator("segment_category", mode="before")
+    @classmethod
+    def _normalize_update_segment_category(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _normalize_update_tags(
+        cls, value: list[str] | str | None
+    ) -> list[str] | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            raw_items = value
+        normalized: list[str] = []
+        for item in raw_items:
+            if not isinstance(item, str):
+                continue
+            cleaned = item.strip().lower()
+            if cleaned and cleaned not in normalized:
+                normalized.append(cleaned)
+        return normalized
 
 
 class CustomerResponse(CustomerBase):
@@ -1661,6 +1745,91 @@ class CreditScheduleEntry(BaseModel):
     @field_serializer("due_date")
     @classmethod
     def _serialize_due_date(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AccountsReceivableEntry(BaseModel):
+    ledger_entry_id: int
+    reference_type: str | None = None
+    reference_id: str | None = None
+    reference: str | None = None
+    issued_at: datetime
+    original_amount: float
+    balance_due: float
+    days_outstanding: int
+    status: Literal["current", "overdue"]
+    note: str | None = None
+    details: dict[str, Any] | None = None
+
+    @field_serializer("issued_at")
+    @classmethod
+    def _serialize_issued_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AccountsReceivableBucket(BaseModel):
+    label: str
+    days_from: int
+    days_to: int | None = None
+    amount: float
+    percentage: float
+    count: int
+
+
+class AccountsReceivableSummary(BaseModel):
+    total_outstanding: float
+    available_credit: float
+    credit_limit: float
+    last_payment_at: datetime | None = None
+    next_due_date: datetime | None = None
+    average_days_outstanding: float
+    contact_email: str | None = None
+    contact_phone: str | None = None
+
+    @field_serializer("last_payment_at", "next_due_date")
+    @classmethod
+    def _serialize_optional_datetime(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class CustomerAccountsReceivableResponse(BaseModel):
+    customer: CustomerResponse
+    summary: AccountsReceivableSummary
+    aging: list[AccountsReceivableBucket] = Field(default_factory=list)
+    open_entries: list[AccountsReceivableEntry] = Field(default_factory=list)
+    credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
+    recent_activity: list[CustomerLedgerEntryResponse] = Field(default_factory=list)
+    generated_at: datetime
+
+    @field_serializer("generated_at")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class CustomerStatementLine(BaseModel):
+    created_at: datetime
+    description: str
+    reference: str | None = None
+    entry_type: CustomerLedgerEntryType
+    amount: float
+    balance_after: float
+
+    @field_serializer("created_at")
+    @classmethod
+    def _serialize_created_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class CustomerStatementReport(BaseModel):
+    customer: CustomerResponse
+    summary: AccountsReceivableSummary
+    lines: list[CustomerStatementLine] = Field(default_factory=list)
+    generated_at: datetime
+
+    @field_serializer("generated_at")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
         return value.isoformat()
 
 
@@ -6811,6 +6980,12 @@ __all__ = [
     "HealthStatusResponse",
     "CustomerDebtSnapshot",
     "CreditScheduleEntry",
+    "AccountsReceivableEntry",
+    "AccountsReceivableBucket",
+    "AccountsReceivableSummary",
+    "CustomerAccountsReceivableResponse",
+    "CustomerStatementLine",
+    "CustomerStatementReport",
     "CustomerPaymentReceiptResponse",
     "StoreCreditResponse",
     "StoreCreditRedemptionResponse",
