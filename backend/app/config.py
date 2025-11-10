@@ -522,6 +522,98 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    purchases_documents_backend: Annotated[
+        str,
+        Field(
+            default="local",
+            validation_alias=AliasChoices(
+                "PURCHASES_DOCUMENTS_BACKEND",
+                "SOFTMOBILE_PURCHASES_DOCUMENTS_BACKEND",
+            ),
+        ),
+    ]
+    purchases_documents_local_path: Annotated[
+        str,
+        Field(
+            default_factory=lambda: str(
+                (Path(__file__).resolve().parents[2] / "backups" / "purchase_orders")
+            ),
+            validation_alias=AliasChoices(
+                "PURCHASES_DOCUMENTS_LOCAL_PATH",
+                "SOFTMOBILE_PURCHASES_DOCUMENTS_LOCAL_PATH",
+            ),
+        ),
+    ]
+    purchases_documents_public_url: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "PURCHASES_DOCUMENTS_PUBLIC_URL",
+                "SOFTMOBILE_PURCHASES_DOCUMENTS_PUBLIC_URL",
+            ),
+        ),
+    ]
+    purchases_documents_s3_bucket: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "PURCHASES_DOCUMENTS_S3_BUCKET",
+                "SOFTMOBILE_PURCHASES_DOCUMENTS_S3_BUCKET",
+            ),
+        ),
+    ]
+    purchases_documents_s3_region: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "PURCHASES_DOCUMENTS_S3_REGION",
+                "SOFTMOBILE_PURCHASES_DOCUMENTS_S3_REGION",
+            ),
+        ),
+    ]
+    purchases_documents_s3_endpoint: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "PURCHASES_DOCUMENTS_S3_ENDPOINT",
+                "SOFTMOBILE_PURCHASES_DOCUMENTS_S3_ENDPOINT",
+            ),
+        ),
+    ]
+    purchases_documents_s3_access_key: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "PURCHASES_DOCUMENTS_S3_ACCESS_KEY",
+                "SOFTMOBILE_PURCHASES_DOCUMENTS_S3_ACCESS_KEY",
+            ),
+        ),
+    ]
+    purchases_documents_s3_secret_key: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "PURCHASES_DOCUMENTS_S3_SECRET_KEY",
+                "SOFTMOBILE_PURCHASES_DOCUMENTS_S3_SECRET_KEY",
+            ),
+        ),
+    ]
+    purchases_documents_s3_prefix: Annotated[
+        str,
+        Field(
+            default="purchase_orders",
+            validation_alias=AliasChoices(
+                "PURCHASES_DOCUMENTS_S3_PREFIX",
+                "SOFTMOBILE_PURCHASES_DOCUMENTS_S3_PREFIX",
+            ),
+        ),
+    ]
     pos_payment_terminals: Annotated[
         dict[str, dict[str, Any]],
         Field(
@@ -1018,6 +1110,28 @@ class Settings(BaseSettings):
             return int(str(value).strip())
         except ValueError as exc:  # pragma: no cover - validación defensiva
             raise ValueError("notifications_whatsapp_timeout_invalid") from exc
+
+    @field_validator("purchases_documents_backend", mode="before")
+    @classmethod
+    def _normalize_purchase_backend(cls, value: str | None) -> str:
+        if value is None:
+            return "local"
+        normalized = str(value).strip().lower()
+        if normalized not in {"local", "s3"}:
+            raise ValueError("purchases_documents_backend_invalid")
+        return normalized
+
+    @field_validator("purchases_documents_local_path", mode="before")
+    @classmethod
+    def _normalize_purchase_local_path(cls, value: str | Path | None) -> str:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            base = Path(__file__).resolve().parents[2] / "backups" / "purchase_orders"
+            return str(base)
+        return str(Path(value).expanduser())
+
+    @property
+    def purchases_documents_directory(self) -> Path:
+        return Path(self.purchases_documents_local_path).expanduser()
 
     @model_validator(mode="after")
     def _validate_required(self) -> "Settings":

@@ -637,7 +637,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada, cuando aplica.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -4510,8 +4509,46 @@ class PurchaseOrderResponse(BaseModel):
     closed_at: datetime | None
     items: list[PurchaseOrderItemResponse]
     returns: list[PurchaseReturnResponse] = []
+    documents: list["PurchaseOrderDocumentResponse"] = []
+    status_history: list["PurchaseOrderStatusEventResponse"] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderDocumentResponse(BaseModel):
+    id: int
+    purchase_order_id: int
+    filename: str
+    content_type: str
+    storage_backend: str
+    uploaded_at: datetime
+    uploaded_by_id: int | None
+    download_url: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderStatusEventResponse(BaseModel):
+    id: int
+    purchase_order_id: int
+    status: PurchaseStatus
+    note: str | None
+    created_at: datetime
+    created_by_id: int | None
+    created_by_name: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderStatusUpdateRequest(BaseModel):
+    status: PurchaseStatus
+    note: str | None = Field(default=None, max_length=255)
+
+
+class PurchaseOrderEmailRequest(BaseModel):
+    recipients: list[str] = Field(..., min_length=1)
+    message: str | None = Field(default=None, max_length=500)
+    include_documents: bool = False
 
 
 class PurchaseReceiveItem(BaseModel):
@@ -6932,6 +6969,10 @@ __all__ = [
     "PurchaseOrderItemCreate",
     "PurchaseOrderItemResponse",
     "PurchaseOrderResponse",
+    "PurchaseOrderDocumentResponse",
+    "PurchaseOrderStatusEventResponse",
+    "PurchaseOrderStatusUpdateRequest",
+    "PurchaseOrderEmailRequest",
     "PurchaseReceiveItem",
     "PurchaseReceiveRequest",
     "PurchaseImportResponse",

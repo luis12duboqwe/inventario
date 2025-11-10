@@ -1215,11 +1215,41 @@ export type ReturnsFilters = {
   offset?: number;
 };
 
+export type PurchaseOrderStatus =
+  | "BORRADOR"
+  | "PENDIENTE"
+  | "APROBADA"
+  | "ENVIADA"
+  | "PARCIAL"
+  | "COMPLETADA"
+  | "CANCELADA";
+
+export type PurchaseOrderDocument = {
+  id: number;
+  purchase_order_id: number;
+  filename: string;
+  content_type: string;
+  storage_backend: string;
+  uploaded_at: string;
+  uploaded_by_id: number | null;
+  download_url?: string | null;
+};
+
+export type PurchaseOrderStatusEvent = {
+  id: number;
+  purchase_order_id: number;
+  status: PurchaseOrderStatus;
+  note?: string | null;
+  created_at: string;
+  created_by_id: number | null;
+  created_by_name?: string | null;
+};
+
 export type PurchaseOrder = {
   id: number;
   store_id: number;
   supplier: string;
-  status: "PENDIENTE" | "PARCIAL" | "COMPLETADA" | "CANCELADA";
+  status: PurchaseOrderStatus;
   notes?: string | null;
   created_at: string;
   updated_at: string;
@@ -1227,6 +1257,19 @@ export type PurchaseOrder = {
   closed_at?: string | null;
   items: PurchaseOrderItem[];
   returns: PurchaseReturn[];
+  documents: PurchaseOrderDocument[];
+  status_history: PurchaseOrderStatusEvent[];
+};
+
+export type PurchaseOrderStatusUpdateInput = {
+  status: PurchaseOrderStatus;
+  note?: string | null;
+};
+
+export type PurchaseOrderEmailInput = {
+  recipients: string[];
+  message?: string | null;
+  include_documents?: boolean;
 };
 
 export type PurchaseOrderCreateInput = {
@@ -4257,6 +4300,57 @@ export function cancelPurchaseOrder(
     {
       method: "POST",
       headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function uploadPurchaseOrderDocument(
+  token: string,
+  orderId: number,
+  file: File,
+  reason: string
+): Promise<PurchaseOrderDocument> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<PurchaseOrderDocument>(
+    `/purchases/${orderId}/documents`,
+    {
+      method: "POST",
+      body: formData,
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function transitionPurchaseOrderStatus(
+  token: string,
+  orderId: number,
+  payload: PurchaseOrderStatusUpdateInput,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    `/purchases/${orderId}/status`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function sendPurchaseOrderEmail(
+  token: string,
+  orderId: number,
+  payload: PurchaseOrderEmailInput
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    `/purchases/${orderId}/send`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
     },
     token
   );

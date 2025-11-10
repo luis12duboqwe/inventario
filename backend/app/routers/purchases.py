@@ -15,7 +15,8 @@ from ..core.roles import GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import purchase_reports
+from ..services import purchase_reports, purchase_documents
+from ..services.notifications import NotificationError
 from backend.schemas.common import Page, PageParams
 
 router = APIRouter(prefix="/purchases", tags=["compras"])
@@ -27,6 +28,25 @@ def _ensure_feature_enabled() -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Funcionalidad no disponible",
         )
+
+
+def _build_document_download_url(order_id: int, document_id: int) -> str:
+    prefix = settings.api_v1_prefix.rstrip("/")
+    if prefix and not prefix.startswith("/"):
+        prefix = f"/{prefix}"
+    return f"{prefix}/purchases/{order_id}/documents/{document_id}"
+
+
+def _enrich_purchase_order(order) -> None:
+    documents = getattr(order, "documents", []) or []
+    for document in documents:
+        setattr(document, "download_url", _build_document_download_url(order.id, document.id))
+    events = getattr(order, "status_events", []) or []
+    for event in events:
+        creator = getattr(event, "created_by", None)
+        if creator is not None:
+            name = getattr(creator, "full_name", None) or getattr(creator, "username", None)
+            setattr(event, "created_by_name", name)
 
 
 def _prepare_purchase_report(
@@ -502,12 +522,14 @@ def get_purchase_order_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.get_purchase_order(db, order_id)
+        order = crud.get_purchase_order(db, order_id)
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Orden no encontrada",
         ) from exc
+    _enrich_purchase_order(order)
+    return order
 
 
 @router.post("/", response_model=schemas.PurchaseOrderResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -518,7 +540,7 @@ def create_purchase_order_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.create_purchase_order(db, payload, created_by_id=current_user.id)
+        order = crud.create_purchase_order(db, payload, created_by_id=current_user.id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado") from exc
     except ValueError as exc:
@@ -534,6 +556,172 @@ def create_purchase_order_endpoint(
                 detail="Cantidad inválida en la orden.",
             ) from exc
         raise
+    _enrich_purchase_order(order)
+    return order
+
+
+@router.post(
+    "/{order_id}/documents",
+    response_model=schemas.PurchaseOrderDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+async def upload_purchase_order_document_endpoint(
+    order_id: int = Path(..., ge=1),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    if not file.filename:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El archivo adjunto es obligatorio.",
+        )
+    content = await file.read()
+    if not content:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El archivo adjunto está vacío.",
+        )
+    try:
+        document = crud.add_purchase_order_document(
+            db,
+            order_id,
+            filename=file.filename,
+            content_type=file.content_type or "application/pdf",
+            content=content,
+            uploaded_by_id=current_user.id,
+        )
+    except ValueError as exc:
+        if str(exc) == "purchase_document_not_pdf":
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Solo se admiten documentos PDF.",
+            ) from exc
+        raise
+    except purchase_documents.PurchaseDocumentStorageError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No fue posible almacenar el documento adjunto.",
+        ) from exc
+
+    document.download_url = _build_document_download_url(order_id, document.id)
+    return document
+
+
+@router.get(
+    "/{order_id}/documents/{document_id}",
+    response_class=Response,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def download_purchase_order_document_endpoint(
+    order_id: int = Path(..., ge=1),
+    document_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        document, content = crud.load_purchase_order_document(db, order_id, document_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Documento no encontrado") from exc
+    except purchase_documents.PurchaseDocumentStorageError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No fue posible recuperar el documento solicitado.",
+        ) from exc
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{document.filename}"'
+    }
+    media_type = document.content_type or "application/pdf"
+    return Response(content=content, media_type=media_type, headers=headers)
+
+
+@router.post(
+    "/{order_id}/status",
+    response_model=schemas.PurchaseOrderResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def transition_purchase_order_status_endpoint(
+    payload: schemas.PurchaseOrderStatusUpdateRequest,
+    order_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    note = payload.note or reason
+    try:
+        order = crud.transition_purchase_order_status(
+            db,
+            order_id,
+            status=payload.status,
+            note=note,
+            performed_by_id=current_user.id,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "purchase_status_not_allowed":
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Estado de orden inválido.",
+            ) from exc
+        if detail == "purchase_status_locked":
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="La orden ya fue cerrada y no puede cambiar de estado.",
+            ) from exc
+        if detail == "purchase_status_noop":
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="La orden ya se encuentra en el estado indicado.",
+            ) from exc
+        raise
+
+    _enrich_purchase_order(order)
+    return order
+
+
+@router.post(
+    "/{order_id}/send",
+    response_model=schemas.PurchaseOrderResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def send_purchase_order_email_endpoint(
+    payload: schemas.PurchaseOrderEmailRequest,
+    order_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        crud.send_purchase_order_email(
+            db,
+            order_id,
+            recipients=payload.recipients,
+            message=payload.message,
+            include_documents=payload.include_documents,
+            requested_by_id=current_user.id,
+        )
+    except ValueError as exc:
+        if str(exc) == "purchase_email_recipients_required":
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Debes indicar al menos un destinatario.",
+            ) from exc
+        raise
+    except NotificationError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No fue posible enviar el correo electrónico.",
+        ) from exc
+
+    order = crud.get_purchase_order(db, order_id)
+    _enrich_purchase_order(order)
+    return order
 
 
 @router.post(
@@ -592,7 +780,7 @@ def receive_purchase_order_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.receive_purchase_order(
+        order = crud.receive_purchase_order(
             db,
             order_id,
             payload,
@@ -627,6 +815,8 @@ def receive_purchase_order_endpoint(
                 detail="Indica un código de lote válido para la recepción.",
             ) from exc
         raise
+    _enrich_purchase_order(order)
+    return order
 
 
 @router.post("/{order_id}/cancel", response_model=schemas.PurchaseOrderResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -638,7 +828,7 @@ def cancel_purchase_order_endpoint(
 ):
     _ensure_feature_enabled()
     try:
-        return crud.cancel_purchase_order(
+        order = crud.cancel_purchase_order(
             db,
             order_id,
             cancelled_by_id=current_user.id,
@@ -656,6 +846,8 @@ def cancel_purchase_order_endpoint(
                 detail="La orden ya fue cerrada.",
             ) from exc
         raise
+    _enrich_purchase_order(order)
+    return order
 
 
 @router.post("/{order_id}/returns", response_model=schemas.PurchaseReturnResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])

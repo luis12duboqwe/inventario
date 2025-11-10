@@ -14,7 +14,10 @@ import {
 } from "./usePurchasesController";
 
 const statusLabels: Record<PurchaseOrder["status"], string> = {
+  BORRADOR: "Borrador",
   PENDIENTE: "Pendiente",
+  APROBADA: "Aprobada",
+  ENVIADA: "Enviada",
   PARCIAL: "Recepción parcial",
   COMPLETADA: "Completada",
   CANCELADA: "Cancelada",

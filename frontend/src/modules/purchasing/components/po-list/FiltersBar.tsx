@@ -1,7 +1,10 @@
 import React from "react";
 
 export type PurchaseOrderStatusFilter =
+  | "BORRADOR"
   | "PENDIENTE"
+  | "APROBADA"
+  | "ENVIADA"
   | "PARCIAL"
   | "COMPLETADA"
   | "CANCELADA";
@@ -67,7 +70,10 @@ export default function FiltersBar({ value, onChange, onNew }: Props) {
         style={inputStyle}
       >
         <option value="ALL">Todos</option>
+        <option value="BORRADOR">Borrador</option>
         <option value="PENDIENTE">Pendiente</option>
+        <option value="APROBADA">Aprobada</option>
+        <option value="ENVIADA">Enviada</option>
         <option value="PARCIAL">Recepción parcial</option>
         <option value="COMPLETADA">Completada</option>
         <option value="CANCELADA">Cancelada</option>

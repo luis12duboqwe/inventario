@@ -5,9 +5,12 @@ from typing import Any, Iterable
 from fastapi import status
 from sqlalchemy import select, text
 
-from backend.app import models
+import tempfile
+
+from backend.app import crud, models
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
+from backend.app.services import purchase_documents
 
 
 def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
@@ -274,6 +277,264 @@ def test_purchase_receipt_and_return_flow(client, db_session):
             headers=auth_headers,
         )
         assert disabled_create.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_upload_purchase_order_document_and_download(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+
+    previous_backend = settings.purchases_documents_backend
+    previous_path = settings.purchases_documents_local_path
+    purchase_documents.get_storage.cache_clear()
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings.purchases_documents_backend = "local"
+            settings.purchases_documents_local_path = tmpdir
+            purchase_documents.get_storage.cache_clear()
+
+            store_id = _create_store(client, base_headers)
+            device_id = _create_device(client, store_id, base_headers)
+
+            order_response = client.post(
+                "/purchases",
+                json={
+                    "store_id": store_id,
+                    "supplier": "Proveedor Mayorista",
+                    "items": [
+                        {"device_id": device_id, "quantity_ordered": 3, "unit_cost": 720.0},
+                    ],
+                },
+                headers=base_headers,
+            )
+            assert order_response.status_code == status.HTTP_201_CREATED
+            order_id = order_response.json()["id"]
+
+            pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+            upload_response = client.post(
+                f"/purchases/{order_id}/documents",
+                files={"file": ("orden.pdf", pdf_bytes, "application/pdf")},
+                headers=base_headers,
+            )
+            assert upload_response.status_code == status.HTTP_201_CREATED
+            document_payload = upload_response.json()
+            assert document_payload["filename"] == "orden.pdf"
+            assert document_payload["download_url"].endswith(
+                f"/purchases/{order_id}/documents/{document_payload['id']}"
+            )
+
+            detail_response = client.get(
+                f"/purchases/{order_id}", headers={"Authorization": f"Bearer {token}"}
+            )
+            assert detail_response.status_code == status.HTTP_200_OK
+            detail_payload = detail_response.json()
+            assert detail_payload["documents"], "La orden debe incluir adjuntos"
+            fetched_document = detail_payload["documents"][0]
+            assert fetched_document["filename"] == "orden.pdf"
+            assert fetched_document["download_url"].endswith(
+                f"/purchases/{order_id}/documents/{document_payload['id']}"
+            )
+
+            download_response = client.get(
+                f"/purchases/{order_id}/documents/{document_payload['id']}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert download_response.status_code == status.HTTP_200_OK
+            assert download_response.content == pdf_bytes
+    finally:
+        purchase_documents.get_storage.cache_clear()
+        settings.purchases_documents_backend = previous_backend
+        settings.purchases_documents_local_path = previous_path
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_purchase_status_transition_records_history(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+
+    try:
+        store_id = _create_store(client, base_headers)
+        device_id = _create_device(client, store_id, base_headers)
+
+        order_response = client.post(
+            "/purchases",
+            json={
+                "store_id": store_id,
+                "supplier": "Proveedor Corporativo",
+                "items": [
+                    {"device_id": device_id, "quantity_ordered": 2, "unit_cost": 680.0},
+                ],
+            },
+            headers=base_headers,
+        )
+        assert order_response.status_code == status.HTTP_201_CREATED
+        order_id = order_response.json()["id"]
+
+        transition_response = client.post(
+            f"/purchases/{order_id}/status",
+            json={"status": "APROBADA"},
+            headers={"Authorization": f"Bearer {token}", "X-Reason": "Aprobación de orden"},
+        )
+        assert transition_response.status_code == status.HTTP_200_OK
+        payload = transition_response.json()
+        assert payload["status"] == "APROBADA"
+        statuses = [event["status"] for event in payload["status_history"]]
+        assert "APROBADA" in statuses
+        approval_event = next(
+            event for event in payload["status_history"] if event["status"] == "APROBADA"
+        )
+        assert approval_event["note"] == "Aprobación de orden"
+        assert approval_event["created_by_name"] == "Compras Admin"
+
+        conflict_response = client.post(
+            f"/purchases/{order_id}/status",
+            json={"status": "APROBADA"},
+            headers={"Authorization": f"Bearer {token}", "X-Reason": "Aprobación duplicada"},
+        )
+        assert conflict_response.status_code == status.HTTP_409_CONFLICT
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_purchase_status_transition_rejects_invalid_status(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+
+    try:
+        store_id = _create_store(client, base_headers)
+        device_id = _create_device(client, store_id, base_headers)
+
+        order_response = client.post(
+            "/purchases",
+            json={
+                "store_id": store_id,
+                "supplier": "Proveedor Corporativo",
+                "items": [
+                    {"device_id": device_id, "quantity_ordered": 2, "unit_cost": 680.0},
+                ],
+            },
+            headers=base_headers,
+        )
+        assert order_response.status_code == status.HTTP_201_CREATED
+        order_id = order_response.json()["id"]
+
+        invalid_response = client.post(
+            f"/purchases/{order_id}/status",
+            json={"status": "CANCELADA"},
+            headers={"Authorization": f"Bearer {token}", "X-Reason": "Cancelación manual"},
+        )
+        assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert invalid_response.json()["detail"] == "Estado de orden inválido."
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_send_purchase_order_email_uses_notification_service(client, db_session, monkeypatch):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+
+    captured: dict[str, object] = {}
+
+    def fake_send_purchase_order_email(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(crud.purchase_documents, "send_purchase_order_email", fake_send_purchase_order_email)
+
+    try:
+        store_id = _create_store(client, base_headers)
+        device_id = _create_device(client, store_id, base_headers)
+
+        order_response = client.post(
+            "/purchases",
+            json={
+                "store_id": store_id,
+                "supplier": "Proveedor Corporativo",
+                "items": [
+                    {"device_id": device_id, "quantity_ordered": 1, "unit_cost": 500.0},
+                ],
+            },
+            headers=base_headers,
+        )
+        assert order_response.status_code == status.HTTP_201_CREATED
+        order_id = order_response.json()["id"]
+
+        send_response = client.post(
+            f"/purchases/{order_id}/send",
+            json={
+                "recipients": ["compras@example.com"],
+                "message": "Adjuntamos la orden",
+                "include_documents": True,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert send_response.status_code == status.HTTP_200_OK
+        assert captured["order"].id == order_id
+        assert captured["recipients"] == ["compras@example.com"]
+        assert captured["message"] == "Adjuntamos la orden"
+        assert captured["include_documents"] is True
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_upload_purchase_order_document_handles_storage_errors(client, db_session, monkeypatch):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    token, _ = _bootstrap_admin(client, db_session)
+    base_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Operación compras"}
+
+    class _FailingStorage(purchase_documents.PurchaseDocumentStorage):
+        backend_name = "failing"
+
+        def save(self, *, filename: str, content_type: str, content: bytes):
+            raise purchase_documents.PurchaseDocumentStorageError("forced_error")
+
+        def open(self, path: str) -> bytes:  # pragma: no cover - no se usa
+            raise NotImplementedError
+
+        def delete(self, path: str) -> None:  # pragma: no cover - no se usa
+            return None
+
+    monkeypatch.setattr(crud.purchase_documents, "get_storage", lambda: _FailingStorage())
+
+    try:
+        store_id = _create_store(client, base_headers)
+        device_id = _create_device(client, store_id, base_headers)
+
+        order_response = client.post(
+            "/purchases",
+            json={
+                "store_id": store_id,
+                "supplier": "Proveedor Mayorista",
+                "items": [
+                    {"device_id": device_id, "quantity_ordered": 3, "unit_cost": 720.0},
+                ],
+            },
+            headers=base_headers,
+        )
+        assert order_response.status_code == status.HTTP_201_CREATED
+        order_id = order_response.json()["id"]
+
+        pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+        upload_response = client.post(
+            f"/purchases/{order_id}/documents",
+            files={"file": ("orden.pdf", pdf_bytes, "application/pdf")},
+            headers=base_headers,
+        )
+        assert upload_response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert (
+            upload_response.json()["detail"]
+            == "No fue posible almacenar el documento adjunto."
+        )
     finally:
         settings.enable_purchases_sales = previous_flag
 
