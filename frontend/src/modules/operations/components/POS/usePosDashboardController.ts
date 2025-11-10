@@ -22,6 +22,7 @@ import type {
   Sale,
   Store,
 } from "../../../../api";
+import { normalizeRtn, RTN_ERROR_MESSAGE } from "../../utils/rtn";
 import {
   closeCashSession,
   createCashRegisterEntry,
@@ -800,9 +801,10 @@ export function usePosDashboardController({
     const email = window.prompt("Correo del cliente (opcional)", "");
     const phoneRaw = window.prompt("Teléfono del cliente (requerido)", "0000000000");
     const phone = (phoneRaw ?? "0000000000").trim() || "0000000000";
-    const taxIdRaw = window.prompt("RTN del cliente", "RTN-POS-0001");
-    if (!taxIdRaw || taxIdRaw.trim().length < 5) {
-      setError("Debes indicar un RTN válido (mínimo 5 caracteres).");
+    const taxIdRaw = window.prompt("RTN del cliente", "0801-1999-000123");
+    const normalizedTaxId = normalizeRtn(taxIdRaw ?? "");
+    if (!normalizedTaxId) {
+      setError(RTN_ERROR_MESSAGE);
       return;
     }
     const segmentCategory = window.prompt(
@@ -820,7 +822,6 @@ export function usePosDashboardController({
     }
     try {
       setError(null);
-      const normalizedTaxId = taxIdRaw.trim().toUpperCase();
       const payload: CustomerPayload = {
         name: name.trim(),
         phone,

@@ -1607,6 +1607,10 @@ class Customer(Base):
     notes: Mapped[str | None] = mapped_column("notas", Text, nullable=True)
     history: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, nullable=False, default=list)
+    privacy_consents: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict)
+    privacy_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict)
     segment_category: Mapped[str | None] = mapped_column(
         "segmento_categoria", String(60), nullable=True, index=True
     )
@@ -1615,6 +1619,9 @@ class Customer(Base):
     )
     tax_id: Mapped[str] = mapped_column(
         "rtn", String(30), nullable=False, unique=True, index=True
+    )
+    privacy_last_request_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     last_interaction_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1638,6 +1645,11 @@ class Customer(Base):
     )
     store_credits: Mapped[list["StoreCredit"]] = relationship(
         "StoreCredit",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+    )
+    privacy_requests: Mapped[list["CustomerPrivacyRequest"]] = relationship(
+        "CustomerPrivacyRequest",
         back_populates="customer",
         cascade="all, delete-orphan",
     )
@@ -1687,6 +1699,64 @@ class Customer(Base):
     def last_purchase_at(self) -> datetime | None:
         snapshot = getattr(self, "segment_snapshot", None)
         return snapshot.last_sale_at if snapshot else None
+
+
+class PrivacyRequestType(str, enum.Enum):
+    """Tipos de solicitudes de privacidad realizadas por clientes."""
+
+    CONSENT = "consent"
+    ANONYMIZATION = "anonymization"
+
+
+class PrivacyRequestStatus(str, enum.Enum):
+    """Estados posibles de una solicitud de privacidad."""
+
+    REGISTRADA = "registrada"
+    PROCESADA = "procesada"
+
+
+class CustomerPrivacyRequest(Base):
+    __tablename__ = "customer_privacy_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    customer_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("clientes.id_cliente", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    request_type: Mapped[PrivacyRequestType] = mapped_column(
+        Enum(PrivacyRequestType, name="privacy_request_type"), nullable=False
+    )
+    status: Mapped[PrivacyRequestStatus] = mapped_column(
+        Enum(PrivacyRequestStatus, name="privacy_request_status"),
+        nullable=False,
+        default=PrivacyRequestStatus.PROCESADA,
+    )
+    details: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    consent_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    masked_fields: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    processed_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    customer: Mapped[Customer] = relationship(
+        "Customer", back_populates="privacy_requests"
+    )
+    processed_by: Mapped[Optional["User"]] = relationship("User")
 
 
 class CustomerLedgerEntryType(str, enum.Enum):
@@ -2468,6 +2538,16 @@ class Sale(Base):
         "estado", String(30), nullable=False, default="COMPLETADA"
     )
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    invoice_reported: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    invoice_reported_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    invoice_annulled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    invoice_credit_note_code: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         "fecha", DateTime(timezone=True), default=datetime.utcnow
     )

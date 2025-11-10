@@ -405,6 +405,7 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "purchase_order": models.SyncOutboxPriority.NORMAL,
     "repair_order": models.SyncOutboxPriority.NORMAL,
     "customer": models.SyncOutboxPriority.NORMAL,
+    "customer_privacy_request": models.SyncOutboxPriority.LOW,
     "customer_ledger_entry": models.SyncOutboxPriority.NORMAL,
     "supplier_ledger_entry": models.SyncOutboxPriority.NORMAL,
     "pos_config": models.SyncOutboxPriority.NORMAL,
@@ -439,6 +440,7 @@ _SYSTEM_MODULE_MAP: dict[str, str] = {
     "auth": "usuarios",
     "store": "inventario",
     "customer": "clientes",
+    "customer_privacy_request": "clientes",
     "supplier_ledger_entry": "proveedores",
     "supplier": "proveedores",
     "transfer_order": "inventario",
@@ -1544,6 +1546,11 @@ def _customer_payload(customer: models.Customer) -> dict[str, object]:
         "credit_limit": float(customer.credit_limit or Decimal("0")),
         "outstanding_debt": float(customer.outstanding_debt or Decimal("0")),
         "last_interaction_at": customer.last_interaction_at.isoformat() if customer.last_interaction_at else None,
+        "privacy_consents": dict(customer.privacy_consents or {}),
+        "privacy_metadata": dict(customer.privacy_metadata or {}),
+        "privacy_last_request_at": customer.privacy_last_request_at.isoformat()
+        if customer.privacy_last_request_at
+        else None,
         "updated_at": customer.updated_at.isoformat(),
         "annual_purchase_amount": float(customer.annual_purchase_amount),
         "orders_last_year": customer.orders_last_year,
@@ -1552,6 +1559,25 @@ def _customer_payload(customer: models.Customer) -> dict[str, object]:
         "last_purchase_at": customer.last_purchase_at.isoformat()
         if customer.last_purchase_at
         else None,
+    }
+
+
+def _customer_privacy_request_payload(
+    request: models.CustomerPrivacyRequest,
+) -> dict[str, object]:
+    return {
+        "id": request.id,
+        "customer_id": request.customer_id,
+        "request_type": request.request_type.value,
+        "status": request.status.value,
+        "details": request.details,
+        "consent_snapshot": request.consent_snapshot,
+        "masked_fields": request.masked_fields,
+        "created_at": request.created_at.isoformat(),
+        "processed_at": request.processed_at.isoformat()
+        if request.processed_at
+        else None,
+        "processed_by_id": request.processed_by_id,
     }
 
 
@@ -1963,6 +1989,89 @@ def _append_customer_history(customer: models.Customer, note: str) -> None:
     customer.last_interaction_at = datetime.utcnow()
 
 
+def _mask_email(value: str) -> str:
+    email = (value or "").strip()
+    if "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    local = local.strip()
+    domain = domain.strip() or "anon.invalid"
+    if not local:
+        return f"***@{domain}"
+    if len(local) == 1:
+        masked_local = "*"
+    elif len(local) == 2:
+        masked_local = f"{local[0]}*"
+    else:
+        masked_local = f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}"
+    return f"{masked_local}@{domain}"
+
+
+def _mask_phone(value: str) -> str:
+    digits = re.sub(r"[^0-9]", "", value or "")
+    if not digits:
+        return "***"
+    if len(digits) <= 4:
+        visible = digits[-1:] if digits else ""
+        return f"{'*' * max(0, len(digits) - 1)}{visible}"
+    return f"{'*' * (len(digits) - 4)}{digits[-4:]}"
+
+
+def _mask_person_name(value: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        return text
+    parts = text.split()
+    masked_parts = []
+    for part in parts:
+        if len(part) <= 2:
+            masked_parts.append(part[0] + "*")
+        else:
+            masked_parts.append(part[0] + "*" * (len(part) - 1))
+    return " ".join(masked_parts)
+
+
+def _mask_generic_text(value: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        return text
+    if len(text) <= 4:
+        return "*" * len(text)
+    return f"{text[:2]}***{text[-2:]}"
+
+
+def _apply_customer_anonymization(
+    customer: models.Customer, fields: Sequence[str]
+) -> list[str]:
+    normalized = []
+    for raw in fields:
+        if not isinstance(raw, str):
+            continue
+        cleaned = raw.strip().lower()
+        if cleaned and cleaned not in normalized:
+            normalized.append(cleaned)
+    if not normalized:
+        normalized = ["email", "phone", "address"]
+    masked: list[str] = []
+    for field in normalized:
+        if field in {"name", "full_name"} and customer.name:
+            customer.name = _mask_person_name(customer.name)
+            masked.append("name")
+        elif field == "email" and customer.email:
+            customer.email = _mask_email(customer.email)
+            masked.append("email")
+        elif field == "phone" and customer.phone:
+            customer.phone = _mask_phone(customer.phone)
+            masked.append("phone")
+        elif field == "address" and customer.address:
+            customer.address = _mask_generic_text(customer.address)
+            masked.append("address")
+        elif field == "notes" and customer.notes:
+            customer.notes = _mask_generic_text(customer.notes)
+            masked.append("notes")
+    return masked
+
+
 _ALLOWED_CUSTOMER_STATUSES = {
     "activo", "inactivo", "moroso", "vip", "bloqueado"}
 _ALLOWED_CUSTOMER_TYPES = {"minorista", "mayorista", "corporativo"}
@@ -2002,11 +2111,18 @@ def _normalize_customer_tags(tags: Sequence[str] | None) -> list[str]:
     return normalized
 
 
+_RTN_CANONICAL_TEMPLATE = "{0}-{1}-{2}"
+
+
+def _normalize_rtn(value: str | None, *, error_code: str) -> str:
+    digits = re.sub(r"[^0-9]", "", value or "")
+    if len(digits) != 14:
+        raise ValueError(error_code)
+    return _RTN_CANONICAL_TEMPLATE.format(digits[:4], digits[4:8], digits[8:])
+
+
 def _normalize_customer_tax_id(value: str) -> str:
-    normalized = value.strip().upper().replace(" ", "")
-    if len(normalized) < 5:
-        raise ValueError("customer_tax_id_invalid")
-    return normalized
+    return _normalize_rtn(value, error_code="customer_tax_id_invalid")
 
 
 def _is_tax_id_integrity_error(error: IntegrityError) -> bool:
@@ -4966,6 +5082,7 @@ def get_customer(db: Session, customer_id: int) -> models.Customer:
         select(models.Customer)
         .options(selectinload(models.Customer.loyalty_account))
         .options(selectinload(models.Customer.segment_snapshot))
+        .options(selectinload(models.Customer.privacy_requests))
         .where(models.Customer.id == customer_id)
     )
     try:
@@ -5932,6 +6049,15 @@ def get_customer_summary(
         schemas.StoreCreditResponse.model_validate(credit)
         for credit in store_credits
     ]
+    privacy_requests = [
+        schemas.CustomerPrivacyRequestResponse.model_validate(entry)
+        for entry in sorted(
+            customer.privacy_requests,
+            key=lambda record: record.created_at,
+            reverse=True,
+        )[:20]
+    ]
+
     return schemas.CustomerSummaryResponse(
         customer=customer_schema,
         totals=snapshot,
@@ -5940,7 +6066,108 @@ def get_customer_summary(
         payments=payments[:20],
         ledger=ledger_entries[:50],
         store_credits=store_credit_schema,
+        privacy_requests=privacy_requests,
     )
+
+
+def create_customer_privacy_request(
+    db: Session,
+    customer_id: int,
+    payload: schemas.CustomerPrivacyRequestCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> tuple[models.Customer, models.CustomerPrivacyRequest]:
+    customer = get_customer(db, customer_id)
+    request_type = models.PrivacyRequestType(payload.request_type)
+    now = datetime.utcnow()
+    consent_snapshot = dict(customer.privacy_consents or {})
+    masked_fields: list[str] = []
+
+    with transactional_session(db):
+        if request_type == models.PrivacyRequestType.CONSENT:
+            updates = payload.consent or {}
+            if not updates:
+                raise ValueError("privacy_consent_required")
+            consent_snapshot.update(updates)
+            customer.privacy_consents = consent_snapshot
+            summary = ", ".join(
+                f"{key}={'sí' if value else 'no'}"
+                for key, value in updates.items()
+            )
+            history_note = (
+                f"Consentimientos actualizados ({summary})"
+                if summary
+                else "Consentimientos actualizados."
+            )
+            _append_customer_history(customer, history_note)
+        else:
+            masked_fields = _apply_customer_anonymization(
+                customer, payload.mask_fields
+            )
+            consent_snapshot = dict(customer.privacy_consents or {})
+            summary = ", ".join(masked_fields) if masked_fields else "sin cambios"
+            _append_customer_history(
+                customer, f"Anonimización parcial aplicada ({summary})."
+            )
+
+        metadata = dict(customer.privacy_metadata or {})
+        metadata["last_request"] = {
+            "type": request_type.value,
+            "timestamp": now.isoformat(),
+            "details": payload.details,
+            "masked_fields": masked_fields,
+        }
+        customer.privacy_metadata = metadata
+        customer.privacy_last_request_at = now
+
+        request = models.CustomerPrivacyRequest(
+            customer_id=customer.id,
+            request_type=request_type,
+            status=models.PrivacyRequestStatus.PROCESADA,
+            details=payload.details,
+            consent_snapshot=consent_snapshot,
+            masked_fields=masked_fields,
+            processed_by_id=performed_by_id,
+            processed_at=now,
+        )
+
+        db.add(customer)
+        db.add(request)
+        flush_session(db)
+        db.refresh(customer)
+        db.refresh(request)
+
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer_privacy_request",
+            entity_id=str(request.id),
+            operation="UPSERT",
+            payload=_customer_privacy_request_payload(request),
+        )
+
+        _log_action(
+            db,
+            action="customer_privacy_request",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "request_type": request_type.value,
+                    "details": payload.details,
+                    "masked_fields": masked_fields,
+                }
+            ),
+        )
+
+    return customer, request
 
 
 def _resolve_sale_references(
@@ -6545,9 +6772,12 @@ def create_supplier(
     performed_by_id: int | None = None,
 ) -> models.Supplier:
     history = _history_to_json(payload.history)
+    normalized_rtn = None
+    if payload.rtn:
+        normalized_rtn = _normalize_rtn(payload.rtn, error_code="supplier_rtn_invalid")
     supplier = models.Supplier(
         name=payload.name,
-        rtn=payload.rtn,
+        rtn=normalized_rtn,
         payment_terms=payload.payment_terms,
         contact_name=payload.contact_name,
         email=payload.email,
@@ -6592,8 +6822,12 @@ def update_supplier(
         supplier.name = payload.name
         updated_fields["name"] = payload.name
     if payload.rtn is not None:
-        supplier.rtn = payload.rtn
-        updated_fields["rtn"] = payload.rtn
+        supplier.rtn = (
+            _normalize_rtn(payload.rtn, error_code="supplier_rtn_invalid")
+            if payload.rtn
+            else None
+        )
+        updated_fields["rtn"] = supplier.rtn
     if payload.payment_terms is not None:
         supplier.payment_terms = payload.payment_terms
         updated_fields["payment_terms"] = payload.payment_terms
@@ -17027,6 +17261,7 @@ def cancel_sale(
         cancel_reason = reason or f"Anulación venta #{sale.id}"
         ledger_entry: models.CustomerLedgerEntry | None = None
         customer_to_sync: models.Customer | None = None
+        credit_note: models.StoreCredit | None = None
         for item in sale.items:
             device = get_device(db, sale.store_id, item.device_id)
             movement = _register_inventory_movement(
@@ -17070,6 +17305,31 @@ def cancel_sale(
                 created_by_id=performed_by_id,
             )
 
+        if sale.invoice_reported and sale.total_amount > Decimal("0"):
+            if sale.customer_id is None:
+                raise ValueError("sale_reported_requires_customer")
+            config = get_pos_config(db, sale.store_id)
+            invoice_number = f"{config.invoice_prefix}-{sale.id:06d}"
+            credit_request = schemas.StoreCreditIssueRequest(
+                customer_id=sale.customer_id,
+                amount=float(_to_decimal(sale.total_amount)),
+                notes=f"Nota de crédito por anulación de la factura {invoice_number}",
+                context={
+                    "origin": "sale_cancellation",
+                    "sale_id": sale.id,
+                    "invoice_number": invoice_number,
+                },
+            )
+            credit_note = issue_store_credit(
+                db,
+                credit_request,
+                performed_by_id=performed_by_id,
+                reason=cancel_reason,
+            )
+            sale.invoice_reported = False
+            sale.invoice_annulled_at = datetime.utcnow()
+            sale.invoice_credit_note_code = credit_note.code
+
         sale.status = "CANCELADA"
         _recalculate_store_inventory_value(db, sale.store_id)
 
@@ -17086,14 +17346,18 @@ def cancel_sale(
             )
         if ledger_entry:
             _sync_customer_ledger_entry(db, ledger_entry)
-
         _log_action(
             db,
             action="sale_cancelled",
             entity_type="sale",
             entity_id=str(sale.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"reason": cancel_reason}),
+            details=json.dumps(
+                {
+                    "reason": cancel_reason,
+                    "credit_note_code": credit_note.code if credit_note else None,
+                }
+            ),
         )
         flush_session(db)
         db.refresh(sale)

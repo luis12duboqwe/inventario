@@ -26,6 +26,10 @@ type CustomersSidePanelProps = {
   resolveDetails: (entry: LedgerEntryWithDetails) => LedgerEntryWithDetails;
   formatCurrency: (value: number) => string;
   onDownloadStatement: (customer: Customer) => void;
+  privacyEnabled: boolean;
+  privacyProcessing: boolean;
+  onRegisterConsent: (customer: Customer) => void;
+  onRegisterAnonymization: (customer: Customer) => void;
 };
 
 const CustomersSidePanel = ({
@@ -43,10 +47,15 @@ const CustomersSidePanel = ({
   resolveDetails,
   formatCurrency,
   onDownloadStatement,
+  privacyEnabled,
+  privacyProcessing,
+  onRegisterConsent,
+  onRegisterAnonymization,
 }: CustomersSidePanelProps) => {
   const notes = safeArray(customerNotes); // [PACK36-customers]
   const historyEntries = safeArray(customerHistory); // [PACK36-customers]
   const invoices = safeArray(recentInvoices); // [PACK36-customers]
+  const privacyRequests = safeArray(summary?.privacy_requests);
   const summarySales = safeArray(summary?.sales); // [PACK36-customers]
   const summaryPayments = safeArray(summary?.payments); // [PACK36-customers]
   const summaryLedger = safeArray(summary?.ledger); // [PACK36-customers]
@@ -59,6 +68,15 @@ const CustomersSidePanel = ({
   const receivableBuckets = safeArray(receivableData?.aging); // [PACK36-customers]
   const receivableEntries = safeArray(receivableData?.open_entries); // [PACK36-customers]
   const receivableSchedule = safeArray(receivableData?.credit_schedule); // [PACK36-customers]
+  const privacyTypeLabels: Record<CustomerSummary["privacy_requests"][number]["request_type"], string> = {
+    consent: "Consentimiento",
+    anonymization: "Anonimización",
+  };
+  const privacyStatusTone: Record<CustomerSummary["privacy_requests"][number]["request_type"], string> = {
+    consent: "info",
+    anonymization: "warning",
+  };
+
   const scheduleStatusLabels: Record<CreditScheduleEntry["status"], string> = {
     pending: "Programado",
     due_soon: "Próximo",
@@ -108,6 +126,16 @@ const CustomersSidePanel = ({
   const handleStatementClick = () => { // [PACK36-customers]
     if (selectedCustomer) {
       onDownloadStatement(selectedCustomer);
+    }
+  };
+  const handleConsentClick = () => {
+    if (selectedCustomer) {
+      onRegisterConsent(selectedCustomer);
+    }
+  };
+  const handleAnonymizationClick = () => {
+    if (selectedCustomer) {
+      onRegisterAnonymization(selectedCustomer);
     }
   };
   const receivableSummary = receivableData?.summary ?? null; // [PACK36-customers]
@@ -169,6 +197,70 @@ const CustomersSidePanel = ({
               </div>
             </div>
             </div>
+
+            {privacyEnabled ? (
+              <div className="privacy-section" aria-live="polite">
+                <div className="privacy-section__header">
+                  <div>
+                    <h5>Privacidad y consentimientos</h5>
+                    <p className="muted-text small">
+                      Administra consentimientos y anonimización bajo solicitud formal.
+                    </p>
+                  </div>
+                  <div className="privacy-actions">
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={handleConsentClick}
+                      disabled={!selectedCustomer || privacyProcessing}
+                    >
+                      Registrar consentimiento
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={handleAnonymizationClick}
+                      disabled={!selectedCustomer || privacyProcessing}
+                    >
+                      Aplicar anonimización
+                    </button>
+                  </div>
+                </div>
+                {privacyProcessing ? (
+                  <p className="muted-text">Procesando solicitud de privacidad…</p>
+                ) : privacyRequests.length === 0 ? (
+                  <p className="muted-text">Sin solicitudes de privacidad registradas.</p>
+                ) : (
+                  <ul className="privacy-log">
+                    {privacyRequests.map((request) => {
+                      const detailSummary =
+                        request.request_type === "consent"
+                          ? Object.entries(request.consent_snapshot)
+                              .map(([key, value]) => `${key}:${value ? "sí" : "no"}`)
+                              .join(" · ") || "Sin cambios"
+                          : (request.masked_fields ?? []).map((field) => field || "—").join(", ") ||
+                            "Campos predeterminados";
+                      return (
+                        <li key={`privacy-${request.id}`}>
+                          <div className="privacy-log__header">
+                            <span className={`status-pill tone-${privacyStatusTone[request.request_type]}`}>
+                              {privacyTypeLabels[request.request_type]}
+                            </span>
+                            <span className="muted-text small">
+                              {formatDateTime(request.processed_at ?? request.created_at)}
+                            </span>
+                          </div>
+                          <div className="privacy-log__body">
+                            <strong>{request.details ?? "Solicitud registrada en el sistema"}</strong>
+                            <span className="muted-text small">{detailSummary}</span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            ) : null}
 
             <div className="receivable-section" aria-live="polite">
               <div className="receivable-header">

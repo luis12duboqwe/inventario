@@ -424,6 +424,9 @@ export type Customer = {
   last_interaction_at?: string | null;
   created_at: string;
   updated_at: string;
+  privacy_consents: Record<string, boolean>;
+  privacy_metadata: Record<string, unknown>;
+  privacy_last_request_at?: string | null;
   annual_purchase_amount: number;
   orders_last_year: number;
   purchase_frequency: string;
@@ -575,6 +578,31 @@ export type StoreCredit = {
   redemptions: StoreCreditRedemption[];
 };
 
+export type CustomerPrivacyRequest = {
+  id: number;
+  customer_id: number;
+  request_type: "consent" | "anonymization";
+  status: "registrada" | "procesada";
+  details?: string | null;
+  consent_snapshot: Record<string, boolean>;
+  masked_fields: string[];
+  created_at: string;
+  processed_at?: string | null;
+  processed_by_id?: number | null;
+};
+
+export type CustomerPrivacyRequestCreate = {
+  request_type: "consent" | "anonymization";
+  details?: string;
+  consent?: Record<string, boolean>;
+  mask_fields?: string[];
+};
+
+export type CustomerPrivacyActionResponse = {
+  customer: Customer;
+  request: CustomerPrivacyRequest;
+};
+
 export type CustomerFinancialSnapshot = {
   credit_limit: number;
   outstanding_debt: number;
@@ -594,6 +622,7 @@ export type CustomerSummary = {
   payments: CustomerLedgerEntry[];
   ledger: CustomerLedgerEntry[];
   store_credits: StoreCredit[];
+  privacy_requests: CustomerPrivacyRequest[];
 };
 
 export type CustomerPortfolioItem = {
@@ -5038,6 +5067,19 @@ export function appendCustomerNote(
       body: JSON.stringify({ note }),
       headers: { "X-Reason": reason },
     },
+    token
+  );
+}
+
+export function createCustomerPrivacyRequest(
+  token: string,
+  customerId: number,
+  payload: CustomerPrivacyRequestCreate,
+  reason: string
+): Promise<CustomerPrivacyActionResponse> {
+  return request<CustomerPrivacyActionResponse>(
+    `/customers/${customerId}/privacy-requests`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
     token
   );
 }

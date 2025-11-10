@@ -22,6 +22,7 @@ import {
   updateSupplier,
   updateSupplierBatch,
 } from "../../../api";
+import { normalizeRtn, RTN_ERROR_MESSAGE } from "../utils/rtn";
 
 type Props = {
   token: string;
@@ -230,7 +231,12 @@ function Suppliers({ token, stores }: Props) {
       return;
     }
     const trimmedName = form.name.trim();
-    const rtn = form.rtn.trim();
+    const rawRtn = form.rtn.trim();
+    const normalizedRtn = rawRtn ? normalizeRtn(rawRtn) : null;
+    if (rawRtn && !normalizedRtn) {
+      setError(RTN_ERROR_MESSAGE);
+      return;
+    }
     const paymentTerms = form.paymentTerms.trim();
     const contactName = form.contactName.trim();
     const contactRole = form.contactRole.trim();
@@ -261,7 +267,11 @@ function Suppliers({ token, stores }: Props) {
       setError(null);
       if (editingId) {
         const payload: Partial<SupplierPayload> = { name: trimmedName };
-        payload.rtn = rtn;
+        if (normalizedRtn) {
+          payload.rtn = normalizedRtn;
+        } else if (rawRtn.length === 0) {
+          payload.rtn = undefined;
+        }
         payload.payment_terms = paymentTerms;
         payload.contact_name = contactName;
         payload.email = email;
@@ -285,8 +295,8 @@ function Suppliers({ token, stores }: Props) {
         setMessage("Proveedor actualizado correctamente.");
       } else {
         const payload: SupplierPayload = { name: trimmedName };
-        if (rtn) {
-          payload.rtn = rtn;
+        if (normalizedRtn) {
+          payload.rtn = normalizedRtn;
         }
         if (paymentTerms) {
           payload.payment_terms = paymentTerms;
