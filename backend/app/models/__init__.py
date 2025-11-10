@@ -1643,8 +1643,12 @@ class Customer(Base):
         back_populates="customer",
         cascade="all, delete-orphan",
     )
-    loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
+    loyalty_account: Mapped[Optional["LoyaltyAccount"]] = relationship(
         "LoyaltyAccount",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
     segment_snapshot: Mapped[Optional["CustomerSegmentSnapshot"]] = relationship(
         "CustomerSegmentSnapshot",
         back_populates="customer",
@@ -1988,6 +1992,57 @@ class StoreCreditRedemption(Base):
     created_by: Mapped[Optional["User"]] = relationship("User")
 
 
+class SupplierLedgerEntryType(str, enum.Enum):
+    """Tipos de movimientos registrados en la bitácora de proveedores."""
+
+    INVOICE = "invoice"
+    PAYMENT = "payment"
+    CREDIT_NOTE = "credit_note"
+    ADJUSTMENT = "adjustment"
+
+
+class SupplierLedgerEntry(Base):
+    __tablename__ = "supplier_ledger_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    supplier_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("suppliers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entry_type: Mapped[SupplierLedgerEntryType] = mapped_column(
+        Enum(SupplierLedgerEntryType, name="supplier_ledger_entry_type"),
+        nullable=False,
+    )
+    reference_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    balance_after: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    supplier: Mapped["Supplier"] = relationship(
+        "Supplier", back_populates="ledger_entries"
+    )
+    created_by: Mapped[Optional["User"]] = relationship("User")
+
+
 class Supplier(Base):
     __tablename__ = "suppliers"
 
@@ -2013,6 +2068,11 @@ class Supplier(Base):
     )
     batches: Mapped[list["SupplierBatch"]] = relationship(
         "SupplierBatch", back_populates="supplier", cascade="all, delete-orphan"
+    )
+    ledger_entries: Mapped[list["SupplierLedgerEntry"]] = relationship(
+        "SupplierLedgerEntry",
+        back_populates="supplier",
+        cascade="all, delete-orphan",
     )
 
 
@@ -2247,6 +2307,16 @@ class PurchaseReturn(Base):
         nullable=True,
         index=True,
     )
+    supplier_ledger_entry_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("supplier_ledger_entries.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    corporate_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    credit_note_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
     processed_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -2262,6 +2332,9 @@ class PurchaseReturn(Base):
     order: Mapped[PurchaseOrder] = relationship(
         "PurchaseOrder", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
+    ledger_entry: Mapped[SupplierLedgerEntry | None] = relationship(
+        "SupplierLedgerEntry"
+    )
     processed_by: Mapped[User | None] = relationship(
         "User", foreign_keys=[processed_by_id]
     )
@@ -3013,6 +3086,8 @@ __all__ = [
     "PurchaseOrderItem",
     "PurchaseReturn",
     "PurchaseStatus",
+    "SupplierLedgerEntry",
+    "SupplierLedgerEntryType",
     "RepairOrder",
     "RepairOrderPart",
     "RepairStatus",

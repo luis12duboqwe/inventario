@@ -3,12 +3,20 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import type {
   PurchaseOrder,
   PurchaseOrderCreateInput,
+  PurchaseReturn,
+  PurchaseReturnInput,
   PurchaseSuggestionStore,
   PurchaseSuggestionsResponse,
+  ReturnDisposition,
+  ReturnReasonCategory,
+  Store,
 } from "../../api";
 import {
   createPurchaseOrderFromSuggestion,
+  getStores,
   getPurchaseSuggestions,
+  listPurchaseOrders,
+  registerPurchaseReturn,
 } from "../../api";
 import { useAuth } from "../../auth/useAuth";
 import { promptCorporateReason } from "../../utils/corporateReason";
@@ -16,6 +24,32 @@ import { promptCorporateReason } from "../../utils/corporateReason";
 const reasonLabels: Record<PurchaseSuggestionStore["items"][number]["reason"], string> = {
   below_minimum: "Stock por debajo del mínimo",
   projected_consumption: "Cobertura insuficiente",
+};
+
+const dispositionOptions: { value: ReturnDisposition; label: string }[] = [
+  { value: "vendible", label: "Vendible" },
+  { value: "defectuoso", label: "Defectuoso" },
+  { value: "no_vendible", label: "No vendible" },
+  { value: "reparacion", label: "En revisión" },
+];
+
+const categoryOptions: { value: ReturnReasonCategory; label: string }[] = [
+  { value: "defecto", label: "Falla de calidad" },
+  { value: "logistica", label: "Logística / envío" },
+  { value: "cliente", label: "Cambio del cliente" },
+  { value: "precio", label: "Ajuste comercial" },
+  { value: "otro", label: "Otro" },
+];
+
+type PurchaseReturnDraft = {
+  storeId: number | null;
+  orderId: number | null;
+  deviceId: number | null;
+  quantity: number;
+  reason: string;
+  disposition: ReturnDisposition;
+  category: ReturnReasonCategory;
+  warehouseId: number | null;
 };
 
 type SuggestionDraftItem = {
@@ -31,6 +65,17 @@ type SuggestionDraft = {
   storeName: string;
   supplier: string;
   items: SuggestionDraftItem[];
+};
+
+const initialReturnDraft: PurchaseReturnDraft = {
+  storeId: null,
+  orderId: null,
+  deviceId: null,
+  quantity: 1,
+  reason: "Proveedor defectuoso",
+  disposition: "defectuoso",
+  category: "defecto",
+  warehouseId: null,
 };
 
 function buildDraft(store: PurchaseSuggestionStore): SuggestionDraft {
@@ -57,6 +102,13 @@ function Purchases() {
   const [message, setMessage] = useState<string | null>(null);
   const [draft, setDraft] = useState<SuggestionDraft | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [returnForm, setReturnForm] = useState<PurchaseReturnDraft>(initialReturnDraft);
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
+  const [returnError, setReturnError] = useState<string | null>(null);
+  const [returnMessage, setReturnMessage] = useState<string | null>(null);
+  const [returnDocument, setReturnDocument] = useState<{ url: string; filename: string } | null>(null);
 
   const currency = useMemo(
     () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
@@ -87,6 +139,73 @@ function Purchases() {
   useEffect(() => {
     fetchSuggestions();
   }, [fetchSuggestions]);
+
+  const resetReturnFeedback = useCallback(() => {
+    setReturnError(null);
+    setReturnMessage(null);
+  }, []);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setStores([]);
+      return;
+    }
+    let active = true;
+    getStores(accessToken)
+      .then((data) => {
+        if (active) {
+          setStores(data);
+        }
+      })
+      .catch((err) => {
+        if (!active) {
+          return;
+        }
+        const message =
+          err instanceof Error
+            ? err.message
+            : "No fue posible cargar las sucursales.";
+        setReturnError((current) => current ?? message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accessToken]);
+
+  const fetchOrders = useCallback(
+    async (storeId: number) => {
+      if (!accessToken) {
+        return;
+      }
+      try {
+        const data = await listPurchaseOrders(accessToken, storeId, 100);
+        setOrders(data);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "No fue posible cargar las órdenes de compra.";
+        setReturnError(message);
+        setOrders([]);
+      }
+    },
+    [accessToken],
+  );
+
+  useEffect(() => {
+    if (!returnForm.storeId || !accessToken) {
+      setOrders([]);
+      return;
+    }
+    resetReturnFeedback();
+    void fetchOrders(returnForm.storeId);
+  }, [returnForm.storeId, accessToken, fetchOrders, resetReturnFeedback]);
+
+  useEffect(() => () => {
+    if (returnDocument) {
+      URL.revokeObjectURL(returnDocument.url);
+    }
+  }, [returnDocument]);
 
   const handleOpenDraft = (store: PurchaseSuggestionStore) => {
     setDraft(buildDraft(store));
@@ -125,6 +244,245 @@ function Purchases() {
     }
     return draft.items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
   }, [draft]);
+
+  const resolveAvailableQuantity = useCallback(
+    (orderId: number | null, deviceId: number | null) => {
+      if (!orderId || !deviceId) {
+        return 0;
+      }
+      const order = orders.find((item) => item.id === orderId);
+      if (!order) {
+        return 0;
+      }
+      const item = order.items.find((entry) => entry.device_id === deviceId);
+      if (!item) {
+        return 0;
+      }
+      const returned = order.returns
+        .filter((entry) => entry.device_id === deviceId)
+        .reduce((sum, entry) => sum + entry.quantity, 0);
+      return Math.max(0, item.quantity_received - returned);
+    },
+    [orders],
+  );
+
+  const selectedStore = useMemo(() => {
+    if (returnForm.storeId == null) {
+      return null;
+    }
+    return stores.find((store) => store.id === returnForm.storeId) ?? null;
+  }, [stores, returnForm.storeId]);
+
+  const selectedOrder = useMemo(() => {
+    if (returnForm.orderId == null) {
+      return null;
+    }
+    return orders.find((order) => order.id === returnForm.orderId) ?? null;
+  }, [orders, returnForm.orderId]);
+
+  const selectedOrderItem = useMemo(() => {
+    if (!selectedOrder || returnForm.deviceId == null) {
+      return null;
+    }
+    return (
+      selectedOrder.items.find((item) => item.device_id === returnForm.deviceId) ?? null
+    );
+  }, [selectedOrder, returnForm.deviceId]);
+
+  const returnedQuantity = useMemo(() => {
+    if (!selectedOrder || returnForm.deviceId == null) {
+      return 0;
+    }
+    return selectedOrder.returns
+      .filter((entry) => entry.device_id === returnForm.deviceId)
+      .reduce((sum, entry) => sum + entry.quantity, 0);
+  }, [selectedOrder, returnForm.deviceId]);
+
+  const availableForReturn = useMemo(() => {
+    if (!selectedOrderItem) {
+      return 0;
+    }
+    return Math.max(0, selectedOrderItem.quantity_received - returnedQuantity);
+  }, [selectedOrderItem, returnedQuantity]);
+
+  const creditNotePreview = useMemo(() => {
+    if (!selectedOrderItem || availableForReturn <= 0) {
+      return 0;
+    }
+    const safeQuantity = Math.min(Math.max(0, returnForm.quantity), availableForReturn);
+    return safeQuantity > 0 ? safeQuantity * selectedOrderItem.unit_cost : 0;
+  }, [selectedOrderItem, availableForReturn, returnForm.quantity]);
+
+  const handleReturnStoreChange = (value: string) => {
+    const parsed = value ? Number(value) : NaN;
+    const nextStoreId = Number.isNaN(parsed) ? null : parsed;
+    resetReturnFeedback();
+    setReturnForm({
+      ...initialReturnDraft,
+      storeId: nextStoreId,
+    });
+  };
+
+  const handleReturnOrderChange = (value: string) => {
+    const parsed = value ? Number(value) : NaN;
+    const nextOrderId = Number.isNaN(parsed) ? null : parsed;
+    resetReturnFeedback();
+    setReturnForm((current) => ({
+      ...current,
+      orderId: nextOrderId,
+      deviceId: null,
+      quantity: 1,
+    }));
+  };
+
+  const handleReturnDeviceChange = (value: string) => {
+    const parsed = value ? Number(value) : NaN;
+    const nextDeviceId = Number.isNaN(parsed) ? null : parsed;
+    resetReturnFeedback();
+    setReturnForm((current) => {
+      const available = resolveAvailableQuantity(current.orderId, nextDeviceId);
+      const nextQuantity = available > 0 ? Math.min(Math.max(1, current.quantity), available) : 0;
+      return {
+        ...current,
+        deviceId: nextDeviceId,
+        quantity: nextDeviceId ? nextQuantity : current.quantity,
+      };
+    });
+  };
+
+  const handleReturnQuantityChange = (value: number) => {
+    setReturnForm((current) => {
+      const available = resolveAvailableQuantity(current.orderId, current.deviceId);
+      if (!Number.isFinite(value)) {
+        return current;
+      }
+      const normalized = Math.max(0, Math.trunc(value));
+      if (available > 0 && normalized > available) {
+        return { ...current, quantity: available };
+      }
+      return { ...current, quantity: normalized };
+    });
+  };
+
+  const handleReturnDispositionChange = (value: ReturnDisposition) => {
+    setReturnForm((current) => ({ ...current, disposition: value }));
+  };
+
+  const handleReturnCategoryChange = (value: ReturnReasonCategory) => {
+    setReturnForm((current) => ({ ...current, category: value }));
+  };
+
+  const handleReturnWarehouseChange = (value: string) => {
+    const parsed = value ? Number(value) : NaN;
+    setReturnForm((current) => ({
+      ...current,
+      warehouseId: Number.isNaN(parsed) ? null : parsed,
+    }));
+  };
+
+  const handleReturnReasonChange = (value: string) => {
+    setReturnForm((current) => ({ ...current, reason: value }));
+  };
+
+  const handleSubmitReturn = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!accessToken) {
+      return;
+    }
+    resetReturnFeedback();
+
+    const { storeId, orderId, deviceId, quantity, reason: reasonText, disposition, category, warehouseId } =
+      returnForm;
+    if (!storeId || !orderId || !deviceId) {
+      setReturnError("Selecciona la sucursal, la orden y el dispositivo a devolver.");
+      return;
+    }
+    const order = orders.find((entry) => entry.id === orderId) ?? null;
+    const available = resolveAvailableQuantity(orderId, deviceId);
+    if (available <= 0) {
+      setReturnError("No hay cantidad disponible para devolver de este artículo.");
+      return;
+    }
+    const normalizedQuantity = Math.min(Math.max(1, Math.trunc(quantity)), available);
+    if (normalizedQuantity <= 0) {
+      setReturnError("Indica una cantidad válida para la devolución.");
+      return;
+    }
+    const trimmedReason = reasonText.trim();
+    if (trimmedReason.length < 5) {
+      setReturnError("El motivo debe tener al menos 5 caracteres.");
+      return;
+    }
+    const corporateReason = promptCorporateReason(
+      `Devolución proveedor - ${order?.supplier ?? "Proveedor"}`,
+    );
+    const normalizedCorporate = corporateReason?.trim() ?? "";
+    if (normalizedCorporate.length < 5) {
+      setReturnError("Debes capturar un motivo corporativo válido (mínimo 5 caracteres).");
+      return;
+    }
+
+    setReturnSubmitting(true);
+    try {
+      const response: PurchaseReturn = await registerPurchaseReturn(
+        accessToken,
+        orderId,
+        {
+          device_id: deviceId,
+          quantity: normalizedQuantity,
+          reason: trimmedReason,
+          disposition,
+          category,
+          ...(warehouseId ? { warehouse_id: warehouseId } : {}),
+        },
+        normalizedCorporate,
+      );
+
+      const creditAmount = response.credit_note_amount ?? 0;
+      const supplierLabel = order?.supplier ?? "Proveedor";
+      setReturnMessage(
+        `Devolución registrada para ${supplierLabel}. Nota de crédito por ${currency.format(creditAmount)}.`,
+      );
+
+      const documentLines = [
+        "Softmobile 2025 v2.2.0 — Devolución a proveedor",
+        `Fecha: ${new Date(response.created_at ?? Date.now()).toLocaleString("es-MX")}`,
+        `Sucursal: ${selectedStore?.name ?? storeId}`,
+        `Orden de compra: #${orderId}`,
+        `Proveedor: ${supplierLabel}`,
+        `Dispositivo ID: ${deviceId}`,
+        `Cantidad devuelta: ${normalizedQuantity}`,
+        `Nota de crédito: ${currency.format(creditAmount)}`,
+        `Motivo técnico: ${trimmedReason}`,
+        `Motivo corporativo: ${normalizedCorporate}`,
+      ];
+      const blob = new Blob([documentLines.join("\n")], {
+        type: "text/plain;charset=utf-8",
+      });
+      if (returnDocument) {
+        URL.revokeObjectURL(returnDocument.url);
+      }
+      setReturnDocument({
+        url: URL.createObjectURL(blob),
+        filename: `devolucion-${orderId}-${response.id}.txt`,
+      });
+
+      const remaining = Math.max(0, available - normalizedQuantity);
+      await fetchOrders(storeId);
+      setReturnForm((current) => ({
+        ...current,
+        quantity: remaining,
+      }));
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No fue posible registrar la devolución a proveedor.";
+      setReturnError(message);
+    } finally {
+      setReturnSubmitting(false);
+    }
+  };
 
   const handleSubmitDraft = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -295,6 +653,151 @@ function Purchases() {
             </section>
           );
         })}
+
+      <section className="card" style={{ display: "grid", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <h2 style={{ margin: 0 }}>Devolución a proveedor</h2>
+          <p className="card-subtitle" style={{ margin: 0 }}>
+            Registra notas de crédito y ajusta inventario con motivo corporativo.
+          </p>
+        </div>
+        {returnMessage && (
+          <div className="alert alert--success" role="status">
+            {returnMessage}
+          </div>
+        )}
+        {returnError && (
+          <div className="alert alert--error" role="alert">
+            {returnError}
+          </div>
+        )}
+        <form onSubmit={handleSubmitReturn} className="form-grid" style={{ gap: 12 }}>
+          <label>
+            Sucursal
+            <select
+              value={returnForm.storeId ?? ""}
+              onChange={(event) => handleReturnStoreChange(event.target.value)}
+            >
+              <option value="">Selecciona una sucursal</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Orden de compra
+            <select
+              value={returnForm.orderId ?? ""}
+              onChange={(event) => handleReturnOrderChange(event.target.value)}
+              disabled={!returnForm.storeId || orders.length === 0}
+            >
+              <option value="">Selecciona una orden</option>
+              {orders.map((order) => (
+                <option key={order.id} value={order.id}>
+                  #{order.id} · {order.supplier}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Dispositivo
+            <select
+              value={returnForm.deviceId ?? ""}
+              onChange={(event) => handleReturnDeviceChange(event.target.value)}
+              disabled={!returnForm.orderId}
+            >
+              <option value="">Selecciona un dispositivo</option>
+              {selectedOrder?.items.map((item) => (
+                <option key={item.id} value={item.device_id}>
+                  #{item.device_id} · {item.quantity_received}/{item.quantity_ordered} recibidos
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Cantidad a devolver
+            <input
+              type="number"
+              min={0}
+              value={returnForm.quantity}
+              onChange={(event) => handleReturnQuantityChange(Number(event.target.value))}
+              disabled={!returnForm.deviceId}
+            />
+            <span className="muted-text">
+              Disponible: {availableForReturn} · Devuelto antes: {returnedQuantity}
+            </span>
+          </label>
+          <label>
+            Estado del lote
+            <select
+              value={returnForm.disposition}
+              onChange={(event) => handleReturnDispositionChange(event.target.value as ReturnDisposition)}
+            >
+              {dispositionOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Categoría del motivo
+            <select
+              value={returnForm.category}
+              onChange={(event) => handleReturnCategoryChange(event.target.value as ReturnReasonCategory)}
+            >
+              {categoryOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Almacén destino
+            <select
+              value={returnForm.warehouseId ?? ""}
+              onChange={(event) => handleReturnWarehouseChange(event.target.value)}
+            >
+              <option value="">Mantener en sucursal</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-span">
+            Motivo técnico
+            <input
+              type="text"
+              value={returnForm.reason}
+              onChange={(event) => handleReturnReasonChange(event.target.value)}
+              placeholder="Describe el motivo técnico"
+              maxLength={255}
+            />
+          </label>
+          <p className="muted-text form-span" style={{ margin: 0 }}>
+            Nota de crédito estimada: {currency.format(creditNotePreview || 0)}
+          </p>
+          <div className="form-span" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="submit" className="btn btn--primary" disabled={returnSubmitting}>
+              {returnSubmitting ? "Registrando…" : "Registrar devolución"}
+            </button>
+          </div>
+        </form>
+        {returnDocument ? (
+          <a
+            className="btn btn--secondary"
+            href={returnDocument.url}
+            download={returnDocument.filename}
+          >
+            Descargar comprobante generado
+          </a>
+        ) : null}
+      </section>
 
       {draft && (
         <section className="card" style={{ display: "grid", gap: 16 }}>

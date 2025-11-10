@@ -1159,6 +1159,9 @@ export type PurchaseReturn = {
   reason_category: ReturnReasonCategory;
   disposition: ReturnDisposition;
   warehouse_id?: number | null;
+  supplier_ledger_entry_id?: number | null;
+  corporate_reason?: string | null;
+  credit_note_amount: number;
   processed_by_id: number | null;
   approved_by_id?: number | null;
   approved_by_name?: string | null;
@@ -1190,6 +1193,8 @@ export type ReturnRecord = {
   occurred_at: string;
   refund_amount?: number | null;
   payment_method?: PaymentMethod | string | null;
+  corporate_reason?: string | null;
+  credit_note_amount?: number | null;
 };
 
 export type ReturnsTotals = {
@@ -1198,6 +1203,7 @@ export type ReturnsTotals = {
   purchases: number;
   refunds_by_method: Record<string, number>;
   refund_total_amount: number;
+  credit_notes_total: number;
   categories: Record<string, number>;
 };
 
@@ -4267,8 +4273,8 @@ export function registerPurchaseReturn(
   orderId: number,
   payload: PurchaseReturnInput,
   reason: string
-): Promise<void> {
-  return request<void>(
+): Promise<PurchaseReturn> {
+  return request<PurchaseReturn>(
     `/purchases/${orderId}/returns`,
     {
       method: "POST",

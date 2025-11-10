@@ -103,6 +103,7 @@ const initialHistoryTotals: ReturnsTotals = {
   purchases: 0,
   refunds_by_method: {},
   refund_total_amount: 0,
+  credit_notes_total: 0,
   categories: {},
 };
 
@@ -700,6 +701,9 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
             <span>Proveedores: {historyTotals.purchases}</span>
             <span>
               Reembolsos: ${formatCurrency(historyTotals.refund_total_amount ?? 0)}
+            </span>
+            <span>
+              Notas de crédito: ${formatCurrency(historyTotals.credit_notes_total ?? 0)}
             </span>
           </div>
           {Object.keys(historyTotals.refunds_by_method ?? {}).length > 0 ? (
