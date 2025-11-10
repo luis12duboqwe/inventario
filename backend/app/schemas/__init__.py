@@ -638,7 +638,6 @@ class PriceListBase(BaseModel):
         default=None,
         ge=1,
         description="Identificador de la sucursal asociada cuando la lista es específica para una tienda.",
-        description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -5000,6 +4999,78 @@ class PurchaseReport(BaseModel):
     totals: PurchaseReportTotals
     daily_stats: list[DashboardChartPoint]
     items: list[PurchaseReportItem]
+
+
+class FiscalBookType(str, enum.Enum):
+    SALES = "sales"
+    PURCHASES = "purchases"
+
+
+class FiscalBookFilters(BaseModel):
+    year: int = Field(..., ge=2000, le=2100)
+    month: int = Field(..., ge=1, le=12)
+    book_type: FiscalBookType
+
+
+class FiscalBookTotals(BaseModel):
+    registros: int
+    base_15: Decimal = Field(default=Decimal("0"))
+    impuesto_15: Decimal = Field(default=Decimal("0"))
+    total_15: Decimal = Field(default=Decimal("0"))
+    base_18: Decimal = Field(default=Decimal("0"))
+    impuesto_18: Decimal = Field(default=Decimal("0"))
+    total_18: Decimal = Field(default=Decimal("0"))
+    base_exenta: Decimal = Field(default=Decimal("0"))
+    total_exento: Decimal = Field(default=Decimal("0"))
+    total_general: Decimal = Field(default=Decimal("0"))
+
+    @field_serializer(
+        "base_15",
+        "impuesto_15",
+        "total_15",
+        "base_18",
+        "impuesto_18",
+        "total_18",
+        "base_exenta",
+        "total_exento",
+        "total_general",
+    )
+    @classmethod
+    def _serialize_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class FiscalBookEntry(BaseModel):
+    correlativo: int
+    fecha: datetime
+    documento: str
+    contraparte: str | None = None
+    detalle: str | None = None
+    base_15: Decimal = Field(default=Decimal("0"))
+    impuesto_15: Decimal = Field(default=Decimal("0"))
+    base_18: Decimal = Field(default=Decimal("0"))
+    impuesto_18: Decimal = Field(default=Decimal("0"))
+    base_exenta: Decimal = Field(default=Decimal("0"))
+    total: Decimal = Field(default=Decimal("0"))
+
+    @field_serializer(
+        "base_15",
+        "impuesto_15",
+        "base_18",
+        "impuesto_18",
+        "base_exenta",
+        "total",
+    )
+    @classmethod
+    def _serialize_entry_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class FiscalBookReport(BaseModel):
+    generated_at: datetime
+    filters: FiscalBookFilters
+    totals: FiscalBookTotals
+    entries: list[FiscalBookEntry]
 
 
 class PurchaseVendorRanking(BaseModel):
