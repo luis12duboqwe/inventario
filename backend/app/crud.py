@@ -13772,11 +13772,12 @@ def _register_supplier_credit_note(
     current_debt = _to_decimal(supplier.outstanding_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    applied_amount = min(normalized_amount, current_debt).quantize(
+    payable_debt = max(current_debt, Decimal("0.00")).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    if applied_amount <= Decimal("0"):
-        return None
+    applied_amount = min(normalized_amount, payable_debt).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
     unused_credit = (normalized_amount - applied_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
