@@ -9,7 +9,7 @@ from ..core.roles import GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import credit, pos_receipts
+from ..services import credit, customer_segments, pos_receipts
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -82,6 +82,45 @@ def get_customer_dashboard_metrics_endpoint(
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     return crud.get_customer_dashboard_metrics(db, months=months, top_limit=top_limit)
+
+
+@router.get(
+    "/segments/export",
+    dependencies=[Depends(require_roles(*GESTION_ROLES)), Depends(require_reason)],
+)
+def export_customer_segment_endpoint(
+    segment: str = Query(
+        ..., min_length=3, description="Clave del segmento a exportar"
+    ),
+    export_format: str = Query(
+        default="csv", description="Formato de exportación (actualmente CSV)"
+    ),
+    db: Session = Depends(get_db),
+):
+    try:
+        filename, content, media_type = customer_segments.export_segment(
+            db,
+            segment_key=segment,
+            export_format=export_format,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "unknown_segment":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Segmento desconocido.",
+            ) from exc
+        if detail == "unsupported_format":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Formato de exportación no soportado.",
+            ) from exc
+        raise
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.post("/", response_model=schemas.CustomerResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])

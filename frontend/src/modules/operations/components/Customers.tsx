@@ -5,6 +5,7 @@ import {
   CustomersSummaryCards,
   CustomersTable,
   CustomersToolbar,
+  CustomersSegmentExports,
 } from "./customers";
 import {
   CUSTOMER_STATUSES,
@@ -64,6 +65,9 @@ function Customers({ token }: Props) {
     handleExportPortfolio,
     handleDashboardFiltersChange,
     refreshDashboard,
+    customerSegmentExports,
+    handleExportSegment,
+    exportingSegment,
   } = useCustomersController({ token });
 
   const customerList = Array.isArray(customers) ? customers : [];
@@ -73,7 +77,17 @@ function Customers({ token }: Props) {
 
   return (
     <section className="customers-module">
-      <CustomersToolbar error={error} message={message} />
+      <CustomersToolbar
+        error={error}
+        message={message}
+        extraContent={
+          <CustomersSegmentExports
+            segments={customerSegmentExports}
+            exportingKey={exportingSegment}
+            onExport={handleExportSegment}
+          />
+        }
+      />
 
       <CustomersFormModal
         formState={formState}

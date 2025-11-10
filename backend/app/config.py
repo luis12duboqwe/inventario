@@ -322,6 +322,176 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    customer_segmentation_interval_seconds: Annotated[
+        int,
+        Field(
+            default=43200,
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENTATION_INTERVAL_SECONDS",
+                "SOFTMOBILE_CUSTOMER_SEGMENT_INTERVAL",
+            ),
+        ),
+    ]
+    customer_segment_window_days: Annotated[
+        int,
+        Field(
+            default=365,
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENT_WINDOW_DAYS",
+                "SOFTMOBILE_CUSTOMER_SEGMENT_WINDOW_DAYS",
+            ),
+        ),
+    ]
+    customer_segment_ttl_seconds: Annotated[
+        int,
+        Field(
+            default=43200,
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENT_TTL_SECONDS",
+                "SOFTMOBILE_CUSTOMER_SEGMENT_TTL",
+            ),
+        ),
+    ]
+    customer_segment_high_value_threshold: Annotated[
+        Decimal,
+        Field(
+            default=Decimal("10000"),
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENT_HIGH_VALUE_THRESHOLD",
+                "SOFTMOBILE_CUSTOMER_SEGMENT_HIGH_VALUE",
+            ),
+        ),
+    ]
+    customer_segment_medium_value_threshold: Annotated[
+        Decimal,
+        Field(
+            default=Decimal("3000"),
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENT_MEDIUM_VALUE_THRESHOLD",
+                "SOFTMOBILE_CUSTOMER_SEGMENT_MEDIUM_VALUE",
+            ),
+        ),
+    ]
+    customer_segment_frequent_orders_threshold: Annotated[
+        int,
+        Field(
+            default=12,
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENT_FREQUENT_ORDERS_THRESHOLD",
+                "SOFTMOBILE_CUSTOMER_SEGMENT_FREQUENT_ORDERS",
+            ),
+        ),
+    ]
+    customer_segment_regular_orders_threshold: Annotated[
+        int,
+        Field(
+            default=4,
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENT_REGULAR_ORDERS_THRESHOLD",
+                "SOFTMOBILE_CUSTOMER_SEGMENT_REGULAR_ORDERS",
+            ),
+        ),
+    ]
+    customer_segment_recovery_days: Annotated[
+        int,
+        Field(
+            default=180,
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENT_RECOVERY_DAYS",
+                "SOFTMOBILE_CUSTOMER_SEGMENT_RECOVERY_DAYS",
+            ),
+        ),
+    ]
+    customer_segment_new_customer_days: Annotated[
+        int,
+        Field(
+            default=45,
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENT_NEW_CUSTOMER_DAYS",
+                "SOFTMOBILE_CUSTOMER_SEGMENT_NEW_DAYS",
+            ),
+        ),
+    ]
+    customer_segments_mailchimp_labels: Annotated[
+        list[str],
+        Field(
+            default_factory=lambda: ["alto_valor"],
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENTS_MAILCHIMP_LABELS",
+                "SOFTMOBILE_CUSTOMER_SEGMENTS_MAILCHIMP",
+            ),
+        ),
+    ]
+    customer_segments_sms_labels: Annotated[
+        list[str],
+        Field(
+            default_factory=lambda: ["recuperacion"],
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENTS_SMS_LABELS",
+                "SOFTMOBILE_CUSTOMER_SEGMENTS_SMS",
+            ),
+        ),
+    ]
+    customer_segments_export_directory: Annotated[
+        str,
+        Field(
+            default="logs/customer_segments",
+            validation_alias=AliasChoices(
+                "CUSTOMER_SEGMENTS_EXPORT_DIRECTORY",
+                "SOFTMOBILE_CUSTOMER_SEGMENTS_EXPORT_DIR",
+            ),
+        ),
+    ]
+    mailchimp_api_url: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "MAILCHIMP_API_URL",
+                "SOFTMOBILE_MAILCHIMP_API_URL",
+            ),
+        ),
+    ]
+    mailchimp_api_key: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "MAILCHIMP_API_KEY",
+                "SOFTMOBILE_MAILCHIMP_API_KEY",
+            ),
+        ),
+    ]
+    sms_campaign_api_url: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "SMS_CAMPAIGN_API_URL",
+                "SOFTMOBILE_SMS_CAMPAIGN_API_URL",
+            ),
+        ),
+    ]
+    sms_campaign_api_token: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "SMS_CAMPAIGN_API_TOKEN",
+                "SOFTMOBILE_SMS_CAMPAIGN_API_TOKEN",
+            ),
+        ),
+    ]
+    sms_campaign_sender: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "SMS_CAMPAIGN_SENDER",
+                "SOFTMOBILE_SMS_CAMPAIGN_SENDER",
+            ),
+        ),
+    ]
     enable_catalog_pro: Annotated[
         bool,
         Field(

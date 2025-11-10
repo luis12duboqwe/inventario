@@ -12,7 +12,7 @@ from ..config import settings
 from ..core.session_provider import SessionProvider
 from ..database import SessionLocal
 from ..core.transactions import transactional_session
-from . import sync as sync_service
+from . import customer_segments, sync as sync_service
 from .backups import generate_backup
 
 logger = core_logger.bind(component=__name__)
@@ -93,6 +93,18 @@ class BackgroundScheduler:
                 )
             )
 
+        segments_interval = settings.customer_segmentation_interval_seconds
+        if segments_interval > 0:
+            self._jobs.append(
+                _PeriodicJob(
+                    name="segmentos_clientes",
+                    interval_seconds=segments_interval,
+                    callback=partial(
+                        _customer_segments_job, self._session_provider
+                    ),
+                )
+            )
+
     async def start(self) -> None:
         for job in self._jobs:
             await job.start()
@@ -162,3 +174,25 @@ def _reservation_cleanup_job() -> None:
                     "Reservas vencidas liberadas automáticamente",
                     extra={"reservations_expired": expired},
                 )
+
+
+def _customer_segments_job(session_provider: SessionProvider | None = None) -> None:
+    provider = session_provider or SessionLocal
+    with provider() as session:
+        try:
+            result = customer_segments.refresh_customer_segments(session)
+            logger.info(
+                "Segmentos de clientes actualizados",
+                extra={
+                    "customers_processed": result.updated_customers,
+                    "segments": {
+                        key: len(value)
+                        for key, value in result.segments.items()
+                    },
+                },
+            )
+        except Exception as exc:  # pragma: no cover - ruta de error
+            logger.exception(
+                "Fallo durante el job automático de segmentos de clientes",
+                extra={"error": str(exc)},
+            )

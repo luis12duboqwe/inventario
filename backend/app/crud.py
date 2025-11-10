@@ -1509,6 +1509,13 @@ def _customer_payload(customer: models.Customer) -> dict[str, object]:
         "outstanding_debt": float(customer.outstanding_debt or Decimal("0")),
         "last_interaction_at": customer.last_interaction_at.isoformat() if customer.last_interaction_at else None,
         "updated_at": customer.updated_at.isoformat(),
+        "annual_purchase_amount": float(customer.annual_purchase_amount),
+        "orders_last_year": customer.orders_last_year,
+        "purchase_frequency": customer.purchase_frequency,
+        "segment_labels": list(customer.segment_labels),
+        "last_purchase_at": customer.last_purchase_at.isoformat()
+        if customer.last_purchase_at
+        else None,
     }
 
 
@@ -4151,6 +4158,7 @@ def list_customers(
 ) -> list[models.Customer]:
     statement = (
         select(models.Customer)
+        .options(selectinload(models.Customer.segment_snapshot))
         .order_by(models.Customer.name.asc())
         .offset(offset)
         .limit(limit)
@@ -4192,8 +4200,11 @@ def list_customers(
 
 
 def get_customer(db: Session, customer_id: int) -> models.Customer:
-    statement = select(models.Customer).where(
-        models.Customer.id == customer_id)
+    statement = (
+        select(models.Customer)
+        .options(selectinload(models.Customer.segment_snapshot))
+        .where(models.Customer.id == customer_id)
+    )
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:

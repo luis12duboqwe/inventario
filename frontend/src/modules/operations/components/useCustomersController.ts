@@ -17,6 +17,7 @@ import {
   exportCustomerPortfolioExcel,
   exportCustomerPortfolioPdf,
   exportCustomersCsv,
+  exportCustomerSegment,
   getCustomerDashboardMetrics,
   getCustomerPortfolio,
   getCustomerSummary,
@@ -30,6 +31,7 @@ import type {
   DashboardFilters,
   LedgerEntryWithDetails,
   PortfolioFilters,
+  CustomerSegmentDefinition,
 } from "../../../types/customers";
 
 export const CUSTOMER_TYPES: { value: string; label: string }[] = [
@@ -59,6 +61,27 @@ export const LEDGER_LABELS: Record<CustomerLedgerEntry["entry_type"], string> = 
   adjustment: "Ajuste manual",
   note: "Nota",
 };
+
+export const CUSTOMER_SEGMENT_EXPORTS: CustomerSegmentDefinition[] = [
+  {
+    key: "alto_valor",
+    label: "Clientes de alto valor",
+    description: "Clientes con compras anuales superiores al umbral corporativo.",
+    channel: "Mailchimp",
+  },
+  {
+    key: "recuperacion",
+    label: "Campaña de recuperación",
+    description: "Clientes sin compras recientes que se envían a seguimiento SMS.",
+    channel: "SMS",
+  },
+  {
+    key: "valor_medio",
+    label: "Valor medio",
+    description: "Listado general para campañas manuales o CRM externo.",
+    channel: "Archivo",
+  },
+];
 
 const initialFormState: CustomerFormState = {
   name: "",
@@ -183,6 +206,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   const [dashboardFilters, setDashboardFilters] = useState<DashboardFilters>({
     ...initialDashboardFilters,
   });
+  const [exportingSegment, setExportingSegment] = useState<string | null>(null);
 
   const askReason = useReasonPrompt(setError);
   const downloadBlob = useBlobDownloader();
@@ -656,6 +680,31 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     }
   };
 
+  const handleExportSegment = async (segment: CustomerSegmentDefinition) => {
+    const reason = askReason(
+      `Motivo corporativo para exportar el segmento "${segment.label}"`,
+    );
+    if (!reason) {
+      return;
+    }
+    try {
+      setExportingSegment(segment.key);
+      const blob = await exportCustomerSegment(token, segment.key, reason);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `segmento_${segment.key}_${timestamp}.csv`;
+      downloadBlob(blob, filename);
+      setMessage(`Segmento ${segment.label} exportado correctamente.`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible exportar el segmento seleccionado.",
+      );
+    } finally {
+      setExportingSegment(null);
+    }
+  };
+
   const totalDebt = useMemo(() => {
     return customers.reduce((acc, customer) => acc + Number(customer.outstanding_debt ?? 0), 0);
   }, [customers]);
@@ -755,6 +804,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     handleExportPortfolio,
     handleDashboardFiltersChange,
     refreshDashboard,
+    handleExportSegment,
+    exportingSegment,
+    customerSegmentExports: CUSTOMER_SEGMENT_EXPORTS,
   } as const;
 };
 
