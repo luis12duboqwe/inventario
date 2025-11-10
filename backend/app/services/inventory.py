@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from sqlalchemy import Integer, Numeric, String, column, select, table
+from sqlalchemy import DateTime, Integer, Numeric, String, column, select, table
 from sqlalchemy.orm import Session
 
 from .. import schemas
@@ -99,6 +99,16 @@ def calculate_inventory_valuation(
         column("margen_categoria_porcentaje", Numeric),
         column("margen_total_tienda", Numeric),
         column("margen_total_general", Numeric),
+        column("ventas_totales", Integer),
+        column("ventas_30_dias", Integer),
+        column("ventas_90_dias", Integer),
+        column("ultima_venta", DateTime),
+        column("ultima_compra", DateTime),
+        column("ultimo_movimiento", DateTime),
+        column("rotacion_30_dias", Numeric),
+        column("rotacion_90_dias", Numeric),
+        column("rotacion_total", Numeric),
+        column("dias_sin_movimiento", Integer),
     )
 
     stmt = select(valor_inventario).order_by(

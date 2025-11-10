@@ -7441,6 +7441,72 @@ ol {
   justify-content: space-between;
 }
 
+/* Inventario — Reportes */
+.advanced-report-filters {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.88));
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.advanced-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.advanced-filter-group h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.advanced-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+
+.chip-remove {
+  border: none;
+  background: none;
+  color: #38bdf8;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.chip-remove:hover,
+.chip-remove:focus {
+  color: #f87171;
+}
+
 .smart-import__assistant-field {
   display: grid;
   gap: 0.35rem;

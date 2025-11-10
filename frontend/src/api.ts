@@ -2322,6 +2322,45 @@ export type InventoryValueReport = {
   totals: InventoryValueTotals;
 };
 
+export type InactiveProductEntry = {
+  store_id: number;
+  store_name: string;
+  device_id: number;
+  sku: string;
+  device_name: string;
+  categoria: string;
+  quantity: number;
+  valor_total_producto: number;
+  ultima_venta: string | null;
+  ultima_compra: string | null;
+  ultimo_movimiento: string | null;
+  dias_sin_movimiento: number | null;
+  ventas_30_dias: number;
+  ventas_90_dias: number;
+  rotacion_30_dias: number;
+  rotacion_90_dias: number;
+  rotacion_total: number;
+};
+
+export type InactiveProductsTotals = {
+  total_products: number;
+  total_units: number;
+  total_value: number;
+  average_days_without_movement: number | null;
+  max_days_without_movement: number | null;
+};
+
+export type InactiveProductsReport = {
+  generated_at: string;
+  filters: {
+    store_ids: number[];
+    categories: string[];
+    min_days_without_movement: number;
+  };
+  totals: InactiveProductsTotals;
+  items: InactiveProductEntry[];
+};
+
 export type InventoryCurrentFilters = {
   storeIds?: number[];
 };
@@ -2348,6 +2387,43 @@ export type InventoryTopProductsFilters = InventoryCurrentFilters & {
   dateFrom?: string;
   dateTo?: string;
   limit?: number;
+};
+
+export type InactiveProductsFilters = InventoryValueFilters & {
+  minDaysWithoutMovement?: number;
+  limit?: number;
+  offset?: number;
+};
+
+export type SyncDiscrepancyFilters = {
+  storeIds?: number[];
+  dateFrom?: string;
+  dateTo?: string;
+  severity?: SyncConflictLog["severity"];
+  minDifference?: number;
+  limit?: number;
+  offset?: number;
+};
+
+export type SyncDiscrepancyTotals = {
+  total_conflicts: number;
+  warnings: number;
+  critical: number;
+  max_difference: number | null;
+  affected_skus: number;
+};
+
+export type SyncDiscrepancyReport = {
+  generated_at: string;
+  filters: {
+    store_ids: number[];
+    date_from: string | null;
+    date_to: string | null;
+    severity: SyncConflictLog["severity"] | null;
+    min_difference: number | null;
+  };
+  totals: SyncDiscrepancyTotals;
+  items: SyncConflictLog[];
 };
 
 export type DashboardPoint = {
@@ -3584,6 +3660,26 @@ export function getTopProductsReport(
   return request<TopProductsReport>(`/reports/inventory/top-products${suffix}`, { method: "GET" }, token);
 }
 
+export function getInactiveProductsReport(
+  token: string,
+  filters: InactiveProductsFilters = {},
+): Promise<InactiveProductsReport> {
+  const params = buildInactiveProductsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<InactiveProductsReport>(`/reports/inventory/inactive-products${suffix}`, { method: "GET" }, token);
+}
+
+export function getSyncDiscrepancyReport(
+  token: string,
+  filters: SyncDiscrepancyFilters = {},
+): Promise<SyncDiscrepancyReport> {
+  const params = buildSyncDiscrepancyParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<SyncDiscrepancyReport>(`/reports/inventory/sync-discrepancies${suffix}`, { method: "GET" }, token);
+}
+
 export type DeviceListFilters = {
   search?: string;
   estado?: Device["estado_comercial"];
@@ -3722,6 +3818,50 @@ function buildTopProductsParams(filters: InventoryTopProductsFilters = {}): URLS
   }
   if (typeof filters.limit === "number") {
     params.append("limit", String(filters.limit));
+  }
+  return params;
+}
+
+function buildInactiveProductsParams(filters: InactiveProductsFilters = {}): URLSearchParams {
+  const params = buildInventoryValueParams(filters);
+  if (
+    typeof filters.minDaysWithoutMovement === "number"
+    && Number.isFinite(filters.minDaysWithoutMovement)
+  ) {
+    params.append(
+      "min_days_without_movement",
+      String(Math.max(Math.floor(filters.minDaysWithoutMovement), 0)),
+    );
+  }
+  if (typeof filters.limit === "number" && Number.isFinite(filters.limit)) {
+    params.append("limit", String(Math.max(Math.floor(filters.limit), 1)));
+  }
+  if (typeof filters.offset === "number" && Number.isFinite(filters.offset)) {
+    params.append("offset", String(Math.max(Math.floor(filters.offset), 0)));
+  }
+  return params;
+}
+
+function buildSyncDiscrepancyParams(filters: SyncDiscrepancyFilters = {}): URLSearchParams {
+  const params = new URLSearchParams();
+  appendNumericList(params, "store_ids", filters.storeIds);
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (filters.severity) {
+    params.append("severity", filters.severity);
+  }
+  if (typeof filters.minDifference === "number" && Number.isFinite(filters.minDifference)) {
+    params.append("min_difference", String(Math.max(Math.floor(filters.minDifference), 0)));
+  }
+  if (typeof filters.limit === "number" && Number.isFinite(filters.limit)) {
+    params.append("limit", String(Math.max(Math.floor(filters.limit), 1)));
+  }
+  if (typeof filters.offset === "number" && Number.isFinite(filters.offset)) {
+    params.append("offset", String(Math.max(Math.floor(filters.offset), 0)));
   }
   return params;
 }

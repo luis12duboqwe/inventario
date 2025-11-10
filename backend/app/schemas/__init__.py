@@ -660,7 +660,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada cuando la lista es específica para una tienda.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -3546,6 +3545,16 @@ class InventoryValuation(BaseModel):
     margen_categoria_porcentaje: Decimal
     margen_total_tienda: Decimal
     margen_total_general: Decimal
+    ventas_totales: int
+    ventas_30_dias: int
+    ventas_90_dias: int
+    ultima_venta: datetime | None
+    ultima_compra: datetime | None
+    ultimo_movimiento: datetime | None
+    rotacion_30_dias: Decimal
+    rotacion_90_dias: Decimal
+    rotacion_total: Decimal
+    dias_sin_movimiento: int | None
 
     @field_serializer(
         "costo_promedio_ponderado",
@@ -3560,6 +3569,9 @@ class InventoryValuation(BaseModel):
         "margen_categoria_valor",
         "margen_total_tienda",
         "margen_total_general",
+        "rotacion_30_dias",
+        "rotacion_90_dias",
+        "rotacion_total",
     )
     @classmethod
     def _serialize_decimal(cls, value: Decimal) -> float:
@@ -3698,6 +3710,62 @@ class InventoryValueTotals(BaseModel):
 class InventoryValueReport(BaseModel):
     stores: list[InventoryValueStore]
     totals: InventoryValueTotals
+
+
+class InactiveProductEntry(BaseModel):
+    store_id: int
+    store_name: str
+    device_id: int
+    sku: str
+    device_name: str
+    categoria: str
+    quantity: int
+    valor_total_producto: Decimal
+    ultima_venta: datetime | None
+    ultima_compra: datetime | None
+    ultimo_movimiento: datetime | None
+    dias_sin_movimiento: int | None
+    ventas_30_dias: int
+    ventas_90_dias: int
+    rotacion_30_dias: Decimal
+    rotacion_90_dias: Decimal
+    rotacion_total: Decimal
+
+    @field_serializer(
+        "valor_total_producto",
+        "rotacion_30_dias",
+        "rotacion_90_dias",
+        "rotacion_total",
+    )
+    @classmethod
+    def _serialize_inactive_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InactiveProductReportFilters(BaseModel):
+    store_ids: list[int] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    min_days_without_movement: int = 30
+
+
+class InactiveProductReportTotals(BaseModel):
+    total_products: int
+    total_units: int
+    total_value: Decimal
+    average_days_without_movement: float | None
+    max_days_without_movement: int | None
+
+    @field_serializer("total_value")
+    @classmethod
+    def _serialize_inactive_total(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InactiveProductReport(BaseModel):
+    generated_at: datetime
+    filters: InactiveProductReportFilters
+    totals: InactiveProductReportTotals
+    items: list[InactiveProductEntry]
 
 
 class AuditUIExportFormat(str, enum.Enum):
@@ -4250,6 +4318,29 @@ class SyncConflictReport(BaseModel):
     generated_at: datetime
     filters: SyncConflictReportFilters
     totals: SyncConflictReportTotals
+    items: list[SyncConflictLog]
+
+
+class SyncDiscrepancyReportFilters(BaseModel):
+    store_ids: list[int] = Field(default_factory=list)
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    severity: SyncBranchHealth | None = None
+    min_difference: int | None = None
+
+
+class SyncDiscrepancyReportTotals(BaseModel):
+    total_conflicts: int
+    warnings: int
+    critical: int
+    max_difference: int | None
+    affected_skus: int
+
+
+class SyncDiscrepancyReport(BaseModel):
+    generated_at: datetime
+    filters: SyncDiscrepancyReportFilters
+    totals: SyncDiscrepancyReportTotals
     items: list[SyncConflictLog]
 
 

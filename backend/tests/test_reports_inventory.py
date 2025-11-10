@@ -4,11 +4,13 @@ import csv
 from datetime import datetime
 from io import StringIO
 
+import json
 from typing import Any, Iterable
 
 import pytest
 from fastapi import status
 
+from backend.app import models
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
 
@@ -258,6 +260,80 @@ def test_inventory_value_pdf_and_excel(client) -> None:
         headers={**headers, "X-Reason": "Valoracion inventario"},
     )
     assert xlsx_response.status_code == status.HTTP_200_OK
+
+
+def test_inventory_inactive_products_report(client) -> None:
+    headers = _auth_headers(client)
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Inactiva", "location": "CDMX", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {
+        "sku": "SM-500",
+        "name": "Smartphone Dormido",
+        "quantity": 3,
+        "unit_price": 8000,
+        "fecha_ingreso": "2020-01-01",
+    }
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+
+    report_response = client.get(
+        "/reports/inventory/inactive-products?min_days_without_movement=30",
+        headers=headers,
+    )
+    assert report_response.status_code == status.HTTP_200_OK
+    payload = report_response.json()
+    assert payload["totals"]["total_products"] == 1
+    assert payload["items"][0]["sku"] == "SM-500"
+    assert payload["items"][0]["dias_sin_movimiento"] >= 30
+
+
+def test_inventory_sync_discrepancies_report(client, db_session) -> None:
+    headers = _auth_headers(client)
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Sync", "location": "GDL", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    discrepancy_details = {
+        "sku": "SYNC-001",
+        "product_name": "Inventario desfasado",
+        "difference": 7,
+        "max": [{"store_id": store_id, "store_name": "Sucursal Sync", "quantity": 10}],
+        "min": [{"store_id": store_id, "store_name": "Sucursal Sync", "quantity": 3}],
+    }
+
+    log_entry = models.AuditLog(
+        action="sync_discrepancy",
+        entity_type="inventory",
+        entity_id="SYNC-001",
+        details=json.dumps(discrepancy_details, ensure_ascii=False),
+    )
+    db_session.add(log_entry)
+    db_session.commit()
+
+    response = client.get(
+        "/reports/inventory/sync-discrepancies",
+        headers=headers,
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["totals"]["total_conflicts"] >= 1
+    assert any(item["sku"] == "SYNC-001" for item in data["items"])
     assert xlsx_response.headers["content-type"].startswith(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
