@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from fastapi import status
@@ -90,6 +91,7 @@ def _create_customer(db_session) -> int:
             address=None,
             customer_type="minorista",
             status="activo",
+            tax_id=f"RTN{uuid4().hex[:10].upper()}",
             credit_limit=Decimal("0"),
             notes=None,
             outstanding_debt=Decimal("0"),
