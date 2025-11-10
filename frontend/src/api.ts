@@ -424,6 +424,11 @@ export type Customer = {
   last_interaction_at?: string | null;
   created_at: string;
   updated_at: string;
+  annual_purchase_amount: number;
+  orders_last_year: number;
+  purchase_frequency: string;
+  segment_labels: string[];
+  last_purchase_at?: string | null;
 };
 
 export type CustomerPayload = {
@@ -4677,6 +4682,21 @@ export function exportCustomersCsv(
   const queryString = params.toString();
   return request<Blob>(
     `/customers?${queryString}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function exportCustomerSegment(
+  token: string,
+  segment: string,
+  reason: string,
+  format: "csv" = "csv"
+): Promise<Blob> {
+  const params = new URLSearchParams({ segment, format });
+  const queryString = params.toString();
+  return request<Blob>(
+    `/customers/segments/export?${queryString}`,
     { method: "GET", headers: { "X-Reason": reason } },
     token
   );

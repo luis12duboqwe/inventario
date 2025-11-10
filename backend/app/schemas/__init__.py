@@ -1493,6 +1493,11 @@ class CustomerResponse(CustomerBase):
     last_interaction_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    annual_purchase_amount: float = Field(default=0.0)
+    orders_last_year: int = Field(default=0)
+    purchase_frequency: str = Field(default="sin_datos")
+    segment_labels: list[str] = Field(default_factory=list)
+    last_purchase_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

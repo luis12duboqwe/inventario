@@ -42,3 +42,12 @@ export type LedgerEntryWithDetails = CustomerLedgerEntry & {
   detailsLabel?: string;
   detailsValue?: string;
 };
+
+export type SegmentExportChannel = "Mailchimp" | "SMS" | "Archivo";
+
+export type CustomerSegmentDefinition = {
+  key: string;
+  label: string;
+  description: string;
+  channel: SegmentExportChannel;
+};
