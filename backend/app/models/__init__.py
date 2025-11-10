@@ -1589,6 +1589,15 @@ class Customer(Base):
     notes: Mapped[str | None] = mapped_column("notas", Text, nullable=True)
     history: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, nullable=False, default=list)
+    segment_category: Mapped[str | None] = mapped_column(
+        "segmento_categoria", String(60), nullable=True, index=True
+    )
+    tags: Mapped[list[str]] = mapped_column(
+        "segmento_etiquetas", JSON, nullable=False, default=list
+    )
+    tax_id: Mapped[str] = mapped_column(
+        "rtn", String(30), nullable=False, unique=True, index=True
+    )
     last_interaction_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

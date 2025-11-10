@@ -8,6 +8,9 @@ export type CustomerFormState = {
   address: string;
   customerType: string;
   status: string;
+  taxId: string;
+  segmentCategory: string;
+  tags: string;
   creditLimit: number;
   outstandingDebt: number;
   notes: string;
@@ -31,6 +34,8 @@ export type CustomerFilters = {
   status: string;
   customerType: string;
   debt: string;
+  segmentCategory: string;
+  tags: string;
 };
 
 export type LedgerEntryWithDetails = CustomerLedgerEntry & {

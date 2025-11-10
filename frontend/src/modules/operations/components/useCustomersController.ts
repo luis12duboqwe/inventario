@@ -68,6 +68,9 @@ const initialFormState: CustomerFormState = {
   address: "",
   customerType: "minorista",
   status: "activo",
+  taxId: "",
+  segmentCategory: "",
+  tags: "",
   creditLimit: 0,
   outstandingDebt: 0,
   notes: "",
@@ -91,6 +94,8 @@ const initialCustomerFilters: CustomerFilters = {
   status: "todos",
   customerType: "todos",
   debt: "todos",
+  segmentCategory: "",
+  tags: "",
 };
 
 const useReasonPrompt = (setError: (message: string | null) => void) => {
@@ -230,13 +235,26 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       } else if (customerFilters.debt === "sin_deuda") {
         options.hasDebt = false;
       }
+      const categoryFilter = customerFilters.segmentCategory.trim().toLowerCase();
+      if (categoryFilter) {
+        options.segmentCategory = categoryFilter;
+      }
+      const tagsFilter = customerFilters.tags
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+      if (tagsFilter.length > 0) {
+        options.tags = tagsFilter;
+      }
       return options;
     },
     [
       customerFilters.customerType,
       customerFilters.debt,
+      customerFilters.segmentCategory,
       customerFilters.search,
       customerFilters.status,
+      customerFilters.tags,
     ]
   );
 
@@ -341,6 +359,17 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   }, [customerFilters.search, refreshCustomers]);
 
   useEffect(() => {
+    void refreshCustomers();
+  }, [
+    customerFilters.status,
+    customerFilters.customerType,
+    customerFilters.debt,
+    customerFilters.segmentCategory,
+    customerFilters.tags,
+    refreshCustomers,
+  ]);
+
+  useEffect(() => {
     void refreshPortfolio();
   }, [refreshPortfolio]);
 
@@ -375,6 +404,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       address: customer.address ?? "",
       customerType: customer.customer_type ?? "minorista",
       status: customer.status ?? "activo",
+      taxId: customer.tax_id ?? "",
+      segmentCategory: customer.segment_category ?? "",
+      tags: (customer.tags ?? []).join(", "),
       creditLimit: Number(customer.credit_limit ?? 0),
       outstandingDebt: Number(customer.outstanding_debt ?? 0),
       notes: customer.notes ?? "",
@@ -533,17 +565,23 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       setError("Indica un teléfono de contacto.");
       return;
     }
+    if (!formState.taxId.trim() || formState.taxId.trim().length < 5) {
+      setError("Indica un RTN válido (mínimo 5 caracteres).");
+      return;
+    }
     const reason = askReason(
       editingId ? "Motivo corporativo para actualizar al cliente" : "Motivo corporativo para crear al cliente",
     );
     if (!reason) {
       return;
     }
+    const normalizedTaxId = formState.taxId.trim().toUpperCase();
     const payload: CustomerPayload = {
       name: formState.name.trim(),
       phone: formState.phone.trim(),
       customer_type: formState.customerType,
       status: formState.status,
+      tax_id: normalizedTaxId,
       credit_limit: Number(formState.creditLimit ?? 0),
       outstanding_debt: Number(formState.outstandingDebt ?? 0),
     };
@@ -559,9 +597,34 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     if (address) {
       payload.address = address;
     }
+    const segmentCategory = formState.segmentCategory.trim().toLowerCase();
+    if (segmentCategory) {
+      payload.segment_category = segmentCategory;
+    } else if (editingId) {
+      payload.segment_category = "";
+    }
+    const tagsList = formState.tags
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+    payload.tags = tagsList;
     const notes = formState.notes.trim();
     if (notes) {
       payload.notes = notes;
+    }
+    const historyNote = formState.historyNote.trim();
+    if (historyNote) {
+      const entry = { timestamp: new Date().toISOString(), note: historyNote } satisfies ContactHistoryEntry;
+      if (editingId) {
+        const existing = customers.find((item) => item.id === editingId);
+        if (existing) {
+          payload.history = [...existing.history, entry];
+        } else {
+          payload.history = [entry];
+        }
+      } else {
+        payload.history = [entry];
+      }
     }
     try {
       setSavingCustomer(true);
@@ -689,12 +752,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     if (!customerSummary?.customer?.history) {
       return [] as ContactHistoryEntry[];
     }
-    return [...customerSummary.customer.history]
-      .sort(
-        (left, right) =>
-          new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
-      )
-      .slice(0, 6);
+    return [...customerSummary.customer.history].sort(
+      (left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
+    );
   }, [customerSummary]);
 
   const recentInvoices = useMemo(() => {

@@ -12,6 +12,7 @@ import type {
   CashRegisterEntry,
   CashSession,
   Customer,
+  CustomerPayload,
   Device,
   PaymentMethod,
   PosConfig,
@@ -796,9 +797,19 @@ export function usePosDashboardController({
     if (!name || !name.trim()) {
       return;
     }
-  const email = window.prompt("Correo del cliente (opcional)", "");
-  const phoneRaw = window.prompt("Telefono del cliente (requerido)", "0000000000");
-  const phone = (phoneRaw ?? "0000000000").trim() || "0000000000";
+    const email = window.prompt("Correo del cliente (opcional)", "");
+    const phoneRaw = window.prompt("Teléfono del cliente (requerido)", "0000000000");
+    const phone = (phoneRaw ?? "0000000000").trim() || "0000000000";
+    const taxIdRaw = window.prompt("RTN del cliente", "RTN-POS-0001");
+    if (!taxIdRaw || taxIdRaw.trim().length < 5) {
+      setError("Debes indicar un RTN válido (mínimo 5 caracteres).");
+      return;
+    }
+    const segmentCategory = window.prompt(
+      "Categoría de segmentación (opcional)",
+      "minorista",
+    );
+    const tagsRaw = window.prompt("Etiquetas separadas por coma (opcional)", "pos");
     const reason = window.prompt(
       "Motivo corporativo para registrar al cliente",
       "Alta cliente POS",
@@ -809,14 +820,29 @@ export function usePosDashboardController({
     }
     try {
       setError(null);
-      const payload = {
+      const normalizedTaxId = taxIdRaw.trim().toUpperCase();
+      const payload: CustomerPayload = {
         name: name.trim(),
         phone,
-      } as { name: string; phone: string; email?: string };
+        tax_id: normalizedTaxId,
+        customer_type: "minorista",
+        status: "activo",
+        credit_limit: 0,
+        outstanding_debt: 0,
+      };
       const normalizedEmail = email?.trim();
       if (normalizedEmail) {
         payload.email = normalizedEmail;
       }
+      const normalizedCategory = segmentCategory?.trim().toLowerCase();
+      if (normalizedCategory) {
+        payload.segment_category = normalizedCategory;
+      }
+      const tagsList = (tagsRaw ?? "")
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+      payload.tags = tagsList;
       const customer = await createCustomer(token, payload, reason.trim());
       setMessage("Cliente creado correctamente.");
       setPayment((current) => ({

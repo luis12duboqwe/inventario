@@ -1,6 +1,10 @@
+import json
+from datetime import datetime
+
 import pytest
 from fastapi import status
 
+from backend.app import crud, models, schemas
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN, OPERADOR
 
@@ -62,6 +66,9 @@ def test_customer_crud_flow(client):
         "phone": "+52 55 0000 0000",
         "customer_type": "corporativo",
         "status": "activo",
+        "tax_id": "RTN-EMP-0001",
+        "segment_category": "b2b",
+        "tags": ["vip", "corporativo"],
         "credit_limit": 5000.0,
         "history": [{"note": "Cliente corporativo", "timestamp": "2025-02-15T10:00:00"}],
     }
@@ -71,10 +78,25 @@ def test_customer_crud_flow(client):
     created_payload = create_response.json()
     assert created_payload["customer_type"] == "corporativo"
     assert created_payload["credit_limit"] == 5000.0
+    assert created_payload["tax_id"] == "RTN-EMP-0001"
+    assert set(created_payload["tags"]) == {"vip", "corporativo"}
 
     list_response = client.get("/customers", headers={"Authorization": f"Bearer {token}"})
     assert list_response.status_code == status.HTTP_200_OK
     assert any(item["id"] == customer_id for item in list_response.json())
+
+    filtered_response = client.get(
+        "/customers",
+        headers={"Authorization": f"Bearer {token}"},
+        params={
+            "segment_category": "b2b",
+            "tags": ["vip", "corporativo"],
+            "customer_type": "corporativo",
+        },
+    )
+    assert filtered_response.status_code == status.HTTP_200_OK
+    filtered_ids = {item["id"] for item in filtered_response.json()}
+    assert customer_id in filtered_ids
 
     csv_response = client.get(
         "/customers", headers={"Authorization": f"Bearer {token}"}, params={"export": "csv"}
@@ -118,7 +140,8 @@ def test_customers_require_reason_and_roles(client):
     assert response_without_reason.status_code == status.HTTP_400_BAD_REQUEST
 
     reason_headers = {**auth_headers, "X-Reason": "Registro Clientes"}
-    create_response = client.post("/customers", json=payload, headers=reason_headers)
+    payload_with_tax = {**payload, "tax_id": "RTN-CLIENTE-01"}
+    create_response = client.post("/customers", json=payload_with_tax, headers=reason_headers)
     assert create_response.status_code == status.HTTP_201_CREATED
     customer_id = create_response.json()["id"]
 
@@ -201,6 +224,7 @@ def test_customer_payments_and_summary(client):
                 "phone": "555-404-5050",
                 "customer_type": "corporativo",
                 "status": "activo",
+                "tax_id": "RTN-FIN-0001",
                 "credit_limit": 1000.0,
             },
             headers=reason_headers,
@@ -436,7 +460,9 @@ def test_customer_filters_and_reports(client):
             json={
                 "name": "Cliente Moroso",
                 "phone": "555-777-8888",
+                "customer_type": "minorista",
                 "status": "moroso",
+                "tax_id": "RTN-MOROSO-01",
                 "credit_limit": 500.0,
                 "outstanding_debt": 280.0,
             },
@@ -451,6 +477,7 @@ def test_customer_filters_and_reports(client):
                 "name": "Cliente Frecuente",
                 "phone": "555-666-5555",
                 "customer_type": "corporativo",
+                "tax_id": "RTN-FREC-01",
                 "credit_limit": 1500.0,
             },
             headers=reason_headers,
@@ -547,6 +574,7 @@ def test_customer_portfolio_exports(client):
                 "name": "Cliente Reporte",
                 "phone": "555-123-9090",
                 "customer_type": "corporativo",
+                "tax_id": "RTN-REP-01",
                 "credit_limit": 2500.0,
                 "outstanding_debt": 600.0,
                 "status": "moroso",
@@ -598,6 +626,46 @@ def test_customer_portfolio_exports(client):
         )
     finally:
         settings.enable_purchases_sales = previous_flag
+
+
+def test_customer_sync_payload_includes_segmentation(db_session):
+    create_payload = schemas.CustomerCreate(
+        name="Cliente Sincronizado",
+        phone="555-700-8000",
+        customer_type="corporativo",
+        status="activo",
+        tax_id="RTN-SYNC-01",
+        segment_category="b2b",
+        tags=["vip", "sync"],
+        history=[schemas.ContactHistoryEntry(note="Alta inicial", timestamp=datetime.utcnow())],
+    )
+
+    customer = crud.create_customer(db_session, create_payload)
+
+    outbox_entries = (
+        db_session.query(models.SyncOutbox)
+        .filter_by(entity_type="customer", entity_id=str(customer.id))
+        .all()
+    )
+    assert outbox_entries, "Debe generarse una entrada en sync_outbox"
+    latest_payload = outbox_entries[-1].payload
+    assert latest_payload["tax_id"] == "RTN-SYNC-01"
+    assert latest_payload["segment_category"] == "b2b"
+    assert set(latest_payload["tags"]) == {"vip", "sync"}
+
+    audit_entry = (
+        db_session.query(models.AuditLog)
+        .filter_by(entity_id=str(customer.id), action="customer_created")
+        .order_by(models.AuditLog.id.desc())
+        .first()
+    )
+    assert audit_entry is not None
+    audit_details = json.loads(audit_entry.details or "{}")
+    assert audit_details.get("tax_id") == "RTN-SYNC-01"
+    assert audit_details.get("segment_category") == "b2b"
+    assert set(audit_details.get("tags", [])) == {"vip", "sync"}
+
+
 def test_customer_list_filters_by_status_and_type(client):
     token = _bootstrap_admin(client)
     auth_headers = {"Authorization": f"Bearer {token}"}
@@ -609,18 +677,21 @@ def test_customer_list_filters_by_status_and_type(client):
             "phone": "555-010-0001",
             "customer_type": "minorista",
             "status": "activo",
+            "tax_id": "RTN-FILTRO-01",
         },
         {
             "name": "Cliente Filtro Corporativo",
             "phone": "555-010-0002",
             "customer_type": "corporativo",
             "status": "moroso",
+            "tax_id": "RTN-FILTRO-02",
         },
         {
             "name": "Cliente Filtro Mayorista",
             "phone": "555-010-0003",
             "customer_type": "mayorista",
             "status": "inactivo",
+            "tax_id": "RTN-FILTRO-03",
         },
     ]
 
