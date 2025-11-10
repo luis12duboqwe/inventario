@@ -2207,6 +2207,26 @@ def _customer_ledger_payload(entry: models.CustomerLedgerEntry) -> dict[str, obj
     }
 
 
+def _user_display_name(user: models.User | None) -> str | None:
+    if user is None:
+        return None
+    candidates = [
+        getattr(user, "full_name", None),
+        getattr(user, "nombre", None),
+        getattr(user, "username", None),
+        getattr(user, "correo", None),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str):
+            normalized = candidate.strip()
+            if normalized:
+                return normalized
+    identifier = getattr(user, "id", None)
+    if identifier is None:
+        identifier = getattr(user, "id_usuario", None)
+    return str(identifier) if identifier is not None else None
+
+
 def _supplier_ledger_payload(entry: models.SupplierLedgerEntry) -> dict[str, object]:
     return {
         "id": entry.id,
@@ -6251,15 +6271,15 @@ def get_customer_accounts_receivable(
                 "remaining": amount,
             })
         elif amount < Decimal("0"):
-            credit = -amount
+            credit_amount = -amount
             for charge in charges:
                 remaining = charge["remaining"]  # type: ignore[index]
                 if remaining <= Decimal("0"):
                     continue
-                allocation = min(remaining, credit)
+                allocation = min(remaining, credit_amount)
                 charge["remaining"] = remaining - allocation  # type: ignore[index]
-                credit -= allocation
-                if credit <= Decimal("0"):
+                credit_amount -= allocation
+                if credit_amount <= Decimal("0"):
                     break
         if entry.entry_type == models.CustomerLedgerEntryType.PAYMENT:
             if last_payment_at is None or entry.created_at > last_payment_at:
@@ -6416,7 +6436,20 @@ def get_customer_accounts_receivable(
         )
     )
     recent_activity = [
-        schemas.CustomerLedgerEntryResponse.model_validate(entry)
+        schemas.CustomerLedgerEntryResponse.model_validate(
+            {
+                "id": entry.id,
+                "entry_type": entry.entry_type,
+                "reference_type": entry.reference_type,
+                "reference_id": entry.reference_id,
+                "amount": entry.amount,
+                "balance_after": entry.balance_after,
+                "note": entry.note,
+                "details": entry.details,
+                "created_at": entry.created_at,
+                "created_by": _user_display_name(entry.created_by),
+            }
+        )
         for entry in recent_entries
     ]
 
