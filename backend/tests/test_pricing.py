@@ -1,6 +1,8 @@
 from datetime import date
 from decimal import Decimal
 
+from uuid import uuid4
+
 from backend.app import crud, schemas
 from backend.app.models import Device
 from backend.app.services import pricing
@@ -34,6 +36,7 @@ def _create_customer(db_session) -> int:
             address=None,
             customer_type="minorista",
             status="activo",
+            tax_id=f"RTN{uuid4().hex[:10].upper()}",
             credit_limit=Decimal("0"),
             notes=None,
             outstanding_debt=Decimal("0"),
