@@ -9895,6 +9895,7 @@ def calculate_rotation_analytics(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -9918,6 +9919,8 @@ def calculate_rotation_analytics(
             models.Device.store_id.in_(store_filter))
     if category:
         device_stmt = device_stmt.where(category_expr == category)
+    if supplier:
+        device_stmt = device_stmt.where(models.Device.proveedor == supplier)
     if offset:
         device_stmt = device_stmt.offset(offset)
     if limit is not None:
@@ -9950,6 +9953,8 @@ def calculate_rotation_analytics(
         sale_stats = sale_stats.where(models.Sale.created_at <= end_dt)
     if category:
         sale_stats = sale_stats.where(category_expr == category)
+    if supplier:
+        sale_stats = sale_stats.where(models.Device.proveedor == supplier)
 
     purchase_stats = (
         select(
@@ -9977,6 +9982,8 @@ def calculate_rotation_analytics(
             models.PurchaseOrder.created_at <= end_dt)
     if category:
         purchase_stats = purchase_stats.where(category_expr == category)
+    if supplier:
+        purchase_stats = purchase_stats.where(models.Device.proveedor == supplier)
 
     sold_map = {
         row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)
@@ -10015,6 +10022,7 @@ def calculate_aging_analytics(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10047,6 +10055,8 @@ def calculate_aging_analytics(
         device_stmt = device_stmt.where(models.Device.fecha_compra <= date_to)
     if category:
         device_stmt = device_stmt.where(category_expr == category)
+    if supplier:
+        device_stmt = device_stmt.where(models.Device.proveedor == supplier)
 
     if offset:
         device_stmt = device_stmt.offset(offset)
@@ -10083,6 +10093,7 @@ def calculate_stockout_forecast(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10107,6 +10118,8 @@ def calculate_stockout_forecast(
             models.Device.store_id.in_(store_filter))
     if category:
         device_stmt = device_stmt.where(category_expr == category)
+    if supplier:
+        device_stmt = device_stmt.where(models.Device.proveedor == supplier)
     if offset:
         device_stmt = device_stmt.offset(offset)
     if limit is not None:
@@ -10146,6 +10159,9 @@ def calculate_stockout_forecast(
     if category:
         sales_summary_stmt = sales_summary_stmt.where(
             category_expr == category)
+    if supplier:
+        sales_summary_stmt = sales_summary_stmt.where(
+            models.Device.proveedor == supplier)
 
     day_column = func.date(models.Sale.created_at)
     daily_sales_stmt = (
@@ -10173,6 +10189,9 @@ def calculate_stockout_forecast(
             models.Sale.created_at <= end_dt)
     if category:
         daily_sales_stmt = daily_sales_stmt.where(category_expr == category)
+    if supplier:
+        daily_sales_stmt = daily_sales_stmt.where(
+            models.Device.proveedor == supplier)
 
     sales_map: dict[int, dict[str, object]] = {}
     for row in db.execute(sales_summary_stmt):
@@ -10268,6 +10287,7 @@ def calculate_store_comparatives(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10297,6 +10317,8 @@ def calculate_store_comparatives(
             models.Store.id.in_(store_filter))
     if category:
         inventory_stmt = inventory_stmt.where(category_expr == category)
+    if supplier:
+        inventory_stmt = inventory_stmt.where(models.Device.proveedor == supplier)
     if offset:
         inventory_stmt = inventory_stmt.offset(offset)
     if limit is not None:
@@ -10314,6 +10336,7 @@ def calculate_store_comparatives(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=None,
         offset=0,
     )
@@ -10323,6 +10346,7 @@ def calculate_store_comparatives(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=None,
         offset=0,
     )
@@ -10374,6 +10398,8 @@ def calculate_store_comparatives(
         sales_stmt = sales_stmt.where(models.Sale.created_at <= end_dt)
     if category:
         sales_stmt = sales_stmt.where(category_expr == category)
+    if supplier:
+        sales_stmt = sales_stmt.where(models.Device.proveedor == supplier)
 
     sales_map: dict[int, dict[str, Decimal]] = {}
     for row in db.execute(sales_stmt):
@@ -10412,6 +10438,7 @@ def calculate_profit_margin(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10446,6 +10473,8 @@ def calculate_profit_margin(
         stmt = stmt.where(models.Sale.created_at <= end_dt)
     if category:
         stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
     if offset:
         stmt = stmt.offset(offset)
     if limit is not None:
@@ -10479,6 +10508,7 @@ def calculate_sales_projection(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10532,6 +10562,8 @@ def calculate_sales_projection(
         daily_stmt = daily_stmt.where(models.Sale.created_at <= end_dt)
     if category:
         daily_stmt = daily_stmt.where(category_expr == category)
+    if supplier:
+        daily_stmt = daily_stmt.where(models.Device.proveedor == supplier)
 
     stores_data: dict[int, dict[str, object]] = {}
     for row in db.execute(daily_stmt):
@@ -10659,6 +10691,7 @@ def generate_analytics_alerts(
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, object]]:
@@ -10670,6 +10703,7 @@ def generate_analytics_alerts(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=window,
         offset=0,
     )
@@ -10702,6 +10736,7 @@ def generate_analytics_alerts(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         horizon_days=14,
         limit=window,
         offset=0,
@@ -10738,6 +10773,7 @@ def calculate_realtime_store_widget(
     *,
     store_ids: Iterable[int] | None = None,
     category: str | None = None,
+    supplier: str | None = None,
     low_stock_threshold: int = 5,
     limit: int | None = None,
     offset: int = 0,
@@ -10775,6 +10811,8 @@ def calculate_realtime_store_widget(
         )
     if category:
         low_stock_stmt = low_stock_stmt.where(category_expr == category)
+    if supplier:
+        low_stock_stmt = low_stock_stmt.where(models.Device.proveedor == supplier)
 
     sales_today_stmt = (
         select(
@@ -10794,6 +10832,9 @@ def calculate_realtime_store_widget(
             models.Store.id.in_(store_ids_window))
     if category:
         sales_today_stmt = sales_today_stmt.where(category_expr == category)
+    if supplier:
+        sales_today_stmt = sales_today_stmt.where(
+            models.Device.proveedor == supplier)
 
     repairs_stmt = (
         select(
@@ -10847,6 +10888,7 @@ def calculate_realtime_store_widget(
             db,
             store_ids=store_ids_window,
             category=category,
+            supplier=supplier,
             horizon_days=7,
             limit=None,
             offset=0,
@@ -10876,6 +10918,210 @@ def calculate_realtime_store_widget(
         )
 
     return widgets
+
+
+def calculate_purchase_supplier_metrics(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    supplier_expr = func.coalesce(
+        models.PurchaseOrder.supplier,
+        models.Device.proveedor,
+        literal("Sin proveedor"),
+    )
+
+    purchase_stmt = (
+        select(
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+            models.Device.id.label("device_id"),
+            models.Device.sku,
+            models.Device.name,
+            supplier_expr.label("supplier_name"),
+            func.coalesce(func.sum(models.PurchaseOrderItem.quantity_ordered), 0).label(
+                "ordered_units"
+            ),
+            func.coalesce(func.sum(models.PurchaseOrderItem.quantity_received), 0).label(
+                "received_units"
+            ),
+            func.coalesce(
+                func.sum(
+                    models.PurchaseOrderItem.quantity_received
+                    * models.PurchaseOrderItem.unit_cost
+                ),
+                0,
+            ).label("received_cost"),
+            func.max(models.PurchaseOrder.created_at).label("last_purchase_at"),
+        )
+        .join(
+            models.PurchaseOrder,
+            models.PurchaseOrder.id == models.PurchaseOrderItem.purchase_order_id,
+        )
+        .join(models.Store, models.Store.id == models.PurchaseOrder.store_id)
+        .join(models.Device, models.Device.id == models.PurchaseOrderItem.device_id)
+        .group_by(
+            models.Store.id,
+            models.Store.name,
+            models.Device.id,
+            models.Device.sku,
+            models.Device.name,
+            supplier_expr,
+        )
+        .order_by(func.max(models.PurchaseOrder.created_at).desc())
+    )
+    if store_filter:
+        purchase_stmt = purchase_stmt.where(models.Store.id.in_(store_filter))
+    if start_dt:
+        purchase_stmt = purchase_stmt.where(models.PurchaseOrder.created_at >= start_dt)
+    if end_dt:
+        purchase_stmt = purchase_stmt.where(models.PurchaseOrder.created_at <= end_dt)
+    if category:
+        purchase_stmt = purchase_stmt.where(category_expr == category)
+    if supplier:
+        purchase_stmt = purchase_stmt.where(supplier_expr == supplier)
+    if offset:
+        purchase_stmt = purchase_stmt.offset(offset)
+    if limit is not None:
+        purchase_stmt = purchase_stmt.limit(limit)
+
+    rows = list(db.execute(purchase_stmt))
+    if not rows:
+        return []
+
+    store_ids_window = sorted({int(row.store_id) for row in rows})
+
+    rotation = calculate_rotation_analytics(
+        db,
+        store_ids=store_ids_window,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=None,
+        offset=0,
+    )
+    aging = calculate_aging_analytics(
+        db,
+        store_ids=store_ids_window,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=None,
+        offset=0,
+    )
+
+    rotation_map: dict[tuple[int, int], float] = {
+        (int(item["store_id"]), int(item["device_id"])): float(item["rotation_rate"])
+        for item in rotation
+        if item.get("device_id") is not None and item.get("store_id") is not None
+    }
+    aging_map: dict[tuple[int, int], float] = {
+        (int(item["store_id"]), int(item["device_id"])): float(item["days_in_stock"])
+        for item in aging
+        if item.get("device_id") is not None and item.get("store_id") is not None
+    }
+
+    aggregates: dict[tuple[int, str], dict[str, object]] = {}
+    for row in rows:
+        store_id = int(row.store_id)
+        supplier_name = row.supplier_name or "Sin proveedor"
+        device_id = int(row.device_id)
+        ordered_units = int(row.ordered_units or 0)
+        received_units = int(row.received_units or 0)
+        pending_units = max(ordered_units - received_units, 0)
+        cost_value = Decimal(row.received_cost or 0)
+        rotation_value = rotation_map.get((store_id, device_id))
+        aging_value = aging_map.get((store_id, device_id))
+
+        key = (store_id, supplier_name)
+        entry = aggregates.setdefault(
+            key,
+            {
+                "store_name": row.store_name,
+                "device_ids": set(),
+                "total_ordered": 0,
+                "total_received": 0,
+                "pending_backorders": 0,
+                "total_cost": Decimal("0"),
+                "rotation_sum": 0.0,
+                "rotation_count": 0,
+                "aging_sum": 0.0,
+                "aging_count": 0,
+                "last_purchase_at": None,
+            },
+        )
+        entry["device_ids"].add(device_id)
+        entry["total_ordered"] += ordered_units
+        entry["total_received"] += received_units
+        entry["pending_backorders"] += pending_units
+        entry["total_cost"] += cost_value
+        if rotation_value is not None:
+            entry["rotation_sum"] += rotation_value
+            entry["rotation_count"] += 1
+        if aging_value is not None:
+            entry["aging_sum"] += aging_value
+            entry["aging_count"] += 1
+        last_purchase_at = row.last_purchase_at
+        current_last = entry["last_purchase_at"]
+        if last_purchase_at is not None and (
+            current_last is None or last_purchase_at > current_last
+        ):
+            entry["last_purchase_at"] = last_purchase_at
+
+    items: list[dict[str, object]] = []
+    for (store_id, supplier_name), payload in aggregates.items():
+        total_received = int(payload["total_received"])
+        total_cost_value: Decimal = payload["total_cost"]
+        average_unit_cost = (
+            float(total_cost_value / total_received)
+            if total_received > 0
+            else 0.0
+        )
+        rotation_count = int(payload["rotation_count"] or 0)
+        aging_count = int(payload["aging_count"] or 0)
+        average_rotation = (
+            float(payload["rotation_sum"]) / rotation_count
+            if rotation_count > 0
+            else 0.0
+        )
+        average_days = (
+            float(payload["aging_sum"]) / aging_count if aging_count > 0 else 0.0
+        )
+
+        items.append(
+            {
+                "store_id": store_id,
+                "store_name": payload["store_name"],
+                "supplier": supplier_name,
+                "device_count": len(payload["device_ids"]),
+                "total_ordered": int(payload["total_ordered"]),
+                "total_received": total_received,
+                "pending_backorders": int(payload["pending_backorders"]),
+                "total_cost": float(total_cost_value),
+                "average_unit_cost": round(average_unit_cost, 2),
+                "average_rotation": round(average_rotation, 2),
+                "average_days_in_stock": round(average_days, 1),
+                "last_purchase_at": payload["last_purchase_at"],
+            }
+        )
+
+    items.sort(key=lambda item: item["total_cost"], reverse=True)
+    if offset:
+        items = items[offset:]
+    if limit is not None:
+        items = items[:limit]
+    return items
 
 
 def record_sync_session(

@@ -637,8 +637,7 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada, cuando aplica.",
-        description="Sucursal asociada cuando la lista es específica para una tienda.",
+        description="Identificador de la sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -4086,6 +4085,25 @@ class AnalyticsCategoriesResponse(BaseModel):
     categories: list[str]
 
 
+class PurchaseSupplierMetric(BaseModel):
+    store_id: int
+    store_name: str
+    supplier: str
+    device_count: int
+    total_ordered: int
+    total_received: int
+    pending_backorders: int
+    total_cost: float
+    average_unit_cost: float
+    average_rotation: float
+    average_days_in_stock: float
+    last_purchase_at: datetime | None
+
+
+class PurchaseAnalyticsResponse(BaseModel):
+    items: list[PurchaseSupplierMetric]
+
+
 class SyncOutboxReplayRequest(BaseModel):
     ids: list[int] = Field(..., min_length=1)
 
@@ -7128,6 +7146,8 @@ __all__ = [
     "RotationMetric",
     "SalesProjectionMetric",
     "StockoutForecastMetric",
+    "PurchaseSupplierMetric",
+    "PurchaseAnalyticsResponse",
     "HealthStatusResponse",
     "CustomerDebtSnapshot",
     "CreditScheduleEntry",

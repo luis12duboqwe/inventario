@@ -2539,6 +2539,25 @@ export type AnalyticsAlerts = {
   items: AnalyticsAlert[];
 };
 
+export type PurchaseSupplierMetric = {
+  store_id: number;
+  store_name: string;
+  supplier: string;
+  device_count: number;
+  total_ordered: number;
+  total_received: number;
+  pending_backorders: number;
+  total_cost: number;
+  average_unit_cost: number;
+  average_rotation: number;
+  average_days_in_stock: number;
+  last_purchase_at: string | null;
+};
+
+export type PurchaseAnalytics = {
+  items: PurchaseSupplierMetric[];
+};
+
 export type StoreRealtimeWidget = {
   store_id: number;
   store_name: string;
@@ -2566,6 +2585,7 @@ export type AnalyticsFilters = {
   dateFrom?: string;
   dateTo?: string;
   category?: string;
+  supplier?: string;
 };
 
 export type TOTPStatus = {
@@ -2932,6 +2952,9 @@ function buildAnalyticsQuery(filters?: AnalyticsFilters): string {
   }
   if (filters.category) {
     params.set("category", filters.category);
+  }
+  if (filters.supplier) {
+    params.set("supplier", filters.supplier);
   }
   const queryString = params.toString();
   return queryString ? `?${queryString}` : "";
@@ -6577,6 +6600,14 @@ export function getAnalyticsRealtime(
 ): Promise<AnalyticsRealtime> {
   const query = buildAnalyticsQuery(filters);
   return request<AnalyticsRealtime>(`/reports/analytics/realtime${query}`, { method: "GET" }, token);
+}
+
+export function getPurchaseAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<PurchaseAnalytics> {
+  const query = buildAnalyticsQuery(filters);
+  return request<PurchaseAnalytics>(`/reports/purchases${query}`, { method: "GET" }, token);
 }
 
 export function getTotpStatus(token: string): Promise<TOTPStatus> {

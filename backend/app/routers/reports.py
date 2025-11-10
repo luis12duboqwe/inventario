@@ -445,6 +445,7 @@ def analytics_rotation(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -457,6 +458,7 @@ def analytics_rotation(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=limit,
         offset=offset,
     )
@@ -469,6 +471,7 @@ def analytics_aging(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -481,6 +484,7 @@ def analytics_aging(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=limit,
         offset=offset,
     )
@@ -493,6 +497,7 @@ def analytics_forecast(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -505,6 +510,7 @@ def analytics_forecast(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=limit,
         offset=offset,
     )
@@ -517,6 +523,7 @@ def analytics_comparative(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -529,6 +536,7 @@ def analytics_comparative(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=limit,
         offset=offset,
     )
@@ -543,6 +551,7 @@ def analytics_profit_margin(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -555,6 +564,7 @@ def analytics_profit_margin(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=limit,
         offset=offset,
     )
@@ -569,6 +579,7 @@ def analytics_sales_projection(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -581,6 +592,7 @@ def analytics_sales_projection(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=limit,
         offset=offset,
     )
@@ -607,6 +619,7 @@ def analytics_alerts(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -619,6 +632,7 @@ def analytics_alerts(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=limit,
         offset=offset,
     )
@@ -631,6 +645,7 @@ def analytics_alerts(
 def analytics_realtime(
     store_ids: list[int] | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -641,6 +656,7 @@ def analytics_realtime(
         db,
         store_ids=store_ids,
         category=category,
+        supplier=supplier,
         limit=limit,
         offset=offset,
     )
@@ -655,6 +671,7 @@ def analytics_pdf(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -667,6 +684,7 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=export_limit,
         offset=0,
     )
@@ -676,6 +694,7 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=export_limit,
         offset=0,
     )
@@ -685,6 +704,7 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=export_limit,
         offset=0,
     )
@@ -694,6 +714,7 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=export_limit,
         offset=0,
     )
@@ -703,6 +724,7 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=export_limit,
         offset=0,
     )
@@ -712,6 +734,7 @@ def analytics_pdf(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
         limit=export_limit,
         offset=0,
     )
@@ -741,6 +764,7 @@ def analytics_export_csv(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -752,6 +776,7 @@ def analytics_export_csv(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
     )
     profit = crud.calculate_profit_margin(
         db,
@@ -759,6 +784,7 @@ def analytics_export_csv(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
     )
     projection = crud.calculate_sales_projection(
         db,
@@ -766,6 +792,7 @@ def analytics_export_csv(
         date_from=date_from,
         date_to=date_to,
         category=category,
+        supplier=supplier,
     )
 
     buffer = StringIO()
@@ -840,6 +867,34 @@ def analytics_export_csv(
         iter([buffer.getvalue()]),
         media_type=metadata.media_type,
         headers=metadata.content_disposition(),
+    )
+
+
+@router.get("/purchases", response_model=schemas.PurchaseAnalyticsResponse)
+def purchases_report(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    _ensure_analytics_enabled()
+    data = crud.calculate_purchase_supplier_metrics(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=limit,
+        offset=offset,
+    )
+    return schemas.PurchaseAnalyticsResponse(
+        items=[schemas.PurchaseSupplierMetric(**item) for item in data]
     )
 
 

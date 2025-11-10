@@ -10,11 +10,10 @@ from backend.core.logging import logger as core_logger
 from .. import crud, models
 from ..config import settings
 from ..core.session_provider import SessionProvider
-from ..database import SessionLocal
 from ..core.transactions import transactional_session
-from . import customer_segments, sync as sync_service
+from ..database import SessionLocal
 from . import accounts_receivable as receivable_service
-from . import sync as sync_service
+from . import customer_segments, sync as sync_service
 from .backups import generate_backup
 
 logger = core_logger.bind(component=__name__)
@@ -104,6 +103,9 @@ class BackgroundScheduler:
                     callback=partial(
                         _customer_segments_job, self._session_provider
                     ),
+                )
+            )
+
         reminders_interval = settings.accounts_receivable_reminder_interval_seconds
         if (
             settings.accounts_receivable_reminders_enabled
@@ -207,6 +209,9 @@ def _customer_segments_job(session_provider: SessionProvider | None = None) -> N
             logger.exception(
                 "Fallo durante el job automático de segmentos de clientes",
                 extra={"error": str(exc)},
+            )
+
+
 def _accounts_receivable_job(session_provider: SessionProvider | None = None) -> None:
     provider = session_provider or SessionLocal
     with provider() as session:
