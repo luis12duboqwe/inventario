@@ -660,7 +660,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada cuando la lista es específica para una tienda.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -4527,6 +4526,78 @@ class GlobalReportSeriesPoint(BaseModel):
     system_errors: int = Field(default=0, ge=0)
 
 
+class ObservabilityLatencySample(BaseModel):
+    entity_type: str
+    pending: int
+    failed: int
+    oldest_pending_seconds: float | None
+    latest_update: datetime | None
+
+    @field_serializer("latest_update", when_used="json")
+    @classmethod
+    def _serialize_latest_update(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class ObservabilityLatencySummary(BaseModel):
+    average_seconds: float | None
+    percentile_95_seconds: float | None
+    max_seconds: float | None
+    samples: list[ObservabilityLatencySample]
+
+
+class ObservabilityErrorSummary(BaseModel):
+    total_logs: int
+    total_errors: int
+    info: int
+    warning: int
+    error: int
+    critical: int
+    latest_error_at: datetime | None
+
+    @field_serializer("latest_error_at", when_used="json")
+    @classmethod
+    def _serialize_latest_error_at(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class ObservabilitySyncSummary(BaseModel):
+    outbox_stats: list[SyncOutboxStatsEntry]
+    total_pending: int
+    total_failed: int
+    hybrid_progress: SyncHybridProgressSummary | None
+
+
+class ObservabilityNotification(BaseModel):
+    id: str
+    title: str
+    message: str
+    severity: SystemLogLevel
+    occurred_at: datetime | None = None
+    reference: str | None = None
+
+    @field_serializer("occurred_at", when_used="json")
+    @classmethod
+    def _serialize_occurred_at(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class ObservabilitySnapshot(BaseModel):
+    generated_at: datetime
+    latency: ObservabilityLatencySummary
+    errors: ObservabilityErrorSummary
+    sync: ObservabilitySyncSummary
+    logs: list[SystemLogEntry]
+    system_errors: list[SystemErrorEntry]
+    alerts: list[GlobalReportAlert]
+    notifications: list[ObservabilityNotification]
+
+    @field_serializer("generated_at", when_used="json")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
 class GlobalReportDashboard(BaseModel):
     generated_at: datetime
     filters: GlobalReportFiltersState
@@ -7557,6 +7628,12 @@ __all__ = [
     "GlobalReportOverview",
     "GlobalReportSeriesPoint",
     "GlobalReportDashboard",
+    "ObservabilityLatencySample",
+    "ObservabilityLatencySummary",
+    "ObservabilityErrorSummary",
+    "ObservabilitySyncSummary",
+    "ObservabilityNotification",
+    "ObservabilitySnapshot",
     "SalesSummaryReport",
     "SalesByProductItem",
     "CashCloseReport",

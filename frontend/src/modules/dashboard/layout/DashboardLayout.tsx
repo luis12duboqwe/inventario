@@ -23,6 +23,7 @@ import BackToTopButton from "../../../shared/components/BackToTopButton";
 import CompactModeToggle from "../../../shared/components/CompactModeToggle";
 import GlobalMetrics from "../components/GlobalMetrics";
 import StockAlertsWidget from "../components/StockAlertsWidget";
+import TechMonitor from "../components/TechMonitor";
 import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
 import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
@@ -109,6 +110,9 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     syncStatus,
     lastInventoryRefresh,
     outboxError,
+    observability,
+    observabilityError,
+    refreshObservability,
   } = useDashboard();
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -151,6 +155,37 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
   const isAdmin = currentUser?.roles.some((role) => role.name === "ADMIN") ?? false;
   const isManager = currentUser?.roles.some((role) => role.name === "GERENTE") ?? false;
   const isOperator = currentUser?.roles.some((role) => role.name === "OPERADOR") ?? false;
+
+  const observabilityNotifications = observability?.notifications ?? [];
+  const techNotificationItems = useMemo<NotificationCenterItem[]>(() => {
+    if (observabilityNotifications.length === 0) {
+      return [];
+    }
+    return observabilityNotifications.map((notification) => {
+      const severity = (notification.severity ?? "info").toLowerCase();
+      const variant: NotificationCenterItem["variant"] =
+        severity === "critical" || severity === "error"
+          ? "error"
+          : severity === "warning"
+            ? "warning"
+            : "info";
+      const occurredLabel = notification.occurred_at
+        ? new Date(notification.occurred_at).toLocaleString("es-MX", {
+            dateStyle: "short",
+            timeStyle: "short",
+          })
+        : null;
+      const description = occurredLabel
+        ? `${notification.message} · ${occurredLabel}`
+        : notification.message;
+      return {
+        id: `tech-${notification.id}`,
+        title: notification.title,
+        description,
+        variant,
+      } satisfies NotificationCenterItem;
+    });
+  }, [observabilityNotifications]);
 
   const roleVisual = useMemo(() => {
     if (isAdmin) {
@@ -293,7 +328,13 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
   };
 
   const notificationCount =
-    toasts.length + (message ? 1 : 0) + (error ? 1 : 0) + (networkAlert ? 1 : 0) + (syncStatus ? 1 : 0);
+    toasts.length +
+    (message ? 1 : 0) +
+    (error ? 1 : 0) +
+    (networkAlert ? 1 : 0) +
+    (syncStatus ? 1 : 0) +
+    (observabilityError ? 1 : 0) +
+    techNotificationItems.length;
   const notificationSummary =
     notificationCount === 0
       ? "No hay notificaciones activas en este momento."
@@ -357,6 +398,19 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
       });
     }
 
+    if (observabilityError) {
+      items.push({
+        id: "panel-observability-error",
+        title: "Observabilidad sin respuesta",
+        description: observabilityError,
+        variant: "warning",
+      });
+    }
+
+    techNotificationItems.forEach((item) => {
+      items.push(item);
+    });
+
     toasts.forEach((toast) => {
       items.push({
         id: `panel-toast-${toast.id}`,
@@ -374,9 +428,11 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     return items;
   }, [
     error,
+    observabilityError,
     lastInventoryRefresh,
     message,
     networkAlert,
+    techNotificationItems,
     outboxError,
     syncStatus,
     toasts,
@@ -613,6 +669,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
             notificationItems={panelNotificationItems}
           />
 
+          <TechMonitor />
           <GlobalMetrics />
           <StockAlertsWidget />
 
