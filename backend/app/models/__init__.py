@@ -48,6 +48,21 @@ RETURN_DISPOSITION_ENUM = Enum(
 )
 
 
+class ReturnReasonCategory(str, enum.Enum):
+    """Categorias corporativas para motivos de devolución."""
+
+    DEFECTO = "defecto"
+    LOGISTICA = "logistica"
+    CLIENTE = "cliente"
+    PRECIO = "precio"
+    OTRO = "otro"
+
+
+RETURN_REASON_CATEGORY_ENUM = Enum(
+    ReturnReasonCategory, name="return_reason_category"
+)
+
+
 # // [PACK38-inventory-reservations]
 class InventoryState(str, enum.Enum):
     """Estados de ciclo de vida de una reserva de inventario."""
@@ -782,6 +797,9 @@ class User(Base):
     estado: Mapped[str] = mapped_column(
         String(30), nullable=False, default="ACTIVO", server_default="ACTIVO")
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    supervisor_pin_hash: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -1854,6 +1872,11 @@ class PurchaseReturn(Base):
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason_category: Mapped[ReturnReasonCategory] = mapped_column(
+        RETURN_REASON_CATEGORY_ENUM.copy(),
+        nullable=False,
+        default=ReturnReasonCategory.OTRO,
+    )
     disposition: Mapped[ReturnDisposition] = mapped_column(
         RETURN_DISPOSITION_ENUM.copy(),
         nullable=False,
@@ -1868,13 +1891,24 @@ class PurchaseReturn(Base):
     processed_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow)
 
     order: Mapped[PurchaseOrder] = relationship(
         "PurchaseOrder", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
-    processed_by: Mapped[User | None] = relationship("User")
+    processed_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[processed_by_id]
+    )
+    approved_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[approved_by_id]
+    )
     warehouse: Mapped[Store | None] = relationship(
         "Store", foreign_keys=[warehouse_id]
     )
@@ -2014,6 +2048,11 @@ class SaleReturn(Base):
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason_category: Mapped[ReturnReasonCategory] = mapped_column(
+        RETURN_REASON_CATEGORY_ENUM.copy(),
+        nullable=False,
+        default=ReturnReasonCategory.OTRO,
+    )
     disposition: Mapped[ReturnDisposition] = mapped_column(
         RETURN_DISPOSITION_ENUM.copy(),
         nullable=False,
@@ -2028,12 +2067,23 @@ class SaleReturn(Base):
     processed_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow)
 
     sale: Mapped[Sale] = relationship("Sale", back_populates="returns")
     device: Mapped[Device] = relationship("Device")
-    processed_by: Mapped[User | None] = relationship("User")
+    processed_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[processed_by_id]
+    )
+    approved_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[approved_by_id]
+    )
     warehouse: Mapped[Store | None] = relationship(
         "Store", foreign_keys=[warehouse_id]
     )
@@ -2253,7 +2303,6 @@ class POSConfig(Base):
     promotions_config: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
-        JSON, nullable=False, default=dict)
     hardware_settings: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )

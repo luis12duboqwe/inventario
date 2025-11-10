@@ -633,7 +633,6 @@ class PriceListBase(BaseModel):
         default=None,
         ge=1,
         description="Sucursal asociada cuando la lista es específica para una tienda.",
-        description="Identificador de la sucursal asociada, cuando aplica.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -3996,6 +3995,14 @@ class ReturnDisposition(str, enum.Enum):
     REPARACION = "reparacion"
 
 
+class ReturnReasonCategory(str, enum.Enum):
+    DEFECTO = "defecto"
+    LOGISTICA = "logistica"
+    CLIENTE = "cliente"
+    PRECIO = "precio"
+    OTRO = "otro"
+
+
 class PurchaseReturnCreate(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
@@ -4004,6 +4011,9 @@ class PurchaseReturnCreate(BaseModel):
         default=ReturnDisposition.DEFECTUOSO
     )
     warehouse_id: int | None = Field(default=None, ge=1)
+    category: ReturnReasonCategory = Field(
+        default=ReturnReasonCategory.DEFECTO
+    )
 
     @field_validator("reason")
     @classmethod
@@ -4020,9 +4030,12 @@ class PurchaseReturnResponse(BaseModel):
     device_id: int
     quantity: int
     reason: str
+    reason_category: ReturnReasonCategory
     disposition: ReturnDisposition
     warehouse_id: int | None
     processed_by_id: int | None
+    approved_by_id: int | None
+    approved_by_name: str | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -4455,9 +4468,12 @@ class ReturnRecord(BaseModel):
     device_name: str | None = None
     quantity: int
     reason: str
+    reason_category: ReturnReasonCategory = ReturnReasonCategory.OTRO
     disposition: ReturnDisposition = ReturnDisposition.VENDIBLE
     processed_by_id: int | None = None
     processed_by_name: str | None = None
+    approved_by_id: int | None = None
+    approved_by_name: str | None = None
     partner_name: str | None = None
     occurred_at: datetime
     refund_amount: Decimal | None = None
@@ -4477,6 +4493,7 @@ class ReturnsTotals(BaseModel):
     purchases: int
     refunds_by_method: dict[str, Decimal] = Field(default_factory=dict)
     refund_total_amount: Decimal = Field(default=Decimal("0"))
+    categories: dict[str, int] = Field(default_factory=dict)
 
     @field_serializer("refunds_by_method")
     @classmethod
@@ -4921,6 +4938,9 @@ class SaleReturnItem(BaseModel):
         default=ReturnDisposition.VENDIBLE
     )
     warehouse_id: int | None = Field(default=None, ge=1)
+    category: ReturnReasonCategory = Field(
+        default=ReturnReasonCategory.CLIENTE
+    )
 
     @field_validator("reason")
     @classmethod
@@ -4931,9 +4951,15 @@ class SaleReturnItem(BaseModel):
         return normalized
 
 
+class ReturnApprovalRequest(BaseModel):
+    supervisor_username: str = Field(..., min_length=3, max_length=120)
+    pin: str = Field(..., min_length=4, max_length=64)
+
+
 class SaleReturnCreate(BaseModel):
     sale_id: int = Field(..., ge=1)
     items: list[SaleReturnItem]
+    approval: ReturnApprovalRequest | None = None
 
     @field_validator("items")
     @classmethod
@@ -4949,9 +4975,12 @@ class SaleReturnResponse(BaseModel):
     device_id: int
     quantity: int
     reason: str
+    reason_category: ReturnReasonCategory
     disposition: ReturnDisposition
     warehouse_id: int | None
     processed_by_id: int | None
+    approved_by_id: int | None
+    approved_by_name: str | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -6387,6 +6416,8 @@ __all__ = [
     "OperationHistoryType",
     "OperationsHistoryResponse",
     "ReturnDisposition",
+    "ReturnReasonCategory",
+    "ReturnApprovalRequest",
     "ReturnRecordType",
     "ReturnRecord",
     "ReturnsTotals",

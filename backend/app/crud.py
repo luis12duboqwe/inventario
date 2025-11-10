@@ -17,6 +17,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 from typing import Any, Literal
 
+from passlib.context import CryptContext
 from sqlalchemy import and_, case, cast, desc, func, literal, or_, select, tuple_, String
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -29,22 +30,34 @@ from .core.roles import ADMIN, GERENTE, INVITADO, OPERADOR
 from .core.transactions import flush_session, transactional_session
 # // [PACK30-31-BACKEND]
 from .services import (
+    credit,
     inventory_accounting,
     inventory_audit,
     inventory_availability,
     promotions,
 )
-from .services import credit, inventory_accounting, inventory_audit, inventory_availability
 from .services.purchases import assign_supplier_batch
 from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
-from .core.settings import inventory_alert_settings
+from .core.settings import inventory_alert_settings, return_policy_settings
 from .utils import audit as audit_utils
 from .utils import audit_trail as audit_trail_utils
 from .utils.cache import TTLCache
 
 logger = core_logger.bind(component=__name__)
+
+_PIN_CONTEXT = CryptContext(
+    schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"], deprecated="auto"
+)
+
+
+def _verify_supervisor_pin_hash(hashed: str, candidate: str) -> bool:
+    try:
+        return _PIN_CONTEXT.verify(candidate, hashed)
+    except ValueError:
+        return False
+
 
 DEFAULT_SECURITY_MODULES: list[str] = [
     "usuarios",
@@ -12119,6 +12132,7 @@ def register_purchase_return(
             device_id=device.id,
             quantity=payload.quantity,
             reason=payload.reason,
+            reason_category=payload.category,
             disposition=disposition,
             warehouse_id=warehouse_id,
             processed_by_id=processed_by_id,
@@ -14447,6 +14461,47 @@ def register_sale_return(
     items_by_device = {item.device_id: item for item in sale.items}
     ledger_entry: models.CustomerLedgerEntry | None = None
     customer_to_sync: models.Customer | None = None
+    approval_required = False
+    approval_reference: str | None = None
+    approved_supervisor: models.User | None = None
+    now_utc = datetime.now(timezone.utc)
+    sale_created_at = sale.created_at
+    if sale_created_at.tzinfo is None:
+        sale_created_at = sale_created_at.replace(tzinfo=timezone.utc)
+    else:
+        sale_created_at = sale_created_at.astimezone(timezone.utc)
+    limit_days = max(0, return_policy_settings.sale_without_supervisor_days)
+    if (now_utc - sale_created_at) > timedelta(days=limit_days):
+        approval_required = True
+        approval = payload.approval
+        if approval is None:
+            raise PermissionError("sale_return_supervisor_required")
+        supervisor = get_user_by_username(db, approval.supervisor_username)
+        fallback_hash = return_policy_settings.supervisor_pin_hashes.get(
+            approval.supervisor_username
+        )
+        if supervisor is None:
+            if not fallback_hash:
+                raise PermissionError("sale_return_supervisor_not_found")
+            if not _verify_supervisor_pin_hash(fallback_hash, approval.pin):
+                raise PermissionError("sale_return_invalid_supervisor_pin")
+            approval_reference = approval.supervisor_username
+        else:
+            supervisor_roles = {supervisor.rol}
+            supervisor_roles.update(
+                role.role.name for role in supervisor.roles if role.role
+            )
+            if not return_policy_settings.has_authorizer_role(supervisor_roles):
+                raise PermissionError("sale_return_supervisor_not_authorized")
+            pin_hash = supervisor.supervisor_pin_hash or fallback_hash
+            if not pin_hash:
+                raise PermissionError("sale_return_supervisor_pin_not_configured")
+            if not _verify_supervisor_pin_hash(pin_hash, approval.pin):
+                raise PermissionError("sale_return_invalid_supervisor_pin")
+            approved_supervisor = supervisor
+            approval_reference = supervisor.username
+    elif payload.approval is not None:
+        approval_reference = payload.approval.supervisor_username
 
     non_sellable_dispositions = {
         schemas.ReturnDisposition.DEFECTUOSO,
@@ -14519,9 +14574,11 @@ def register_sale_return(
                 device_id=item.device_id,
                 quantity=item.quantity,
                 reason=item.reason,
+                reason_category=item.category,
                 disposition=disposition,
                 warehouse_id=warehouse_id,
                 processed_by_id=processed_by_id,
+                approved_by_id=approved_supervisor.id if approved_supervisor else None,
             )
             db.add(sale_return)
             returns.append(sale_return)
@@ -14549,6 +14606,10 @@ def register_sale_return(
                 {
                     "items": [item.model_dump() for item in payload.items],
                     "reason": reason,
+                    "approval": {
+                        "required": approval_required,
+                        "supervisor": approval_reference,
+                    },
                 }
             ),
         )

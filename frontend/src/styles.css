@@ -7885,6 +7885,46 @@ ol {
   font-size: 0.875rem;
 }
 
+.returns-history__refunds,
+.returns-history__categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: 0.8rem;
+}
+
+.returns-approval {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.25);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.returns-approval legend {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.returns-approval label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.returns-approval input {
+  background: var(--color-surface-input);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.75rem;
+  color: var(--color-text-primary);
+}
+
 /* Inventario — Listas de precios */
 
 .price-lists {

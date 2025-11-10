@@ -148,6 +148,7 @@ function ReceiptPreview({ token, sale, receiptUrl }: Props) {
               device_id: deviceId,
               quantity: normalizedQuantity,
               reason: detailReason?.trim() || "Devolución en mostrador",
+              category: "cliente",
             },
           ],
         },

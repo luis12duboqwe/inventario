@@ -61,11 +61,14 @@ describe("Returns", () => {
           device_name: "Lectura",
           quantity: 1,
           reason: "Cliente arrepentido",
+          reason_category: "cliente",
           disposition: "vendible",
           warehouse_id: null,
           warehouse_name: null,
           processed_by_id: 7,
           processed_by_name: "Operador Uno",
+          approved_by_id: 9,
+          approved_by_name: "Supervisora Central",
           partner_name: "María Pérez",
           occurred_at: new Date("2025-02-01T12:00:00Z").toISOString(),
           refund_amount: 120,
@@ -82,11 +85,14 @@ describe("Returns", () => {
           device_name: "Terminal",
           quantity: 2,
           reason: "Proveedor defectuoso",
+          reason_category: "defecto",
           disposition: "defectuoso",
           warehouse_id: 4,
           warehouse_name: "Almacén QA",
           processed_by_id: 7,
           processed_by_name: "Operador Uno",
+          approved_by_id: null,
+          approved_by_name: null,
           partner_name: "Proveedor Central",
           occurred_at: new Date("2025-02-01T10:00:00Z").toISOString(),
         },
@@ -97,6 +103,7 @@ describe("Returns", () => {
         purchases: 1,
         refunds_by_method: { EFECTIVO: 120 },
         refund_total_amount: 120,
+        categories: { cliente: 1, defecto: 1 },
       },
     });
   });
@@ -136,8 +143,12 @@ describe("Returns", () => {
     expect(screen.getByText("Proveedores: 1")).toBeInTheDocument();
     expect(screen.getByText("Reembolsos: $120.00")).toBeInTheDocument();
     expect(screen.getByText("EFECTIVO: $120.00")).toBeInTheDocument();
+    expect(screen.getByText("Cambio del cliente: 1")).toBeInTheDocument();
+    expect(screen.getByText("Falla de calidad: 1")).toBeInTheDocument();
     expect(screen.getByText("Cliente arrepentido")).toBeInTheDocument();
     expect(screen.getByText("Proveedor defectuoso")).toBeInTheDocument();
+    expect(screen.getByText("Cambio del cliente")).toBeInTheDocument();
+    expect(screen.getByText("Falla de calidad")).toBeInTheDocument();
     expect(screen.getByText("Vendible")).toBeInTheDocument();
     expect(screen.getByText("Almacén QA")).toBeInTheDocument();
     expect(screen.getAllByText("Cliente")).not.toHaveLength(0);

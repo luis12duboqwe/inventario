@@ -95,6 +95,7 @@ describe("ReceiptPreview", () => {
             device_id: 5,
             quantity: 1,
             reason: "Motivo cliente",
+            category: "cliente",
           },
         ],
       },
