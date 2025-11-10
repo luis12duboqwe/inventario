@@ -41,6 +41,14 @@ def _format_currency(value: Decimal | float | int | None) -> str:
     return f"{quantized:.2f}"
 
 
+def _to_decimal(value: Decimal | float | int | None) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
 def _extract_candidate(value: object | None) -> str | None:
     if value is None:
         return None
@@ -189,6 +197,45 @@ def render_receipt_pdf(
         f"Total: ${_format_currency(getattr(sale, 'total_amount', None))}",
     )
     y_position -= 20
+
+    loyalty_balance = None
+    loyalty_account = getattr(getattr(sale, "customer", None), "loyalty_account", None)
+    if loyalty_account is not None:
+        loyalty_balance = getattr(loyalty_account, "balance_points", None)
+    earned_points = getattr(sale, "loyalty_points_earned", Decimal("0"))
+    redeemed_points = getattr(sale, "loyalty_points_redeemed", Decimal("0"))
+    has_loyalty_activity = any(
+        _to_decimal(value) > Decimal("0")
+        for value in (earned_points, redeemed_points, loyalty_balance or Decimal("0"))
+    )
+    if has_loyalty_activity:
+        y_position = _ensure_page_space(pdf, y_position, 4)
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(40, y_position, "Programa de lealtad")
+        y_position -= 16
+        pdf.setFont("Helvetica", 10)
+        if _to_decimal(earned_points) > Decimal("0"):
+            pdf.drawString(
+                40,
+                y_position,
+                f"Puntos ganados: {_format_currency(earned_points)}",
+            )
+            y_position -= 14
+        if _to_decimal(redeemed_points) > Decimal("0"):
+            pdf.drawString(
+                40,
+                y_position,
+                f"Puntos canjeados: {_format_currency(redeemed_points)}",
+            )
+            y_position -= 14
+        if loyalty_balance is not None:
+            pdf.drawString(
+                40,
+                y_position,
+                f"Saldo disponible: {_format_currency(loyalty_balance)}",
+            )
+            y_position -= 14
+        pdf.setFont("Helvetica", 10)
 
     qr_payload = {
         "sale_id": sale.id,

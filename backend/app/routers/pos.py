@@ -204,7 +204,7 @@ def register_pos_sale_endpoint(
                     detail=str(exc),
                 ) from exc
 
-        sale, warnings, debt_context = crud.register_pos_sale(
+        sale, warnings, debt_context, loyalty_summary = crud.register_pos_sale(
             db,
             adjusted_payload,
             performed_by_id=current_user.id if current_user else None,
@@ -311,6 +311,7 @@ def register_pos_sale_endpoint(
             debt_receipt_pdf_base64=debt_receipt_pdf_base64,
             payment_receipts=payment_receipts,
             electronic_payments=electronic_results,
+            loyalty_summary=loyalty_summary,
         )
     except LookupError as exc:
         raise HTTPException(
@@ -328,6 +329,31 @@ def register_pos_sale_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Cantidad inválida en la venta.",
+            ) from exc
+        if detail == "loyalty_requires_customer":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Para canjear puntos debes asignar un cliente.",
+            ) from exc
+        if detail == "loyalty_insufficient_points":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El cliente no tiene puntos suficientes para el canje solicitado.",
+            ) from exc
+        if detail == "loyalty_redemption_disabled":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El canje de puntos está deshabilitado para esta cuenta.",
+            ) from exc
+        if detail == "loyalty_invalid_redeem_amount":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El monto en puntos a canjear es inválido.",
+            ) from exc
+        if detail == "loyalty_redemption_rate_invalid":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La tasa de canje configurada no es válida.",
             ) from exc
         if detail == "sale_insufficient_stock":
             raise HTTPException(
