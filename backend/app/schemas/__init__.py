@@ -44,6 +44,7 @@ from ..models import (
     CustomerLedgerEntryType,
     StoreCreditStatus,
     SystemLogLevel,
+    LoyaltyTransactionType,
 )
 from ..utils import audit as audit_utils
 
@@ -1487,12 +1488,130 @@ class CustomerUpdate(BaseModel):
         return normalized
 
 
+class LoyaltyAccountBase(BaseModel):
+    accrual_rate: Decimal = Field(default=Decimal("1"), ge=Decimal("0"))
+    redemption_rate: Decimal = Field(default=Decimal("1"), gt=Decimal("0"))
+    expiration_days: int = Field(default=365, ge=0)
+    is_active: bool = Field(default=True)
+    rule_config: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("rule_config", mode="before")
+    @classmethod
+    def _ensure_rule_config(cls, value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return {str(k): v for k, v in value.items()}
+        raise ValueError("rule_config debe ser un objeto JSON válido")
+
+
+class LoyaltyAccountCreate(LoyaltyAccountBase):
+    customer_id: int = Field(..., ge=1)
+
+
+class LoyaltyAccountUpdate(BaseModel):
+    accrual_rate: Decimal | None = Field(default=None, ge=Decimal("0"))
+    redemption_rate: Decimal | None = Field(default=None, gt=Decimal("0"))
+    expiration_days: int | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+    rule_config: dict[str, Any] | None = None
+
+    @field_validator("rule_config", mode="before")
+    @classmethod
+    def _normalize_rule_config(cls, value: Any) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return {str(k): v for k, v in value.items()}
+        raise ValueError("rule_config debe ser un objeto JSON válido")
+
+
+class LoyaltyAccountSummary(BaseModel):
+    id: int
+    balance_points: Decimal = Field(default=Decimal("0"))
+    lifetime_points_earned: Decimal = Field(default=Decimal("0"))
+    lifetime_points_redeemed: Decimal = Field(default=Decimal("0"))
+    expired_points_total: Decimal = Field(default=Decimal("0"))
+    accrual_rate: Decimal = Field(default=Decimal("0"))
+    redemption_rate: Decimal = Field(default=Decimal("0"))
+    expiration_days: int = Field(default=0)
+    is_active: bool = Field(default=True)
+    last_accrual_at: datetime | None = None
+    last_redemption_at: datetime | None = None
+    last_expiration_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer(
+        "balance_points",
+        "lifetime_points_earned",
+        "lifetime_points_redeemed",
+        "expired_points_total",
+        "accrual_rate",
+        "redemption_rate",
+    )
+    @classmethod
+    def _serialize_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class LoyaltyAccountResponse(LoyaltyAccountSummary):
+    customer_id: int
+    rule_config: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class LoyaltyTransactionResponse(BaseModel):
+    id: int
+    account_id: int
+    sale_id: int | None = None
+    transaction_type: LoyaltyTransactionType
+    points: Decimal
+    balance_after: Decimal
+    currency_amount: Decimal
+    description: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    registered_at: datetime
+    expires_at: datetime | None = None
+    registered_by_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("points", "balance_after", "currency_amount")
+    @classmethod
+    def _serialize_transaction_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class LoyaltyReportSummary(BaseModel):
+    total_accounts: int
+    active_accounts: int
+    inactive_accounts: int
+    total_balance: Decimal = Field(default=Decimal("0"))
+    total_earned: Decimal = Field(default=Decimal("0"))
+    total_redeemed: Decimal = Field(default=Decimal("0"))
+    total_expired: Decimal = Field(default=Decimal("0"))
+    last_activity: datetime | None = None
+
+    @field_serializer(
+        "total_balance",
+        "total_earned",
+        "total_redeemed",
+        "total_expired",
+    )
+    @classmethod
+    def _serialize_summary_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
 class CustomerResponse(CustomerBase):
     id: int
     name: str
     last_interaction_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    loyalty_account: LoyaltyAccountResponse | None = None
     annual_purchase_amount: float = Field(default=0.0)
     orders_last_year: int = Field(default=0)
     purchase_frequency: str = Field(default="sin_datos")
@@ -5310,6 +5429,7 @@ class SaleCustomerSummary(BaseModel):
     id: int
     name: str
     outstanding_debt: Decimal
+    loyalty_account: LoyaltyAccountSummary | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -5338,6 +5458,8 @@ class SaleResponse(BaseModel):
     subtotal_amount: Decimal
     tax_amount: Decimal
     total_amount: Decimal
+    loyalty_points_earned: Decimal = Field(default=Decimal("0"))
+    loyalty_points_redeemed: Decimal = Field(default=Decimal("0"))
     status: str
     notes: str | None
     created_at: datetime
@@ -5350,10 +5472,18 @@ class SaleResponse(BaseModel):
     store: SaleStoreSummary | None = None
     performed_by: SaleUserSummary | None = None
     ultima_accion: AuditTrailInfo | None = None
+    loyalty_account: LoyaltyAccountSummary | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_serializer("discount_percent", "subtotal_amount", "tax_amount", "total_amount")
+    @field_serializer(
+        "discount_percent",
+        "subtotal_amount",
+        "tax_amount",
+        "total_amount",
+        "loyalty_points_earned",
+        "loyalty_points_redeemed",
+    )
     @classmethod
     def _serialize_sale_amount(cls, value: Decimal) -> float:
         return float(value)
@@ -5718,6 +5848,26 @@ class POSDraftResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class POSLoyaltySaleSummary(BaseModel):
+    account_id: int
+    earned_points: Decimal = Field(default=Decimal("0"))
+    redeemed_points: Decimal = Field(default=Decimal("0"))
+    balance_points: Decimal = Field(default=Decimal("0"))
+    redemption_amount: Decimal = Field(default=Decimal("0"))
+    expiration_days: int | None = None
+    expires_at: datetime | None = None
+
+    @field_serializer(
+        "earned_points",
+        "redeemed_points",
+        "balance_points",
+        "redemption_amount",
+    )
+    @classmethod
+    def _serialize_loyalty_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
 class POSSaleResponse(BaseModel):
     status: Literal["draft", "registered"]
     sale: SaleResponse | None = None
@@ -5735,6 +5885,7 @@ class POSSaleResponse(BaseModel):
         default_factory=list
     )
     electronic_payments: list["POSElectronicPaymentResult"] = Field(default_factory=list)
+    loyalty_summary: POSLoyaltySaleSummary | None = None
 
     @field_serializer("payment_breakdown")
     @classmethod

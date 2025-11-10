@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import enum
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -315,7 +315,22 @@ class PaymentMethod(str, enum.Enum):
     CREDITO = "CREDITO"
     TRANSFERENCIA = "TRANSFERENCIA"
     NOTA_CREDITO = "NOTA_CREDITO"
+    PUNTOS = "PUNTOS"
     OTRO = "OTRO"
+
+
+class LoyaltyTransactionType(str, enum.Enum):
+    """Clasificación corporativa de movimientos de lealtad."""
+
+    EARN = "earn"
+    REDEEM = "redeem"
+    ADJUST = "adjust"
+    EXPIRATION = "expiration"
+
+
+LOYALTY_TRANSACTION_TYPE_ENUM = Enum(
+    LoyaltyTransactionType, name="loyalty_transaction_type"
+)
 
 
 class Device(Base):
@@ -1628,6 +1643,8 @@ class Customer(Base):
         back_populates="customer",
         cascade="all, delete-orphan",
     )
+    loyalty_account: Mapped["LoyaltyAccount | None"] = relationship(
+        "LoyaltyAccount",
     segment_snapshot: Mapped[Optional["CustomerSegmentSnapshot"]] = relationship(
         "CustomerSegmentSnapshot",
         back_populates="customer",
@@ -1713,6 +1730,118 @@ class CustomerLedgerEntry(Base):
         "Customer", back_populates="ledger_entries"
     )
     created_by: Mapped[Optional["User"]] = relationship("User")
+
+
+class LoyaltyAccount(Base):
+    __tablename__ = "loyalty_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    customer_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("clientes.id_cliente", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    accrual_rate: Mapped[Decimal] = mapped_column(
+        Numeric(6, 4), nullable=False, default=Decimal("1.0000")
+    )
+    redemption_rate: Mapped[Decimal] = mapped_column(
+        Numeric(6, 4), nullable=False, default=Decimal("1.0000")
+    )
+    expiration_days: Mapped[int] = mapped_column(Integer, nullable=False, default=365)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    rule_config: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    balance_points: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    lifetime_points_earned: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    lifetime_points_redeemed: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    expired_points_total: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    last_accrual_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_redemption_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_expiration_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    customer: Mapped["Customer"] = relationship(
+        "Customer", back_populates="loyalty_account"
+    )
+    transactions: Mapped[list["LoyaltyTransaction"]] = relationship(
+        "LoyaltyTransaction",
+        back_populates="account",
+        cascade="all, delete-orphan",
+    )
+
+
+class LoyaltyTransaction(Base):
+    __tablename__ = "loyalty_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("loyalty_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sale_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    transaction_type: Mapped[LoyaltyTransactionType] = mapped_column(
+        LOYALTY_TRANSACTION_TYPE_ENUM.copy(), nullable=False
+    )
+    points: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    balance_after: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False
+    )
+    currency_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    details: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    registered_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    account: Mapped["LoyaltyAccount"] = relationship(
+        "LoyaltyAccount", back_populates="transactions"
+    )
+    sale: Mapped["Sale | None"] = relationship(
+        "Sale", back_populates="loyalty_transactions"
+    )
+    registered_by: Mapped[Optional["User"]] = relationship("User")
 
 
 class StoreCreditStatus(str, enum.Enum):
@@ -2183,6 +2312,12 @@ class Sale(Base):
     total_amount: Mapped[Decimal] = mapped_column(
         "total", Numeric(12, 2), nullable=False, default=Decimal("0")
     )
+    loyalty_points_earned: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    loyalty_points_redeemed: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
     status: Mapped[str] = mapped_column(
         "estado", String(30), nullable=False, default="COMPLETADA"
     )
@@ -2219,6 +2354,11 @@ class Sale(Base):
     )
     store_credit_redemptions: Mapped[list["StoreCreditRedemption"]] = relationship(
         "StoreCreditRedemption",
+        back_populates="sale",
+        cascade="all, delete-orphan",
+    )
+    loyalty_transactions: Mapped[list["LoyaltyTransaction"]] = relationship(
+        "LoyaltyTransaction",
         back_populates="sale",
         cascade="all, delete-orphan",
     )

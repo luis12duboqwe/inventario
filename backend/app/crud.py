@@ -233,6 +233,18 @@ def _quantize_currency(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _quantize_points(value: Decimal) -> Decimal:
+    """Normaliza valores de puntos de lealtad con dos decimales."""
+
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _quantize_rate(value: Decimal) -> Decimal:
+    """Normaliza tasas de acumulación y canje a cuatro decimales."""
+
+    return value.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+
 def _format_currency(value: Decimal | float | int) -> str:
     normalized = _quantize_currency(_to_decimal(value))
     return f"{normalized:.2f}"
@@ -1982,6 +1994,46 @@ def _store_credit_redemption_payload(
     }
 
 
+def _loyalty_account_payload(account: models.LoyaltyAccount) -> dict[str, object]:
+    return {
+        "id": account.id,
+        "customer_id": account.customer_id,
+        "accrual_rate": float(_to_decimal(account.accrual_rate)),
+        "redemption_rate": float(_to_decimal(account.redemption_rate)),
+        "expiration_days": account.expiration_days,
+        "is_active": account.is_active,
+        "rule_config": account.rule_config or {},
+        "balance_points": float(_to_decimal(account.balance_points)),
+        "lifetime_points_earned": float(_to_decimal(account.lifetime_points_earned)),
+        "lifetime_points_redeemed": float(_to_decimal(account.lifetime_points_redeemed)),
+        "expired_points_total": float(_to_decimal(account.expired_points_total)),
+        "last_accrual_at": account.last_accrual_at.isoformat() if account.last_accrual_at else None,
+        "last_redemption_at": account.last_redemption_at.isoformat() if account.last_redemption_at else None,
+        "last_expiration_at": account.last_expiration_at.isoformat() if account.last_expiration_at else None,
+        "created_at": account.created_at.isoformat(),
+        "updated_at": account.updated_at.isoformat(),
+    }
+
+
+def _loyalty_transaction_payload(
+    transaction: models.LoyaltyTransaction,
+) -> dict[str, object]:
+    return {
+        "id": transaction.id,
+        "account_id": transaction.account_id,
+        "sale_id": transaction.sale_id,
+        "transaction_type": transaction.transaction_type.value,
+        "points": float(_to_decimal(transaction.points)),
+        "balance_after": float(_to_decimal(transaction.balance_after)),
+        "currency_amount": float(_to_decimal(transaction.currency_amount)),
+        "description": transaction.description,
+        "details": transaction.details or {},
+        "registered_at": transaction.registered_at.isoformat(),
+        "expires_at": transaction.expires_at.isoformat() if transaction.expires_at else None,
+        "registered_by_id": transaction.registered_by_id,
+    }
+
+
 def _generate_store_credit_code(db: Session) -> str:
     for _ in range(10):
         candidate = f"NC-{uuid4().hex[:10].upper()}"
@@ -2364,6 +2416,455 @@ def redeem_store_credit_for_customer(
             )
 
     return applied_redemptions
+
+
+def get_loyalty_account(
+    db: Session,
+    customer_id: int,
+    *,
+    with_transactions: bool = False,
+) -> models.LoyaltyAccount | None:
+    statement = select(models.LoyaltyAccount).where(
+        models.LoyaltyAccount.customer_id == customer_id
+    )
+    if with_transactions:
+        statement = statement.options(
+            selectinload(models.LoyaltyAccount.transactions)
+        )
+    return db.scalars(statement).first()
+
+
+def get_loyalty_account_by_id(
+    db: Session,
+    account_id: int,
+    *,
+    with_transactions: bool = False,
+) -> models.LoyaltyAccount | None:
+    statement = select(models.LoyaltyAccount).where(
+        models.LoyaltyAccount.id == account_id
+    )
+    if with_transactions:
+        statement = statement.options(
+            selectinload(models.LoyaltyAccount.transactions)
+        )
+    return db.scalars(statement).first()
+
+
+def ensure_loyalty_account(
+    db: Session,
+    customer_id: int,
+    *,
+    defaults: dict[str, Any] | None = None,
+) -> models.LoyaltyAccount:
+    account = get_loyalty_account(db, customer_id, with_transactions=False)
+    if account is not None:
+        return account
+
+    defaults = defaults or {}
+    accrual_rate = _quantize_rate(
+        _to_decimal(defaults.get("accrual_rate", Decimal("1")))
+    )
+    redemption_rate = _quantize_rate(
+        _to_decimal(defaults.get("redemption_rate", Decimal("1")))
+    )
+    if redemption_rate <= Decimal("0"):
+        redemption_rate = Decimal("1.0000")
+    expiration_days = int(defaults.get("expiration_days", 365) or 0)
+    is_active = bool(defaults.get("is_active", True))
+    rule_config = (
+        defaults.get("rule_config")
+        if isinstance(defaults.get("rule_config"), dict)
+        else {}
+    )
+
+    with transactional_session(db):
+        account = models.LoyaltyAccount(
+            customer_id=customer_id,
+            accrual_rate=accrual_rate,
+            redemption_rate=redemption_rate,
+            expiration_days=max(0, expiration_days),
+            is_active=is_active,
+            rule_config=rule_config,
+        )
+        db.add(account)
+        flush_session(db)
+        db.refresh(account)
+        enqueue_sync_outbox(
+            db,
+            entity_type="loyalty_account",
+            entity_id=str(account.id),
+            operation="UPSERT",
+            payload=_loyalty_account_payload(account),
+        )
+    return account
+
+
+def update_loyalty_account(
+    db: Session,
+    customer_id: int,
+    payload: schemas.LoyaltyAccountUpdate,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.LoyaltyAccount:
+    account = ensure_loyalty_account(db, customer_id)
+
+    with transactional_session(db):
+        if payload.accrual_rate is not None:
+            account.accrual_rate = _quantize_rate(
+                _to_decimal(payload.accrual_rate)
+            )
+        if payload.redemption_rate is not None:
+            normalized_rate = _quantize_rate(
+                _to_decimal(payload.redemption_rate)
+            )
+            if normalized_rate <= Decimal("0"):
+                raise ValueError("loyalty_redemption_rate_invalid")
+            account.redemption_rate = normalized_rate
+        if payload.expiration_days is not None:
+            account.expiration_days = max(0, int(payload.expiration_days))
+        if payload.is_active is not None:
+            account.is_active = bool(payload.is_active)
+        if payload.rule_config is not None:
+            account.rule_config = payload.rule_config
+        db.add(account)
+        flush_session(db)
+        db.refresh(account)
+
+        _log_action(
+            db,
+            action="loyalty_account_updated",
+            entity_type="customer",
+            entity_id=str(customer_id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "accrual_rate": float(_to_decimal(account.accrual_rate)),
+                    "redemption_rate": float(
+                        _to_decimal(account.redemption_rate)
+                    ),
+                    "expiration_days": account.expiration_days,
+                    "reason": reason,
+                }
+            ),
+        )
+
+        enqueue_sync_outbox(
+            db,
+            entity_type="loyalty_account",
+            entity_id=str(account.id),
+            operation="UPSERT",
+            payload=_loyalty_account_payload(account),
+        )
+
+    return account
+
+
+def _expire_loyalty_account_if_needed(
+    db: Session,
+    account: models.LoyaltyAccount,
+    *,
+    reference_date: datetime,
+    performed_by_id: int | None = None,
+) -> models.LoyaltyTransaction | None:
+    expiration_days = int(account.expiration_days or 0)
+    if expiration_days <= 0:
+        return None
+
+    last_activity = account.last_redemption_at or account.last_accrual_at
+    if last_activity is None:
+        last_activity = account.created_at
+    if last_activity is None:
+        last_activity = reference_date
+
+    deadline = last_activity + timedelta(days=expiration_days)
+    if reference_date <= deadline:
+        return None
+
+    current_balance = _quantize_points(_to_decimal(account.balance_points))
+    if current_balance <= Decimal("0"):
+        account.last_expiration_at = reference_date
+        db.add(account)
+        return None
+
+    expiration_tx = models.LoyaltyTransaction(
+        account_id=account.id,
+        transaction_type=models.LoyaltyTransactionType.EXPIRATION,
+        points=-current_balance,
+        balance_after=Decimal("0"),
+        currency_amount=Decimal("0"),
+        description="Expiración automática de puntos",
+        details={"trigger": "auto_expiration"},
+        registered_at=reference_date,
+        registered_by_id=performed_by_id,
+    )
+    account.balance_points = Decimal("0")
+    account.expired_points_total = _quantize_points(
+        _to_decimal(account.expired_points_total) + current_balance
+    )
+    account.last_expiration_at = reference_date
+    db.add(expiration_tx)
+    db.add(account)
+    flush_session(db)
+    return expiration_tx
+
+
+def _record_loyalty_transaction(
+    db: Session,
+    *,
+    account: models.LoyaltyAccount,
+    sale_id: int | None,
+    transaction_type: models.LoyaltyTransactionType,
+    points: Decimal,
+    balance_after: Decimal,
+    currency_amount: Decimal,
+    description: str,
+    performed_by_id: int | None,
+    expires_at: datetime | None = None,
+    details: dict[str, Any] | None = None,
+) -> models.LoyaltyTransaction:
+    transaction = models.LoyaltyTransaction(
+        account_id=account.id,
+        sale_id=sale_id,
+        transaction_type=transaction_type,
+        points=_quantize_points(points),
+        balance_after=_quantize_points(balance_after),
+        currency_amount=_quantize_currency(currency_amount),
+        description=description,
+        details=details or {},
+        registered_at=datetime.utcnow(),
+        registered_by_id=performed_by_id,
+        expires_at=expires_at,
+    )
+    db.add(transaction)
+    flush_session(db)
+    db.refresh(transaction)
+    enqueue_sync_outbox(
+        db,
+        entity_type="loyalty_transaction",
+        entity_id=str(transaction.id),
+        operation="UPSERT",
+        payload=_loyalty_transaction_payload(transaction),
+    )
+    return transaction
+
+
+def apply_loyalty_for_sale(
+    db: Session,
+    sale: models.Sale,
+    *,
+    points_payment_amount: Decimal,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> schemas.POSLoyaltySaleSummary | None:
+    amount_currency = _quantize_currency(_to_decimal(points_payment_amount))
+    if sale.customer_id is None:
+        if amount_currency > Decimal("0"):
+            raise ValueError("loyalty_requires_customer")
+        return None
+
+    account = ensure_loyalty_account(db, sale.customer_id)
+    now = sale.created_at or datetime.utcnow()
+
+    expiration_tx = _expire_loyalty_account_if_needed(
+        db,
+        account,
+        reference_date=now,
+        performed_by_id=performed_by_id,
+    )
+
+    redeemed_points = Decimal("0")
+    if amount_currency > Decimal("0"):
+        redemption_rate = _to_decimal(account.redemption_rate)
+        if redemption_rate <= Decimal("0"):
+            raise ValueError("loyalty_redemption_disabled")
+        required_points = _quantize_points(amount_currency / redemption_rate)
+        if required_points <= Decimal("0"):
+            raise ValueError("loyalty_invalid_redeem_amount")
+        available = _quantize_points(_to_decimal(account.balance_points))
+        if required_points > available:
+            raise ValueError("loyalty_insufficient_points")
+        account.balance_points = _quantize_points(available - required_points)
+        account.lifetime_points_redeemed = _quantize_points(
+            _to_decimal(account.lifetime_points_redeemed) + required_points
+        )
+        account.last_redemption_at = now
+        redeemed_points = required_points
+        sale.loyalty_points_redeemed = redeemed_points
+        _record_loyalty_transaction(
+            db,
+            account=account,
+            sale_id=sale.id,
+            transaction_type=models.LoyaltyTransactionType.REDEEM,
+            points=-redeemed_points,
+            balance_after=account.balance_points,
+            currency_amount=amount_currency,
+            description=f"Canje aplicado a la venta #{sale.id}",
+            performed_by_id=performed_by_id,
+            details={"reason": reason or "redeem"},
+        )
+
+    earned_points = Decimal("0")
+    if account.is_active:
+        accrual_rate = _to_decimal(account.accrual_rate)
+        if accrual_rate > Decimal("0"):
+            earned_points = _quantize_points(
+                _to_decimal(sale.total_amount) * accrual_rate
+            )
+    if earned_points > Decimal("0"):
+        account.balance_points = _quantize_points(
+            _to_decimal(account.balance_points) + earned_points
+        )
+        account.lifetime_points_earned = _quantize_points(
+            _to_decimal(account.lifetime_points_earned) + earned_points
+        )
+        account.last_accrual_at = now
+        sale.loyalty_points_earned = earned_points
+        expires_at = None
+        if account.expiration_days > 0:
+            expires_at = now + timedelta(days=account.expiration_days)
+        _record_loyalty_transaction(
+            db,
+            account=account,
+            sale_id=sale.id,
+            transaction_type=models.LoyaltyTransactionType.EARN,
+            points=earned_points,
+            balance_after=account.balance_points,
+            currency_amount=_to_decimal(sale.total_amount),
+            description=f"Puntos acumulados en venta #{sale.id}",
+            performed_by_id=performed_by_id,
+            expires_at=expires_at,
+            details={"reason": reason or "earn"},
+        )
+
+    db.add(account)
+    db.add(sale)
+    flush_session(db)
+    db.refresh(account)
+    enqueue_sync_outbox(
+        db,
+        entity_type="loyalty_account",
+        entity_id=str(account.id),
+        operation="UPSERT",
+        payload=_loyalty_account_payload(account),
+    )
+
+    summary = schemas.POSLoyaltySaleSummary(
+        account_id=account.id,
+        earned_points=earned_points,
+        redeemed_points=redeemed_points,
+        balance_points=_quantize_points(_to_decimal(account.balance_points)),
+        redemption_amount=amount_currency,
+        expiration_days=account.expiration_days if account.expiration_days > 0 else None,
+        expires_at=(
+            (now + timedelta(days=account.expiration_days))
+            if account.expiration_days > 0
+            else None
+        ),
+    )
+
+    if expiration_tx is not None:
+        enqueue_sync_outbox(
+            db,
+            entity_type="loyalty_transaction",
+            entity_id=str(expiration_tx.id),
+            operation="UPSERT",
+            payload=_loyalty_transaction_payload(expiration_tx),
+        )
+
+    return summary
+
+
+def list_loyalty_accounts(
+    db: Session,
+    *,
+    is_active: bool | None = None,
+    customer_id: int | None = None,
+) -> list[models.LoyaltyAccount]:
+    statement = select(models.LoyaltyAccount).options(
+        joinedload(models.LoyaltyAccount.customer)
+    ).order_by(models.LoyaltyAccount.created_at.desc())
+    if is_active is not None:
+        statement = statement.where(
+            models.LoyaltyAccount.is_active.is_(is_active)
+        )
+    if customer_id is not None:
+        statement = statement.where(
+            models.LoyaltyAccount.customer_id == customer_id
+        )
+    return list(db.scalars(statement))
+
+
+def list_loyalty_transactions(
+    db: Session,
+    *,
+    account_id: int | None = None,
+    customer_id: int | None = None,
+    sale_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[models.LoyaltyTransaction]:
+    statement = select(models.LoyaltyTransaction).options(
+        joinedload(models.LoyaltyTransaction.account)
+        .joinedload(models.LoyaltyAccount.customer)
+    ).order_by(models.LoyaltyTransaction.registered_at.desc())
+    if account_id is not None:
+        statement = statement.where(
+            models.LoyaltyTransaction.account_id == account_id
+        )
+    if customer_id is not None:
+        statement = statement.join(models.LoyaltyAccount).where(
+            models.LoyaltyAccount.customer_id == customer_id
+        )
+    if sale_id is not None:
+        statement = statement.where(models.LoyaltyTransaction.sale_id == sale_id)
+    if offset:
+        statement = statement.offset(max(0, offset))
+    if limit:
+        statement = statement.limit(max(1, min(limit, 500)))
+    return list(db.scalars(statement))
+
+
+def get_loyalty_summary(db: Session) -> schemas.LoyaltyReportSummary:
+    total_accounts = int(
+        db.scalar(select(func.count()).select_from(models.LoyaltyAccount)) or 0
+    )
+    active_accounts = int(
+        db.scalar(
+            select(func.count()).where(models.LoyaltyAccount.is_active.is_(True))
+        )
+        or 0
+    )
+    inactive_accounts = total_accounts - active_accounts
+    totals = db.execute(
+        select(
+            func.coalesce(func.sum(models.LoyaltyAccount.balance_points), 0),
+            func.coalesce(func.sum(models.LoyaltyAccount.lifetime_points_earned), 0),
+            func.coalesce(func.sum(models.LoyaltyAccount.lifetime_points_redeemed), 0),
+            func.coalesce(func.sum(models.LoyaltyAccount.expired_points_total), 0),
+        )
+    ).one()
+    balance_sum = _quantize_points(_to_decimal(totals[0]))
+    earned_sum = _quantize_points(_to_decimal(totals[1]))
+    redeemed_sum = _quantize_points(_to_decimal(totals[2]))
+    expired_sum = _quantize_points(_to_decimal(totals[3]))
+
+    last_activity = db.scalar(
+        select(models.LoyaltyTransaction.registered_at)
+        .order_by(models.LoyaltyTransaction.registered_at.desc())
+        .limit(1)
+    )
+
+    return schemas.LoyaltyReportSummary(
+        total_accounts=total_accounts,
+        active_accounts=active_accounts,
+        inactive_accounts=inactive_accounts,
+        total_balance=balance_sum,
+        total_earned=earned_sum,
+        total_redeemed=redeemed_sum,
+        total_expired=expired_sum,
+        last_activity=last_activity,
+    )
 
 
 def get_last_audit_entries(
@@ -4195,6 +4696,7 @@ def list_customers(
 ) -> list[models.Customer]:
     statement = (
         select(models.Customer)
+        .options(selectinload(models.Customer.loyalty_account))
         .options(selectinload(models.Customer.segment_snapshot))
         .order_by(models.Customer.name.asc())
         .offset(offset)
@@ -4246,6 +4748,7 @@ def list_customers(
 def get_customer(db: Session, customer_id: int) -> models.Customer:
     statement = (
         select(models.Customer)
+        .options(selectinload(models.Customer.loyalty_account))
         .options(selectinload(models.Customer.segment_snapshot))
         .where(models.Customer.id == customer_id)
     )
@@ -14206,9 +14709,12 @@ def list_sales(
             joinedload(models.Sale.store),
             joinedload(models.Sale.items).joinedload(models.SaleItem.device),
             joinedload(models.Sale.returns),
-            joinedload(models.Sale.customer),
+            joinedload(models.Sale.customer).joinedload(
+                models.Customer.loyalty_account
+            ),
             joinedload(models.Sale.cash_session),
             joinedload(models.Sale.performed_by),
+            joinedload(models.Sale.loyalty_transactions),
         )
         .order_by(models.Sale.created_at.desc())
     )
@@ -16588,7 +17094,7 @@ def register_pos_sale(
     *,
     performed_by_id: int,
     reason: str | None = None,
-) -> tuple[models.Sale, list[str], dict[str, object] | None]:
+) -> tuple[models.Sale, list[str], dict[str, object] | None, schemas.POSLoyaltySaleSummary | None]:
     if not payload.confirm:
         raise ValueError("pos_confirmation_required")
 
@@ -16621,6 +17127,17 @@ def register_pos_sale(
     )
 
     warnings: list[str] = []
+    loyalty_amount = Decimal("0")
+    if payload.payments:
+        for payment in payload.payments:
+            if payment.method == models.PaymentMethod.PUNTOS:
+                loyalty_amount += _to_decimal(payment.amount)
+    elif payload.payment_breakdown:
+        puntos_key = models.PaymentMethod.PUNTOS.value
+        if puntos_key in payload.payment_breakdown:
+            loyalty_amount = _to_decimal(payload.payment_breakdown[puntos_key])
+    loyalty_amount = _quantize_currency(loyalty_amount)
+    loyalty_summary: schemas.POSLoyaltySaleSummary | None = None
     for item in payload.items:
         device = get_device(db, payload.store_id, item.device_id)
         if device.quantity <= 0:
@@ -16720,6 +17237,14 @@ def register_pos_sale(
                     f"Se aplicaron notas de crédito por ${_format_currency(store_credit_amount)}"
                 )
 
+    loyalty_summary = apply_loyalty_for_sale(
+        db,
+        sale,
+        points_payment_amount=loyalty_amount,
+        performed_by_id=performed_by_id,
+        reason=reason,
+    )
+
     payments_applied_total = Decimal("0")
     payment_outcomes: list[CustomerPaymentOutcome] = []
     if payload.payments and sale.customer_id:
@@ -16795,7 +17320,7 @@ def register_pos_sale(
         entity_type="sale",
         records=[sale],
     )
-    return sale, warnings, debt_context
+    return sale, warnings, debt_context, loyalty_summary
 
 
 def list_backup_jobs(

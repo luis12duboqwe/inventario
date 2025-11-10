@@ -43,6 +43,7 @@ from .routers import (
     inventory_import,
     inventory_variants,
     inventory_counts,
+    loyalty,
     monitoring,
     operations,
     price_lists,
@@ -83,6 +84,7 @@ SENSITIVE_PREFIXES = (
     "/customers",
     "/reports",
     "/payments",
+    "/loyalty",
     "/suppliers",
     "/repairs",
     "/warranties",
@@ -96,7 +98,7 @@ SENSITIVE_PREFIXES = (
     "/price-lists",
     "/store-credits",
 )
-READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers")
+READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers", "/loyalty")
 
 
 def _resolve_additional_cors_origins() -> set[str]:
@@ -185,6 +187,7 @@ MODULE_PERMISSION_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/customers", "clientes"),
     ("/payments", "ventas"),
     ("/store-credits", "clientes"),
+    ("/loyalty", "lealtad"),
     ("/suppliers", "proveedores"),
     ("/repairs", "reparaciones"),
     ("/returns", "operaciones"),
@@ -561,6 +564,7 @@ def create_app() -> FastAPI:
         pos.router,
         purchases.router,
         price_lists.router,
+        loyalty.router,
         payments.router,
         customers.router,
         store_credits.router,
