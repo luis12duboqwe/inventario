@@ -606,13 +606,14 @@ def test_pos_credit_note_emission(client, db_session):
         assert note_data["reference_document_number"] == sale_data["document_number"]
         assert note_data["amount"] == pytest.approx(25.0)
 
-        document_record = db_session.execute(
-            select(models.FiscalDocument).where(models.FiscalDocument.id == note_data["id"])
+        credit_record = db_session.execute(
+            select(models.StoreCredit).where(models.StoreCredit.id == note_data["id"])
         ).scalar_one()
-        assert document_record.reference is not None
-        assert document_record.reference.document_number == sale_data["document_number"]
-        assert document_record.amount == Decimal("25.00")
-        assert document_record.reason == "Devolución parcial"
+        assert credit_record.customer_id == customer_id
+        assert credit_record.code.startswith("NC-")
+        assert credit_record.issued_amount == Decimal("25.00")
+        assert credit_record.balance_amount == Decimal("25.00")
+        assert credit_record.notes == "Devolución parcial"
     finally:
         settings.enable_purchases_sales = original_flag
 
