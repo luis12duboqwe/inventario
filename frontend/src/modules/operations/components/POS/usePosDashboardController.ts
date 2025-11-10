@@ -46,6 +46,7 @@ const PAYMENT_METHODS: PaymentMethod[] = [
   "TARJETA",
   "TRANSFERENCIA",
   "CREDITO",
+  "NOTA_CREDITO",
   "OTRO",
 ];
 
@@ -60,6 +61,7 @@ const buildEmptyBreakdown = (): Record<PaymentMethod, number> => ({
   TARJETA: 0,
   TRANSFERENCIA: 0,
   CREDITO: 0,
+  NOTA_CREDITO: 0,
   OTRO: 0,
 });
 

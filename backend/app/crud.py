@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import calendar
 import copy
 import csv
 import json
@@ -16,6 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
 from typing import Any, Literal
+from uuid import uuid4
 
 from passlib.context import CryptContext
 from sqlalchemy import and_, case, cast, desc, func, literal, or_, select, tuple_, String
@@ -1907,6 +1909,419 @@ def _create_customer_ledger_entry(
     db.add(entry)
     flush_session(db)
     return entry
+
+
+def _store_credit_payload(credit: models.StoreCredit) -> dict[str, object]:
+    return {
+        "id": credit.id,
+        "customer_id": credit.customer_id,
+        "code": credit.code,
+        "issued_amount": float(_to_decimal(credit.issued_amount)),
+        "balance_amount": float(_to_decimal(credit.balance_amount)),
+        "status": credit.status.value,
+        "issued_at": credit.issued_at.isoformat(),
+        "redeemed_at": credit.redeemed_at.isoformat() if credit.redeemed_at else None,
+        "expires_at": credit.expires_at.isoformat() if credit.expires_at else None,
+        "context": credit.context or {},
+    }
+
+
+def _store_credit_redemption_payload(
+    redemption: models.StoreCreditRedemption,
+) -> dict[str, object]:
+    return {
+        "id": redemption.id,
+        "store_credit_id": redemption.store_credit_id,
+        "sale_id": redemption.sale_id,
+        "amount": float(_to_decimal(redemption.amount)),
+        "notes": redemption.notes,
+        "created_at": redemption.created_at.isoformat(),
+        "created_by_id": redemption.created_by_id,
+    }
+
+
+def _generate_store_credit_code(db: Session) -> str:
+    for _ in range(10):
+        candidate = f"NC-{uuid4().hex[:10].upper()}"
+        exists = db.scalar(
+            select(models.StoreCredit.id).where(models.StoreCredit.code == candidate)
+        )
+        if not exists:
+            return candidate
+    raise RuntimeError("store_credit_code_generation_failed")
+
+
+def list_store_credits(db: Session, *, customer_id: int) -> list[models.StoreCredit]:
+    statement = (
+        select(models.StoreCredit)
+        .options(
+            selectinload(models.StoreCredit.redemptions).joinedload(
+                models.StoreCreditRedemption.created_by
+            )
+        )
+        .where(models.StoreCredit.customer_id == customer_id)
+        .order_by(models.StoreCredit.issued_at.desc(), models.StoreCredit.id.desc())
+    )
+    return list(db.scalars(statement))
+
+
+def _apply_store_credit_redemption(
+    db: Session,
+    *,
+    credit: models.StoreCredit,
+    amount: Decimal,
+    sale_id: int | None,
+    notes: str | None,
+    performed_by_id: int | None,
+) -> models.StoreCreditRedemption:
+    amount_value = _ensure_positive_decimal(amount, "store_credit_invalid_amount")
+    current_balance = _to_decimal(credit.balance_amount).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    if amount_value > current_balance:
+        raise ValueError("store_credit_insufficient_balance")
+
+    new_balance = (current_balance - amount_value).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    credit.balance_amount = new_balance
+    if new_balance == Decimal("0"):
+        credit.status = models.StoreCreditStatus.REDIMIDO
+        credit.redeemed_at = datetime.utcnow()
+    else:
+        credit.status = models.StoreCreditStatus.PARCIAL
+
+    redemption = models.StoreCreditRedemption(
+        store_credit_id=credit.id,
+        sale_id=sale_id,
+        amount=amount_value,
+        notes=notes,
+        created_by_id=performed_by_id,
+    )
+    db.add(redemption)
+
+    customer = credit.customer
+    message = (
+        f"Aplicación de nota de crédito {credit.code} por ${_format_currency(amount_value)}"
+    )
+    _append_customer_history(customer, message)
+    details = {
+        "amount_applied": float(amount_value),
+        "balance_after": float(new_balance),
+        "code": credit.code,
+        "sale_id": sale_id,
+    }
+    _create_customer_ledger_entry(
+        db,
+        customer=customer,
+        entry_type=models.CustomerLedgerEntryType.STORE_CREDIT_REDEEMED,
+        amount=Decimal("0"),
+        note=notes,
+        reference_type="store_credit",
+        reference_id=str(credit.id),
+        details=details,
+        created_by_id=performed_by_id,
+    )
+    return redemption
+
+
+def issue_store_credit(
+    db: Session,
+    payload: schemas.StoreCreditIssueRequest,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.StoreCredit:
+    customer = get_customer(db, payload.customer_id)
+    amount = _ensure_positive_decimal(payload.amount, "store_credit_invalid_amount")
+    code = (payload.code or "").strip().upper()
+    if code:
+        existing = db.scalar(select(models.StoreCredit.id).where(models.StoreCredit.code == code))
+        if existing:
+            raise ValueError("store_credit_code_in_use")
+    else:
+        code = _generate_store_credit_code(db)
+
+    credit = models.StoreCredit(
+        code=code,
+        customer_id=customer.id,
+        issued_amount=amount,
+        balance_amount=amount,
+        status=models.StoreCreditStatus.ACTIVO,
+        notes=payload.notes,
+        context=payload.context or {},
+        expires_at=payload.expires_at,
+        issued_by_id=performed_by_id,
+    )
+
+    with transactional_session(db):
+        db.add(credit)
+        flush_session(db)
+        db.refresh(credit)
+
+        history_message = (
+            f"Nota de crédito {credit.code} emitida por ${_format_currency(amount)}"
+        )
+        _append_customer_history(customer, history_message)
+        db.add(customer)
+
+        details = {
+            "code": credit.code,
+            "amount": float(amount),
+            "expires_at": credit.expires_at.isoformat() if credit.expires_at else None,
+        }
+        _create_customer_ledger_entry(
+            db,
+            customer=customer,
+            entry_type=models.CustomerLedgerEntryType.STORE_CREDIT_ISSUED,
+            amount=Decimal("0"),
+            note=payload.notes,
+            reference_type="store_credit",
+            reference_id=str(credit.id),
+            details=details,
+            created_by_id=performed_by_id,
+        )
+
+        _log_action(
+            db,
+            action="store_credit_issued",
+            entity_type="store_credit",
+            entity_id=str(credit.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps({
+                "customer_id": customer.id,
+                "amount": float(amount),
+                "code": credit.code,
+                "reason": reason,
+            }),
+        )
+
+        flush_session(db)
+        db.refresh(customer)
+        db.refresh(credit)
+
+        enqueue_sync_outbox(
+            db,
+            entity_type="store_credit",
+            entity_id=str(credit.id),
+            operation="UPSERT",
+            payload=_store_credit_payload(credit),
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
+        )
+
+    return credit
+
+
+def redeem_store_credit(
+    db: Session,
+    payload: schemas.StoreCreditRedeemRequest,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> tuple[models.StoreCredit, models.StoreCreditRedemption]:
+    if payload.store_credit_id is None and not payload.code:
+        raise ValueError("store_credit_reference_required")
+
+    statement = (
+        select(models.StoreCredit)
+        .options(
+            joinedload(models.StoreCredit.customer),
+            selectinload(models.StoreCredit.redemptions).joinedload(
+                models.StoreCreditRedemption.created_by
+            ),
+        )
+    )
+    if payload.store_credit_id is not None:
+        statement = statement.where(models.StoreCredit.id == payload.store_credit_id)
+    else:
+        statement = statement.where(models.StoreCredit.code == payload.code.strip().upper())
+
+    credit = db.scalars(statement).unique().first()
+    if credit is None:
+        raise LookupError("store_credit_not_found")
+    if credit.status == models.StoreCreditStatus.CANCELADO:
+        raise ValueError("store_credit_cancelled")
+    if credit.expires_at and credit.expires_at <= datetime.utcnow():
+        raise ValueError("store_credit_expired")
+
+    with transactional_session(db):
+        redemption = _apply_store_credit_redemption(
+            db,
+            credit=credit,
+            amount=payload.amount,
+            sale_id=payload.sale_id,
+            notes=payload.notes,
+            performed_by_id=performed_by_id,
+        )
+        db.add(credit)
+        flush_session(db)
+        db.refresh(credit)
+        db.refresh(redemption)
+
+        _log_action(
+            db,
+            action="store_credit_redeemed",
+            entity_type="store_credit",
+            entity_id=str(credit.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "amount": float(_to_decimal(payload.amount)),
+                    "sale_id": payload.sale_id,
+                    "reason": reason,
+                }
+            ),
+        )
+
+        enqueue_sync_outbox(
+            db,
+            entity_type="store_credit",
+            entity_id=str(credit.id),
+            operation="UPSERT",
+            payload=_store_credit_payload(credit),
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(credit.customer_id),
+            operation="UPSERT",
+            payload=_customer_payload(credit.customer),
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="store_credit_redemption",
+            entity_id=str(redemption.id),
+            operation="UPSERT",
+            payload=_store_credit_redemption_payload(redemption),
+        )
+
+    return credit, redemption
+
+
+def redeem_store_credit_for_customer(
+    db: Session,
+    *,
+    customer_id: int,
+    amount: Decimal,
+    sale_id: int | None,
+    notes: str | None,
+    performed_by_id: int | None,
+    reason: str | None = None,
+) -> list[models.StoreCreditRedemption]:
+    total_requested = _ensure_positive_decimal(amount, "store_credit_invalid_amount")
+    statement = (
+        select(models.StoreCredit)
+        .options(
+            joinedload(models.StoreCredit.customer),
+            selectinload(models.StoreCredit.redemptions).joinedload(
+                models.StoreCreditRedemption.created_by
+            ),
+        )
+        .where(
+            models.StoreCredit.customer_id == customer_id,
+            models.StoreCredit.status.in_(
+                [models.StoreCreditStatus.ACTIVO, models.StoreCreditStatus.PARCIAL]
+            ),
+        )
+        .order_by(models.StoreCredit.issued_at.asc(), models.StoreCredit.id.asc())
+    )
+    credits = list(db.scalars(statement).unique())
+    if not credits:
+        raise LookupError("store_credit_not_found")
+
+    available_total = sum(
+        _to_decimal(credit.balance_amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        for credit in credits
+    )
+    if available_total < total_requested:
+        raise ValueError("store_credit_insufficient_balance")
+
+    remaining = total_requested
+    applied_redemptions: list[models.StoreCreditRedemption] = []
+    affected_credit_ids: set[int] = set()
+    customer = credits[0].customer
+
+    with transactional_session(db):
+        for credit in credits:
+            if remaining <= Decimal("0"):
+                break
+            available = _to_decimal(credit.balance_amount).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if available <= Decimal("0"):
+                continue
+            chunk = min(available, remaining)
+            redemption = _apply_store_credit_redemption(
+                db,
+                credit=credit,
+                amount=chunk,
+                sale_id=sale_id,
+                notes=notes,
+                performed_by_id=performed_by_id,
+            )
+            db.add(credit)
+            flush_session(db)
+            db.refresh(credit)
+            db.refresh(redemption)
+            applied_redemptions.append(redemption)
+            affected_credit_ids.add(credit.id)
+            remaining -= chunk
+
+        if remaining > Decimal("0"):
+            raise ValueError("store_credit_insufficient_balance")
+
+        flush_session(db)
+        db.refresh(customer)
+
+        total_applied = float(_to_decimal(total_requested))
+        _log_action(
+            db,
+            action="store_credit_batch_redeemed",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "amount": total_applied,
+                    "sale_id": sale_id,
+                    "reason": reason,
+                    "credits": sorted(affected_credit_ids),
+                }
+            ),
+        )
+
+        enqueue_sync_outbox(
+            db,
+            entity_type="customer",
+            entity_id=str(customer.id),
+            operation="UPSERT",
+            payload=_customer_payload(customer),
+        )
+        for credit in credits:
+            if credit.id in affected_credit_ids:
+                enqueue_sync_outbox(
+                    db,
+                    entity_type="store_credit",
+                    entity_id=str(credit.id),
+                    operation="UPSERT",
+                    payload=_store_credit_payload(credit),
+                )
+        for redemption in applied_redemptions:
+            enqueue_sync_outbox(
+                db,
+                entity_type="store_credit_redemption",
+                entity_id=str(redemption.id),
+                operation="UPSERT",
+                payload=_store_credit_redemption_payload(redemption),
+            )
+
+    return applied_redemptions
 
 
 def get_last_audit_entries(
@@ -4587,6 +5002,18 @@ def get_customer_summary(
             .limit(100)
         )
     )
+    store_credits = list(
+        db.scalars(
+            select(models.StoreCredit)
+            .options(
+                selectinload(models.StoreCredit.redemptions).joinedload(
+                    models.StoreCreditRedemption.created_by
+                )
+            )
+            .where(models.StoreCredit.customer_id == customer.id)
+            .order_by(models.StoreCredit.issued_at.desc(), models.StoreCredit.id.desc())
+        )
+    )
     payments = [
         entry
         for entry in ledger_entries
@@ -4657,6 +5084,19 @@ def get_customer_summary(
         and (sale.status or "").upper() != "CANCELADA"
     )
     total_payments = sum(float(abs(entry.amount)) for entry in payments)
+    total_store_credit_issued = sum(
+        _to_decimal(credit.issued_amount)
+        for credit in store_credits
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total_store_credit_available = sum(
+        _to_decimal(credit.balance_amount)
+        for credit in store_credits
+        if credit.status
+        in {models.StoreCreditStatus.ACTIVO, models.StoreCreditStatus.PARCIAL}
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total_store_credit_redeemed = (
+        total_store_credit_issued - total_store_credit_available
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     snapshot = schemas.CustomerFinancialSnapshot(
         credit_limit=float(credit_limit),
@@ -4664,9 +5104,16 @@ def get_customer_summary(
         available_credit=float(available_credit),
         total_sales_credit=total_sales_credit,
         total_payments=total_payments,
+        store_credit_issued=float(total_store_credit_issued),
+        store_credit_available=float(total_store_credit_available),
+        store_credit_redeemed=float(total_store_credit_redeemed),
     )
 
     customer_schema = schemas.CustomerResponse.model_validate(customer)
+    store_credit_schema = [
+        schemas.StoreCreditResponse.model_validate(credit)
+        for credit in store_credits
+    ]
     return schemas.CustomerSummaryResponse(
         customer=customer_schema,
         totals=snapshot,
@@ -4674,6 +5121,7 @@ def get_customer_summary(
         invoices=invoices,
         payments=payments[:20],
         ledger=ledger_entries[:50],
+        store_credits=store_credit_schema,
     )
 
 
@@ -13049,6 +13497,262 @@ def delete_repair_order(
         )
 
 
+def refresh_expired_warranties(db: Session) -> int:
+    today = date.today()
+    statement = (
+        select(models.WarrantyAssignment)
+        .options(
+            joinedload(models.WarrantyAssignment.sale_item)
+        )
+        .where(
+            models.WarrantyAssignment.status == models.WarrantyStatus.ACTIVA,
+            models.WarrantyAssignment.expiration_date < today,
+        )
+    )
+    expired_assignments = list(db.scalars(statement).unique())
+    if not expired_assignments:
+        return 0
+
+    for assignment in expired_assignments:
+        assignment.status = models.WarrantyStatus.VENCIDA
+        if assignment.sale_item:
+            assignment.sale_item.warranty_status = models.WarrantyStatus.VENCIDA
+        db.add(assignment)
+
+    flush_session(db)
+    return len(expired_assignments)
+
+
+def list_warranty_assignments(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    status: models.WarrantyStatus | None = None,
+    query: str | None = None,
+    expiring_before: date | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.WarrantyAssignment]:
+    refresh_expired_warranties(db)
+
+    statement = (
+        select(models.WarrantyAssignment)
+        .join(models.WarrantyAssignment.sale_item)
+        .join(models.SaleItem.sale)
+        .join(models.WarrantyAssignment.device)
+        .options(
+            joinedload(models.WarrantyAssignment.device),
+            joinedload(models.WarrantyAssignment.sale_item)
+            .joinedload(models.SaleItem.sale)
+            .joinedload(models.Sale.customer),
+            joinedload(models.WarrantyAssignment.claims),
+        )
+        .order_by(models.WarrantyAssignment.activation_date.desc(), models.WarrantyAssignment.id.desc())
+    )
+
+    if store_id is not None:
+        statement = statement.where(models.Sale.store_id == store_id)
+    if status is not None:
+        statement = statement.where(models.WarrantyAssignment.status == status)
+    if expiring_before is not None:
+        statement = statement.where(
+            models.WarrantyAssignment.expiration_date <= expiring_before
+        )
+    if query:
+        normalized = f"%{query.lower()}%"
+        statement = statement.where(
+            or_(
+                func.lower(models.Device.name).like(normalized),
+                func.lower(models.Device.sku).like(normalized),
+                func.lower(models.Device.imei).like(normalized),
+                func.lower(models.Device.serial).like(normalized),
+                func.lower(models.WarrantyAssignment.serial_number).like(normalized),
+                func.lower(models.Sale.customer_name).like(normalized),
+                cast(models.Sale.id, String).like(f"%{query.strip()}%"),
+            )
+        )
+    if offset:
+        statement = statement.offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
+
+    return list(db.scalars(statement).unique())
+
+
+def get_warranty_assignment(
+    db: Session, assignment_id: int
+) -> models.WarrantyAssignment:
+    refresh_expired_warranties(db)
+    statement = (
+        select(models.WarrantyAssignment)
+        .where(models.WarrantyAssignment.id == assignment_id)
+        .options(
+            joinedload(models.WarrantyAssignment.device),
+            joinedload(models.WarrantyAssignment.sale_item)
+            .joinedload(models.SaleItem.sale)
+            .joinedload(models.Sale.customer),
+            joinedload(models.WarrantyAssignment.claims),
+        )
+    )
+    try:
+        return db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("warranty_assignment_not_found") from exc
+
+
+def register_warranty_claim(
+    db: Session,
+    assignment_id: int,
+    payload: schemas.WarrantyClaimCreate,
+    *,
+    performed_by_id: int | None,
+    reason: str | None,
+) -> models.WarrantyAssignment:
+    assignment = get_warranty_assignment(db, assignment_id)
+    if assignment.status == models.WarrantyStatus.VENCIDA:
+        raise ValueError("warranty_expired")
+
+    with transactional_session(db):
+        claim = models.WarrantyClaim(
+            assignment_id=assignment.id,
+            claim_type=models.WarrantyClaimType(payload.claim_type),
+            status=models.WarrantyClaimStatus.ABIERTO,
+            notes=payload.notes,
+            performed_by_id=performed_by_id,
+        )
+        if payload.repair_order:
+            repair_order = create_repair_order(
+                db,
+                payload.repair_order,
+                performed_by_id=performed_by_id,
+                reason=reason,
+            )
+            claim.repair_order_id = repair_order.id
+            claim.status = models.WarrantyClaimStatus.EN_PROCESO
+        assignment.claims.append(claim)
+        assignment.status = models.WarrantyStatus.RECLAMO
+        if assignment.sale_item:
+            assignment.sale_item.warranty_status = models.WarrantyStatus.RECLAMO
+        db.add(claim)
+        db.add(assignment)
+        flush_session(db)
+
+    return get_warranty_assignment(db, assignment_id)
+
+
+def update_warranty_claim_status(
+    db: Session,
+    claim_id: int,
+    payload: schemas.WarrantyClaimStatusUpdate,
+    *,
+    performed_by_id: int | None,
+) -> models.WarrantyClaim:
+    statement = (
+        select(models.WarrantyClaim)
+        .where(models.WarrantyClaim.id == claim_id)
+        .options(
+            joinedload(models.WarrantyClaim.assignment)
+            .joinedload(models.WarrantyAssignment.sale_item)
+        )
+    )
+    try:
+        claim = db.scalars(statement).unique().one()
+    except NoResultFound as exc:
+        raise LookupError("warranty_claim_not_found") from exc
+
+    new_status = models.WarrantyClaimStatus(payload.status)
+
+    with transactional_session(db):
+        claim.status = new_status
+        if payload.notes is not None:
+            claim.notes = payload.notes
+        if payload.repair_order_id is not None:
+            claim.repair_order_id = payload.repair_order_id
+        if new_status in {
+            models.WarrantyClaimStatus.RESUELTO,
+            models.WarrantyClaimStatus.CANCELADO,
+        }:
+            claim.resolved_at = datetime.utcnow()
+        assignment = claim.assignment
+        if assignment:
+            if new_status == models.WarrantyClaimStatus.RESUELTO:
+                assignment.status = models.WarrantyStatus.RESUELTA
+                if assignment.sale_item:
+                    assignment.sale_item.warranty_status = models.WarrantyStatus.RESUELTA
+            elif new_status == models.WarrantyClaimStatus.CANCELADO:
+                assignment.status = models.WarrantyStatus.ACTIVA
+                if assignment.sale_item:
+                    assignment.sale_item.warranty_status = models.WarrantyStatus.ACTIVA
+            else:
+                assignment.status = models.WarrantyStatus.RECLAMO
+                if assignment.sale_item:
+                    assignment.sale_item.warranty_status = models.WarrantyStatus.RECLAMO
+            assignment.updated_at = datetime.utcnow()
+            db.add(assignment)
+        claim.performed_by_id = performed_by_id or claim.performed_by_id
+        db.add(claim)
+
+    return claim
+
+
+def get_warranty_metrics(
+    db: Session,
+    *,
+    store_id: int | None = None,
+    horizon_days: int = 30,
+) -> schemas.WarrantyMetrics:
+    refresh_expired_warranties(db)
+    filters: list[ColumnElement[bool]] = []
+    if store_id is not None:
+        filters.append(models.Sale.store_id == store_id)
+
+    statement = (
+        select(models.WarrantyAssignment)
+        .join(models.WarrantyAssignment.sale_item)
+        .join(models.SaleItem.sale)
+        .options(joinedload(models.WarrantyAssignment.claims))
+        .where(*filters)
+    )
+    assignments = list(db.scalars(statement).unique())
+
+    total = len(assignments)
+    active = sum(1 for a in assignments if a.status == models.WarrantyStatus.ACTIVA)
+    expired = sum(1 for a in assignments if a.status == models.WarrantyStatus.VENCIDA)
+    expiring_limit = date.today() + timedelta(days=max(horizon_days, 0))
+    expiring = sum(
+        1
+        for a in assignments
+        if a.status == models.WarrantyStatus.ACTIVA
+        and a.expiration_date <= expiring_limit
+    )
+    claims_open = 0
+    claims_resolved = 0
+    total_days = 0
+    for assignment in assignments:
+        coverage_days = max((assignment.expiration_date - assignment.activation_date).days, 0)
+        total_days += coverage_days
+        for claim in assignment.claims:
+            if claim.status in {
+                models.WarrantyClaimStatus.ABIERTO,
+                models.WarrantyClaimStatus.EN_PROCESO,
+            }:
+                claims_open += 1
+            if claim.status == models.WarrantyClaimStatus.RESUELTO:
+                claims_resolved += 1
+
+    average_days = float(total_days / total) if total else 0.0
+    return schemas.WarrantyMetrics(
+        total_assignments=total,
+        active_assignments=active,
+        expired_assignments=expired,
+        claims_open=claims_open,
+        claims_resolved=claims_resolved,
+        expiring_soon=expiring,
+        average_coverage_days=round(average_days, 2),
+        generated_at=datetime.utcnow(),
+    )
+
+
 def list_sales(
     db: Session,
     *,
@@ -13769,6 +14473,7 @@ def _apply_sale_items(
             total_line=net_line_total,
             reservation_id=reservation.id if reservation is not None else None,
         )
+        sale_item.warranty_status = models.WarrantyStatus.SIN_GARANTIA
         sale.items.append(sale_item)
 
         batch_code = getattr(item, "batch_code", None)
@@ -13823,6 +14528,57 @@ def _apply_sale_items(
         )
     sale.__dict__.setdefault("_batch_consumption", batch_consumption)
     return gross_total, total_discount
+
+
+def _add_months_to_date(base_date: date, months: int) -> date:
+    if months <= 0:
+        return base_date
+    month_index = base_date.month - 1 + months
+    year = base_date.year + month_index // 12
+    month = month_index % 12 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    day = min(base_date.day, last_day)
+    return date(year, month, day)
+
+
+def _resolve_warranty_serial(device: models.Device) -> str | None:
+    identifier = (device.imei or "").strip()
+    if identifier:
+        return identifier
+    serial = (device.serial or "").strip()
+    return serial or None
+
+
+def _create_warranty_assignments(
+    db: Session, sale: models.Sale
+) -> list[models.WarrantyAssignment]:
+    activation_dt = sale.created_at or datetime.utcnow()
+    activation_date = activation_dt.date()
+    assignments: list[models.WarrantyAssignment] = []
+
+    for sale_item in sale.items:
+        device = get_device(db, sale.store_id, sale_item.device_id)
+        coverage_months = int(device.garantia_meses or 0)
+        if coverage_months <= 0:
+            sale_item.warranty_status = models.WarrantyStatus.SIN_GARANTIA
+            continue
+        expiration_date = _add_months_to_date(activation_date, coverage_months)
+        assignment = models.WarrantyAssignment(
+            sale_item_id=sale_item.id,
+            device_id=device.id,
+            coverage_months=coverage_months,
+            activation_date=activation_date,
+            expiration_date=expiration_date,
+            status=models.WarrantyStatus.ACTIVA,
+            serial_number=_resolve_warranty_serial(device),
+        )
+        sale_item.warranty_status = models.WarrantyStatus.ACTIVA
+        db.add(assignment)
+        assignments.append(assignment)
+
+    if assignments:
+        flush_session(db)
+    return assignments
 
 
 def create_sale(
@@ -13952,6 +14708,9 @@ def create_sale(
         sale.total_amount = (subtotal + tax_amount).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
+
+        flush_session(db)
+        _create_warranty_assignments(db, sale)
 
         _recalculate_store_inventory_value(db, sale.store_id)
 
@@ -15448,6 +16207,8 @@ def register_pos_sale(
                 f"Borrador POS {payload.draft_id} no encontrado al confirmar la venta."
             )
 
+    store_credit_redemptions: list[models.StoreCreditRedemption] = []
+
     with transactional_session(db):
         if payload.cash_session_id:
             session = get_cash_session(db, payload.cash_session_id)
@@ -15479,7 +16240,51 @@ def register_pos_sale(
                 session.payment_breakdown = breakdown
                 db.add(session)
                 flush_session(db)
+            elif payload.payment_breakdown:
+                breakdown = dict(session.payment_breakdown or {})
+                for method_key, reported_amount in payload.payment_breakdown.items():
+                    try:
+                        method_enum = models.PaymentMethod(method_key)
+                    except ValueError:
+                        continue
+                    total_amount = _to_decimal(reported_amount).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP
+                    )
+                    if total_amount <= Decimal("0"):
+                        continue
+                    collected_key = f"cobrado_{method_enum.value}"
+                    breakdown[collected_key] = float(
+                        Decimal(str(breakdown.get(collected_key, 0)))
+                        + total_amount
+                    )
+                session.payment_breakdown = breakdown
+                db.add(session)
+                flush_session(db)
         db.refresh(sale)
+
+    if payload.payment_breakdown:
+        store_credit_key = models.PaymentMethod.NOTA_CREDITO.value
+        breakdown_value = payload.payment_breakdown.get(store_credit_key)
+        if breakdown_value is not None:
+            store_credit_amount = _to_decimal(breakdown_value).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if store_credit_amount > Decimal("0"):
+                if not sale.customer_id:
+                    raise ValueError("store_credit_requires_customer")
+                redemptions = redeem_store_credit_for_customer(
+                    db,
+                    customer_id=sale.customer_id,
+                    amount=store_credit_amount,
+                    sale_id=sale.id,
+                    notes=payload.notes,
+                    performed_by_id=performed_by_id,
+                    reason=reason,
+                )
+                store_credit_redemptions.extend(redemptions)
+                warnings.append(
+                    f"Se aplicaron notas de crédito por ${_format_currency(store_credit_amount)}"
+                )
 
     payments_applied_total = Decimal("0")
     payment_outcomes: list[CustomerPaymentOutcome] = []

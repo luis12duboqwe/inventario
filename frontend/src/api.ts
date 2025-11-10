@@ -392,7 +392,13 @@ export type InventoryAvailabilityParams = {
   limit?: number;
 };
 
-export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
+export type PaymentMethod =
+  | "EFECTIVO"
+  | "TARJETA"
+  | "TRANSFERENCIA"
+  | "OTRO"
+  | "CREDITO"
+  | "NOTA_CREDITO";
 
 export type ContactHistoryEntry = {
   timestamp: string;
@@ -489,12 +495,40 @@ export type CustomerInvoiceSummary = {
   store_id: number;
 };
 
+export type StoreCreditRedemption = {
+  id: number;
+  store_credit_id: number;
+  sale_id: number | null;
+  amount: number;
+  notes?: string | null;
+  created_at: string;
+  created_by?: string | null;
+};
+
+export type StoreCredit = {
+  id: number;
+  code: string;
+  customer_id: number;
+  issued_amount: number;
+  balance_amount: number;
+  status: "ACTIVO" | "PARCIAL" | "REDIMIDO" | "CANCELADO";
+  notes?: string | null;
+  context: Record<string, unknown>;
+  issued_at: string;
+  redeemed_at?: string | null;
+  expires_at?: string | null;
+  redemptions: StoreCreditRedemption[];
+};
+
 export type CustomerFinancialSnapshot = {
   credit_limit: number;
   outstanding_debt: number;
   available_credit: number;
   total_sales_credit: number;
   total_payments: number;
+  store_credit_issued: number;
+  store_credit_available: number;
+  store_credit_redeemed: number;
 };
 
 export type CustomerSummary = {
@@ -504,6 +538,7 @@ export type CustomerSummary = {
   invoices: CustomerInvoiceSummary[];
   payments: CustomerLedgerEntry[];
   ledger: CustomerLedgerEntry[];
+  store_credits: StoreCredit[];
 };
 
 export type CustomerPortfolioItem = {
@@ -810,6 +845,18 @@ export type RepairOrderPartsPayload = {  // [PACK37-frontend]
 
 export type RepairOrderClosePayload = Partial<Pick<RepairOrderPayload, "labor_cost" | "parts">>; // [PACK37-frontend]
 
+export type WarrantyClaimPayload = {
+  claim_type: WarrantyClaimType;
+  notes?: string | null;
+  repair_order?: RepairOrderPayload | null;
+};
+
+export type WarrantyClaimStatusUpdatePayload = {
+  status: WarrantyClaimStatus;
+  notes?: string | null;
+  repair_order_id?: number | null;
+};
+
 export type CashRegisterEntry = {
   id: number;
   session_id: number;
@@ -855,6 +902,67 @@ export type SaleDeviceSummary = {
   serial?: string | null;
 };
 
+export type WarrantyStatus = "SIN_GARANTIA" | "ACTIVA" | "VENCIDA" | "RECLAMO" | "RESUELTA";
+export type WarrantyClaimStatus = "ABIERTO" | "EN_PROCESO" | "RESUELTO" | "CANCELADO";
+export type WarrantyClaimType = "REPARACION" | "REEMPLAZO";
+
+export type WarrantyDeviceSummary = {
+  id: number;
+  sku: string;
+  name: string;
+  imei: string | null;
+  serial: string | null;
+};
+
+export type WarrantySaleSummary = {
+  id: number;
+  store_id: number;
+  customer_id: number | null;
+  customer_name: string | null;
+  created_at: string;
+};
+
+export type WarrantyClaim = {
+  id: number;
+  claim_type: WarrantyClaimType;
+  status: WarrantyClaimStatus;
+  notes: string | null;
+  opened_at: string;
+  resolved_at: string | null;
+  repair_order_id: number | null;
+  performed_by_id: number | null;
+};
+
+export type WarrantyAssignment = {
+  id: number;
+  sale_item_id: number;
+  device_id: number;
+  coverage_months: number;
+  activation_date: string;
+  expiration_date: string;
+  status: WarrantyStatus;
+  serial_number: string | null;
+  activation_channel: string | null;
+  created_at: string;
+  updated_at: string;
+  device: WarrantyDeviceSummary | null;
+  sale: WarrantySaleSummary | null;
+  claims: WarrantyClaim[];
+  remaining_days: number;
+  is_expired: boolean;
+};
+
+export type WarrantyMetrics = {
+  total_assignments: number;
+  active_assignments: number;
+  expired_assignments: number;
+  claims_open: number;
+  claims_resolved: number;
+  expiring_soon: number;
+  average_coverage_days: number;
+  generated_at: string;
+};
+
 export type SaleStoreSummary = {
   id: number;
   name: string;
@@ -876,6 +984,9 @@ export type SaleItem = {
   discount_amount: number;
   total_line: number;
   device?: SaleDeviceSummary | null;
+  reservation_id?: number | null;
+  warranty_status?: WarrantyStatus | null;
+  warranty?: WarrantyAssignment | null;
 };
 
 export type ReturnDisposition = "vendible" | "defectuoso" | "no_vendible" | "reparacion";
@@ -4914,6 +5025,87 @@ export function closeRepairOrder(  // [PACK37-frontend]
 
 export async function downloadRepairOrderPdf(token: string, repairId: number): Promise<Blob> {
   return request<Blob>(`/repairs/${repairId}/pdf`, { method: "GET" }, token);
+}
+
+export function listWarranties(
+  token: string,
+  params: {
+    store_id?: number;
+    status?: WarrantyStatus;
+    q?: string;
+    expiring_before?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<WarrantyAssignment[]> {
+  const searchParams = new URLSearchParams();
+  if (typeof params.store_id === "number") {
+    searchParams.set("store_id", String(params.store_id));
+  }
+  if (params.status) {
+    searchParams.set("status", params.status);
+  }
+  if (params.q) {
+    searchParams.set("q", params.q);
+  }
+  if (params.expiring_before) {
+    searchParams.set("expiring_before", params.expiring_before);
+  }
+  if (typeof params.limit === "number") {
+    searchParams.set("limit", String(params.limit));
+  }
+  if (typeof params.offset === "number") {
+    searchParams.set("offset", String(params.offset));
+  }
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+  return requestCollection<WarrantyAssignment>(`/warranties${suffix}`, { method: "GET" }, token);
+}
+
+export function getWarranty(token: string, assignmentId: number): Promise<WarrantyAssignment> {
+  return request<WarrantyAssignment>(`/warranties/${assignmentId}`, { method: "GET" }, token);
+}
+
+export function getWarrantyMetrics(
+  token: string,
+  params: { store_id?: number; horizon_days?: number } = {}
+): Promise<WarrantyMetrics> {
+  const searchParams = new URLSearchParams();
+  if (typeof params.store_id === "number") {
+    searchParams.set("store_id", String(params.store_id));
+  }
+  if (typeof params.horizon_days === "number") {
+    searchParams.set("horizon_days", String(params.horizon_days));
+  }
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<WarrantyMetrics>(`/warranties/metrics${suffix}`, { method: "GET" }, token);
+}
+
+export function createWarrantyClaim(
+  token: string,
+  assignmentId: number,
+  payload: WarrantyClaimPayload,
+  reason: string
+): Promise<WarrantyAssignment> {
+  return request<WarrantyAssignment>(
+    `/warranties/${assignmentId}/claims`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function updateWarrantyClaimStatus(
+  token: string,
+  claimId: number,
+  payload: WarrantyClaimStatusUpdatePayload,
+  reason: string
+): Promise<WarrantyAssignment> {
+  return request<WarrantyAssignment>(
+    `/warranties/claims/${claimId}`,
+    { method: "PATCH", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function searchCatalogDevices(

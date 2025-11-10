@@ -56,6 +56,7 @@ const paymentLabels: Record<PaymentMethod, string> = {
   TRANSFERENCIA: "Transferencia",
   OTRO: "Otro",
   CREDITO: "Crédito",
+  NOTA_CREDITO: "Nota de crédito",
 };
 
 const paymentMethodsOrder: PaymentMethod[] = [
@@ -63,6 +64,7 @@ const paymentMethodsOrder: PaymentMethod[] = [
   "TARJETA",
   "TRANSFERENCIA",
   "CREDITO",
+  "NOTA_CREDITO",
   "OTRO",
 ];
 

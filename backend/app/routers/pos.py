@@ -344,6 +344,21 @@ def register_pos_sale_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="El cliente excede el límite de crédito disponible.",
             ) from exc
+        if detail == "store_credit_requires_customer":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Asocia un cliente para aplicar notas de crédito.",
+            ) from exc
+        if detail == "store_credit_insufficient_balance":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La suma de notas de crédito supera el saldo disponible.",
+            ) from exc
+        if detail == "store_credit_invalid_amount":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El monto de la nota de crédito debe ser mayor a cero.",
+            ) from exc
         raise
 
 

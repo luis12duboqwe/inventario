@@ -61,6 +61,35 @@ class ReturnReasonCategory(str, enum.Enum):
 RETURN_REASON_CATEGORY_ENUM = Enum(
     ReturnReasonCategory, name="return_reason_category"
 )
+class WarrantyStatus(str, enum.Enum):
+    """Estados del ciclo de vida de una garantía asignada."""
+
+    SIN_GARANTIA = "SIN_GARANTIA"
+    ACTIVA = "ACTIVA"
+    VENCIDA = "VENCIDA"
+    RECLAMO = "RECLAMO"
+    RESUELTA = "RESUELTA"
+
+
+class WarrantyClaimType(str, enum.Enum):
+    """Tipos de reclamo soportados por las garantías."""
+
+    REPARACION = "REPARACION"
+    REEMPLAZO = "REEMPLAZO"
+
+
+class WarrantyClaimStatus(str, enum.Enum):
+    """Estados de procesamiento para los reclamos de garantía."""
+
+    ABIERTO = "ABIERTO"
+    EN_PROCESO = "EN_PROCESO"
+    RESUELTO = "RESUELTO"
+    CANCELADO = "CANCELADO"
+
+
+WARRANTY_STATUS_ENUM = Enum(WarrantyStatus, name="warranty_status")
+WARRANTY_CLAIM_STATUS_ENUM = Enum(WarrantyClaimStatus, name="warranty_claim_status")
+WARRANTY_CLAIM_TYPE_ENUM = Enum(WarrantyClaimType, name="warranty_claim_type")
 
 
 # // [PACK38-inventory-reservations]
@@ -285,6 +314,7 @@ class PaymentMethod(str, enum.Enum):
     TARJETA = "TARJETA"
     CREDITO = "CREDITO"
     TRANSFERENCIA = "TRANSFERENCIA"
+    NOTA_CREDITO = "NOTA_CREDITO"
     OTRO = "OTRO"
 
 
@@ -382,6 +412,11 @@ class Device(Base):
     )
     bundle_items: Mapped[list["ProductBundleItem"]] = relationship(
         "ProductBundleItem",
+        back_populates="device",
+        cascade="all, delete-orphan",
+    )
+    warranty_assignments: Mapped[list["WarrantyAssignment"]] = relationship(
+        "WarrantyAssignment",
         back_populates="device",
         cascade="all, delete-orphan",
     )
@@ -1574,6 +1609,11 @@ class Customer(Base):
         back_populates="customer",
         cascade="all, delete-orphan",
     )
+    store_credits: Mapped[list["StoreCredit"]] = relationship(
+        "StoreCredit",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+    )
     price_lists: Mapped[list["PriceList"]] = relationship(
         "PriceList",
         back_populates="customer",
@@ -1588,6 +1628,8 @@ class CustomerLedgerEntryType(str, enum.Enum):
     PAYMENT = "payment"
     ADJUSTMENT = "adjustment"
     NOTE = "note"
+    STORE_CREDIT_ISSUED = "store_credit_issued"
+    STORE_CREDIT_REDEEMED = "store_credit_redeemed"
 
 
 class CustomerLedgerEntry(Base):
@@ -1625,6 +1667,114 @@ class CustomerLedgerEntry(Base):
 
     customer: Mapped["Customer"] = relationship(
         "Customer", back_populates="ledger_entries"
+    )
+    created_by: Mapped[Optional["User"]] = relationship("User")
+
+
+class StoreCreditStatus(str, enum.Enum):
+    """Estados operativos de las notas de crédito emitidas."""
+
+    ACTIVO = "ACTIVO"
+    PARCIAL = "PARCIAL"
+    REDIMIDO = "REDIMIDO"
+    CANCELADO = "CANCELADO"
+
+
+class StoreCredit(Base):
+    __tablename__ = "store_credits"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_store_credit_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    customer_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("clientes.id_cliente", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    issued_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    balance_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    status: Mapped[StoreCreditStatus] = mapped_column(
+        Enum(StoreCreditStatus, name="store_credit_status"),
+        nullable=False,
+        default=StoreCreditStatus.ACTIVO,
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    context: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+    redeemed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    issued_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    customer: Mapped["Customer"] = relationship(
+        "Customer", back_populates="store_credits"
+    )
+    issued_by: Mapped[Optional["User"]] = relationship("User")
+    redemptions: Mapped[list["StoreCreditRedemption"]] = relationship(
+        "StoreCreditRedemption",
+        back_populates="store_credit",
+        cascade="all, delete-orphan",
+    )
+
+
+class StoreCreditRedemption(Base):
+    __tablename__ = "store_credit_redemptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_credit_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("store_credits.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sale_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    store_credit: Mapped["StoreCredit"] = relationship(
+        "StoreCredit", back_populates="redemptions"
+    )
+    sale: Mapped[Optional["Sale"]] = relationship(
+        "Sale", back_populates="store_credit_redemptions"
     )
     created_by: Mapped[Optional["User"]] = relationship("User")
 
@@ -1987,6 +2137,11 @@ class Sale(Base):
     returns: Mapped[list["SaleReturn"]] = relationship(
         "SaleReturn", back_populates="sale", cascade="all, delete-orphan"
     )
+    store_credit_redemptions: Mapped[list["StoreCreditRedemption"]] = relationship(
+        "StoreCreditRedemption",
+        back_populates="sale",
+        cascade="all, delete-orphan",
+    )
 
 
 class SaleItem(Base):
@@ -2024,11 +2179,17 @@ class SaleItem(Base):
         nullable=True,
         index=True,
     )
+    warranty_status: Mapped[WarrantyStatus | None] = mapped_column(
+        WARRANTY_STATUS_ENUM.copy(), nullable=True
+    )
 
     sale: Mapped[Sale] = relationship("Sale", back_populates="items")
     device: Mapped[Device] = relationship("Device")
     reservation: Mapped["InventoryReservation | None"] = relationship(
         "InventoryReservation", back_populates="sale_items"
+    )
+    warranty_assignment: Mapped["WarrantyAssignment | None"] = relationship(
+        "WarrantyAssignment", back_populates="sale_item", uselist=False
     )
 
 
@@ -2087,6 +2248,94 @@ class SaleReturn(Base):
     warehouse: Mapped[Store | None] = relationship(
         "Store", foreign_keys=[warehouse_id]
     )
+
+
+class WarrantyAssignment(Base):
+    __tablename__ = "warranty_assignments"
+    __table_args__ = (
+        UniqueConstraint("sale_item_id", name="uq_warranty_sale_item"),
+        Index("ix_warranty_assignments_device_id", "device_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sale_item_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("detalle_ventas.id_detalle", ondelete="CASCADE"),
+        nullable=False,
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    coverage_months: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    activation_date: Mapped[date] = mapped_column(Date, nullable=False)
+    expiration_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[WarrantyStatus] = mapped_column(
+        WARRANTY_STATUS_ENUM.copy(), nullable=False, default=WarrantyStatus.ACTIVA
+    )
+    serial_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    activation_channel: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    sale_item: Mapped[SaleItem] = relationship(
+        "SaleItem", back_populates="warranty_assignment"
+    )
+    device: Mapped[Device] = relationship("Device", back_populates="warranty_assignments")
+    claims: Mapped[list["WarrantyClaim"]] = relationship(
+        "WarrantyClaim", back_populates="assignment", cascade="all, delete-orphan"
+    )
+
+
+class WarrantyClaim(Base):
+    __tablename__ = "warranty_claims"
+    __table_args__ = (
+        Index("ix_warranty_claim_assignment_id", "assignment_id"),
+        Index("ix_warranty_claim_repair_order_id", "repair_order_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    assignment_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("warranty_assignments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    claim_type: Mapped[WarrantyClaimType] = mapped_column(
+        WARRANTY_CLAIM_TYPE_ENUM.copy(), nullable=False
+    )
+    status: Mapped[WarrantyClaimStatus] = mapped_column(
+        WARRANTY_CLAIM_STATUS_ENUM.copy(), nullable=False, default=WarrantyClaimStatus.ABIERTO
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    opened_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    performed_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+    )
+    repair_order_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("repair_orders.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    assignment: Mapped[WarrantyAssignment] = relationship(
+        "WarrantyAssignment", back_populates="claims"
+    )
+    repair_order: Mapped["RepairOrder | None"] = relationship(
+        "RepairOrder", back_populates="warranty_claims"
+    )
+    performed_by: Mapped[User | None] = relationship("User")
 
 
 class RepairOrder(Base):
@@ -2150,6 +2399,9 @@ class RepairOrder(Base):
         "Customer", back_populates="repair_orders")
     parts: Mapped[list["RepairOrderPart"]] = relationship(
         "RepairOrderPart", back_populates="repair_order", cascade="all, delete-orphan"
+    )
+    warranty_claims: Mapped[list[WarrantyClaim]] = relationship(
+        "WarrantyClaim", back_populates="repair_order"
     )
 
 
@@ -2516,7 +2768,10 @@ __all__ = [
     "CashSessionStatus",
     "CashEntryType",
     "CashRegisterEntry",
-    "Customer",
+    "Customer", 
+    "StoreCredit",
+    "StoreCreditStatus",
+    "StoreCreditRedemption",
     "AuditLog",
     "SystemLog",
     "SystemError",
@@ -2564,6 +2819,11 @@ __all__ = [
     "Sale",
     "SaleItem",
     "SaleReturn",
+    "WarrantyAssignment",
+    "WarrantyClaim",
+    "WarrantyStatus",
+    "WarrantyClaimStatus",
+    "WarrantyClaimType",
     "POSConfig",
     "POSDraftSale",
 ]

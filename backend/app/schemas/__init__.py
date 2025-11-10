@@ -32,6 +32,9 @@ from ..models import (
     RepairPartSource,
     RepairStatus,
     InventoryState,
+    WarrantyStatus,
+    WarrantyClaimStatus,
+    WarrantyClaimType,
     SyncMode,
     SyncOutboxPriority,
     SyncOutboxStatus,
@@ -39,6 +42,7 @@ from ..models import (
     SyncStatus,
     TransferStatus,
     CustomerLedgerEntryType,
+    StoreCreditStatus,
     SystemLogLevel,
 )
 from ..utils import audit as audit_utils
@@ -633,6 +637,7 @@ class PriceListBase(BaseModel):
         default=None,
         ge=1,
         description="Sucursal asociada cuando la lista es específica para una tienda.",
+        description="Identificador de la sucursal asociada, cuando aplica.",
     )
     customer_id: int | None = Field(
         default=None,
@@ -1467,6 +1472,162 @@ class CustomerLedgerEntryResponse(BaseModel):
         return float(value)
 
 
+class StoreCreditRedemptionResponse(BaseModel):
+    id: int
+    store_credit_id: int
+    sale_id: int | None
+    amount: float
+    notes: str | None
+    created_at: datetime
+    created_by: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_author(cls, data: Any) -> Any:
+        try:
+            from .. import models  # type: ignore
+        except ImportError:  # pragma: no cover - fallback en tiempo de import
+            models = None  # type: ignore
+        if models is not None and isinstance(data, models.StoreCreditRedemption):
+            author = getattr(data, "created_by", None)
+            return {
+                "id": data.id,
+                "store_credit_id": data.store_credit_id,
+                "sale_id": data.sale_id,
+                "amount": data.amount,
+                "notes": data.notes,
+                "created_at": data.created_at,
+                "created_by": getattr(author, "full_name", None)
+                or getattr(author, "username", None),
+            }
+        if isinstance(data, dict) and "created_by" in data:
+            author_obj = data["created_by"]
+            if hasattr(author_obj, "full_name") or hasattr(author_obj, "username"):
+                data = dict(data)
+                data["created_by"] = getattr(author_obj, "full_name", None) or getattr(
+                    author_obj, "username", None
+                )
+        return data
+
+    @field_serializer("amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("created_at")
+    @classmethod
+    def _serialize_created_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class StoreCreditResponse(BaseModel):
+    id: int
+    code: str
+    customer_id: int
+    issued_amount: float
+    balance_amount: float
+    status: StoreCreditStatus
+    notes: str | None
+    context: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("context", "metadata"),
+        serialization_alias="context",
+    )
+    issued_at: datetime
+    redeemed_at: datetime | None
+    expires_at: datetime | None
+    redemptions: list[StoreCreditRedemptionResponse]
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_payload(cls, data: Any) -> Any:
+        try:
+            from .. import models  # type: ignore
+        except ImportError:  # pragma: no cover
+            models = None  # type: ignore
+        if models is not None and isinstance(data, models.StoreCredit):
+            return {
+                "id": data.id,
+                "code": data.code,
+                "customer_id": data.customer_id,
+                "issued_amount": data.issued_amount,
+                "balance_amount": data.balance_amount,
+                "status": data.status,
+                "notes": data.notes,
+                "context": getattr(data, "context", {}) or {},
+                "issued_at": data.issued_at,
+                "redeemed_at": data.redeemed_at,
+                "expires_at": data.expires_at,
+                "redemptions": list(getattr(data, "redemptions", []) or []),
+            }
+        if isinstance(data, dict):
+            payload = dict(data)
+            context_payload = payload.get("context")
+            metadata_payload = payload.get("metadata")
+            if context_payload is None and metadata_payload is not None:
+                payload["context"] = metadata_payload
+            payload.setdefault("context", {})
+            return payload
+        return data
+
+    @field_serializer("issued_amount", "balance_amount")
+    @classmethod
+    def _serialize_credit_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("issued_at", when_used="json")
+    @classmethod
+    def _serialize_issued_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+    @field_serializer("redeemed_at", "expires_at", when_used="json")
+    @classmethod
+    def _serialize_optional_datetime(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class StoreCreditIssueRequest(BaseModel):
+    customer_id: int = Field(..., ge=1)
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    notes: str | None = Field(default=None, max_length=255)
+    expires_at: datetime | None = None
+    code: str | None = Field(default=None, max_length=32)
+    context: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("context", "metadata"),
+        serialization_alias="context",
+    )
+
+    @field_validator("context", mode="before")
+    @classmethod
+    def _ensure_context(cls, value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return dict(value)
+        raise ValueError("context debe ser un diccionario")
+
+
+class StoreCreditRedeemRequest(BaseModel):
+    store_credit_id: int | None = Field(default=None, ge=1)
+    code: str | None = Field(default=None, max_length=32)
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    sale_id: int | None = Field(default=None, ge=1)
+    notes: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def _ensure_reference(self) -> "StoreCreditRedeemRequest":
+        if self.store_credit_id is None and not (self.code and self.code.strip()):
+            raise ValueError(
+                "Debes indicar el identificador o el código de la nota de crédito."
+            )
+        return self
+
+
 class CustomerDebtSnapshot(BaseModel):
     previous_balance: Decimal
     new_charges: Decimal
@@ -1533,6 +1694,9 @@ class CustomerFinancialSnapshot(BaseModel):
     available_credit: float
     total_sales_credit: float
     total_payments: float
+    store_credit_issued: float
+    store_credit_available: float
+    store_credit_redeemed: float
 
 
 class CustomerSummaryResponse(BaseModel):
@@ -1542,6 +1706,7 @@ class CustomerSummaryResponse(BaseModel):
     invoices: list[CustomerInvoiceSummary]
     payments: list[CustomerLedgerEntryResponse]
     ledger: list[CustomerLedgerEntryResponse]
+    store_credits: list[StoreCreditResponse]
 
 
 class PaymentCenterSummary(BaseModel):
@@ -4511,6 +4676,36 @@ class ReturnsOverview(BaseModel):
     totals: ReturnsTotals
 
 
+class WarrantyClaimCreate(BaseModel):
+    claim_type: WarrantyClaimType
+    notes: str | None = None
+    repair_order: "RepairOrderCreate | None" = None
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "claim_type": "REPARACION",
+            "notes": "Pantalla con píxeles muertos dentro del periodo de garantía",
+        }
+    })
+
+
+class WarrantyClaimStatusUpdate(BaseModel):
+    status: WarrantyClaimStatus
+    notes: str | None = None
+    repair_order_id: int | None = None
+
+
+class WarrantyMetrics(BaseModel):
+    total_assignments: int
+    active_assignments: int
+    expired_assignments: int
+    claims_open: int
+    claims_resolved: int
+    expiring_soon: int
+    average_coverage_days: float
+    generated_at: datetime
+
+
 class RepairOrderPartPayload(BaseModel):
     device_id: int | None = Field(default=None, ge=1)
     part_name: str | None = Field(default=None, max_length=120)
@@ -4854,6 +5049,69 @@ class SaleDeviceSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WarrantyDeviceSummary(BaseModel):
+    id: int
+    sku: str
+    name: str
+    imei: str | None = None
+    serial: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarrantySaleSummary(BaseModel):
+    id: int
+    store_id: int
+    customer_id: int | None = None
+    customer_name: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarrantyClaimResponse(BaseModel):
+    id: int
+    claim_type: WarrantyClaimType
+    status: WarrantyClaimStatus
+    notes: str | None = None
+    opened_at: datetime
+    resolved_at: datetime | None = None
+    repair_order_id: int | None = None
+    performed_by_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarrantyAssignmentResponse(BaseModel):
+    id: int
+    sale_item_id: int
+    device_id: int
+    coverage_months: int
+    activation_date: date
+    expiration_date: date
+    status: WarrantyStatus
+    serial_number: str | None = None
+    activation_channel: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    device: WarrantyDeviceSummary | None = None
+    sale: WarrantySaleSummary | None = None
+    claims: list[WarrantyClaimResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def remaining_days(self) -> int:
+        today = date.today()
+        return max((self.expiration_date - today).days, 0)
+
+    @computed_field
+    @property
+    def is_expired(self) -> bool:
+        return self.expiration_date < date.today()
+
+
 class SaleItemResponse(BaseModel):
     id: int
     sale_id: int
@@ -4864,6 +5122,8 @@ class SaleItemResponse(BaseModel):
     total_line: Decimal
     device: SaleDeviceSummary | None = None
     reservation_id: int | None = None
+    warranty_status: WarrantyStatus | None = None
+    warranty: WarrantyAssignmentResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -6429,6 +6689,13 @@ __all__ = [
     "SaleStoreSummary",
     "SaleUserSummary",
     "SaleDeviceSummary",
+    "WarrantyDeviceSummary",
+    "WarrantySaleSummary",
+    "WarrantyClaimResponse",
+    "WarrantyAssignmentResponse",
+    "WarrantyClaimCreate",
+    "WarrantyClaimStatusUpdate",
+    "WarrantyMetrics",
     "SaleResponse",
     "SaleReturnCreate",
     "SaleReturnItem",
@@ -6541,9 +6808,15 @@ __all__ = [
     "CustomerDebtSnapshot",
     "CreditScheduleEntry",
     "CustomerPaymentReceiptResponse",
+    "StoreCreditResponse",
+    "StoreCreditRedemptionResponse",
+    "StoreCreditIssueRequest",
+    "StoreCreditRedeemRequest",
     "DashboardReceivableCustomer",
     "DashboardReceivableMetrics",
 ]
 
 CashSessionCloseRequest.model_rebuild()
 CashSessionResponse.model_rebuild()
+WarrantyClaimCreate.model_rebuild()
+WarrantyClaimStatusUpdate.model_rebuild()
