@@ -2,7 +2,6 @@ import pytest
 from datetime import datetime
 from fastapi import status
 
-from fastapi import status
 
 from backend.app.core.roles import ADMIN
 
@@ -33,7 +32,7 @@ def test_supplier_crud_flow(client):
 
     create_payload = {
         "name": "Refacciones Globales",
-        "rtn": "08011999000123",
+        "rtn": "0801-1999-000123",
         "payment_terms": "30 días",
         "contact_name": "Pilar Ortega",
         "email": "pilar@refacciones.com",
@@ -51,7 +50,7 @@ def test_supplier_crud_flow(client):
     create_response = client.post("/suppliers", json=create_payload, headers=headers)
     assert create_response.status_code == status.HTTP_201_CREATED
     supplier_id = create_response.json()["id"]
-    assert create_response.json()["rtn"] == "08011999000123"
+    assert create_response.json()["rtn"] == "0801-1999-000123"
     assert create_response.json()["payment_terms"] == "30 días"
     assert create_response.json()["products_supplied"] == ["Refacciones", "Herramientas"]
     assert create_response.json()["contact_info"][0]["position"] == "Compras"
@@ -71,7 +70,7 @@ def test_supplier_crud_flow(client):
     )
     assert csv_response.status_code == status.HTTP_200_OK
     assert "Refacciones Globales" in csv_response.text
-    assert "08011999000123" in csv_response.text
+    assert "0801-1999-000123" in csv_response.text
 
     update_payload = {
         "notes": "Proveedor prioritario",
@@ -225,7 +224,7 @@ def test_suppliers_accounts_payable_summary(client):
 
     legacy_payload = {
         "name": "Tecnología Histórica",
-        "rtn": "08011999000999",
+        "rtn": "0801-1999-000999",
         "payment_terms": "60 días",
         "contact_name": "Andrea Salas",
         "email": "andrea@legacytech.com",

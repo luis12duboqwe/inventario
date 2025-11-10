@@ -1,10 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Iterable
 
 import json
-from datetime import datetime, timezone
-from decimal import Decimal
-
+import pytest
 from fastapi import status
 from sqlalchemy import select
 
@@ -205,6 +204,90 @@ def test_sale_with_identifiers_marks_device_as_sold_and_cancel_restores(client, 
     assert movements[1].movement_type == models.MovementType.IN
 
     settings.enable_purchases_sales = False
+
+
+def test_cancel_sale_generates_credit_note_for_reported_invoice(client, db_session):
+    settings.enable_purchases_sales = True
+    try:
+        token, _ = _bootstrap_admin(client, db_session)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Sucursal Reporte", "location": "HN", "timezone": "America/Tegucigalpa"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "INV-REP-01",
+                "name": "Impresora Fiscal",
+                "quantity": 2,
+                "unit_price": 450.0,
+                "costo_unitario": 300.0,
+                "margen_porcentaje": 15.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        customer_response = client.post(
+            "/customers",
+            json={
+                "name": "Cliente Reportado",
+                "phone": "504-2213-0000",
+                "customer_type": "corporativo",
+                "status": "activo",
+                "tax_id": "08011999000140",
+                "credit_limit": 0.0,
+            },
+            headers={**auth_headers, "X-Reason": "Alta cliente fiscal"},
+        )
+        assert customer_response.status_code == status.HTTP_201_CREATED
+        customer_id = customer_response.json()["id"]
+
+        sale_response = client.post(
+            "/sales",
+            json={
+                "store_id": store_id,
+                "customer_id": customer_id,
+                "payment_method": "EFECTIVO",
+                "items": [{"device_id": device_id, "quantity": 1}],
+            },
+            headers={**auth_headers, "X-Reason": "Venta fiscal"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+        sale_id = sale_response.json()["id"]
+
+        sale_record = db_session.execute(
+            select(models.Sale).where(models.Sale.id == sale_id)
+        ).scalar_one()
+        sale_record.invoice_reported = True
+        sale_record.invoice_reported_at = datetime.utcnow()
+        db_session.commit()
+
+        cancel_response = client.post(
+            f"/sales/{sale_id}/cancel",
+            headers={**auth_headers, "X-Reason": "Anulación fiscal"},
+        )
+        assert cancel_response.status_code == status.HTTP_200_OK
+        cancelled = cancel_response.json()
+        assert cancelled["status"].upper() == "CANCELADA"
+        assert cancelled["invoice_reported"] is False
+        assert cancelled["invoice_annulled_at"] is not None
+        assert cancelled["invoice_credit_note_code"]
+
+        credit_note_record = db_session.execute(
+            select(models.StoreCredit).where(models.StoreCredit.customer_id == customer_id)
+        ).scalar_one()
+        assert credit_note_record.code == cancelled["invoice_credit_note_code"]
+        assert float(credit_note_record.issued_amount) == pytest.approx(450.0)
+    finally:
+        settings.enable_purchases_sales = False
 
 
 def test_sales_history_search_filters(client, db_session):

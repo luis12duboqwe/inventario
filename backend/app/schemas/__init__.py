@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import enum
+import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Annotated, Any, Iterable, Literal
@@ -29,6 +30,8 @@ from ..models import (
     MovementType,
     PaymentMethod,
     PurchaseStatus,
+    PrivacyRequestStatus,
+    PrivacyRequestType,
     RepairPartSource,
     RepairStatus,
     InventoryState,
@@ -46,6 +49,24 @@ from ..models import (
     SystemLogLevel,
     LoyaltyTransactionType,
 )
+
+_RTN_TEMPLATE = "{0}-{1}-{2}"
+
+
+def _normalize_rtn_value(value: str | None) -> str:
+    digits = re.sub(r"[^0-9]", "", value or "")
+    if len(digits) != 14:
+        raise ValueError("El RTN debe contener 14 dígitos (formato ####-####-######).")
+    return _RTN_TEMPLATE.format(digits[:4], digits[4:8], digits[8:])
+
+
+def _normalize_optional_rtn_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    return _normalize_rtn_value(cleaned)
 from ..utils import audit as audit_utils
 
 
@@ -637,7 +658,6 @@ class PriceListBase(BaseModel):
     store_id: int | None = Field(
         default=None,
         ge=1,
-        description="Identificador de la sucursal asociada cuando la lista es específica para una tienda.",
         description="Sucursal asociada cuando la lista es específica para una tienda.",
     )
     customer_id: int | None = Field(
@@ -1365,11 +1385,7 @@ class CustomerBase(BaseModel):
     @field_validator("tax_id", mode="before")
     @classmethod
     def _normalize_tax_id(cls, value: str) -> str:
-        normalized = value.strip().upper()
-        normalized = normalized.replace(" ", "")
-        if len(normalized) < 5:
-            raise ValueError("El RTN debe tener al menos 5 caracteres.")
-        return normalized
+        return _normalize_rtn_value(value)
 
     @field_validator("segment_category", mode="before")
     @classmethod
@@ -1468,12 +1484,7 @@ class CustomerUpdate(BaseModel):
     @field_validator("tax_id", mode="before")
     @classmethod
     def _normalize_update_tax_id(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip().upper().replace(" ", "")
-        if len(normalized) < 5:
-            raise ValueError("El RTN debe tener al menos 5 caracteres.")
-        return normalized
+        return _normalize_optional_rtn_value(value)
 
     @field_validator("segment_category", mode="before")
     @classmethod
@@ -1627,6 +1638,9 @@ class CustomerResponse(CustomerBase):
     last_interaction_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    privacy_consents: dict[str, bool] = Field(default_factory=dict)
+    privacy_metadata: dict[str, Any] = Field(default_factory=dict)
+    privacy_last_request_at: datetime | None = None
     loyalty_account: LoyaltyAccountResponse | None = None
     annual_purchase_amount: float = Field(default=0.0)
     orders_last_year: int = Field(default=0)
@@ -2015,6 +2029,76 @@ class CustomerSummaryResponse(BaseModel):
     payments: list[CustomerLedgerEntryResponse]
     ledger: list[CustomerLedgerEntryResponse]
     store_credits: list[StoreCreditResponse]
+    privacy_requests: list["CustomerPrivacyRequestResponse"] = Field(default_factory=list)
+
+
+class CustomerPrivacyRequestResponse(BaseModel):
+    id: int
+    customer_id: int
+    request_type: PrivacyRequestType
+    status: PrivacyRequestStatus
+    details: str | None = None
+    consent_snapshot: dict[str, bool] = Field(default_factory=dict)
+    masked_fields: list[str] = Field(default_factory=list)
+    created_at: datetime
+    processed_at: datetime | None = None
+    processed_by_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerPrivacyRequestCreate(BaseModel):
+    request_type: PrivacyRequestType
+    details: str | None = Field(default=None, max_length=255)
+    consent: dict[str, bool] | None = None
+    mask_fields: list[str] = Field(default_factory=list)
+
+    @field_validator("consent", mode="before")
+    @classmethod
+    def _normalize_consent(
+        cls, value: dict[str, object] | None
+    ) -> dict[str, bool] | None:
+        if value is None:
+            return None
+        normalized: dict[str, bool] = {}
+        for key, raw in value.items():
+            name = str(key).strip().lower()
+            if not name:
+                continue
+            normalized[name] = bool(raw)
+        return normalized
+
+    @field_validator("mask_fields", mode="before")
+    @classmethod
+    def _normalize_mask_fields(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            items = list(value)
+        else:
+            items = str(value).split(",")
+        normalized: list[str] = []
+        for item in items:
+            text = str(item).strip().lower()
+            if text and text not in normalized:
+                normalized.append(text)
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_payload(self) -> "CustomerPrivacyRequestCreate":
+        if self.request_type == PrivacyRequestType.CONSENT:
+            if not self.consent:
+                raise ValueError(
+                    "Debes proporcionar al menos un consentimiento a actualizar."
+                )
+        elif not self.mask_fields:
+            self.mask_fields = ["email", "phone", "address"]
+        return self
+
+
+class CustomerPrivacyActionResponse(BaseModel):
+    customer: CustomerResponse
+    request: CustomerPrivacyRequestResponse
 
 
 class PaymentCenterSummary(BaseModel):
@@ -2201,6 +2285,11 @@ class SupplierBase(BaseModel):
         normalized = value.strip()
         return normalized or None
 
+    @field_validator("rtn", mode="before")
+    @classmethod
+    def _normalize_rtn(cls, value: str | None) -> str | None:
+        return _normalize_optional_rtn_value(value)
+
     @field_validator("products_supplied", mode="before")
     @classmethod
     def _normalize_products(cls, value: object) -> list[str]:
@@ -2270,6 +2359,11 @@ class SupplierUpdate(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("rtn", mode="before")
+    @classmethod
+    def _normalize_update_rtn(cls, value: str | None) -> str | None:
+        return _normalize_optional_rtn_value(value)
 
     @field_validator("products_supplied", mode="before")
     @classmethod
@@ -5695,6 +5789,10 @@ class SaleResponse(BaseModel):
     loyalty_points_redeemed: Decimal = Field(default=Decimal("0"))
     status: str
     notes: str | None
+    invoice_reported: bool = False
+    invoice_reported_at: datetime | None = None
+    invoice_annulled_at: datetime | None = None
+    invoice_credit_note_code: str | None = None
     created_at: datetime
     performed_by_id: int | None
     cash_session_id: int | None
@@ -7382,6 +7480,10 @@ __all__ = [
     "CustomerStatementLine",
     "CustomerStatementReport",
     "CustomerPaymentReceiptResponse",
+    "CustomerPrivacyRequestCreate",
+    "CustomerPrivacyRequestResponse",
+    "CustomerPrivacyActionResponse",
+    "CustomerSummaryResponse",
     "StoreCreditResponse",
     "StoreCreditRedemptionResponse",
     "StoreCreditIssueRequest",

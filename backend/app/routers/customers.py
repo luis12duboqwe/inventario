@@ -73,7 +73,7 @@ def list_customers_endpoint(
         if detail == "customer_tax_id_invalid":
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="El RTN del cliente es inválido o demasiado corto.",
+                detail="El RTN del cliente debe contener 14 dígitos (formato ####-####-######).",
             ) from exc
         raise
     if export == "csv":
@@ -174,7 +174,7 @@ def create_customer_endpoint(
         if str(exc) == "customer_tax_id_invalid":
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="El RTN del cliente es inválido o demasiado corto.",
+                detail="El RTN del cliente debe contener 14 dígitos (formato ####-####-######).",
             ) from exc
         if str(exc) == "customer_tax_id_duplicate":
             raise HTTPException(
@@ -244,7 +244,7 @@ def update_customer_endpoint(
         if detail == "customer_tax_id_invalid":
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="El RTN del cliente es inválido o demasiado corto.",
+                detail="El RTN del cliente debe contener 14 dígitos (formato ####-####-######).",
             ) from exc
         if detail == "customer_tax_id_duplicate":
             raise HTTPException(
@@ -382,6 +382,45 @@ def register_customer_payment_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="La venta indicada no corresponde al cliente.",
+            ) from exc
+        raise
+
+
+@router.post(
+    "/{customer_id}/privacy-requests",
+    response_model=schemas.CustomerPrivacyActionResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def create_customer_privacy_request_endpoint(
+    customer_id: int,
+    payload: schemas.CustomerPrivacyRequestCreate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    del reason
+    try:
+        customer, request = crud.create_customer_privacy_request(
+            db,
+            customer_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
+        return schemas.CustomerPrivacyActionResponse(
+            customer=schemas.CustomerResponse.model_validate(customer),
+            request=schemas.CustomerPrivacyRequestResponse.model_validate(request),
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cliente no encontrado",
+        ) from exc
+    except ValueError as exc:
+        if str(exc) == "privacy_consent_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Debes proporcionar al menos un consentimiento válido.",
             ) from exc
         raise
 
