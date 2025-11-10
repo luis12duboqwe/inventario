@@ -104,6 +104,8 @@ class BackgroundScheduler:
                     callback=partial(
                         _customer_segments_job, self._session_provider
                     ),
+                )
+            )
         reminders_interval = settings.accounts_receivable_reminder_interval_seconds
         if (
             settings.accounts_receivable_reminders_enabled
@@ -207,6 +209,9 @@ def _customer_segments_job(session_provider: SessionProvider | None = None) -> N
             logger.exception(
                 "Fallo durante el job automático de segmentos de clientes",
                 extra={"error": str(exc)},
+            )
+
+
 def _accounts_receivable_job(session_provider: SessionProvider | None = None) -> None:
     provider = session_provider or SessionLocal
     with provider() as session:
