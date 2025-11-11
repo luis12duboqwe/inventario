@@ -70,6 +70,18 @@ def _build_configuration_snapshot() -> dict[str, Any]:
     return snapshot
 
 
+def _json_default(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, enum.Enum):
+        return value.value
+    if isinstance(value, Path):
+        return str(value)
+    raise TypeError(f"Tipo no serializable para JSON: {type(value)!r}")
+
+
 def _to_sql_literal(value: Any) -> str:
     if value is None:
         return "NULL"
@@ -163,8 +175,15 @@ def _write_metadata(
         },
         "critical_files": copied_files,
     }
-    metadata_path.write_text(json.dumps(
-        metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+    metadata_path.write_text(
+        json.dumps(
+            metadata,
+            ensure_ascii=False,
+            indent=2,
+            default=_json_default,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _calculate_total_size(paths: Iterable[Path]) -> int:
@@ -463,8 +482,15 @@ def generate_backup(
     pdf_path.write_bytes(pdf_bytes)
     json_path.write_bytes(json_bytes)
     sql_path.write_bytes(sql_bytes)
-    config_path.write_text(json.dumps(
-        config_snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    config_path.write_text(
+        json.dumps(
+            config_snapshot,
+            ensure_ascii=False,
+            indent=2,
+            default=_json_default,
+        ),
+        encoding="utf-8",
+    )
 
     copied_files = _collect_critical_files(critical_directory)
     normalized_reason = reason.strip() if reason else None
@@ -475,7 +501,8 @@ def generate_backup(
             zip_file.write(json_path, arcname=f"datos/{json_path.name}")
             zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
             zip_file.write(config_path, arcname=f"config/{config_path.name}")
-            zip_file.write(metadata_path, arcname=f"metadata/{metadata_path.name}")
+            zip_file.write(
+                metadata_path, arcname=f"metadata/{metadata_path.name}")
             for file_path in critical_directory.rglob("*"):
                 if file_path.is_file():
                     arcname = Path("criticos") / \

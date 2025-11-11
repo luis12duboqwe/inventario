@@ -1,6 +1,6 @@
 """Add return disposition and warehouse tracking
 
-Revision ID: 202511070006_return_dispositions
+Revision ID: 202511070006
 Revises: 202511070005_stock_thresholds
 Create Date: 2025-11-07 12:00:00
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "202511070006_return_dispositions"
+revision = "202511070006"
 down_revision = "202511070005_stock_thresholds"
 branch_labels = None
 depends_on = None
@@ -28,7 +28,7 @@ def upgrade() -> None:
     sale_index_name = op.f("ix_sale_returns_warehouse_id")
     purchase_index_name = op.f("ix_purchase_returns_warehouse_id")
 
-    def _sale_disposition_column() -> sa.Column:
+    def _sale_disposition_column():
         return sa.Column(
             "disposition",
             return_enum,
@@ -36,7 +36,7 @@ def upgrade() -> None:
             server_default="vendible",
         )
 
-    def _purchase_disposition_column() -> sa.Column:
+    def _purchase_disposition_column():
         return sa.Column(
             "disposition",
             return_enum.copy(),

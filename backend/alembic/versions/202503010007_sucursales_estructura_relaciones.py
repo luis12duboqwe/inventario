@@ -8,12 +8,12 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.engine.reflection import Inspector
 
 from backend.app.db.valor_inventario_view import (
-    CREATE_VALOR_INVENTARIO_VIEW_SQL,
-    DROP_VALOR_INVENTARIO_VIEW_SQL,
+    create_valor_inventario_view,
+    drop_valor_inventario_view,
 )
 from backend.app.db.movimientos_inventario_view import (
-    CREATE_MOVIMIENTOS_INVENTARIO_VIEW_SQL,
-    DROP_MOVIMIENTOS_INVENTARIO_VIEW_SQL,
+    create_movimientos_inventario_view,
+    drop_movimientos_inventario_view,
 )
 
 # revision identifiers, used by Alembic.
@@ -44,8 +44,10 @@ def _drop_store_foreign_keys(inspector: Inspector) -> None:
         if not inspector.has_table(table):
             continue
         constraints_to_drop = [
-            fk["name"] for fk in inspector.get_foreign_keys(table)
+            fk_name
+            for fk in inspector.get_foreign_keys(table)
             if fk.get("referred_table") == "stores"
+            if (fk_name := fk.get("name"))
         ]
         if not constraints_to_drop:
             continue
@@ -85,8 +87,8 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = inspect(bind)
     is_sqlite = bind.dialect.name == "sqlite"
-    op.execute(sa.text(DROP_VALOR_INVENTARIO_VIEW_SQL))
-    op.execute(sa.text(DROP_MOVIMIENTOS_INVENTARIO_VIEW_SQL))
+    drop_valor_inventario_view(bind)
+    drop_movimientos_inventario_view(bind)
     tables_to_capture = [
         "devices",
         "inventory_movements",
@@ -101,8 +103,11 @@ def upgrade() -> None:
     index_snapshot: dict[str, set[str]] = {}
     for table in tables_to_capture:
         if inspector.has_table(table):
-            index_snapshot[table] = {index["name"]
-                                     for index in inspector.get_indexes(table)}
+            index_snapshot[table] = {
+                index_name
+                for index in inspector.get_indexes(table)
+                if (index_name := index.get("name"))
+            }
     _drop_store_foreign_keys(inspector)
 
     op.rename_table("stores", "sucursales")
@@ -633,15 +638,15 @@ def upgrade() -> None:
             ondelete="SET NULL",
         )
 
-    op.execute(sa.text(CREATE_VALOR_INVENTARIO_VIEW_SQL))
-    op.execute(sa.text(CREATE_MOVIMIENTOS_INVENTARIO_VIEW_SQL))
+    create_valor_inventario_view(bind)
+    create_movimientos_inventario_view(bind)
 
 
 def downgrade() -> None:
     bind = op.get_bind()
 
-    op.execute(sa.text(DROP_MOVIMIENTOS_INVENTARIO_VIEW_SQL))
-    op.execute(sa.text(DROP_VALOR_INVENTARIO_VIEW_SQL))
+    drop_movimientos_inventario_view(bind)
+    drop_valor_inventario_view(bind)
 
     op.drop_constraint("fk_users_sucursal_id", "users", type_="foreignkey")
     op.drop_index("ix_users_sucursal_id", table_name="users")

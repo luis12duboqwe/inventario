@@ -4,6 +4,7 @@ from __future__ import annotations
 import enum
 import json
 from datetime import date, datetime, timedelta
+import secrets
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -61,6 +62,13 @@ class ReturnReasonCategory(str, enum.Enum):
 RETURN_REASON_CATEGORY_ENUM = Enum(
     ReturnReasonCategory, name="return_reason_category"
 )
+
+
+def generate_customer_tax_id_placeholder() -> str:
+    timestamp_component = datetime.utcnow().strftime("%y%m%d")
+    random_component = f"{secrets.randbelow(10**8):08d}"
+    digits = f"{timestamp_component}{random_component}"
+    return f"{digits[:4]}-{digits[4:8]}-{digits[8:]}"
 class WarrantyStatus(str, enum.Enum):
     """Estados del ciclo de vida de una garantía asignada."""
 
@@ -172,6 +180,65 @@ class SystemLogLevel(str, enum.Enum):
     WARNING = "warning"
     ERROR = "error"
     CRITICAL = "critical"
+
+
+class ConfigRate(Base):
+    __tablename__ = "config_rates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    unit: Mapped[str] = mapped_column(String(40), nullable=False)
+    currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+
+class ConfigXmlTemplate(Base):
+    __tablename__ = "config_xml_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    version: Mapped[str] = mapped_column(String(40), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    namespace: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    schema_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+
+class ConfigParameter(Base):
+    __tablename__ = "config_parameters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    key: Mapped[str] = mapped_column(String(120), unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    value_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
 
 class Store(Base):
@@ -1618,7 +1685,12 @@ class Customer(Base):
         "segmento_etiquetas", JSON, nullable=False, default=list
     )
     tax_id: Mapped[str] = mapped_column(
-        "rtn", String(30), nullable=False, unique=True, index=True
+        "rtn",
+        String(30),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=generate_customer_tax_id_placeholder,
     )
     privacy_last_request_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -3152,7 +3224,7 @@ class SyncOutbox(Base):
         String(120), nullable=False, index=True)
     entity_id: Mapped[str] = mapped_column(String(80), nullable=False)
     operation: Mapped[str] = mapped_column(String(40), nullable=False)
-    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    _payload: Mapped[str] = mapped_column("payload", Text, nullable=False)
     attempt_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0)
     last_attempt_at: Mapped[datetime | None] = mapped_column(
@@ -3178,6 +3250,42 @@ class SyncOutbox(Base):
         Boolean, nullable=False, default=False, index=True)
     version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, index=True)
+
+    def _get_payload(self) -> dict[str, Any]:
+        raw = self._payload
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:  # pragma: no cover - datos corruptos
+                return {}
+        if raw is None:
+            return {}
+        try:
+            return dict(raw)
+        except TypeError:  # pragma: no cover - tolerar tipos no previstos
+            return {}
+
+    def _set_payload(self, value: dict[str, Any] | str | None) -> None:
+        if value is None:
+            self._payload = json.dumps({}, ensure_ascii=False)
+            return
+        if isinstance(value, str):
+            self._payload = value
+            return
+        self._payload = json.dumps(value, ensure_ascii=False, default=str)
+
+    payload = synonym(
+        "_payload", descriptor=property(_get_payload, _set_payload)
+    )
+
+    @property
+    def payload_raw(self) -> str:
+        raw = self._payload
+        if isinstance(raw, str):
+            return raw
+        return json.dumps(raw or {}, ensure_ascii=False, default=str)
 
 
 # // [PACK35-backend]

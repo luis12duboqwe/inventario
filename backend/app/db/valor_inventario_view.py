@@ -38,7 +38,7 @@ purchase_recent AS (
 ),
 sales_stats AS (
     SELECT
-        si.device_id AS device_id,
+        si.producto_id AS device_id,
         SUM(si.quantity) AS sold_total_units,
         SUM(
             CASE
@@ -56,7 +56,7 @@ sales_stats AS (
     FROM detalle_ventas AS si
     JOIN ventas AS s ON s.id_venta = si.venta_id
     WHERE s.estado <> 'CANCELADA'
-    GROUP BY si.device_id
+    GROUP BY si.producto_id
 ),
 movement_stats AS (
     SELECT
@@ -218,7 +218,7 @@ purchase_recent AS (
 ),
 sales_stats AS (
     SELECT
-        si.device_id AS device_id,
+        si.producto_id AS device_id,
         SUM(si.quantity) AS sold_total_units,
         SUM(
             CASE
@@ -236,7 +236,7 @@ sales_stats AS (
     FROM detalle_ventas AS si
     JOIN ventas AS s ON s.id_venta = si.venta_id
     WHERE s.estado <> 'CANCELADA'
-    GROUP BY si.device_id
+    GROUP BY si.producto_id
 ),
 movement_stats AS (
     SELECT
@@ -391,13 +391,25 @@ def create_valor_inventario_view(connection: Connection) -> None:
     else:
         create_sql = CREATE_VALOR_INVENTARIO_VIEW_SQL_POSTGRES
 
-    with connection.begin():
-        connection.execute(text(DROP_VALOR_INVENTARIO_VIEW_SQL))
-        connection.execute(text(create_sql))
+    def _execute(conn: Connection) -> None:
+        conn.execute(text(DROP_VALOR_INVENTARIO_VIEW_SQL))
+        conn.execute(text(create_sql))
+
+    if connection.in_transaction():
+        _execute(connection)
+    else:
+        with connection.begin():
+            _execute(connection)
 
 
 def drop_valor_inventario_view(connection: Connection) -> None:
     """Elimina la vista de valoración de inventario si existe."""
 
-    with connection.begin():
-        connection.execute(text(DROP_VALOR_INVENTARIO_VIEW_SQL))
+    def _execute(conn: Connection) -> None:
+        conn.execute(text(DROP_VALOR_INVENTARIO_VIEW_SQL))
+
+    if connection.in_transaction():
+        _execute(connection)
+    else:
+        with connection.begin():
+            _execute(connection)

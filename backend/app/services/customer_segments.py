@@ -41,6 +41,14 @@ _EXPORTABLE_SEGMENTS: dict[str, str] = {
 }
 
 
+def _ensure_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def compute_customer_segments(
     db: Session,
     *,
@@ -82,12 +90,13 @@ def compute_customer_segments(
             if orders
             else Decimal("0")
         )
+        normalized_last_sale = _ensure_utc(last_sale_at)
         frequency_label = _resolve_frequency_label(orders)
         segment_labels = _resolve_segment_labels(
             customer,
             amount_decimal,
             orders,
-            last_sale_at,
+            normalized_last_sale,
             current_time,
         )
 
@@ -101,7 +110,7 @@ def compute_customer_segments(
         snapshot.average_ticket = average_ticket
         snapshot.frequency_label = frequency_label
         snapshot.segment_labels = segment_labels
-        snapshot.last_sale_at = last_sale_at
+        snapshot.last_sale_at = normalized_last_sale
         snapshot.computed_at = current_time
 
         segments_payload = customer_marketing.SegmentCustomer(
@@ -113,7 +122,7 @@ def compute_customer_segments(
             orders_last_year=orders,
             purchase_frequency=frequency_label,
             segment_labels=list(segment_labels),
-            last_purchase_at=last_sale_at.isoformat() if last_sale_at else None,
+            last_purchase_at=normalized_last_sale.isoformat() if normalized_last_sale else None,
         )
         for label in segment_labels:
             segments[label].append(segments_payload)
@@ -153,6 +162,7 @@ def ensure_segments_are_fresh(db: Session, *, now: datetime | None = None) -> No
     last_computed = db.scalar(
         select(func.max(models.CustomerSegmentSnapshot.computed_at))
     )
+    last_computed = _ensure_utc(last_computed)
     if (
         last_computed is None
         or (current_time - last_computed).total_seconds()
@@ -200,6 +210,7 @@ def export_segment(
             continue
         if normalized_key not in snapshot.segment_labels:
             continue
+        normalized_last_sale = _ensure_utc(snapshot.last_sale_at)
         rows.append(
             customer_marketing.SegmentCustomer(
                 id=customer.id,
@@ -210,8 +221,8 @@ def export_segment(
                 orders_last_year=int(snapshot.orders_last_year),
                 purchase_frequency=snapshot.frequency_label,
                 segment_labels=list(snapshot.segment_labels),
-                last_purchase_at=snapshot.last_sale_at.isoformat()
-                if snapshot.last_sale_at
+                last_purchase_at=normalized_last_sale.isoformat()
+                if normalized_last_sale
                 else None,
             )
         )
