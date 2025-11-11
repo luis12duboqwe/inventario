@@ -134,10 +134,13 @@ def detect_inventory_discrepancies(db: Session) -> list[dict[str, object]]:
 def _entry_matches_store(entry: models.SyncOutbox, store_id: int | None) -> bool:
     if store_id is None:
         return True
-    try:
-        payload = json.loads(entry.payload)
-    except (TypeError, json.JSONDecodeError):
-        return False
+    payload = entry.payload
+    if not isinstance(payload, dict):
+        try:
+            raw_value = getattr(entry, "payload_raw", payload)
+            payload = json.loads(raw_value)
+        except (TypeError, json.JSONDecodeError):
+            return False
     candidate: object | None = payload.get("store_id")
     if candidate is None:
         candidate = payload.get("origin_store_id")

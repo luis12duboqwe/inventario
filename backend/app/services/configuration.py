@@ -180,15 +180,15 @@ def create_config_rate(
         rate = models.ConfigRate(
             slug=slug,
             name=payload.name.strip(),
-        description=payload.description.strip() if payload.description else None,
-        value=_quantize_decimal(payload.value),
-        unit=payload.unit.strip(),
-        currency=payload.currency.strip() if payload.currency else None,
-        effective_from=payload.effective_from,
-        effective_to=payload.effective_to,
-        metadata_json=_sanitize_metadata(payload.metadata),
-        is_active=True,
-    )
+            description=payload.description.strip() if payload.description else None,
+            value=_quantize_decimal(payload.value),
+            unit=payload.unit.strip(),
+            currency=payload.currency.strip() if payload.currency else None,
+            effective_from=payload.effective_from,
+            effective_to=payload.effective_to,
+            metadata_json=_sanitize_metadata(payload.metadata),
+            is_active=True,
+        )
     db.add(rate)
     db.flush()
     db.refresh(rate)

@@ -1207,8 +1207,15 @@ def get_cash_register_report(
         filename = f"cierre_caja_{session_id}.pdf"
         headers = {"Content-Disposition": f"attachment; filename={filename}"}
         return StreamingResponse(buffer, media_type="application/pdf", headers=headers)
-    return schemas.CashSessionResponse.model_validate(
+    session_payload = schemas.CashSessionResponse.model_validate(
         session,
         from_attributes=True,
-        update={"entries": entries},
     )
+    serialized_entries = [
+        schemas.CashRegisterEntryResponse.model_validate(
+            entry,
+            from_attributes=True,
+        )
+        for entry in entries
+    ]
+    return session_payload.model_copy(update={"entries": serialized_entries})

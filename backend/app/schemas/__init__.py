@@ -1358,7 +1358,7 @@ class CustomerBase(BaseModel):
     customer_type: str = Field(
         default="minorista", min_length=3, max_length=30)
     status: str = Field(default="activo", min_length=3, max_length=20)
-    tax_id: str = Field(..., min_length=5, max_length=30)
+    tax_id: str | None = Field(default=None, min_length=5, max_length=30)
     segment_category: str | None = Field(default=None, max_length=60)
     tags: list[str] = Field(default_factory=list)
     credit_limit: Decimal = Field(default=Decimal("0"))
@@ -1386,8 +1386,8 @@ class CustomerBase(BaseModel):
 
     @field_validator("tax_id", mode="before")
     @classmethod
-    def _normalize_tax_id(cls, value: str) -> str:
-        return _normalize_rtn_value(value)
+    def _normalize_tax_id(cls, value: str | None) -> str | None:
+        return _normalize_optional_rtn_value(value)
 
     @field_validator("segment_category", mode="before")
     @classmethod
@@ -1703,6 +1703,33 @@ class CustomerLedgerEntryResponse(BaseModel):
     created_at: datetime
     created_by: str | None
 
+    @staticmethod
+    def _extract_author(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        name_attrs = ("full_name", "nombre", "name")
+        for attr in name_attrs:
+            candidate = getattr(value, attr, None)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        username_attrs = ("username", "correo", "email")
+        for attr in username_attrs:
+            candidate = getattr(value, attr, None)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        identifier = getattr(value, "id_usuario", None) or getattr(value, "id", None)
+        if identifier is not None:
+            return str(identifier)
+        return str(value)
+
+    @field_validator("created_by", mode="before")
+    @classmethod
+    def _normalize_created_by(cls, value: Any) -> str | None:
+        return cls._extract_author(value)
+
     model_config = ConfigDict(from_attributes=True)
 
     @field_serializer("amount")
@@ -1713,19 +1740,7 @@ class CustomerLedgerEntryResponse(BaseModel):
     @field_serializer("created_by")
     @classmethod
     def _serialize_created_by(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            normalized = value.strip()
-            return normalized or None
-        name = getattr(value, "name", None)
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-        email = getattr(value, "email", None)
-        if isinstance(email, str) and email.strip():
-            return email.strip()
-        identifier = getattr(value, "id_usuario", None) or getattr(value, "id", None)
-        return str(identifier) if identifier is not None else None
+        return cls._extract_author(value)
 
 
 class StoreCreditRedemptionResponse(BaseModel):
@@ -2678,9 +2693,12 @@ class UserBase(BaseModel):
         """
         if not isinstance(data, dict):
             return data
-        # username <= correo
-        if "username" not in data and "correo" in data:
-            data["username"] = data.get("correo")
+        # username <= correo/email
+        if "username" not in data:
+            if "correo" in data and data.get("correo"):
+                data["username"] = data.get("correo")
+            elif "email" in data and data.get("email"):
+                data["username"] = data.get("email")
         # full_name <= nombre
         if "full_name" not in data and "nombre" in data:
             data["full_name"] = data.get("nombre")
@@ -4959,7 +4977,7 @@ class PurchaseReturnResponse(BaseModel):
     credit_note_amount: Decimal = Field(default=Decimal("0"))
     processed_by_id: int | None
     approved_by_id: int | None
-    approved_by_name: str | None
+    approved_by_name: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -6146,7 +6164,7 @@ class SaleReturnResponse(BaseModel):
     warehouse_id: int | None
     processed_by_id: int | None
     approved_by_id: int | None
-    approved_by_name: str | None
+    approved_by_name: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -7723,6 +7741,244 @@ class IntegrationHealthUpdateRequest(BaseModel):
     )
 
 
+class ConfigurationParameterType(str, enum.Enum):
+    """Tipos permitidos para los parámetros configurables."""
+
+    STRING = "string"
+    INTEGER = "integer"
+    DECIMAL = "decimal"
+    BOOLEAN = "boolean"
+    JSON = "json"
+
+
+class ConfigurationRateBase(BaseModel):
+    slug: str = Field(..., min_length=1, max_length=80)
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=255)
+    value: Decimal = Field(..., description="Valor numérico de la tasa")
+    unit: str = Field(..., min_length=1, max_length=40)
+    currency: str | None = Field(default=None, max_length=10)
+    effective_from: date | None = Field(default=None)
+    effective_to: date | None = Field(default=None)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("slug", "name", "unit", mode="before")
+    @classmethod
+    def _strip_required(cls, value: Any) -> str:
+        if value is None:
+            raise ValueError("El valor es obligatorio")
+        text = str(value).strip()
+        if not text:
+            raise ValueError("El valor es obligatorio")
+        return text
+
+    @field_validator("currency", "description", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationRateCreate(ConfigurationRateBase):
+    """Carga útil para registrar una tasa de configuración."""
+
+
+class ConfigurationRateUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=255)
+    value: Decimal | None = Field(default=None)
+    unit: str | None = Field(default=None, min_length=1, max_length=40)
+    currency: str | None = Field(default=None, max_length=10)
+    effective_from: date | None = Field(default=None)
+    effective_to: date | None = Field(default=None)
+    metadata: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+    @field_validator("name", "unit", mode="before")
+    @classmethod
+    def _strip_update_required(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @field_validator("currency", "description", mode="before")
+    @classmethod
+    def _strip_update_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationRateResponse(ConfigurationRateBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("value")
+    @classmethod
+    def _serialize_value(cls, value: Decimal) -> str:
+        return format(value, "f")
+
+
+class ConfigurationParameterBase(BaseModel):
+    key: str = Field(..., min_length=1, max_length=120)
+    name: str = Field(..., min_length=1, max_length=120)
+    category: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=255)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("key", "name", mode="before")
+    @classmethod
+    def _strip_required(cls, value: Any) -> str:
+        if value is None:
+            raise ValueError("El valor es obligatorio")
+        text = str(value).strip()
+        if not text:
+            raise ValueError("El valor es obligatorio")
+        return text
+
+    @field_validator("category", "description", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationParameterCreate(ConfigurationParameterBase):
+    value_type: ConfigurationParameterType = Field(default=ConfigurationParameterType.STRING)
+    value: Any = Field(...)
+    is_sensitive: bool = Field(default=False)
+
+
+class ConfigurationParameterUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    category: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=255)
+    value_type: ConfigurationParameterType | None = None
+    value: Any | None = None
+    is_sensitive: bool | None = None
+    metadata: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+    @field_validator("name", "category", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _strip_description(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationParameterResponse(ConfigurationParameterBase):
+    id: int
+    value_type: ConfigurationParameterType
+    value: Any
+    is_sensitive: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConfigurationXmlTemplateCreate(BaseModel):
+    code: str = Field(..., min_length=1, max_length=80)
+    version: str = Field(..., min_length=1, max_length=40)
+    description: str | None = Field(default=None, max_length=255)
+    namespace: str | None = Field(default=None, max_length=255)
+    schema_location: str | None = Field(default=None, max_length=255)
+    content: str = Field(..., min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("code", "version", mode="before")
+    @classmethod
+    def _strip_required(cls, value: Any) -> str:
+        if value is None:
+            raise ValueError("El valor es obligatorio")
+        text = str(value).strip()
+        if not text:
+            raise ValueError("El valor es obligatorio")
+        return text
+
+    @field_validator("description", "namespace", "schema_location", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationXmlTemplateUpdate(BaseModel):
+    version: str | None = Field(default=None, min_length=1, max_length=40)
+    description: str | None = Field(default=None, max_length=255)
+    namespace: str | None = Field(default=None, max_length=255)
+    schema_location: str | None = Field(default=None, max_length=255)
+    content: str | None = Field(default=None, min_length=1)
+    metadata: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+    @field_validator("version", "description", "namespace", "schema_location", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationXmlTemplateResponse(BaseModel):
+    id: int
+    code: str
+    version: str
+    description: str | None
+    namespace: str | None
+    schema_location: str | None
+    content: str
+    checksum: str
+    metadata: dict[str, Any]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConfigurationOverview(BaseModel):
+    rates: list[ConfigurationRateResponse]
+    xml_templates: list[ConfigurationXmlTemplateResponse]
+    parameters: list[ConfigurationParameterResponse]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConfigurationSyncResult(BaseModel):
+    rates_activated: int = Field(default=0, ge=0)
+    rates_deactivated: int = Field(default=0, ge=0)
+    templates_activated: int = Field(default=0, ge=0)
+    templates_deactivated: int = Field(default=0, ge=0)
+    parameters_activated: int = Field(default=0, ge=0)
+    parameters_deactivated: int = Field(default=0, ge=0)
+    processed_files: list[str] = Field(default_factory=list)
+
+
 __all__ = [
     "AgingMetric",
     "AnalyticsAgingResponse",
@@ -7802,6 +8058,20 @@ __all__ = [
     "InventoryImportHistoryEntry",
     "InventoryMetricsResponse",
     "InventorySummary",
+    "ConfigurationParameterType",
+    "ConfigurationRateBase",
+    "ConfigurationRateCreate",
+    "ConfigurationRateUpdate",
+    "ConfigurationRateResponse",
+    "ConfigurationParameterBase",
+    "ConfigurationParameterCreate",
+    "ConfigurationParameterUpdate",
+    "ConfigurationParameterResponse",
+    "ConfigurationXmlTemplateCreate",
+    "ConfigurationXmlTemplateUpdate",
+    "ConfigurationXmlTemplateResponse",
+    "ConfigurationOverview",
+    "ConfigurationSyncResult",
     "InventoryAvailabilityStore",
     "InventoryAvailabilityRecord",
     "InventoryAvailabilityResponse",

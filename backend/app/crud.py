@@ -373,23 +373,26 @@ def _linear_regression(
     denominator = (n * sum_xx) - (sum_x**2)
     if math.isclose(denominator, 0.0):
         slope = 0.0
+        intercept = sum_y / n if n else 0.0
     else:
         slope = ((n * sum_xy) - (sum_x * sum_y)) / denominator
+        intercept = (sum_y - (slope * sum_x)) / n
 
-    intercept = (sum_y - (slope * sum_x)) / n
-
-    denominator_r = (n * sum_yy) - (sum_y**2)
-    if denominator <= 0 or denominator_r <= 0:
+    denominator_r = ((n * sum_xx) - (sum_x**2)) * ((n * sum_yy) - (sum_y**2))
+    if denominator_r <= 0 or math.isclose(denominator_r, 0.0):
         r_squared = 0.0
     else:
-        r_squared = ((n * sum_xy) - (sum_x * sum_y)) ** 2 / \
-            (denominator * denominator_r)
+        numerator = ((n * sum_xy) - (sum_x * sum_y)) ** 2
+        r_squared = numerator / denominator_r
 
     return slope, intercept, r_squared
 
 
 def _project_linear_sum(
-    slope: float, intercept: float, start_index: int, horizon: int
+    slope: float,
+    intercept: float,
+    start_index: int,
+    horizon: int,
 ) -> float:
     total = 0.0
     for offset in range(horizon):
@@ -397,7 +400,6 @@ def _project_linear_sum(
         estimate = slope * x_value + intercept
         total += max(0.0, estimate)
     return total
-
 
 _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "sale": models.SyncOutboxPriority.HIGH,
@@ -2039,24 +2041,23 @@ def _mask_generic_text(value: str) -> str:
         return "*" * len(text)
     return f"{text[:2]}***{text[-2:]}"
 
-
 def _apply_customer_anonymization(
     customer: models.Customer, fields: Sequence[str]
 ) -> list[str]:
-    normalized = []
-    for raw in fields:
-        if not isinstance(raw, str):
-            continue
-        cleaned = raw.strip().lower()
-        if cleaned and cleaned not in normalized:
-            normalized.append(cleaned)
-    if not normalized:
-        normalized = ["email", "phone", "address"]
+    normalized: list[str] = []
+    for raw in fields or []:
+        text = str(raw or "").strip().lower()
+        if text and text not in normalized:
+            normalized.append(text)
+
     masked: list[str] = []
     for field in normalized:
-        if field in {"name", "full_name"} and customer.name:
+        if field == "name" and customer.name:
             customer.name = _mask_person_name(customer.name)
             masked.append("name")
+        elif field == "contact_name" and customer.contact_name:
+            customer.contact_name = _mask_person_name(customer.contact_name)
+            masked.append("contact_name")
         elif field == "email" and customer.email:
             customer.email = _mask_email(customer.email)
             masked.append("email")
@@ -2069,6 +2070,21 @@ def _apply_customer_anonymization(
         elif field == "notes" and customer.notes:
             customer.notes = _mask_generic_text(customer.notes)
             masked.append("notes")
+        elif field == "tax_id" and customer.tax_id:
+            customer.tax_id = _mask_generic_text(customer.tax_id)
+            masked.append("tax_id")
+
+    if "history" in normalized and customer.history:
+        history_entries = list(customer.history or [])
+        customer.history = [
+            {
+                "timestamp": entry.get("timestamp"),
+                "note": "***",
+            }
+            for entry in history_entries
+        ]
+        masked.append("history")
+
     return masked
 
 
@@ -2121,8 +2137,20 @@ def _normalize_rtn(value: str | None, *, error_code: str) -> str:
     return _RTN_CANONICAL_TEMPLATE.format(digits[:4], digits[4:8], digits[8:])
 
 
-def _normalize_customer_tax_id(value: str) -> str:
-    return _normalize_rtn(value, error_code="customer_tax_id_invalid")
+def _generate_customer_tax_id_placeholder() -> str:
+    placeholder = models.generate_customer_tax_id_placeholder()
+    return _normalize_rtn(placeholder, error_code="customer_tax_id_invalid")
+
+
+def _normalize_customer_tax_id(
+    value: str | None, *, allow_placeholder: bool = True
+) -> str:
+    cleaned = (value or "").strip()
+    if cleaned:
+        return _normalize_rtn(cleaned, error_code="customer_tax_id_invalid")
+    if allow_placeholder:
+        return _generate_customer_tax_id_placeholder()
+    raise ValueError("customer_tax_id_invalid")
 
 
 def _is_tax_id_integrity_error(error: IntegrityError) -> bool:
@@ -5226,7 +5254,9 @@ def update_customer(
             customer.status = normalized_status
             updated_fields["status"] = normalized_status
         if payload.tax_id is not None:
-            normalized_tax_id = _normalize_customer_tax_id(payload.tax_id)
+            normalized_tax_id = _normalize_customer_tax_id(
+                payload.tax_id, allow_placeholder=False
+            )
             customer.tax_id = normalized_tax_id
             updated_fields["tax_id"] = normalized_tax_id
         if payload.segment_category is not None:
@@ -6040,14 +6070,17 @@ def get_customer_summary(
     )
     total_payments = sum(float(abs(entry.amount)) for entry in payments)
     total_store_credit_issued = sum(
-        _to_decimal(credit.issued_amount)
-        for credit in store_credits
+        (_to_decimal(credit.issued_amount) for credit in store_credits),
+        Decimal("0"),
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     total_store_credit_available = sum(
-        _to_decimal(credit.balance_amount)
-        for credit in store_credits
-        if credit.status
-        in {models.StoreCreditStatus.ACTIVO, models.StoreCreditStatus.PARCIAL}
+        (
+            _to_decimal(credit.balance_amount)
+            for credit in store_credits
+            if credit.status
+            in {models.StoreCreditStatus.ACTIVO, models.StoreCreditStatus.PARCIAL}
+        ),
+        Decimal("0"),
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     total_store_credit_redeemed = (
         total_store_credit_issued - total_store_credit_available
@@ -12233,7 +12266,9 @@ def enqueue_sync_outbox(
     priority: models.SyncOutboxPriority | None = None,
 ) -> models.SyncOutbox:
     with transactional_session(db):
-        serialized = json.dumps(payload, ensure_ascii=False, default=str)
+        normalized_payload = json.loads(
+            json.dumps(payload or {}, ensure_ascii=False, default=str)
+        )
         resolved_priority = _resolve_outbox_priority(entity_type, priority)
         statement = select(models.SyncOutbox).where(
             models.SyncOutbox.entity_type == entity_type,
@@ -12243,13 +12278,11 @@ def enqueue_sync_outbox(
         conflict_flag = False
         # Detectar conflicto potencial: si existe entrada PENDING distinta en operación o payload cambió.
         if entry is not None and entry.status == models.SyncOutboxStatus.PENDING:
-            try:
-                previous_payload = json.loads(entry.payload)
-            except Exception:
-                previous_payload = {}
+            previous_payload = entry.payload if isinstance(entry.payload, dict) else {}
             # Heurística simple: si difiere algún campo clave declaramos conflicto.
-            differing = any(previous_payload.get(
-                k) != v for k, v in payload.items())
+            differing = any(
+                previous_payload.get(k) != v for k, v in normalized_payload.items()
+            )
             if differing or entry.operation != operation:
                 conflict_flag = True
         if entry is None:
@@ -12257,7 +12290,7 @@ def enqueue_sync_outbox(
                 entity_type=entity_type,
                 entity_id=entity_id,
                 operation=operation,
-                payload=serialized,
+                payload=normalized_payload,
                 status=models.SyncOutboxStatus.PENDING,
                 priority=resolved_priority,
                 conflict_flag=conflict_flag,
@@ -12266,7 +12299,7 @@ def enqueue_sync_outbox(
             db.add(entry)
         else:
             entry.operation = operation
-            entry.payload = serialized
+            entry.payload = normalized_payload
             entry.status = models.SyncOutboxStatus.PENDING
             entry.attempt_count = 0
             entry.error_message = None
@@ -12303,7 +12336,7 @@ def enqueue_sync_outbox(
                 "entity_type": entity_type,
                 "entity_id": entity_id,
                 "operation": operation,
-                "payload": payload,
+                "payload": normalized_payload,
             },
             idempotency_key=f"outbox:{entity_type}:{entity_id}:{operation}",
         )

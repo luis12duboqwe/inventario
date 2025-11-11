@@ -30,7 +30,6 @@ from .middleware import (
 )
 from .routers import (
     alerts,
-    configuration,
     audit,
     audit_ui,
     auth,
@@ -569,8 +568,7 @@ def create_app() -> FastAPI:
         price_lists.router,
         loyalty.router,
         payments.router,
-    customers.router,
-    configuration.router,
+        customers.router,
         store_credits.router,
         suppliers.router,
         repairs.router,

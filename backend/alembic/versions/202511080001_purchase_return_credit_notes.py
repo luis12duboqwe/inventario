@@ -27,6 +27,16 @@ def upgrade() -> None:
     bind = op.get_bind()
     SUPPLIER_LEDGER_ENTRY_TYPE.create(bind, checkfirst=True)
 
+    is_sqlite = bind.dialect.name == "sqlite"
+    if is_sqlite:
+        details_type = sa.JSON()
+        details_default = sa.text("'{}'")
+        created_at_default = sa.text("CURRENT_TIMESTAMP")
+    else:
+        details_type = postgresql.JSON(astext_type=sa.Text())
+        details_default = sa.text("'{}'::jsonb")
+        created_at_default = sa.text("now()")
+
     op.create_table(
         "supplier_ledger_entries",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -39,11 +49,16 @@ def upgrade() -> None:
         sa.Column("note", sa.Text(), nullable=True),
         sa.Column(
             "details",
-            postgresql.JSON(astext_type=sa.Text()),
+            details_type,
             nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
+            server_default=details_default,
         ),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=created_at_default,
+        ),
         sa.Column("created_by_id", sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(["supplier_id"], ["suppliers.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["created_by_id"], ["usuarios.id_usuario"], ondelete="SET NULL"),
@@ -61,42 +76,33 @@ def upgrade() -> None:
         unique=False,
     )
 
-    op.add_column(
-        "purchase_returns",
-        sa.Column("supplier_ledger_entry_id", sa.Integer(), nullable=True),
-    )
-    op.add_column(
-        "purchase_returns",
-        sa.Column("corporate_reason", sa.String(length=255), nullable=True),
-    )
-    op.add_column(
-        "purchase_returns",
-        sa.Column(
+    with op.batch_alter_table("purchase_returns", schema=None) as batch_op:
+        batch_op.add_column(sa.Column("supplier_ledger_entry_id", sa.Integer(), nullable=True))
+        batch_op.add_column(sa.Column("corporate_reason", sa.String(length=255), nullable=True))
+        batch_op.add_column(
+            sa.Column(
+                "credit_note_amount",
+                sa.Numeric(12, 2),
+                nullable=False,
+                server_default="0",
+            )
+        )
+        batch_op.create_index(
+            op.f("ix_purchase_returns_supplier_ledger_entry_id"),
+            ["supplier_ledger_entry_id"],
+            unique=False,
+        )
+        batch_op.create_foreign_key(
+            "purchase_returns_supplier_ledger_entry_id_fkey",
+            "supplier_ledger_entries",
+            ["supplier_ledger_entry_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
+        batch_op.alter_column(
             "credit_note_amount",
-            sa.Numeric(12, 2),
-            nullable=False,
-            server_default="0",
-        ),
-    )
-    op.create_index(
-        op.f("ix_purchase_returns_supplier_ledger_entry_id"),
-        "purchase_returns",
-        ["supplier_ledger_entry_id"],
-        unique=False,
-    )
-    op.create_foreign_key(
-        "purchase_returns_supplier_ledger_entry_id_fkey",
-        "purchase_returns",
-        "supplier_ledger_entries",
-        ["supplier_ledger_entry_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-    op.alter_column(
-        "purchase_returns",
-        "credit_note_amount",
-        server_default=None,
-    )
+            server_default=None,
+        )
 
 
 def downgrade() -> None:

@@ -12,6 +12,11 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
+from backend.app.db.valor_inventario_view import (
+    create_valor_inventario_view,
+    drop_valor_inventario_view,
+)
+
 # revision identifiers, used by Alembic.
 revision = "202511070002"
 down_revision = "202511070001"
@@ -30,7 +35,11 @@ inventory_state_enum = sa.Enum(
 
 def upgrade() -> None:
     bind = op.get_bind()
+    is_sqlite = bind.dialect.name == "sqlite"
     inventory_state_enum.create(bind, checkfirst=True)
+
+    if is_sqlite:
+        drop_valor_inventario_view(bind)
 
     op.create_table(
         "inventory_reservations",
@@ -119,8 +128,17 @@ def upgrade() -> None:
             ondelete="SET NULL",
         )
 
+    if is_sqlite:
+        create_valor_inventario_view(bind)
+
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == "sqlite"
+
+    if is_sqlite:
+        drop_valor_inventario_view(bind)
+
     with op.batch_alter_table("transfer_order_items", reflect_kwargs={"resolve_fks": False}) as batch_op:
         batch_op.drop_constraint(
             "fk_transfer_order_items_reservation_id", type_="foreignkey"
@@ -141,5 +159,7 @@ def downgrade() -> None:
     )
     op.drop_table("inventory_reservations")
 
-    bind = op.get_bind()
     inventory_state_enum.drop(bind, checkfirst=True)
+
+    if is_sqlite:
+        create_valor_inventario_view(bind)
