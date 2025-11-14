@@ -417,10 +417,6 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   }, [friendlyErrorMessage, pushToast, selectedStoreId, token]);
 
   useEffect(() => {
-    void refreshObservability();
-  }, [refreshObservability]);
-
-  useEffect(() => {
     const loadOutbox = async () => {
       if (!enableHybridPrep) {
         setOutbox([]);
@@ -807,6 +803,10 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setObservabilityLoading(false);
     }
   }, [friendlyErrorMessage, token]);
+
+  useEffect(() => {
+    void refreshObservability();
+  }, [refreshObservability]);
 
   const refreshOutbox = useCallback(async () => {
     if (!enableHybridPrep) {
