@@ -70,7 +70,7 @@ def test_accounts_receivable_reminder_dispatch(monkeypatch, client, db_session):
         text(
             """
             SELECT id FROM customer_ledger_entries
-            WHERE customer_id = :customer_id AND entry_type = 'SALE'
+            WHERE customer_id = :customer_id AND entry_type = 'sale'
             ORDER BY created_at ASC LIMIT 1
             """
         ),
