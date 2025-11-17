@@ -9,6 +9,8 @@ from backend.app.config import settings
 from backend.app.core.roles import ADMIN
 from backend.app.services import backups as backup_services
 
+pytestmark = pytest.mark.schema_reset
+
 
 def _login_headers(client, username: str = "admin", password: str = "MuySegura123") -> dict[str, str]:
     token_response = client.post(
