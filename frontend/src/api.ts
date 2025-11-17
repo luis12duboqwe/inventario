@@ -2702,13 +2702,16 @@ export type AuditLogEntry = {
   created_at: string;
   severity: "info" | "warning" | "critical";
   severity_label: string;
+  module?: string | null;
 };
 
 export type AuditLogFilters = {
   limit?: number;
   action?: string;
   entity_type?: string;
+  module?: string;
   performed_by_id?: number;
+  severity?: AuditLogEntry["severity"];
   date_from?: string;
   date_to?: string;
 };
@@ -7214,8 +7217,14 @@ function buildAuditQuery(filters: AuditLogFilters = {}): string {
   if (filters.entity_type) {
     params.set("entity_type", filters.entity_type);
   }
+  if (filters.module) {
+    params.set("module", filters.module);
+  }
   if (typeof filters.performed_by_id === "number") {
     params.set("performed_by_id", String(filters.performed_by_id));
+  }
+  if (filters.severity) {
+    params.set("severity", filters.severity);
   }
   if (filters.date_from) {
     params.set("date_from", filters.date_from);

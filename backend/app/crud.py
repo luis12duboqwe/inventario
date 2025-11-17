@@ -437,10 +437,16 @@ _SYSTEM_MODULE_MAP: dict[str, str] = {
     "inventory_adjustment": "ajustes",
     "adjustment": "ajustes",
     "backup": "respaldos",
+    "config_parameter": "configuracion",
+    "config_rate": "configuracion",
+    "config_template": "configuracion",
+    "config_sync": "configuracion",
     "user": "usuarios",
     "role": "usuarios",
     "auth": "usuarios",
+    "sync_session": "sincronizacion",
     "store": "inventario",
+    "pos_fiscal_print": "ventas",
     "customer": "clientes",
     "customer_privacy_request": "clientes",
     "supplier_ledger_entry": "proveedores",
@@ -3342,16 +3348,30 @@ def list_audit_logs(
     offset: int = 0,
     action: str | None = None,
     entity_type: str | None = None,
+    module: str | None = None,
     performed_by_id: int | None = None,
+    severity: audit_utils.AuditSeverity | None = None,
     date_from: date | datetime | None = None,
     date_to: date | datetime | None = None,
 ) -> list[models.AuditLog]:
-    statement = (
-        select(models.AuditLog)
-        .order_by(models.AuditLog.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    critical_keywords = audit_utils.severity_keywords()["critical"]
+    warning_keywords = audit_utils.severity_keywords()["warning"]
+
+    def _keyword_condition(keyword: str):
+        pattern = f"%{keyword}%"
+        return or_(
+            models.AuditLog.action.ilike(pattern),
+            func.coalesce(models.AuditLog.details, "").ilike(pattern),
+        )
+
+    statement = select(models.AuditLog).order_by(models.AuditLog.created_at.desc())
+    if module:
+        statement = statement.join(
+            models.SystemLog,
+            models.SystemLog.audit_log_id == models.AuditLog.id,
+        ).where(models.SystemLog.modulo == module.strip().lower())
+    else:
+        statement = statement.outerjoin(models.SystemLog)
     if action:
         statement = statement.where(models.AuditLog.action == action)
     if entity_type:
@@ -3359,11 +3379,25 @@ def list_audit_logs(
     if performed_by_id is not None:
         statement = statement.where(
             models.AuditLog.performed_by_id == performed_by_id)
+    if severity:
+        critical_conditions = [_keyword_condition(keyword)
+                                for keyword in critical_keywords]
+        warning_conditions = [_keyword_condition(keyword)
+                                for keyword in warning_keywords]
+        critical_condition = or_(*critical_conditions)
+        warning_condition = or_(*warning_conditions)
+        if severity == "critical":
+            statement = statement.where(critical_condition)
+        elif severity == "warning":
+            statement = statement.where(warning_condition, ~critical_condition)
+        elif severity == "info":
+            statement = statement.where(~critical_condition, ~warning_condition)
     if date_from is not None or date_to is not None:
         start_dt, end_dt = _normalize_date_range(date_from, date_to)
         statement = statement.where(
             models.AuditLog.created_at >= start_dt, models.AuditLog.created_at <= end_dt
         )
+    statement = statement.offset(offset).limit(limit)
     return list(db.scalars(statement).unique())
 
 
@@ -3372,11 +3406,30 @@ def count_audit_logs(
     *,
     action: str | None = None,
     entity_type: str | None = None,
+    module: str | None = None,
     performed_by_id: int | None = None,
+    severity: audit_utils.AuditSeverity | None = None,
     date_from: date | datetime | None = None,
     date_to: date | datetime | None = None,
 ) -> int:
+    critical_keywords = audit_utils.severity_keywords()["critical"]
+    warning_keywords = audit_utils.severity_keywords()["warning"]
+
+    def _keyword_condition(keyword: str):
+        pattern = f"%{keyword}%"
+        return or_(
+            models.AuditLog.action.ilike(pattern),
+            func.coalesce(models.AuditLog.details, "").ilike(pattern),
+        )
+
     statement = select(func.count()).select_from(models.AuditLog)
+    if module:
+        statement = statement.join(
+            models.SystemLog,
+            models.SystemLog.audit_log_id == models.AuditLog.id,
+        ).where(models.SystemLog.modulo == module.strip().lower())
+    else:
+        statement = statement.outerjoin(models.SystemLog)
     if action:
         statement = statement.where(models.AuditLog.action == action)
     if entity_type:
@@ -3384,6 +3437,19 @@ def count_audit_logs(
     if performed_by_id is not None:
         statement = statement.where(
             models.AuditLog.performed_by_id == performed_by_id)
+    if severity:
+        critical_conditions = [_keyword_condition(keyword)
+                                for keyword in critical_keywords]
+        warning_conditions = [_keyword_condition(keyword)
+                                for keyword in warning_keywords]
+        critical_condition = or_(*critical_conditions)
+        warning_condition = or_(*warning_conditions)
+        if severity == "critical":
+            statement = statement.where(critical_condition)
+        elif severity == "warning":
+            statement = statement.where(warning_condition, ~critical_condition)
+        elif severity == "info":
+            statement = statement.where(~critical_condition, ~warning_condition)
     if date_from is not None or date_to is not None:
         start_dt, end_dt = _normalize_date_range(date_from, date_to)
         statement = statement.where(
@@ -3446,7 +3512,9 @@ def export_audit_logs_csv(
     offset: int = 0,
     action: str | None = None,
     entity_type: str | None = None,
+    module: str | None = None,
     performed_by_id: int | None = None,
+    severity: audit_utils.AuditSeverity | None = None,
     date_from: date | datetime | None = None,
     date_to: date | datetime | None = None,
 ) -> str:
@@ -3456,7 +3524,9 @@ def export_audit_logs_csv(
         offset=offset,
         action=action,
         entity_type=entity_type,
+        module=module,
         performed_by_id=performed_by_id,
+        severity=severity,
         date_from=date_from,
         date_to=date_to,
     )
@@ -12047,22 +12117,32 @@ def record_sync_session(
         flush_session(db)
         db.refresh(session)
 
+        details_payload = {
+            "estado": status.value,
+            "modo": mode.value,
+            "eventos_procesados": processed_events,
+            "diferencias_detectadas": differences_detected,
+        }
+        if error_message:
+            details_payload["error"] = error_message
+
         _log_action(
             db,
             action="sync_session",
             entity_type="store" if store_id else "global",
             entity_id=str(store_id or 0),
             performed_by_id=triggered_by_id,
-            details=json.dumps(
-                {
-                    "estado": status.value,
-                    "modo": mode.value,
-                    "eventos_procesados": processed_events,
-                    "diferencias_detectadas": differences_detected,
-                },
-                ensure_ascii=False,
-            ),
+            details=json.dumps(details_payload, ensure_ascii=False),
         )
+        if status == models.SyncStatus.FAILED:
+            _log_action(
+                db,
+                action="sync_failure",
+                entity_type="sync_session",
+                entity_id=str(session.id),
+                performed_by_id=triggered_by_id,
+                details=json.dumps(details_payload, ensure_ascii=False),
+            )
         db.refresh(session)
     return session
 
