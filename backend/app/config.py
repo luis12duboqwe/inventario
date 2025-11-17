@@ -324,6 +324,26 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    risk_alert_email_recipients: Annotated[
+        list[str],
+        Field(
+            default_factory=list,
+            validation_alias=AliasChoices(
+                "RISK_ALERT_EMAIL_RECIPIENTS",
+                "SOFTMOBILE_RISK_ALERT_EMAIL_RECIPIENTS",
+            ),
+        ),
+    ]
+    risk_alert_webhook_url: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "RISK_ALERT_WEBHOOK_URL",
+                "SOFTMOBILE_RISK_ALERT_WEBHOOK_URL",
+            ),
+        ),
+    ]
     enable_backup_scheduler: Annotated[
         bool,
         Field(

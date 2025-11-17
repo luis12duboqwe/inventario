@@ -6348,6 +6348,106 @@ ol {
   color: var(--text-secondary);
 }
 
+.admin-control-panel__risk {
+  border: 1px dashed rgba(56, 189, 248, 0.32);
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-control-panel__risk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-control-panel__risk-subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.admin-control-panel__risk-pill {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: linear-gradient(120deg, rgba(56, 189, 248, 0.32), rgba(59, 130, 246, 0.35));
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.admin-control-panel__risk-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.75rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.admin-control-panel__risk-item {
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: rgba(11, 18, 34, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.admin-control-panel__risk-item--media {
+  border-color: rgba(234, 179, 8, 0.35);
+}
+
+.admin-control-panel__risk-item--alta,
+.admin-control-panel__risk-item--critica {
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.18);
+}
+
+.admin-control-panel__risk-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.admin-control-panel__risk-label {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.admin-control-panel__risk-severity {
+  padding: 0.25rem 0.6rem;
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.18);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.admin-control-panel__risk-description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.admin-control-panel__risk-meta {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-control-panel__risk-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .admin-control-panel__notifications {
   display: inline-flex;
   align-items: center;
@@ -9510,4 +9610,26 @@ ol {
   .privacy-actions .button {
     flex: 1 1 auto;
   }
+}
+
+.security-card .reauth-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin: 0.5rem 0 1rem;
+  padding: 0.75rem;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+}
+
+.security-card .reauth-grid input {
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.security-card .reauth-grid input:focus {
+  outline: 2px solid var(--color-accent-focus-border);
+  box-shadow: 0 0 0 4px var(--color-accent-focus-ring);
 }

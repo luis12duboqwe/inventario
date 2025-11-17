@@ -8,6 +8,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .. import schemas
 from ..core.roles import VALID_ROLES
+from ..database import get_db
+from .. import crud
 from ..security import decode_token
 
 # // [PACK28-deps]
@@ -15,8 +17,13 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 # // [PACK28-deps]
-def verify_access_token(token: str) -> schemas.TokenPayload:
+def verify_access_token(token: str, db=Depends(get_db)) -> schemas.TokenPayload:
     payload = decode_token(token)
+    if crud.is_jwt_blacklisted(db, payload.jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token revocado.",
+        )
     if payload.token_type != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

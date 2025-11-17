@@ -20,6 +20,8 @@ function TwoFactorSetup({ token }: Props) {
   const [setup, setSetup] = useState<TOTPSetup | null>(null);
   const [code, setCode] = useState("");
   const [reason, setReason] = useState("");
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [reauthOtp, setReauthOtp] = useState("");
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +76,17 @@ function TwoFactorSetup({ token }: Props) {
     if (!validReason) {
       return;
     }
+    if (!reauthPassword.trim()) {
+      setError("Confirma tu contraseña para continuar.");
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      const response = await setupTotp(token, validReason);
+      const response = await setupTotp(token, validReason, {
+        password: reauthPassword,
+        otp: reauthOtp || undefined,
+      });
       setSetup(response);
       await loadStatus();
     } catch (err) {
@@ -101,10 +110,17 @@ function TwoFactorSetup({ token }: Props) {
     if (!validReason) {
       return;
     }
+    if (!reauthPassword.trim()) {
+      setError("Confirma tu contraseña para continuar.");
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      const response = await activateTotp(token, code, validReason);
+      const response = await activateTotp(token, code, validReason, {
+        password: reauthPassword,
+        otp: reauthOtp || undefined,
+      });
       setStatus(response);
       setSetup(null);
       setCode("");
@@ -124,10 +140,17 @@ function TwoFactorSetup({ token }: Props) {
     if (!validReason) {
       return;
     }
+    if (!reauthPassword.trim()) {
+      setError("Confirma tu contraseña para continuar.");
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      await disableTotp(token, validReason);
+      await disableTotp(token, validReason, {
+        password: reauthPassword,
+        otp: reauthOtp || undefined,
+      });
       await loadStatus();
       setSetup(null);
     } catch (err) {
@@ -146,10 +169,17 @@ function TwoFactorSetup({ token }: Props) {
     if (!validReason) {
       return;
     }
+    if (!reauthPassword.trim()) {
+      setError("Confirma tu contraseña para continuar.");
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      await revokeSession(token, sessionId, `${validReason} — revocación de sesión`);
+      await revokeSession(token, sessionId, `${validReason} — revocación de sesión`, {
+        password: reauthPassword,
+        otp: reauthOtp || undefined,
+      });
       await loadSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible revocar la sesión");
@@ -201,6 +231,35 @@ function TwoFactorSetup({ token }: Props) {
             />
           </label>
           <p className="muted-text">Se reutilizará para activar, desactivar o revocar sesiones. Mínimo 5 caracteres.</p>
+        </div>
+        <div className="reauth-grid">
+          <label>
+            <span>Confirma tu contraseña</span>
+            <input
+              type="password"
+              value={reauthPassword}
+              onChange={(event) => setReauthPassword(event.target.value)}
+              placeholder="Ingresa tu contraseña actual"
+              minLength={8}
+              autoComplete="current-password"
+              disabled={actionsDisabled}
+              required
+            />
+          </label>
+          <label>
+            <span>Código TOTP para confirmar</span>
+            <input
+              type="text"
+              value={reauthOtp}
+              onChange={(event) => setReauthOtp(event.target.value)}
+              placeholder="Solo si tienes 2FA activo"
+              pattern="\\d{6}"
+              inputMode="numeric"
+              maxLength={6}
+              disabled={actionsDisabled}
+            />
+          </label>
+          <p className="muted-text">Requerimos una reautenticación rápida para cambios sensibles o revocación de sesiones.</p>
         </div>
         <div className="security-actions">
           <button className="btn btn--primary" onClick={handleSetup} disabled={actionsDisabled}>

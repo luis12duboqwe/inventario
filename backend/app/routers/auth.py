@@ -20,8 +20,10 @@ from ..security import (
     ensure_rate_limiter,
     get_current_user,
     hash_password,
+    enforce_password_policy,
     rate_limit,
     require_active_user,
+    require_reauthentication,
     reset_rate_limiter,
     verify_password,
     verify_totp,
@@ -184,6 +186,7 @@ def bootstrap_admin(payload: schemas.UserCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El sistema ya cuenta con usuarios registrados.",
         )
+    enforce_password_policy(payload.password, username=payload.username)
     try:
         role_names = normalize_roles(payload.roles) | {ADMIN}
     except ValueError as exc:
@@ -347,6 +350,11 @@ def refresh_access_token(
             detail="Token de refresco ausente.",
         )
     payload = decode_token(refresh_token_cookie)
+    if crud.is_jwt_blacklisted(db, payload.jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El token de refresco fue revocado.",
+        )
     if payload.token_type != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -391,6 +399,14 @@ def refresh_access_token(
         session.expires_at = refresh_expires
         flush_session(db)
     db.refresh(session)
+    crud.add_jwt_to_blacklist(
+        db,
+        jti=payload.jti,
+        token_type="refresh",
+        expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
+        revoked_by_id=user.id,
+        reason="refresh_token_rotated",
+    )
     _set_refresh_cookie(response, new_refresh_token, refresh_expires)
     return schemas.AuthLoginResponse(access_token=access_token)
 
@@ -497,6 +513,7 @@ def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado.",
         ) from exc
+    enforce_password_policy(payload.new_password, username=user.username)
     hashed = hash_password(payload.new_password)
     crud.reset_user_password(db, user, password_hash=hashed, performed_by_id=None)
     crud.mark_password_reset_token_used(db, record)

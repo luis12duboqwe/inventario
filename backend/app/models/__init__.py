@@ -3209,6 +3209,23 @@ class ActiveSession(Base):
     )
 
 
+class JWTBlacklist(Base):
+    __tablename__ = "jwt_blacklist"
+    __table_args__ = (UniqueConstraint("jti", name="uq_jwt_blacklist_jti"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    jti: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    token_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    revoked_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    revoked_by: Mapped[User | None] = relationship("User")
+
+
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
     __table_args__ = (UniqueConstraint(
@@ -3547,6 +3564,7 @@ __all__ = [
     "BackupJob",
     "BackupMode",
     "ActiveSession",
+    "JWTBlacklist",
     "PasswordResetToken",
     "DeviceIdentifier",
     "Device",

@@ -29,6 +29,8 @@ function AuditLog({ token }: Props) {
   const [limit, setLimit] = useState(50);
   const [actionFilter, setActionFilter] = useState("");
   const [entityFilter, setEntityFilter] = useState("");
+  const [moduleFilter, setModuleFilter] = useState("");
+  const [severityFilter, setSeverityFilter] = useState<"" | AuditLogEntry["severity"]>("");
   const [userFilter, setUserFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -55,6 +57,23 @@ function AuditLog({ token }: Props) {
   const snoozedUntilRef = useRef<number | null>(null);
   const reminderSummaryRef = useRef<AuditReminderSummary | null>(null);
   const lastToastRef = useRef<number>(0);
+
+  const moduleOptions = useMemo(
+    () => [
+      { value: "", label: "Todos" },
+      { value: "inventario", label: "Inventario" },
+      { value: "ventas", label: "Ventas/POS" },
+      { value: "compras", label: "Compras" },
+      { value: "configuracion", label: "Configuración" },
+      { value: "sincronizacion", label: "Sincronización" },
+      { value: "clientes", label: "Clientes" },
+      { value: "proveedores", label: "Proveedores" },
+      { value: "usuarios", label: "Usuarios/Seguridad" },
+      { value: "respaldos", label: "Respaldos" },
+      { value: "general", label: "General" },
+    ],
+    []
+  );
 
   const clearReminderInterval = useCallback(() => {
     if (reminderIntervalRef.current !== null) {
@@ -85,6 +104,10 @@ function AuditLog({ token }: Props) {
       if (normalizedEntity) {
         filters.entity_type = normalizedEntity;
       }
+      const normalizedModule = overrides.module ?? (moduleFilter.trim() ? moduleFilter.trim() : undefined);
+      if (normalizedModule) {
+        filters.module = normalizedModule;
+      }
       const overrideUser = overrides.performed_by_id;
       let effectiveUser = overrideUser;
       if (typeof effectiveUser !== "number") {
@@ -99,6 +122,10 @@ function AuditLog({ token }: Props) {
       if (typeof effectiveUser === "number" && Number.isFinite(effectiveUser) && effectiveUser > 0) {
         filters.performed_by_id = effectiveUser;
       }
+      const normalizedSeverity = overrides.severity ?? (severityFilter || undefined);
+      if (normalizedSeverity) {
+        filters.severity = normalizedSeverity;
+      }
       const fromValue = overrides.date_from ?? (dateFrom || undefined);
       if (fromValue) {
         filters.date_from = fromValue;
@@ -109,7 +136,7 @@ function AuditLog({ token }: Props) {
       }
       return filters;
     },
-    [actionFilter, dateFrom, dateTo, entityFilter, limit, userFilter]
+    [actionFilter, dateFrom, dateTo, entityFilter, limit, moduleFilter, severityFilter, userFilter]
   );
 
   const loadLogs = useCallback(
@@ -502,6 +529,16 @@ function AuditLog({ token }: Props) {
           />
         </label>
         <label>
+          <span>Módulo</span>
+          <select value={moduleFilter} onChange={(event) => setModuleFilter(event.target.value)}>
+            {moduleOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           <span>Límite</span>
           <input
             type="number"
@@ -510,6 +547,15 @@ function AuditLog({ token }: Props) {
             value={limit}
             onChange={(event) => setLimit(Number(event.target.value))}
           />
+        </label>
+        <label>
+          <span>Severidad</span>
+          <select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as AuditLogEntry["severity"] | "")}> 
+            <option value="">Todas</option>
+            <option value="critical">Crítica</option>
+            <option value="warning">Preventiva</option>
+            <option value="info">Informativa</option>
+          </select>
         </label>
         <label>
           <span>ID usuario</span>
@@ -577,6 +623,8 @@ function AuditLog({ token }: Props) {
                 <th>Fecha</th>
                 <th>Acción</th>
                 <th>Entidad</th>
+                <th>Módulo</th>
+                <th>Usuario</th>
                 <th>Detalle</th>
                 <th>Severidad</th>
               </tr>
@@ -601,6 +649,8 @@ function AuditLog({ token }: Props) {
                     <span>{log.action}</span>
                   </td>
                   <td>{log.entity_type} #{log.entity_id}</td>
+                  <td>{log.module ?? "general"}</td>
+                  <td>{log.performed_by_id ?? "-"}</td>
                   <td>{log.details ?? "-"}</td>
                   <td>
                     <span className={`pill ${resolveSeverityClass(log.severity)}`}>
