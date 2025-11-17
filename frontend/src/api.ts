@@ -2954,6 +2954,9 @@ export type SyncOutboxEntry = {
   version: number;
   created_at: string;
   updated_at: string;
+  latency_ms?: number | null;
+  processing_latency_ms?: number | null;
+  status_detail?: string | null;
 };
 
 export type SyncOutboxStatsEntry = {
@@ -7173,6 +7176,17 @@ export function retrySyncOutbox(token: string, ids: number[], reason: string): P
   );
 }
 
+export function updateSyncOutboxPriority(
+  token: string,
+  id: number,
+  priority: "HIGH" | "NORMAL" | "LOW",
+  reason: string,
+): Promise<SyncOutboxEntry> {
+  return request<SyncOutboxEntry>(
+    `/sync/outbox/${id}/priority`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ priority }),
 export function resolveSyncOutboxConflicts(
   token: string,
   ids: number[],
@@ -7236,6 +7250,34 @@ export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncSt
     { method: "GET" },
     token,
   );
+}
+
+export async function downloadSyncHistoryCsv(
+  token: string,
+  reason: string,
+  limitPerStore = 10,
+): Promise<void> {
+  const response = await fetch(`${API_URL}/sync/history/export?limit_per_store=${limitPerStore}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar el historial de sincronización");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "historial_sincronizacion.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 export function getSyncOverview(token: string, storeId?: number): Promise<SyncBranchOverview[]> {

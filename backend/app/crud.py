@@ -12904,6 +12904,38 @@ def reset_outbox_entries(
     return refreshed[normalized_offset:end_index]
 
 
+def update_outbox_priority(
+    db: Session,
+    entry_id: int,
+    *,
+    priority: models.SyncOutboxPriority,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.SyncOutbox | None:
+    statement = select(models.SyncOutbox).where(models.SyncOutbox.id == entry_id)
+    entry = db.scalars(statement).first()
+    if entry is None:
+        return None
+
+    with transactional_session(db):
+        entry.priority = priority
+        entry.updated_at = datetime.utcnow()
+        flush_session(db)
+        db.refresh(entry)
+        details_payload = {"priority": priority.value, "operation": entry.operation}
+        if reason:
+            details_payload["reason"] = reason
+        _log_action(
+            db,
+            action="sync_outbox_reprioritized",
+            entity_type=entry.entity_type,
+            entity_id=str(entry.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(details_payload, ensure_ascii=False),
+        )
+    return entry
+
+
 def get_sync_outbox_statistics(
     db: Session, *, limit: int | None = None, offset: int = 0
 ) -> list[dict[str, object]]:

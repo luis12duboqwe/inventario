@@ -1,8 +1,9 @@
 """Sincronización automática y bajo demanda."""
 from __future__ import annotations
 
+import csv
 from datetime import datetime
-from io import BytesIO
+from io import BytesIO, StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -406,6 +407,14 @@ def retry_outbox_entries(
     return entries
 
 
+@router.patch(
+    "/outbox/{entry_id}/priority",
+    response_model=schemas.SyncOutboxEntryResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def reprioritize_outbox_entry(
+    entry_id: int,
+    payload: schemas.SyncOutboxPriorityUpdate,
 @router.post(
     "/outbox/resolve",
     response_model=list[schemas.SyncOutboxEntryResponse],
@@ -420,6 +429,16 @@ def resolve_outbox_conflicts(
     reason: str = Depends(require_reason),
 ):
     _ensure_hybrid_enabled()
+    entry = crud.update_outbox_priority(
+        db,
+        entry_id,
+        priority=payload.priority,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+    )
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entrada no encontrada")
+    return entry
     entries = crud.resolve_outbox_conflicts(
         db,
         payload.ids,
@@ -479,3 +498,66 @@ def list_sync_history(
             )
         )
     return results
+
+
+@router.get(
+    "/history/export",
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def export_sync_history_csv(
+    limit_per_store: int = Query(default=5, ge=1, le=50),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+):
+    history = crud.list_sync_history_by_store(
+        db, limit_per_store=limit_per_store, limit=limit, offset=offset
+    )
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "store_id",
+            "store_name",
+            "session_id",
+            "modo",
+            "estado",
+            "inicio",
+            "fin",
+            "error",
+            "latencia_segundos",
+        ]
+    )
+    now = datetime.utcnow()
+    for item in history:
+        store_id = item.get("store_id")
+        store_name = item.get("store_name")
+        for session in item.get("sessions", []):
+            started_at = session.get("started_at")
+            finished_at = session.get("finished_at")
+            elapsed = None
+            if started_at:
+                end_time = finished_at or now
+                elapsed = (end_time - started_at).total_seconds()
+            writer.writerow(
+                [
+                    store_id,
+                    store_name,
+                    session.get("id"),
+                    session.get("mode"),
+                    session.get("status"),
+                    started_at.isoformat() if started_at else "",
+                    finished_at.isoformat() if finished_at else "",
+                    session.get("error_message") or "",
+                    f"{elapsed:.2f}" if elapsed is not None else "",
+                ]
+            )
+
+    csv_bytes = buffer.getvalue().encode("utf-8")
+    filename = f"historial_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        BytesIO(csv_bytes),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
