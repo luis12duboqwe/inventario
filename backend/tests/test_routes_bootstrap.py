@@ -67,7 +67,7 @@ def test_auth_status_route_returns_success(client: TestClient) -> None:
     register_payload = {
         "username": "estado_user",
         "email": "estado_user@example.com",
-        "password": "estado_seguro",
+        "password": "EstadoSeguro123",
     }
     register_response = client.post("/auth/register", json=register_payload)
     assert register_response.status_code == 200
@@ -97,7 +97,7 @@ def test_register_login_and_verify_flow(client: TestClient) -> None:
     register_payload = {
         "username": "soporte",
         "email": "soporte@example.com",
-        "password": "contraseña_segura",
+        "password": "ContrasenaSegura123",
     }
     register_response = client.post("/auth/register", json=register_payload)
 
@@ -134,7 +134,7 @@ def test_register_without_explicit_email_reuses_username(client: TestClient) -> 
 
     payload = {
         "username": "softmobile1@gmail.com",
-        "password": "clave_segura",
+        "password": "ClaveSegura123",
     }
     response = client.post("/auth/register", json=payload)
 
@@ -150,7 +150,7 @@ def test_register_repeated_user_is_rejected(client: TestClient) -> None:
     payload = {
         "username": "soporte",
         "email": "soporte@example.com",
-        "password": "contraseña_segura",
+        "password": "ContrasenaSegura123",
     }
 
     first_response = client.post("/auth/register", json=payload)
@@ -169,7 +169,7 @@ def test_register_normalizes_identifiers_and_rejects_case_insensitive_duplicate(
 
     create_payload = {
         "username": "  UsuarioNuevo@Softmobile.COM  ",
-        "password": "clave_segura",
+        "password": "ClaveSegura123",
     }
     create_response = client.post("/auth/register", json=create_payload)
 
@@ -180,7 +180,7 @@ def test_register_normalizes_identifiers_and_rejects_case_insensitive_duplicate(
 
     duplicate_payload = {
         "email": "USUARIONUEVO@SOFTMOBILE.COM",
-        "password": "otra_clave_segura",
+        "password": "OtraClaveSegura123",
     }
     duplicate_response = client.post("/auth/register", json=duplicate_payload)
 
@@ -194,7 +194,7 @@ def test_refresh_reset_and_verify_flow(client: TestClient) -> None:
     register_payload = {
         "username": "refresh_user",
         "email": "refresh_user@example.com",
-        "password": "clave_inicial_segura",
+        "password": "ClaveInicial123",
     }
     register_response = client.post("/auth/register", json=register_payload)
 

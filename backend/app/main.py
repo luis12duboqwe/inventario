@@ -282,6 +282,11 @@ def _authorize_request_sync(
                     status_code=exc.status_code,
                     content={"detail": exc.detail},
                 )
+            if crud.is_jwt_blacklisted(db, token_payload.jti):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Token revocado."},
+                )
             session_token = token_payload.jti
             active_session = crud.get_active_session_by_token(
                 db, session_token)

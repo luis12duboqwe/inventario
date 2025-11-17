@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import re
+from collections.abc import Awaitable, Callable
 from collections.abc import Awaitable, Callable, Iterable
 from datetime import datetime, timedelta, timezone
 import types
@@ -204,6 +206,28 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
+
+_PASSWORD_POLICY = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,128}$")
+
+
+def enforce_password_policy(password: str, *, username: str | None = None) -> None:
+    """Valida la contraseña contra la política corporativa."""
+
+    if not _PASSWORD_POLICY.match(password):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "La contraseña debe tener al menos 10 caracteres e incluir mayúsculas, "
+                "minúsculas y números. Se recomienda agregar un símbolo."
+            ),
+        )
+    if username and username.lower() in password.lower():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La contraseña no puede contener el usuario o correo asociado.",
+        )
+
+
 # // [PACK28-tokens]
 def _build_token_payload(
     *,
@@ -235,6 +259,7 @@ def create_access_token(
     expires_minutes: int | None = None,
     session_token: str | None = None,
     claims: Mapping[str, Any] | None = None,
+    token_type: str = "access",
 ) -> tuple[str, str, datetime]:
     expire_minutes = expires_minutes or settings.access_token_expire_minutes
     issued_at = datetime.now(timezone.utc)
@@ -245,7 +270,7 @@ def create_access_token(
         session_token=session_id,
         expires_at=expires_at,
         issued_at=issued_at,
-        token_type="access",
+        token_type=token_type,
         extra_claims=claims,
     )
     token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
@@ -310,6 +335,11 @@ async def get_current_user(
     session_token: str | None = None
     if token:
         token_payload = decode_token(token)
+        if crud.is_jwt_blacklisted(db, token_payload.jti):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token revocado.",
+            )
         if token_payload.token_type != "access":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -359,6 +389,37 @@ async def get_current_user(
 def verify_totp(secret: str, code: str) -> bool:
     totp = pyotp.TOTP(secret)
     return totp.verify(code, valid_window=1)
+
+
+async def require_active_user(current_user=Depends(get_current_user)):
+    if not current_user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo.")
+    return current_user
+
+
+def require_reauthentication(
+    request: Request,
+    current_user=Depends(require_active_user),
+    db: Session = Depends(get_db),
+):
+    password = (request.headers.get("X-Reauth-Password") or "").strip()
+    otp_header = (request.headers.get("X-Reauth-OTP") or "").strip()
+    if not password or not verify_password(password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Reautenticación requerida para completar la operación.",
+        )
+
+    if settings.enable_2fa:
+        secret = crud.get_totp_secret(db, current_user.id)
+        if secret and secret.is_active:
+            if not otp_header or not verify_totp(secret.secret, otp_header):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Código TOTP requerido para reautenticar.",
+                )
+            crud.update_totp_last_verified(db, current_user.id)
+    return current_user
 
 
 def _collect_user_roles(user: Any) -> set[str]:
@@ -530,9 +591,3 @@ def require_roles(
         return current_user
 
     return dependency
-
-
-async def require_active_user(current_user=Depends(get_current_user)):
-    if not current_user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario inactivo.")
-    return current_user

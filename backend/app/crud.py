@@ -4939,6 +4939,42 @@ def mark_session_used(db: Session, session_token: str) -> models.ActiveSession |
     return session
 
 
+def add_jwt_to_blacklist(
+    db: Session,
+    *,
+    jti: str,
+    token_type: str,
+    expires_at: datetime,
+    revoked_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.JWTBlacklist:
+    record = models.JWTBlacklist(
+        jti=jti,
+        token_type=token_type,
+        expires_at=expires_at,
+        revoked_by_id=revoked_by_id,
+        reason=reason,
+    )
+    with transactional_session(db):
+        db.add(record)
+        flush_session(db)
+    db.refresh(record)
+    return record
+
+
+def is_jwt_blacklisted(db: Session, jti: str) -> bool:
+    statement = select(models.JWTBlacklist).where(models.JWTBlacklist.jti == jti)
+    record = db.scalars(statement).first()
+    if record is None:
+        return False
+    if record.expires_at and is_session_expired(record.expires_at):
+        with transactional_session(db):
+            db.delete(record)
+            flush_session(db)
+        return False
+    return True
+
+
 def list_active_sessions(
     db: Session,
     *,
