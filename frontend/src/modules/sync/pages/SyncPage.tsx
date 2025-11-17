@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
 
-import { downloadInventoryCsv } from "../../../api";
+import { downloadInventoryCsv, retrySyncOutbox } from "../../../api";
 import SyncSummary from "../../../pages/sync/components/SyncSummary";
 import SyncPanel from "../components/SyncPanel";
 import { HybridQueuePanel } from "../components/HybridQueuePanel";
@@ -18,6 +18,22 @@ function ensureReason(raw: string | null | undefined): string | null {
   return normalized;
 }
 
+function formatLatencyMs(value?: number | null): string {
+  if (typeof value !== "number" || Number.isNaN(value) || value < 0) {
+    return "—";
+  }
+  if (value < 1000) {
+    return `${value} ms`;
+  }
+  const seconds = value / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)} s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.round(seconds % 60);
+  return `${minutes} m ${remaining} s`;
+}
+
 export default function SyncPage() {
   const {
     handleSync,
@@ -28,7 +44,9 @@ export default function SyncPage() {
     outbox,
     outboxError,
     refreshOutbox,
+    refreshOutboxStats,
     handleRetryOutbox,
+    reprioritizeOutbox,
     outboxStats,
     syncQueueSummary,
     syncHybridProgress,
@@ -38,6 +56,7 @@ export default function SyncPage() {
     syncHistory,
     syncHistoryError,
     refreshSyncHistory,
+    exportSyncHistory,
     refreshSyncQueueSummary,
     token,
     pushToast,
@@ -127,6 +146,61 @@ export default function SyncPage() {
     }
   }, [pushToast, token]);
 
+  const handleRetryEntry = useCallback(
+    async (entryId: number) => {
+      const reason = ensureReason(
+        typeof window === "undefined"
+          ? "Reintento manual desde panel"
+          : window.prompt("Motivo para reintentar el evento", "Reintento manual desde panel"),
+      );
+      if (!reason) {
+        pushToast({ message: "Indica un motivo corporativo para reintentar.", variant: "warning" });
+        return;
+      }
+      try {
+        await retrySyncOutbox(token ?? "", [entryId], reason);
+        pushToast({ message: "Evento reagendado", variant: "success" });
+        await refreshOutbox();
+        await refreshOutboxStats();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No se pudo reintentar el evento";
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [pushToast, refreshOutbox, refreshOutboxStats, token],
+  );
+
+  const handlePriorityChange = useCallback(
+    async (entryId: number, priority: "HIGH" | "NORMAL" | "LOW") => {
+      const reason = ensureReason(
+        typeof window === "undefined"
+          ? "Ajuste de prioridad desde panel"
+          : window.prompt("Motivo para ajustar la prioridad", "Ajuste de prioridad desde panel"),
+      );
+      if (!reason) {
+        pushToast({ message: "Ingresa un motivo válido para priorizar el evento.", variant: "warning" });
+        return;
+      }
+      await reprioritizeOutbox(entryId, priority, reason);
+      await refreshOutbox();
+      await refreshOutboxStats();
+    },
+    [pushToast, refreshOutbox, refreshOutboxStats, reprioritizeOutbox],
+  );
+
+  const handleExportHistory = useCallback(async () => {
+    const reason = ensureReason(
+      typeof window === "undefined"
+        ? "Exportación historial sincronización"
+        : window.prompt("Motivo para exportar historial", "Exportación historial sincronización"),
+    );
+    if (!reason) {
+      pushToast({ message: "Debes indicar un motivo corporativo para exportar.", variant: "warning" });
+      return;
+    }
+    await exportSyncHistory(reason);
+  }, [exportSyncHistory, pushToast]);
+
   const hybridForecast = useMemo(() => {
     if (syncHybridForecast) {
       return {
@@ -211,9 +285,14 @@ export default function SyncPage() {
       <section className="sync-dashboard__logs" aria-live="polite">
         <div className="sync-dashboard__header">
           <h2>Historial de sincronización</h2>
-          <button type="button" className="btn btn-ghost" onClick={() => void refreshSyncHistory()}>
-            Actualizar historial
-          </button>
+          <div className="hybrid-queue__actions">
+            <button type="button" className="btn btn-ghost" onClick={() => void refreshSyncHistory()}>
+              Actualizar historial
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => void handleExportHistory()}>
+              Exportar CSV
+            </button>
+          </div>
         </div>
         {syncHistoryError ? <p className="sync-log__error">{syncHistoryError}</p> : null}
         <div className="sync-history-grid">
@@ -298,6 +377,84 @@ export default function SyncPage() {
             </table>
           </div>
         )}
+
+        <div className="section-divider">
+          <h3>Detalle de eventos</h3>
+          {outbox.length === 0 ? (
+            <p className="hybrid-queue__hint">No hay eventos individuales para mostrar.</p>
+          ) : (
+            <div className="card">
+              <table className="outbox-table">
+                <thead>
+                  <tr>
+                    <th>Entidad</th>
+                    <th>Operación</th>
+                    <th>Estado</th>
+                    <th>Prioridad</th>
+                    <th>Intentos</th>
+                    <th>Latencia</th>
+                    <th>Último intento</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outbox.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{entry.entity_type}</td>
+                      <td>{entry.operation}</td>
+                      <td>
+                        <span className="badge neutral">
+                          {entry.status_detail?.replace("_", " ") ?? entry.status.toLowerCase()}
+                        </span>
+                        {entry.error_message ? (
+                          <small className="sync-history-error">{entry.error_message}</small>
+                        ) : null}
+                      </td>
+                      <td>
+                        <select
+                          value={entry.priority}
+                          onChange={(event) =>
+                            void handlePriorityChange(
+                              entry.id,
+                              event.target.value as "HIGH" | "NORMAL" | "LOW",
+                            )
+                          }
+                        >
+                          <option value="HIGH">Alta</option>
+                          <option value="NORMAL">Normal</option>
+                          <option value="LOW">Baja</option>
+                        </select>
+                      </td>
+                      <td>{entry.attempt_count}</td>
+                      <td>
+                        <div className="sync-latency">
+                          <span>Total: {formatLatencyMs(entry.latency_ms)}</span>
+                          <span>Proceso: {formatLatencyMs(entry.processing_latency_ms)}</span>
+                        </div>
+                      </td>
+                      <td>
+                        {entry.last_attempt_at
+                          ? new Date(entry.last_attempt_at).toLocaleString("es-MX")
+                          : "Sin intentos"}
+                      </td>
+                      <td>
+                        <div className="hybrid-queue__actions">
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => void handleRetryEntry(entry.id)}
+                          >
+                            Reintentar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
