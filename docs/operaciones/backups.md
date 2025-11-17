@@ -32,8 +32,27 @@ En `ops/` se incluyen utilidades shell:
 
 - `backup.sh`: ejecuta `pg_dump` contra la base Postgres ya sea en `docker compose` (`TARGET=docker`) o local. Variables principales: `DB_NAME`, `DB_USER`, `DB_HOST`, `DB_PORT`.
 - `restore.sh`: restaura un archivo SQL generado por `pg_dump` contra la base definida.
+- `bootstrap_central_replica.sh`: descarga un volcado desde la base central (requiere `CENTRAL_DB_HOST` y `CENTRAL_DB_USER`), lo restaura en la base local y dispara la primera sincronización incremental (`POST /api/v1/sync/run`) salvo que se indique `SKIP_INCREMENTAL=1`.
+- `daily_encrypted_backup.sh`: genera un respaldo diario cifrado con AES-256, borra el SQL plano y lo envía por `scp` al host central definido. Requiere `BACKUP_PASSPHRASE` y las variables `CENTRAL_BACKUP_HOST`/`CENTRAL_BACKUP_USER` cuando `SKIP_UPLOAD` es `0`.
 
 Ambos scripts respetan `set -euo pipefail` para abortar en caso de error y deben ejecutarse con un usuario que tenga permisos de lectura/escritura sobre los archivos de respaldo.
+
+### Programación recomendada
+
+- **Replica inicial**: ejecutar `ops/bootstrap_central_replica.sh` antes de habilitar un nodo nuevo. Ejemplo:
+  ```bash
+  CENTRAL_DB_HOST=db-central.corp.local CENTRAL_DB_USER=replicador \
+  CENTRAL_DB_PASSWORD="secreto" LOCAL_DB_NAME=softmobile \
+  SYNC_API_URL="https://nodo.local/api/v1" SYNC_TOKEN="<jwt>" \
+  bash ops/bootstrap_central_replica.sh
+  ```
+- **Backup diario cifrado** (cron a las 02:00):
+  ```cron
+  0 2 * * * BACKUP_PASSPHRASE="clave-larga" CENTRAL_BACKUP_HOST=central.corp.local \
+  CENTRAL_BACKUP_USER=backup TARGET=docker \
+  /opt/softmobile/ops/daily_encrypted_backup.sh >> /var/log/softmobile/backup.log 2>&1
+  ```
+  Ajusta `TARGET` a `docker` si la base vive en docker-compose y define `CENTRAL_BACKUP_PATH` cuando el destino no sea la carpeta por defecto `~/softmobile_backups`.
 
 ## Buenas prácticas
 
