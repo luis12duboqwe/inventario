@@ -57,7 +57,10 @@ def test_totp_flow_and_session_revocation(client):
     access_token = token_data["access_token"]
 
     security_headers = {
-        "Authorization": f"Bearer {access_token}", "X-Reason": "Configurar 2FA"}
+        "Authorization": f"Bearer {access_token}",
+        "X-Reason": "Configurar 2FA",
+        "X-Reauth-Password": payload["password"],
+    }
 
     setup_response = client.post(
         "/security/2fa/setup", headers=security_headers)
@@ -96,7 +99,11 @@ def test_totp_flow_and_session_revocation(client):
     assert "session_id" in good_data
     session_id = good_data["session_id"]
     auth_headers = {
-        "Authorization": f"Bearer {good_data['access_token']}", "X-Reason": "Revocacion"}
+        "Authorization": f"Bearer {good_data['access_token']}",
+        "X-Reason": "Revocacion",
+        "X-Reauth-Password": payload["password"],
+        "X-Reauth-OTP": otp_code,
+    }
 
     sessions_list = client.get("/security/sessions", headers=auth_headers)
     assert sessions_list.status_code == status.HTTP_200_OK

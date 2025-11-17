@@ -12,7 +12,7 @@ from .. import crud, schemas
 from ..core.roles import ADMIN, GERENTE, normalize_roles
 from ..database import get_db
 from ..routers.dependencies import require_reason
-from ..security import hash_password, require_roles
+from ..security import enforce_password_policy, hash_password, require_roles
 from ..services import audit_logger, user_reports
 
 router = APIRouter(prefix="/users", tags=["usuarios"])
@@ -116,6 +116,7 @@ def create_user(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if not role_names:
         role_names = {GERENTE}
+    enforce_password_policy(payload.password, username=payload.username)
     try:
         user = crud.create_user(
             db,
@@ -305,6 +306,7 @@ def update_user(
     password_value = updates.pop("password", None)
     password_hash = None
     if isinstance(password_value, str) and password_value:
+        enforce_password_policy(password_value, username=user.username)
         password_hash = hash_password(password_value)
 
     try:

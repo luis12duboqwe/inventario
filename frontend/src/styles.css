@@ -9511,3 +9511,25 @@ ol {
     flex: 1 1 auto;
   }
 }
+
+.security-card .reauth-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin: 0.5rem 0 1rem;
+  padding: 0.75rem;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+}
+
+.security-card .reauth-grid input {
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.security-card .reauth-grid input:focus {
+  outline: 2px solid var(--color-accent-focus-border);
+  box-shadow: 0 0 0 4px var(--color-accent-focus-ring);
+}
