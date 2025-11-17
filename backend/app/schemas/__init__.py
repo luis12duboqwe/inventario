@@ -4080,6 +4080,8 @@ class SyncOutboxEntryResponse(BaseModel):
     status: SyncOutboxStatus
     priority: SyncOutboxPriority
     error_message: str | None
+    conflict_flag: bool
+    version: int
     created_at: datetime
     updated_at: datetime
 
@@ -4106,8 +4108,10 @@ class SyncOutboxStatsEntry(BaseModel):
     total: int
     pending: int
     failed: int
+    conflicts: int
     latest_update: datetime | None
     oldest_pending: datetime | None
+    last_conflict_at: datetime | None
 
 
 # // [PACK35-backend]

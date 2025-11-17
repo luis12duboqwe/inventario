@@ -85,6 +85,7 @@ def test_sync_outbox_list_and_retry(client):
     assert stats_response.status_code == status.HTTP_200_OK
     stats = stats_response.json()
     assert any(item["priority"] == "HIGH" for item in stats)
+    assert all("conflicts" in item for item in stats)
 
     settings.enable_hybrid_prep = False
     settings.enable_purchases_sales = False
