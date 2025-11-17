@@ -37,6 +37,7 @@ describe("AdminControlPanel", () => {
               variant: "success",
             },
           ]}
+          riskAlerts={[]}
         />
       </MemoryRouter>,
     );
@@ -60,6 +61,7 @@ describe("AdminControlPanel", () => {
           roleVariant="operator"
           notifications={0}
           notificationItems={[]}
+          riskAlerts={[]}
         />
       </MemoryRouter>,
     );
