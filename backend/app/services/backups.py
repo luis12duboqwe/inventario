@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable, Tuple
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from cryptography.fernet import Fernet
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 from .. import crud, models
 from ..config import settings as app_settings
 from ..core.transactions import transactional_session
+from . import encryption
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -38,6 +40,13 @@ CRITICAL_PATHS: tuple[Path, ...] = (
     PROJECT_ROOT / "requirements.txt",
     PROJECT_ROOT / "README.md",
 )
+
+
+def _get_backup_cipher() -> Fernet | None:
+    key_path = Path(app_settings.backup_encryption_key_path)
+    if not app_settings.require_encrypted_backups and not key_path.exists():
+        return None
+    return encryption.build_fernet(key_path)
 
 
 def build_inventory_snapshot(db: Session) -> dict[str, Any]:
@@ -156,6 +165,9 @@ def _write_metadata(
     total_size_bytes: int,
     triggered_by_id: int | None,
     reason: str | None,
+    encryption_enabled: bool,
+    encryption_key_path: str | None,
+    cipher: Fernet | None,
 ) -> None:
     metadata = {
         "timestamp": timestamp,
@@ -174,16 +186,21 @@ def _write_metadata(
             "critical_directory": str(critical_directory),
         },
         "critical_files": copied_files,
+        "encryption": {
+            "enabled": encryption_enabled,
+            "algorithm": "fernet" if encryption_enabled else None,
+            "key_path": encryption_key_path if encryption_enabled else None,
+        },
     }
-    metadata_path.write_text(
-        json.dumps(
-            metadata,
-            ensure_ascii=False,
-            indent=2,
-            default=_json_default,
-        ),
-        encoding="utf-8",
-    )
+    serialized = json.dumps(
+        metadata,
+        ensure_ascii=False,
+        indent=2,
+        default=_json_default,
+    ).encode("utf-8")
+    if cipher is not None:
+        serialized = encryption.encrypt_bytes(serialized, cipher)
+    metadata_path.write_bytes(serialized)
 
 
 def _calculate_total_size(paths: Iterable[Path]) -> int:
@@ -196,6 +213,39 @@ def _calculate_total_size(paths: Iterable[Path]) -> int:
                 if file_path.is_file():
                     total += file_path.stat().st_size
     return total
+
+
+def _encrypt_backup_files(
+    cipher: Fernet | None,
+    files: Iterable[Path],
+    critical_directory: Path,
+) -> None:
+    if cipher is None:
+        return
+    for path in files:
+        encryption.encrypt_file_in_place(path, cipher)
+    for file_path in critical_directory.rglob("*"):
+        if file_path.is_file():
+            encryption.encrypt_file_in_place(file_path, cipher)
+
+
+def _decrypt_file(path: Path, cipher: Fernet | None) -> bytes:
+    return encryption.decrypt_file_contents(path, cipher)
+
+
+def load_backup_metadata(metadata_path: Path) -> dict[str, Any]:
+    """Carga metadatos descifrando el archivo cuando corresponde."""
+
+    cipher = _get_backup_cipher()
+    payload = _decrypt_file(metadata_path, cipher)
+    return json.loads(payload.decode("utf-8"))
+
+
+def read_backup_file(path: Path) -> bytes:
+    """Devuelve el contenido descifrado de un artefacto de respaldo."""
+
+    cipher = _get_backup_cipher()
+    return _decrypt_file(path, cipher)
 
 
 def _build_financial_table(devices: list[dict[str, Any]]) -> Tuple[list[list[str]], float]:
@@ -419,8 +469,10 @@ def serialize_snapshot(snapshot: dict[str, Any]) -> bytes:
     return json.dumps(snapshot, ensure_ascii=False, indent=2).encode("utf-8")
 
 
-def _restore_database(db: Session, sql_path: Path) -> None:
-    if not sql_path.exists():
+def _restore_database(
+    db: Session, sql_path: Path, *, sql_content: str | None = None
+) -> None:
+    if not sql_path.exists() and sql_content is None:
         raise FileNotFoundError(str(sql_path))
 
     bind = db.get_bind()
@@ -429,7 +481,7 @@ def _restore_database(db: Session, sql_path: Path) -> None:
             "No se pudo obtener la conexión activa para restaurar la base de datos")
 
     engine = bind.engine if hasattr(bind, "engine") else bind
-    sql_script = sql_path.read_text(encoding="utf-8")
+    sql_script = sql_content or sql_path.read_text(encoding="utf-8")
     if engine.dialect.name == "sqlite":
         with engine.begin() as connection:
             raw_connection = connection.connection
@@ -494,6 +546,8 @@ def generate_backup(
 
     copied_files = _collect_critical_files(critical_directory)
     normalized_reason = reason.strip() if reason else None
+    cipher = _get_backup_cipher()
+    encryption_enabled = cipher is not None
 
     def _build_archive() -> None:
         with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as zip_file:
@@ -509,78 +563,61 @@ def generate_backup(
                         file_path.relative_to(critical_directory)
                     zip_file.write(file_path, arcname=str(arcname))
 
-    total_size_estimate = 0
-    calculated_size = 0
-    last_written_size = -1
-    for _ in range(3):
-        last_written_size = total_size_estimate
-        _write_metadata(
-            metadata_path,
-            timestamp=timestamp,
-            mode=mode,
-            notes=notes,
-            components=selected_components,
-            json_path=json_path,
-            sql_path=sql_path,
-            pdf_path=pdf_path,
-            archive_path=archive_path,
-            config_path=config_path,
-            critical_directory=critical_directory,
-            copied_files=copied_files,
-            total_size_bytes=total_size_estimate,
-            triggered_by_id=triggered_by_id,
-            reason=normalized_reason,
-        )
-        _build_archive()
-        calculated_size = _calculate_total_size(
-            [
-                pdf_path,
-                json_path,
-                sql_path,
-                config_path,
-                metadata_path,
-                archive_path,
-                critical_directory,
-            ]
-        )
-        if calculated_size == total_size_estimate:
-            break
-        total_size_estimate = calculated_size
+    component_files = [pdf_path, json_path, sql_path, config_path]
+    _encrypt_backup_files(cipher, component_files, critical_directory)
 
-    total_size = calculated_size
-    for _ in range(3):
-        last_written_size = total_size
-        _write_metadata(
-            metadata_path,
-            timestamp=timestamp,
-            mode=mode,
-            notes=notes,
-            components=selected_components,
-            json_path=json_path,
-            sql_path=sql_path,
-            pdf_path=pdf_path,
-            archive_path=archive_path,
-            config_path=config_path,
-            critical_directory=critical_directory,
-            copied_files=copied_files,
-            total_size_bytes=total_size,
-            triggered_by_id=triggered_by_id,
-            reason=normalized_reason,
-        )
-        _build_archive()
-        recalculated_size = _calculate_total_size(
-            [
-                pdf_path,
-                json_path,
-                sql_path,
-                config_path,
+    def _write_and_archive(total_size: int) -> int:
+        current_size = total_size
+        for _ in range(8):
+            _write_metadata(
                 metadata_path,
-                archive_path,
-                critical_directory,
-            ]
-        )
-        if recalculated_size == total_size:
+                timestamp=timestamp,
+                mode=mode,
+                notes=notes,
+                components=selected_components,
+                json_path=json_path,
+                sql_path=sql_path,
+                pdf_path=pdf_path,
+                archive_path=archive_path,
+                config_path=config_path,
+                critical_directory=critical_directory,
+                copied_files=copied_files,
+                total_size_bytes=current_size,
+                triggered_by_id=triggered_by_id,
+                reason=normalized_reason,
+                encryption_enabled=encryption_enabled,
+                encryption_key_path=(
+                    str(app_settings.backup_encryption_key_path)
+                    if encryption_enabled
+                    else None
+                ),
+                cipher=cipher,
+            )
+            _build_archive()
+            recalculated_size = _calculate_total_size(
+                [
+                    pdf_path,
+                    json_path,
+                    sql_path,
+                    config_path,
+                    metadata_path,
+                    archive_path,
+                    critical_directory,
+                ]
+            )
+            if recalculated_size == current_size:
+                return recalculated_size
+            current_size = recalculated_size
+        return current_size
+
+    total_size_estimate = 0
+    for _ in range(3):
+        recalculated = _write_and_archive(total_size_estimate)
+        if recalculated == total_size_estimate:
             break
+        total_size_estimate = recalculated
+
+    total_size = _write_and_archive(total_size_estimate)
         total_size = recalculated_size
     final_components = [
         pdf_path,
@@ -770,37 +807,40 @@ def restore_backup(
         raise ValueError("Directorio de restauración no permitido")
     restore_dir.mkdir(parents=True, exist_ok=True)
 
+    cipher = _get_backup_cipher()
     results: dict[str, str] = {}
 
     if json_file.exists():
         json_dest = restore_dir / json_file.name
-        shutil.copy2(json_file, json_dest)
+        json_dest.write_bytes(_decrypt_file(json_file, cipher))
         results["json"] = str(json_dest)
 
     if models.BackupComponent.DATABASE.value in selected_components:
         if not sql_file.exists():
             results["database"] = "Archivo SQL no disponible"
         elif apply_database:
-            _restore_database(db, sql_file)
+            sql_bytes = _decrypt_file(sql_file, cipher)
+            _restore_database(
+                db, sql_file, sql_content=sql_bytes.decode("utf-8"))
             results["database"] = "Base de datos restaurada en la instancia activa"
         else:
             sql_dest = restore_dir / sql_file.name
-            shutil.copy2(sql_file, sql_dest)
+            sql_dest.write_bytes(_decrypt_file(sql_file, cipher))
             results["database"] = str(sql_dest)
 
     if models.BackupComponent.CONFIGURATION.value in selected_components and config_file.exists():
         config_dest = restore_dir / config_file.name
-        shutil.copy2(config_file, config_dest)
+        config_dest.write_bytes(_decrypt_file(config_file, cipher))
         results["configuration"] = str(config_dest)
 
     if metadata_file.exists():
         metadata_dest = restore_dir / metadata_file.name
-        shutil.copy2(metadata_file, metadata_dest)
+        metadata_dest.write_bytes(_decrypt_file(metadata_file, cipher))
         results["metadata"] = str(metadata_dest)
 
     if archive_file.exists():
         archive_dest = restore_dir / archive_file.name
-        shutil.copy2(archive_file, archive_dest)
+        archive_dest.write_bytes(_decrypt_file(archive_file, cipher))
         results["zip"] = str(archive_dest)
 
     if (
@@ -813,7 +853,7 @@ def restore_backup(
                 destination = critical_dest / \
                     file_path.relative_to(critical_source)
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(file_path, destination)
+                destination.write_bytes(_decrypt_file(file_path, cipher))
         results["critical_files"] = str(critical_dest)
 
     with transactional_session(db):

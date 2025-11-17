@@ -576,6 +576,18 @@ class ProductVariant(Base):
         cascade="all, delete-orphan",
     )
 
+    @property
+    def store_id(self) -> int:
+        return self.device.store_id
+
+    @property
+    def device_sku(self) -> str:
+        return self.device.sku
+
+    @property
+    def device_name(self) -> str:
+        return self.device.name
+
 
 class ProductBundle(Base):
     __tablename__ = "product_bundles"
@@ -651,6 +663,14 @@ class ProductBundleItem(Base):
     variant: Mapped[Optional["ProductVariant"]] = relationship(
         "ProductVariant", back_populates="bundle_items"
     )
+
+    @property
+    def device_sku(self) -> str:
+        return self.device.sku
+
+    @property
+    def device_name(self) -> str:
+        return self.device.name
 
 
 

@@ -86,6 +86,33 @@ def retrieve_store(
         ) from exc
 
 
+@router.get(
+    "/{store_id}/devices/{device_id}",
+    response_model=schemas.DeviceResponse,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def retrieve_device(
+    store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    device_id: int = Path(..., ge=1, description="Identificador del dispositivo"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    if not settings.enable_catalog_pro:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Ruta no disponible"
+        )
+
+    try:
+        device = crud.get_device(db, store_id, device_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "device_not_found", "message": "Dispositivo no encontrado."},
+        ) from exc
+
+    return schemas.DeviceResponse.model_validate(device, from_attributes=True)
+
+
 @router.put("/{store_id}", response_model=schemas.StoreResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def update_store(
     payload: schemas.StoreUpdate,
