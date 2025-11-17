@@ -27,6 +27,7 @@ import TechMonitor from "../components/TechMonitor";
 import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
 import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
+import { getRiskAlerts, type RiskAlert } from "../../../api";
 import Button from "../../../shared/components/ui/Button";
 import PageHeader from "../../../shared/components/ui/PageHeader";
 import AdminControlPanel, {
@@ -113,9 +114,11 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     observability,
     observabilityError,
     refreshObservability,
+    token,
   } = useDashboard();
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [riskAlerts, setRiskAlerts] = useState<RiskAlert[]>([]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -143,6 +146,15 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSidebarOpen]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    getRiskAlerts(token)
+      .then((response) => setRiskAlerts(response.alerts))
+      .catch(() => setRiskAlerts([]));
+  }, [token]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen((current) => !current);
@@ -334,7 +346,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     (networkAlert ? 1 : 0) +
     (syncStatus ? 1 : 0) +
     (observabilityError ? 1 : 0) +
-    techNotificationItems.length;
+    techNotificationItems.length +
+    riskAlerts.length;
   const notificationSummary =
     notificationCount === 0
       ? "No hay notificaciones activas en este momento."
@@ -362,6 +375,15 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         variant: "error",
       });
     }
+
+    riskAlerts.forEach((alert) => {
+      items.push({
+        id: `risk-${alert.code}`,
+        title: alert.title,
+        description: alert.description,
+        variant: alert.severity === "critica" || alert.severity === "alta" ? "error" : "warning",
+      });
+    });
 
     if (outboxError) {
       items.push({
@@ -667,6 +689,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
             roleVariant={roleVisual.variant}
             notifications={notificationCount}
             notificationItems={panelNotificationItems}
+            riskAlerts={riskAlerts}
           />
 
           <TechMonitor />

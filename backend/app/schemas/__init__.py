@@ -4455,6 +4455,28 @@ class AnalyticsAlertsResponse(BaseModel):
     items: list[AnalyticsAlert]
 
 
+class RiskMetric(BaseModel):
+    total: int
+    average: float
+    maximum: float
+    last_seen: datetime | None = None
+
+
+class RiskAlert(BaseModel):
+    code: str
+    title: str
+    description: str
+    severity: Literal["info", "media", "alta", "critica"]
+    occurrences: int
+    detail: dict[str, object] | None = None
+
+
+class RiskAlertsResponse(BaseModel):
+    generated_at: datetime
+    alerts: list[RiskAlert]
+    metrics: dict[str, RiskMetric]
+
+
 class StoreRealtimeWidget(BaseModel):
     store_id: int
     store_name: str
@@ -7987,6 +8009,9 @@ __all__ = [
     "AnalyticsProfitMarginResponse",
     "AnalyticsRotationResponse",
     "AnalyticsSalesProjectionResponse",
+    "RiskAlert",
+    "RiskAlertsResponse",
+    "RiskMetric",
     "AuditAcknowledgedEntity",
     "AuditAcknowledgementCreate",
     "AuditAcknowledgementResponse",

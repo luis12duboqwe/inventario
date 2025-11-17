@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
+from ..utils import audit as audit_utils
 from ..config import settings
 from ..core.roles import ADMIN
 from ..database import get_db
@@ -24,6 +25,7 @@ from ..services import global_reports_data, global_reports_renderers
 from ..services import customer_reports
 from ..services import inventory_reports as inventory_reports_service
 from ..services import fiscal_books as fiscal_books_service
+from ..services import risk_monitor
 from ..utils import audit as audit_utils
 from backend.schemas.common import Page, PageParams
 
@@ -449,7 +451,9 @@ def audit_logs(
     offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, max_length=120),
     entity_type: str | None = Query(default=None, max_length=80),
+    module: str | None = Query(default=None, max_length=80),
     performed_by_id: int | None = Query(default=None, ge=1),
+    severity: audit_utils.AuditSeverity | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     pagination: PageParams = Depends(),
@@ -462,7 +466,9 @@ def audit_logs(
         db,
         action=action,
         entity_type=entity_type,
+        module=module,
         performed_by_id=performed_by_id,
+        severity=severity,
         date_from=date_from,
         date_to=date_to,
     )
@@ -472,7 +478,9 @@ def audit_logs(
         offset=page_offset,
         action=action,
         entity_type=entity_type,
+        module=module,
         performed_by_id=performed_by_id,
+        severity=severity,
         date_from=date_from,
         date_to=date_to,
     )
@@ -488,7 +496,9 @@ def audit_logs_pdf(
     offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, max_length=120),
     entity_type: str | None = Query(default=None, max_length=80),
+    module: str | None = Query(default=None, max_length=80),
     performed_by_id: int | None = Query(default=None, ge=1),
+    severity: audit_utils.AuditSeverity | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -501,7 +511,9 @@ def audit_logs_pdf(
         offset=offset,
         action=action,
         entity_type=entity_type,
+        module=module,
         performed_by_id=performed_by_id,
+        severity=severity,
         date_from=date_from,
         date_to=date_to,
     )
@@ -511,8 +523,12 @@ def audit_logs_pdf(
         filters["Acción"] = action
     if entity_type:
         filters["Tipo de entidad"] = entity_type
+    if module:
+        filters["Módulo"] = module
     if performed_by_id is not None:
         filters["Usuario"] = str(performed_by_id)
+    if severity:
+        filters["Severidad"] = severity
     if date_from:
         filters["Desde"] = str(date_from)
     if date_to:
@@ -730,6 +746,29 @@ def analytics_alerts(
     return schemas.AnalyticsAlertsResponse(
         items=[schemas.AnalyticsAlert(**item) for item in data]
     )
+
+
+@router.get("/analytics/risk", response_model=schemas.RiskAlertsResponse)
+def analytics_risk(
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    discount_threshold: float = Query(default=25.0, ge=0, le=100),
+    cancellation_threshold: int = Query(default=3, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    _ensure_analytics_enabled()
+    normalized_from = _coerce_datetime(date_from)
+    normalized_to = _coerce_datetime(date_to)
+    risk_response = risk_monitor.compute_risk_alerts(
+        db,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        discount_threshold=discount_threshold,
+        cancellation_threshold=cancellation_threshold,
+    )
+    risk_monitor.dispatch_risk_notifications(risk_response.alerts)
+    return risk_response
 
 
 @router.get("/analytics/realtime", response_model=schemas.AnalyticsRealtimeResponse)

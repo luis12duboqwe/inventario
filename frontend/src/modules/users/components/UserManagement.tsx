@@ -400,6 +400,10 @@ function UserManagement({ token }: Props) {
     return permissionDraft[selectedRole] ?? baselinePermissions.map((permission) => ({ ...permission }));
   }, [permissionDraft, selectedRole, baselinePermissions]);
 
+  const sensitivePermissions = useMemo(() => {
+    return currentPermissions.filter((permission) => permission.can_delete || permission.can_edit);
+  }, [currentPermissions]);
+
   const hasPermissionChanges = useMemo(() => {
     if (baselinePermissions.length !== currentPermissions.length) {
       return true;
@@ -430,6 +434,10 @@ function UserManagement({ token }: Props) {
       );
       return { ...current, [selectedRole]: updated };
     });
+  };
+
+  const handleSensitiveToggle = (module: string) => {
+    handlePermissionToggle(module, "can_delete");
   };
 
   const handlePermissionReset = () => {
@@ -514,30 +522,64 @@ function UserManagement({ token }: Props) {
             loading={loadingUsers}
           />
         </div>
-        <SidePanel
-          mode={selectedUser ? "edit" : "create"}
-          formValues={formState}
-          onFormChange={(patch) => setFormState((current) => ({ ...current, ...patch }))}
-          onFormSubmit={handleFormSubmit}
-          onFormReset={() => {
-            setSelectedUserId(null);
-            setFormState(DEFAULT_FORM_STATE);
-          }}
-          roles={sortedRoles}
-          stores={stores}
-          savingUser={savingUser}
-          permissionsMatrix={sortedPermissionsMatrix}
-          selectedRole={selectedRole}
-          permissions={currentPermissions}
-          onSelectRole={setSelectedRole}
-          onTogglePermission={handlePermissionToggle}
-          onResetPermissions={handlePermissionReset}
-          onSavePermissions={handlePermissionSave}
-          savingPermissions={savingPermissions}
-          loadingPermissions={loadingPermissions}
-          hasPermissionChanges={hasPermissionChanges}
-          onOpenRoleModal={() => setIsRoleModalOpen(true)}
-        />
+        <div className="user-management__side">
+          <SidePanel
+            mode={selectedUser ? "edit" : "create"}
+            formValues={formState}
+            onFormChange={(patch) => setFormState((current) => ({ ...current, ...patch }))}
+            onFormSubmit={handleFormSubmit}
+            onFormReset={() => {
+              setSelectedUserId(null);
+              setFormState(DEFAULT_FORM_STATE);
+            }}
+            roles={sortedRoles}
+            stores={stores}
+            savingUser={savingUser}
+            permissionsMatrix={sortedPermissionsMatrix}
+            selectedRole={selectedRole}
+            permissions={currentPermissions}
+            onSelectRole={setSelectedRole}
+            onTogglePermission={handlePermissionToggle}
+            onResetPermissions={handlePermissionReset}
+            onSavePermissions={handlePermissionSave}
+            savingPermissions={savingPermissions}
+            loadingPermissions={loadingPermissions}
+            hasPermissionChanges={hasPermissionChanges}
+            onOpenRoleModal={() => setIsRoleModalOpen(true)}
+          />
+          <section className="card card-section sensitive-permissions">
+            <header className="permissions-panel__header">
+              <div>
+                <h3>Acciones sensibles por sucursal</h3>
+                <p className="card-subtitle">
+                  Activa o desactiva la eliminación por módulo; se limitará a la sucursal asignada del usuario.
+                </p>
+              </div>
+            </header>
+            {sensitivePermissions.length === 0 ? (
+              <p className="muted-text">No hay módulos marcados como sensibles para este rol.</p>
+            ) : (
+              <ul className="sensitive-permissions__list">
+                {sensitivePermissions.map((permission) => (
+                  <li key={permission.module} className="sensitive-permissions__item">
+                    <div>
+                      <p className="permissions-table__module">{permission.module}</p>
+                      <small className="muted-text">Requiere rol activo en la sucursal objetivo.</small>
+                    </div>
+                    <label className="checkbox-control">
+                      <input
+                        type="checkbox"
+                        checked={permission.can_delete}
+                        onChange={() => handleSensitiveToggle(permission.module)}
+                      />
+                      <span />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
       <RoleModal
         open={isRoleModalOpen}
