@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import NotificationCenter, {
   type NotificationCenterItem,
 } from "./NotificationCenter";
+import type { RiskAlert } from "../../../api";
 
 export type AdminControlPanelModule = {
   to: string;
@@ -21,6 +22,7 @@ export type AdminControlPanelProps = {
   roleVariant: "admin" | "manager" | "operator" | "guest";
   notifications: number;
   notificationItems: NotificationCenterItem[];
+  riskAlerts?: RiskAlert[];
 };
 
 /**
@@ -37,6 +39,7 @@ function AdminControlPanel({
   roleVariant,
   notifications,
   notificationItems,
+  riskAlerts = [],
 }: AdminControlPanelProps) {
   const hasNotifications = notifications > 0;
   const notificationLabel = hasNotifications
@@ -71,6 +74,8 @@ function AdminControlPanel({
     [modules],
   );
 
+  const visibleRiskAlerts = useMemo(() => riskAlerts.slice(0, 4), [riskAlerts]);
+
   return (
     <section className="admin-control-panel" aria-label="Panel central de administración">
       <header className="admin-control-panel__header">
@@ -89,6 +94,45 @@ function AdminControlPanel({
           items={notificationItems}
         />
       </header>
+      <section className="admin-control-panel__risk" aria-label="Panel de riesgos y alertas automáticas">
+        <div className="admin-control-panel__risk-header">
+          <div>
+            <h3>Riesgos operativos</h3>
+            <p className="admin-control-panel__risk-subtitle">
+              Descuentos inusuales, anulaciones recurrentes y eventos críticos.
+            </p>
+          </div>
+          <span className="admin-control-panel__risk-pill" aria-live="polite">
+            {riskAlerts.length > 0 ? `${riskAlerts.length} alertas` : "Sin alertas"}
+          </span>
+        </div>
+        {visibleRiskAlerts.length > 0 ? (
+          <ul className="admin-control-panel__risk-list" role="list">
+            {visibleRiskAlerts.map((alert) => (
+              <li
+                key={alert.code}
+                className={`admin-control-panel__risk-item admin-control-panel__risk-item--${alert.severity}`}
+              >
+                <div className="admin-control-panel__risk-item-header">
+                  <span className="admin-control-panel__risk-label">{alert.title}</span>
+                  <span className="admin-control-panel__risk-severity" aria-label={`Severidad ${alert.severity}`}>
+                    {alert.severity.toUpperCase()}
+                  </span>
+                </div>
+                <p className="admin-control-panel__risk-description">{alert.description}</p>
+                <div className="admin-control-panel__risk-meta">
+                  <span className="badge muted">{alert.occurrences} eventos</span>
+                  {alert.detail?.umbral ? (
+                    <span className="badge info">Umbral {String(alert.detail.umbral)}%</span>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="admin-control-panel__risk-empty">Sin alertas de riesgo en el periodo supervisado.</p>
+        )}
+      </section>
       <ul className="admin-control-panel__grid" role="list">
         {moduleCards.map((module) => (
           <li key={module.to} className="admin-control-panel__grid-item">

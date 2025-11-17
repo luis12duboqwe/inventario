@@ -2823,6 +2823,28 @@ export type AnalyticsAlerts = {
   items: AnalyticsAlert[];
 };
 
+export type RiskMetric = {
+  total: number;
+  average: number;
+  maximum: number;
+  last_seen?: string | null;
+};
+
+export type RiskAlert = {
+  code: string;
+  title: string;
+  description: string;
+  severity: "info" | "media" | "alta" | "critica";
+  occurrences: number;
+  detail?: Record<string, unknown> | null;
+};
+
+export type RiskAlertsResponse = {
+  generated_at: string;
+  alerts: RiskAlert[];
+  metrics: Record<string, RiskMetric>;
+};
+
 export type PurchaseSupplierMetric = {
   store_id: number;
   store_name: string;
@@ -7014,6 +7036,28 @@ export function getAnalyticsAlerts(
 ): Promise<AnalyticsAlerts> {
   const query = buildAnalyticsQuery(filters);
   return request<AnalyticsAlerts>(`/reports/analytics/alerts${query}`, { method: "GET" }, token);
+}
+
+export function getRiskAlerts(
+  token: string,
+  filters?: { dateFrom?: string; dateTo?: string; discountThreshold?: number; cancellationThreshold?: number },
+): Promise<RiskAlertsResponse> {
+  const params = new URLSearchParams();
+  if (filters?.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters?.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  if (typeof filters?.discountThreshold === "number") {
+    params.set("discount_threshold", String(filters.discountThreshold));
+  }
+  if (typeof filters?.cancellationThreshold === "number") {
+    params.set("cancellation_threshold", String(filters.cancellationThreshold));
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<RiskAlertsResponse>(`/reports/analytics/risk${suffix}`, { method: "GET" }, token);
 }
 
 export function getAnalyticsRealtime(

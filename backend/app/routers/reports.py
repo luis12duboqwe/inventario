@@ -24,6 +24,7 @@ from ..services import global_reports_data, global_reports_renderers
 from ..services import customer_reports
 from ..services import inventory_reports as inventory_reports_service
 from ..services import fiscal_books as fiscal_books_service
+from ..services import risk_monitor
 from ..utils import audit as audit_utils
 from backend.schemas.common import Page, PageParams
 
@@ -730,6 +731,29 @@ def analytics_alerts(
     return schemas.AnalyticsAlertsResponse(
         items=[schemas.AnalyticsAlert(**item) for item in data]
     )
+
+
+@router.get("/analytics/risk", response_model=schemas.RiskAlertsResponse)
+def analytics_risk(
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    discount_threshold: float = Query(default=25.0, ge=0, le=100),
+    cancellation_threshold: int = Query(default=3, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    _ensure_analytics_enabled()
+    normalized_from = _coerce_datetime(date_from)
+    normalized_to = _coerce_datetime(date_to)
+    risk_response = risk_monitor.compute_risk_alerts(
+        db,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        discount_threshold=discount_threshold,
+        cancellation_threshold=cancellation_threshold,
+    )
+    risk_monitor.dispatch_risk_notifications(risk_response.alerts)
+    return risk_response
 
 
 @router.get("/analytics/realtime", response_model=schemas.AnalyticsRealtimeResponse)
