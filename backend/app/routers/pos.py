@@ -862,6 +862,19 @@ async def trigger_pos_print_test(
             "reason": reason,
         },
     )
+    crud.log_audit_event(
+        db,
+        action="pos_fiscal_print" if payload.mode is schemas.POSPrinterMode.FISCAL else "pos_print_test",
+        entity_type="pos_fiscal_print",
+        entity_id=printer.name,
+        performed_by_id=current_user.id if current_user else None,
+        details={
+            "sucursal_id": payload.store_id,
+            "modo": payload.mode.value,
+            "resultado": result.success,
+            "mensaje": result.message,
+        },
+    )
     status_value = "ok" if result.success else "error"
     return schemas.POSHardwareActionResponse(
         status=status_value,

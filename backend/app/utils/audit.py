@@ -32,7 +32,19 @@ _WARNING_KEYWORDS = (
     "sync",
     "ajuste manual",
     "inconsistencia",
+    "fiscal",
+    "config",
 )
+
+
+def severity_keywords() -> dict[AuditSeverity, tuple[str, ...]]:
+    """Exponer palabras clave de severidad para filtros avanzados."""
+
+    return {
+        "critical": _CRITICAL_KEYWORDS,
+        "warning": _WARNING_KEYWORDS,
+        "info": (),
+    }
 
 
 def classify_severity(action: str, details: str | None = None) -> AuditSeverity:
@@ -193,5 +205,6 @@ __all__ = [
     "summarize_alerts",
     "classify_severity",
     "severity_label",
+    "severity_keywords",
     "serialize_log",
 ]

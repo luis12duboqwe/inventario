@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from .. import schemas
+from .. import crud, schemas
 from ..config import settings
 from ..core.roles import ADMIN
 from ..database import get_db
@@ -61,7 +61,9 @@ def create_rate(
 ) -> schemas.ConfigurationRateResponse:
     _ = (current_user, reason)
     try:
-        return configuration_service.create_config_rate(db, payload)
+        return configuration_service.create_config_rate(
+            db, payload, performed_by_id=current_user.id if current_user else None
+        )
     except ValueError as exc:
         if str(exc) == "config_rate_conflict":
             raise HTTPException(
@@ -84,7 +86,12 @@ def update_rate(
 ) -> schemas.ConfigurationRateResponse:
     _ = (current_user, reason)
     try:
-        return configuration_service.update_config_rate(db, rate_id, payload)
+        return configuration_service.update_config_rate(
+            db,
+            rate_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
     except LookupError as exc:
         if str(exc) == "config_rate_not_found":
             raise HTTPException(
@@ -123,7 +130,11 @@ def create_xml_template(
 ) -> schemas.ConfigurationXmlTemplateResponse:
     _ = (current_user, reason)
     try:
-        return configuration_service.create_config_xml_template(db, payload)
+        return configuration_service.create_config_xml_template(
+            db,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
     except ValueError as exc:
         if str(exc) == "config_xml_conflict":
             raise HTTPException(
@@ -147,7 +158,10 @@ def update_xml_template(
     _ = (current_user, reason)
     try:
         return configuration_service.update_config_xml_template(
-            db, template_id, payload
+            db,
+            template_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
         )
     except LookupError as exc:
         if str(exc) == "config_xml_not_found":
@@ -187,7 +201,11 @@ def create_parameter(
 ) -> schemas.ConfigurationParameterResponse:
     _ = (current_user, reason)
     try:
-        return configuration_service.create_config_parameter(db, payload)
+        return configuration_service.create_config_parameter(
+            db,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
+        )
     except ValueError as exc:
         if str(exc) == "config_parameter_conflict":
             raise HTTPException(
@@ -211,7 +229,10 @@ def update_parameter(
     _ = (current_user, reason)
     try:
         return configuration_service.update_config_parameter(
-            db, parameter_id, payload
+            db,
+            parameter_id,
+            payload,
+            performed_by_id=current_user.id if current_user else None,
         )
     except LookupError as exc:
         if str(exc) == "config_parameter_not_found":
@@ -238,9 +259,26 @@ def synchronize_from_yaml(
             detail="La sincronización sin despliegue está desactivada.",
         )
     try:
-        return configuration_service.synchronize_from_yaml(
+        result = configuration_service.synchronize_from_yaml(
             db, settings.config_sync_path
         )
+        crud.log_audit_event(
+            db,
+            action="configuration_sync",
+            entity_type="config_sync",
+            entity_id="yaml",
+            performed_by_id=current_user.id if current_user else None,
+            details={
+                "archivos_procesados": result.processed_files,
+                "tasas_activadas": result.rates_activated,
+                "tasas_desactivadas": result.rates_deactivated,
+                "plantillas_activadas": result.templates_activated,
+                "plantillas_desactivadas": result.templates_deactivated,
+                "parametros_activados": result.parameters_activated,
+                "parametros_desactivados": result.parameters_deactivated,
+            },
+        )
+        return result
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

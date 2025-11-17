@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
+from ..utils import audit as audit_utils
 from ..config import settings
 from ..core.roles import ADMIN
 from ..database import get_db
@@ -449,7 +450,9 @@ def audit_logs(
     offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, max_length=120),
     entity_type: str | None = Query(default=None, max_length=80),
+    module: str | None = Query(default=None, max_length=80),
     performed_by_id: int | None = Query(default=None, ge=1),
+    severity: audit_utils.AuditSeverity | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     pagination: PageParams = Depends(),
@@ -462,7 +465,9 @@ def audit_logs(
         db,
         action=action,
         entity_type=entity_type,
+        module=module,
         performed_by_id=performed_by_id,
+        severity=severity,
         date_from=date_from,
         date_to=date_to,
     )
@@ -472,7 +477,9 @@ def audit_logs(
         offset=page_offset,
         action=action,
         entity_type=entity_type,
+        module=module,
         performed_by_id=performed_by_id,
+        severity=severity,
         date_from=date_from,
         date_to=date_to,
     )
@@ -488,7 +495,9 @@ def audit_logs_pdf(
     offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, max_length=120),
     entity_type: str | None = Query(default=None, max_length=80),
+    module: str | None = Query(default=None, max_length=80),
     performed_by_id: int | None = Query(default=None, ge=1),
+    severity: audit_utils.AuditSeverity | None = Query(default=None),
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -501,7 +510,9 @@ def audit_logs_pdf(
         offset=offset,
         action=action,
         entity_type=entity_type,
+        module=module,
         performed_by_id=performed_by_id,
+        severity=severity,
         date_from=date_from,
         date_to=date_to,
     )
@@ -511,8 +522,12 @@ def audit_logs_pdf(
         filters["Acción"] = action
     if entity_type:
         filters["Tipo de entidad"] = entity_type
+    if module:
+        filters["Módulo"] = module
     if performed_by_id is not None:
         filters["Usuario"] = str(performed_by_id)
+    if severity:
+        filters["Severidad"] = severity
     if date_from:
         filters["Desde"] = str(date_from)
     if date_to:

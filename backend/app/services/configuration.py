@@ -12,7 +12,7 @@ import yaml
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import crud, models, schemas
 from ..core.transactions import transactional_session
 
 
@@ -54,6 +54,86 @@ def _sanitize_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
         str(key): _sanitize_metadata_value(value)
         for key, value in metadata.items()
     }
+
+
+def _audit_value(value: Any, *, mask: bool = False) -> Any:
+    if mask:
+        return "***"
+    if isinstance(value, Decimal):
+        return str(_quantize_decimal(value))
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Mapping):
+        return {str(key): _audit_value(val) for key, val in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_audit_value(item) for item in value]
+    return value
+
+
+def _audit_rate_snapshot(rate: models.ConfigRate) -> dict[str, Any]:
+    return {
+        "slug": rate.slug,
+        "nombre": rate.name,
+        "valor": _audit_value(Decimal(str(rate.value))),
+        "unidad": rate.unit,
+        "moneda": rate.currency,
+        "vigencia_desde": rate.effective_from.isoformat() if rate.effective_from else None,
+        "vigencia_hasta": rate.effective_to.isoformat() if rate.effective_to else None,
+        "activa": rate.is_active,
+        "metadata": _audit_value(rate.metadata_json or {}),
+    }
+
+
+def _audit_template_snapshot(template: models.ConfigXmlTemplate) -> dict[str, Any]:
+    return {
+        "codigo": template.code,
+        "version": template.version,
+        "descripcion": template.description,
+        "namespace": template.namespace,
+        "schema": template.schema_location,
+        "checksum": template.checksum,
+        "activa": template.is_active,
+        "metadata": _audit_value(template.metadata_json or {}),
+    }
+
+
+def _audit_parameter_snapshot(parameter: models.ConfigParameter) -> dict[str, Any]:
+    raw_value = _deserialize_parameter_value(parameter)
+    return {
+        "clave": parameter.key,
+        "nombre": parameter.name,
+        "categoria": parameter.category,
+        "valor": _audit_value(raw_value, mask=parameter.is_sensitive),
+        "tipo": parameter.value_type,
+        "sensitivo": parameter.is_sensitive,
+        "activa": parameter.is_active,
+        "metadata": _audit_value(parameter.metadata_json or {}),
+    }
+
+
+def _log_configuration_audit(
+    db: Session,
+    *,
+    action: str,
+    entity_type: str,
+    entity_id: int | str,
+    performed_by_id: int | None,
+    before: Mapping[str, Any] | None = None,
+    after: Mapping[str, Any] | None = None,
+) -> None:
+    snapshot: dict[str, Any] = {}
+    if before is not None:
+        snapshot["antes"] = before
+    if after is not None:
+        snapshot["despues"] = after
+    crud.log_audit_event(
+        db,
+        action=action,
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+        performed_by_id=performed_by_id,
+        details=snapshot or None,
+    )
 
 
 def _rate_to_schema(rate: models.ConfigRate) -> schemas.ConfigurationRateResponse:
@@ -168,7 +248,10 @@ def list_config_parameters(
 
 
 def create_config_rate(
-    db: Session, payload: schemas.ConfigurationRateCreate
+    db: Session,
+    payload: schemas.ConfigurationRateCreate,
+    *,
+    performed_by_id: int | None = None,
 ) -> schemas.ConfigurationRateResponse:
     slug = _normalize_slug(payload.slug)
     with transactional_session(db):
@@ -192,16 +275,29 @@ def create_config_rate(
     db.add(rate)
     db.flush()
     db.refresh(rate)
+    _log_configuration_audit(
+        db,
+        action="config_rate_created",
+        entity_type="config_rate",
+        entity_id=rate.id,
+        performed_by_id=performed_by_id,
+        after=_audit_rate_snapshot(rate),
+    )
     return _rate_to_schema(rate)
 
 
 def update_config_rate(
-    db: Session, rate_id: int, payload: schemas.ConfigurationRateUpdate
+    db: Session,
+    rate_id: int,
+    payload: schemas.ConfigurationRateUpdate,
+    *,
+    performed_by_id: int | None = None,
 ) -> schemas.ConfigurationRateResponse:
     with transactional_session(db):
         rate = db.get(models.ConfigRate, rate_id)
         if rate is None:
             raise LookupError("config_rate_not_found")
+        before = _audit_rate_snapshot(rate)
         if payload.name is not None:
             rate.name = payload.name.strip()
         if payload.description is not None:
@@ -223,11 +319,23 @@ def update_config_rate(
         rate.updated_at = datetime.utcnow()
         db.flush()
         db.refresh(rate)
+    _log_configuration_audit(
+        db,
+        action="config_rate_updated",
+        entity_type="config_rate",
+        entity_id=rate.id,
+        performed_by_id=performed_by_id,
+        before=before,
+        after=_audit_rate_snapshot(rate),
+    )
     return _rate_to_schema(rate)
 
 
 def create_config_xml_template(
-    db: Session, payload: schemas.ConfigurationXmlTemplateCreate
+    db: Session,
+    payload: schemas.ConfigurationXmlTemplateCreate,
+    *,
+    performed_by_id: int | None = None,
 ) -> schemas.ConfigurationXmlTemplateResponse:
     code = payload.code.strip().lower()
     with transactional_session(db):
@@ -251,16 +359,29 @@ def create_config_xml_template(
         db.add(template)
         db.flush()
         db.refresh(template)
+    _log_configuration_audit(
+        db,
+        action="config_template_created",
+        entity_type="config_template",
+        entity_id=template.id,
+        performed_by_id=performed_by_id,
+        after=_audit_template_snapshot(template),
+    )
     return _template_to_schema(template)
 
 
 def update_config_xml_template(
-    db: Session, template_id: int, payload: schemas.ConfigurationXmlTemplateUpdate
+    db: Session,
+    template_id: int,
+    payload: schemas.ConfigurationXmlTemplateUpdate,
+    *,
+    performed_by_id: int | None = None,
 ) -> schemas.ConfigurationXmlTemplateResponse:
     with transactional_session(db):
         template = db.get(models.ConfigXmlTemplate, template_id)
         if template is None:
             raise LookupError("config_xml_not_found")
+        before = _audit_template_snapshot(template)
         if payload.version is not None:
             template.version = payload.version.strip()
         if payload.description is not None:
@@ -279,11 +400,23 @@ def update_config_xml_template(
         template.updated_at = datetime.utcnow()
         db.flush()
         db.refresh(template)
+    _log_configuration_audit(
+        db,
+        action="config_template_updated",
+        entity_type="config_template",
+        entity_id=template.id,
+        performed_by_id=performed_by_id,
+        before=before,
+        after=_audit_template_snapshot(template),
+    )
     return _template_to_schema(template)
 
 
 def create_config_parameter(
-    db: Session, payload: schemas.ConfigurationParameterCreate
+    db: Session,
+    payload: schemas.ConfigurationParameterCreate,
+    *,
+    performed_by_id: int | None = None,
 ) -> schemas.ConfigurationParameterResponse:
     key = _normalize_key(payload.key)
     with transactional_session(db):
@@ -308,16 +441,29 @@ def create_config_parameter(
         db.add(parameter)
         db.flush()
         db.refresh(parameter)
+    _log_configuration_audit(
+        db,
+        action="config_parameter_created",
+        entity_type="config_parameter",
+        entity_id=parameter.id,
+        performed_by_id=performed_by_id,
+        after=_audit_parameter_snapshot(parameter),
+    )
     return _parameter_to_schema(parameter)
 
 
 def update_config_parameter(
-    db: Session, parameter_id: int, payload: schemas.ConfigurationParameterUpdate
+    db: Session,
+    parameter_id: int,
+    payload: schemas.ConfigurationParameterUpdate,
+    *,
+    performed_by_id: int | None = None,
 ) -> schemas.ConfigurationParameterResponse:
     with transactional_session(db):
         parameter = db.get(models.ConfigParameter, parameter_id)
         if parameter is None:
             raise LookupError("config_parameter_not_found")
+        before = _audit_parameter_snapshot(parameter)
         if payload.name is not None:
             parameter.name = payload.name.strip()
         if payload.category is not None:
@@ -351,6 +497,15 @@ def update_config_parameter(
         parameter.updated_at = datetime.utcnow()
         db.flush()
         db.refresh(parameter)
+    _log_configuration_audit(
+        db,
+        action="config_parameter_updated",
+        entity_type="config_parameter",
+        entity_id=parameter.id,
+        performed_by_id=performed_by_id,
+        before=before,
+        after=_audit_parameter_snapshot(parameter),
+    )
     return _parameter_to_schema(parameter)
 
 
