@@ -98,7 +98,9 @@ def test_backup_generation_and_pdf(client, tmp_path) -> None:
     ]:
         assert path.exists()
 
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata = backup_services.load_backup_metadata(metadata_path)
+    assert not pdf_path.read_bytes().startswith(b"%PDF")
+    assert backup_services.read_backup_file(pdf_path).startswith(b"%PDF")
     assert metadata["notes"] == "Respaldo QA"
     assert metadata["reason"] == "Generar respaldo QA"
     assert metadata["triggered_by_id"] == backup_data["triggered_by_id"]

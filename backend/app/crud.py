@@ -46,6 +46,7 @@ from .services.sales import consume_supplier_batch
 from .services.inventory import calculate_inventory_valuation
 from .config import settings
 from .core.settings import inventory_alert_settings, return_policy_settings
+from . import security_tokens as token_protection
 from .utils import audit as audit_utils
 from .utils import audit_trail as audit_trail_utils
 from .utils.cache import TTLCache
@@ -62,6 +63,11 @@ def _verify_supervisor_pin_hash(hashed: str, candidate: str) -> bool:
         return _PIN_CONTEXT.verify(candidate, hashed)
     except ValueError:
         return False
+
+
+def _token_filter(column, candidate: str):
+    protected = token_protection.protect_token(candidate)
+    return or_(column == candidate, column == protected)
 
 
 DEFAULT_SECURITY_MODULES: list[str] = [
@@ -4746,11 +4752,13 @@ def create_password_reset_token(
 ) -> models.PasswordResetToken:
     token = secrets.token_urlsafe(48)
     expires_at = datetime.utcnow() + timedelta(minutes=expires_minutes)
+    protected_token = token_protection.protect_token(token)
     record = models.PasswordResetToken(
         user_id=user_id,
-        token=token,
+        token=protected_token,
         expires_at=expires_at,
     )
+    record.plaintext_token = token  # type: ignore[attr-defined]
     details = json.dumps(
         {"expires_at": record.expires_at.isoformat()}, ensure_ascii=False
     )
@@ -4773,7 +4781,7 @@ def get_password_reset_token(
     db: Session, token: str
 ) -> models.PasswordResetToken | None:
     statement = select(models.PasswordResetToken).where(
-        models.PasswordResetToken.token == token
+        _token_filter(models.PasswordResetToken.token, token)
     )
     return db.scalars(statement).first()
 
@@ -4827,8 +4835,9 @@ def create_active_session(
     session_token: str,
     expires_at: datetime | None = None,
 ) -> models.ActiveSession:
+    stored_token = token_protection.protect_token(session_token)
     session = models.ActiveSession(
-        user_id=user_id, session_token=session_token, expires_at=expires_at
+        user_id=user_id, session_token=stored_token, expires_at=expires_at
     )
     with transactional_session(db):
         db.add(session)
@@ -4845,7 +4854,7 @@ def get_active_session_by_token(db: Session, session_token: str) -> models.Activ
             .joinedload(models.User.roles)
             .joinedload(models.UserRole.role)
         )
-        .where(models.ActiveSession.session_token == session_token)
+        .where(_token_filter(models.ActiveSession.session_token, session_token))
     )
     return db.scalars(statement).first()
 
@@ -8108,6 +8117,7 @@ def create_product_variant(
             raise ValueError("product_variant_conflict") from exc
         if variant.is_default:
             _unset_default_variant(db, device.id, keep_id=variant.id)
+        variant.device = device
         db.refresh(variant)
 
         _log_action(
@@ -8256,7 +8266,8 @@ def _build_bundle_item(
         if variant.device_id != device.id:
             raise ValueError("bundle_variant_device_mismatch")
     return models.ProductBundleItem(
-        device_id=device.id,
+        device=device,
+        variant=variant if variant_id is not None else None,
         variant_id=variant_id,
         quantity=item.quantity,
     )
@@ -8325,8 +8336,8 @@ def update_product_bundle(
     performed_by_id: int | None = None,
 ) -> models.ProductBundle:
     bundle = get_product_bundle(db, bundle_id)
-    updates = payload.model_dump(exclude_unset=True)
-    items = updates.pop("items", None)
+    updates = payload.model_dump(exclude_unset=True, exclude={"items"})
+    items = payload.items
     if "base_price" in updates and updates["base_price"] is not None:
         updates["base_price"] = _to_decimal(updates["base_price"])
     if not updates and items is None:

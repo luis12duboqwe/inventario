@@ -468,7 +468,7 @@ def request_password_reset(
             expires_minutes=settings.password_reset_token_minutes,
         )
         if settings.testing_mode:
-            reset_token = record.token
+            reset_token = getattr(record, "plaintext_token", record.token)
     detail = "Si el usuario existe, se envió un enlace de recuperación."
     return schemas.PasswordResetResponse(detail=detail, reset_token=reset_token)
 
@@ -517,5 +517,6 @@ def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(
     detail = "Contraseña actualizada correctamente."
     response_payload = schemas.PasswordResetResponse(detail=detail)
     if settings.testing_mode:
-        response_payload.reset_token = record.token
+        response_payload.reset_token = getattr(
+            record, "plaintext_token", record.token)
     return response_payload

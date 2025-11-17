@@ -865,6 +865,26 @@ class Settings(BaseSettings):
                 "BACKUP_DIR", "SOFTMOBILE_BACKUP_DIR"),
         ),
     ]
+    require_encrypted_backups: Annotated[
+        bool,
+        Field(
+            default=True,
+            validation_alias=AliasChoices(
+                "REQUIRE_ENCRYPTED_BACKUPS",
+                "SOFTMOBILE_REQUIRE_ENCRYPTED_BACKUPS",
+            ),
+        ),
+    ]
+    backup_encryption_key_path: Annotated[
+        str,
+        Field(
+            default="./backups/.backup.key",
+            validation_alias=AliasChoices(
+                "BACKUP_ENCRYPTION_KEY_PATH",
+                "SOFTMOBILE_BACKUP_ENCRYPTION_KEY_PATH",
+            ),
+        ),
+    ]
     accounts_receivable_reminders_enabled: Annotated[
         bool,
         Field(

@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
@@ -118,8 +117,12 @@ def download_backup(
         filename=file_path.name,
         media_type=media_type,
     )
-    return FileResponse(
-        file_path,
+    file_bytes = backup_services.read_backup_file(file_path)
+    headers = {
+        "Content-Disposition": f"attachment; filename=\"{metadata.filename}\"",
+    }
+    return Response(
+        content=file_bytes,
         media_type=metadata.media_type,
-        filename=metadata.filename,
+        headers=headers,
     )
