@@ -47,7 +47,10 @@ export default function SyncPage() {
     refreshOutboxStats,
     handleRetryOutbox,
     reprioritizeOutbox,
+    handleResolveOutboxConflicts,
     outboxStats,
+    outboxConflicts,
+    lastOutboxConflict,
     syncQueueSummary,
     syncHybridProgress,
     syncHybridForecast,
@@ -90,6 +93,12 @@ export default function SyncPage() {
       await refreshOutbox();
     }
   }, [enableHybridPrep, handleSync, refreshOutbox, refreshSyncQueueSummary]);
+
+  const handleManualConflictResolution = useCallback(async () => {
+    await handleResolveOutboxConflicts();
+    await refreshOutbox();
+    await refreshOutboxStats();
+  }, [handleResolveOutboxConflicts, refreshOutbox, refreshOutboxStats]);
 
   const handleManualBackup = useCallback(async () => {
     const input = ensureReason(
@@ -257,6 +266,9 @@ export default function SyncPage() {
           onDownloadPdf={handleDownloadPdf}
           onExportCsv={handleExportCsv}
           syncStatus={syncStatus}
+          conflictCount={outboxConflicts}
+          lastConflictAt={lastOutboxConflict}
+          onResolveConflicts={handleManualConflictResolution}
         />
       </header>
 
@@ -338,6 +350,14 @@ export default function SyncPage() {
             </button>
             <button
               type="button"
+              className="btn btn-warning"
+              disabled={outboxConflicts === 0}
+              onClick={() => void handleManualConflictResolution()}
+            >
+              Resolver conflictos
+            </button>
+            <button
+              type="button"
               className="btn btn-secondary"
               disabled={outbox.length === 0}
               onClick={() => void handleRetryOutbox()}
@@ -359,6 +379,7 @@ export default function SyncPage() {
                   <th>Total</th>
                   <th>Pendientes</th>
                   <th>Fallidos</th>
+                  <th>Conflictos</th>
                   <th>Última actualización</th>
                 </tr>
               </thead>
@@ -370,6 +391,7 @@ export default function SyncPage() {
                     <td>{entry.total}</td>
                     <td>{entry.pending}</td>
                     <td>{entry.failed}</td>
+                    <td>{entry.conflicts}</td>
                     <td>{entry.latest_update ? new Date(entry.latest_update).toLocaleString("es-MX") : "—"}</td>
                   </tr>
                 ))}

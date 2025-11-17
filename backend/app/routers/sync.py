@@ -415,6 +415,15 @@ def retry_outbox_entries(
 def reprioritize_outbox_entry(
     entry_id: int,
     payload: schemas.SyncOutboxPriorityUpdate,
+@router.post(
+    "/outbox/resolve",
+    response_model=list[schemas.SyncOutboxEntryResponse],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def resolve_outbox_conflicts(
+    payload: schemas.SyncOutboxReplayRequest,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*GESTION_ROLES)),
     reason: str = Depends(require_reason),
@@ -430,6 +439,17 @@ def reprioritize_outbox_entry(
     if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entrada no encontrada")
     return entry
+    entries = crud.resolve_outbox_conflicts(
+        db,
+        payload.ids,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+        limit=limit,
+        offset=offset,
+    )
+    if not entries:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entradas no encontradas")
+    return entries
 
 
 @router.get("/outbox/stats", response_model=list[schemas.SyncOutboxStatsEntry], dependencies=[Depends(require_roles(*GESTION_ROLES))])

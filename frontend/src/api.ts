@@ -2950,6 +2950,8 @@ export type SyncOutboxEntry = {
   status: SyncOutboxStatus;
   priority: "HIGH" | "NORMAL" | "LOW";
   error_message?: string | null;
+  conflict_flag: boolean;
+  version: number;
   created_at: string;
   updated_at: string;
   latency_ms?: number | null;
@@ -2963,8 +2965,10 @@ export type SyncOutboxStatsEntry = {
   total: number;
   pending: number;
   failed: number;
+  conflicts: number;
   latest_update?: string | null;
   oldest_pending?: string | null;
+  last_conflict_at?: string | null;
 };
 
 // [PACK35-frontend]
@@ -7183,6 +7187,16 @@ export function updateSyncOutboxPriority(
     {
       method: "PATCH",
       body: JSON.stringify({ priority }),
+export function resolveSyncOutboxConflicts(
+  token: string,
+  ids: number[],
+  reason: string,
+): Promise<SyncOutboxEntry[]> {
+  return request<SyncOutboxEntry[]>(
+    "/sync/outbox/resolve",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
       headers: { "X-Reason": reason },
     },
     token,

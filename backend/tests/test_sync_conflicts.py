@@ -51,3 +51,35 @@ def test_sync_outbox_conflict_detection_and_version_increment(db_session):
     audit_logs = crud.list_system_logs(
         db_session, modulo="inventario", limit=50)
     assert any(log.accion == "sync_conflict_potential" for log in audit_logs)
+
+
+def test_sync_outbox_conflict_resolution(db_session):
+    first = crud.enqueue_sync_outbox(
+        db_session,
+        entity_type="device",
+        entity_id="DEV-200",
+        operation="create",
+        payload={"name": "Telefono Z", "quantity": 3},
+    )
+    assert first.version == 1
+    conflicting = crud.enqueue_sync_outbox(
+        db_session,
+        entity_type="device",
+        entity_id="DEV-200",
+        operation="update",
+        payload={"name": "Telefono Z", "quantity": 6},
+    )
+    assert conflicting.conflict_flag is True
+
+    resolved = crud.resolve_outbox_conflicts(
+        db_session,
+        [conflicting.id],
+        performed_by_id=None,
+        reason="Resolución manual",
+    )
+    assert resolved
+    resolved_entry = resolved[0]
+    assert resolved_entry.conflict_flag is False
+    assert resolved_entry.version == conflicting.version + 1
+    audit_logs = crud.list_system_logs(db_session, modulo="inventario", limit=50)
+    assert any(log.accion == "sync_conflict_resolved" for log in audit_logs)
