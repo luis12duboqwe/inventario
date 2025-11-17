@@ -5306,6 +5306,35 @@ button.ghost {
   gap: 0.5rem;
 }
 
+.sync-panel__alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--warning-strong, #f59e0b);
+  background: linear-gradient(90deg, rgba(248, 180, 0, 0.08), rgba(14, 165, 233, 0.06));
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+}
+
+.sync-panel__alert-title {
+  margin: 0;
+  color: var(--warning-strong, #f59e0b);
+  font-weight: 700;
+}
+
+.sync-panel__alert-subtitle {
+  margin: 0.1rem 0;
+  color: var(--text-secondary);
+}
+
+.sync-panel__hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
