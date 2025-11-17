@@ -181,6 +181,28 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    config_sync_directory: Annotated[
+        str,
+        Field(
+            default_factory=lambda: str(
+                Path(__file__).resolve().parents[2] / "ops" / "config_sync"
+            ),
+            validation_alias=AliasChoices(
+                "CONFIG_SYNC_DIRECTORY",
+                "SOFTMOBILE_CONFIG_SYNC_DIRECTORY",
+            ),
+        ),
+    ]
+    config_sync_enabled: Annotated[
+        bool,
+        Field(
+            default=True,
+            validation_alias=AliasChoices(
+                "CONFIG_SYNC_ENABLED",
+                "SOFTMOBILE_CONFIG_SYNC_ENABLED",
+            ),
+        ),
+    ]
     # // [PACK35-backend]
     sync_remote_url: Annotated[
         str | None,
@@ -1149,9 +1171,36 @@ class Settings(BaseSettings):
             return str(base)
         return str(Path(value).expanduser())
 
+    @field_validator("config_sync_directory", mode="before")
+    @classmethod
+    def _normalize_config_sync_directory(
+        cls, value: str | Path | None
+    ) -> str:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            default_path = (
+                Path(__file__).resolve().parents[2] / "ops" / "config_sync"
+            )
+            return str(default_path)
+        return str(Path(value).expanduser())
+
+    @field_validator("config_sync_enabled", mode="before")
+    @classmethod
+    def _normalize_config_sync_enabled(cls, value: bool | str | None) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return value != 0
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return True
+        return _is_truthy(str(value))
+
     @property
     def purchases_documents_directory(self) -> Path:
         return Path(self.purchases_documents_local_path).expanduser()
+
+    @property
+    def config_sync_path(self) -> Path:
+        return Path(self.config_sync_directory).expanduser()
 
     @model_validator(mode="after")
     def _validate_required(self) -> "Settings":
