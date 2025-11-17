@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import datetime, timedelta, timezone
 import types
 import uuid
@@ -16,7 +16,9 @@ from passlib.context import CryptContext
 import bcrypt
 from sqlalchemy.orm import Session
 
-from . import crud, schemas
+from sqlalchemy import select
+
+from . import crud, models, schemas
 from .core.roles import ADMIN
 from .config import settings
 from .database import get_db
@@ -386,8 +388,114 @@ def _collect_user_roles(user: Any) -> set[str]:
     return collected
 
 
-def require_roles(*roles: str):
-    async def dependency(current_user=Depends(get_current_user)):
+def _collect_user_stores(user: Any) -> set[int]:
+    stores: set[int] = set()
+    store_id = getattr(user, "store_id", None)
+    if isinstance(store_id, int):
+        stores.add(store_id)
+
+    assignments = getattr(user, "roles", None) or []
+    for assignment in assignments:
+        assignment_store = getattr(assignment, "store_id", None)
+        if isinstance(assignment_store, int):
+            stores.add(assignment_store)
+    return stores
+
+
+def _aggregate_permissions(records: Iterable[Any]) -> dict[str, dict[str, bool]]:
+    permissions: dict[str, dict[str, bool]] = {}
+    for record in records:
+        module = getattr(record, "module", None)
+        if not module:
+            continue
+        module_key = str(module).lower()
+        bucket = permissions.setdefault(
+            module_key,
+            {"can_view": False, "can_edit": False, "can_delete": False},
+        )
+        bucket["can_view"] = bucket["can_view"] or bool(getattr(record, "can_view", False))
+        bucket["can_edit"] = bucket["can_edit"] or bool(getattr(record, "can_edit", False))
+        bucket["can_delete"] = bucket["can_delete"] or bool(
+            getattr(record, "can_delete", False)
+        )
+    return permissions
+
+
+def _collect_role_permissions(
+    user: Any, db: Session | None, role_names: set[str]
+) -> dict[str, dict[str, bool]]:
+    assignments = getattr(user, "roles", None) or []
+    assignment_permissions: list[Any] = []
+    for assignment in assignments:
+        role_obj = getattr(assignment, "role", None)
+        assignment_permissions.extend(getattr(role_obj, "permissions", []) or [])
+
+    aggregated = _aggregate_permissions(assignment_permissions)
+    if aggregated or db is None:
+        return aggregated
+
+    statement = select(models.Permission).where(models.Permission.role_name.in_(role_names))
+    records = db.scalars(statement).all()
+    return _aggregate_permissions(records)
+
+
+def _extract_store_scope(request: Request | None) -> int | None:
+    if request is None:
+        return None
+
+    for source in (
+        request.path_params,
+        request.query_params,
+        request.headers,
+    ):
+        for key in ("store_id", "sucursal_id", "x-store-id"):
+            raw_value = source.get(key)
+            if raw_value is None:
+                continue
+            try:
+                return int(raw_value)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _normalize_action(action: str | None, method: str | None) -> str:
+    if action:
+        normalized = action.lower()
+    else:
+        normalized = (method or "GET").lower()
+    if normalized in {"delete", "del"}:
+        return "delete"
+    if normalized in {"patch", "post", "put", "edit", "update"}:
+        return "edit"
+    return "view"
+
+
+def _has_sensitive_permission(
+    permissions: dict[str, dict[str, bool]], module: str, action: str
+) -> bool:
+    module_key = module.lower()
+    entry = permissions.get(module_key)
+    if entry is None:
+        return False
+    if action == "delete":
+        return entry["can_delete"]
+    if action == "edit":
+        return entry["can_edit"] or entry["can_delete"]
+    return entry["can_view"] or entry["can_edit"] or entry["can_delete"]
+
+
+def require_roles(
+    *roles: str,
+    module: str | None = None,
+    action: str | None = None,
+    enforce_store_scope: bool = True,
+):
+    async def dependency(
+        request: Request,
+        current_user=Depends(get_current_user),
+        db: Session | None = Depends(get_db),
+    ):
         user_roles = _collect_user_roles(current_user)
         if ADMIN in user_roles:
             return current_user
@@ -398,6 +506,27 @@ def require_roles(*roles: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No cuenta con permisos para realizar esta acción.",
             )
+
+        if enforce_store_scope:
+            store_scope = _extract_store_scope(request)
+            if store_scope is not None:
+                user_stores = _collect_user_stores(current_user)
+                if user_stores and store_scope not in user_stores:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="No cuenta con permisos en esta sucursal.",
+                    )
+
+        module_key = module or (request.headers.get("x-permission-module") if request else None)
+        normalized_action = _normalize_action(action, request.method if request else None)
+        if module_key:
+            permissions = _collect_role_permissions(current_user, db, user_roles)
+            if not _has_sensitive_permission(permissions, module_key, normalized_action):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="La acción solicitada es sensible y no está permitida.",
+                )
+
         return current_user
 
     return dependency
