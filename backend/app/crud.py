@@ -12824,6 +12824,10 @@ def list_sync_outbox(
     limit: int = 50,
     offset: int = 0,
 ) -> list[models.SyncOutbox]:
+    conflict_order = case(
+        (models.SyncOutbox.conflict_flag.is_(True), 0),
+        else_=1,
+    )
     priority_order = case(
         (models.SyncOutbox.priority == models.SyncOutboxPriority.HIGH, 0),
         (models.SyncOutbox.priority == models.SyncOutboxPriority.NORMAL, 1),
@@ -12832,7 +12836,11 @@ def list_sync_outbox(
     )
     statement = (
         select(models.SyncOutbox)
-        .order_by(priority_order, models.SyncOutbox.updated_at.desc())
+        .order_by(
+            conflict_order,
+            priority_order,
+            models.SyncOutbox.updated_at.desc(),
+        )
         .offset(offset)
         .limit(limit)
     )
@@ -12896,6 +12904,38 @@ def reset_outbox_entries(
     return refreshed[normalized_offset:end_index]
 
 
+def update_outbox_priority(
+    db: Session,
+    entry_id: int,
+    *,
+    priority: models.SyncOutboxPriority,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.SyncOutbox | None:
+    statement = select(models.SyncOutbox).where(models.SyncOutbox.id == entry_id)
+    entry = db.scalars(statement).first()
+    if entry is None:
+        return None
+
+    with transactional_session(db):
+        entry.priority = priority
+        entry.updated_at = datetime.utcnow()
+        flush_session(db)
+        db.refresh(entry)
+        details_payload = {"priority": priority.value, "operation": entry.operation}
+        if reason:
+            details_payload["reason"] = reason
+        _log_action(
+            db,
+            action="sync_outbox_reprioritized",
+            entity_type=entry.entity_type,
+            entity_id=str(entry.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(details_payload, ensure_ascii=False),
+        )
+    return entry
+
+
 def get_sync_outbox_statistics(
     db: Session, *, limit: int | None = None, offset: int = 0
 ) -> list[dict[str, object]]:
@@ -12917,6 +12957,12 @@ def get_sync_outbox_statistics(
                     else_=0,
                 )
             ).label("failed"),
+            func.sum(
+                case(
+                    (models.SyncOutbox.conflict_flag.is_(True), 1),
+                    else_=0,
+                )
+            ).label("conflicts"),
             func.max(models.SyncOutbox.updated_at).label("latest_update"),
             func.min(
                 case(
@@ -12927,6 +12973,12 @@ def get_sync_outbox_statistics(
                     else_=None,
                 )
             ).label("oldest_pending"),
+            func.max(
+                case(
+                    (models.SyncOutbox.conflict_flag.is_(True), models.SyncOutbox.updated_at),
+                    else_=None,
+                )
+            ).label("last_conflict_at"),
         )
         .group_by(models.SyncOutbox.entity_type, models.SyncOutbox.priority)
     )
@@ -12942,8 +12994,10 @@ def get_sync_outbox_statistics(
                 "total": int(row.total or 0),
                 "pending": max(int(row.pending or 0), 0),
                 "failed": max(int(row.failed or 0), 0),
+                "conflicts": max(int(row.conflicts or 0), 0),
                 "latest_update": row.latest_update,
                 "oldest_pending": row.oldest_pending,
+                "last_conflict_at": row.last_conflict_at,
             }
         )
     results.sort(key=lambda item: (_priority_weight(
@@ -12951,6 +13005,60 @@ def get_sync_outbox_statistics(
     if limit is None:
         return results[offset:]
     return results[offset: offset + limit]
+
+
+def resolve_outbox_conflicts(
+    db: Session,
+    entry_ids: Iterable[int],
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[models.SyncOutbox]:
+    ids_tuple = tuple({int(entry_id) for entry_id in entry_ids})
+    if not ids_tuple:
+        return []
+
+    statement = select(models.SyncOutbox).where(
+        models.SyncOutbox.id.in_(ids_tuple))
+    entries = list(db.scalars(statement))
+    if not entries:
+        return []
+
+    now = datetime.utcnow()
+    with transactional_session(db):
+        for entry in entries:
+            previous_version = int(entry.version or 1)
+            entry.conflict_flag = False
+            entry.status = models.SyncOutboxStatus.PENDING
+            entry.attempt_count = 0
+            entry.last_attempt_at = None
+            entry.error_message = None
+            entry.updated_at = now
+            entry.version = previous_version + 1
+            details_payload = {
+                "operation": entry.operation,
+                "version": entry.version,
+                "reason": reason,
+                "entity_id": entry.entity_id,
+            }
+            log_audit_event(
+                db,
+                action="sync_conflict_resolved",
+                entity_type=entry.entity_type,
+                entity_id=entry.id,
+                performed_by_id=performed_by_id,
+                details=details_payload,
+            )
+    refreshed = list(db.scalars(statement))
+    normalized_offset = max(offset, 0)
+    if limit is None:
+        return refreshed[normalized_offset:]
+    normalized_limit = max(limit, 0)
+    end_index = normalized_offset + (
+        normalized_limit if normalized_limit else normalized_offset)
+    return refreshed[normalized_offset:end_index]
 
 
 def get_store_sync_overview(

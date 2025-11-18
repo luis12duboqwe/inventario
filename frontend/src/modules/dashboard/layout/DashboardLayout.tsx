@@ -111,6 +111,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     syncStatus,
     lastInventoryRefresh,
     outboxError,
+    outboxConflicts,
+    lastOutboxConflict,
     observability,
     observabilityError,
     refreshObservability,
@@ -345,6 +347,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     (error ? 1 : 0) +
     (networkAlert ? 1 : 0) +
     (syncStatus ? 1 : 0) +
+    (outboxConflicts > 0 ? 1 : 0) +
     (observabilityError ? 1 : 0) +
     techNotificationItems.length +
     riskAlerts.length;
@@ -391,6 +394,18 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         title: "Error de sincronización",
         description: outboxError,
         variant: "error",
+      });
+    }
+
+    if (outboxConflicts > 0) {
+      items.push({
+        id: "panel-outbox-conflicts",
+        title: "Conflictos en sync_outbox",
+        description:
+          lastOutboxConflict != null
+            ? `Último conflicto: ${lastOutboxConflict.toLocaleString("es-MX")}`
+            : "Se detectaron conflictos con prioridad last-write-wins.",
+        variant: "warning",
       });
     }
 
@@ -454,6 +469,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     lastInventoryRefresh,
     message,
     networkAlert,
+    outboxConflicts,
+    lastOutboxConflict,
     techNotificationItems,
     outboxError,
     syncStatus,

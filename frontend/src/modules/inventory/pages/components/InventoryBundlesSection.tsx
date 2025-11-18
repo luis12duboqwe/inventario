@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
-import { promptCorporateReason } from "../../../utils/corporateReason";
+import { promptCorporateReason } from "../../utils/corporateReason";
 
 type BundleFormState = {
   editingId: number | null;
@@ -31,14 +31,7 @@ const createEmptyItem = (key: number): BundleItemDraft => ({
 
 function InventoryBundlesSection(): JSX.Element | null {
   const {
-    module: {
-      devices,
-      stores,
-      selectedStoreId,
-      enableBundles,
-      enableVariants,
-      formatCurrency,
-    },
+    module: { devices, stores, selectedStoreId, enableBundles, enableVariants, formatCurrency },
     variants,
     bundles,
     helpers: { storeNameById },
@@ -115,7 +108,10 @@ function InventoryBundlesSection(): JSX.Element | null {
           quantity: safeQuantity,
         };
       })
-      .filter((entry): entry is { device_id: number; variant_id?: number; quantity: number } => entry !== null);
+      .filter(
+        (entry): entry is { device_id: number; variant_id?: number; quantity: number } =>
+          entry !== null,
+      );
 
     if (preparedItems.length === 0) {
       window.alert("Agrega al menos un dispositivo al combo corporativo.");
@@ -285,7 +281,8 @@ function InventoryBundlesSection(): JSX.Element | null {
         <div>
           <h2>Combos y paquetes</h2>
           <p className="card-subtitle">
-            Agrupa dispositivos compatibles para ventas rápidas y controla precios corporativos especiales.
+            Agrupa dispositivos compatibles para ventas rápidas y controla precios corporativos
+            especiales.
           </p>
         </div>
         <div className="card-actions">
@@ -361,7 +358,9 @@ function InventoryBundlesSection(): JSX.Element | null {
           <select
             id="bundle-store"
             value={formState.storeId}
-            onChange={(event) => setFormState((state) => ({ ...state, storeId: event.target.value }))}
+            onChange={(event) =>
+              setFormState((state) => ({ ...state, storeId: event.target.value }))
+            }
           >
             <option value="">Todas las sucursales</option>
             {stores.map((store) => (
@@ -410,7 +409,9 @@ function InventoryBundlesSection(): JSX.Element | null {
             step="0.01"
             min="0"
             value={formState.basePrice}
-            onChange={(event) => setFormState((state) => ({ ...state, basePrice: event.target.value }))}
+            onChange={(event) =>
+              setFormState((state) => ({ ...state, basePrice: event.target.value }))
+            }
             placeholder="Ej. 499.90"
           />
         </div>
@@ -419,7 +420,9 @@ function InventoryBundlesSection(): JSX.Element | null {
             <input
               type="checkbox"
               checked={formState.isActive}
-              onChange={(event) => setFormState((state) => ({ ...state, isActive: event.target.checked }))}
+              onChange={(event) =>
+                setFormState((state) => ({ ...state, isActive: event.target.checked }))
+              }
             />
             Activo
           </label>
@@ -428,7 +431,9 @@ function InventoryBundlesSection(): JSX.Element | null {
         <div className="form-row full">
           <h4>Componentes del combo</h4>
           {itemDrafts.map((item) => {
-            const resolvedDeviceOptions = deviceOptions.some((option) => option.value === item.deviceId)
+            const resolvedDeviceOptions = deviceOptions.some(
+              (option) => option.value === item.deviceId,
+            )
               ? deviceOptions
               : item.deviceId
               ? [
@@ -457,10 +462,7 @@ function InventoryBundlesSection(): JSX.Element | null {
                 !mapped.some((option) => option.value === item.variantId) &&
                 item.variantLabel
               ) {
-                return [
-                  { value: item.variantId, label: item.variantLabel },
-                  ...mapped,
-                ];
+                return [{ value: item.variantId, label: item.variantLabel }, ...mapped];
               }
               return mapped;
             })();

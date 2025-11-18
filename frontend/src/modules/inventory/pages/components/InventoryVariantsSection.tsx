@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
-import { promptCorporateReason } from "../../../utils/corporateReason";
+import { promptCorporateReason } from "../../utils/corporateReason";
 
 type VariantFormState = {
   editingId: number | null;
@@ -55,7 +55,8 @@ function InventoryVariantsSection(): JSX.Element | null {
       return;
     }
     const priceOverrideInput = formState.priceOverride.trim();
-    const parsedPrice = priceOverrideInput === "" ? undefined : Number.parseFloat(priceOverrideInput);
+    const parsedPrice =
+      priceOverrideInput === "" ? undefined : Number.parseFloat(priceOverrideInput);
     const payload = {
       name: formState.name.trim(),
       variant_sku: formState.sku.trim(),
@@ -107,7 +108,8 @@ function InventoryVariantsSection(): JSX.Element | null {
         <div>
           <h2>Variantes de producto</h2>
           <p className="card-subtitle">
-            Gestiona atributos específicos para cada dispositivo y controla sus precios individuales.
+            Gestiona atributos específicos para cada dispositivo y controla sus precios
+            individuales.
           </p>
         </div>
         <div className="card-actions">
@@ -175,7 +177,9 @@ function InventoryVariantsSection(): JSX.Element | null {
           <select
             id="variant-device"
             value={formState.deviceId}
-            onChange={(event) => setFormState((state) => ({ ...state, deviceId: event.target.value }))}
+            onChange={(event) =>
+              setFormState((state) => ({ ...state, deviceId: event.target.value }))
+            }
             required
           >
             <option value="">Selecciona un dispositivo</option>
@@ -212,7 +216,9 @@ function InventoryVariantsSection(): JSX.Element | null {
             id="variant-barcode"
             type="text"
             value={formState.barcode}
-            onChange={(event) => setFormState((state) => ({ ...state, barcode: event.target.value }))}
+            onChange={(event) =>
+              setFormState((state) => ({ ...state, barcode: event.target.value }))
+            }
           />
         </div>
         <div className="form-row">
@@ -223,7 +229,9 @@ function InventoryVariantsSection(): JSX.Element | null {
             step="0.01"
             min="0"
             value={formState.priceOverride}
-            onChange={(event) => setFormState((state) => ({ ...state, priceOverride: event.target.value }))}
+            onChange={(event) =>
+              setFormState((state) => ({ ...state, priceOverride: event.target.value }))
+            }
             placeholder="Usa el precio del dispositivo por defecto"
           />
         </div>
@@ -232,7 +240,9 @@ function InventoryVariantsSection(): JSX.Element | null {
             <input
               type="checkbox"
               checked={formState.isDefault}
-              onChange={(event) => setFormState((state) => ({ ...state, isDefault: event.target.checked }))}
+              onChange={(event) =>
+                setFormState((state) => ({ ...state, isDefault: event.target.checked }))
+              }
             />
             Marcar como variante predeterminada
           </label>
@@ -240,7 +250,9 @@ function InventoryVariantsSection(): JSX.Element | null {
             <input
               type="checkbox"
               checked={formState.isActive}
-              onChange={(event) => setFormState((state) => ({ ...state, isActive: event.target.checked }))}
+              onChange={(event) =>
+                setFormState((state) => ({ ...state, isActive: event.target.checked }))
+              }
             />
             Activa
           </label>

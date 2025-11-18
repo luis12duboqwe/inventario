@@ -2950,8 +2950,13 @@ export type SyncOutboxEntry = {
   status: SyncOutboxStatus;
   priority: "HIGH" | "NORMAL" | "LOW";
   error_message?: string | null;
+  conflict_flag: boolean;
+  version: number;
   created_at: string;
   updated_at: string;
+  latency_ms?: number | null;
+  processing_latency_ms?: number | null;
+  status_detail?: string | null;
 };
 
 export type SyncOutboxStatsEntry = {
@@ -2960,8 +2965,10 @@ export type SyncOutboxStatsEntry = {
   total: number;
   pending: number;
   failed: number;
+  conflicts: number;
   latest_update?: string | null;
   oldest_pending?: string | null;
+  last_conflict_at?: string | null;
 };
 
 // [PACK35-frontend]
@@ -3202,7 +3209,7 @@ function parseFilenameFromDisposition(header: string | null, fallback: string): 
   if (utf8Match?.[1]) {
     try {
       return decodeURIComponent(utf8Match[1]);
-    } catch (error) {
+    } catch {
       return utf8Match[1];
     }
   }
@@ -7169,6 +7176,39 @@ export function retrySyncOutbox(token: string, ids: number[], reason: string): P
   );
 }
 
+export function updateSyncOutboxPriority(
+  token: string,
+  id: number,
+  priority: "HIGH" | "NORMAL" | "LOW",
+  reason: string,
+): Promise<SyncOutboxEntry> {
+  return request<SyncOutboxEntry>(
+    `/sync/outbox/${id}/priority`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ priority }),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function resolveSyncOutboxConflicts(
+  token: string,
+  ids: number[],
+  reason: string,
+): Promise<SyncOutboxEntry[]> {
+  return request<SyncOutboxEntry[]>(
+    "/sync/outbox/resolve",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
 export function getSyncOutboxStats(token: string): Promise<SyncOutboxStatsEntry[]> {
   return requestCollection<SyncOutboxStatsEntry>("/sync/outbox/stats", { method: "GET" }, token);
 }
@@ -7216,6 +7256,34 @@ export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncSt
     { method: "GET" },
     token,
   );
+}
+
+export async function downloadSyncHistoryCsv(
+  token: string,
+  reason: string,
+  limitPerStore = 10,
+): Promise<void> {
+  const response = await fetch(`${API_URL}/sync/history/export?limit_per_store=${limitPerStore}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar el historial de sincronización");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "historial_sincronizacion.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 export function getSyncOverview(token: string, storeId?: number): Promise<SyncBranchOverview[]> {
@@ -7670,11 +7738,19 @@ export function getCashRegisterReport(
   exportFormat: "json" | "pdf" = "json"
 ): Promise<CashSession> | Promise<Blob> {
   if (exportFormat === "pdf") {
-    return requestBlob(
-      `/pos/cash/register/${sessionId}/report?export=pdf`,
-      { method: "GET", headers: { "X-Reason": reason } },
-      token
-    );
+    return (async () => {
+      const response = await fetch(`${API_URL}/pos/cash/register/${sessionId}/report?export=pdf`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Reason": reason,
+        },
+      });
+      if (!response.ok) {
+        throw new Error("No fue posible descargar el reporte en PDF");
+      }
+      return await response.blob();
+    })();
   }
   return request<CashSession>(
     `/pos/cash/register/${sessionId}/report?export=json`,

@@ -615,6 +615,108 @@ def generate_backup(
             current_size = recalculated
 
         _write_metadata_with_size(current_size)
+            if recalculated_size == current_size:
+                return recalculated_size
+            current_size = recalculated_size
+        return current_size
+
+    total_size_estimate = 0
+    for _ in range(3):
+        recalculated = _write_and_archive(total_size_estimate)
+        if recalculated == total_size_estimate:
+            break
+        total_size_estimate = recalculated
+
+    total_size = _write_and_archive(total_size_estimate)
+    # total_size = recalculated_size  # Línea eliminada, ya que recalculated_size no está definida aquí y la indentación era incorrecta
+    final_components = [
+        pdf_path,
+        json_path,
+        sql_path,
+        config_path,
+        metadata_path,
+        archive_path,
+        critical_directory,
+    ]
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=total_size,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=(
+            str(app_settings.backup_encryption_key_path)
+            if encryption_enabled
+            else None
+        ),
+        cipher=cipher,
+    )
+    _build_archive()
+    total_size = _calculate_total_size(final_components)
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=total_size,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=(
+            str(app_settings.backup_encryption_key_path)
+            if encryption_enabled
+            else None
+        ),
+        cipher=cipher,
+    )
+    _build_archive()
+    total_size = _calculate_total_size(final_components)
+
+    for _ in range(2):
+        previous_size = total_size
+        _write_metadata(
+            metadata_path,
+            timestamp=timestamp,
+            mode=mode,
+            notes=notes,
+            components=selected_components,
+            json_path=json_path,
+            sql_path=sql_path,
+            pdf_path=pdf_path,
+            archive_path=archive_path,
+            config_path=config_path,
+            critical_directory=critical_directory,
+            copied_files=copied_files,
+            total_size_bytes=total_size,
+            triggered_by_id=triggered_by_id,
+            reason=normalized_reason,
+            encryption_enabled=encryption_enabled,
+            encryption_key_path=(
+                str(app_settings.backup_encryption_key_path)
+                if encryption_enabled
+                else None
+            ),
+            cipher=cipher,
+        )
         _build_archive()
         final_size = _recalculate()
         if final_size != current_size:

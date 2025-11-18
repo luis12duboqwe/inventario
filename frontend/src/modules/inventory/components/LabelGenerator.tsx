@@ -74,6 +74,7 @@ export default function LabelGenerator({
   }, [deviceId]);
 
   const canGenerate = Boolean(storeId) && parsedDeviceId !== null && Boolean(accessToken);
+  // console.debug("LabelGenerator", { storeId, parsedDeviceId, accessToken, canGenerate });
 
   const handleGenerate = React.useCallback(async () => {
     if (!canGenerate) {

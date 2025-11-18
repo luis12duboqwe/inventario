@@ -25,6 +25,7 @@ import {
   listSyncOutbox,
   registerMovement,
   retrySyncOutbox,
+  updateSyncOutboxPriority,
   triggerSync,
   runBackup,
   getSyncOutboxStats,
@@ -34,7 +35,9 @@ import {
   getSyncHybridBreakdown,
   getSyncHybridOverview,
   getObservabilitySnapshot,
+  downloadSyncHistoryCsv,
   updateDevice,
+  resolveSyncOutboxConflicts,
 } from "../../../api";
 import { safeArray } from "../../../utils/safeValues"; // [PACK36-dashboard-guards]
 import type {
@@ -95,6 +98,8 @@ type DashboardContextValue = {
   outbox: SyncOutboxEntry[];
   outboxError: string | null;
   outboxStats: SyncOutboxStatsEntry[];
+  outboxConflicts: number;
+  lastOutboxConflict: Date | null;
   syncQueueSummary: SyncQueueSummary | null;
   syncHybridProgress: SyncHybridProgress | null; // [PACK35-frontend]
   syncHybridForecast: SyncHybridForecast | null; // [PACK35-frontend]
@@ -123,10 +128,13 @@ type DashboardContextValue = {
   handleBackup: (reason: string, note?: string) => Promise<void>;
   refreshOutbox: () => Promise<void>;
   handleRetryOutbox: () => Promise<void>;
+  reprioritizeOutbox: (entryId: number, priority: SyncOutboxStatsEntry["priority"], reason: string) => Promise<void>;
+  handleResolveOutboxConflicts: () => Promise<void>;
   downloadInventoryReport: (reason: string) => Promise<void>;
   refreshOutboxStats: () => Promise<void>;
   refreshSyncQueueSummary: () => Promise<void>;
   refreshSyncHistory: () => Promise<void>;
+  exportSyncHistory: (reason: string) => Promise<void>;
   refreshObservability: () => Promise<void>;
   toasts: ToastMessage[];
   pushToast: (toast: Omit<ToastMessage, "id">) => void;
@@ -931,6 +939,107 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }
   }, [enableHybridPrep, friendlyErrorMessage, outbox, pushToast, refreshOutboxStats, token]);
 
+  const reprioritizeOutbox = useCallback(
+    async (entryId: number, priority: SyncOutboxStatsEntry["priority"], reason: string) => {
+      if (!enableHybridPrep) {
+        return;
+      }
+      try {
+        const updated = await updateSyncOutboxPriority(token, entryId, priority, reason);
+        setOutbox((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        pushToast({ message: "Prioridad actualizada", variant: "success" });
+        await refreshOutboxStats();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No se pudo actualizar la prioridad";
+        const friendly = friendlyErrorMessage(message);
+        setOutboxError(friendly);
+        pushToast({ message: friendly, variant: "error" });
+      }
+    },
+    [enableHybridPrep, friendlyErrorMessage, pushToast, refreshOutboxStats, token],
+  );
+
+  const exportSyncHistory = useCallback(
+    async (reason: string) => {
+      if (!reason || reason.trim().length < 5) {
+        pushToast({ message: "Indica un motivo corporativo para la exportación.", variant: "warning" });
+        return;
+      }
+      try {
+        await downloadSyncHistoryCsv(token, reason.trim());
+        pushToast({ message: "Historial exportado", variant: "success" });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No fue posible exportar el historial";
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [pushToast, token],
+  );
+  const conflictEntries = useMemo(
+    () => outbox.filter((entry) => entry.conflict_flag),
+    [outbox],
+  );
+
+  const lastOutboxConflict = useMemo(() => {
+    if (conflictEntries.length === 0) {
+      return null;
+    }
+    const timestamps = conflictEntries
+      .map((entry) => new Date(entry.updated_at))
+      .filter((date) => !Number.isNaN(date.getTime()));
+    if (timestamps.length === 0) {
+      return null;
+    }
+    return timestamps.sort((a, b) => b.getTime() - a.getTime())[0];
+  }, [conflictEntries]);
+
+  const handleResolveOutboxConflicts = useCallback(async () => {
+    if (!enableHybridPrep || conflictEntries.length === 0) {
+      return;
+    }
+    const reason =
+      typeof window === "undefined"
+        ? "Resolución manual de conflictos outbox"
+        : window.prompt(
+            "Motivo corporativo para resolver conflictos",
+            "Resolución manual de conflictos outbox",
+          );
+    if (!reason || reason.trim().length < 5) {
+      pushToast({
+        message: "Indica un motivo corporativo de al menos 5 caracteres para continuar.",
+        variant: "warning",
+      });
+      return;
+    }
+    try {
+      const updated = await resolveSyncOutboxConflicts(
+        token,
+        conflictEntries.map((entry) => entry.id),
+        reason,
+      );
+      setOutbox(updated);
+      setMessage("Conflictos marcados como resueltos");
+      pushToast({
+        message: `${updated.length} conflicto(s) listos para sincronización prioritizada`,
+        variant: "success",
+      });
+      await refreshOutboxStats();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No se pudo resolver la cola con conflictos";
+      const friendly = friendlyErrorMessage(message);
+      setOutboxError(friendly);
+      pushToast({ message: friendly, variant: "error" });
+    }
+  }, [
+    conflictEntries,
+    enableHybridPrep,
+    friendlyErrorMessage,
+    pushToast,
+    refreshOutboxStats,
+    token,
+  ]);
+
   const updateLowStockThreshold = useCallback(
     async (storeId: number, threshold: number) => {
       const previous = getThresholdForStore(storeId);
@@ -1027,6 +1136,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       outbox,
       outboxError,
       outboxStats,
+      outboxConflicts: conflictEntries.length,
+      lastOutboxConflict,
       syncQueueSummary,
       syncHybridProgress,
       syncHybridForecast,
@@ -1054,10 +1165,13 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       handleBackup,
       refreshOutbox,
       handleRetryOutbox,
+      reprioritizeOutbox,
+      handleResolveOutboxConflicts,
       downloadInventoryReport,
       refreshOutboxStats,
       refreshSyncQueueSummary,
       refreshSyncHistory,
+      exportSyncHistory,
       refreshObservability,
       toasts,
       pushToast,
@@ -1095,6 +1209,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       handleDeviceUpdate,
       handleMovement,
       handleRetryOutbox,
+      reprioritizeOutbox,
+      handleResolveOutboxConflicts,
       handleSync,
       lastInventoryRefresh,
       loading,
@@ -1105,6 +1221,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       outbox,
       outboxError,
       outboxStats,
+      conflictEntries,
+      lastOutboxConflict,
       toggleCompactMode,
       syncHybridForecast,
       syncHybridBreakdown,
@@ -1115,6 +1233,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       pushToast,
       refreshInventoryAfterTransfer,
       refreshOutbox,
+      exportSyncHistory,
       refreshOutboxStats,
       refreshSummary,
       refreshSyncHistory,

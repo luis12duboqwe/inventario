@@ -4123,8 +4123,22 @@ class SyncOutboxEntryResponse(BaseModel):
     status: SyncOutboxStatus
     priority: SyncOutboxPriority
     error_message: str | None
+    conflict_flag: bool
+    version: int
     created_at: datetime
     updated_at: datetime
+    latency_ms: int | None = Field(
+        default=None,
+        description="Milisegundos transcurridos desde la creación del evento hasta ahora.",
+    )
+    processing_latency_ms: int | None = Field(
+        default=None,
+        description="Milisegundos transcurridos entre la creación y el último intento.",
+    )
+    status_detail: str | None = Field(
+        default=None,
+        description="Estado detallado normalizado para la interfaz (pendiente/en_progreso/error/completado).",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -4142,6 +4156,38 @@ class SyncOutboxEntryResponse(BaseModel):
             return value
         return {}
 
+    @model_validator(mode="after")
+    def _compute_latencies(self) -> "SyncOutboxEntryResponse":  # pragma: no cover - cálculo derivado
+        now = datetime.now(timezone.utc)
+        created_at = self.created_at
+        last_attempt = self.last_attempt_at or self.updated_at
+
+        latency: int | None = None
+        processing_latency: int | None = None
+
+        if created_at:
+            latency = int((now - created_at).total_seconds() * 1000)
+        if created_at and last_attempt:
+            processing_latency = int((last_attempt - created_at).total_seconds() * 1000)
+
+        detail = "pendiente"
+        if self.status == SyncOutboxStatus.FAILED:
+            detail = "error"
+        elif self.status == SyncOutboxStatus.SENT:
+            detail = "completado"
+        else:
+            # Consideramos "en progreso" si la marca de actualización es reciente.
+            recent_threshold_ms = 90_000
+            if latency is not None and last_attempt:
+                delta_ms = int((now - last_attempt).total_seconds() * 1000)
+                if delta_ms <= recent_threshold_ms:
+                    detail = "en_progreso"
+
+        object.__setattr__(self, "latency_ms", latency)
+        object.__setattr__(self, "processing_latency_ms", processing_latency)
+        object.__setattr__(self, "status_detail", detail)
+        return self
+
 
 class SyncOutboxStatsEntry(BaseModel):
     entity_type: str
@@ -4149,8 +4195,10 @@ class SyncOutboxStatsEntry(BaseModel):
     total: int
     pending: int
     failed: int
+    conflicts: int
     latest_update: datetime | None
     oldest_pending: datetime | None
+    last_conflict_at: datetime | None
 
 
 # // [PACK35-backend]
@@ -4563,6 +4611,10 @@ class PurchaseAnalyticsResponse(BaseModel):
 
 class SyncOutboxReplayRequest(BaseModel):
     ids: list[int] = Field(..., min_length=1)
+
+
+class SyncOutboxPriorityUpdate(BaseModel):
+    priority: SyncOutboxPriority
 
 
 class AuditTrailInfo(BaseModel):
@@ -8331,6 +8383,7 @@ __all__ = [
     "SyncSessionCompact",
     "SyncStoreHistory",
     "SyncOutboxReplayRequest",
+    "SyncOutboxPriorityUpdate",
     "SyncSessionResponse",
     "TransferReport",
     "TransferReportDevice",

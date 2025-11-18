@@ -14,6 +14,7 @@ Este manual resume las tareas diarias, procedimientos de contingencia y métrica
    - Confirmar que `/pos/sale` emite recibos PDF y que los borradores pendientes se cierran en menos de 15 min.
 4. **Backups**
    - Verificar el último respaldo completado en `syncHistory`. Debe existir al menos uno por día hábil.
+   - El job nocturno ejecuta `ops/daily_encrypted_backup.sh` para cifrar y subir el respaldo a la central; revisar `/var/log/softmobile/backup.log` ante cualquier alerta.
 5. **Seguridad**
    - Revisar `audit_log` para detectar sesiones revocadas o intentos de 2FA fallidos.
 
@@ -30,6 +31,7 @@ Este manual resume las tareas diarias, procedimientos de contingencia y métrica
 2. Sustituye el archivo `softmobile.db` por el respaldo verificado.
 3. Ejecuta `alembic upgrade head` para asegurar compatibilidad de migraciones.
 4. Levanta servicios (`docker compose up -d`) y ejecuta `pytest -k sync_full` para validar integridad.
+5. Si el nodo proviene de una réplica inicial con `ops/bootstrap_central_replica.sh`, confirma que la sincronización incremental se ejecute con `X-Reason` auditado.
 
 ## Gestión de incidentes de sincronización
 
