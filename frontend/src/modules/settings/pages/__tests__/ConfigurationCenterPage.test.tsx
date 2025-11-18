@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import * as configurationApi from "../../../../services/api/configuration";
+import * as discoveryApi from "../../../../services/api/discovery";
 import ConfigurationCenterPage from "../ConfigurationCenterPage";
 
 vi.mock("../../../dashboard/context/DashboardContext", () => ({
@@ -65,6 +66,20 @@ const overviewMock = {
 };
 
 vi.spyOn(configurationApi, "fetchConfigurationOverview").mockResolvedValue(overviewMock);
+vi.spyOn(discoveryApi, "fetchLanDiscovery").mockResolvedValue({
+  enabled: true,
+  host: "192.168.0.10",
+  port: 8000,
+  protocol: "http",
+  api_base_url: "http://192.168.0.10:8000/api",
+  database: {
+    engine: "sqlite",
+    location: "/data/softmobile.db",
+    writable: true,
+    shared_over_lan: true,
+  },
+  notes: ["LAN activa"],
+});
 
 describe("ConfigurationCenterPage", () => {
   it("muestra tasas, plantillas y parámetros", async () => {
@@ -76,6 +91,7 @@ describe("ConfigurationCenterPage", () => {
       </QueryClientProvider>,
     );
 
+    expect(await screen.findByText("Asistente LAN")).toBeInTheDocument();
     expect(await screen.findByText("Tasas configurables")).toBeInTheDocument();
     expect(await screen.findByText("iva_general")).toBeInTheDocument();
     expect(await screen.findByText("sar_envio_inicial")).toBeInTheDocument();

@@ -25,6 +25,9 @@ El backend utiliza `backend/app/config.py` para validar los siguientes valores (
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Días de vigencia del token de refresco. |
 | `SESSION_COOKIE_EXPIRE_MINUTES` | Duración de la sesión web. |
 | `CORS_ORIGINS` | Lista separada por comas con los orígenes permitidos. |
+| `SOFTMOBILE_LAN_DISCOVERY_ENABLED` | Habilita o deshabilita el endpoint público de descubrimiento LAN. |
+| `SOFTMOBILE_LAN_HOST` | IP o hostname anunciado a los terminales LAN (por defecto se detecta automáticamente). |
+| `SOFTMOBILE_LAN_PORT` | Puerto anunciado para la API en LAN (por defecto `8000`). |
 | `SOFTMOBILE_ENABLE_*` | Flags de funcionalidad (catalog pro, transfers, purchases_sales, analytics_adv, hybrid_prep, 2FA). |
 | `REDIS_URL` | Cadena de conexión a Redis utilizada por `fastapi-limiter`. |
 
@@ -45,6 +48,23 @@ SOFTMOBILE_ENABLE_2FA=0
 SOFTMOBILE_ENABLE_HYBRID_PREP=1
 REDIS_URL=redis://localhost:6379/0
 ```
+
+### Configuración LAN rápida
+
+Cuando el backend se ejecuta en un servidor LAN y varias terminales deben
+conectarse con la IP local, define las siguientes variables:
+
+```env
+SOFTMOBILE_LAN_DISCOVERY_ENABLED=1
+SOFTMOBILE_LAN_HOST=192.168.0.10
+SOFTMOBILE_LAN_PORT=8000
+DATABASE_URL=sqlite:////data/softmobile.db  # o postgresql://softmobile:softmobile@192.168.0.10/softmobile
+CORS_ORIGINS=["http://192.168.0.10:5173","http://192.168.0.10:8000"]
+```
+
+Luego expón el frontend con `npm run dev -- --host 0.0.0.0 --port 5173` y usa el
+asistente LAN del frontend para fijar automáticamente la `API_BASE_URL` en cada
+terminal.
 
 ## Puesta en marcha con Docker
 
