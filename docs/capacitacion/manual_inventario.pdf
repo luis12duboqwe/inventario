@@ -1,0 +1,13 @@
+Manual de Inventario — Softmobile 2025 v2.2.0
+
+Resumen de flujos:
+- Altas de dispositivos con IMEI/serie y validaciones de unicidad.
+- Ajustes con motivo obligatorio (cabecera X-Reason) y auditoría de stock.
+- Reportes oscuros: rotación, aging, forecast de quiebres.
+- Exportaciones CSV/PDF/Excel desde /inventory y /reports/analytics.*
+
+Pasos rápidos:
+1) Desde Inventario → Productos, usa "Agregar" y completa IMEI/serie con proveedor y lote.
+2) En Movimientos, selecciona "Ajuste" con X-Reason ≥ 5 caracteres y confirma existencias.
+3) Revisa alertas en Analítica avanzada y descarga el PDF en tema oscuro.
+4) Exporta listas de precios y reservas desde la barra de acciones con motivo corporativo.

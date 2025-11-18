@@ -1,0 +1,13 @@
+Manual de Seguridad — Softmobile 2025 v2.2.0
+
+Cobertura:
+- Autenticación, refresco y bloqueo tras intentos fallidos.
+- 2FA opcional (flag SOFTMOBILE_ENABLE_2FA) sin alterar versiones.
+- Bitácora y revocación de sesiones activas.
+- Cabecera X-Reason obligatoria en operaciones sensibles.
+
+Pasos rápidos:
+1) Habilita TOTP desde Seguridad → Usuarios si el flag lo permite.
+2) Revoca sesiones sospechosas y registra el motivo corporativo.
+3) Verifica exportes y operaciones con X-Reason ≥ 5 caracteres.
+4) Consulta `/security/audit` para descargas en PDF en tema oscuro.

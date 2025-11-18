@@ -569,6 +569,17 @@ def generate_backup(
     component_files = [pdf_path, json_path, sql_path, config_path]
     _encrypt_backup_files(cipher, component_files, critical_directory)
 
+    def _recalculate() -> int:
+        return _calculate_total_size(
+            [
+                pdf_path,
+                json_path,
+                sql_path,
+                config_path,
+                metadata_path,
+                archive_path,
+                critical_directory,
+            ]
     def _write_metadata_with_size(size: int) -> None:
         _write_metadata(
             metadata_path,
@@ -629,6 +640,17 @@ def generate_backup(
             return recalculated_size
         return recalculated_size
 
+    def _write_and_archive(size: int) -> int:
+        return _sync_metadata_and_archive(size)
+
+    total_size_estimate = 0
+    for _ in range(3):
+        recalculated = _write_and_archive(total_size_estimate)
+        if recalculated == total_size_estimate:
+            break
+        total_size_estimate = recalculated
+
+    total_size = _write_and_archive(total_size_estimate)
         total_size_estimate = 0
         for _ in range(3):
             recalculated = _write_and_archive(total_size_estimate)

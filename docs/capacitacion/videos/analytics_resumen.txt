@@ -1,0 +1,4 @@
+Video (75s) — Analítica
+1. Tablero con tarjetas, rotación y aging en tema oscuro.
+2. Configuración de filtros y exporte en PDF/Excel.
+3. Forecast de quiebres para priorizar compras y transferencias.
