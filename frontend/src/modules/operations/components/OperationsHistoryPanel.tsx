@@ -57,7 +57,7 @@ function OperationsHistoryPanel({ stores, token }: Props) {
     if (!parsed) {
       return "Fecha desconocida";
     }
-    return parsed.toLocaleString("es-MX");
+    return parsed.toLocaleString("es-HN");
   };
 
   const friendlyErrorMessage = (message: string) => { // [PACK36-operations-history]

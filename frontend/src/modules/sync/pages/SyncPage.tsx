@@ -319,9 +319,9 @@ export default function SyncPage() {
                     <li key={session.id} className="sync-history-line">
                       <span className="pill neutral">{session.status}</span>
                       <span className="sync-history-mode">{session.mode}</span>
-                      <span className="sync-log__time">Inicio: {new Date(session.started_at).toLocaleString("es-MX")}</span>
+                      <span className="sync-log__time">Inicio: {new Date(session.started_at).toLocaleString("es-HN")}</span>
                       {session.finished_at ? (
-                        <span className="sync-log__time">Fin: {new Date(session.finished_at).toLocaleString("es-MX")}</span>
+                        <span className="sync-log__time">Fin: {new Date(session.finished_at).toLocaleString("es-HN")}</span>
                       ) : (
                         <span className="sync-log__time">En progreso</span>
                       )}
@@ -392,7 +392,7 @@ export default function SyncPage() {
                     <td>{entry.pending}</td>
                     <td>{entry.failed}</td>
                     <td>{entry.conflicts}</td>
-                    <td>{entry.latest_update ? new Date(entry.latest_update).toLocaleString("es-MX") : "—"}</td>
+                    <td>{entry.latest_update ? new Date(entry.latest_update).toLocaleString("es-HN") : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -456,7 +456,7 @@ export default function SyncPage() {
                       </td>
                       <td>
                         {entry.last_attempt_at
-                          ? new Date(entry.last_attempt_at).toLocaleString("es-MX")
+                          ? new Date(entry.last_attempt_at).toLocaleString("es-HN")
                           : "Sin intentos"}
                       </td>
                       <td>

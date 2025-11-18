@@ -52,7 +52,7 @@ function InventorySuppliersSection() {
                 {item.total_quantity} unidades · {formatCurrency(item.total_value)}
               </div>
               <div className="muted-text">
-                Último lote {item.latest_batch_code ?? "N/D"} — {new Date(item.latest_purchase_date).toLocaleDateString("es-MX")}
+                Último lote {item.latest_batch_code ?? "N/D"} — {new Date(item.latest_purchase_date).toLocaleDateString("es-HN")}
                 {item.latest_unit_cost != null ? (
                   <span> · Costo unitario reciente: {formatCurrency(item.latest_unit_cost)}</span>
                 ) : null}

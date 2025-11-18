@@ -22,7 +22,7 @@ type CreditNoteModalProps = {
   onSubmit?: (payload: CreditNotePayload) => void;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function CreditNoteModal({ open, orderId, onClose, onSubmit }: CreditNoteModalProps) {
   const [lines, setLines] = useState<CreditNoteLine[]>([]);

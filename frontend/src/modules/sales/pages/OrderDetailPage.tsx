@@ -112,7 +112,7 @@ const ORDER_SAMPLE = {
   paid: 30000,
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function OrderDetailPage() {
   const order = ORDER_SAMPLE;

@@ -10,7 +10,7 @@ export type OrdersSidePanelProps = {
   onClose?: () => void;
 };
 
-const numberFormatter = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const numberFormatter = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function SidePanel({ row, onClose }: OrdersSidePanelProps) {
   if (!row) {

@@ -16,8 +16,8 @@ type PaymentsTableProps = {
   onRowClick?: (row: PaymentRow) => void;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "short", timeStyle: "short" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
+const dateFormatter = new Intl.DateTimeFormat("es-HN", { dateStyle: "short", timeStyle: "short" });
 
 function PaymentsTable({ rows, loading, onRowClick }: PaymentsTableProps) {
   const hasRows = Array.isArray(rows) && rows.length > 0;

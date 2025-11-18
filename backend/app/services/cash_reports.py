@@ -12,6 +12,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .. import models
+from .locale_helpers import format_dual_currency
 
 ACCENT_COLOR = colors.HexColor("#38bdf8")
 BASE_DARK = colors.HexColor("#0f172a")
@@ -21,8 +22,7 @@ BORDER_COLOR = colors.HexColor("#1e293b")
 
 
 def _format_currency(value: Decimal | float | int) -> str:
-    normalized = Decimal(str(value))
-    return f"${normalized:,.2f}"
+    return format_dual_currency(value)
 
 
 def _build_table(data: list[list[str]]) -> Table:

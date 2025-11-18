@@ -819,6 +819,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    usd_exchange_rate: Annotated[
+        Decimal,
+        Field(
+            default=Decimal("24.50"),
+            validation_alias=AliasChoices(
+                "USD_EXCHANGE_RATE",
+                "SOFTMOBILE_USD_EXCHANGE_RATE",
+            ),
+        ),
+    ]
     inventory_low_stock_threshold: Annotated[
         int,
         Field(
@@ -1173,6 +1183,13 @@ class Settings(BaseSettings):
         if value < 0:
             raise ValueError(
                 f"{info.field_name} debe ser mayor o igual que cero")
+        return value
+
+    @field_validator("usd_exchange_rate")
+    @classmethod
+    def _ensure_positive_rate(cls, value: Decimal) -> Decimal:
+        if value <= 0:
+            raise ValueError("usd_exchange_rate debe ser mayor que cero")
         return value
 
     @field_validator("cost_method", mode="before")

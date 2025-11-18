@@ -117,7 +117,7 @@ const ORDERS_DATA: OrderRecord[] = [
   },
 ];
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function OrdersListPage() {
   const [filters, setFilters] = useState<OrderFilters>({ status: "ALL", payment: "ALL", channel: "ALL" });

@@ -249,7 +249,7 @@ function CorreccionesPendientesPage() {
                           </span>
                         </td>
                         <td>{deviceLabel}</td>
-                        <td>{new Date(validation.fecha).toLocaleString("es-MX")}</td>
+                        <td>{new Date(validation.fecha).toLocaleString("es-HN")}</td>
                       </tr>
                     );
                   })}

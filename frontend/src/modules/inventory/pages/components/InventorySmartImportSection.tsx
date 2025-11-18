@@ -309,7 +309,7 @@ function InventorySmartImportSection() {
           <ul className="metrics-list">
             {smartImportHistory.map((entry) => (
               <li key={entry.id}>
-                <strong>{entry.nombre_archivo}</strong> · {new Date(entry.fecha).toLocaleString("es-MX")} · {entry.total_registros}
+                <strong>{entry.nombre_archivo}</strong> · {new Date(entry.fecha).toLocaleString("es-HN")} · {entry.total_registros}
                 registros
               </li>
             ))}

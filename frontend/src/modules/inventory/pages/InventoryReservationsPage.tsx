@@ -9,7 +9,7 @@ function formatDateTime(value: string): string {
     return "-";
   }
   try {
-    return new Date(value).toLocaleString("es-MX", {
+    return new Date(value).toLocaleString("es-HN", {
       hour12: false,
     });
   } catch (error) {

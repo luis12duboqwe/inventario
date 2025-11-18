@@ -51,7 +51,7 @@ function TechMonitor() {
     if (!observability?.generated_at) {
       return "Sin actualizaciones recientes";
     }
-    return new Date(observability.generated_at).toLocaleString("es-MX", {
+    return new Date(observability.generated_at).toLocaleString("es-HN", {
       dateStyle: "short",
       timeStyle: "short",
     });
@@ -201,7 +201,7 @@ function TechMonitor() {
                       <p>{notification.message}</p>
                       {notification.occurred_at ? (
                         <span className="tech-monitor__alert-meta">
-                          {new Date(notification.occurred_at).toLocaleString("es-MX", {
+                          {new Date(notification.occurred_at).toLocaleString("es-HN", {
                             dateStyle: "short",
                             timeStyle: "short",
                           })}
@@ -232,7 +232,7 @@ function TechMonitor() {
                       <strong>{entry.modulo}</strong>
                       <p>{entry.descripcion}</p>
                       <span className="tech-monitor__alert-meta">
-                        {new Date(entry.fecha).toLocaleString("es-MX", {
+                        {new Date(entry.fecha).toLocaleString("es-HN", {
                           dateStyle: "short",
                           timeStyle: "short",
                         })}
@@ -260,7 +260,7 @@ function TechMonitor() {
                       <strong>{entry.modulo}</strong>
                       <p>{entry.mensaje}</p>
                       <span className="tech-monitor__alert-meta">
-                        {new Date(entry.fecha).toLocaleString("es-MX", {
+                        {new Date(entry.fecha).toLocaleString("es-HN", {
                           dateStyle: "short",
                           timeStyle: "short",
                         })}

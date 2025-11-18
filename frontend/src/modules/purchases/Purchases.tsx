@@ -111,7 +111,7 @@ function Purchases() {
   const [returnDocument, setReturnDocument] = useState<{ url: string; filename: string } | null>(null);
 
   const currency = useMemo(
-    () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
+    () => new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }),
     [],
   );
 
@@ -446,7 +446,7 @@ function Purchases() {
 
       const documentLines = [
         "Softmobile 2025 v2.2.0 — Devolución a proveedor",
-        `Fecha: ${new Date(response.created_at ?? Date.now()).toLocaleString("es-MX")}`,
+        `Fecha: ${new Date(response.created_at ?? Date.now()).toLocaleString("es-HN")}`,
         `Sucursal: ${selectedStore?.name ?? storeId}`,
         `Orden de compra: #${orderId}`,
         `Proveedor: ${supplierLabel}`,
@@ -568,7 +568,7 @@ function Purchases() {
           {suggestions && (
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <span className="muted-text">
-                Última generación: {new Date(suggestions.generated_at).toLocaleString("es-MX")}
+                Última generación: {new Date(suggestions.generated_at).toLocaleString("es-HN")}
               </span>
               <span className="muted-text">
                 Umbral mínimo: {suggestions.minimum_stock} unidades · Horizonte: {suggestions.planning_horizon_days} días

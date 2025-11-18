@@ -31,6 +31,8 @@ def _auth_headers(client) -> dict[str, str]:
         "roles": [ADMIN],
     }
     response = client.post("/auth/bootstrap", json=payload)
+    if response.status_code == status.HTTP_401_UNAUTHORIZED:
+        return _login_headers(client, payload["username"], payload["password"])
     assert response.status_code in {
         status.HTTP_201_CREATED,
         status.HTTP_400_BAD_REQUEST,

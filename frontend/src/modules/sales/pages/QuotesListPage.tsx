@@ -50,7 +50,7 @@ const statusLabels: Record<Quote["status"], string> = {
 
 function formatCurrency(value?: number) {
   if (typeof value !== "number") return "—";
-  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value);
+  return new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }).format(value);
 }
 
 function formatDate(value?: string) {

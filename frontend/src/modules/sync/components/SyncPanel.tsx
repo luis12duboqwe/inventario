@@ -80,7 +80,7 @@ function SyncPanel({
               La estrategia last-write-wins priorizará el último envío, pero puedes resolverlos manualmente.
             </p>
             {lastConflictAt ? (
-              <p className="sync-panel__alert-subtitle">Último conflicto: {lastConflictAt.toLocaleString("es-MX")}</p>
+              <p className="sync-panel__alert-subtitle">Último conflicto: {lastConflictAt.toLocaleString("es-HN")}</p>
             ) : null}
           </div>
           {onResolveConflicts ? (

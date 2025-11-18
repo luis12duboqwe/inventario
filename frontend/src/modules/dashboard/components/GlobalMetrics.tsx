@@ -95,7 +95,7 @@ function GlobalMetrics() {
     if (Number.isNaN(parsed.getTime())) {
       return "Fecha desconocida";
     }
-    return parsed.toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+    return parsed.toLocaleString("es-HN", { dateStyle: "short", timeStyle: "short" });
   };
   const severityLabels: Record<"critical" | "warning" | "info", string> = {
     critical: "Crítica",
@@ -162,7 +162,7 @@ function GlobalMetrics() {
     {
       id: "stock",
       title: "Inventario total",
-      value: `${safeNumber(performance.total_stock).toLocaleString("es-MX")} uds`,
+      value: `${safeNumber(performance.total_stock).toLocaleString("es-HN")} uds`,
       caption: "Unidades disponibles en tiendas",
       tone: "info" as const,
     },
@@ -452,7 +452,7 @@ function GlobalMetrics() {
                             <div className="ranking-details">
                               <span className="ranking-name">{safeString(customer.label, "Cliente")}</span>
                               <span className="ranking-amount">{formatCurrency(safeNumber(customer.value))}</span>
-                              <span className="ranking-orders">{ordersCount.toLocaleString("es-MX")} órdenes</span>
+                              <span className="ranking-orders">{ordersCount.toLocaleString("es-HN")} órdenes</span>
                             </div>
                           </li>
                         );

@@ -100,7 +100,7 @@ function Suppliers({ token, stores }: Props) {
     useState<SupplierAccountsPayableResponse | null>(null);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const currencyFormatter = useMemo(
-    () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
+    () => new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }),
     []
   );
 
@@ -695,13 +695,13 @@ function Suppliers({ token, stores }: Props) {
         </div>
         <div>
           <span className="muted-text">Saldo pendiente</span>
-          <strong>${totalDebt.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+          <strong>${totalDebt.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
         </div>
         <div>
           <span className="muted-text">Saldo total CxP</span>
           <strong>
             {accountsPayable
-              ? `$${accountsPayable.summary.total_balance.toLocaleString("es-MX", {
+              ? `$${accountsPayable.summary.total_balance.toLocaleString("es-HN", {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}`
@@ -714,7 +714,7 @@ function Suppliers({ token, stores }: Props) {
           <span className="muted-text">Saldo vencido</span>
           <strong>
             {accountsPayable
-              ? `$${accountsPayable.summary.total_overdue.toLocaleString("es-MX", {
+              ? `$${accountsPayable.summary.total_overdue.toLocaleString("es-HN", {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}`
@@ -750,7 +750,7 @@ function Suppliers({ token, stores }: Props) {
                 <tr key={bucket.label}>
                   <td>{bucket.label}</td>
                   <td>
-                    ${bucket.amount.toLocaleString("es-MX", {
+                    ${bucket.amount.toLocaleString("es-HN", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
@@ -823,7 +823,7 @@ function Suppliers({ token, stores }: Props) {
                     <td>{supplier.payment_terms ?? "—"}</td>
                     <td>{productsLabel}</td>
                     <td>
-                      {`$${outstanding.toLocaleString("es-MX", {
+                      {`$${outstanding.toLocaleString("es-HN", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}`}
