@@ -23,6 +23,7 @@ const OperationsDiagnostics = lazyWithRetry(() => import("../operations/pages/Op
 const OperationsBundles = lazyWithRetry(() => import("../operations/pages/OperationsBundles"));
 const OperationsDte = lazyWithRetry(() => import("../operations/pages/OperationsDte"));
 const AnalyticsPage = lazyWithRetry(() => import("../analytics/pages/AnalyticsPage"));
+const HelpCenterPage = lazyWithRetry(() => import("../help/pages/HelpCenterPage"));
 const SecurityPage = lazyWithRetry(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazyWithRetry(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazyWithRetry(() => import("../users/pages/UsersPage"));
@@ -59,6 +60,7 @@ const allowedModules = new Set([
   "users",
   "stores",
   "repairs",
+  "help",
 ]);
 
 function resolveInitialModule(): string {
@@ -244,6 +246,21 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
                 description="Recarga la vista de seguridad o intenta más tarde."
               >
                 <SecurityPage />
+              </AppErrorBoundary>
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="help"
+          element={
+            <ModuleBoundary>
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Centro de ayuda no disponible"
+                description="Intenta nuevamente mientras restablecemos las guías y manuales."
+              >
+                <HelpCenterPage />
               </AppErrorBoundary>
             </ModuleBoundary>
           }

@@ -1,0 +1,4 @@
+Video (90s) — Inventario
+1. Introducción: campos IMEI/serie y controles de unicidad.
+2. Alta rápida y ajuste con X-Reason mostrando barra de confirmación.
+3. Alertas de bajo stock y exporte PDF oscuro desde Analítica.
