@@ -19,6 +19,7 @@ const OperationsPurchases = lazyWithRetry(() => import("../operations/pages/Oper
 const OperationsReturns = lazyWithRetry(() => import("../operations/pages/OperationsReturns"));
 const OperationsTransfers = lazyWithRetry(() => import("../operations/pages/OperationsTransfers"));
 const OperationsWarranties = lazyWithRetry(() => import("../operations/pages/OperationsWarranties"));
+const OperationsDiagnostics = lazyWithRetry(() => import("../operations/pages/OperationsDiagnostics"));
 const OperationsBundles = lazyWithRetry(() => import("../operations/pages/OperationsBundles"));
 const OperationsDte = lazyWithRetry(() => import("../operations/pages/OperationsDte"));
 const AnalyticsPage = lazyWithRetry(() => import("../analytics/pages/AnalyticsPage"));
@@ -26,6 +27,7 @@ const SecurityPage = lazyWithRetry(() => import("../security/pages/SecurityPage"
 const SyncPage = lazyWithRetry(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazyWithRetry(() => import("../users/pages/UsersPage"));
 const StoresPage = lazyWithRetry(() => import("../stores/pages/StoresPage"));
+const MobileWorkspace = lazyWithRetry(() => import("../../mobile/MobileWorkspace"));
 // Reparaciones: usar el alias RepairsPage para permitir el control de Suspense en pruebas
 const RepairsPage = lazyWithRetry(() => import("../repairs/pages/RepairsPage"));
 const RepairsPending = lazyWithRetry(() => import("../repairs/pages/RepairsPendingPage"));
@@ -50,6 +52,7 @@ const allowedModules = new Set([
   "inventory",
   "operations",
   "analytics",
+  "mobile",
   "reports",
   "security",
   "sync",
@@ -150,9 +153,25 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           <Route path="devoluciones" element={<OperationsReturns />} />
           <Route path="garantias" element={<OperationsWarranties />} />
           <Route path="transferencias" element={<OperationsTransfers />} />
+          <Route path="diagnosticos" element={<OperationsDiagnostics />} />
           <Route path="paquetes" element={<OperationsBundles />} />
           <Route path="dte" element={<OperationsDte />} />
         </Route>
+        <Route
+          path="mobile"
+          element={
+            <ModuleBoundary>
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Módulo móvil fuera de línea"
+                description="Revisa tu conexión y vuelve a intentarlo desde el dispositivo móvil."
+              >
+                <MobileWorkspace />
+              </AppErrorBoundary>
+            </ModuleBoundary>
+          }
+        />
         <Route
           path="/sales/*"
           element={

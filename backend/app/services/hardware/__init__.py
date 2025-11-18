@@ -15,6 +15,16 @@ from .label_printers import (
     build_connector_payload,
     build_epson_job,
     build_zebra_job,
+from .inputs import (
+    ProductInputRepository,
+    ProductWeightCapture,
+    RFIDProductLink,
+    RFIDReaderAdapter,
+    RFIDTagReading,
+    ScaleAdapter,
+    ScaleReading,
+    capture_and_link_epc,
+    capture_weight_for_product,
 )
 
 __all__ = [
@@ -23,6 +33,13 @@ __all__ = [
     "PrinterMode",
     "ReceiptPrinterService",
     "ReceiptPrintResult",
+    "ProductInputRepository",
+    "ProductWeightCapture",
+    "RFIDProductLink",
+    "RFIDReaderAdapter",
+    "RFIDTagReading",
+    "ScaleAdapter",
+    "ScaleReading",
     "hardware_channels",
     "receipt_printer_service",
     "LabelDirectPrintJob",
@@ -30,4 +47,6 @@ __all__ = [
     "build_connector_payload",
     "build_epson_job",
     "build_zebra_job",
+    "capture_and_link_epc",
+    "capture_weight_for_product",
 ]
