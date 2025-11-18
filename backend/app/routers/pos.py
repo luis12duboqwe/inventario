@@ -1,9 +1,11 @@
 """Endpoints dedicados al punto de venta con control de stock y recibos."""
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
+from io import BytesIO
+from typing import Literal
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -15,27 +17,27 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from io import BytesIO
-from typing import Literal
-
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas, models
+from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import GESTION_ROLES
 from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import cash_register, pos_receipts, promotions
-from ..services import cash_register, pos_receipts, credit
-from ..services import cash_register, pos_receipts, notifications
-from ..services import cash_register, pos_receipts
+from ..services import (
+    async_jobs,
+    cash_register,
+    cash_reports,
+    credit,
+    notifications,
+    payments,
+    pos_receipts,
+    promotions,
+)
 from ..services.hardware import hardware_channels, receipt_printer_service
-from ..services import cash_register, pos_receipts, cash_reports
-from ..services import cash_register, payments, pos_receipts
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 
@@ -1139,6 +1141,57 @@ def list_cash_sessions_endpoint(
     return sessions
 
 
+@router.get(
+    "/cash/history/paginated",
+    response_model=schemas.POSSessionPageResponse,
+)
+def list_cash_sessions_paginated(
+    store_id: int = Query(..., ge=1),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=25, ge=1, le=200),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    total, sessions = crud.paginate_cash_sessions(
+        db,
+        store_id=store_id,
+        page=page,
+        size=size,
+    )
+    _ = reason
+    summaries = [cash_register.to_summary(session) for session in sessions]
+    return schemas.POSSessionPageResponse(
+        items=summaries,
+        total=total,
+        page=page,
+        size=size,
+    )
+
+
+@router.get(
+    "/cash/recover",
+    response_model=schemas.POSSessionSummary,
+)
+def recover_cash_session_endpoint(
+    store_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        summary = cash_register.recover_open_session(db, store_id=store_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay sesiones abiertas para recuperar en la sucursal.",
+        ) from exc
+    _ = reason
+    return summary
+
+
 @router.post(
     "/cash/register/entries",
     response_model=schemas.CashRegisterEntryResponse,
@@ -1232,3 +1285,55 @@ def get_cash_register_report(
         for entry in entries
     ]
     return session_payload.model_copy(update={"entries": serialized_entries})
+
+
+@router.post(
+    "/cash/register/{session_id}/report/async",
+    response_model=schemas.AsyncJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def enqueue_cash_register_report(
+    session_id: int,
+    run_inline: bool = Query(default=False),
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        crud.get_cash_session(db, session_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Caja no encontrada",
+        ) from exc
+    job = async_jobs.enqueue_cash_report(session_id)
+    if run_inline:
+        job = async_jobs.run_cash_report_job(job.id)
+    elif background_tasks is not None:
+        background_tasks.add_task(async_jobs.run_cash_report_job, job.id)
+    _ = reason
+    return schemas.AsyncJobResponse.model_validate(async_jobs.job_to_payload(job))
+
+
+@router.get(
+    "/cash/report/jobs/{job_id}",
+    response_model=schemas.AsyncJobResponse,
+)
+def get_cash_report_job_status(
+    job_id: str,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        job = async_jobs.get_job(job_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trabajo no encontrado",
+        ) from exc
+    _ = db, reason, current_user  # mantener auditoría y compatibilidad
+    return schemas.AsyncJobResponse.model_validate(async_jobs.job_to_payload(job))
