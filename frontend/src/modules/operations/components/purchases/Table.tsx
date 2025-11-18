@@ -36,7 +36,7 @@ const PurchasesTable = ({ records, loading, currencyFormatter }: PurchasesTableP
             <tr key={record.id_compra}>
               <td>#{record.id_compra}</td>
               <td>{record.proveedor_nombre}</td>
-              <td>{new Date(record.fecha).toLocaleString("es-MX")}</td>
+              <td>{new Date(record.fecha).toLocaleString("es-HN")}</td>
               <td>{currencyFormatter.format(record.total)}</td>
               <td>{currencyFormatter.format(record.impuesto)}</td>
               <td>{record.forma_pago}</td>

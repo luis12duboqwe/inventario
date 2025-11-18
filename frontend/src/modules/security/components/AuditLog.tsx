@@ -218,7 +218,7 @@ function AuditLog({ token }: Props) {
             const message = mostRecent
               ? `Alerta pendiente: ${mostRecent.entity_type} #${mostRecent.entity_id} (${new Date(
                   mostRecent.last_seen
-                ).toLocaleTimeString("es-MX")})`
+                ).toLocaleTimeString("es-HN")})`
               : `Tienes ${data.pending_count} alertas críticas pendientes`;
             pushToast({ message, variant: "warning" });
             lastToastRef.current = now;
@@ -467,7 +467,7 @@ function AuditLog({ token }: Props) {
     }
     const diffMs = timestamp - Date.now();
     const diffMinutes = Math.round(diffMs / 60000);
-    const formatter = new Intl.RelativeTimeFormat("es-MX", { numeric: "auto" });
+    const formatter = new Intl.RelativeTimeFormat("es-HN", { numeric: "auto" });
     if (Math.abs(diffMinutes) < 60) {
       return formatter.format(diffMinutes, "minute");
     }
@@ -686,7 +686,7 @@ function AuditLog({ token }: Props) {
         </div>
         {snoozedUntil ? (
           <p className="muted-text">
-            Recordatorios pausados hasta {new Date(snoozedUntil).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}.
+            Recordatorios pausados hasta {new Date(snoozedUntil).toLocaleTimeString("es-HN", { hour: "2-digit", minute: "2-digit" })}.
           </p>
         ) : null}
         {reminderError && <p className="error-text">{reminderError}</p>}

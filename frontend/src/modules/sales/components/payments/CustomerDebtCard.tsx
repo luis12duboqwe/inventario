@@ -5,7 +5,7 @@ type CustomerDebtCardProps = {
   creditLimit?: number;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function CustomerDebtCard({ totalDebt = 0, creditLimit }: CustomerDebtCardProps) {
   const hasLimit = typeof creditLimit === "number" && !Number.isNaN(creditLimit);

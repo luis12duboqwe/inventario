@@ -152,7 +152,7 @@ const useBlobDownloader = () => {
 };
 
 const formatCurrencyValue = (value: number): string => {
-  return value.toLocaleString("es-MX", {
+  return value.toLocaleString("es-HN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

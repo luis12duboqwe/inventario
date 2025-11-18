@@ -497,7 +497,7 @@ export function usePosDashboardController({
 
   const formatCurrency = useCallback(
     (value: number) =>
-      value.toLocaleString("es-MX", {
+      value.toLocaleString("es-HN", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }),
@@ -505,7 +505,7 @@ export function usePosDashboardController({
   );
 
   const formatDateTime = useCallback(
-    (value?: string | null) => (value ? new Date(value).toLocaleString("es-MX") : "—"),
+    (value?: string | null) => (value ? new Date(value).toLocaleString("es-HN") : "—"),
     [],
   );
 

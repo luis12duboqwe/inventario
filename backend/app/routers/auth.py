@@ -209,6 +209,7 @@ def bootstrap_admin(
         if not current_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El bootstrap ya fue realizado. Inicia sesión para agregar más usuarios.",
                 detail="Bootstrap ya completado; requiere autenticación de administrador para crear más usuarios.",
                 detail=(
                     "Ya existe al menos un usuario registrado; inicia sesión "

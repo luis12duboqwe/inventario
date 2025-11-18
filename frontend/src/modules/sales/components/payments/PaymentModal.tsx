@@ -19,7 +19,7 @@ type PaymentModalProps = {
   onSubmit?: (payload: PaymentModalPayload) => void;
 };
 
-const formatCurrency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const formatCurrency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
   const [method, setMethod] = useState<PaymentMethod>("CASH");

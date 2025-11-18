@@ -45,7 +45,7 @@ const closeButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(148, 163, 184, 0.4)",
 };
 
-const currencyFormatter = new Intl.NumberFormat("es-MX", {
+const currencyFormatter = new Intl.NumberFormat("es-HN", {
   style: "currency",
   currency: "MXN",
 });

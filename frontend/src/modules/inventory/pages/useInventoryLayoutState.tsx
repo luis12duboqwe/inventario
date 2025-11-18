@@ -441,7 +441,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
 
   const lastBackup = backupHistory.at(0) ?? null;
   const lastRefreshDisplay = lastInventoryRefresh
-    ? lastInventoryRefresh.toLocaleString("es-MX")
+    ? lastInventoryRefresh.toLocaleString("es-HN")
     : "En espera de la primera actualización";
 
   const filteredDevices = useMemo(() => {
@@ -902,7 +902,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         icon: ShieldCheck,
         title: "Último respaldo",
         value: lastBackup
-          ? new Date(lastBackup.executed_at).toLocaleString("es-MX")
+          ? new Date(lastBackup.executed_at).toLocaleString("es-HN")
           : "Aún no se generan respaldos",
         caption: lastBackup ? lastBackup.mode : "Programado cada 12 h",
       },
@@ -921,7 +921,7 @@ export function useInventoryLayoutState(): InventoryLayoutState {
         icon: RefreshCcw,
         title: "Actualización en vivo",
         value: lastInventoryRefresh
-          ? lastInventoryRefresh.toLocaleTimeString("es-MX")
+          ? lastInventoryRefresh.toLocaleTimeString("es-HN")
           : "Sincronizando…",
         caption: lastRefreshDisplay,
         badge: refreshBadge,
