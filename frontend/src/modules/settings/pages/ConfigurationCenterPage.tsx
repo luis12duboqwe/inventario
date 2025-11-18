@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../../shared/components/ui/PageHeader";
 import Button from "../../../shared/components/ui/Button";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
+import LanDiscoveryAssistant from "../components/LanDiscoveryAssistant";
 import {
   type ConfigurationOverview,
   type ConfigurationRate,
@@ -390,6 +391,8 @@ export default function ConfigurationCenterPage(): JSX.Element {
         title="Configuración SAR y fiscal"
         subtitle="Centraliza tasas, plantillas XML y parámetros de cumplimiento sin desplegar nuevas versiones."
       />
+
+      <LanDiscoveryAssistant onApplied={(baseUrl) => notify(`Base de API fijada en ${baseUrl}.`, "success")} />
 
       <section className="card configuration-card">
         <header className="configuration-card__header">

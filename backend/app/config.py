@@ -975,6 +975,36 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    lan_discovery_enabled: Annotated[
+        bool,
+        Field(
+            default=True,
+            validation_alias=AliasChoices(
+                "SOFTMOBILE_LAN_DISCOVERY_ENABLED",
+                "LAN_DISCOVERY_ENABLED",
+            ),
+        ),
+    ]
+    lan_advertised_host: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "SOFTMOBILE_LAN_HOST",
+                "LAN_ADVERTISED_HOST",
+            ),
+        ),
+    ]
+    lan_advertised_port: Annotated[
+        int | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "SOFTMOBILE_LAN_PORT",
+                "LAN_ADVERTISED_PORT",
+            ),
+        ),
+    ]
     allowed_origins: Annotated[
         list[str],
         Field(

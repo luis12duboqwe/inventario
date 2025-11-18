@@ -150,6 +150,49 @@ class RootWelcomeResponse(BaseModel):
     )
 
 
+class LanDatabaseSummary(BaseModel):
+    engine: str = Field(
+        ..., description="Motor de base de datos detectado", min_length=3, max_length=60
+    )
+    location: str = Field(
+        ..., description="Ruta o identificador de la base de datos", min_length=2, max_length=255
+    )
+    writable: bool = Field(
+        ..., description="Indica si la instancia permite escritura local"
+    )
+    shared_over_lan: bool = Field(
+        ..., description="Confirma que la base puede atender peticiones de otros nodos LAN"
+    )
+
+
+class LanDiscoveryResponse(BaseModel):
+    enabled: bool = Field(..., description="Estado de la función de descubrimiento")
+    host: str = Field(..., description="Host o IP anunciada en la LAN", min_length=3)
+    port: int = Field(
+        ...,
+        description="Puerto en el que escucha la API",
+        ge=1,
+        le=65535,
+    )
+    protocol: str = Field(
+        default="http",
+        description="Protocolo sugerido para los clientes LAN",
+        pattern="^https?$",
+    )
+    api_base_url: str = Field(
+        ...,
+        description="URL base construida para que los terminales se conecten",
+        min_length=4,
+        max_length=255,
+    )
+    database: LanDatabaseSummary
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Recomendaciones adicionales para el despliegue en LAN",
+        max_length=20,
+    )
+
+
 class StoreBase(BaseModel):
     name: str = Field(..., max_length=120,
                       description="Nombre visible de la sucursal")
@@ -8379,6 +8422,8 @@ __all__ = [
     "PurchaseSupplierMetric",
     "PurchaseAnalyticsResponse",
     "HealthStatusResponse",
+    "LanDatabaseSummary",
+    "LanDiscoveryResponse",
     "CustomerDebtSnapshot",
     "CreditScheduleEntry",
     "AccountsReceivableEntry",
