@@ -618,7 +618,7 @@ def generate_backup(
         total_size_estimate = recalculated
 
     total_size = _write_and_archive(total_size_estimate)
-        total_size = recalculated_size
+    # total_size = recalculated_size  # Línea eliminada, ya que recalculated_size no está definida aquí y la indentación era incorrecta
     final_components = [
         pdf_path,
         json_path,
@@ -644,6 +644,13 @@ def generate_backup(
         total_size_bytes=total_size,
         triggered_by_id=triggered_by_id,
         reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=(
+            str(app_settings.backup_encryption_key_path)
+            if encryption_enabled
+            else None
+        ),
+        cipher=cipher,
     )
     _build_archive()
     total_size = _calculate_total_size(final_components)
@@ -663,6 +670,13 @@ def generate_backup(
         total_size_bytes=total_size,
         triggered_by_id=triggered_by_id,
         reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=(
+            str(app_settings.backup_encryption_key_path)
+            if encryption_enabled
+            else None
+        ),
+        cipher=cipher,
     )
     _build_archive()
     total_size = _calculate_total_size(final_components)
@@ -685,6 +699,13 @@ def generate_backup(
             total_size_bytes=total_size,
             triggered_by_id=triggered_by_id,
             reason=normalized_reason,
+            encryption_enabled=encryption_enabled,
+            encryption_key_path=(
+                str(app_settings.backup_encryption_key_path)
+                if encryption_enabled
+                else None
+            ),
+            cipher=cipher,
         )
         _build_archive()
         recalculated_total = _calculate_total_size(

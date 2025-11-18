@@ -14,41 +14,12 @@ export function calcTotalsLocal(lines: CartLineInput[], taxRate = 0): Totals {
   return { sub: +sub.toFixed(2), disc: +disc.toFixed(2), tax, grand };
 }
 
-export function paidAmount(payments: PaymentInput[], includeTips = false): number {
-  const total = payments.reduce((s, p) => {
-    const base = p.amount || 0;
-    const tip = includeTips ? p.tipAmount || 0 : 0;
-    return s + base + tip;
-  }, 0);
-  return +total.toFixed(2);
+export function paidAmount(payments: PaymentInput[]): number {
+  return +payments.reduce((s, p) => s + (p.amount || 0), 0).toFixed(2);
 }
 
 export function calcChange(grand: number, payments: PaymentInput[]): number {
   return +(paidAmount(payments) - grand).toFixed(2);
-}
-
-export function asCheckoutRequest(
-  lines: CartLineInput[],
-  payments: PaymentInput[],
-  customerId?: string | null,
-  coupons: string[] = [],
-): CheckoutRequest {
-  const payload: CheckoutRequest = {
-type CheckoutOptions = {
-  customerId?: string | null;
-  docType?: "TICKET" | "INVOICE";
-  note?: string | null;
-};
-
-export function asCheckoutRequest(
-  lines: CartLineInput[],
-  payments: PaymentInput[],
-  options?: CheckoutOptions,
-): CheckoutRequest {
-  const payload: CheckoutRequest = {
-    customerId: options?.customerId ?? null,
-export function tipsTotal(payments: PaymentInput[]): number {
-  return +payments.reduce((s, p) => s + (p.tipAmount || 0), 0).toFixed(2);
 }
 
 export function asCheckoutRequest(lines: CartLineInput[], payments: PaymentInput[], customerId?: string | null): CheckoutRequest {
@@ -56,13 +27,7 @@ export function asCheckoutRequest(lines: CartLineInput[], payments: PaymentInput
     customerId: customerId ?? null,
     lines,
     payments,
-    docType: options?.docType ?? "TICKET",
+    docType: "TICKET",
   };
-  if (coupons.length) {
-    payload.coupons = coupons;
-  if (options?.note) {
-    payload.note = options.note;
-  }
-  return payload;
 }
 // [PACK22-POS-UTILS-END]

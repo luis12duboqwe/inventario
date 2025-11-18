@@ -3209,7 +3209,7 @@ function parseFilenameFromDisposition(header: string | null, fallback: string): 
   if (utf8Match?.[1]) {
     try {
       return decodeURIComponent(utf8Match[1]);
-    } catch (error) {
+    } catch {
       return utf8Match[1];
     }
   }
@@ -7187,6 +7187,12 @@ export function updateSyncOutboxPriority(
     {
       method: "PATCH",
       body: JSON.stringify({ priority }),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
 export function resolveSyncOutboxConflicts(
   token: string,
   ids: number[],
@@ -7732,11 +7738,19 @@ export function getCashRegisterReport(
   exportFormat: "json" | "pdf" = "json"
 ): Promise<CashSession> | Promise<Blob> {
   if (exportFormat === "pdf") {
-    return requestBlob(
-      `/pos/cash/register/${sessionId}/report?export=pdf`,
-      { method: "GET", headers: { "X-Reason": reason } },
-      token
-    );
+    return (async () => {
+      const response = await fetch(`${API_URL}/pos/cash/register/${sessionId}/report?export=pdf`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Reason": reason,
+        },
+      });
+      if (!response.ok) {
+        throw new Error("No fue posible descargar el reporte en PDF");
+      }
+      return await response.blob();
+    })();
   }
   return request<CashSession>(
     `/pos/cash/register/${sessionId}/report?export=json`,

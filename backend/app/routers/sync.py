@@ -29,7 +29,8 @@ router = APIRouter(prefix="/sync", tags=["sincronizacion"])
 
 def _ensure_hybrid_enabled() -> None:
     if not settings.enable_hybrid_prep:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Funcionalidad no disponible")
 
 
 @router.post("/run", response_model=schemas.SyncSessionResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -44,7 +45,8 @@ def trigger_sync(
         try:
             crud.get_store(db, store_id)
         except LookupError as exc:
-            raise HTTPException(status_code=404, detail="Sucursal no encontrada") from exc
+            raise HTTPException(
+                status_code=404, detail="Sucursal no encontrada") from exc
 
     status = models.SyncStatus.SUCCESS
     error_message: str | None = None
@@ -85,7 +87,8 @@ def trigger_sync(
         differences_detected=differences_count,
     )
     if status is models.SyncStatus.FAILED:
-        raise HTTPException(status_code=500, detail="No fue posible completar la sincronización")
+        raise HTTPException(
+            status_code=500, detail="No fue posible completar la sincronización")
     return session
 
 
@@ -104,8 +107,10 @@ def enqueue_queue_events(
     _ensure_hybrid_enabled()
     queued, reused = crud.enqueue_sync_queue_events(db, payload.events)
     return schemas.SyncQueueEnqueueResponse(
-        queued=[schemas.SyncQueueEntryResponse.model_validate(item) for item in queued],
-        reused=[schemas.SyncQueueEntryResponse.model_validate(item) for item in reused],
+        queued=[schemas.SyncQueueEntryResponse.model_validate(
+            item) for item in queued],
+        reused=[schemas.SyncQueueEntryResponse.model_validate(
+            item) for item in reused],
     )
 
 
@@ -233,7 +238,8 @@ def resolve_queue_entry(
     try:
         return sync_queue.mark_entry_resolved(db, queue_id)
     except LookupError as exc:  # pragma: no cover - protección extra
-        raise HTTPException(status_code=404, detail="Evento no encontrado") from exc
+        raise HTTPException(
+            status_code=404, detail="Evento no encontrado") from exc
 
 
 @router.get("/sessions", response_model=list[schemas.SyncSessionResponse], dependencies=[Depends(require_roles(ADMIN))])
@@ -376,7 +382,8 @@ def list_outbox_entries(
 ):
     _ensure_hybrid_enabled()
     statuses = [status_filter] if status_filter else None
-    entries = crud.list_sync_outbox(db, statuses=statuses, limit=limit, offset=offset)
+    entries = crud.list_sync_outbox(
+        db, statuses=statuses, limit=limit, offset=offset)
     return entries
 
 
@@ -403,7 +410,8 @@ def retry_outbox_entries(
         offset=offset,
     )
     if not entries:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entradas no encontradas")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Entradas no encontradas")
     return entries
 
 
@@ -415,6 +423,24 @@ def retry_outbox_entries(
 def reprioritize_outbox_entry(
     entry_id: int,
     payload: schemas.SyncOutboxPriorityUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+    reason: str = Depends(require_reason),
+):
+    _ensure_hybrid_enabled()
+    entry = crud.update_outbox_priority(
+        db,
+        entry_id,
+        priority=payload.priority,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+    )
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Entrada no encontrada")
+    return entry
+
+
 @router.post(
     "/outbox/resolve",
     response_model=list[schemas.SyncOutboxEntryResponse],
@@ -437,7 +463,8 @@ def resolve_outbox_conflicts(
         reason=reason,
     )
     if entry is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entrada no encontrada")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Entrada no encontrada")
     return entry
     entries = crud.resolve_outbox_conflicts(
         db,
@@ -448,7 +475,8 @@ def resolve_outbox_conflicts(
         offset=offset,
     )
     if not entries:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entradas no encontradas")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Entradas no encontradas")
     return entries
 
 
