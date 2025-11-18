@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { featureFlags } from "@/config/featureFlags";
 import { syncClient } from "../../sync/services/syncClient"; // [PACK35-frontend]
 import {
   NETWORK_EVENT,
@@ -24,6 +25,7 @@ import {
   listSyncOutbox,
   registerMovement,
   retrySyncOutbox,
+  updateSyncOutboxPriority,
   triggerSync,
   runBackup,
   getSyncOutboxStats,
@@ -32,9 +34,12 @@ import {
   getSyncHybridForecast,
   getSyncHybridBreakdown,
   getSyncHybridOverview,
+  getObservabilitySnapshot,
+  downloadSyncHistoryCsv,
   updateDevice,
+  resolveSyncOutboxConflicts,
 } from "../../../api";
-import { safeArray, safeNumber } from "../../../utils/safeValues"; // [PACK36-dashboard-guards]
+import { safeArray } from "../../../utils/safeValues"; // [PACK36-dashboard-guards]
 import type {
   BackupJob,
   Device,
@@ -54,6 +59,7 @@ import type {
   SyncHybridOverview,
   SyncStoreHistory,
   UpdateStatus,
+  ObservabilitySnapshot,
 } from "../../../api";
 
 type DashboardContextValue = {
@@ -64,6 +70,10 @@ type DashboardContextValue = {
   enableAnalyticsAdv: boolean;
   enableTwoFactor: boolean;
   enableHybridPrep: boolean;
+  enablePriceLists: boolean;
+  enableVariants: boolean;
+  enableBundles: boolean;
+  enableDte: boolean;
   compactMode: boolean;
   setCompactMode: (value: boolean) => void;
   toggleCompactMode: () => void;
@@ -88,11 +98,16 @@ type DashboardContextValue = {
   outbox: SyncOutboxEntry[];
   outboxError: string | null;
   outboxStats: SyncOutboxStatsEntry[];
+  outboxConflicts: number;
+  lastOutboxConflict: Date | null;
   syncQueueSummary: SyncQueueSummary | null;
   syncHybridProgress: SyncHybridProgress | null; // [PACK35-frontend]
   syncHybridForecast: SyncHybridForecast | null; // [PACK35-frontend]
   syncHybridBreakdown: SyncHybridModuleBreakdownItem[]; // [PACK35-frontend]
   syncHybridOverview: SyncHybridOverview | null; // [PACK35-frontend]
+  observability: ObservabilitySnapshot | null;
+  observabilityError: string | null;
+  observabilityLoading: boolean;
   currentUser: UserAccount | null;
   syncHistory: SyncStoreHistory[];
   syncHistoryError: string | null;
@@ -113,15 +128,20 @@ type DashboardContextValue = {
   handleBackup: (reason: string, note?: string) => Promise<void>;
   refreshOutbox: () => Promise<void>;
   handleRetryOutbox: () => Promise<void>;
+  reprioritizeOutbox: (entryId: number, priority: SyncOutboxStatsEntry["priority"], reason: string) => Promise<void>;
+  handleResolveOutboxConflicts: () => Promise<void>;
   downloadInventoryReport: (reason: string) => Promise<void>;
   refreshOutboxStats: () => Promise<void>;
   refreshSyncQueueSummary: () => Promise<void>;
   refreshSyncHistory: () => Promise<void>;
+  exportSyncHistory: (reason: string) => Promise<void>;
+  refreshObservability: () => Promise<void>;
   toasts: ToastMessage[];
   pushToast: (toast: Omit<ToastMessage, "id">) => void;
   dismissToast: (id: number) => void;
   networkAlert: string | null;
   dismissNetworkAlert: () => void;
+  refreshStores: () => Promise<void>;
 };
 
 const DashboardContext = createContext<DashboardContextValue | undefined>(undefined);
@@ -131,7 +151,7 @@ type ProviderProps = {
   children: ReactNode;
 };
 
-type ToastVariant = "success" | "error" | "info";
+type ToastVariant = "success" | "error" | "info" | "warning";
 
 export type ToastMessage = {
   id: number;
@@ -142,18 +162,18 @@ export type ToastMessage = {
 const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
 export function DashboardProvider({ token, children }: ProviderProps) {
-  const enableCatalogPro =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_CATALOG_PRO ?? "1") !== "0";
-  const enableTransfers =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_TRANSFERS ?? "1") !== "0";
-  const enablePurchasesSales =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_PURCHASES_SALES ?? "1") !== "0";
-  const enableAnalyticsAdv =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_ANALYTICS_ADV ?? "1") !== "0";
-  const enableTwoFactor =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_2FA ?? "0") !== "0";
-  const enableHybridPrep =
-    (import.meta.env.VITE_SOFTMOBILE_ENABLE_HYBRID_PREP ?? "1") !== "0";
+  const {
+    catalogPro: enableCatalogPro,
+    transfers: enableTransfers,
+    purchasesSales: enablePurchasesSales,
+    analyticsAdv: enableAnalyticsAdv,
+    twoFactor: enableTwoFactor,
+    hybridPrep: enableHybridPrep,
+    priceLists: enablePriceLists,
+    variants: enableVariants,
+    bundles: enableBundles,
+    dte: enableDte,
+  } = featureFlags;
 
   const [compactModeState, setCompactModeState] = useState<boolean>(() => {
     if (typeof window === "undefined") {
@@ -188,6 +208,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     useState<SyncHybridModuleBreakdownItem[]>([]); // [PACK35-frontend]
   const [syncHybridOverview, setSyncHybridOverview] =
     useState<SyncHybridOverview | null>(null); // [PACK35-frontend]
+  const [observability, setObservability] = useState<ObservabilitySnapshot | null>(null);
+  const [observabilityError, setObservabilityError] = useState<string | null>(null);
+  const [observabilityLoading, setObservabilityLoading] = useState(false);
   const [syncHistory, setSyncHistory] = useState<SyncStoreHistory[]>([]);
   const [syncHistoryError, setSyncHistoryError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -338,10 +361,10 @@ export function DashboardProvider({ token, children }: ProviderProps) {
               : "No fue posible consultar el historial de sincronización",
           );
         }
-        if (storesData.length > 0) {
-          const firstStoreId = storesData[0].id;
-          setSelectedStoreId(firstStoreId);
-          const devicesData = await getDevices(token, firstStoreId);
+        const firstStore = storesData[0];
+        if (firstStore) {
+          setSelectedStoreId(firstStore.id);
+          const devicesData = await getDevices(token, firstStore.id);
           setDevices(safeArray(devicesData));
           setLastInventoryRefresh(new Date());
         }
@@ -356,7 +379,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
 
     fetchInitial();
-  }, [token, pushToast]);
+  }, [friendlyErrorMessage, token, pushToast]);
 
   useEffect(() => {
     if (stores.length === 0) {
@@ -378,7 +401,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
 
     void synchronizeMetrics();
-  }, [currentLowStockThreshold, friendlyErrorMessage, stores.length, token]);
+  }, [currentLowStockThreshold, friendlyErrorMessage, pushToast, stores.length, token]);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -399,7 +422,11 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
 
     loadDevices();
-  }, [friendlyErrorMessage, selectedStoreId, token]);
+  }, [friendlyErrorMessage, pushToast, selectedStoreId, token]);
+
+  useEffect(() => {
+    void refreshObservability();
+  }, [refreshObservability]);
 
   useEffect(() => {
     const loadOutbox = async () => {
@@ -429,6 +456,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
         setSyncHybridForecast(overviewData.forecast);
         setSyncHybridBreakdown(overviewData.breakdown);
         return;
+      } catch (primaryError) {
+        console.warn("Fallback a API híbrida previa por error en overview", primaryError);
       }
       try {
         const [entries, statsData, summaryData, hybridData] = await Promise.all([
@@ -467,31 +496,79 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     setSummary(safeArray(summaryRaw)); // [PACK36-guards]
     setMetrics(metricsData);
   }, [getThresholdForStore, selectedStoreId, token]);
+  const refreshStores = useCallback(async () => {
+    try {
+      const storesRaw = await getStores(token);
+      setStores(safeArray(storesRaw));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "No fue posible actualizar las sucursales";
+      const friendly = friendlyErrorMessage(message);
+      setError(friendly);
+      pushToast({ message: friendly, variant: "error" });
+    }
+  }, [friendlyErrorMessage, pushToast, token]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      void (async () => {
-        try {
-          await refreshSummary();
-          if (selectedStoreId) {
-            const refreshedDevices = await getDevices(token, selectedStoreId);
+    if (typeof window === "undefined") {
+      return () => undefined;
+    }
+
+    let running = false;
+    let disposed = false;
+
+    const runRefresh = async () => {
+      if (running || (typeof document !== "undefined" && document.hidden)) {
+        return;
+      }
+      running = true;
+      try {
+        await refreshSummary();
+        if (selectedStoreId) {
+          const refreshedDevices = await getDevices(token, selectedStoreId);
+          if (!disposed) {
             setDevices(safeArray(refreshedDevices)); // [PACK36-guards]
             setLastInventoryRefresh(new Date());
           }
-        } catch (err) {
-          const message =
-            err instanceof Error
-              ? err.message
-              : "No fue posible actualizar el inventario en tiempo real";
-          const friendly = friendlyErrorMessage(message);
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "No fue posible actualizar el inventario en tiempo real";
+        const friendly = friendlyErrorMessage(message);
+        if (!disposed) {
           setError(friendly);
           pushToast({ message: friendly, variant: "error" }); // [PACK36-guards]
         }
-      })();
+      } finally {
+        running = false;
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      void runRefresh();
     }, 30000);
 
-    return () => window.clearInterval(interval);
-  }, [friendlyErrorMessage, refreshSummary, selectedStoreId, token]);
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        void runRefresh();
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+
+    void runRefresh();
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+    };
+  }, [friendlyErrorMessage, pushToast, refreshSummary, selectedStoreId, token]);
 
   useEffect(() => {
     syncClient.init(); // [PACK35-frontend]
@@ -503,83 +580,89 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     };
   }, [token]);
 
-  const handleMovement = async (payload: MovementInput) => {
-    if (!selectedStoreId) {
-      return;
-    }
-    const comment = payload.comentario.trim();
-    if (comment.length < 5) {
-      setError("Indica un motivo corporativo de al menos 5 caracteres.");
-      return;
-    }
-    try {
-      setError(null);
-      await registerMovement(token, selectedStoreId, payload, comment);
-      setMessage("Movimiento registrado correctamente");
-      pushToast({ message: "Movimiento registrado", variant: "success" });
-      await Promise.all([
-        refreshSummary(),
-        getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
-      ]);
-      setLastInventoryRefresh(new Date());
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo registrar el movimiento";
-      const friendly = friendlyErrorMessage(message);
-      setError(friendly);
-      pushToast({ message: friendly, variant: "error" });
-      if (typeof navigator === "undefined" || !navigator.onLine) {
-        try {
-          await syncClient.enqueue({
-            eventType: "inventory.movement", // [PACK35-frontend]
-            payload: {
-              store_id: selectedStoreId,
-              movement: payload,
-            },
-            idempotencyKey: `inventory-movement-${selectedStoreId}-${Date.now()}`,
-          });
-          pushToast({ message: "Movimiento guardado en cola local.", variant: "info" });
-        } catch (syncError) {
-          console.warn("No fue posible guardar el movimiento en la cola local", syncError);
+  const handleMovement = useCallback(
+    async (payload: MovementInput) => {
+      if (!selectedStoreId) {
+        return;
+      }
+      const comment = payload.comentario.trim();
+      if (comment.length < 5) {
+        setError("Indica un motivo corporativo de al menos 5 caracteres.");
+        return;
+      }
+      try {
+        setError(null);
+        await registerMovement(token, selectedStoreId, payload, comment);
+        setMessage("Movimiento registrado correctamente");
+        pushToast({ message: "Movimiento registrado", variant: "success" });
+        await Promise.all([
+          refreshSummary(),
+          getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
+        ]);
+        setLastInventoryRefresh(new Date());
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No se pudo registrar el movimiento";
+        const friendly = friendlyErrorMessage(message);
+        setError(friendly);
+        pushToast({ message: friendly, variant: "error" });
+        if (typeof navigator === "undefined" || !navigator.onLine) {
+          try {
+            await syncClient.enqueue({
+              eventType: "inventory.movement", // [PACK35-frontend]
+              payload: {
+                store_id: selectedStoreId,
+                movement: payload,
+              },
+              idempotencyKey: `inventory-movement-${selectedStoreId}-${Date.now()}`,
+            });
+            pushToast({ message: "Movimiento guardado en cola local.", variant: "info" });
+          } catch (syncError) {
+            console.warn("No fue posible guardar el movimiento en la cola local", syncError);
+          }
         }
       }
-    }
-  };
+    },
+    [friendlyErrorMessage, pushToast, refreshSummary, selectedStoreId, token],
+  );
 
-  const handleDeviceUpdate = async (
-    deviceId: number,
-    updates: DeviceUpdateInput,
-    reason: string,
-  ) => {
-    if (!selectedStoreId) {
-      return;
-    }
-    const normalizedReason = reason.trim();
-    if (normalizedReason.length < 5) {
-      setError("Indica un motivo corporativo de al menos 5 caracteres.");
-      return;
-    }
-    if (Object.keys(updates).length === 0) {
-      setError("No hay cambios por aplicar en el dispositivo seleccionado.");
-      return;
-    }
-    try {
-      setError(null);
-      await updateDevice(token, selectedStoreId, deviceId, updates, normalizedReason);
-      setMessage("Dispositivo actualizado correctamente");
-      pushToast({ message: "Ficha de dispositivo actualizada", variant: "success" });
-      await Promise.all([
-        refreshSummary(),
-        getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
-      ]);
-      setLastInventoryRefresh(new Date());
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo actualizar el dispositivo";
-      const friendly = friendlyErrorMessage(message);
-      setError(friendly);
-      pushToast({ message: friendly, variant: "error" });
-      throw new Error(friendly);
-    }
-  };
+  const handleDeviceUpdate = useCallback(
+    async (
+      deviceId: number,
+      updates: DeviceUpdateInput,
+      reason: string,
+    ) => {
+      if (!selectedStoreId) {
+        return;
+      }
+      const normalizedReason = reason.trim();
+      if (normalizedReason.length < 5) {
+        setError("Indica un motivo corporativo de al menos 5 caracteres.");
+        return;
+      }
+      if (Object.keys(updates).length === 0) {
+        setError("No hay cambios por aplicar en el dispositivo seleccionado.");
+        return;
+      }
+      try {
+        setError(null);
+        await updateDevice(token, selectedStoreId, deviceId, updates, normalizedReason);
+        setMessage("Dispositivo actualizado correctamente");
+        pushToast({ message: "Ficha de dispositivo actualizada", variant: "success" });
+        await Promise.all([
+          refreshSummary(),
+          getDevices(token, selectedStoreId).then((items) => setDevices(safeArray(items))), // [PACK36-guards]
+        ]);
+        setLastInventoryRefresh(new Date());
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No se pudo actualizar el dispositivo";
+        const friendly = friendlyErrorMessage(message);
+        setError(friendly);
+        pushToast({ message: friendly, variant: "error" });
+        throw new Error(friendly);
+      }
+    },
+    [friendlyErrorMessage, pushToast, refreshSummary, selectedStoreId, token],
+  );
 
   const refreshInventoryAfterTransfer = useCallback(async () => {
     await refreshSummary();
@@ -653,6 +736,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(overviewData.progress);
       setSyncHybridBreakdown(overviewData.breakdown);
       return;
+    } catch {
+      // Si la API avanzada falla, se recurre a las solicitudes individuales.
     }
     try {
       const [summaryData, forecastData, breakdownData] = await Promise.all([
@@ -706,6 +791,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(overviewData.progress);
       setSyncHybridBreakdown(overviewData.breakdown);
       return;
+    } catch {
+      // Si falla la vista combinada se consulta cada recurso por separado.
     }
     try {
       const [statsData, summaryData, forecastData, breakdownData] = await Promise.all([
@@ -749,6 +836,23 @@ export function DashboardProvider({ token, children }: ProviderProps) {
     }
   }, [friendlyErrorMessage, token]);
 
+  const refreshObservability = useCallback(async () => {
+    setObservabilityLoading(true);
+    try {
+      const snapshot = await getObservabilitySnapshot(token);
+      setObservability(snapshot);
+      setObservabilityError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No se pudo consultar el estado de observabilidad";
+      setObservabilityError(friendlyErrorMessage(message));
+    } finally {
+      setObservabilityLoading(false);
+    }
+  }, [friendlyErrorMessage, token]);
+
   const refreshOutbox = useCallback(async () => {
     if (!enableHybridPrep) {
       setOutbox([]);
@@ -776,6 +880,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       setSyncHybridProgress(overviewData.progress);
       setSyncHybridBreakdown(overviewData.breakdown);
       return;
+    } catch {
+      // Se recurre al flujo degradado cuando la API avanzada no está disponible.
     }
     try {
       const [entries, statsData, summaryData, forecastData, breakdownData] = await Promise.all([
@@ -832,6 +938,107 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       pushToast({ message: friendly, variant: "error" });
     }
   }, [enableHybridPrep, friendlyErrorMessage, outbox, pushToast, refreshOutboxStats, token]);
+
+  const reprioritizeOutbox = useCallback(
+    async (entryId: number, priority: SyncOutboxStatsEntry["priority"], reason: string) => {
+      if (!enableHybridPrep) {
+        return;
+      }
+      try {
+        const updated = await updateSyncOutboxPriority(token, entryId, priority, reason);
+        setOutbox((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        pushToast({ message: "Prioridad actualizada", variant: "success" });
+        await refreshOutboxStats();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No se pudo actualizar la prioridad";
+        const friendly = friendlyErrorMessage(message);
+        setOutboxError(friendly);
+        pushToast({ message: friendly, variant: "error" });
+      }
+    },
+    [enableHybridPrep, friendlyErrorMessage, pushToast, refreshOutboxStats, token],
+  );
+
+  const exportSyncHistory = useCallback(
+    async (reason: string) => {
+      if (!reason || reason.trim().length < 5) {
+        pushToast({ message: "Indica un motivo corporativo para la exportación.", variant: "warning" });
+        return;
+      }
+      try {
+        await downloadSyncHistoryCsv(token, reason.trim());
+        pushToast({ message: "Historial exportado", variant: "success" });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No fue posible exportar el historial";
+        pushToast({ message, variant: "error" });
+      }
+    },
+    [pushToast, token],
+  );
+  const conflictEntries = useMemo(
+    () => outbox.filter((entry) => entry.conflict_flag),
+    [outbox],
+  );
+
+  const lastOutboxConflict = useMemo(() => {
+    if (conflictEntries.length === 0) {
+      return null;
+    }
+    const timestamps = conflictEntries
+      .map((entry) => new Date(entry.updated_at))
+      .filter((date) => !Number.isNaN(date.getTime()));
+    if (timestamps.length === 0) {
+      return null;
+    }
+    return timestamps.sort((a, b) => b.getTime() - a.getTime())[0];
+  }, [conflictEntries]);
+
+  const handleResolveOutboxConflicts = useCallback(async () => {
+    if (!enableHybridPrep || conflictEntries.length === 0) {
+      return;
+    }
+    const reason =
+      typeof window === "undefined"
+        ? "Resolución manual de conflictos outbox"
+        : window.prompt(
+            "Motivo corporativo para resolver conflictos",
+            "Resolución manual de conflictos outbox",
+          );
+    if (!reason || reason.trim().length < 5) {
+      pushToast({
+        message: "Indica un motivo corporativo de al menos 5 caracteres para continuar.",
+        variant: "warning",
+      });
+      return;
+    }
+    try {
+      const updated = await resolveSyncOutboxConflicts(
+        token,
+        conflictEntries.map((entry) => entry.id),
+        reason,
+      );
+      setOutbox(updated);
+      setMessage("Conflictos marcados como resueltos");
+      pushToast({
+        message: `${updated.length} conflicto(s) listos para sincronización prioritizada`,
+        variant: "success",
+      });
+      await refreshOutboxStats();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No se pudo resolver la cola con conflictos";
+      const friendly = friendlyErrorMessage(message);
+      setOutboxError(friendly);
+      pushToast({ message: friendly, variant: "error" });
+    }
+  }, [
+    conflictEntries,
+    enableHybridPrep,
+    friendlyErrorMessage,
+    pushToast,
+    refreshOutboxStats,
+    token,
+  ]);
 
   const updateLowStockThreshold = useCallback(
     async (storeId: number, threshold: number) => {
@@ -900,6 +1107,10 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableAnalyticsAdv,
       enableTwoFactor,
       enableHybridPrep,
+      enablePriceLists,
+      enableVariants,
+      enableBundles,
+      enableDte,
       compactMode: compactModeState,
       setCompactMode,
       toggleCompactMode,
@@ -925,11 +1136,16 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       outbox,
       outboxError,
       outboxStats,
+      outboxConflicts: conflictEntries.length,
+      lastOutboxConflict,
       syncQueueSummary,
       syncHybridProgress,
       syncHybridForecast,
       syncHybridBreakdown,
       syncHybridOverview,
+      observability,
+      observabilityError,
+      observabilityLoading,
       currentUser,
       syncHistory,
       syncHistoryError,
@@ -949,15 +1165,20 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       handleBackup,
       refreshOutbox,
       handleRetryOutbox,
+      reprioritizeOutbox,
+      handleResolveOutboxConflicts,
       downloadInventoryReport,
       refreshOutboxStats,
       refreshSyncQueueSummary,
       refreshSyncHistory,
+      exportSyncHistory,
+      refreshObservability,
       toasts,
       pushToast,
       dismissToast,
       networkAlert,
       dismissNetworkAlert,
+      refreshStores,
     }),
     [
       backupHistory,
@@ -971,9 +1192,16 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       enableAnalyticsAdv,
       enableCatalogPro,
       enableHybridPrep,
+      enableBundles,
+      enableVariants,
+      enablePriceLists,
       enablePurchasesSales,
       enableTransfers,
       enableTwoFactor,
+      enableDte,
+      observability,
+      observabilityError,
+      observabilityLoading,
       error,
       formatCurrency,
       globalSearchTerm,
@@ -981,6 +1209,8 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       handleDeviceUpdate,
       handleMovement,
       handleRetryOutbox,
+      reprioritizeOutbox,
+      handleResolveOutboxConflicts,
       handleSync,
       lastInventoryRefresh,
       loading,
@@ -991,6 +1221,9 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       outbox,
       outboxError,
       outboxStats,
+      conflictEntries,
+      lastOutboxConflict,
+      toggleCompactMode,
       syncHybridForecast,
       syncHybridBreakdown,
       syncHybridProgress,
@@ -1000,9 +1233,11 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       pushToast,
       refreshInventoryAfterTransfer,
       refreshOutbox,
+      exportSyncHistory,
       refreshOutboxStats,
       refreshSummary,
       refreshSyncHistory,
+      refreshObservability,
       releaseHistory,
       selectedStore,
       selectedStoreId,
@@ -1024,6 +1259,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       totalValue,
       updateLowStockThreshold,
       updateStatus,
+      refreshStores,
     ],
   );
 

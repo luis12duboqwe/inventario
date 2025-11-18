@@ -31,6 +31,17 @@ def list_suppliers_endpoint(
     return suppliers
 
 
+@router.get(
+    "/accounts-payable",
+    response_model=schemas.SupplierAccountsPayableResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def get_suppliers_accounts_payable_endpoint(
+    db: Session = Depends(get_db),
+):
+    return crud.get_suppliers_accounts_payable(db)
+
+
 @router.post("/", response_model=schemas.SupplierResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_supplier_endpoint(
     payload: schemas.SupplierCreate,
@@ -45,6 +56,11 @@ def create_supplier_endpoint(
             performed_by_id=current_user.id if current_user else None,
         )
     except ValueError as exc:
+        if str(exc) == "supplier_rtn_invalid":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El RTN del proveedor debe contener 14 dígitos (formato ####-####-######).",
+            ) from exc
         if str(exc) == "supplier_already_exists":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -64,6 +80,13 @@ def get_supplier_endpoint(
         return crud.get_supplier(db, supplier_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+    except ValueError as exc:
+        if str(exc) == "supplier_rtn_invalid":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El RTN del proveedor debe contener 14 dígitos (formato ####-####-######).",
+            ) from exc
+        raise
 
 
 @router.put("/{supplier_id}", response_model=schemas.SupplierResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])

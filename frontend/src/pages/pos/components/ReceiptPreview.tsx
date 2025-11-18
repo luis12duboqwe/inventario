@@ -67,7 +67,7 @@ function ReceiptPreview({ token, sale, receiptUrl }: Props) {
     }
     const quantityRaw = window.prompt(
       "Cantidad a devolver",
-      String(Math.max(1, saleItem.quantity))
+      String(Math.max(1, saleItem.quantity)),
     );
     if (!quantityRaw) {
       return;
@@ -77,16 +77,65 @@ function ReceiptPreview({ token, sale, receiptUrl }: Props) {
       setError("Indica una cantidad válida a devolver.");
       return;
     }
+    if (!saleItem.quantity || saleItem.quantity <= 0) {
+      setError("No se pudo determinar la cantidad vendida del dispositivo.");
+      return;
+    }
     const detailReason = window.prompt(
       "Motivo visible para el cliente",
-      "Devolución en mostrador"
+      "Devolución en mostrador",
     );
     const reason = window.prompt(
       "Motivo corporativo para la devolución",
-      "Devolución autorizada POS"
+      "Devolución autorizada POS",
     );
     if (!reason || reason.trim().length < 5) {
       setError("Debes capturar un motivo corporativo de al menos 5 caracteres.");
+      return;
+    }
+    const normalizedQuantity = Math.min(Math.max(1, quantity), saleItem.quantity);
+    const unitPrice = saleItem.total_line / saleItem.quantity;
+    const refundAmount = Number((unitPrice * normalizedQuantity).toFixed(2));
+    if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+      setError("No se pudo calcular el monto a reembolsar para la devolución.");
+      return;
+    }
+    const breakdownEntries = Object.entries(sale.payment_breakdown ?? {}).filter(([, value]) =>
+      Number.isFinite(value) && value > 0,
+    );
+    const breakdown: Record<string, number> = {};
+    if (breakdownEntries.length > 0) {
+      const totalPaid = breakdownEntries.reduce((acc, [, value]) => acc + value, 0);
+      let remaining = refundAmount;
+      breakdownEntries.forEach(([method, value], index) => {
+        if (totalPaid <= 0) {
+          return;
+        }
+        if (index === breakdownEntries.length - 1) {
+          breakdown[method] = Number(remaining.toFixed(2));
+          remaining = 0;
+          return;
+        }
+        const ratio = value / totalPaid;
+        const portion = Number((refundAmount * ratio).toFixed(2));
+        breakdown[method] = portion;
+        remaining = Number((remaining - portion).toFixed(2));
+      });
+      if (remaining !== 0) {
+        const fallbackMethod = breakdownEntries[breakdownEntries.length - 1]?.[0] ?? sale.payment_method;
+        breakdown[fallbackMethod] = Number(((breakdown[fallbackMethod] ?? 0) + remaining).toFixed(2));
+      }
+    } else {
+      breakdown[sale.payment_method] = refundAmount;
+    }
+    const breakdownSummary = Object.entries(breakdown)
+      .map(([method, amount]) => `${method}: $${formatCurrency(amount)}`)
+      .join(" · ");
+    const confirmed = window.confirm(
+      `Reintegra ${breakdownSummary}. ¿Deseas confirmar la devolución?`,
+    );
+    if (!confirmed) {
+      setMessage(null);
       return;
     }
     try {
@@ -97,21 +146,23 @@ function ReceiptPreview({ token, sale, receiptUrl }: Props) {
           items: [
             {
               device_id: deviceId,
-              quantity: Math.min(quantity, saleItem.quantity),
+              quantity: normalizedQuantity,
               reason: detailReason?.trim() || "Devolución en mostrador",
+              category: "cliente",
             },
           ],
         },
-        reason.trim()
+        reason.trim(),
       );
-      setMessage("Devolución registrada correctamente. Verifica el módulo de devoluciones para detalles.");
+      setMessage(
+        `Devolución registrada. Reintegra ${breakdownSummary} y actualiza la caja correspondiente.`,
+      );
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "No fue posible registrar la devolución POS."
+        err instanceof Error ? err.message : "No fue posible registrar la devolución POS.",
       );
     }
   };
-
   const handleEmail = async () => {
     const targetEmail = window.prompt("Correo del cliente", "cliente@example.com");
     if (!targetEmail) {

@@ -47,4 +47,5 @@ export function DisableIfNoPerm({ perm, children }: { perm: Perm; children: Reac
 }
 
 export { PERMS } from "./roles";
+export type { Role } from "./roles";
 // [PACK26-AUTHZ-HOOK-END]

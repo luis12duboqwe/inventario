@@ -17,8 +17,56 @@ export type OrdersFiltersBarProps = {
 function FiltersBar({ value, onChange }: OrdersFiltersBarProps) {
   const nextValue = value ?? {};
 
-  const handleChange = (patch: Partial<OrderFilters>) => {
-    onChange({ ...nextValue, ...patch });
+  const changeQuery = (raw: string) => {
+    const trimmed = raw.trim();
+    const next: OrderFilters = { ...nextValue };
+    if (trimmed) {
+      next.query = trimmed;
+    } else {
+      delete next.query;
+    }
+    onChange(next);
+  };
+
+  const changeStatus = (status: OrderFilters["status"]) => {
+    const next: OrderFilters = { ...nextValue };
+    if (!status || status === "ALL") {
+      delete next.status;
+    } else {
+      next.status = status;
+    }
+    onChange(next);
+  };
+
+  const changePayment = (payment: OrderFilters["payment"]) => {
+    const next: OrderFilters = { ...nextValue };
+    if (!payment || payment === "ALL") {
+      delete next.payment;
+    } else {
+      next.payment = payment;
+    }
+    onChange(next);
+  };
+
+  const changeChannel = (channel: OrderFilters["channel"]) => {
+    const next: OrderFilters = { ...nextValue };
+    if (!channel || channel === "ALL") {
+      delete next.channel;
+    } else {
+      next.channel = channel;
+    }
+    onChange(next);
+  };
+
+  const changeDate = (key: "dateFrom" | "dateTo", raw: string) => {
+    const next: OrderFilters = { ...nextValue };
+    const trimmed = raw.trim();
+    if (trimmed) {
+      next[key] = trimmed;
+    } else {
+      delete next[key];
+    }
+    onChange(next);
   };
 
   return (
@@ -32,12 +80,12 @@ function FiltersBar({ value, onChange }: OrdersFiltersBarProps) {
       <input
         placeholder="Buscar (cliente o #pedido)"
         value={nextValue.query ?? ""}
-        onChange={(event) => handleChange({ query: event.target.value })}
+        onChange={(event) => changeQuery(event.target.value)}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <select
         value={nextValue.status ?? "ALL"}
-        onChange={(event) => handleChange({ status: event.target.value as OrderFilters["status"] })}
+        onChange={(event) => changeStatus(event.target.value as OrderFilters["status"])}
         style={{ padding: 8, borderRadius: 8 }}
       >
         <option value="ALL">Todos</option>
@@ -48,7 +96,7 @@ function FiltersBar({ value, onChange }: OrdersFiltersBarProps) {
       </select>
       <select
         value={nextValue.payment ?? "ALL"}
-        onChange={(event) => handleChange({ payment: event.target.value as OrderFilters["payment"] })}
+        onChange={(event) => changePayment(event.target.value as OrderFilters["payment"])}
         style={{ padding: 8, borderRadius: 8 }}
       >
         <option value="ALL">Pago</option>
@@ -59,7 +107,7 @@ function FiltersBar({ value, onChange }: OrdersFiltersBarProps) {
       </select>
       <select
         value={nextValue.channel ?? "ALL"}
-        onChange={(event) => handleChange({ channel: event.target.value as OrderFilters["channel"] })}
+        onChange={(event) => changeChannel(event.target.value as OrderFilters["channel"])}
         style={{ padding: 8, borderRadius: 8 }}
       >
         <option value="ALL">Canal</option>
@@ -70,13 +118,13 @@ function FiltersBar({ value, onChange }: OrdersFiltersBarProps) {
       <input
         type="date"
         value={nextValue.dateFrom ?? ""}
-        onChange={(event) => handleChange({ dateFrom: event.target.value })}
+        onChange={(event) => changeDate("dateFrom", event.target.value)}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         type="date"
         value={nextValue.dateTo ?? ""}
-        onChange={(event) => handleChange({ dateTo: event.target.value })}
+        onChange={(event) => changeDate("dateTo", event.target.value)}
         style={{ padding: 8, borderRadius: 8 }}
       />
     </div>

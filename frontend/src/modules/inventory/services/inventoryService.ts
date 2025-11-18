@@ -6,6 +6,10 @@ import {
   downloadInventoryMovementsCsv,
   downloadInventoryMovementsPdf,
   downloadInventoryMovementsXlsx,
+  downloadInventoryAdjustmentsCsv,
+  downloadInventoryAdjustmentsPdf,
+  downloadInventoryAuditCsv,
+  downloadInventoryAuditPdf,
   downloadInventoryPdf,
   downloadInventoryValueCsv,
   downloadInventoryValuePdf,
@@ -16,13 +20,29 @@ import {
   exportStoreDevicesCsv,
   getDevices,
   getIncompleteDevices,
+  getInventoryReservations,
   getInventoryCurrentReport,
   getInventoryMovementsReport,
   getInventoryValueReport,
   getSupplierBatchOverview,
   getTopProductsReport,
+  getInactiveProductsReport,
+  getSyncDiscrepancyReport,
+  getProductVariants,
+  getProductBundles,
+  createProductVariant,
+  updateProductVariant,
+  archiveProductVariant,
+  createProductBundle,
+  updateProductBundle,
+  archiveProductBundle,
   importStoreDevicesCsv,
+  createInventoryReservation,
+  renewInventoryReservation,
+  cancelInventoryReservation,
   registerMovement,
+  registerInventoryReceiving,
+  registerInventoryCycleCount,
   smartInventoryImport,
   getSmartImportHistory,
 } from "../../../api";
@@ -37,19 +57,89 @@ import type {
   InventoryTopProductsFilters,
   InventoryValueFilters,
   InventoryValueReport,
+  InactiveProductsFilters,
+  InactiveProductsReport,
+  SyncDiscrepancyFilters,
+  SyncDiscrepancyReport,
+  InventoryReservation,
+  InventoryReservationInput,
+  InventoryReservationRenewInput,
   MovementInput,
+  PaginatedResponse,
   SupplierBatchOverviewItem,
+  ProductVariant,
+  ProductVariantCreateInput,
+  ProductVariantUpdateInput,
+  ProductBundle,
+  ProductBundleCreateInput,
+  ProductBundleUpdateInput,
   TopProductsReport,
+  InventoryReceivingRequest,
+  InventoryReceivingResult,
+  InventoryCycleCountRequest,
+  InventoryCycleCountResult,
+  InventoryAuditFilters,
 } from "../../../api";
 
 export const inventoryService = {
   fetchDevices: getDevices,
+  fetchVariants: (
+    token: string,
+    params: Parameters<typeof getProductVariants>[1] = {},
+  ): Promise<ProductVariant[]> => getProductVariants(token, params),
+  createVariant: (
+    token: string,
+    deviceId: number,
+    payload: ProductVariantCreateInput,
+    reason: string,
+  ): Promise<ProductVariant> => createProductVariant(token, deviceId, payload, reason),
+  updateVariant: (
+    token: string,
+    variantId: number,
+    payload: ProductVariantUpdateInput,
+    reason: string,
+  ): Promise<ProductVariant> => updateProductVariant(token, variantId, payload, reason),
+  archiveVariant: (
+    token: string,
+    variantId: number,
+    reason: string,
+  ): Promise<ProductVariant> => archiveProductVariant(token, variantId, reason),
+  fetchBundles: (
+    token: string,
+    params: Parameters<typeof getProductBundles>[1] = {},
+  ): Promise<ProductBundle[]> => getProductBundles(token, params),
+  createBundle: (
+    token: string,
+    payload: ProductBundleCreateInput,
+    reason: string,
+  ): Promise<ProductBundle> => createProductBundle(token, payload, reason),
+  updateBundle: (
+    token: string,
+    bundleId: number,
+    payload: ProductBundleUpdateInput,
+    reason: string,
+  ): Promise<ProductBundle> => updateProductBundle(token, bundleId, payload, reason),
+  archiveBundle: (
+    token: string,
+    bundleId: number,
+    reason: string,
+  ): Promise<ProductBundle> => archiveProductBundle(token, bundleId, reason),
   registerMovement: (
     token: string,
     storeId: number,
     payload: MovementInput,
     comment: string,
   ) => registerMovement(token, storeId, payload, comment),
+  registerReceiving: (
+    token: string,
+    payload: InventoryReceivingRequest,
+    reason: string,
+  ): Promise<InventoryReceivingResult> => registerInventoryReceiving(token, payload, reason),
+  registerCycleCount: (
+    token: string,
+    payload: InventoryCycleCountRequest,
+    reason: string,
+  ): Promise<InventoryCycleCountResult> => registerInventoryCycleCount(token, payload, reason),
   downloadInventoryReport: (token: string, reason: string) =>
     downloadInventoryPdf(token, reason),
   downloadInventoryCsv: (token: string, reason: string) =>
@@ -82,6 +172,30 @@ export const inventoryService = {
     storeId?: number,
     limit = 100,
   ) => getIncompleteDevices(token, storeId, limit),
+  fetchReservations: (
+    token: string,
+    params: Parameters<typeof getInventoryReservations>[1],
+  ): Promise<PaginatedResponse<InventoryReservation>> =>
+    getInventoryReservations(token, params),
+  createReservation: (
+    token: string,
+    payload: InventoryReservationInput,
+    reason: string,
+  ): Promise<InventoryReservation> =>
+    createInventoryReservation(token, payload, reason),
+  renewReservation: (
+    token: string,
+    reservationId: number,
+    payload: InventoryReservationRenewInput,
+    reason: string,
+  ): Promise<InventoryReservation> =>
+    renewInventoryReservation(token, reservationId, payload, reason),
+  cancelReservation: (
+    token: string,
+    reservationId: number,
+    reason: string,
+  ): Promise<InventoryReservation> =>
+    cancelInventoryReservation(token, reservationId, reason),
   fetchSupplierBatchOverview: (
     token: string,
     storeId: number,
@@ -96,6 +210,10 @@ export const inventoryService = {
     token: string,
     filters: InventoryValueFilters = {},
   ): Promise<InventoryValueReport> => getInventoryValueReport(token, filters),
+  fetchInactiveProductsReport: (
+    token: string,
+    filters: InactiveProductsFilters = {},
+  ): Promise<InactiveProductsReport> => getInactiveProductsReport(token, filters),
   fetchInventoryMovementsReport: (
     token: string,
     filters: InventoryMovementsFilters = {},
@@ -104,6 +222,10 @@ export const inventoryService = {
     token: string,
     filters: InventoryTopProductsFilters = {},
   ): Promise<TopProductsReport> => getTopProductsReport(token, filters),
+  fetchSyncDiscrepancyReport: (
+    token: string,
+    filters: SyncDiscrepancyFilters = {},
+  ): Promise<SyncDiscrepancyReport> => getSyncDiscrepancyReport(token, filters),
   downloadInventoryCurrentCsv: (
     token: string,
     reason: string,
@@ -149,6 +271,26 @@ export const inventoryService = {
     reason: string,
     filters: InventoryMovementsFilters = {},
   ) => downloadInventoryMovementsXlsx(token, reason, filters),
+  downloadInventoryAdjustmentsCsv: (
+    token: string,
+    reason: string,
+    filters: InventoryMovementsFilters = {},
+  ) => downloadInventoryAdjustmentsCsv(token, reason, filters),
+  downloadInventoryAdjustmentsPdf: (
+    token: string,
+    reason: string,
+    filters: InventoryMovementsFilters = {},
+  ) => downloadInventoryAdjustmentsPdf(token, reason, filters),
+  downloadInventoryAuditCsv: (
+    token: string,
+    reason: string,
+    filters: InventoryAuditFilters = {},
+  ) => downloadInventoryAuditCsv(token, reason, filters),
+  downloadInventoryAuditPdf: (
+    token: string,
+    reason: string,
+    filters: InventoryAuditFilters = {},
+  ) => downloadInventoryAuditPdf(token, reason, filters),
   downloadTopProductsCsv: (
     token: string,
     reason: string,

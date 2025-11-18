@@ -24,7 +24,7 @@ const mockDashboardModule = vi.hoisted(() =>
     __esModule: true,
     useDashboard: () => ({
       pushToast: pushToastMock,
-    }) as ReturnType<typeof import("../../../dashboard/context/DashboardContext").useDashboard>,
+    }) as unknown as ReturnType<typeof import("../../../dashboard/context/DashboardContext").useDashboard>,
   })
 );
 

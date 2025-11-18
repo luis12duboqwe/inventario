@@ -9,6 +9,8 @@ type LoaderProps = {
   width?: number | string;
   /** Texto accesible */
   label?: string;
+  /** Alias legado usado en pruebas/mocks (se mapea a label) */
+  message?: string;
   /** Clase externa opcional */
   className?: string;
 };
@@ -36,27 +38,36 @@ export const Loader: React.FC<LoaderProps> = ({
   variant = "spinner",
   height,
   width,
-  label = "Cargando…",
+  label,
+  message,
   className,
 }) => {
+  const displayLabel = message ?? label ?? "Cargando…";
   if (variant === "overlay") {
     return (
-      <div aria-label={label} role="status" className={className} style={overlayStyle}>
+      <div aria-label={displayLabel} role="status" className={className} style={overlayStyle}>
         <Spinner />
       </div>
     );
   }
   if (variant === "skeleton") {
+    const skeletonProps: { height?: number | string; width?: number | string } = {};
+    if (typeof height !== "undefined") {
+      skeletonProps.height = height;
+    }
+    if (typeof width !== "undefined") {
+      skeletonProps.width = width;
+    }
     return (
-      <div aria-label={label} role="status" className={className}>
-        <Skeleton height={height} width={width} />
+      <div aria-label={displayLabel} role="status" className={className}>
+        <Skeleton {...skeletonProps} />
       </div>
     );
   }
   return (
-    <div aria-label={label} role="status" className={className} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+    <div aria-label={displayLabel} role="status" className={className} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
       <Spinner />
-      <span style={{ fontSize: 12, color: "#9ca3af" }}>{label}</span>
+      <span style={{ fontSize: 12, color: "#9ca3af" }}>{displayLabel}</span>
       <style>
         {`@keyframes spin {to { transform: rotate(360deg); }}
           @keyframes skeleton { 0%{background-position: 100% 50%} 100%{background-position: 0 50%} }`}

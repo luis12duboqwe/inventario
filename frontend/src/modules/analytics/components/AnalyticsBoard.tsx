@@ -9,9 +9,7 @@ import {
   AnalyticsSalesProjection,
   AnalyticsAlerts,
   AnalyticsRealtime,
-  AnalyticsAlert,
-  StoreRealtimeWidget,
-  AnalyticsCategories,
+  PurchaseAnalytics,
   downloadAnalyticsCsv,
   downloadAnalyticsPdf,
   getAgingAnalytics,
@@ -20,9 +18,11 @@ import {
   getAnalyticsRealtime,
   getComparativeAnalytics,
   getForecastAnalytics,
+  getPurchaseAnalytics,
   getProfitMarginAnalytics,
   getRotationAnalytics,
   getSalesProjectionAnalytics,
+  listPurchaseVendors,
 } from "../../../api";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
@@ -46,11 +46,14 @@ function AnalyticsBoard({ token }: Props) {
   const [projection, setProjection] = useState<AnalyticsSalesProjection | null>(null);
   const [alertsData, setAlertsData] = useState<AnalyticsAlerts | null>(null);
   const [realtimeData, setRealtimeData] = useState<AnalyticsRealtime | null>(null);
+  const [purchasesReport, setPurchasesReport] = useState<PurchaseAnalytics | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [suppliers, setSuppliers] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedStore, setSelectedStore] = useState<number | "all">("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
 
@@ -69,15 +72,19 @@ function AnalyticsBoard({ token }: Props) {
     if (selectedCategory !== "all") {
       filters.category = selectedCategory;
     }
+    if (selectedSupplier !== "all") {
+      filters.supplier = selectedSupplier;
+    }
     return filters;
-  }, [dateFrom, dateTo, selectedCategory, storeIds]);
+  }, [dateFrom, dateTo, selectedCategory, selectedSupplier, storeIds]);
 
   const rotationItems = rotation?.items ?? [];
   const agingItems = aging?.items ?? [];
   const forecastItems = forecast?.items ?? [];
   const comparativeItems = comparative?.items ?? [];
-  const profitItems = profit?.items ?? [];
-  const projectionItems = projection?.items ?? [];
+  const profitItems = useMemo(() => profit?.items ?? [], [profit]);
+  const projectionItems = useMemo(() => projection?.items ?? [], [projection]);
+  const purchaseItems = useMemo(() => purchasesReport?.items ?? [], [purchasesReport]);
   const alerts = alertsData?.items ?? [];
   const realtime = realtimeData?.items ?? [];
 
@@ -95,6 +102,7 @@ function AnalyticsBoard({ token }: Props) {
           comparativeData,
           profitData,
           projectionData,
+          purchasesData,
           alertsResponse,
           realtimeResponse,
         ] = await Promise.all([
@@ -104,6 +112,7 @@ function AnalyticsBoard({ token }: Props) {
           getComparativeAnalytics(token, analyticsFilters),
           getProfitMarginAnalytics(token, analyticsFilters),
           getSalesProjectionAnalytics(token, analyticsFilters),
+          getPurchaseAnalytics(token, analyticsFilters),
           getAnalyticsAlerts(token, analyticsFilters),
           getAnalyticsRealtime(token, analyticsFilters),
         ]);
@@ -113,6 +122,7 @@ function AnalyticsBoard({ token }: Props) {
         setComparative(comparativeData);
         setProfit(profitData);
         setProjection(projectionData);
+        setPurchasesReport(purchasesData);
         setAlertsData(alertsResponse);
         setRealtimeData(realtimeResponse);
         if (notify) {
@@ -125,6 +135,7 @@ function AnalyticsBoard({ token }: Props) {
         pushToast({ message, variant: "error" });
         setAlertsData(null);
         setRealtimeData(null);
+        setPurchasesReport(null);
       } finally {
         if (!notify) {
           setLoading(false);
@@ -153,7 +164,7 @@ function AnalyticsBoard({ token }: Props) {
           err instanceof Error
             ? `No fue posible cargar categorías: ${err.message}`
             : "No fue posible cargar categorías";
-        pushToast({ message, variant: "warning" });
+        pushToast({ message, variant: "error" });
       }
     };
     fetchCategories();
@@ -164,6 +175,35 @@ function AnalyticsBoard({ token }: Props) {
       setSelectedCategory("all");
     }
   }, [categories, selectedCategory]);
+
+  useEffect(() => {
+    const fetchSuppliers = async () => {
+      try {
+        const vendors = await listPurchaseVendors(token, { status: "activo", limit: 100 });
+        const names = Array.from(
+          new Set(
+            vendors
+              .map((vendor) => vendor.nombre?.trim())
+              .filter((name): name is string => Boolean(name && name.length > 0)),
+          ),
+        ).sort((a, b) => a.localeCompare(b));
+        setSuppliers(names);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? `No fue posible cargar proveedores: ${err.message}`
+            : "No fue posible cargar proveedores";
+        pushToast({ message, variant: "error" });
+      }
+    };
+    fetchSuppliers();
+  }, [pushToast, token]);
+
+  useEffect(() => {
+    if (selectedSupplier !== "all" && suppliers.length > 0 && !suppliers.includes(selectedSupplier)) {
+      setSelectedSupplier("all");
+    }
+  }, [selectedSupplier, suppliers]);
 
   const resolveDefaultReason = () => {
     if (selectedStore === "all") {
@@ -329,7 +369,45 @@ function AnalyticsBoard({ token }: Props) {
     />
   );
 
-  const comparativeContent =
+  const purchasesContent =
+    purchaseItems.length === 0 ? (
+      <p className="muted-text">Sin métricas de compras registradas.</p>
+    ) : (
+      <ScrollableTable
+        items={purchaseItems}
+        itemKey={(item) => `${item.store_id}-${item.supplier}`}
+        title="Rendimiento por proveedor"
+        ariaLabel="Tabla de rendimiento por proveedor"
+        renderHead={() => (
+          <>
+            <th scope="col">Proveedor</th>
+            <th scope="col">Sucursal</th>
+            <th scope="col">Dispositivos</th>
+            <th scope="col">Costo total</th>
+            <th scope="col">Costo promedio</th>
+            <th scope="col">Rotación prom.</th>
+            <th scope="col">Días stock prom.</th>
+            <th scope="col">Backorders</th>
+            <th scope="col">Última compra</th>
+          </>
+        )}
+        renderRow={(item) => (
+          <tr>
+            <td data-label="Proveedor">{item.supplier}</td>
+            <td data-label="Sucursal">{item.store_name}</td>
+            <td data-label="Dispositivos">{item.device_count}</td>
+            <td data-label="Costo total">{formatNumber(item.total_cost)}</td>
+            <td data-label="Costo promedio">{formatNumber(item.average_unit_cost)}</td>
+            <td data-label="Rotación prom.">{item.average_rotation.toFixed(2)}</td>
+            <td data-label="Días stock prom.">{item.average_days_in_stock.toFixed(1)}</td>
+            <td data-label="Backorders">{item.pending_backorders}</td>
+            <td data-label="Última compra">{formatDateTime(item.last_purchase_at)}</td>
+          </tr>
+        )}
+      />
+    );
+
+  const comparativeTable =
     comparativeItems.length === 0 ? (
       <p className="muted-text">Sin datos comparativos disponibles.</p>
     ) : (
@@ -358,6 +436,16 @@ function AnalyticsBoard({ token }: Props) {
         )}
       />
     );
+
+  const comparativeContent = (
+    <div className="analytics-comparative">
+      {comparativeTable}
+      <div className="analytics-comparative__section">
+        <h4>Rendimiento por proveedor</h4>
+        {purchasesContent}
+      </div>
+    </div>
+  );
 
   const marginContent =
     profitItems.length === 0 ? (
@@ -612,6 +700,20 @@ function AnalyticsBoard({ token }: Props) {
                 {categories.map((category) => (
                   <option key={category} value={category}>
                     {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Proveedor</span>
+              <select
+                value={selectedSupplier}
+                onChange={(event) => setSelectedSupplier(event.target.value)}
+              >
+                <option value="all">Todos</option>
+                {suppliers.map((supplierName) => (
+                  <option key={supplierName} value={supplierName}>
+                    {supplierName}
                   </option>
                 ))}
               </select>

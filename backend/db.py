@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from sqlalchemy.orm import Session
 
 from backend.app.core.transactions import flush_session, transactional_session
-from backend.database import Base, SessionLocal, get_db, init_db
+from backend.database import Base, SessionLocal, get_db, run_migrations
 from backend.models.user import User
 
 
@@ -63,5 +63,5 @@ __all__ = [
     "get_db_session",
     "get_user_by_email",
     "get_user_by_id",
-    "init_db",
+    "run_migrations",
 ]

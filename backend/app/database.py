@@ -12,6 +12,11 @@ from .config import settings
 
 Base = declarative_base()
 
+# Importa la definicion de modelos para registrar tablas en Base.metadata
+# antes de ejecutar create_all en pruebas o migraciones.
+# Nota: la variable importada no se usa directamente; el efecto deseado es el side-effect de los imports.
+from .db import base as _models  # noqa: F401
+
 
 def create_engine_from_url(url: str) -> Engine:
     """Crea un motor de SQLAlchemy listo para usarse."""
@@ -31,7 +36,8 @@ def create_engine_from_url(url: str) -> Engine:
 
 
 engine: Engine = create_engine_from_url(settings.database_url)
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, future=True)
+SessionLocal = sessionmaker(
+    bind=engine, autocommit=False, autoflush=False, future=True)
 
 
 def get_db() -> Generator:

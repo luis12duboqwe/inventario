@@ -1,0 +1,29 @@
+{
+  "timestamp": "20251111_200328",
+  "mode": "manual",
+  "notes": "QA",
+  "components": [
+    "configuration",
+    "critical_files",
+    "database"
+  ],
+  "reason": "Motivo QA",
+  "triggered_by_id": 1,
+  "total_size_bytes": 321385,
+  "files": {
+    "json": "backups/softmobile_respaldo_20251111_200328.json",
+    "sql": "backups/softmobile_respaldo_20251111_200328.sql",
+    "pdf": "backups/softmobile_inventario_20251111_200328.pdf",
+    "zip": "backups/softmobile_respaldo_20251111_200328.zip",
+    "config": "backups/softmobile_config_20251111_200328.json",
+    "critical_directory": "backups/softmobile_criticos_20251111_200328"
+  },
+  "critical_files": [
+    "backend/app/config.py",
+    "backend/app/main.py",
+    "backend/app/security.py",
+    "environment.yml",
+    "requirements.txt",
+    "README.md"
+  ]
+}

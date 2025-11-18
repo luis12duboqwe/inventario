@@ -68,6 +68,23 @@ const CustomersFiltersPanel = ({
         </select>
       </label>
       <label>
+        Categoría
+        <input
+          value={filters.segmentCategory}
+          onChange={(event) => onFilterChange("segmentCategory", event.target.value)}
+          placeholder="Ej. alto_valor"
+        />
+      </label>
+      <label>
+        Etiquetas
+        <input
+          value={filters.tags}
+          onChange={(event) => onFilterChange("tags", event.target.value)}
+          placeholder="vip, fintech"
+        />
+        <span className="muted-text">Coincidencia total: se filtran clientes que contienen todas las etiquetas.</span>
+      </label>
+      <label>
         Saldo pendiente
         <select
           value={filters.debt}

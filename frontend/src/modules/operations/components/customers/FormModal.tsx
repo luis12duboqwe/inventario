@@ -84,6 +84,16 @@ const CustomersFormModal = ({
           />
         </label>
         <label>
+          RTN para facturación
+          <input
+            value={formState.taxId}
+            onChange={(event) => onFormChange("taxId", event.target.value)}
+            placeholder="RTN corporativo"
+            required
+          />
+          <span className="muted-text">Se usa en facturación y recibos. Debe tener al menos 5 caracteres.</span>
+        </label>
+        <label>
           Tipo de cliente
           <select
             value={formState.customerType}
@@ -108,6 +118,23 @@ const CustomersFormModal = ({
               </option>
             ))}
           </select>
+        </label>
+        <label>
+          Categoría de segmentación
+          <input
+            value={formState.segmentCategory}
+            onChange={(event) => onFormChange("segmentCategory", event.target.value)}
+            placeholder="Ej. alto_valor, frecuente"
+          />
+        </label>
+        <label>
+          Etiquetas
+          <input
+            value={formState.tags}
+            onChange={(event) => onFormChange("tags", event.target.value)}
+            placeholder="Separadas por coma: vip,fintech,lealtad"
+          />
+          <span className="muted-text">Se aplican como filtros combinados y se sincronizan entre sucursales.</span>
         </label>
         <label>
           Límite de crédito MXN

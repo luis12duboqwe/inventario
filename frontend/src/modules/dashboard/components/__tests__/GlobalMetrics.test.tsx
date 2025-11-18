@@ -5,12 +5,14 @@ import GlobalMetrics from "../GlobalMetrics";
 import type { InventoryMetrics } from "../../../../api";
 
 type DashboardStub = {
+  enablePriceLists: boolean;
   metrics: InventoryMetrics | null;
   formatCurrency: (value: number) => string;
   loading: boolean;
 };
 
 const dashboardState: DashboardStub = {
+  enablePriceLists: false,
   metrics: null,
   formatCurrency: (value: number) =>
     new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value),
@@ -31,6 +33,21 @@ const sampleMetrics: InventoryMetrics = {
     total_stock: 340,
     open_repairs: 3,
     gross_profit: 28000,
+  },
+  sales_insights: {
+    average_ticket: 6944.44,
+    top_products: [
+      { label: "Galaxy S24", value: 52000, quantity: 4 },
+      { label: "iPhone 15 Pro", value: 43000, quantity: 3 },
+    ],
+    top_customers: [
+      { label: "Cliente Corporativo", value: 65000, quantity: 3 },
+      { label: "Empresa Norte", value: 42000, quantity: 2 },
+    ],
+    payment_mix: [
+      { label: "Crédito", value: 72000, percentage: 58.06 },
+      { label: "Contado", value: 52000, percentage: 41.94 },
+    ],
   },
   sales_trend: [
     { label: "Lun", value: 22000 },
@@ -105,6 +122,8 @@ describe("GlobalMetrics", () => {
       "href",
       "/dashboard/security"
     );
+    expect(screen.getByText(/\$6,944\.44/)).toBeInTheDocument();
+    expect(screen.getByText(/Cliente Corporativo/i)).toBeInTheDocument();
   });
 
   it("muestra estado vacío cuando no hay métricas disponibles", () => {

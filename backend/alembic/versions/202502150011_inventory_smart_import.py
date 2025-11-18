@@ -13,6 +13,15 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    is_sqlite = bind.dialect.name == "sqlite"
+    json_type = sa.JSON() if is_sqlite else postgresql.JSONB(astext_type=sa.Text())
+    advertencias_default = sa.text(
+        "'[]'") if is_sqlite else sa.text("'[]'::jsonb")
+    patrones_default = sa.text("'{}'") if is_sqlite else sa.text("'{}'::jsonb")
+    fecha_default = sa.text("CURRENT_TIMESTAMP") if is_sqlite else sa.text(
+        "timezone('utc', now())")
+
     op.add_column(
         "devices",
         sa.Column(
@@ -30,15 +39,20 @@ def upgrade() -> None:
             "fecha",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("timezone('utc', now())"),
+            server_default=fecha_default,
         ),
-        sa.Column("columnas_detectadas", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("registros_incompletos", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("total_registros", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("columnas_detectadas", json_type, nullable=False),
+        sa.Column("registros_incompletos", sa.Integer(),
+                  nullable=False, server_default="0"),
+        sa.Column("total_registros", sa.Integer(),
+                  nullable=False, server_default="0"),
         sa.Column("nuevos", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("actualizados", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("advertencias", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default="'[]'::jsonb"),
-        sa.Column("patrones_columnas", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default="'{}'::jsonb"),
+        sa.Column("actualizados", sa.Integer(),
+                  nullable=False, server_default="0"),
+        sa.Column("advertencias", json_type,
+                  nullable=False, server_default=advertencias_default),
+        sa.Column("patrones_columnas", json_type,
+                  nullable=False, server_default=patrones_default),
         sa.Column("duracion_segundos", sa.Numeric(10, 2), nullable=True),
     )
     op.create_index(
@@ -49,10 +63,12 @@ def upgrade() -> None:
     )
 
     op.execute("UPDATE devices SET completo = TRUE")
-    op.alter_column("devices", "completo", server_default=None)
+    if not is_sqlite:
+        op.alter_column("devices", "completo", server_default=None)
 
 
 def downgrade() -> None:
-    op.drop_index("ix_importaciones_temp_fecha", table_name="importaciones_temp")
+    op.drop_index("ix_importaciones_temp_fecha",
+                  table_name="importaciones_temp")
     op.drop_table("importaciones_temp")
     op.drop_column("devices", "completo")

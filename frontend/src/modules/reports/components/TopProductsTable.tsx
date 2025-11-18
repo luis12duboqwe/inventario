@@ -23,30 +23,29 @@ function TopProductsTable({ products, isLoading = false, formatCurrency }: TopPr
           <span>Consultando productos destacados…</span>
         </div>
       ) : products && products.length > 0 ? (
-        <ScrollableTable>
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">SKU</th>
-                <th scope="col">Producto</th>
-                <th scope="col">Cantidad</th>
-                <th scope="col">Ventas brutas</th>
-                <th scope="col">Ventas netas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((item) => (
-                <tr key={item.sku}>
-                  <td>{item.sku}</td>
-                  <td>{item.name}</td>
-                  <td>{item.qty}</td>
-                  <td>{formatCurrency(item.gross)}</td>
-                  <td>{formatCurrency(item.net)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </ScrollableTable>
+        <ScrollableTable
+          items={products}
+          itemKey={(item) => item.sku}
+          ariaLabel="Tabla de productos destacados"
+          renderHead={() => (
+            <>
+              <th scope="col">SKU</th>
+              <th scope="col">Producto</th>
+              <th scope="col">Cantidad</th>
+              <th scope="col">Ventas brutas</th>
+              <th scope="col">Ventas netas</th>
+            </>
+          )}
+          renderRow={(item) => (
+            <>
+              <td>{item.sku}</td>
+              <td>{item.name}</td>
+              <td>{item.qty}</td>
+              <td>{formatCurrency(item.gross)}</td>
+              <td>{formatCurrency(item.net)}</td>
+            </>
+          )}
+        />
       ) : (
         <p className="muted-text">No se registraron productos en el periodo seleccionado.</p>
       )}

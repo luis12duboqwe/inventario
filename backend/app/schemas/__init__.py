@@ -2,41 +2,73 @@
 from __future__ import annotations
 
 import enum
+import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, ClassVar, Iterable, Literal
 
 from pydantic import (
     AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
+    WithJsonSchema,
     computed_field,
     field_serializer,
     field_validator,
     model_validator,
+    model_serializer,
 )
 
 from ..models import (
     BackupComponent,
     BackupMode,
+    CashEntryType,
     CashSessionStatus,
     CommercialState,
     RecurringOrderType,
     MovementType,
     PaymentMethod,
     PurchaseStatus,
+    PrivacyRequestStatus,
+    PrivacyRequestType,
     RepairPartSource,
     RepairStatus,
+    InventoryState,
+    WarrantyStatus,
+    WarrantyClaimStatus,
+    WarrantyClaimType,
     SyncMode,
     SyncOutboxPriority,
     SyncOutboxStatus,
     SyncQueueStatus,
+    DTEStatus,
+    DTEDispatchStatus,
     SyncStatus,
     TransferStatus,
     CustomerLedgerEntryType,
+    StoreCreditStatus,
     SystemLogLevel,
+    LoyaltyTransactionType,
 )
+
+_RTN_TEMPLATE = "{0}-{1}-{2}"
+
+
+def _normalize_rtn_value(value: str | None) -> str:
+    digits = re.sub(r"[^0-9]", "", value or "")
+    if len(digits) != 14:
+        raise ValueError("El RTN debe contener 14 dígitos (formato ####-####-######).")
+    return _RTN_TEMPLATE.format(digits[:4], digits[4:8], digits[8:])
+
+
+def _normalize_optional_rtn_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    return _normalize_rtn_value(cleaned)
 from ..utils import audit as audit_utils
 
 
@@ -119,7 +151,8 @@ class RootWelcomeResponse(BaseModel):
 
 
 class StoreBase(BaseModel):
-    name: str = Field(..., max_length=120, description="Nombre visible de la sucursal")
+    name: str = Field(..., max_length=120,
+                      description="Nombre visible de la sucursal")
     location: str | None = Field(
         default=None, max_length=255, description="Dirección física o referencia de la sucursal"
     )
@@ -132,7 +165,8 @@ class StoreBase(BaseModel):
     status: str = Field(
         default="activa", max_length=30, description="Estado operativo de la sucursal"
     )
-    timezone: str = Field(default="UTC", max_length=50, description="Zona horaria de la sucursal")
+    timezone: str = Field(default="UTC", max_length=50,
+                          description="Zona horaria de la sucursal")
 
 
 class StoreCreate(StoreBase):
@@ -170,35 +204,58 @@ class StoreResponse(StoreBase):
 
 
 class DeviceBase(BaseModel):
-    sku: str = Field(..., max_length=80, description="Identificador único del producto")
-    name: str = Field(..., max_length=120, description="Descripción del dispositivo")
-    quantity: int = Field(default=0, ge=0, description="Cantidad disponible en inventario")
+    sku: str = Field(..., max_length=80,
+                     description="Identificador único del producto")
+    name: str = Field(..., max_length=120,
+                      description="Descripción del dispositivo")
+    quantity: int = Field(
+        default=0, ge=0, description="Cantidad disponible en inventario")
     unit_price: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
         description="Precio unitario referencial del dispositivo",
+    )
+    minimum_stock: int = Field(
+        default=0,
+        ge=0,
+        description="Stock mínimo aceptable antes de escalar una alerta",
+    )
+    reorder_point: int = Field(
+        default=0,
+        ge=0,
+        description="Nivel objetivo para disparar un reabastecimiento",
     )
     precio_venta: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
         description="Precio público sugerido del dispositivo",
     )
-    imei: str | None = Field(default=None, max_length=18, description="IMEI del dispositivo")
-    serial: str | None = Field(default=None, max_length=120, description="Número de serie")
-    marca: str | None = Field(default=None, max_length=80, description="Marca comercial")
-    modelo: str | None = Field(default=None, max_length=120, description="Modelo detallado")
-    categoria: str | None = Field(default=None, max_length=80, description="Categoría de catálogo")
-    condicion: str | None = Field(default=None, max_length=60, description="Condición física")
-    color: str | None = Field(default=None, max_length=60, description="Color principal")
-    capacidad_gb: int | None = Field(default=None, ge=0, description="Capacidad de almacenamiento en GB")
-    capacidad: str | None = Field(default=None, max_length=80, description="Capacidad descriptiva")
+    imei: str | None = Field(default=None, max_length=18,
+                             description="IMEI del dispositivo")
+    serial: str | None = Field(
+        default=None, max_length=120, description="Número de serie")
+    marca: str | None = Field(
+        default=None, max_length=80, description="Marca comercial")
+    modelo: str | None = Field(
+        default=None, max_length=120, description="Modelo detallado")
+    categoria: str | None = Field(
+        default=None, max_length=80, description="Categoría de catálogo")
+    condicion: str | None = Field(
+        default=None, max_length=60, description="Condición física")
+    color: str | None = Field(
+        default=None, max_length=60, description="Color principal")
+    capacidad_gb: int | None = Field(
+        default=None, ge=0, description="Capacidad de almacenamiento en GB")
+    capacidad: str | None = Field(
+        default=None, max_length=80, description="Capacidad descriptiva")
     estado_comercial: CommercialState = Field(default=CommercialState.NUEVO)
     estado: str = Field(
         default="disponible",
         max_length=40,
         description="Estado logístico del producto (disponible, apartado, agotado, etc.)",
     )
-    proveedor: str | None = Field(default=None, max_length=120, description="Proveedor principal")
+    proveedor: str | None = Field(
+        default=None, max_length=120, description="Proveedor principal")
     costo_unitario: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
@@ -214,11 +271,16 @@ class DeviceBase(BaseModel):
         ge=Decimal("0"),
         description="Margen aplicado en porcentaje",
     )
-    garantia_meses: int = Field(default=0, ge=0, description="Garantía ofrecida en meses")
-    lote: str | None = Field(default=None, max_length=80, description="Identificador de lote")
-    fecha_compra: date | None = Field(default=None, description="Fecha de compra al proveedor")
-    fecha_ingreso: date | None = Field(default=None, description="Fecha de ingreso al inventario")
-    ubicacion: str | None = Field(default=None, max_length=120, description="Ubicación física en la sucursal")
+    garantia_meses: int = Field(
+        default=0, ge=0, description="Garantía ofrecida en meses")
+    lote: str | None = Field(default=None, max_length=80,
+                             description="Identificador de lote")
+    fecha_compra: date | None = Field(
+        default=None, description="Fecha de compra al proveedor")
+    fecha_ingreso: date | None = Field(
+        default=None, description="Fecha de ingreso al inventario")
+    ubicacion: str | None = Field(
+        default=None, max_length=120, description="Ubicación física en la sucursal")
     descripcion: str | None = Field(
         default=None,
         max_length=1024,
@@ -233,6 +295,14 @@ class DeviceBase(BaseModel):
         default=True,
         description="Indica si la ficha del producto cuenta con todos los datos obligatorios",
     )
+
+    @model_validator(mode="after")
+    def _validate_stock_thresholds(self) -> "DeviceBase":
+        if self.reorder_point < self.minimum_stock:
+            raise ValueError(
+                "El punto de reorden debe ser mayor o igual al stock mínimo."
+            )
+        return self
 
     @field_serializer("unit_price")
     @classmethod
@@ -357,6 +427,8 @@ class DeviceUpdate(BaseModel):
     descripcion: str | None = Field(default=None, max_length=1024)
     imagen_url: str | None = Field(default=None, max_length=255)
     completo: bool | None = Field(default=None)
+    minimum_stock: int | None = Field(default=None, ge=0)
+    reorder_point: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="before")
     @classmethod
@@ -367,6 +439,16 @@ class DeviceUpdate(BaseModel):
             if "costo_compra" in data and "costo_unitario" not in data:
                 data["costo_unitario"] = data["costo_compra"]
         return data
+
+    @model_validator(mode="after")
+    def _validate_partial_thresholds(self) -> "DeviceUpdate":
+        minimum = self.minimum_stock
+        reorder = self.reorder_point
+        if minimum is not None and reorder is not None and reorder < minimum:
+            raise ValueError(
+                "El punto de reorden debe ser mayor o igual al stock mínimo."
+            )
+        return self
 
     @field_validator("imei")
     @classmethod
@@ -422,6 +504,485 @@ class DeviceResponse(DeviceBase):
     def inventory_value(self) -> float:
         return float(self.quantity * self.unit_price)
 
+    @computed_field(return_type=int)  # type: ignore[misc]
+    def variant_count(self) -> int:
+        variants = getattr(self, "variants", None)
+        if variants is None:
+            return 0
+        try:
+            return len(list(variants))
+        except TypeError:
+            return 0
+
+    @computed_field(return_type=bool)  # type: ignore[misc]
+    def has_variants(self) -> bool:
+        return self.variant_count > 0
+
+
+class ProductVariantBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    variant_sku: str = Field(..., min_length=1, max_length=80)
+    barcode: str | None = Field(default=None, max_length=120)
+    unit_price_override: Decimal | None = Field(default=None, ge=Decimal("0"))
+    is_default: bool = Field(default=False)
+    is_active: bool = Field(default=True)
+
+    @field_serializer("unit_price_override")
+    @classmethod
+    def _serialize_price(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class ProductVariantCreate(ProductVariantBase):
+    pass
+
+
+class ProductVariantUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    variant_sku: str | None = Field(default=None, max_length=80)
+    barcode: str | None = Field(default=None, max_length=120)
+    unit_price_override: Decimal | None = Field(default=None, ge=Decimal("0"))
+    is_default: bool | None = Field(default=None)
+    is_active: bool | None = Field(default=None)
+
+    @field_serializer("unit_price_override")
+    @classmethod
+    def _serialize_update_price(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class ProductVariantResponse(ProductVariantBase):
+    id: int
+    device_id: int
+    store_id: int
+    device_sku: str
+    device_name: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductBundleItemBase(BaseModel):
+    device_id: int = Field(..., ge=1)
+    variant_id: int | None = Field(default=None, ge=1)
+    quantity: int = Field(default=1, ge=1)
+
+
+class ProductBundleItemCreate(ProductBundleItemBase):
+    pass
+
+
+class ProductBundleItemResponse(ProductBundleItemBase):
+    id: int
+    variant_name: str | None = Field(default=None)
+    device_sku: str
+    device_name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductBundleBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    bundle_sku: str = Field(..., min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=500)
+    base_price: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    is_active: bool = Field(default=True)
+
+    @field_serializer("base_price")
+    @classmethod
+    def _serialize_base_price(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class ProductBundleCreate(ProductBundleBase):
+    store_id: int | None = Field(default=None, ge=1)
+    items: list[ProductBundleItemCreate] = Field(default_factory=list)
+
+
+class ProductBundleUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    bundle_sku: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=500)
+    base_price: Decimal | None = Field(default=None, ge=Decimal("0"))
+    is_active: bool | None = Field(default=None)
+    store_id: int | None = Field(default=None, ge=1)
+    items: list[ProductBundleItemCreate] | None = Field(default=None)
+
+    @field_serializer("base_price")
+    @classmethod
+    def _serialize_update_price(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class ProductBundleResponse(ProductBundleBase):
+    id: int
+    store_id: int | None
+    created_at: datetime
+    updated_at: datetime
+    items: list[ProductBundleItemResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+
+
+class PriceListBase(BaseModel):
+    """Información común de una lista de precios corporativa."""
+
+    name: str = Field(
+        ...,
+        min_length=3,
+        max_length=120,
+        description="Nombre visible para identificar la lista de precios.",
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Descripción opcional del alcance o uso de la lista.",
+    )
+    priority: int = Field(
+        default=100,
+        ge=0,
+        le=10000,
+        description="Prioridad corporativa (0 = máxima prioridad).",
+    )
+    is_active: bool = Field(
+        default=True,
+        description="Indica si la lista está habilitada para resolver precios.",
+    )
+    store_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Sucursal asociada cuando la lista es específica para una tienda.",
+    )
+    customer_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Cliente corporativo preferente ligado a la lista.",
+    )
+    currency: str = Field(
+        default="MXN",
+        min_length=3,
+        max_length=10,
+        description="Moneda ISO 4217 en la que se expresan los precios.",
+    )
+    valid_from: date | None = Field(
+        default=None,
+        description="Fecha a partir de la cual la lista entra en vigor.",
+    )
+    valid_until: date | None = Field(
+        default=None,
+        description="Fecha límite de vigencia de la lista de precios.",
+    )
+    starts_at: datetime | None = Field(
+        default=None,
+        description="Fecha de inicio de vigencia en hora exacta (UTC).",
+    )
+    ends_at: datetime | None = Field(
+        default=None,
+        description="Fecha de término de vigencia en hora exacta (UTC).",
+    )
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 3:
+            raise ValueError("El nombre debe tener al menos 3 caracteres.")
+        return normalized
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe tener al menos 3 caracteres.")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_dates(self) -> "PriceListBase":
+        if (
+            self.valid_from is not None
+            and self.valid_until is not None
+            and self.valid_from > self.valid_until
+        ):
+            raise ValueError(
+                "La fecha de inicio no puede ser posterior a la fecha de fin."
+            )
+        if (
+            self.starts_at is not None
+            and self.ends_at is not None
+            and self.ends_at <= self.starts_at
+        ):
+            raise ValueError("La fecha de término debe ser posterior al inicio.")
+        return self
+
+
+class PriceListCreate(PriceListBase):
+    """Carga útil para registrar una nueva lista de precios."""
+
+
+class PriceListUpdate(BaseModel):
+    """Campos opcionales disponibles para actualizar una lista de precios."""
+
+    name: str | None = Field(default=None, min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    priority: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = Field(default=None)
+    store_id: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+    currency: str | None = Field(default=None, min_length=3, max_length=10)
+    valid_from: date | None = Field(default=None)
+    valid_until: date | None = Field(default=None)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if normalized and len(normalized) < 3:
+            raise ValueError("El nombre debe tener al menos 3 caracteres.")
+        return normalized or None
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
+        return normalized
+
+
+class PriceListUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    priority: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = Field(default=None)
+    store_id: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+    starts_at: datetime | None = Field(default=None)
+    ends_at: datetime | None = Field(default=None)
+    valid_from: date | None = Field(default=None)
+    valid_until: date | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _validate_dates(self) -> "PriceListUpdate":
+        if (
+            self.valid_from is not None
+            and self.valid_until is not None
+            and self.valid_from > self.valid_until
+        ):
+            raise ValueError(
+                "La fecha de inicio no puede ser posterior a la fecha de fin."
+            )
+        if (
+            self.starts_at is not None
+            and self.ends_at is not None
+            and self.ends_at <= self.starts_at
+        ):
+            raise ValueError("La fecha de término debe ser posterior al inicio.")
+        return self
+
+
+class PriceListItemBase(BaseModel):
+    """Definición de un precio para un producto dentro de una lista."""
+
+    device_id: int = Field(
+        ...,
+        ge=1,
+        description="Identificador del dispositivo dentro del catálogo corporativo.",
+    )
+    price: Decimal = Field(
+        ...,
+        gt=Decimal("0"),
+        description="Precio específico definido en la lista.",
+    )
+    discount_percentage: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        le=Decimal("100"),
+        description="Descuento porcentual adicional aplicado al precio base.",
+    )
+    currency: str = Field(
+        default="MXN",
+        min_length=3,
+        max_length=8,
+        description="Moneda ISO 4217 asociada al precio.",
+    )
+    notes: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Notas internas sobre la regla de precios.",
+    )
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
+        return normalized
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class PriceListItemCreate(PriceListItemBase):
+    """Carga útil para agregar un producto a una lista de precios."""
+
+
+class PriceListItemUpdate(BaseModel):
+    """Campos disponibles para actualizar un precio de catálogo."""
+
+    price: Decimal | None = Field(default=None, gt=Decimal("0"))
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
+    discount_percentage: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        le=Decimal("100"),
+    )
+    notes: str | None = Field(default=None, max_length=500)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _normalize_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if len(normalized) < 3:
+            raise ValueError("La moneda debe contener al menos 3 caracteres.")
+        return normalized
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _ensure_valid_price(self) -> "PriceListItemUpdate":
+        if self.price is not None and self.price <= Decimal("0"):
+            raise ValueError("El precio debe ser mayor a cero.")
+        return self
+
+
+class PriceListItemResponse(PriceListItemBase):
+    id: int
+    price_list_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("price")
+    @classmethod
+    def _serialize_price(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("discount_percentage")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class PriceListResponse(PriceListBase):
+    id: int
+    scope: str
+    created_at: datetime
+    updated_at: datetime
+    items: list[PriceListItemResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+class PriceResolution(BaseModel):
+    """Resultado de resolver un precio con base en listas disponibles."""
+
+    device_id: int = Field(..., ge=1)
+    price_list_id: int | None = Field(default=None, ge=1)
+    price_list_name: str | None = Field(default=None, max_length=120)
+    scope: Literal[
+        "store_customer",
+        "customer",
+        "store",
+        "global",
+        "fallback",
+    ] = Field(..., description="Ámbito de la lista aplicada al cálculo.")
+    source: Literal["price_list", "fallback"] = Field(
+        ..., description="Origen del precio devuelto."
+    )
+    currency: str = Field(..., min_length=3, max_length=10)
+    base_price: Decimal = Field(..., ge=Decimal("0"))
+    discount_percentage: Decimal | None = Field(
+        default=None, ge=Decimal("0"), le=Decimal("100")
+    )
+    final_price: Decimal = Field(..., ge=Decimal("0"))
+    valid_from: date | None = None
+    valid_until: date | None = None
+
+    @field_serializer("base_price")
+    @classmethod
+    def _serialize_base_price(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("discount_percentage")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+    @field_serializer("final_price")
+    @classmethod
+    def _serialize_final_price(cls, value: Decimal) -> float:
+        return float(value)
+
+class PriceEvaluationRequest(BaseModel):
+    device_id: int = Field(..., ge=1)
+    store_id: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+
+
+class PriceEvaluationResponse(BaseModel):
+    device_id: int
+    price_list_id: int | None = None
+    scope: str | None = None
+    price: float | None = None
+    currency: str | None = None
 
 class SmartImportColumnMatch(BaseModel):
     campo: str
@@ -549,13 +1110,14 @@ class DeviceSearchFilters(BaseModel):
     modelo: str | None = Field(default=None, max_length=120)
     categoria: str | None = Field(default=None, max_length=80)
     condicion: str | None = Field(default=None, max_length=60)
+    estado_comercial: CommercialState | None = Field(default=None)
     estado: str | None = Field(default=None, max_length=40)
     ubicacion: str | None = Field(default=None, max_length=120)
     proveedor: str | None = Field(default=None, max_length=120)
     fecha_ingreso_desde: date | None = Field(default=None)
     fecha_ingreso_hasta: date | None = Field(default=None)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", use_enum_values=True)
 
     @field_validator("imei", "serial", "color", "marca", "modelo", mode="before")
     @classmethod
@@ -564,6 +1126,29 @@ class DeviceSearchFilters(BaseModel):
             return value
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("estado_comercial", mode="before")
+    @classmethod
+    def _normalize_estado_comercial(
+        cls, value: CommercialState | str | None
+    ) -> CommercialState | None:
+        if value is None:
+            return None
+        if isinstance(value, CommercialState):
+            return value
+        normalized = str(value).strip()
+        if not normalized:
+            return None
+        try:
+            return CommercialState(normalized)
+        except ValueError:
+            candidates = {normalized.lower(), normalized.upper()}
+            for candidate in candidates:
+                try:
+                    return CommercialState(candidate)
+                except ValueError:
+                    continue
+            raise ValueError("estado_comercial_invalido")
 
     @field_validator("categoria", "condicion", "estado", "ubicacion", "proveedor", mode="before")
     @classmethod
@@ -607,7 +1192,8 @@ class DeviceIdentifierBase(BaseModel):
     def _validate_identifiers(self) -> "DeviceIdentifierBase":
         identifiers = [self.imei_1, self.imei_2, self.numero_serie]
         if not any(identifiers):
-            raise ValueError("Debe registrar al menos un IMEI o número de serie.")
+            raise ValueError(
+                "Debe registrar al menos un IMEI o número de serie.")
         if self.imei_1 and self.imei_2 and self.imei_1 == self.imei_2:
             raise ValueError("El IMEI 1 y el IMEI 2 no pueden ser idénticos.")
         return self
@@ -620,6 +1206,94 @@ class DeviceIdentifierRequest(DeviceIdentifierBase):
 class DeviceIdentifierResponse(DeviceIdentifierBase):
     id: int
     producto_id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WMSBinBase(BaseModel):
+    codigo: str = Field(
+        ..., min_length=1, max_length=60, description="Código único del bin dentro de la sucursal"
+    )
+    pasillo: str | None = Field(default=None, max_length=60)
+    rack: str | None = Field(default=None, max_length=60)
+    nivel: str | None = Field(default=None, max_length=60)
+    descripcion: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_bin_aliases(cls, data: Any) -> Any:  # pragma: no cover - simple mapeo
+        if not isinstance(data, dict):
+            return data
+        alias_map = {
+            "codigo": ["code"],
+            "pasillo": ["aisle"],
+            "nivel": ["level"],
+            "descripcion": ["description"],
+        }
+        for target, sources in alias_map.items():
+            if target not in data:
+                for source in sources:
+                    if source in data:
+                        data[target] = data[source]
+                        break
+        return data
+
+    @field_validator("codigo", mode="before")
+    @classmethod
+    def _normalize_code(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError("codigo_requerido")
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("codigo_requerido")
+        return normalized
+
+
+class WMSBinCreate(WMSBinBase):
+    """Carga de datos necesaria para registrar un bin."""
+
+
+class WMSBinUpdate(BaseModel):
+    codigo: str | None = Field(default=None, max_length=60)
+    pasillo: str | None = Field(default=None, max_length=60)
+    rack: str | None = Field(default=None, max_length=60)
+    nivel: str | None = Field(default=None, max_length=60)
+    descripcion: str | None = Field(default=None, max_length=255)
+
+
+class WMSBinResponse(BaseModel):
+    """Respuesta de un bin WMS con claves en español.
+
+    Internamente usamos los nombres de atributos reales del modelo SQLAlchemy
+    (code, store_id, created_at, updated_at) y los convertimos a las claves
+    originales en español mediante un serializer personalizado para no depender
+    de *validation_alias*/"serialization_alias" que generan warnings en Pydantic v2.
+    """
+
+    id: int
+    code: str
+    store_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_serializer
+    def _serialize(self) -> dict[str, Any]:  # pragma: no cover - mapeo directo
+        return {
+            "id": self.id,
+            "codigo": self.code,
+            "sucursal_id": self.store_id,
+            "fecha_creacion": self.created_at,
+            "fecha_actualizacion": self.updated_at,
+        }
+
+
+class DeviceBinAssignmentResponse(BaseModel):
+    producto_id: int = Field(..., ge=1)
+    bin: WMSBinResponse
+    asignado_en: datetime
+    desasignado_en: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -660,13 +1334,33 @@ class ContactHistoryEntry(BaseModel):
         return value.isoformat()
 
 
+class SupplierContact(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    position: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    notes: str | None = Field(default=None, max_length=255)
+
+    @field_validator("name", "position", "email", "phone", "notes", mode="before")
+    @classmethod
+    def _normalize_contact_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
 class CustomerBase(BaseModel):
     contact_name: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=120)
     phone: str = Field(..., min_length=5, max_length=40)
     address: str | None = Field(default=None, max_length=255)
-    customer_type: str = Field(default="minorista", min_length=3, max_length=30)
+    customer_type: str = Field(
+        default="minorista", min_length=3, max_length=30)
     status: str = Field(default="activo", min_length=3, max_length=20)
+    tax_id: str | None = Field(default=None, min_length=5, max_length=30)
+    segment_category: str | None = Field(default=None, max_length=60)
+    tags: list[str] = Field(default_factory=list)
     credit_limit: Decimal = Field(default=Decimal("0"))
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal = Field(default=Decimal("0"))
@@ -680,6 +1374,7 @@ class CustomerBase(BaseModel):
         "customer_type",
         "status",
         "notes",
+        "segment_category",
         mode="before",
     )
     @classmethod
@@ -688,6 +1383,39 @@ class CustomerBase(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("tax_id", mode="before")
+    @classmethod
+    def _normalize_tax_id(cls, value: str | None) -> str | None:
+        return _normalize_optional_rtn_value(value)
+
+    @field_validator("segment_category", mode="before")
+    @classmethod
+    def _normalize_segment_category(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _normalize_tags(
+        cls, value: list[str] | str | None
+    ) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            raw_items = value
+        normalized: list[str] = []
+        for item in raw_items:
+            if not isinstance(item, str):
+                continue
+            cleaned = item.strip().lower()
+            if cleaned and cleaned not in normalized:
+                normalized.append(cleaned)
+        return normalized
 
     @field_serializer("outstanding_debt")
     @classmethod
@@ -728,6 +1456,9 @@ class CustomerUpdate(BaseModel):
     address: str | None = Field(default=None, max_length=255)
     customer_type: str | None = Field(default=None, max_length=30)
     status: str | None = Field(default=None, max_length=20)
+    tax_id: str | None = Field(default=None, min_length=5, max_length=30)
+    segment_category: str | None = Field(default=None, max_length=60)
+    tags: list[str] | None = Field(default=None)
     credit_limit: Decimal | None = Field(default=None)
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal | None = Field(default=None)
@@ -742,6 +1473,7 @@ class CustomerUpdate(BaseModel):
         "customer_type",
         "status",
         "notes",
+        "segment_category",
         mode="before",
     )
     @classmethod
@@ -751,6 +1483,156 @@ class CustomerUpdate(BaseModel):
         normalized = value.strip()
         return normalized or None
 
+    @field_validator("tax_id", mode="before")
+    @classmethod
+    def _normalize_update_tax_id(cls, value: str | None) -> str | None:
+        return _normalize_optional_rtn_value(value)
+
+    @field_validator("segment_category", mode="before")
+    @classmethod
+    def _normalize_update_segment_category(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _normalize_update_tags(
+        cls, value: list[str] | str | None
+    ) -> list[str] | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            raw_items = value
+        normalized: list[str] = []
+        for item in raw_items:
+            if not isinstance(item, str):
+                continue
+            cleaned = item.strip().lower()
+            if cleaned and cleaned not in normalized:
+                normalized.append(cleaned)
+        return normalized
+
+
+class LoyaltyAccountBase(BaseModel):
+    accrual_rate: Decimal = Field(default=Decimal("1"), ge=Decimal("0"))
+    redemption_rate: Decimal = Field(default=Decimal("1"), gt=Decimal("0"))
+    expiration_days: int = Field(default=365, ge=0)
+    is_active: bool = Field(default=True)
+    rule_config: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("rule_config", mode="before")
+    @classmethod
+    def _ensure_rule_config(cls, value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return {str(k): v for k, v in value.items()}
+        raise ValueError("rule_config debe ser un objeto JSON válido")
+
+
+class LoyaltyAccountCreate(LoyaltyAccountBase):
+    customer_id: int = Field(..., ge=1)
+
+
+class LoyaltyAccountUpdate(BaseModel):
+    accrual_rate: Decimal | None = Field(default=None, ge=Decimal("0"))
+    redemption_rate: Decimal | None = Field(default=None, gt=Decimal("0"))
+    expiration_days: int | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+    rule_config: dict[str, Any] | None = None
+
+    @field_validator("rule_config", mode="before")
+    @classmethod
+    def _normalize_rule_config(cls, value: Any) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return {str(k): v for k, v in value.items()}
+        raise ValueError("rule_config debe ser un objeto JSON válido")
+
+
+class LoyaltyAccountSummary(BaseModel):
+    id: int
+    balance_points: Decimal = Field(default=Decimal("0"))
+    lifetime_points_earned: Decimal = Field(default=Decimal("0"))
+    lifetime_points_redeemed: Decimal = Field(default=Decimal("0"))
+    expired_points_total: Decimal = Field(default=Decimal("0"))
+    accrual_rate: Decimal = Field(default=Decimal("0"))
+    redemption_rate: Decimal = Field(default=Decimal("0"))
+    expiration_days: int = Field(default=0)
+    is_active: bool = Field(default=True)
+    last_accrual_at: datetime | None = None
+    last_redemption_at: datetime | None = None
+    last_expiration_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer(
+        "balance_points",
+        "lifetime_points_earned",
+        "lifetime_points_redeemed",
+        "expired_points_total",
+        "accrual_rate",
+        "redemption_rate",
+    )
+    @classmethod
+    def _serialize_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class LoyaltyAccountResponse(LoyaltyAccountSummary):
+    customer_id: int
+    rule_config: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class LoyaltyTransactionResponse(BaseModel):
+    id: int
+    account_id: int
+    sale_id: int | None = None
+    transaction_type: LoyaltyTransactionType
+    points: Decimal
+    balance_after: Decimal
+    currency_amount: Decimal
+    description: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    registered_at: datetime
+    expires_at: datetime | None = None
+    registered_by_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("points", "balance_after", "currency_amount")
+    @classmethod
+    def _serialize_transaction_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class LoyaltyReportSummary(BaseModel):
+    total_accounts: int
+    active_accounts: int
+    inactive_accounts: int
+    total_balance: Decimal = Field(default=Decimal("0"))
+    total_earned: Decimal = Field(default=Decimal("0"))
+    total_redeemed: Decimal = Field(default=Decimal("0"))
+    total_expired: Decimal = Field(default=Decimal("0"))
+    last_activity: datetime | None = None
+
+    @field_serializer(
+        "total_balance",
+        "total_earned",
+        "total_redeemed",
+        "total_expired",
+    )
+    @classmethod
+    def _serialize_summary_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
 
 class CustomerResponse(CustomerBase):
     id: int
@@ -758,6 +1640,15 @@ class CustomerResponse(CustomerBase):
     last_interaction_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    privacy_consents: dict[str, bool] = Field(default_factory=dict)
+    privacy_metadata: dict[str, Any] = Field(default_factory=dict)
+    privacy_last_request_at: datetime | None = None
+    loyalty_account: LoyaltyAccountResponse | None = None
+    annual_purchase_amount: float = Field(default=0.0)
+    orders_last_year: int = Field(default=0)
+    purchase_frequency: str = Field(default="sin_datos")
+    segment_labels: list[str] = Field(default_factory=list)
+    last_purchase_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -812,6 +1703,33 @@ class CustomerLedgerEntryResponse(BaseModel):
     created_at: datetime
     created_by: str | None
 
+    @staticmethod
+    def _extract_author(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        name_attrs = ("full_name", "nombre", "name")
+        for attr in name_attrs:
+            candidate = getattr(value, attr, None)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        username_attrs = ("username", "correo", "email")
+        for attr in username_attrs:
+            candidate = getattr(value, attr, None)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        identifier = getattr(value, "id_usuario", None) or getattr(value, "id", None)
+        if identifier is not None:
+            return str(identifier)
+        return str(value)
+
+    @field_validator("created_by", mode="before")
+    @classmethod
+    def _normalize_created_by(cls, value: Any) -> str | None:
+        return cls._extract_author(value)
+
     model_config = ConfigDict(from_attributes=True)
 
     @field_serializer("amount")
@@ -819,23 +1737,290 @@ class CustomerLedgerEntryResponse(BaseModel):
     def _serialize_amount(cls, value: Decimal) -> float:
         return float(value)
 
-    @field_serializer("balance_after")
+    @field_serializer("created_by")
     @classmethod
-    def _serialize_balance_after(cls, value: Decimal) -> float:
+    def _serialize_created_by(cls, value: Any) -> str | None:
+        return cls._extract_author(value)
+
+
+class StoreCreditRedemptionResponse(BaseModel):
+    id: int
+    store_credit_id: int
+    sale_id: int | None
+    amount: float
+    notes: str | None
+    created_at: datetime
+    created_by: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_author(cls, data: Any) -> Any:
+        try:
+            from .. import models  # type: ignore
+        except ImportError:  # pragma: no cover - fallback en tiempo de import
+            models = None  # type: ignore
+        if models is not None and isinstance(data, models.StoreCreditRedemption):
+            author = getattr(data, "created_by", None)
+            return {
+                "id": data.id,
+                "store_credit_id": data.store_credit_id,
+                "sale_id": data.sale_id,
+                "amount": data.amount,
+                "notes": data.notes,
+                "created_at": data.created_at,
+                "created_by": getattr(author, "full_name", None)
+                or getattr(author, "username", None),
+            }
+        if isinstance(data, dict) and "created_by" in data:
+            author_obj = data["created_by"]
+            if hasattr(author_obj, "full_name") or hasattr(author_obj, "username"):
+                data = dict(data)
+                data["created_by"] = getattr(author_obj, "full_name", None) or getattr(
+                    author_obj, "username", None
+                )
+        return data
+
+    @field_serializer("amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
         return float(value)
 
-    @field_validator("created_by", mode="before")
+    @field_serializer("created_at")
     @classmethod
-    def _normalize_created_by(cls, value: Any) -> str | None:
+    def _serialize_created_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class StoreCreditResponse(BaseModel):
+    id: int
+    code: str
+    customer_id: int
+    issued_amount: float
+    balance_amount: float
+    status: StoreCreditStatus
+    notes: str | None
+    context: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("context", "metadata"),
+        serialization_alias="context",
+    )
+    issued_at: datetime
+    redeemed_at: datetime | None
+    expires_at: datetime | None
+    redemptions: list[StoreCreditRedemptionResponse]
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_payload(cls, data: Any) -> Any:
+        try:
+            from .. import models  # type: ignore
+        except ImportError:  # pragma: no cover
+            models = None  # type: ignore
+        if models is not None and isinstance(data, models.StoreCredit):
+            return {
+                "id": data.id,
+                "code": data.code,
+                "customer_id": data.customer_id,
+                "issued_amount": data.issued_amount,
+                "balance_amount": data.balance_amount,
+                "status": data.status,
+                "notes": data.notes,
+                "context": getattr(data, "context", {}) or {},
+                "issued_at": data.issued_at,
+                "redeemed_at": data.redeemed_at,
+                "expires_at": data.expires_at,
+                "redemptions": list(getattr(data, "redemptions", []) or []),
+            }
+        if isinstance(data, dict):
+            payload = dict(data)
+            context_payload = payload.get("context")
+            metadata_payload = payload.get("metadata")
+            if context_payload is None and metadata_payload is not None:
+                payload["context"] = metadata_payload
+            payload.setdefault("context", {})
+            return payload
+        return data
+
+    @field_serializer("issued_amount", "balance_amount")
+    @classmethod
+    def _serialize_credit_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("issued_at", when_used="json")
+    @classmethod
+    def _serialize_issued_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+    @field_serializer("redeemed_at", "expires_at", when_used="json")
+    @classmethod
+    def _serialize_optional_datetime(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class StoreCreditIssueRequest(BaseModel):
+    customer_id: int = Field(..., ge=1)
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    notes: str | None = Field(default=None, max_length=255)
+    expires_at: datetime | None = None
+    code: str | None = Field(default=None, max_length=32)
+    context: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("context", "metadata"),
+        serialization_alias="context",
+    )
+
+    @field_validator("context", mode="before")
+    @classmethod
+    def _ensure_context(cls, value: Any) -> dict[str, Any]:
         if value is None:
-            return None
-        full_name = getattr(value, "full_name", None)
-        if isinstance(full_name, str) and full_name.strip():
-            return full_name.strip()
-        username = getattr(value, "username", None)
-        if isinstance(username, str) and username.strip():
-            return username.strip()
-        return None
+            return {}
+        if isinstance(value, dict):
+            return dict(value)
+        raise ValueError("context debe ser un diccionario")
+
+
+class StoreCreditRedeemRequest(BaseModel):
+    store_credit_id: int | None = Field(default=None, ge=1)
+    code: str | None = Field(default=None, max_length=32)
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    sale_id: int | None = Field(default=None, ge=1)
+    notes: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def _ensure_reference(self) -> "StoreCreditRedeemRequest":
+        if self.store_credit_id is None and not (self.code and self.code.strip()):
+            raise ValueError(
+                "Debes indicar el identificador o el código de la nota de crédito."
+            )
+        return self
+
+
+class CustomerDebtSnapshot(BaseModel):
+    previous_balance: Decimal
+    new_charges: Decimal
+    payments_applied: Decimal
+    remaining_balance: Decimal
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @field_serializer("previous_balance", "new_charges", "payments_applied", "remaining_balance")
+    @classmethod
+    def _serialize_snapshot_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class CreditScheduleEntry(BaseModel):
+    sequence: int
+    due_date: datetime
+    amount: Decimal
+    status: Literal["pending", "due_soon", "overdue"]
+    reminder: str | None = None
+
+    @field_serializer("amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("due_date")
+    @classmethod
+    def _serialize_due_date(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AccountsReceivableEntry(BaseModel):
+    ledger_entry_id: int
+    reference_type: str | None = None
+    reference_id: str | None = None
+    reference: str | None = None
+    issued_at: datetime
+    original_amount: float
+    balance_due: float
+    days_outstanding: int
+    status: Literal["current", "overdue"]
+    note: str | None = None
+    details: dict[str, Any] | None = None
+
+    @field_serializer("issued_at")
+    @classmethod
+    def _serialize_issued_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AccountsReceivableBucket(BaseModel):
+    label: str
+    days_from: int
+    days_to: int | None = None
+    amount: float
+    percentage: float
+    count: int
+
+
+class AccountsReceivableSummary(BaseModel):
+    total_outstanding: float
+    available_credit: float
+    credit_limit: float
+    last_payment_at: datetime | None = None
+    next_due_date: datetime | None = None
+    average_days_outstanding: float
+    contact_email: str | None = None
+    contact_phone: str | None = None
+
+    @field_serializer("last_payment_at", "next_due_date")
+    @classmethod
+    def _serialize_optional_datetime(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class CustomerAccountsReceivableResponse(BaseModel):
+    customer: CustomerResponse
+    summary: AccountsReceivableSummary
+    aging: list[AccountsReceivableBucket] = Field(default_factory=list)
+    open_entries: list[AccountsReceivableEntry] = Field(default_factory=list)
+    credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
+    recent_activity: list[CustomerLedgerEntryResponse] = Field(default_factory=list)
+    generated_at: datetime
+
+    @field_serializer("generated_at")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class CustomerStatementLine(BaseModel):
+    created_at: datetime
+    description: str
+    reference: str | None = None
+    entry_type: CustomerLedgerEntryType
+    amount: float
+    balance_after: float
+
+    @field_serializer("created_at")
+    @classmethod
+    def _serialize_created_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class CustomerStatementReport(BaseModel):
+    customer: CustomerResponse
+    summary: AccountsReceivableSummary
+    lines: list[CustomerStatementLine] = Field(default_factory=list)
+    generated_at: datetime
+
+    @field_serializer("generated_at")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
+class CustomerPaymentReceiptResponse(BaseModel):
+    ledger_entry: CustomerLedgerEntryResponse
+    debt_summary: CustomerDebtSnapshot
+    credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
+    receipt_pdf_base64: str
 
 
 class CustomerSaleSummary(BaseModel):
@@ -865,6 +2050,9 @@ class CustomerFinancialSnapshot(BaseModel):
     available_credit: float
     total_sales_credit: float
     total_payments: float
+    store_credit_issued: float
+    store_credit_available: float
+    store_credit_redeemed: float
 
 
 class CustomerSummaryResponse(BaseModel):
@@ -874,6 +2062,170 @@ class CustomerSummaryResponse(BaseModel):
     invoices: list[CustomerInvoiceSummary]
     payments: list[CustomerLedgerEntryResponse]
     ledger: list[CustomerLedgerEntryResponse]
+    store_credits: list[StoreCreditResponse]
+    privacy_requests: list["CustomerPrivacyRequestResponse"] = Field(default_factory=list)
+
+
+class CustomerPrivacyRequestResponse(BaseModel):
+    id: int
+    customer_id: int
+    request_type: PrivacyRequestType
+    status: PrivacyRequestStatus
+    details: str | None = None
+    consent_snapshot: dict[str, bool] = Field(default_factory=dict)
+    masked_fields: list[str] = Field(default_factory=list)
+    created_at: datetime
+    processed_at: datetime | None = None
+    processed_by_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerPrivacyRequestCreate(BaseModel):
+    request_type: PrivacyRequestType
+    details: str | None = Field(default=None, max_length=255)
+    consent: dict[str, bool] | None = None
+    mask_fields: list[str] = Field(default_factory=list)
+
+    @field_validator("consent", mode="before")
+    @classmethod
+    def _normalize_consent(
+        cls, value: dict[str, object] | None
+    ) -> dict[str, bool] | None:
+        if value is None:
+            return None
+        normalized: dict[str, bool] = {}
+        for key, raw in value.items():
+            name = str(key).strip().lower()
+            if not name:
+                continue
+            normalized[name] = bool(raw)
+        return normalized
+
+    @field_validator("mask_fields", mode="before")
+    @classmethod
+    def _normalize_mask_fields(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            items = list(value)
+        else:
+            items = str(value).split(",")
+        normalized: list[str] = []
+        for item in items:
+            text = str(item).strip().lower()
+            if text and text not in normalized:
+                normalized.append(text)
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_payload(self) -> "CustomerPrivacyRequestCreate":
+        if self.request_type == PrivacyRequestType.CONSENT:
+            if not self.consent:
+                raise ValueError(
+                    "Debes proporcionar al menos un consentimiento a actualizar."
+                )
+        elif not self.mask_fields:
+            self.mask_fields = ["email", "phone", "address"]
+        return self
+
+
+class CustomerPrivacyActionResponse(BaseModel):
+    customer: CustomerResponse
+    request: CustomerPrivacyRequestResponse
+
+
+class PaymentCenterSummary(BaseModel):
+    collections_today: float = 0.0
+    collections_month: float = 0.0
+    pending_balance: float = 0.0
+    refunds_month: float = 0.0
+
+
+class PaymentCenterTransaction(BaseModel):
+    id: int
+    type: Literal["PAYMENT", "REFUND", "CREDIT_NOTE"]
+    amount: float
+    created_at: datetime
+    order_id: int | None = None
+    order_number: str | None = None
+    customer_id: int
+    customer_name: str
+    method: str | None = None
+    note: str | None = None
+    status: Literal["POSTED", "VOID"] = "POSTED"
+
+
+class PaymentCenterResponse(BaseModel):
+    summary: PaymentCenterSummary
+    transactions: list[PaymentCenterTransaction]
+
+
+class PaymentCenterPaymentCreate(CustomerPaymentCreate):
+    customer_id: int = Field(gt=0)
+
+
+class PaymentCenterRefundCreate(BaseModel):
+    customer_id: int = Field(gt=0)
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    method: str = Field(min_length=3, max_length=40)
+    reason: str = Field(min_length=3, max_length=120)
+    note: str | None = Field(default=None, max_length=255)
+    sale_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("method", "reason", mode="before")
+    @classmethod
+    def _normalize_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El campo es obligatorio")
+        return normalized
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _normalize_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class PaymentCenterCreditNoteLine(BaseModel):
+    description: str = Field(min_length=1, max_length=160)
+    quantity: int = Field(default=1, ge=0)
+    amount: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("La descripción es obligatoria")
+        return normalized
+
+
+class PaymentCenterCreditNoteCreate(BaseModel):
+    customer_id: int = Field(gt=0)
+    lines: list[PaymentCenterCreditNoteLine]
+    total: Decimal = Field(..., gt=Decimal("0"))
+    note: str | None = Field(default=None, max_length=255)
+    sale_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("lines")
+    @classmethod
+    def _ensure_lines(cls, value: list[PaymentCenterCreditNoteLine]) -> list[PaymentCenterCreditNoteLine]:
+        if not value:
+            raise ValueError(
+                "La nota de crédito requiere al menos un concepto")
+        return value
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _normalize_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class CustomerPortfolioFilters(BaseModel):
@@ -938,6 +2290,8 @@ class CustomerDashboardMetrics(BaseModel):
 
 
 class SupplierBase(BaseModel):
+    rtn: str | None = Field(default=None, max_length=30)
+    payment_terms: str | None = Field(default=None, max_length=80)
     contact_name: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
@@ -945,14 +2299,50 @@ class SupplierBase(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal = Field(default=Decimal("0"))
     history: list[ContactHistoryEntry] = Field(default_factory=list)
+    contact_info: list[SupplierContact] = Field(default_factory=list)
+    products_supplied: list[str] = Field(default_factory=list)
 
-    @field_validator("contact_name", "email", "phone", "address", "notes", mode="before")
+    @field_validator(
+        "rtn",
+        "payment_terms",
+        "contact_name",
+        "email",
+        "phone",
+        "address",
+        "notes",
+        mode="before",
+    )
     @classmethod
     def _normalize_optional_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("rtn", mode="before")
+    @classmethod
+    def _normalize_rtn(cls, value: str | None) -> str | None:
+        return _normalize_optional_rtn_value(value)
+
+    @field_validator("products_supplied", mode="before")
+    @classmethod
+    def _normalize_products(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (str, bytes)):
+            candidates = [value]
+        else:
+            candidates = list(value) if isinstance(value, Iterable) else [value]
+        normalized: list[str] = []
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            text = str(candidate).strip()
+            if not text:
+                continue
+            if text not in normalized:
+                normalized.append(text)
+        return normalized
 
     @field_serializer("outstanding_debt")
     @classmethod
@@ -974,6 +2364,8 @@ class SupplierCreate(SupplierBase):
 
 class SupplierUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=120)
+    rtn: str | None = Field(default=None, max_length=30)
+    payment_terms: str | None = Field(default=None, max_length=80)
     contact_name: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
@@ -981,14 +2373,51 @@ class SupplierUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
     outstanding_debt: Decimal | None = Field(default=None)
     history: list[ContactHistoryEntry] | None = Field(default=None)
+    contact_info: list[SupplierContact] | None = Field(default=None)
+    products_supplied: list[str] | None = Field(default=None)
 
-    @field_validator("name", "contact_name", "email", "phone", "address", "notes", mode="before")
+    @field_validator(
+        "name",
+        "rtn",
+        "payment_terms",
+        "contact_name",
+        "email",
+        "phone",
+        "address",
+        "notes",
+        mode="before",
+    )
     @classmethod
     def _normalize_update_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("rtn", mode="before")
+    @classmethod
+    def _normalize_update_rtn(cls, value: str | None) -> str | None:
+        return _normalize_optional_rtn_value(value)
+
+    @field_validator("products_supplied", mode="before")
+    @classmethod
+    def _normalize_products_update(cls, value: object) -> list[str] | None:
+        if value is None:
+            return None
+        if isinstance(value, (str, bytes)):
+            candidates = [value]
+        else:
+            candidates = list(value) if isinstance(value, Iterable) else [value]
+        normalized: list[str] = []
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            text = str(candidate).strip()
+            if not text:
+                continue
+            if text not in normalized:
+                normalized.append(text)
+        return normalized
 
 
 class SupplierResponse(SupplierBase):
@@ -998,6 +2427,46 @@ class SupplierResponse(SupplierBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SupplierAccountsPayableBucket(BaseModel):
+    label: str
+    days_from: int
+    days_to: int | None
+    amount: float
+    percentage: float
+    count: int
+
+
+class SupplierAccountsPayableSupplier(BaseModel):
+    supplier_id: int
+    supplier_name: str
+    rtn: str | None
+    payment_terms: str | None
+    outstanding_debt: float
+    bucket_label: str
+    bucket_from: int
+    bucket_to: int | None
+    days_outstanding: int
+    last_activity: datetime | None
+    contact_name: str | None
+    contact_email: str | None
+    contact_phone: str | None
+    products_supplied: list[str]
+    contact_info: list[SupplierContact] = Field(default_factory=list)
+
+
+class SupplierAccountsPayableSummary(BaseModel):
+    total_balance: float
+    total_overdue: float
+    supplier_count: int
+    generated_at: datetime
+    buckets: list[SupplierAccountsPayableBucket]
+
+
+class SupplierAccountsPayableResponse(BaseModel):
+    summary: SupplierAccountsPayableSummary
+    suppliers: list[SupplierAccountsPayableSupplier]
 
 
 class SupplierBatchBase(BaseModel):
@@ -1074,6 +2543,7 @@ class SupplierBatchOverviewItem(BaseModel):
 class TransferOrderItemBase(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
+    reservation_id: int | None = Field(default=None, ge=1)
 
 
 class TransferOrderItemCreate(TransferOrderItemBase):
@@ -1102,7 +2572,8 @@ class TransferOrderCreate(BaseModel):
     @classmethod
     def _ensure_items(cls, value: list[TransferOrderItemCreate]) -> list[TransferOrderItemCreate]:
         if not value:
-            raise ValueError("Debes incluir al menos un dispositivo en la transferencia.")
+            raise ValueError(
+                "Debes incluir al menos un dispositivo en la transferencia.")
         return value
 
 
@@ -1189,16 +2660,9 @@ class RoleResponse(BaseModel):
 
 
 class UserBase(BaseModel):
-    username: str = Field(
-        ...,
-        max_length=120,
-        validation_alias=AliasChoices("username", "correo"),
-    )
-    full_name: str | None = Field(
-        default=None,
-        max_length=120,
-        validation_alias=AliasChoices("full_name", "nombre"),
-    )
+    # El campo principal es username; aceptamos 'correo' como alias de entrada mediante _coerce_aliases.
+    username: Annotated[str, Field(..., max_length=120)]
+    full_name: Annotated[str | None, Field(default=None, max_length=120)]
     telefono: str | None = Field(default=None, max_length=30)
 
     model_config = ConfigDict(populate_by_name=True)
@@ -1220,15 +2684,31 @@ class UserBase(BaseModel):
             raise ValueError("El correo del usuario es obligatorio")
         return value.strip()
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_aliases(cls, data: Any) -> Any:  # pragma: no cover - lógica simple
+        """Permite aceptar claves alternativas (correo/nombre) sin usar validation_alias.
+
+        Evita warnings de Pydantic v2 y mantiene compatibilidad con payloads históricos.
+        """
+        if not isinstance(data, dict):
+            return data
+        # username <= correo/email
+        if "username" not in data:
+            if "correo" in data and data.get("correo"):
+                data["username"] = data.get("correo")
+            elif "email" in data and data.get("email"):
+                data["username"] = data.get("email")
+        # full_name <= nombre
+        if "full_name" not in data and "nombre" in data:
+            data["full_name"] = data.get("nombre")
+        return data
+
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=128)
     roles: list[str] = Field(default_factory=list)
-    store_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "sucursal_id"),
-    )
+    store_id: Annotated[int | None, Field(default=None, ge=1)]
 
 
 class BootstrapStatusResponse(BaseModel):
@@ -1312,14 +2792,22 @@ class UserResponse(UserBase):
 
 
 class UserUpdate(BaseModel):
-    full_name: str | None = Field(default=None, max_length=120, validation_alias=AliasChoices("full_name", "nombre"))
+    full_name: Annotated[str | None, Field(default=None, max_length=120)]
     telefono: str | None = Field(default=None, max_length=30)
     password: str | None = Field(default=None, min_length=8, max_length=128)
-    store_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "sucursal_id"),
-    )
+    store_id: Annotated[int | None, Field(default=None, ge=1)]
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_aliases(cls, data: Any) -> Any:  # pragma: no cover - simple
+        if not isinstance(data, dict):
+            return data
+        if "full_name" not in data and "nombre" in data:
+            data["full_name"] = data.get("nombre")
+        if "store_id" not in data and "sucursal_id" in data:
+            data["store_id"] = data.get("sucursal_id")
+        return data
 
 
 class RoleModulePermission(BaseModel):
@@ -1469,8 +2957,10 @@ class TokenVerificationRequest(BaseModel):
 
 
 class TokenVerificationResponse(BaseModel):
-    is_valid: bool = Field(..., description="Indica si el token sigue siendo válido.")
-    detail: str = Field(..., description="Mensaje descriptivo del estado del token.")
+    is_valid: bool = Field(...,
+                           description="Indica si el token sigue siendo válido.")
+    detail: str = Field(...,
+                        description="Mensaje descriptivo del estado del token.")
     session_id: int | None = Field(
         default=None,
         description="Identificador interno de la sesión asociada al token.",
@@ -1492,14 +2982,33 @@ class TOTPSetupResponse(BaseModel):
     otpauth_url: str
 
 
-class TOTPActivateRequest(BaseModel):
-    code: str = Field(..., min_length=6, max_length=6)
-
-
 class TOTPStatusResponse(BaseModel):
     is_active: bool
     activated_at: datetime | None
     last_verified_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TOTPActivateRequest(BaseModel):
+    """Payload para activar 2FA TOTP.
+
+    Acepta alias comunes como otp/totp/token/otp_code sin generar warnings de alias.
+    """
+
+    code: str = Field(..., min_length=6, max_length=10)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        if "code" not in data:
+            for key in ("otp", "totp", "token", "otp_code"):
+                if key in data and data[key]:
+                    data["code"] = data[key]
+                    break
+        return data
 
 
 class ActiveSessionResponse(BaseModel):
@@ -1512,6 +3021,7 @@ class ActiveSessionResponse(BaseModel):
     revoked_at: datetime | None
     revoked_by_id: int | None
     revoke_reason: str | None
+    user: UserResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1519,27 +3029,120 @@ class ActiveSessionResponse(BaseModel):
 class SessionRevokeRequest(BaseModel):
     reason: str = Field(..., min_length=5, max_length=255)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_reason_alias(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "reason" not in data:
+            for alias in ("motivo", "revoke_reason"):
+                if alias in data:
+                    data["reason"] = data[alias]
+                    break
+        return data
+
+
+class POSReturnItemRequest(BaseModel):
+    """Item devuelto desde el POS identificable por producto, línea o IMEI."""
+
+    sale_item_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "sale_item_id",
+                "saleItemId",
+                "item_id",
+                "itemId",
+            ),
+        ),
+    ]
+    product_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices(
+                "product_id",
+                "productId",
+                "device_id",
+            ),
+        ),
+    ]
+    imei: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=18,
+            validation_alias=AliasChoices("imei", "imei_1"),
+        ),
+    ]
+    qty: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices("quantity", "qty"),
+        ),
+    ]
+    disposition: Annotated[
+        ReturnDisposition,
+        Field(
+            default=ReturnDisposition.VENDIBLE,
+            validation_alias=AliasChoices("disposition", "estado"),
+        ),
+    ]
+    warehouse_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=1,
+            validation_alias=AliasChoices("warehouse_id", "warehouseId", "almacen_id"),
+        ),
+    ]
+
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "POSReturnItemRequest":
+        if not (self.sale_item_id or self.product_id or self.imei):
+            raise ValueError(
+                "Debes proporcionar sale_item_id, product_id o imei para la devolución."
+            )
+        return self
 
 class MovementBase(BaseModel):
+    """Base para registrar movimientos de inventario (entradas/salidas/ajustes).
+
+    Acepta aliases comunes (device_id, quantity, comment, source_store_id, store_id)
+    y los normaliza a las claves en español usadas en nuestra API pública.
+    """
+
     producto_id: int = Field(..., ge=1)
     tipo_movimiento: MovementType
     cantidad: int = Field(..., ge=0)
-    comentario: str = Field(..., max_length=255)
-    sucursal_origen_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("sucursal_origen_id", "tienda_origen_id"),
-        serialization_alias="sucursal_origen_id",
-    )
-    sucursal_destino_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices(
-            "sucursal_destino_id", "tienda_destino_id", "branch_id"
-        ),
-        serialization_alias="sucursal_destino_id",
-    )  # // [PACK30-31-BACKEND]
+    comentario: str = Field(..., min_length=5, max_length=255)
+    sucursal_origen_id: int | None = Field(default=None, ge=1)
+    sucursal_destino_id: int | None = Field(default=None, ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_movement_input(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        mapping = {
+            "producto_id": ["device_id"],
+            "tipo_movimiento": ["movement_type"],
+            "cantidad": ["quantity"],
+            "comentario": ["comment"],
+            "sucursal_origen_id": ["tienda_origen_id", "source_store_id"],
+            "sucursal_destino_id": ["tienda_destino_id", "branch_id", "store_id"],
+        }
+        for target, sources in mapping.items():
+            if target not in data:
+                for s in sources:
+                    if s in data:
+                        data[target] = data[s]
+                        break
+        return data
 
     @field_validator("comentario", mode="before")
     @classmethod
@@ -1554,7 +3157,8 @@ class MovementBase(BaseModel):
     @model_validator(mode="after")
     def _validate_quantity(self) -> "MovementBase":
         if self.tipo_movimiento in {MovementType.IN, MovementType.OUT} and self.cantidad <= 0:
-            raise ValueError("La cantidad debe ser mayor que cero para entradas o salidas.")
+            raise ValueError(
+                "La cantidad debe ser mayor que cero para entradas o salidas.")
         if self.tipo_movimiento == MovementType.ADJUST and self.cantidad < 0:
             raise ValueError("La cantidad no puede ser negativa en un ajuste.")
         return self
@@ -1565,73 +3169,36 @@ class MovementCreate(MovementBase):
 
 
 class MovementResponse(BaseModel):
+    """Respuesta de movimiento de inventario con claves en español.
+
+    Se usan nombres internos iguales al modelo (`device_id`, `movement_type`,
+    `quantity`, `comment`, `source_store_id`, `store_id`, `performed_by_id`,
+    `created_at`) y se serializan a los nombres históricos en español utilizados
+    por las pruebas y el frontend (`producto_id`, `tipo_movimiento`, `cantidad`,
+    `comentario`, `sucursal_origen_id`, `sucursal_destino_id`, `usuario_id`,
+    `fecha`). Esto evita depender de *validation_alias* y reduce warnings.
+    """
+
     id: int
-    producto_id: int = Field(
-        validation_alias=AliasChoices("producto_id", "device_id"),
-        serialization_alias="producto_id",
-    )
-    tipo_movimiento: MovementType = Field(
-        validation_alias=AliasChoices("tipo_movimiento", "movement_type"),
-        serialization_alias="tipo_movimiento",
-    )
-    cantidad: int = Field(
-        validation_alias=AliasChoices("cantidad", "quantity"),
-        serialization_alias="cantidad",
-    )
-    comentario: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("comentario", "comment"),
-        serialization_alias="comentario",
-    )
-    sucursal_origen_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("sucursal_origen_id", "tienda_origen_id", "source_store_id"),
-        serialization_alias="sucursal_origen_id",
-    )
-    sucursal_origen: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("sucursal_origen", "tienda_origen"),
-        serialization_alias="sucursal_origen",
-    )
-    sucursal_destino_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("sucursal_destino_id", "tienda_destino_id", "store_id"),
-        serialization_alias="sucursal_destino_id",
-    )
-    sucursal_destino: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("sucursal_destino", "tienda_destino"),
-        serialization_alias="sucursal_destino",
-    )
-    usuario_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("usuario_id", "performed_by_id"),
-        serialization_alias="usuario_id",
-    )
-    usuario: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("usuario"),
-        serialization_alias="usuario",
-    )
-    referencia_tipo: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("referencia_tipo", "reference_type"),
-        serialization_alias="referencia_tipo",
-    )
-    referencia_id: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("referencia_id", "reference_id"),
-        serialization_alias="referencia_id",
-    )
-    fecha: datetime = Field(
-        validation_alias=AliasChoices("fecha", "created_at"),
-        serialization_alias="fecha",
-    )
-    unit_cost: Decimal | None = Field(default=None)
+    device_id: int
+    movement_type: MovementType
+    quantity: int
+    comment: str | None = None
+    source_store_id: int | None = None
+    store_id: int | None = None  # destino
+    performed_by_id: int | None = None
+    created_at: datetime
+    unit_cost: Decimal | None = None
     store_inventory_value: Decimal
+    # Propiedades calculadas disponibles en el modelo (usuario, sucursal_origen, sucursal_destino)
+    usuario: str | None = None
+    sucursal_origen: str | None = None
+    sucursal_destino: str | None = None
+    referencia_tipo: str | None = None
+    referencia_id: str | None = None
     ultima_accion: AuditTrailInfo | None = None
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
     @field_serializer("unit_cost")
     @classmethod
@@ -1645,6 +3212,182 @@ class MovementResponse(BaseModel):
     def _serialize_inventory_total(cls, value: Decimal) -> float:
         return float(value)
 
+    @model_serializer
+    def _serialize(self) -> dict[str, Any]:  # pragma: no cover - mapeo directo
+        return {
+            "id": self.id,
+            "producto_id": self.device_id,
+            "tipo_movimiento": self.movement_type,
+            "cantidad": self.quantity,
+            "comentario": self.comment,
+            "sucursal_origen_id": self.source_store_id,
+            "sucursal_origen": self.sucursal_origen,
+            "sucursal_destino_id": self.store_id,
+            "sucursal_destino": self.sucursal_destino,
+            "usuario_id": self.performed_by_id,
+            "usuario": self.usuario,
+            "referencia_tipo": self.referencia_tipo,
+            "referencia_id": self.referencia_id,
+            "fecha": self.created_at,
+            "unit_cost": self._serialize_unit_cost(self.unit_cost),
+            "store_inventory_value": self._serialize_inventory_total(self.store_inventory_value),
+            "ultima_accion": self.ultima_accion,
+        }
+
+
+class InventoryReservationCreate(BaseModel):
+    store_id: int = Field(..., ge=1)
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+    expires_at: datetime
+
+
+class InventoryReceivingDistribution(BaseModel):
+    store_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
+class InventoryReceivingLine(BaseModel):
+    device_id: int | None = Field(default=None, ge=1)
+    imei: str | None = Field(default=None, min_length=3, max_length=64)
+    serial: str | None = Field(default=None, min_length=3, max_length=64)
+    quantity: int = Field(..., ge=1)
+    unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
+    comment: str | None = Field(default=None, min_length=5, max_length=255)
+    distributions: list[InventoryReceivingDistribution] | None = None
+
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "InventoryReceivingLine":
+        if self.device_id is None and not (self.imei or self.serial):
+            raise ValueError(
+                "Cada línea debe incluir `device_id`, `imei` o `serial`."
+            )
+        if self.distributions:
+            store_ids: set[int] = set()
+            total_assigned = 0
+            for allocation in self.distributions:
+                if allocation.store_id in store_ids:
+                    raise ValueError(
+                        "Cada sucursal destino debe aparecer solo una vez por línea."
+                    )
+                store_ids.add(allocation.store_id)
+                total_assigned += allocation.quantity
+            if total_assigned > self.quantity:
+                raise ValueError(
+                    "La cantidad distribuida excede la recepción capturada."
+                )
+            if (self.imei or self.serial) and self.distributions:
+                if len(self.distributions) != 1:
+                    raise ValueError(
+                        "Los dispositivos con IMEI o serie solo pueden asignarse a una sucursal."
+                    )
+                if self.distributions[0].quantity != self.quantity:
+                    raise ValueError(
+                        "Los dispositivos con IMEI o serie deben transferirse completos."
+                    )
+        return self
+
+
+class InventoryReceivingRequest(BaseModel):
+    store_id: int = Field(..., ge=1)
+    note: str = Field(..., min_length=5, max_length=255)
+    responsible: str | None = Field(default=None, max_length=120)
+    reference: str | None = Field(default=None, max_length=120)
+    lines: list[InventoryReceivingLine] = Field(..., min_length=1)
+
+
+class InventoryReceivingSummary(BaseModel):
+    lines: int = Field(..., ge=0)
+    total_quantity: int = Field(..., ge=0)
+
+
+class InventoryReceivingProcessed(BaseModel):
+    identifier: str
+    device_id: int
+    quantity: int
+    movement: MovementResponse
+
+
+class InventoryReceivingResult(BaseModel):
+    store_id: int
+    processed: list[InventoryReceivingProcessed]
+    totals: InventoryReceivingSummary
+    auto_transfers: list[TransferOrderResponse] | None = None
+
+
+class InventoryCountLine(BaseModel):
+    device_id: int | None = Field(default=None, ge=1)
+    imei: str | None = Field(default=None, min_length=3, max_length=64)
+    serial: str | None = Field(default=None, min_length=3, max_length=64)
+    counted: int = Field(..., ge=0)
+    comment: str | None = Field(default=None, min_length=5, max_length=255)
+
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "InventoryCountLine":
+        if self.device_id is None and not (self.imei or self.serial):
+            raise ValueError(
+                "Cada línea debe incluir `device_id`, `imei` o `serial`."
+            )
+        return self
+
+
+class InventoryCycleCountRequest(BaseModel):
+    store_id: int = Field(..., ge=1)
+    note: str = Field(..., min_length=5, max_length=255)
+    responsible: str | None = Field(default=None, max_length=120)
+    reference: str | None = Field(default=None, max_length=120)
+    lines: list[InventoryCountLine] = Field(..., min_length=1)
+
+
+class InventoryCountDiscrepancy(BaseModel):
+    device_id: int
+    sku: str | None = None
+    expected: int
+    counted: int
+    delta: int
+    movement: MovementResponse | None = None
+    identifier: str | None = None
+
+
+class InventoryCycleCountSummary(BaseModel):
+    lines: int = Field(..., ge=0)
+    adjusted: int = Field(..., ge=0)
+    matched: int = Field(..., ge=0)
+    total_variance: int = Field(...)
+
+
+class InventoryCycleCountResult(BaseModel):
+    store_id: int
+    adjustments: list[InventoryCountDiscrepancy]
+    totals: InventoryCycleCountSummary
+
+
+class InventoryReservationRenew(BaseModel):
+    expires_at: datetime
+
+
+class InventoryReservationResponse(BaseModel):
+    id: int
+    store_id: int
+    device_id: int
+    status: InventoryState
+    initial_quantity: int
+    quantity: int
+    reason: str
+    resolution_reason: str | None
+    reference_type: str | None
+    reference_id: str | None
+    expires_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    reserved_by_id: int | None = None
+    resolved_by_id: int | None = None
+    resolved_at: datetime | None = None
+    consumed_at: datetime | None = None
+    device: DeviceResponse | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class InventorySummary(BaseModel):
     store_id: int
@@ -1657,6 +3400,28 @@ class InventorySummary(BaseModel):
     @classmethod
     def _serialize_total_value(cls, value: Decimal) -> float:
         return float(value)
+
+
+class InventoryAvailabilityStore(BaseModel):
+    store_id: int
+    store_name: str
+    quantity: int
+
+
+class InventoryAvailabilityRecord(BaseModel):
+    reference: str
+    sku: str | None = None
+    product_name: str
+    device_ids: list[int]
+    total_quantity: int
+    stores: list[InventoryAvailabilityStore]
+
+
+class InventoryAvailabilityResponse(BaseModel):
+    generated_at: datetime
+    items: list[InventoryAvailabilityRecord]
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InventoryCurrentStore(BaseModel):
@@ -1733,6 +3498,8 @@ class LowStockDevice(BaseModel):
     name: str
     quantity: int
     unit_price: Decimal
+    minimum_stock: int = Field(default=0, ge=0)
+    reorder_point: int = Field(default=0, ge=0)
 
     @field_serializer("unit_price")
     @classmethod
@@ -1742,6 +3509,41 @@ class LowStockDevice(BaseModel):
     @computed_field(return_type=float)  # type: ignore[misc]
     def inventory_value(self) -> float:
         return float(self.quantity * self.unit_price)
+
+    @computed_field(return_type=int)  # type: ignore[misc]
+    def reorder_gap(self) -> int:
+        return max(self.reorder_point - self.quantity, 0)
+
+
+class InventoryAlertDevice(LowStockDevice):
+    severity: Literal["critical", "warning", "notice"]
+    projected_days: int | None = None
+    average_daily_sales: float | None = None
+    trend: str | None = None
+    confidence: float | None = None
+    insights: list[str] = Field(default_factory=list)
+
+
+class InventoryAlertSummary(BaseModel):
+    total: int
+    critical: int
+    warning: int
+    notice: int
+
+
+class InventoryAlertSettingsResponse(BaseModel):
+    threshold: int
+    minimum_threshold: int
+    maximum_threshold: int
+    warning_cutoff: int
+    critical_cutoff: int
+    adjustment_variance_threshold: int
+
+
+class InventoryAlertsResponse(BaseModel):
+    settings: InventoryAlertSettingsResponse
+    summary: InventoryAlertSummary
+    items: list[InventoryAlertDevice]
 
 
 class InventoryTotals(BaseModel):
@@ -1778,6 +3580,16 @@ class InventoryValuation(BaseModel):
     margen_categoria_porcentaje: Decimal
     margen_total_tienda: Decimal
     margen_total_general: Decimal
+    ventas_totales: int
+    ventas_30_dias: int
+    ventas_90_dias: int
+    ultima_venta: datetime | None
+    ultima_compra: datetime | None
+    ultimo_movimiento: datetime | None
+    rotacion_30_dias: Decimal
+    rotacion_90_dias: Decimal
+    rotacion_total: Decimal
+    dias_sin_movimiento: int | None
 
     @field_serializer(
         "costo_promedio_ponderado",
@@ -1792,6 +3604,9 @@ class InventoryValuation(BaseModel):
         "margen_categoria_valor",
         "margen_total_tienda",
         "margen_total_general",
+        "rotacion_30_dias",
+        "rotacion_90_dias",
+        "rotacion_total",
     )
     @classmethod
     def _serialize_decimal(cls, value: Decimal) -> float:
@@ -1932,6 +3747,62 @@ class InventoryValueReport(BaseModel):
     totals: InventoryValueTotals
 
 
+class InactiveProductEntry(BaseModel):
+    store_id: int
+    store_name: str
+    device_id: int
+    sku: str
+    device_name: str
+    categoria: str
+    quantity: int
+    valor_total_producto: Decimal
+    ultima_venta: datetime | None
+    ultima_compra: datetime | None
+    ultimo_movimiento: datetime | None
+    dias_sin_movimiento: int | None
+    ventas_30_dias: int
+    ventas_90_dias: int
+    rotacion_30_dias: Decimal
+    rotacion_90_dias: Decimal
+    rotacion_total: Decimal
+
+    @field_serializer(
+        "valor_total_producto",
+        "rotacion_30_dias",
+        "rotacion_90_dias",
+        "rotacion_total",
+    )
+    @classmethod
+    def _serialize_inactive_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InactiveProductReportFilters(BaseModel):
+    store_ids: list[int] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    min_days_without_movement: int = 30
+
+
+class InactiveProductReportTotals(BaseModel):
+    total_products: int
+    total_units: int
+    total_value: Decimal
+    average_days_without_movement: float | None
+    max_days_without_movement: int | None
+
+    @field_serializer("total_value")
+    @classmethod
+    def _serialize_inactive_total(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class InactiveProductReport(BaseModel):
+    generated_at: datetime
+    filters: InactiveProductReportFilters
+    totals: InactiveProductReportTotals
+    items: list[InactiveProductEntry]
+
+
 class AuditUIExportFormat(str, enum.Enum):
     """Formatos válidos para exportar la bitácora de UI."""
 
@@ -1940,15 +3811,18 @@ class AuditUIExportFormat(str, enum.Enum):
 
 
 class AuditUIBulkItem(BaseModel):
-    ts: datetime = Field(..., description="Marca de tiempo del evento en formato ISO 8601")
+    ts: datetime = Field(...,
+                         description="Marca de tiempo del evento en formato ISO 8601")
     user_id: str | None = Field(
         default=None,
         max_length=120,
         alias=AliasChoices("userId", "user_id"),
         description="Identificador del usuario que generó la acción",
     )
-    module: str = Field(..., max_length=80, description="Módulo de la interfaz donde ocurrió")
-    action: str = Field(..., max_length=120, description="Acción específica realizada")
+    module: str = Field(..., max_length=80,
+                        description="Módulo de la interfaz donde ocurrió")
+    action: str = Field(..., max_length=120,
+                        description="Acción específica realizada")
     entity_id: str | None = Field(
         default=None,
         max_length=120,
@@ -1996,7 +3870,8 @@ class AuditUIBulkRequest(BaseModel):
 
 
 class AuditUIBulkResponse(BaseModel):
-    inserted: int = Field(..., ge=0, description="Cantidad de registros insertados")
+    inserted: int = Field(..., ge=0,
+                          description="Cantidad de registros insertados")
 
 
 class AuditUIRecord(BaseModel):
@@ -2065,7 +3940,8 @@ class DashboardAuditAlerts(BaseModel):
     pending_count: int = Field(default=0, ge=0)
     acknowledged_count: int = Field(default=0, ge=0)
     highlights: list[AuditHighlight] = Field(default_factory=list)
-    acknowledged_entities: list[AuditAcknowledgedEntity] = Field(default_factory=list)
+    acknowledged_entities: list[AuditAcknowledgedEntity] = Field(
+        default_factory=list)
 
     @computed_field(return_type=bool)  # type: ignore[misc]
     def has_alerts(self) -> bool:
@@ -2080,6 +3956,34 @@ class DashboardGlobalMetrics(BaseModel):
     gross_profit: float
 
 
+class DashboardSalesEntityMetric(BaseModel):
+    label: str
+    value: float
+    quantity: int | None = None
+    percentage: float | None = None
+
+
+class DashboardSalesInsights(BaseModel):
+    average_ticket: float
+    top_products: list[DashboardSalesEntityMetric] = Field(default_factory=list)
+    top_customers: list[DashboardSalesEntityMetric] = Field(default_factory=list)
+    payment_mix: list[DashboardSalesEntityMetric] = Field(default_factory=list)
+
+
+class DashboardReceivableCustomer(BaseModel):
+    customer_id: int
+    name: str
+    outstanding_debt: float
+    available_credit: float | None = None
+
+
+class DashboardReceivableMetrics(BaseModel):
+    total_outstanding_debt: float
+    customers_with_debt: int
+    moroso_flagged: int
+    top_debtors: list[DashboardReceivableCustomer] = Field(default_factory=list)
+
+
 class DashboardChartPoint(BaseModel):
     label: str
     value: float
@@ -2090,6 +3994,8 @@ class InventoryMetricsResponse(BaseModel):
     top_stores: list[StoreValueMetric]
     low_stock_devices: list[LowStockDevice]
     global_performance: DashboardGlobalMetrics
+    sales_insights: DashboardSalesInsights
+    accounts_receivable: DashboardReceivableMetrics
     sales_trend: list[DashboardChartPoint] = Field(default_factory=list)
     stock_breakdown: list[DashboardChartPoint] = Field(default_factory=list)
     repair_mix: list[DashboardChartPoint] = Field(default_factory=list)
@@ -2174,8 +4080,22 @@ class SyncOutboxEntryResponse(BaseModel):
     status: SyncOutboxStatus
     priority: SyncOutboxPriority
     error_message: str | None
+    conflict_flag: bool
+    version: int
     created_at: datetime
     updated_at: datetime
+    latency_ms: int | None = Field(
+        default=None,
+        description="Milisegundos transcurridos desde la creación del evento hasta ahora.",
+    )
+    processing_latency_ms: int | None = Field(
+        default=None,
+        description="Milisegundos transcurridos entre la creación y el último intento.",
+    )
+    status_detail: str | None = Field(
+        default=None,
+        description="Estado detallado normalizado para la interfaz (pendiente/en_progreso/error/completado).",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2193,6 +4113,38 @@ class SyncOutboxEntryResponse(BaseModel):
             return value
         return {}
 
+    @model_validator(mode="after")
+    def _compute_latencies(self) -> "SyncOutboxEntryResponse":  # pragma: no cover - cálculo derivado
+        now = datetime.now(timezone.utc)
+        created_at = self.created_at
+        last_attempt = self.last_attempt_at or self.updated_at
+
+        latency: int | None = None
+        processing_latency: int | None = None
+
+        if created_at:
+            latency = int((now - created_at).total_seconds() * 1000)
+        if created_at and last_attempt:
+            processing_latency = int((last_attempt - created_at).total_seconds() * 1000)
+
+        detail = "pendiente"
+        if self.status == SyncOutboxStatus.FAILED:
+            detail = "error"
+        elif self.status == SyncOutboxStatus.SENT:
+            detail = "completado"
+        else:
+            # Consideramos "en progreso" si la marca de actualización es reciente.
+            recent_threshold_ms = 90_000
+            if latency is not None and last_attempt:
+                delta_ms = int((now - last_attempt).total_seconds() * 1000)
+                if delta_ms <= recent_threshold_ms:
+                    detail = "en_progreso"
+
+        object.__setattr__(self, "latency_ms", latency)
+        object.__setattr__(self, "processing_latency_ms", processing_latency)
+        object.__setattr__(self, "status_detail", detail)
+        return self
+
 
 class SyncOutboxStatsEntry(BaseModel):
     entity_type: str
@@ -2200,8 +4152,10 @@ class SyncOutboxStatsEntry(BaseModel):
     total: int
     pending: int
     failed: int
+    conflicts: int
     latest_update: datetime | None
     oldest_pending: datetime | None
+    last_conflict_at: datetime | None
 
 
 # // [PACK35-backend]
@@ -2371,7 +4325,8 @@ class SyncQueueEnqueueRequest(BaseModel):
     @model_validator(mode="after")
     def _ensure_events(self) -> "SyncQueueEnqueueRequest":
         if not self.events:
-            raise ValueError("Debes proporcionar al menos un evento para encolar")
+            raise ValueError(
+                "Debes proporcionar al menos un evento para encolar")
         return self
 
 
@@ -2464,6 +4419,29 @@ class SyncConflictReport(BaseModel):
     items: list[SyncConflictLog]
 
 
+class SyncDiscrepancyReportFilters(BaseModel):
+    store_ids: list[int] = Field(default_factory=list)
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    severity: SyncBranchHealth | None = None
+    min_difference: int | None = None
+
+
+class SyncDiscrepancyReportTotals(BaseModel):
+    total_conflicts: int
+    warnings: int
+    critical: int
+    max_difference: int | None
+    affected_skus: int
+
+
+class SyncDiscrepancyReport(BaseModel):
+    generated_at: datetime
+    filters: SyncDiscrepancyReportFilters
+    totals: SyncDiscrepancyReportTotals
+    items: list[SyncConflictLog]
+
+
 class StoreComparativeMetric(BaseModel):
     store_id: int
     store_name: str
@@ -2525,6 +4503,28 @@ class AnalyticsAlertsResponse(BaseModel):
     items: list[AnalyticsAlert]
 
 
+class RiskMetric(BaseModel):
+    total: int
+    average: float
+    maximum: float
+    last_seen: datetime | None = None
+
+
+class RiskAlert(BaseModel):
+    code: str
+    title: str
+    description: str
+    severity: Literal["info", "media", "alta", "critica"]
+    occurrences: int
+    detail: dict[str, object] | None = None
+
+
+class RiskAlertsResponse(BaseModel):
+    generated_at: datetime
+    alerts: list[RiskAlert]
+    metrics: dict[str, RiskMetric]
+
+
 class StoreRealtimeWidget(BaseModel):
     store_id: int
     store_name: str
@@ -2547,8 +4547,31 @@ class AnalyticsCategoriesResponse(BaseModel):
     categories: list[str]
 
 
+class PurchaseSupplierMetric(BaseModel):
+    store_id: int
+    store_name: str
+    supplier: str
+    device_count: int
+    total_ordered: int
+    total_received: int
+    pending_backorders: int
+    total_cost: float
+    average_unit_cost: float
+    average_rotation: float
+    average_days_in_stock: float
+    last_purchase_at: datetime | None
+
+
+class PurchaseAnalyticsResponse(BaseModel):
+    items: list[PurchaseSupplierMetric]
+
+
 class SyncOutboxReplayRequest(BaseModel):
     ids: list[int] = Field(..., min_length=1)
+
+
+class SyncOutboxPriorityUpdate(BaseModel):
+    priority: SyncOutboxPriority
 
 
 class AuditTrailInfo(BaseModel):
@@ -2574,17 +4597,21 @@ class AuditLogResponse(BaseModel):
     created_at: datetime
     severity: Literal["info", "warning", "critical"] = Field(default="info")
     severity_label: str = Field(default="Informativa")
-    module: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("module", "modulo"),
-        serialization_alias="modulo",
-    )
+    module: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("module", "modulo"),
+            serialization_alias="modulo",
+        ),
+    ]
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     @model_validator(mode="after")
     def _derive_severity(self) -> "AuditLogResponse":
-        severity = audit_utils.classify_severity(self.action or "", self.details)
+        severity = audit_utils.classify_severity(
+            self.action or "", self.details)
         label = audit_utils.severity_label(severity)
         object.__setattr__(self, "severity", severity)
         object.__setattr__(self, "severity_label", label)
@@ -2596,7 +4623,8 @@ class AuditLogResponse(BaseModel):
 
 
 class SystemLogEntry(BaseModel):
-    id_log: int = Field(validation_alias=AliasChoices("id_log", "id"))
+    id_log: Annotated[int, Field(
+        validation_alias=AliasChoices("id_log", "id"))]
     usuario: str | None
     modulo: str
     accion: str
@@ -2604,11 +4632,14 @@ class SystemLogEntry(BaseModel):
     fecha: datetime
     nivel: SystemLogLevel
     ip_origen: str | None = None
-    audit_log_id: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("audit_log_id"),
-        serialization_alias="audit_log_id",
-    )
+    audit_log_id: Annotated[
+        int | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("audit_log_id"),
+            serialization_alias="audit_log_id",
+        ),
+    ]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2619,7 +4650,10 @@ class SystemLogEntry(BaseModel):
 
 
 class SystemErrorEntry(BaseModel):
-    id_error: int = Field(validation_alias=AliasChoices("id_error", "id"))
+    id_error: Annotated[
+        int,
+        Field(validation_alias=AliasChoices("id_error", "id")),
+    ]
     mensaje: str
     stack_trace: str | None
     modulo: str
@@ -2708,6 +4742,78 @@ class GlobalReportSeriesPoint(BaseModel):
     system_errors: int = Field(default=0, ge=0)
 
 
+class ObservabilityLatencySample(BaseModel):
+    entity_type: str
+    pending: int
+    failed: int
+    oldest_pending_seconds: float | None
+    latest_update: datetime | None
+
+    @field_serializer("latest_update", when_used="json")
+    @classmethod
+    def _serialize_latest_update(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class ObservabilityLatencySummary(BaseModel):
+    average_seconds: float | None
+    percentile_95_seconds: float | None
+    max_seconds: float | None
+    samples: list[ObservabilityLatencySample]
+
+
+class ObservabilityErrorSummary(BaseModel):
+    total_logs: int
+    total_errors: int
+    info: int
+    warning: int
+    error: int
+    critical: int
+    latest_error_at: datetime | None
+
+    @field_serializer("latest_error_at", when_used="json")
+    @classmethod
+    def _serialize_latest_error_at(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class ObservabilitySyncSummary(BaseModel):
+    outbox_stats: list[SyncOutboxStatsEntry]
+    total_pending: int
+    total_failed: int
+    hybrid_progress: SyncHybridProgressSummary | None
+
+
+class ObservabilityNotification(BaseModel):
+    id: str
+    title: str
+    message: str
+    severity: SystemLogLevel
+    occurred_at: datetime | None = None
+    reference: str | None = None
+
+    @field_serializer("occurred_at", when_used="json")
+    @classmethod
+    def _serialize_occurred_at(cls, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
+
+
+class ObservabilitySnapshot(BaseModel):
+    generated_at: datetime
+    latency: ObservabilityLatencySummary
+    errors: ObservabilityErrorSummary
+    sync: ObservabilitySyncSummary
+    logs: list[SystemLogEntry]
+    system_errors: list[SystemErrorEntry]
+    alerts: list[GlobalReportAlert]
+    notifications: list[ObservabilityNotification]
+
+    @field_serializer("generated_at", when_used="json")
+    @classmethod
+    def _serialize_generated_at(cls, value: datetime) -> str:
+        return value.isoformat()
+
+
 class GlobalReportDashboard(BaseModel):
     generated_at: datetime
     filters: GlobalReportFiltersState
@@ -2748,6 +4854,7 @@ class CashCloseReport(BaseModel):
     opening: float = Field(default=0.0)
     sales_gross: float = Field(default=0.0, alias="salesGross")
     refunds: float = Field(default=0.0)
+    incomes: float = Field(default=0.0)
     expenses: float = Field(default=0.0)
     closing_suggested: float = Field(default=0.0, alias="closingSuggested")
 
@@ -2839,15 +4946,20 @@ class PurchaseOrderItemCreate(BaseModel):
 
 
 class PurchaseOrderCreate(BaseModel):
-    store_id: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "branch_id"),
-        serialization_alias="store_id",
-    )  # // [PACK30-31-BACKEND]
+    store_id: int = Field(..., ge=1)  # // [PACK30-31-BACKEND]
     supplier: str = Field(..., max_length=120)
     notes: str | None = Field(default=None, max_length=255)
     items: list[PurchaseOrderItemCreate]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_store_alias(cls, data: Any) -> Any:  # pragma: no cover - mapeo directo
+        if isinstance(data, dict) and "store_id" not in data:
+            for k in ("branch_id",):
+                if k in data:
+                    data["store_id"] = data[k]
+                    break
+        return data
 
     @field_validator("supplier")
     @classmethod
@@ -2889,10 +5001,32 @@ class PurchaseOrderItemResponse(BaseModel):
         return float(value)
 
 
+class ReturnDisposition(str, enum.Enum):
+    VENDIBLE = "vendible"
+    DEFECTUOSO = "defectuoso"
+    NO_VENDIBLE = "no_vendible"
+    REPARACION = "reparacion"
+
+
+class ReturnReasonCategory(str, enum.Enum):
+    DEFECTO = "defecto"
+    LOGISTICA = "logistica"
+    CLIENTE = "cliente"
+    PRECIO = "precio"
+    OTRO = "otro"
+
+
 class PurchaseReturnCreate(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
     reason: str = Field(..., min_length=5, max_length=255)
+    disposition: ReturnDisposition = Field(
+        default=ReturnDisposition.DEFECTUOSO
+    )
+    warehouse_id: int | None = Field(default=None, ge=1)
+    category: ReturnReasonCategory = Field(
+        default=ReturnReasonCategory.DEFECTO
+    )
 
     @field_validator("reason")
     @classmethod
@@ -2909,10 +5043,23 @@ class PurchaseReturnResponse(BaseModel):
     device_id: int
     quantity: int
     reason: str
+    reason_category: ReturnReasonCategory
+    disposition: ReturnDisposition
+    warehouse_id: int | None
+    supplier_ledger_entry_id: int | None = None
+    corporate_reason: str | None = None
+    credit_note_amount: Decimal = Field(default=Decimal("0"))
     processed_by_id: int | None
+    approved_by_id: int | None
+    approved_by_name: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("credit_note_amount")
+    @classmethod
+    def _serialize_credit_amount(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class PurchaseOrderResponse(BaseModel):
@@ -2927,13 +5074,60 @@ class PurchaseOrderResponse(BaseModel):
     closed_at: datetime | None
     items: list[PurchaseOrderItemResponse]
     returns: list[PurchaseReturnResponse] = []
+    documents: list["PurchaseOrderDocumentResponse"] = []
+    status_history: list["PurchaseOrderStatusEventResponse"] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderDocumentResponse(BaseModel):
+    id: int
+    purchase_order_id: int
+    filename: str
+    content_type: str
+    storage_backend: str
+    uploaded_at: datetime
+    uploaded_by_id: int | None
+    download_url: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderStatusEventResponse(BaseModel):
+    id: int
+    purchase_order_id: int
+    status: PurchaseStatus
+    note: str | None
+    created_at: datetime
+    created_by_id: int | None
+    created_by_name: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderStatusUpdateRequest(BaseModel):
+    status: PurchaseStatus
+    note: str | None = Field(default=None, max_length=255)
+
+
+class PurchaseOrderEmailRequest(BaseModel):
+    recipients: list[str] = Field(..., min_length=1)
+    message: str | None = Field(default=None, max_length=500)
+    include_documents: bool = False
 
 
 class PurchaseReceiveItem(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
+    batch_code: str | None = Field(default=None, max_length=80)
+
+    @field_validator("batch_code")
+    @classmethod
+    def _normalize_batch_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class PurchaseReceiveRequest(BaseModel):
@@ -2951,6 +5145,50 @@ class PurchaseImportResponse(BaseModel):
     imported: int = Field(default=0, ge=0)
     orders: list[PurchaseOrderResponse]
     errors: list[str] = Field(default_factory=list)
+
+
+class PurchaseSuggestionItem(BaseModel):
+    store_id: int
+    store_name: str
+    supplier_id: int | None
+    supplier_name: str | None
+    device_id: int
+    sku: str
+    name: str
+    current_quantity: int
+    minimum_stock: int
+    suggested_quantity: int
+    average_daily_sales: float
+    projected_coverage_days: int | None
+    last_30_days_sales: int
+    unit_cost: Decimal = Field(default=Decimal("0"))
+    reason: Literal["below_minimum", "projected_consumption"]
+
+    @field_serializer("unit_cost")
+    @classmethod
+    def _serialize_unit_cost(cls, value: Decimal) -> float:
+        return float(value)
+
+    @computed_field(return_type=float)  # type: ignore[misc]
+    def suggested_value(self) -> float:
+        return float(self.unit_cost * Decimal(self.suggested_quantity))
+
+
+class PurchaseSuggestionStore(BaseModel):
+    store_id: int
+    store_name: str
+    total_suggested: int
+    total_value: float
+    items: list[PurchaseSuggestionItem]
+
+
+class PurchaseSuggestionsResponse(BaseModel):
+    generated_at: datetime
+    lookback_days: int
+    planning_horizon_days: int
+    minimum_stock: int
+    total_items: int
+    stores: list[PurchaseSuggestionStore]
 
 
 class PurchaseVendorBase(BaseModel):
@@ -3053,7 +5291,8 @@ class PurchaseRecordCreate(BaseModel):
     fecha: datetime | None = None
     forma_pago: str = Field(..., max_length=60)
     estado: str = Field(default="REGISTRADA", max_length=40)
-    impuesto_tasa: Decimal = Field(default=Decimal("0.16"), ge=Decimal("0"), le=Decimal("1"))
+    impuesto_tasa: Decimal = Field(default=Decimal(
+        "0.16"), ge=Decimal("0"), le=Decimal("1"))
     items: list[PurchaseRecordItemCreate]
 
     @field_validator("items")
@@ -3145,6 +5384,78 @@ class PurchaseReport(BaseModel):
     totals: PurchaseReportTotals
     daily_stats: list[DashboardChartPoint]
     items: list[PurchaseReportItem]
+
+
+class FiscalBookType(str, enum.Enum):
+    SALES = "sales"
+    PURCHASES = "purchases"
+
+
+class FiscalBookFilters(BaseModel):
+    year: int = Field(..., ge=2000, le=2100)
+    month: int = Field(..., ge=1, le=12)
+    book_type: FiscalBookType
+
+
+class FiscalBookTotals(BaseModel):
+    registros: int
+    base_15: Decimal = Field(default=Decimal("0"))
+    impuesto_15: Decimal = Field(default=Decimal("0"))
+    total_15: Decimal = Field(default=Decimal("0"))
+    base_18: Decimal = Field(default=Decimal("0"))
+    impuesto_18: Decimal = Field(default=Decimal("0"))
+    total_18: Decimal = Field(default=Decimal("0"))
+    base_exenta: Decimal = Field(default=Decimal("0"))
+    total_exento: Decimal = Field(default=Decimal("0"))
+    total_general: Decimal = Field(default=Decimal("0"))
+
+    @field_serializer(
+        "base_15",
+        "impuesto_15",
+        "total_15",
+        "base_18",
+        "impuesto_18",
+        "total_18",
+        "base_exenta",
+        "total_exento",
+        "total_general",
+    )
+    @classmethod
+    def _serialize_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class FiscalBookEntry(BaseModel):
+    correlativo: int
+    fecha: datetime
+    documento: str
+    contraparte: str | None = None
+    detalle: str | None = None
+    base_15: Decimal = Field(default=Decimal("0"))
+    impuesto_15: Decimal = Field(default=Decimal("0"))
+    base_18: Decimal = Field(default=Decimal("0"))
+    impuesto_18: Decimal = Field(default=Decimal("0"))
+    base_exenta: Decimal = Field(default=Decimal("0"))
+    total: Decimal = Field(default=Decimal("0"))
+
+    @field_serializer(
+        "base_15",
+        "impuesto_15",
+        "base_18",
+        "impuesto_18",
+        "base_exenta",
+        "total",
+    )
+    @classmethod
+    def _serialize_entry_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class FiscalBookReport(BaseModel):
+    generated_at: datetime
+    filters: FiscalBookFilters
+    totals: FiscalBookTotals
+    entries: list[FiscalBookEntry]
 
 
 class PurchaseVendorRanking(BaseModel):
@@ -3268,10 +5579,119 @@ class OperationsHistoryResponse(BaseModel):
     technicians: list[OperationHistoryTechnician]
 
 
+class ReturnRecordType(str, enum.Enum):
+    PURCHASE = "purchase"
+    SALE = "sale"
+
+
+class ReturnRecord(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    type: ReturnRecordType
+    reference_id: int
+    reference_label: str
+    store_id: int
+    store_name: str | None = None
+    warehouse_id: int | None = None
+    warehouse_name: str | None = None
+    device_id: int
+    device_name: str | None = None
+    quantity: int
+    reason: str
+    reason_category: ReturnReasonCategory = ReturnReasonCategory.OTRO
+    disposition: ReturnDisposition = ReturnDisposition.VENDIBLE
+    processed_by_id: int | None = None
+    processed_by_name: str | None = None
+    approved_by_id: int | None = None
+    approved_by_name: str | None = None
+    partner_name: str | None = None
+    occurred_at: datetime
+    refund_amount: Decimal | None = None
+    payment_method: PaymentMethod | None = None
+    corporate_reason: str | None = None
+    credit_note_amount: Decimal | None = None
+
+    @field_serializer("refund_amount")
+    @classmethod
+    def _serialize_refund_amount(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+    @field_serializer("credit_note_amount")
+    @classmethod
+    def _serialize_credit_note(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
+class ReturnsTotals(BaseModel):
+    total: int
+    sales: int
+    purchases: int
+    refunds_by_method: dict[str, Decimal] = Field(default_factory=dict)
+    refund_total_amount: Decimal = Field(default=Decimal("0"))
+    credit_notes_total: Decimal = Field(default=Decimal("0"))
+    categories: dict[str, int] = Field(default_factory=dict)
+
+    @field_serializer("refunds_by_method")
+    @classmethod
+    def _serialize_refunds(cls, value: dict[str, Decimal]) -> dict[str, float]:
+        return {key: float(amount) for key, amount in value.items()}
+
+    @field_serializer("refund_total_amount")
+    @classmethod
+    def _serialize_refund_total(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("credit_notes_total")
+    @classmethod
+    def _serialize_credit_total(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class ReturnsOverview(BaseModel):
+    items: list[ReturnRecord]
+    totals: ReturnsTotals
+
+
+class WarrantyClaimCreate(BaseModel):
+    claim_type: WarrantyClaimType
+    notes: str | None = None
+    repair_order: "RepairOrderCreate | None" = None
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "claim_type": "REPARACION",
+            "notes": "Pantalla con píxeles muertos dentro del periodo de garantía",
+        }
+    })
+
+
+class WarrantyClaimStatusUpdate(BaseModel):
+    status: WarrantyClaimStatus
+    notes: str | None = None
+    repair_order_id: int | None = None
+
+
+class WarrantyMetrics(BaseModel):
+    total_assignments: int
+    active_assignments: int
+    expired_assignments: int
+    claims_open: int
+    claims_resolved: int
+    expiring_soon: int
+    average_coverage_days: float
+    generated_at: datetime
+
+
 class RepairOrderPartPayload(BaseModel):
     device_id: int | None = Field(default=None, ge=1)
     part_name: str | None = Field(default=None, max_length=120)
-    source: RepairPartSource = Field(default=RepairPartSource.STOCK)  # // [PACK37-backend]
+    source: RepairPartSource = Field(
+        default=RepairPartSource.STOCK)  # // [PACK37-backend]
     quantity: int = Field(..., ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
@@ -3295,21 +5715,30 @@ class RepairOrderCreate(BaseModel):
     store_id: int = Field(..., ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
-    customer_contact: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
+    customer_contact: str | None = Field(
+        default=None, max_length=120)  # // [PACK37-backend]
     technician_name: str = Field(..., max_length=120)
-    damage_type: str = Field(
-        ...,
-        max_length=120,
-        validation_alias=AliasChoices("damage_type", "issue"),
-        serialization_alias="damage_type",
-    )
-    diagnosis: str | None = Field(default=None, max_length=500)  # // [PACK37-backend]
-    device_model: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
-    imei: str | None = Field(default=None, max_length=40)  # // [PACK37-backend]
+    damage_type: str = Field(..., max_length=120)
+    diagnosis: str | None = Field(
+        default=None, max_length=500)  # // [PACK37-backend]
+    device_model: str | None = Field(
+        default=None, max_length=120)  # // [PACK37-backend]
+    imei: str | None = Field(
+        default=None, max_length=40)  # // [PACK37-backend]
     device_description: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=500)
     labor_cost: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     parts: list[RepairOrderPartPayload] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_repair_create_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "damage_type" not in data:
+            for k in ("issue",):
+                if k in data:
+                    data["damage_type"] = data[k]
+                    break
+        return data
 
     @field_validator(
         "customer_name",
@@ -3333,22 +5762,31 @@ class RepairOrderCreate(BaseModel):
 class RepairOrderUpdate(BaseModel):
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
-    customer_contact: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
+    customer_contact: str | None = Field(
+        default=None, max_length=120)  # // [PACK37-backend]
     technician_name: str | None = Field(default=None, max_length=120)
-    damage_type: str | None = Field(
-        default=None,
-        max_length=120,
-        validation_alias=AliasChoices("damage_type", "issue"),
-        serialization_alias="damage_type",
-    )
-    diagnosis: str | None = Field(default=None, max_length=500)  # // [PACK37-backend]
-    device_model: str | None = Field(default=None, max_length=120)  # // [PACK37-backend]
-    imei: str | None = Field(default=None, max_length=40)  # // [PACK37-backend]
+    damage_type: str | None = Field(default=None, max_length=120)
+    diagnosis: str | None = Field(
+        default=None, max_length=500)  # // [PACK37-backend]
+    device_model: str | None = Field(
+        default=None, max_length=120)  # // [PACK37-backend]
+    imei: str | None = Field(
+        default=None, max_length=40)  # // [PACK37-backend]
     device_description: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=500)
     status: RepairStatus | None = None
     labor_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
     parts: list[RepairOrderPartPayload] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_repair_update_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "damage_type" not in data:
+            for k in ("issue",):
+                if k in data:
+                    data["damage_type"] = data[k]
+                    break
+        return data
 
     @field_validator(
         "customer_name",
@@ -3384,7 +5822,8 @@ class RepairOrderPartResponse(BaseModel):
     repair_order_id: int
     device_id: int | None
     part_name: str | None = None  # // [PACK37-backend]
-    source: RepairPartSource = Field(default=RepairPartSource.STOCK)  # // [PACK37-backend]
+    source: RepairPartSource = Field(
+        default=RepairPartSource.STOCK)  # // [PACK37-backend]
     quantity: int
     unit_cost: Decimal
 
@@ -3444,11 +5883,16 @@ class SaleItemCreate(BaseModel):
     discount_percent: Decimal | None = Field(
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
     )
-    unit_price_override: Decimal | None = Field(
-        default=None,
-        ge=Decimal("0"),
-        validation_alias=AliasChoices("unit_price_override", "price"),
-    )  # // [PACK34-schema]
+    batch_code: str | None = Field(default=None, max_length=80)
+    unit_price_override: Annotated[
+        Decimal | None,
+        Field(
+            default=None,
+            ge=Decimal("0"),
+            validation_alias=AliasChoices("unit_price_override", "price"),
+        ),
+    ]  # // [PACK34-schema]
+    reservation_id: int | None = Field(default=None, ge=1)
 
     @field_validator("discount_percent")
     @classmethod
@@ -3457,21 +5901,37 @@ class SaleItemCreate(BaseModel):
             return Decimal("0")
         return value
 
+    @field_validator("batch_code")
+    @classmethod
+    def _normalize_sale_batch(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
 
 class SaleCreate(BaseModel):
-    store_id: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "branch_id"),
-        serialization_alias="store_id",
-    )  # // [PACK30-31-BACKEND]
+    store_id: int = Field(..., ge=1)  # // [PACK30-31-BACKEND]
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
-    discount_percent: Decimal | None = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    discount_percent: Decimal | None = Field(
+        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
     status: str = Field(default="COMPLETADA", max_length=30)
     notes: str | None = Field(default=None, max_length=255)
     items: list[SaleItemCreate]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_sale_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        if "store_id" not in data:
+            for k in ("branch_id",):
+                if k in data:
+                    data["store_id"] = data[k]
+                    break
+        return data
 
     @field_validator("customer_name")
     @classmethod
@@ -3507,7 +5967,8 @@ class SaleUpdate(BaseModel):
     customer_id: int | None = Field(default=None, ge=1)
     customer_name: str | None = Field(default=None, max_length=120)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
-    discount_percent: Decimal | None = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    discount_percent: Decimal | None = Field(
+        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
     status: str = Field(default="COMPLETADA", max_length=30)
     notes: str | None = Field(default=None, max_length=255)
     items: list[SaleItemCreate]
@@ -3569,6 +6030,69 @@ class SaleDeviceSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WarrantyDeviceSummary(BaseModel):
+    id: int
+    sku: str
+    name: str
+    imei: str | None = None
+    serial: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarrantySaleSummary(BaseModel):
+    id: int
+    store_id: int
+    customer_id: int | None = None
+    customer_name: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarrantyClaimResponse(BaseModel):
+    id: int
+    claim_type: WarrantyClaimType
+    status: WarrantyClaimStatus
+    notes: str | None = None
+    opened_at: datetime
+    resolved_at: datetime | None = None
+    repair_order_id: int | None = None
+    performed_by_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarrantyAssignmentResponse(BaseModel):
+    id: int
+    sale_item_id: int
+    device_id: int
+    coverage_months: int
+    activation_date: date
+    expiration_date: date
+    status: WarrantyStatus
+    serial_number: str | None = None
+    activation_channel: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    device: WarrantyDeviceSummary | None = None
+    sale: WarrantySaleSummary | None = None
+    claims: list[WarrantyClaimResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def remaining_days(self) -> int:
+        today = date.today()
+        return max((self.expiration_date - today).days, 0)
+
+    @computed_field
+    @property
+    def is_expired(self) -> bool:
+        return self.expiration_date < date.today()
+
+
 class SaleItemResponse(BaseModel):
     id: int
     sale_id: int
@@ -3578,6 +6102,9 @@ class SaleItemResponse(BaseModel):
     discount_amount: Decimal
     total_line: Decimal
     device: SaleDeviceSummary | None = None
+    reservation_id: int | None = None
+    warranty_status: WarrantyStatus | None = None
+    warranty: WarrantyAssignmentResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -3591,6 +6118,7 @@ class SaleCustomerSummary(BaseModel):
     id: int
     name: str
     outstanding_debt: Decimal
+    loyalty_account: LoyaltyAccountSummary | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -3619,8 +6147,14 @@ class SaleResponse(BaseModel):
     subtotal_amount: Decimal
     tax_amount: Decimal
     total_amount: Decimal
+    loyalty_points_earned: Decimal = Field(default=Decimal("0"))
+    loyalty_points_redeemed: Decimal = Field(default=Decimal("0"))
     status: str
     notes: str | None
+    invoice_reported: bool = False
+    invoice_reported_at: datetime | None = None
+    invoice_annulled_at: datetime | None = None
+    invoice_credit_note_code: str | None = None
     created_at: datetime
     performed_by_id: int | None
     cash_session_id: int | None
@@ -3630,11 +6164,21 @@ class SaleResponse(BaseModel):
     returns: list["SaleReturnResponse"] = []
     store: SaleStoreSummary | None = None
     performed_by: SaleUserSummary | None = None
+    dte_status: DTEStatus | None = None
+    dte_reference: str | None = None
     ultima_accion: AuditTrailInfo | None = None
+    loyalty_account: LoyaltyAccountSummary | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_serializer("discount_percent", "subtotal_amount", "tax_amount", "total_amount")
+    @field_serializer(
+        "discount_percent",
+        "subtotal_amount",
+        "tax_amount",
+        "total_amount",
+        "loyalty_points_earned",
+        "loyalty_points_redeemed",
+    )
     @classmethod
     def _serialize_sale_amount(cls, value: Decimal) -> float:
         return float(value)
@@ -3648,6 +6192,13 @@ class SaleReturnItem(BaseModel):
     device_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
     reason: str = Field(..., min_length=5, max_length=255)
+    disposition: ReturnDisposition = Field(
+        default=ReturnDisposition.VENDIBLE
+    )
+    warehouse_id: int | None = Field(default=None, ge=1)
+    category: ReturnReasonCategory = Field(
+        default=ReturnReasonCategory.CLIENTE
+    )
 
     @field_validator("reason")
     @classmethod
@@ -3658,9 +6209,15 @@ class SaleReturnItem(BaseModel):
         return normalized
 
 
+class ReturnApprovalRequest(BaseModel):
+    supervisor_username: str = Field(..., min_length=3, max_length=120)
+    pin: str = Field(..., min_length=4, max_length=64)
+
+
 class SaleReturnCreate(BaseModel):
     sale_id: int = Field(..., ge=1)
     items: list[SaleReturnItem]
+    approval: ReturnApprovalRequest | None = None
 
     @field_validator("items")
     @classmethod
@@ -3676,7 +6233,12 @@ class SaleReturnResponse(BaseModel):
     device_id: int
     quantity: int
     reason: str
+    reason_category: ReturnReasonCategory
+    disposition: ReturnDisposition
+    warehouse_id: int | None
     processed_by_id: int | None
+    approved_by_id: int | None
+    approved_by_name: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -3685,6 +6247,229 @@ class SaleReturnResponse(BaseModel):
     def fecha_registro(self) -> datetime:
         return self.created_at
 
+
+class SaleHistorySearchResponse(BaseModel):
+    by_ticket: list[SaleResponse] = Field(default_factory=list)
+    by_date: list[SaleResponse] = Field(default_factory=list)
+    by_customer: list[SaleResponse] = Field(default_factory=list)
+    by_qr: list[SaleResponse] = Field(default_factory=list)
+
+
+class DTEIssuerInfo(BaseModel):
+    rtn: str = Field(..., min_length=5, max_length=40)
+    name: str = Field(..., min_length=3, max_length=120)
+    address: str = Field(..., min_length=3, max_length=255)
+
+    @field_validator("rtn", "name", "address")
+    @classmethod
+    def _normalize_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El campo es obligatorio.")
+        return normalized
+
+
+class DTESignerCredentials(BaseModel):
+    certificate_serial: str = Field(..., min_length=3, max_length=120)
+    private_key: str = Field(..., min_length=8, max_length=255)
+
+    @field_validator("certificate_serial")
+    @classmethod
+    def _normalize_certificate(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Debes indicar el número de certificado.")
+        return normalized
+
+    @field_validator("private_key")
+    @classmethod
+    def _normalize_key(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 8:
+            raise ValueError("La llave privada debe tener al menos 8 caracteres.")
+        return normalized
+
+
+class DTEAuthorizationBase(BaseModel):
+    document_type: str = Field(..., min_length=2, max_length=30)
+    serie: str = Field(..., min_length=1, max_length=12)
+    range_start: int = Field(..., ge=1, le=99999999)
+    range_end: int = Field(..., ge=1, le=99999999)
+    expiration_date: date
+    cai: str = Field(..., min_length=8, max_length=40)
+    store_id: int | None = Field(default=None, ge=1)
+    notes: str | None = Field(default=None, max_length=255)
+    active: bool = Field(default=True)
+
+    @field_validator("document_type")
+    @classmethod
+    def _normalize_document_type(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Debes especificar el tipo de documento.")
+        return normalized.upper()
+
+    @field_validator("serie")
+    @classmethod
+    def _normalize_serie(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Debes indicar la serie autorizada.")
+        return normalized.upper()
+
+    @field_validator("cai")
+    @classmethod
+    def _normalize_cai(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 8:
+            raise ValueError("El CAI debe contener al menos 8 caracteres.")
+        return normalized.upper()
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _validate_range(self) -> "DTEAuthorizationBase":
+        if self.range_end < self.range_start:
+            raise ValueError("El rango autorizado es inválido.")
+        return self
+
+
+class DTEAuthorizationCreate(DTEAuthorizationBase):
+    pass
+
+
+class DTEAuthorizationUpdate(BaseModel):
+    expiration_date: date | None = None
+    notes: str | None = Field(default=None, max_length=255)
+    active: bool | None = None
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_update_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class DTEAuthorizationResponse(DTEAuthorizationBase):
+    id: int
+    current_number: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(return_type=int)
+    def remaining(self) -> int:
+        next_number = max(self.current_number, self.range_start)
+        if next_number > self.range_end:
+            return 0
+        return self.range_end - next_number + 1
+
+
+class DTEGenerationRequest(BaseModel):
+    sale_id: int = Field(..., ge=1)
+    authorization_id: int = Field(..., ge=1)
+    issuer: DTEIssuerInfo
+    signer: DTESignerCredentials
+    offline: bool = Field(default=False)
+
+
+class DTEEventResponse(BaseModel):
+    id: int
+    document_id: int
+    event_type: str
+    status: DTEStatus
+    detail: str | None
+    created_at: datetime
+    performed_by_id: int | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DTEDispatchQueueEntryResponse(BaseModel):
+    id: int
+    document_id: int
+    status: DTEDispatchStatus
+    attempts: int
+    last_error: str | None
+    scheduled_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DTEDocumentResponse(BaseModel):
+    id: int
+    sale_id: int
+    authorization_id: int | None
+    document_type: str
+    serie: str
+    correlative: int
+    control_number: str
+    cai: str
+    status: DTEStatus
+    reference_code: str | None
+    ack_code: str | None
+    ack_message: str | None
+    sent_at: datetime | None
+    acknowledged_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    xml_content: str
+    signature: str
+    events: list[DTEEventResponse] = Field(default_factory=list)
+    queue: list[DTEDispatchQueueEntryResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field(alias="numero_documento", return_type=str)
+    def document_number(self) -> str:
+        return f"{self.serie}-{self.correlative:08d}"
+
+
+class DTEDispatchRequest(BaseModel):
+    mode: Literal["ONLINE", "OFFLINE"] = Field(default="ONLINE")
+    error_message: str | None = Field(default=None, max_length=255)
+
+    @field_validator("mode")
+    @classmethod
+    def _normalize_mode(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"ONLINE", "OFFLINE"}:
+            raise ValueError("Modo de envío inválido.")
+        return normalized
+
+    @field_validator("error_message")
+    @classmethod
+    def _normalize_error(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class DTEAckRegistration(BaseModel):
+    status: DTEStatus = Field(default=DTEStatus.EMITIDO)
+    code: str | None = Field(default=None, max_length=80)
+    detail: str | None = Field(default=None, max_length=255)
+    received_at: datetime | None = None
+
+    @field_validator("code", "detail")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 class SalesReportFilters(BaseModel):
     store_id: int | None = None
@@ -3771,37 +6556,14 @@ class POSCartItem(BaseModel):
     """Elemento del carrito POS aceptando identificadores flexibles."""
 
     # // [PACK34-schema]
-    device_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("device_id", "productId", "product_id"),
-    )
-    imei: str | None = Field(
-        default=None,
-        max_length=18,
-        validation_alias=AliasChoices("imei", "imei_1", "imei1"),
-    )
-    quantity: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("quantity", "qty"),
-    )
+    device_id: int | None = Field(default=None, ge=1)
+    imei: str | None = Field(default=None, max_length=18)
+    quantity: int = Field(..., ge=1)
     discount_percent: Decimal | None = Field(
-        default=Decimal("0"),
-        ge=Decimal("0"),
-        le=Decimal("100"),
-        validation_alias=AliasChoices("discount_percent", "discount"),
-    )
-    unit_price_override: Decimal | None = Field(
-        default=None,
-        ge=Decimal("0"),
-        validation_alias=AliasChoices("unit_price_override", "price"),
-    )
-    tax_code: str | None = Field(
-        default=None,
-        max_length=50,
-        validation_alias=AliasChoices("tax_code", "taxCode"),
-    )
+        default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    unit_price_override: Decimal | None = Field(default=None, ge=Decimal("0"))
+    tax_code: str | None = Field(default=None, max_length=50)
+    reservation_id: int | None = Field(default=None, ge=1)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -3812,51 +6574,84 @@ class POSCartItem(BaseModel):
             return Decimal("0")
         return value
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_cart_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        mapping = {
+            "device_id": ["productId", "product_id"],
+            "imei": ["imei_1", "imei1"],
+            "quantity": ["qty"],
+            "discount_percent": ["discount"],
+            "unit_price_override": ["price"],
+            "tax_code": ["taxCode"],
+        }
+        for target, sources in mapping.items():
+            if target not in data:
+                for s in sources:
+                    if s in data:
+                        data[target] = data[s]
+                        break
+        return data
+
 
 class POSSalePaymentInput(BaseModel):
     """Definición de pago para registrar montos por método."""
 
     # // [PACK34-schema]
-    method: PaymentMethod = Field(
-        ..., validation_alias=AliasChoices("method", "paymentMethod")
-    )
+    method: PaymentMethod
     amount: Decimal = Field(..., ge=Decimal("0"))
+    reference: str | None = Field(default=None, max_length=64)
+    terminal_id: str | None = Field(default=None, max_length=40, alias="terminalId")
+    tip_amount: Decimal | None = Field(default=None, ge=Decimal("0"), alias="tipAmount")
+    token: str | None = Field(default=None, max_length=128)
+    metadata: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_method_alias(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "method" not in data:
+            for k in ("paymentMethod",):
+                if k in data:
+                    data["method"] = data[k]
+                    break
+        return data
+
+    @field_validator("reference", "terminal_id", "token")
+    @classmethod
+    def _normalize_optional_str(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _ensure_metadata(cls, value: Any) -> dict[str, str]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return {str(k): str(v) for k, v in value.items()}
+        raise ValueError("metadata debe ser un diccionario de texto")
 
 
 class POSSaleRequest(BaseModel):
-    store_id: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("store_id", "branchId", "branch_id"),
-    )
+    store_id: int = Field(..., ge=1)
     customer_id: int | None = Field(default=None, ge=1)
-    customer_name: str | None = Field(
-        default=None,
-        max_length=120,
-        validation_alias=AliasChoices("customer_name", "customer"),
-    )
-    payment_method: PaymentMethod = Field(
-        default=PaymentMethod.EFECTIVO,
-        validation_alias=AliasChoices("payment_method", "defaultPaymentMethod"),
-    )
+    customer_name: str | None = Field(default=None, max_length=120)
+    payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
     discount_percent: Decimal | None = Field(
         default=Decimal("0"), ge=Decimal("0"), le=Decimal("100")
     )
-    notes: str | None = Field(
-        default=None,
-        max_length=255,
-        validation_alias=AliasChoices("notes", "note"),
-    )
+    notes: str | None = Field(default=None, max_length=255)
     items: list[POSCartItem]
     draft_id: int | None = Field(default=None, ge=1)
     save_as_draft: bool = Field(default=False)
     confirm: bool = Field(default=False)
     apply_taxes: bool = Field(default=True)
-    cash_session_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("cash_session_id", "sessionId"),
-    )
+    coupons: list[str] = Field(default_factory=list)
+    cash_session_id: int | None = Field(default=None, ge=1)
     payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
     payments: list[POSSalePaymentInput] = Field(default_factory=list)
 
@@ -3896,9 +6691,46 @@ class POSSaleRequest(BaseModel):
             try:
                 PaymentMethod(method)
             except ValueError as exc:  # pragma: no cover - validation error path
-                raise ValueError("Método de pago inválido en el desglose.") from exc
+                raise ValueError(
+                    "Método de pago inválido en el desglose.") from exc
             normalized[method] = Decimal(str(amount))
         return normalized
+
+    @field_validator("coupons")
+    @classmethod
+    def _normalize_coupons(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in value:
+            trimmed = (raw or "").strip()
+            if len(trimmed) < 3:
+                continue
+            code = trimmed.upper()
+            if code in seen:
+                continue
+            seen.add(code)
+            normalized.append(code)
+        return normalized
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_pos_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if not isinstance(data, dict):
+            return data
+        mapping = {
+            "store_id": ["branchId", "branch_id"],
+            "customer_name": ["customer"],
+            "payment_method": ["payment_method", "defaultPaymentMethod"],
+            "notes": ["note", "notes"],
+            "cash_session_id": ["sessionId"],
+        }
+        for target, sources in mapping.items():
+            if target not in data:
+                for s in sources:
+                    if s in data:
+                        data[target] = data[s]
+                        break
+        return data
 
     @model_validator(mode="after")
     def _sync_pos_payments(self) -> "POSSaleRequest":
@@ -3907,9 +6739,11 @@ class POSSaleRequest(BaseModel):
             breakdown: dict[str, Decimal] = {}
             for payment in self.payments:
                 method_key = payment.method.value
+                total_amount = Decimal(str(payment.amount))
+                if payment.tip_amount is not None:
+                    total_amount += Decimal(str(payment.tip_amount))
                 breakdown[method_key] = (
-                    breakdown.get(method_key, Decimal("0"))
-                    + Decimal(str(payment.amount))
+                    breakdown.get(method_key, Decimal("0")) + total_amount
                 )
             self.payment_breakdown = breakdown
         return self
@@ -3925,6 +6759,26 @@ class POSDraftResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class POSLoyaltySaleSummary(BaseModel):
+    account_id: int
+    earned_points: Decimal = Field(default=Decimal("0"))
+    redeemed_points: Decimal = Field(default=Decimal("0"))
+    balance_points: Decimal = Field(default=Decimal("0"))
+    redemption_amount: Decimal = Field(default=Decimal("0"))
+    expiration_days: int | None = None
+    expires_at: datetime | None = None
+
+    @field_serializer(
+        "earned_points",
+        "redeemed_points",
+        "balance_points",
+        "redemption_amount",
+    )
+    @classmethod
+    def _serialize_loyalty_decimal(cls, value: Decimal) -> float:
+        return float(value)
+
+
 class POSSaleResponse(BaseModel):
     status: Literal["draft", "registered"]
     sale: SaleResponse | None = None
@@ -3934,6 +6788,15 @@ class POSSaleResponse(BaseModel):
     cash_session_id: int | None = None
     payment_breakdown: dict[str, float] = Field(default_factory=dict)
     receipt_pdf_base64: str | None = Field(default=None)
+    applied_promotions: list[POSAppliedPromotion] = Field(default_factory=list)
+    debt_summary: CustomerDebtSnapshot | None = None
+    credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
+    debt_receipt_pdf_base64: str | None = None
+    payment_receipts: list[CustomerPaymentReceiptResponse] = Field(
+        default_factory=list
+    )
+    electronic_payments: list["POSElectronicPaymentResult"] = Field(default_factory=list)
+    loyalty_summary: POSLoyaltySaleSummary | None = None
 
     @field_serializer("payment_breakdown")
     @classmethod
@@ -3949,34 +6812,66 @@ class POSSaleResponse(BaseModel):
         return 0.0
 
 
+class POSReceiptDeliveryChannel(str, enum.Enum):
+    EMAIL = "email"
+    WHATSAPP = "whatsapp"
+class POSElectronicPaymentResult(BaseModel):
+    terminal_id: str
+    method: PaymentMethod
+    transaction_id: str
+    status: str
+    approval_code: str | None = None
+    reconciled: bool = Field(default=False)
+    tip_amount: Decimal | None = None
+
+    @field_serializer("tip_amount")
+    @classmethod
+    def _serialize_tip(cls, value: Decimal | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)
+
+
 class POSReturnItemRequest(BaseModel):
     """Item devuelto desde el POS identificable por producto o IMEI."""
 
-    # // [PACK34-schema]
-    product_id: int | None = Field(
-        default=None,
-        ge=1,
-        validation_alias=AliasChoices("product_id", "productId", "device_id"),
-    )
-    imei: str | None = Field(
-        default=None,
-        max_length=18,
-        validation_alias=AliasChoices("imei", "imei_1"),
-    )
-    qty: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices("quantity", "qty"),
-    )
+
+class POSReceiptDeliveryRequest(BaseModel):
+    channel: POSReceiptDeliveryChannel
+    recipient: str = Field(..., min_length=5, max_length=255)
+    message: str | None = Field(default=None, max_length=500)
+    subject: str | None = Field(default=None, max_length=120)
+
+    @field_validator("recipient")
+    @classmethod
+    def _normalize_recipient(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("recipient_required")
+        return normalized
+
+
+class POSReceiptDeliveryResponse(BaseModel):
+    channel: POSReceiptDeliveryChannel
+    status: str
 
 
 class POSReturnRequest(BaseModel):
-    """Solicitud de devolución rápida en POS."""
+    """Solicitud de devolución rápida en POS (alias normalizados)."""
 
-    # // [PACK34-schema]
-    original_sale_id: int = Field(..., ge=1, validation_alias=AliasChoices("originalSaleId", "sale_id"))
+    original_sale_id: int = Field(..., ge=1)
     items: list[POSReturnItemRequest]
     reason: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_return_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "original_sale_id" not in data:
+            for k in ("originalSaleId", "sale_id"):
+                if k in data:
+                    data["original_sale_id"] = data[k]
+                    break
+        return data
 
     @field_validator("items")
     @classmethod
@@ -4001,6 +6896,7 @@ class POSReturnResponse(BaseModel):
     sale_id: int
     return_ids: list[int]
     notes: str | None = None
+    dispositions: list[ReturnDisposition] = Field(default_factory=list)
 
 
 class POSSaleDetailResponse(BaseModel):
@@ -4010,6 +6906,59 @@ class POSSaleDetailResponse(BaseModel):
     sale: SaleResponse
     receipt_url: str
     receipt_pdf_base64: str | None = None
+    debt_summary: CustomerDebtSnapshot | None = None
+    credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
+
+
+class CashDenominationInput(BaseModel):
+    value: Decimal = Field(..., gt=Decimal("0"))
+    quantity: int = Field(default=0, ge=0)
+
+    @field_serializer("value")
+    @classmethod
+    def _serialize_value(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class CashRegisterEntryBase(BaseModel):
+    session_id: int = Field(..., ge=1)
+    entry_type: CashEntryType
+    amount: Decimal = Field(..., gt=Decimal("0"))
+    reason: str = Field(..., min_length=5, max_length=255)
+    notes: str | None = Field(default=None, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("El motivo debe tener al menos 5 caracteres.")
+        return normalized
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class CashRegisterEntryCreate(CashRegisterEntryBase):
+    pass
+
+
+class CashRegisterEntryResponse(CashRegisterEntryBase):
+    id: int
+    created_by_id: int | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
+        return float(value)
 
 
 class CashSessionOpenRequest(BaseModel):
@@ -4031,6 +6980,9 @@ class CashSessionCloseRequest(BaseModel):
     closing_amount: Decimal = Field(..., ge=Decimal("0"))
     notes: str | None = Field(default=None, max_length=255)
     payment_breakdown: dict[str, Decimal] = Field(default_factory=dict)
+    denominations: list["CashDenominationInput"] = Field(default_factory=list)
+    reconciliation_notes: str | None = Field(default=None, max_length=255)
+    difference_reason: str | None = Field(default=None, max_length=255)
 
     @field_validator("notes")
     @classmethod
@@ -4055,6 +7007,14 @@ class CashSessionCloseRequest(BaseModel):
             normalized[method] = Decimal(str(amount))
         return normalized
 
+    @field_validator("reconciliation_notes", "difference_reason")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
 
 class CashSessionResponse(BaseModel):
     id: int
@@ -4065,11 +7025,15 @@ class CashSessionResponse(BaseModel):
     expected_amount: Decimal
     difference_amount: Decimal
     payment_breakdown: dict[str, float]
+    denomination_breakdown: dict[str, int]
+    reconciliation_notes: str | None
+    difference_reason: str | None
     notes: str | None
     opened_by_id: int | None
     closed_by_id: int | None
     opened_at: datetime
     closed_at: datetime | None
+    entries: list["CashRegisterEntryResponse"] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -4088,16 +7052,28 @@ class CashSessionResponse(BaseModel):
     def _serialize_breakdown(cls, value: dict[str, float]) -> dict[str, float]:
         return {key: float(amount) for key, amount in value.items()}
 
+    @field_serializer("denomination_breakdown")
+    @classmethod
+    def _serialize_denominations(cls, value: dict[str, int]) -> dict[str, int]:
+        return {str(denomination): int(count) for denomination, count in value.items()}
+
 
 class POSSessionOpenPayload(BaseModel):
-    """Carga útil para aperturas de caja rápidas desde POS."""
+    """Carga útil para aperturas de caja rápidas desde POS (branch/store alias)."""
 
-    # // [PACK34-schema]
-    branch_id: int = Field(
-        ..., ge=1, validation_alias=AliasChoices("branchId", "branch_id", "store_id")
-    )
+    branch_id: int = Field(..., ge=1)
     opening_amount: Decimal = Field(..., ge=Decimal("0"))
     notes: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_open_aliases(cls, data: Any) -> Any:  # pragma: no cover
+        if isinstance(data, dict) and "branch_id" not in data:
+            for k in ("branchId", "store_id"):
+                if k in data:
+                    data["branch_id"] = data[k]
+                    break
+        return data
 
     @field_validator("notes")
     @classmethod
@@ -4138,7 +7114,8 @@ class POSSessionClosePayload(BaseModel):
         else:
             source = []
             for entry in value:
-                method = str(entry.get("method") or entry.get("paymentMethod") or "").strip()
+                method = str(entry.get("method") or entry.get(
+                    "paymentMethod") or "").strip()
                 amount = entry.get("amount") or entry.get("value")
                 if not method:
                     continue
@@ -4167,6 +7144,9 @@ class POSSessionSummary(BaseModel):
     expected_amount: Decimal | None = None
     difference_amount: Decimal | None = None
     payment_breakdown: dict[str, float] = Field(default_factory=dict)
+    denomination_breakdown: dict[str, int] = Field(default_factory=dict)
+    reconciliation_notes: str | None = None
+    difference_reason: str | None = None
 
     @classmethod
     def from_model(cls, session: "models.CashRegisterSession") -> "POSSessionSummary":
@@ -4186,6 +7166,12 @@ class POSSessionSummary(BaseModel):
             payment_breakdown={
                 key: float(value) for key, value in (session.payment_breakdown or {}).items()
             },
+            denomination_breakdown={
+                str(key): int(count)
+                for key, count in (session.denomination_breakdown or {}).items()
+            },
+            reconciliation_notes=getattr(session, "reconciliation_notes", None),
+            difference_reason=getattr(session, "difference_reason", None),
         )
 
     @field_serializer(
@@ -4199,6 +7185,11 @@ class POSSessionSummary(BaseModel):
         if value is None:
             return None
         return float(value)
+
+    @field_serializer("denomination_breakdown")
+    @classmethod
+    def _serialize_optional_denominations(cls, value: dict[str, int]) -> dict[str, int]:
+        return {str(denomination): int(count) for denomination, count in value.items()}
 
 
 class POSTaxInfo(BaseModel):
@@ -4215,6 +7206,154 @@ class POSTaxInfo(BaseModel):
         return float(value)
 
 
+class POSConnectorType(str, enum.Enum):
+    """Tipos de conectores de hardware permitidos."""
+
+    USB = "usb"
+    NETWORK = "network"
+
+
+class POSPrinterMode(str, enum.Enum):
+    """Tipos de impresoras POS disponibles."""
+
+    THERMAL = "thermal"
+    FISCAL = "fiscal"
+
+
+class POSFiscalPrinterProfile(BaseModel):
+    """Perfil técnico necesario para operar una impresora fiscal."""
+
+    adapter: Literal["hasar", "epson", "bematech", "simulated"] = Field(
+        default="simulated"
+    )
+    sdk_module: str | None = Field(default=None, max_length=120)
+    model: str | None = Field(default=None, max_length=80)
+    serial_number: str | None = Field(default=None, max_length=80)
+    taxpayer_id: str | None = Field(default=None, max_length=32)
+    document_type: Literal["ticket", "invoice", "credit_note"] = Field(
+        default="ticket"
+    )
+    timeout_s: float = Field(default=6.0, ge=0.5, le=30.0)
+    simulate_only: bool = Field(default=False)
+    extra_settings: dict[str, Any] = Field(default_factory=dict)
+
+    _DEFAULT_SDK_MODULES: ClassVar[dict[str, str | None]] = {
+        "hasar": "pyhasar",
+        "epson": "pyfiscalprinter",
+        "bematech": "bemafiscal",
+        "simulated": None,
+    }
+
+    @field_validator("sdk_module", "model", "serial_number", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = str(value).strip()
+        return trimmed or None
+
+    @field_validator("taxpayer_id", mode="before")
+    @classmethod
+    def _normalize_taxpayer(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().upper()
+        return normalized or None
+
+    @field_validator("extra_settings")
+    @classmethod
+    def _normalize_extra_settings(
+        cls, value: dict[str, Any]
+    ) -> dict[str, Any]:
+        return {str(key): item for key, item in (value or {}).items()}
+
+    def resolved_sdk_module(self) -> str | None:
+        """Devuelve el módulo SDK preferido según el adaptador configurado."""
+
+        return self.sdk_module or self._DEFAULT_SDK_MODULES.get(self.adapter)
+
+
+class POSConnectorSettings(BaseModel):
+    """Configura el punto de conexión del dispositivo POS."""
+
+    type: POSConnectorType = Field(default=POSConnectorType.USB)
+    identifier: str = Field(default="predeterminado", max_length=120)
+    path: str | None = Field(default=None, max_length=255)
+    host: str | None = Field(default=None, max_length=255)
+    port: int | None = Field(default=None, ge=1, le=65535)
+
+    @model_validator(mode="after")
+    def _validate_target(self) -> "POSConnectorSettings":
+        if self.type is POSConnectorType.NETWORK:
+            if not self.host:
+                raise ValueError("Los conectores de red requieren host configurado.")
+        return self
+
+
+class POSPrinterSettings(BaseModel):
+    """Describe impresoras térmicas o fiscales."""
+
+    name: str = Field(..., max_length=120)
+    mode: POSPrinterMode = Field(default=POSPrinterMode.THERMAL)
+    connector: POSConnectorSettings = Field(default_factory=POSConnectorSettings)
+    paper_width_mm: int | None = Field(default=None, ge=40, le=120)
+    is_default: bool = Field(default=False)
+    vendor: str | None = Field(default=None, max_length=80)
+    supports_qr: bool = Field(default=False)
+    fiscal_profile: POSFiscalPrinterProfile | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _ensure_fiscal_profile(self) -> "POSPrinterSettings":
+        if self.mode is POSPrinterMode.FISCAL:
+            if self.fiscal_profile is None:
+                self.fiscal_profile = POSFiscalPrinterProfile()
+        else:
+            self.fiscal_profile = None
+        return self
+
+
+class POSCashDrawerSettings(BaseModel):
+    """Define la gaveta de efectivo conectada al POS."""
+
+    enabled: bool = Field(default=False)
+    connector: POSConnectorSettings | None = Field(default=None)
+    auto_open_on_cash_sale: bool = Field(default=True)
+    pulse_duration_ms: int = Field(default=150, ge=50, le=500)
+
+
+class POSCustomerDisplaySettings(BaseModel):
+    """Configura la pantalla de cliente enlazada al POS."""
+
+    enabled: bool = Field(default=False)
+    channel: Literal["websocket", "local"] = Field(default="websocket")
+    brightness: int = Field(default=100, ge=10, le=100)
+    theme: Literal["dark", "light"] = Field(default="dark")
+    message_template: str | None = Field(default=None, max_length=160)
+
+
+class POSHardwareSettings(BaseModel):
+    """Agrupa la configuración de hardware POS por sucursal."""
+
+    printers: list[POSPrinterSettings] = Field(default_factory=list)
+    cash_drawer: POSCashDrawerSettings = Field(default_factory=POSCashDrawerSettings)
+    customer_display: POSCustomerDisplaySettings = Field(
+        default_factory=POSCustomerDisplaySettings
+    )
+class POSTerminalConfig(BaseModel):
+    id: str
+    label: str
+    adapter: str
+    currency: str
+
+    @field_validator("id", "label", "adapter", "currency")
+    @classmethod
+    def _normalize_terminal_str(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Los campos de terminal no pueden estar vacíos")
+        return normalized
+
+
 class POSConfigResponse(BaseModel):
     store_id: int
     tax_rate: Decimal
@@ -4222,13 +7361,134 @@ class POSConfigResponse(BaseModel):
     printer_name: str | None
     printer_profile: str | None
     quick_product_ids: list[int]
+    hardware_settings: POSHardwareSettings = Field(
+        default_factory=POSHardwareSettings
+    )
     updated_at: datetime
+    terminals: list[POSTerminalConfig] = Field(default_factory=list)
+    tip_suggestions: list[float] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
     @field_serializer("tax_rate")
     @classmethod
     def _serialize_tax(cls, value: Decimal) -> float:
+        return float(value)
+
+    @classmethod
+    def from_model(
+        cls,
+        config: "models.POSConfig",
+        *,
+        terminals: dict[str, dict[str, Any]],
+        tip_suggestions: list[Decimal],
+    ) -> "POSConfigResponse":
+        from .. import models  # Importación tardía para evitar ciclos
+
+        terminals_payload = [
+            POSTerminalConfig(
+                id=terminal_id,
+                label=str(data.get("label") or terminal_id),
+                adapter=str(data.get("adapter") or "").strip() or "banco_atlantida",
+                currency=str(data.get("currency") or "HNL"),
+            )
+            for terminal_id, data in terminals.items()
+        ]
+        return cls(
+            store_id=config.store_id,
+            tax_rate=config.tax_rate,
+            invoice_prefix=config.invoice_prefix,
+            printer_name=config.printer_name,
+            printer_profile=config.printer_profile,
+            quick_product_ids=list(config.quick_product_ids or []),
+            updated_at=config.updated_at,
+            terminals=terminals_payload,
+            tip_suggestions=[float(Decimal(str(value))) for value in tip_suggestions],
+        )
+
+
+class POSPromotionFeatureFlags(BaseModel):
+    volume: bool = False
+    combos: bool = False
+    coupons: bool = False
+
+
+class POSVolumePromotion(BaseModel):
+    id: str = Field(..., min_length=1, max_length=60)
+    device_id: int = Field(..., ge=1)
+    min_quantity: int = Field(..., ge=1)
+    discount_percent: Decimal = Field(..., gt=Decimal("0"), le=Decimal("100"))
+
+    @field_serializer("discount_percent")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class POSComboPromotionItem(BaseModel):
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+
+
+class POSComboPromotion(BaseModel):
+    id: str = Field(..., min_length=1, max_length=60)
+    items: list[POSComboPromotionItem] = Field(default_factory=list)
+    discount_percent: Decimal = Field(..., gt=Decimal("0"), le=Decimal("100"))
+
+    @field_serializer("discount_percent")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal) -> float:
+        return float(value)
+
+    @field_validator("items")
+    @classmethod
+    def _ensure_items(cls, value: list[POSComboPromotionItem]) -> list[POSComboPromotionItem]:
+        if not value:
+            raise ValueError("Los combos deben incluir al menos un artículo.")
+        return value
+
+
+class POSCouponPromotion(BaseModel):
+    code: str = Field(..., min_length=3, max_length=40)
+    discount_percent: Decimal = Field(..., gt=Decimal("0"), le=Decimal("100"))
+    description: str | None = Field(default=None, max_length=120)
+
+    @field_serializer("discount_percent")
+    @classmethod
+    def _serialize_discount(cls, value: Decimal) -> float:
+        return float(value)
+
+
+class POSPromotionsConfig(BaseModel):
+    feature_flags: POSPromotionFeatureFlags = Field(default_factory=POSPromotionFeatureFlags)
+    volume_promotions: list[POSVolumePromotion] = Field(default_factory=list)
+    combo_promotions: list[POSComboPromotion] = Field(default_factory=list)
+    coupons: list[POSCouponPromotion] = Field(default_factory=list)
+
+
+class POSPromotionsUpdate(POSPromotionsConfig):
+    store_id: int = Field(..., ge=1)
+
+
+class POSPromotionsResponse(POSPromotionsConfig):
+    store_id: int
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class POSAppliedPromotion(BaseModel):
+    id: str
+    promotion_type: Literal["volume", "combo", "coupon"]
+    description: str
+    discount_percent: Decimal = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    affected_items: list[int] = Field(default_factory=list)
+    coupon_code: str | None = Field(default=None, max_length=60)
+
+    @field_serializer("discount_percent", "discount_amount")
+    @classmethod
+    def _serialize_amount(cls, value: Decimal) -> float:
         return float(value)
 
 
@@ -4239,6 +7499,7 @@ class POSConfigUpdate(BaseModel):
     printer_name: str | None = Field(default=None, max_length=120)
     printer_profile: str | None = Field(default=None, max_length=255)
     quick_product_ids: list[int] = Field(default_factory=list)
+    hardware_settings: POSHardwareSettings | None = Field(default=None)
 
     @field_validator("quick_product_ids")
     @classmethod
@@ -4246,9 +7507,45 @@ class POSConfigUpdate(BaseModel):
         normalized = []
         for item in value:
             if int(item) < 1:
-                raise ValueError("Los identificadores rápidos deben ser positivos.")
+                raise ValueError(
+                    "Los identificadores rápidos deben ser positivos.")
             normalized.append(int(item))
         return normalized
+
+
+class POSHardwarePrintTestRequest(BaseModel):
+    """Solicitud de impresión de prueba."""
+
+    store_id: int = Field(..., ge=1)
+    printer_name: str | None = Field(default=None, max_length=120)
+    mode: POSPrinterMode = Field(default=POSPrinterMode.THERMAL)
+    sample: str = Field(default="*** PRUEBA DE IMPRESIÓN POS ***", max_length=512)
+
+
+class POSHardwareDrawerOpenRequest(BaseModel):
+    """Solicitud para apertura de gaveta."""
+
+    store_id: int = Field(..., ge=1)
+    connector_identifier: str | None = Field(default=None, max_length=120)
+    pulse_duration_ms: int | None = Field(default=None, ge=50, le=500)
+
+
+class POSHardwareDisplayPushRequest(BaseModel):
+    """Eventos a mostrar en la pantalla de cliente."""
+
+    store_id: int = Field(..., ge=1)
+    headline: str = Field(..., max_length=80)
+    message: str | None = Field(default=None, max_length=240)
+    total_amount: float | None = Field(default=None, ge=0)
+
+
+class POSHardwareActionResponse(BaseModel):
+    """Respuesta estandarizada para acciones de hardware."""
+
+    status: Literal["queued", "ok", "error"] = Field(default="queued")
+    message: str = Field(default="")
+    details: dict[str, Any] | None = Field(default=None)
+
 
 class BackupRunRequest(BaseModel):
     nota: str | None = Field(default=None, max_length=255)
@@ -4306,12 +7603,12 @@ class BackupRestoreResponse(BaseModel):
     resultados: dict[str, str]
 
 
-
 class ReleaseInfo(BaseModel):
     version: str = Field(..., description="Versión disponible del producto")
     release_date: date = Field(..., description="Fecha oficial de liberación")
     notes: str = Field(..., description="Resumen de cambios relevantes")
-    download_url: str = Field(..., description="Enlace de descarga del instalador")
+    download_url: str = Field(...,
+                              description="Enlace de descarga del instalador")
 
 
 class UpdateStatus(BaseModel):
@@ -4319,6 +7616,441 @@ class UpdateStatus(BaseModel):
     latest_version: str | None
     is_update_available: bool
     latest_release: ReleaseInfo | None = None
+
+
+class IntegrationCredentialInfo(BaseModel):
+    """Resumen de credenciales expuestas a los administradores."""
+
+    token_hint: str = Field(
+        ...,
+        min_length=4,
+        max_length=8,
+        description="Últimos caracteres visibles del token activo.",
+    )
+    rotated_at: datetime = Field(
+        ...,
+        description="Marca temporal en UTC de la última rotación del token.",
+    )
+    expires_at: datetime = Field(
+        ...,
+        description="Fecha en UTC en la que expira el token vigente.",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "token_hint": "a1B3",
+                "rotated_at": "2025-11-06T04:00:00+00:00",
+                "expires_at": "2026-02-04T04:00:00+00:00",
+            }
+        }
+    )
+
+
+class IntegrationHealthStatus(BaseModel):
+    """Estado de salud reportado por los monitores corporativos."""
+
+    status: str = Field(
+        ...,
+        min_length=2,
+        max_length=40,
+        description="Estado declarado (por ejemplo: operational, degraded, offline).",
+    )
+    checked_at: datetime | None = Field(
+        default=None,
+        description="Marca temporal en UTC del último chequeo exitoso.",
+    )
+    message: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Mensaje opcional con detalles del monitoreo.",
+    )
+
+
+class IntegrationProviderSummary(BaseModel):
+    """Información general visible en el catálogo de integraciones."""
+
+    slug: str = Field(
+        ...,
+        min_length=3,
+        max_length=60,
+        description="Identificador corto de la integración.",
+    )
+    name: str = Field(
+        ...,
+        min_length=3,
+        max_length=120,
+        description="Nombre comercial del conector externo.",
+    )
+    category: str = Field(
+        ...,
+        min_length=3,
+        max_length=60,
+        description="Categoría operativa del conector (analítica, automatización, etc.).",
+    )
+    status: str = Field(
+        ...,
+        min_length=2,
+        max_length=40,
+        description="Estado corporativo actual (active, beta, deprecated, etc.).",
+    )
+    supports_push: bool = Field(
+        default=False,
+        description="Indica si Softmobile envía eventos al conector mediante webhooks.",
+    )
+    supports_pull: bool = Field(
+        default=True,
+        description="Indica si el conector consulta datos directamente de la API.",
+    )
+    events: list[str] = Field(
+        default_factory=list,
+        description="Eventos estándar publicados para la integración.",
+    )
+    documentation_url: str | None = Field(
+        default=None,
+        description="Enlace de referencia con la documentación técnica del conector.",
+    )
+    credential: IntegrationCredentialInfo
+    health: IntegrationHealthStatus
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "slug": "zapier",
+                "name": "Zapier Inventory Bridge",
+                "category": "automatizacion",
+                "status": "active",
+                "supports_push": True,
+                "supports_pull": True,
+                "events": [
+                    "inventory.device.updated",
+                    "sales.order.completed",
+                ],
+                "documentation_url": "https://docs.softmobile.mx/integraciones/zapier",
+                "credential": {
+                    "token_hint": "XyZ9",
+                    "rotated_at": "2025-10-01T06:00:00+00:00",
+                    "expires_at": "2025-12-30T06:00:00+00:00",
+                },
+                "health": {
+                    "status": "operational",
+                    "checked_at": "2025-11-05T05:00:00+00:00",
+                    "message": "Webhook confirmó respuesta 200 en 120 ms",
+                },
+            }
+        }
+    )
+
+
+class IntegrationProviderDetail(IntegrationProviderSummary):
+    """Ficha extendida con capacidades y pasos de despliegue."""
+
+    auth_type: str = Field(
+        ...,
+        min_length=3,
+        max_length=40,
+        description="Método de autenticación utilizado (api_key, oauth2, etc.).",
+    )
+    description: str = Field(
+        ...,
+        min_length=10,
+        max_length=500,
+        description="Descripción funcional de la integración.",
+    )
+    features: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Mapa de capacidades habilitadas para el conector.",
+    )
+    setup_instructions: list[str] = Field(
+        default_factory=list,
+        description="Pasos recomendados para habilitar la integración.",
+    )
+
+
+class IntegrationRotateSecretResponse(BaseModel):
+    """Respuesta emitida tras rotar el token de una integración."""
+
+    slug: str = Field(
+        ...,
+        min_length=3,
+        max_length=60,
+        description="Identificador del conector actualizado.",
+    )
+    token: str = Field(
+        ...,
+        min_length=16,
+        max_length=200,
+        description="Token API recién emitido en formato URL-safe.",
+    )
+    credential: IntegrationCredentialInfo
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "slug": "erp_sync",
+                "token": "4sV2k1lM...",
+                "credential": {
+                    "token_hint": "LmN7",
+                    "rotated_at": "2025-11-06T05:32:00+00:00",
+                    "expires_at": "2026-02-04T05:32:00+00:00",
+                },
+            }
+        }
+    )
+
+
+class IntegrationHealthUpdateRequest(BaseModel):
+    """Carga útil enviada por los monitores corporativos."""
+
+    status: str = Field(
+        ...,
+        min_length=2,
+        max_length=40,
+        description="Estado reportado (operational, degraded, offline, etc.).",
+    )
+    message: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Descripción breve del resultado del monitoreo.",
+    )
+
+
+class ConfigurationParameterType(str, enum.Enum):
+    """Tipos permitidos para los parámetros configurables."""
+
+    STRING = "string"
+    INTEGER = "integer"
+    DECIMAL = "decimal"
+    BOOLEAN = "boolean"
+    JSON = "json"
+
+
+class ConfigurationRateBase(BaseModel):
+    slug: str = Field(..., min_length=1, max_length=80)
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=255)
+    value: Decimal = Field(..., description="Valor numérico de la tasa")
+    unit: str = Field(..., min_length=1, max_length=40)
+    currency: str | None = Field(default=None, max_length=10)
+    effective_from: date | None = Field(default=None)
+    effective_to: date | None = Field(default=None)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("slug", "name", "unit", mode="before")
+    @classmethod
+    def _strip_required(cls, value: Any) -> str:
+        if value is None:
+            raise ValueError("El valor es obligatorio")
+        text = str(value).strip()
+        if not text:
+            raise ValueError("El valor es obligatorio")
+        return text
+
+    @field_validator("currency", "description", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationRateCreate(ConfigurationRateBase):
+    """Carga útil para registrar una tasa de configuración."""
+
+
+class ConfigurationRateUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=255)
+    value: Decimal | None = Field(default=None)
+    unit: str | None = Field(default=None, min_length=1, max_length=40)
+    currency: str | None = Field(default=None, max_length=10)
+    effective_from: date | None = Field(default=None)
+    effective_to: date | None = Field(default=None)
+    metadata: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+    @field_validator("name", "unit", mode="before")
+    @classmethod
+    def _strip_update_required(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @field_validator("currency", "description", mode="before")
+    @classmethod
+    def _strip_update_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationRateResponse(ConfigurationRateBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("value")
+    @classmethod
+    def _serialize_value(cls, value: Decimal) -> str:
+        return format(value, "f")
+
+
+class ConfigurationParameterBase(BaseModel):
+    key: str = Field(..., min_length=1, max_length=120)
+    name: str = Field(..., min_length=1, max_length=120)
+    category: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=255)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("key", "name", mode="before")
+    @classmethod
+    def _strip_required(cls, value: Any) -> str:
+        if value is None:
+            raise ValueError("El valor es obligatorio")
+        text = str(value).strip()
+        if not text:
+            raise ValueError("El valor es obligatorio")
+        return text
+
+    @field_validator("category", "description", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationParameterCreate(ConfigurationParameterBase):
+    value_type: ConfigurationParameterType = Field(default=ConfigurationParameterType.STRING)
+    value: Any = Field(...)
+    is_sensitive: bool = Field(default=False)
+
+
+class ConfigurationParameterUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    category: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=255)
+    value_type: ConfigurationParameterType | None = None
+    value: Any | None = None
+    is_sensitive: bool | None = None
+    metadata: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+    @field_validator("name", "category", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _strip_description(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationParameterResponse(ConfigurationParameterBase):
+    id: int
+    value_type: ConfigurationParameterType
+    value: Any
+    is_sensitive: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConfigurationXmlTemplateCreate(BaseModel):
+    code: str = Field(..., min_length=1, max_length=80)
+    version: str = Field(..., min_length=1, max_length=40)
+    description: str | None = Field(default=None, max_length=255)
+    namespace: str | None = Field(default=None, max_length=255)
+    schema_location: str | None = Field(default=None, max_length=255)
+    content: str = Field(..., min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("code", "version", mode="before")
+    @classmethod
+    def _strip_required(cls, value: Any) -> str:
+        if value is None:
+            raise ValueError("El valor es obligatorio")
+        text = str(value).strip()
+        if not text:
+            raise ValueError("El valor es obligatorio")
+        return text
+
+    @field_validator("description", "namespace", "schema_location", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationXmlTemplateUpdate(BaseModel):
+    version: str | None = Field(default=None, min_length=1, max_length=40)
+    description: str | None = Field(default=None, max_length=255)
+    namespace: str | None = Field(default=None, max_length=255)
+    schema_location: str | None = Field(default=None, max_length=255)
+    content: str | None = Field(default=None, min_length=1)
+    metadata: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+    @field_validator("version", "description", "namespace", "schema_location", mode="before")
+    @classmethod
+    def _strip_optional(cls, value: Any | None) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConfigurationXmlTemplateResponse(BaseModel):
+    id: int
+    code: str
+    version: str
+    description: str | None
+    namespace: str | None
+    schema_location: str | None
+    content: str
+    checksum: str
+    metadata: dict[str, Any]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConfigurationOverview(BaseModel):
+    rates: list[ConfigurationRateResponse]
+    xml_templates: list[ConfigurationXmlTemplateResponse]
+    parameters: list[ConfigurationParameterResponse]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConfigurationSyncResult(BaseModel):
+    rates_activated: int = Field(default=0, ge=0)
+    rates_deactivated: int = Field(default=0, ge=0)
+    templates_activated: int = Field(default=0, ge=0)
+    templates_deactivated: int = Field(default=0, ge=0)
+    parameters_activated: int = Field(default=0, ge=0)
+    parameters_deactivated: int = Field(default=0, ge=0)
+    processed_files: list[str] = Field(default_factory=list)
 
 
 __all__ = [
@@ -4329,6 +8061,9 @@ __all__ = [
     "AnalyticsProfitMarginResponse",
     "AnalyticsRotationResponse",
     "AnalyticsSalesProjectionResponse",
+    "RiskAlert",
+    "RiskAlertsResponse",
+    "RiskMetric",
     "AuditAcknowledgedEntity",
     "AuditAcknowledgementCreate",
     "AuditAcknowledgementResponse",
@@ -4350,9 +8085,21 @@ __all__ = [
     "GlobalReportOverview",
     "GlobalReportSeriesPoint",
     "GlobalReportDashboard",
+    "ObservabilityLatencySample",
+    "ObservabilityLatencySummary",
+    "ObservabilityErrorSummary",
+    "ObservabilitySyncSummary",
+    "ObservabilityNotification",
+    "ObservabilitySnapshot",
     "SalesSummaryReport",
     "SalesByProductItem",
     "CashCloseReport",
+    "CashDenominationInput",
+    "CashRegisterEntryCreate",
+    "CashRegisterEntryResponse",
+    "CashSessionOpenRequest",
+    "CashSessionCloseRequest",
+    "CashSessionResponse",
     "AuditReminderEntry",
     "AuditReminderSummary",
     "DashboardAuditAlerts",
@@ -4362,6 +8109,12 @@ __all__ = [
     "BackupRestoreResponse",
     "BinaryFileResponse",
     "HTMLDocumentResponse",
+    "IntegrationCredentialInfo",
+    "IntegrationHealthStatus",
+    "IntegrationProviderSummary",
+    "IntegrationProviderDetail",
+    "IntegrationRotateSecretResponse",
+    "IntegrationHealthUpdateRequest",
     "BackupExportFormat",
     "DeviceBase",
     "DeviceCreate",
@@ -4382,10 +8135,33 @@ __all__ = [
     "InventoryImportHistoryEntry",
     "InventoryMetricsResponse",
     "InventorySummary",
+    "ConfigurationParameterType",
+    "ConfigurationRateBase",
+    "ConfigurationRateCreate",
+    "ConfigurationRateUpdate",
+    "ConfigurationRateResponse",
+    "ConfigurationParameterBase",
+    "ConfigurationParameterCreate",
+    "ConfigurationParameterUpdate",
+    "ConfigurationParameterResponse",
+    "ConfigurationXmlTemplateCreate",
+    "ConfigurationXmlTemplateUpdate",
+    "ConfigurationXmlTemplateResponse",
+    "ConfigurationOverview",
+    "ConfigurationSyncResult",
+    "InventoryAvailabilityStore",
+    "InventoryAvailabilityRecord",
+    "InventoryAvailabilityResponse",
     "DashboardChartPoint",
     "DashboardGlobalMetrics",
+    "DashboardSalesEntityMetric",
+    "DashboardSalesInsights",
     "InventoryTotals",
     "LowStockDevice",
+    "InventoryAlertDevice",
+    "InventoryAlertSummary",
+    "InventoryAlertSettingsResponse",
+    "InventoryAlertsResponse",
     "MovementBase",
     "MovementCreate",
     "MovementResponse",
@@ -4393,21 +8169,50 @@ __all__ = [
     "PurchaseOrderItemCreate",
     "PurchaseOrderItemResponse",
     "PurchaseOrderResponse",
+    "PurchaseOrderDocumentResponse",
+    "PurchaseOrderStatusEventResponse",
+    "PurchaseOrderStatusUpdateRequest",
+    "PurchaseOrderEmailRequest",
     "PurchaseReceiveItem",
     "PurchaseReceiveRequest",
     "PurchaseImportResponse",
+    "PurchaseSuggestionItem",
+    "PurchaseSuggestionStore",
+    "PurchaseSuggestionsResponse",
     "POSCartItem",
     "POSSalePaymentInput",
     "POSSaleRequest",
     "POSSaleResponse",
+    "POSPromotionFeatureFlags",
+    "POSVolumePromotion",
+    "POSComboPromotionItem",
+    "POSComboPromotion",
+    "POSCouponPromotion",
+    "POSPromotionsConfig",
+    "POSPromotionsUpdate",
+    "POSPromotionsResponse",
+    "POSAppliedPromotion",
+    "POSReceiptDeliveryChannel",
+    "POSReceiptDeliveryRequest",
+    "POSReceiptDeliveryResponse",
     "POSSessionOpenPayload",
     "POSSessionClosePayload",
     "POSSessionSummary",
     "POSTaxInfo",
     "POSReturnItemRequest",
+    "PriceListBase",
+    "PriceListCreate",
+    "PriceListItemBase",
+    "PriceListItemCreate",
+    "PriceListItemResponse",
+    "PriceListItemUpdate",
+    "PriceListResponse",
+    "PriceListUpdate",
+    "PriceResolution",
     "POSReturnRequest",
     "POSReturnResponse",
     "POSSaleDetailResponse",
+    "POSElectronicPaymentResult",
     "PurchaseVendorBase",
     "PurchaseVendorCreate",
     "PurchaseVendorUpdate",
@@ -4435,6 +8240,13 @@ __all__ = [
     "OperationHistoryTechnician",
     "OperationHistoryType",
     "OperationsHistoryResponse",
+    "ReturnDisposition",
+    "ReturnReasonCategory",
+    "ReturnApprovalRequest",
+    "ReturnRecordType",
+    "ReturnRecord",
+    "ReturnsTotals",
+    "ReturnsOverview",
     "SaleCreate",
     "SaleUpdate",
     "SaleItemCreate",
@@ -4442,18 +8254,39 @@ __all__ = [
     "SaleStoreSummary",
     "SaleUserSummary",
     "SaleDeviceSummary",
+    "WarrantyDeviceSummary",
+    "WarrantySaleSummary",
+    "WarrantyClaimResponse",
+    "WarrantyAssignmentResponse",
+    "WarrantyClaimCreate",
+    "WarrantyClaimStatusUpdate",
+    "WarrantyMetrics",
     "SaleResponse",
     "SaleReturnCreate",
     "SaleReturnItem",
     "SaleReturnResponse",
+    "SaleHistorySearchResponse",
     "SalesReportFilters",
     "SalesReportTotals",
     "SalesReportItem",
     "SalesReportGroup",
     "SalesReportProduct",
     "SalesReport",
+    "POSConnectorType",
+    "POSPrinterMode",
+    "POSConnectorSettings",
+    "POSFiscalPrinterProfile",
+    "POSPrinterSettings",
+    "POSCashDrawerSettings",
+    "POSCustomerDisplaySettings",
+    "POSHardwareSettings",
+    "POSHardwarePrintTestRequest",
+    "POSHardwareDrawerOpenRequest",
+    "POSHardwareDisplayPushRequest",
+    "POSHardwareActionResponse",
     "POSDraftResponse",
     "POSConfigResponse",
+    "POSTerminalConfig",
     "POSConfigUpdate",
     "ReleaseInfo",
     "RootWelcomeResponse",
@@ -4464,6 +8297,7 @@ __all__ = [
     "StoreUpdate",
     "StoreValueMetric",
     "StoreComparativeMetric",
+    "SupplierContact",
     "SupplierBase",
     "SupplierBatchBase",
     "SupplierBatchCreate",
@@ -4471,6 +8305,10 @@ __all__ = [
     "SupplierBatchResponse",
     "SupplierBatchUpdate",
     "SupplierCreate",
+    "SupplierAccountsPayableBucket",
+    "SupplierAccountsPayableResponse",
+    "SupplierAccountsPayableSummary",
+    "SupplierAccountsPayableSupplier",
     "SupplierResponse",
     "SupplierUpdate",
     "SyncRequest",
@@ -4502,6 +8340,7 @@ __all__ = [
     "SyncSessionCompact",
     "SyncStoreHistory",
     "SyncOutboxReplayRequest",
+    "SyncOutboxPriorityUpdate",
     "SyncSessionResponse",
     "TransferReport",
     "TransferReportDevice",
@@ -4537,5 +8376,31 @@ __all__ = [
     "RotationMetric",
     "SalesProjectionMetric",
     "StockoutForecastMetric",
+    "PurchaseSupplierMetric",
+    "PurchaseAnalyticsResponse",
     "HealthStatusResponse",
+    "CustomerDebtSnapshot",
+    "CreditScheduleEntry",
+    "AccountsReceivableEntry",
+    "AccountsReceivableBucket",
+    "AccountsReceivableSummary",
+    "CustomerAccountsReceivableResponse",
+    "CustomerStatementLine",
+    "CustomerStatementReport",
+    "CustomerPaymentReceiptResponse",
+    "CustomerPrivacyRequestCreate",
+    "CustomerPrivacyRequestResponse",
+    "CustomerPrivacyActionResponse",
+    "CustomerSummaryResponse",
+    "StoreCreditResponse",
+    "StoreCreditRedemptionResponse",
+    "StoreCreditIssueRequest",
+    "StoreCreditRedeemRequest",
+    "DashboardReceivableCustomer",
+    "DashboardReceivableMetrics",
 ]
+
+CashSessionCloseRequest.model_rebuild()
+CashSessionResponse.model_rebuild()
+WarrantyClaimCreate.model_rebuild()
+WarrantyClaimStatusUpdate.model_rebuild()

@@ -13,6 +13,21 @@ class Settings(BaseSettings):
     project_name: str = "Softmobile Inventory API"
     api_v1_str: str = "/api/v1"
     sqlite_db_file: Path = Field(default=Path("softmobile.db"), description="Archivo SQLite local")
+    enable_variants: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("ENABLE_VARIANTS", "SOFTMOBILE_ENABLE_VARIANTS"),
+        description="Habilita el catálogo de variantes por dispositivo.",
+    )
+    enable_bundles: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("ENABLE_BUNDLES", "SOFTMOBILE_ENABLE_BUNDLES"),
+        description="Activa el manejo de paquetes y combos vinculados al inventario.",
+    )
+    enable_dte: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("ENABLE_DTE", "SOFTMOBILE_ENABLE_DTE"),
+        description="Habilita la emisión de documentos tributarios electrónicos (DTE).",
+    )
     database_url: str | None = Field(
         default=None,
         validation_alias=AliasChoices(

@@ -134,6 +134,7 @@ vi.mock("../../modules/repairs/pages/RepairsPage", async () => {
   const SuspendedRepairsPage = () => {
     if (resolvedForRun !== suspenseRunId) {
       if (!pending) {
+        // eslint-disable-next-line react-hooks/globals
         pending = new Promise<void>((resolve) => {
           repairsModuleResolvers.set("repairs", () => {
             resolvedForRun = suspenseRunId;

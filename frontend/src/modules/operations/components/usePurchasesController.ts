@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import type {
   Device,
   PurchaseOrder,
+  PurchaseReceiveInput,
   PurchaseRecord,
   PurchaseRecordPayload,
   PurchaseStatistics,
@@ -10,6 +11,7 @@ import type {
   PurchaseVendorHistory,
   PurchaseVendorPayload,
   RecurringOrder,
+  RecurringOrderPayload,
   Store,
   UserAccount,
 } from "../../../api";
@@ -243,11 +245,16 @@ export const usePurchasesController = ({
   const loadVendors = useCallback(async () => {
     try {
       setVendorsLoading(true);
-      const data = await listPurchaseVendors(token, {
-        limit: 200,
-        query: vendorFilters.query ? vendorFilters.query.trim() : undefined,
-        status: vendorFilters.status ? vendorFilters.status.trim() : undefined,
-      });
+      const vendorQuery = vendorFilters.query.trim();
+      const vendorStatus = vendorFilters.status.trim();
+      const vendorArgs: Parameters<typeof listPurchaseVendors>[1] = { limit: 200 };
+      if (vendorQuery) {
+        vendorArgs.query = vendorQuery;
+      }
+      if (vendorStatus) {
+        vendorArgs.status = vendorStatus;
+      }
+      const data = await listPurchaseVendors(token, vendorArgs);
       setVendors(data);
       if (data.length === 0) {
         setSelectedVendorId(null);
@@ -275,11 +282,18 @@ export const usePurchasesController = ({
       }
       try {
         setVendorHistoryLoading(true);
-        const data = await getPurchaseVendorHistory(token, vendorId, {
+        const historyArgs: Parameters<typeof getPurchaseVendorHistory>[2] = {
           limit: vendorHistoryFilters.limit,
-          dateFrom: vendorHistoryFilters.dateFrom || undefined,
-          dateTo: vendorHistoryFilters.dateTo || undefined,
-        });
+        };
+        const fromNormalized = vendorHistoryFilters.dateFrom.trim();
+        const toNormalized = vendorHistoryFilters.dateTo.trim();
+        if (fromNormalized) {
+          historyArgs.dateFrom = fromNormalized;
+        }
+        if (toNormalized) {
+          historyArgs.dateTo = toNormalized;
+        }
+        const data = await getPurchaseVendorHistory(token, vendorId, historyArgs);
         setVendorHistory(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "No fue posible obtener el historial del proveedor");
@@ -305,15 +319,30 @@ export const usePurchasesController = ({
   const loadRecords = useCallback(async () => {
     try {
       setRecordsLoading(true);
-      const data = await listPurchaseRecords(token, {
-        proveedorId: recordFilters.vendorId ? Number(recordFilters.vendorId) : undefined,
-        usuarioId: recordFilters.userId ? Number(recordFilters.userId) : undefined,
-        dateFrom: recordFilters.dateFrom || undefined,
-        dateTo: recordFilters.dateTo || undefined,
-        estado: recordFilters.status || undefined,
-        query: recordFilters.search || undefined,
-        limit: 200,
-      });
+      const recordArgs: Parameters<typeof listPurchaseRecords>[1] = { limit: 200 };
+      if (recordFilters.vendorId) {
+        recordArgs.proveedorId = Number(recordFilters.vendorId);
+      }
+      if (recordFilters.userId) {
+        recordArgs.usuarioId = Number(recordFilters.userId);
+      }
+      const fromNormalized = recordFilters.dateFrom.trim();
+      if (fromNormalized) {
+        recordArgs.dateFrom = fromNormalized;
+      }
+      const toNormalized = recordFilters.dateTo.trim();
+      if (toNormalized) {
+        recordArgs.dateTo = toNormalized;
+      }
+      const statusNormalized = recordFilters.status.trim();
+      if (statusNormalized) {
+        recordArgs.estado = statusNormalized;
+      }
+      const searchNormalized = recordFilters.search.trim();
+      if (searchNormalized) {
+        recordArgs.query = searchNormalized;
+      }
+      const data = await listPurchaseRecords(token, recordArgs);
       setRecords(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible listar las compras registradas");
@@ -511,8 +540,40 @@ export const usePurchasesController = ({
     if (!reason) {
       return;
     }
+    const pendingItems = order.items
+      .map((item) => ({
+        device_id: item.device_id,
+        quantity: Math.max(0, item.quantity_ordered - item.quantity_received),
+      }))
+      .filter((entry) => entry.quantity > 0);
+
+    if (pendingItems.length === 0) {
+      setMessage("La orden ya fue recibida por completo.");
+      return;
+    }
+    const itemsWithBatch: PurchaseReceiveInput["items"] = [];
+    for (const entry of pendingItems) {
+      const deviceInfo =
+        recordDevices.find((device) => device.id === entry.device_id) ??
+        devices.find((device) => device.id === entry.device_id);
+      const promptLabel = deviceInfo
+        ? `Lote recibido para ${deviceInfo.sku} · ${deviceInfo.name} (opcional)`
+        : `Lote recibido para el dispositivo #${entry.device_id} (opcional)`;
+      const batchInput = window.prompt(promptLabel, "");
+      if (batchInput === null) {
+        setMessage("Recepción cancelada por el usuario.");
+        return;
+      }
+      const normalizedBatch = batchInput.trim();
+      if (normalizedBatch) {
+        itemsWithBatch.push({ ...entry, batch_code: normalizedBatch });
+      } else {
+        itemsWithBatch.push(entry);
+      }
+    }
+
     try {
-      await receivePurchaseOrder(token, order.id, reason);
+      await receivePurchaseOrder(token, order.id, { items: itemsWithBatch }, reason);
       setMessage("Orden actualizada y productos recibidos");
       await refreshOrders(order.store_id);
       onInventoryRefresh?.();
@@ -549,14 +610,27 @@ export const usePurchasesController = ({
     setVendorSaving(true);
     try {
       setError(null);
-      const payload: PurchaseVendorPayload = {
-        nombre: normalizedName,
-        telefono: vendorForm.telefono.trim() || undefined,
-        correo: vendorForm.correo.trim() || undefined,
-        direccion: vendorForm.direccion.trim() || undefined,
-        tipo: vendorForm.tipo.trim() || undefined,
-        notas: vendorForm.notas.trim() || undefined,
-      };
+      const payload: PurchaseVendorPayload = { nombre: normalizedName };
+      const telefonoNormalized = vendorForm.telefono.trim();
+      if (telefonoNormalized) {
+        payload.telefono = telefonoNormalized;
+      }
+      const correoNormalized = vendorForm.correo.trim();
+      if (correoNormalized) {
+        payload.correo = correoNormalized;
+      }
+      const direccionNormalized = vendorForm.direccion.trim();
+      if (direccionNormalized) {
+        payload.direccion = direccionNormalized;
+      }
+      const tipoNormalized = vendorForm.tipo.trim();
+      if (tipoNormalized) {
+        payload.tipo = tipoNormalized;
+      }
+      const notasNormalized = vendorForm.notas.trim();
+      if (notasNormalized) {
+        payload.notas = notasNormalized;
+      }
       if (editingVendorId) {
         await updatePurchaseVendor(token, editingVendorId, payload, reason);
         setMessage("Proveedor actualizado correctamente");
@@ -621,14 +695,16 @@ export const usePurchasesController = ({
     }
     try {
       setVendorExporting(true);
-      const blob = await exportPurchaseVendorsCsv(
-        token,
-        {
-          query: vendorFilters.query ? vendorFilters.query.trim() : undefined,
-          status: vendorFilters.status ? vendorFilters.status.trim() : undefined,
-        },
-        reason,
-      );
+      const exportArgs: Parameters<typeof exportPurchaseVendorsCsv>[1] = {};
+      const queryNormalized = vendorFilters.query.trim();
+      const statusNormalized = vendorFilters.status.trim();
+      if (queryNormalized) {
+        exportArgs.query = queryNormalized;
+      }
+      if (statusNormalized) {
+        exportArgs.status = statusNormalized;
+      }
+      const blob = await exportPurchaseVendorsCsv(token, exportArgs, reason);
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       downloadBlob(blob, `proveedores_compras_${timestamp}.csv`);
     } catch (err) {
@@ -682,15 +758,22 @@ export const usePurchasesController = ({
     const payload: PurchaseRecordPayload = {
       proveedor_id: recordForm.vendorId,
       forma_pago: recordForm.paymentMethod,
-      estado: recordForm.status || undefined,
-      impuesto_tasa: recordForm.taxRate >= 0 ? recordForm.taxRate : undefined,
-      fecha: recordForm.date ? new Date(recordForm.date).toISOString() : undefined,
       items: validItems.map((item) => ({
         producto_id: item.productId as number,
         cantidad: Math.max(1, Math.trunc(item.quantity)),
         costo_unitario: Math.max(0, item.unitCost),
       })),
     };
+    const statusNormalized = recordForm.status.trim();
+    if (statusNormalized) {
+      payload.estado = statusNormalized;
+    }
+    if (recordForm.taxRate >= 0) {
+      payload.impuesto_tasa = recordForm.taxRate;
+    }
+    if (recordForm.date) {
+      payload.fecha = new Date(recordForm.date).toISOString();
+    }
     try {
       setError(null);
       await createPurchaseRecord(token, payload, reason);
@@ -724,14 +807,29 @@ export const usePurchasesController = ({
     if (!reason) {
       return;
     }
-    const filters = {
-      proveedorId: recordFilters.vendorId ? Number(recordFilters.vendorId) : undefined,
-      usuarioId: recordFilters.userId ? Number(recordFilters.userId) : undefined,
-      dateFrom: recordFilters.dateFrom || undefined,
-      dateTo: recordFilters.dateTo || undefined,
-      estado: recordFilters.status || undefined,
-      query: recordFilters.search || undefined,
-    };
+    const filters: Parameters<typeof exportPurchaseRecordsPdf>[1] = {};
+    if (recordFilters.vendorId) {
+      filters.proveedorId = Number(recordFilters.vendorId);
+    }
+    if (recordFilters.userId) {
+      filters.usuarioId = Number(recordFilters.userId);
+    }
+    const fromNormalized = recordFilters.dateFrom.trim();
+    if (fromNormalized) {
+      filters.dateFrom = fromNormalized;
+    }
+    const toNormalized = recordFilters.dateTo.trim();
+    if (toNormalized) {
+      filters.dateTo = toNormalized;
+    }
+    const statusNormalized = recordFilters.status.trim();
+    if (statusNormalized) {
+      filters.estado = statusNormalized;
+    }
+    const searchNormalized = recordFilters.search.trim();
+    if (searchNormalized) {
+      filters.query = searchNormalized;
+    }
     try {
       const blob =
         format === "pdf"
@@ -749,10 +847,11 @@ export const usePurchasesController = ({
   };
 
   const handleReturn = async (order: PurchaseOrder) => {
-    if (order.items.length === 0) {
+    const firstItem = order.items[0];
+    if (!firstItem) {
       return;
     }
-    const deviceId = order.items[0].device_id;
+    const deviceId = firstItem.device_id;
     const quantityRaw = window.prompt("Cantidad a devolver al proveedor", "1");
     const quantity = quantityRaw ? Number(quantityRaw) : NaN;
     if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -832,23 +931,29 @@ export const usePurchasesController = ({
       return;
     }
     const normalizedDescription = templateDescription.trim();
-    const payload = {
-      name: normalizedName,
-      description: normalizedDescription || undefined,
-      order_type: "purchase" as const,
-      payload: {
-        store_id: form.storeId,
-        supplier: form.supplier.trim(),
-        notes: normalizedDescription || undefined,
-        items: [
-          {
-            device_id: form.deviceId,
-            quantity_ordered: Math.max(1, form.quantity),
-            unit_cost: Math.max(0, form.unitCost),
-          },
-        ],
-      },
+    const templatePayload: Record<string, unknown> = {
+      store_id: form.storeId,
+      supplier: form.supplier.trim(),
+      items: [
+        {
+          device_id: form.deviceId,
+          quantity_ordered: Math.max(1, form.quantity),
+          unit_cost: Math.max(0, form.unitCost),
+        },
+      ],
     };
+    if (normalizedDescription) {
+      templatePayload.notes = normalizedDescription;
+    }
+
+    const payload: RecurringOrderPayload = {
+      name: normalizedName,
+      order_type: "purchase",
+      payload: templatePayload,
+    };
+    if (normalizedDescription) {
+      payload.description = normalizedDescription;
+    }
     try {
       setError(null);
       setTemplateSaving(true);

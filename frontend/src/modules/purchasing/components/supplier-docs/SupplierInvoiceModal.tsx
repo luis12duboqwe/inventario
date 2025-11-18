@@ -90,7 +90,21 @@ export default function SupplierInvoiceModal({ open, poId, onClose, onSubmit }: 
           <button
             type="button"
             disabled={!valid}
-            onClick={() => onSubmit?.({ poId, number, date, amount, file })}
+            onClick={() => {
+              if (!valid) {
+                return;
+              }
+              const payload = {
+                number,
+                date,
+                amount,
+                file,
+              } as { number: string; date: string; amount: number; file: File | null; poId?: string };
+              if (poId) {
+                payload.poId = poId;
+              }
+              onSubmit?.(payload);
+            }}
             style={{
               ...buttonStyle,
               background: valid ? "#2563eb" : "rgba(37, 99, 235, 0.2)",

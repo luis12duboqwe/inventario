@@ -46,27 +46,14 @@ function ReparacionesLayout() {
       : "Activa SOFTMOBILE_ENABLE_PURCHASES_SALES para habilitar reparaciones",
   );
 
-  const tabs = useMemo<ReparacionesTab[]>(() => REPARACIONES_TABS, []);
+  const tabs = useMemo<ReparacionesTab[]>(() => [...REPARACIONES_TABS], []);
 
   const handleModuleStatusChange = (status: ModuleStatus, label: string) => {
     setModuleStatus(status);
     setModuleStatusLabel(label);
   };
 
-  if (!enablePurchasesSales) {
-    return (
-      <div className="reparaciones-layout">
-        <PageHeader title="Reparaciones" subtitle="Órdenes y repuestos" />
-        <section className="card">
-          <h2>Órdenes de reparación</h2>
-          <p className="muted-text">
-            Activa <code>SOFTMOBILE_ENABLE_PURCHASES_SALES</code> para habilitar el flujo de
-            reparaciones y sus ajustes de inventario vinculados.
-          </p>
-        </section>
-      </div>
-    );
-  }
+  // Nota: evitamos returns tempranos antes de invocar hooks; la UI se decide en render.
 
   const contextValue = useMemo<RepairsLayoutContextValue>(
     () => ({
@@ -94,37 +81,53 @@ function ReparacionesLayout() {
     <div className="reparaciones-layout">
       <PageHeader title="Reparaciones" subtitle="Órdenes y repuestos" />
 
-      <PageToolbar>
-        <div
-          className={`reparaciones-status reparaciones-status--${moduleStatus}`}
-          role="status"
-          aria-live="polite"
-        >
-          <span className="reparaciones-status__dot" aria-hidden="true" />
-          <span>{moduleStatusLabel}</span>
-        </div>
-      </PageToolbar>
+      {!enablePurchasesSales ? (
+        <section className="card">
+          <h2>Órdenes de reparación</h2>
+          <p className="muted-text">
+            Activa <code>SOFTMOBILE_ENABLE_PURCHASES_SALES</code> para habilitar el flujo de
+            reparaciones y sus ajustes de inventario vinculados.
+          </p>
+        </section>
+      ) : (
+        <>
+          <PageToolbar>
+            <div
+              className={`reparaciones-status reparaciones-status--${moduleStatus}`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="reparaciones-status__dot" aria-hidden="true" />
+              <span>{moduleStatusLabel}</span>
+            </div>
+          </PageToolbar>
 
-      <nav className="reparaciones-tabs" aria-label="Secciones de reparaciones">
-        {tabs.map((tab) => (
-          <NavLink
-            key={tab.id}
-            to={tab.path}
-            className={({ isActive }) =>
-              `reparaciones-tab${isActive ? " reparaciones-tab--active" : ""}`
-            }
-            end={tab.path === "pendientes"}
-          >
-            {tab.label}
-          </NavLink>
-        ))}
-      </nav>
+          <nav className="reparaciones-tabs" aria-label="Secciones de reparaciones">
+            {tabs.map((tab) => (
+              <NavLink
+                key={tab.id}
+                to={tab.path}
+                className={({ isActive }) =>
+                  `reparaciones-tab${isActive ? " reparaciones-tab--active" : ""}`
+                }
+                end={tab.path === "pendientes"}
+              >
+                {tab.label}
+              </NavLink>
+            ))}
+          </nav>
 
-      <RepairsLayoutContext.Provider value={contextValue}>
-        <Suspense fallback={<Loader message="Cargando módulo de reparaciones…" />}>
-          <Outlet />
-        </Suspense>
-      </RepairsLayoutContext.Provider>
+          <RepairsLayoutContext.Provider value={contextValue}>
+            <Suspense
+              fallback={
+                <Loader label="Cargando módulo de reparaciones…" message="Cargando módulo de reparaciones…" />
+              }
+            >
+              <Outlet />
+            </Suspense>
+          </RepairsLayoutContext.Provider>
+        </>
+      )}
     </div>
   );
 }

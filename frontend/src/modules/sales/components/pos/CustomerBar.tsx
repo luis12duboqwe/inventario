@@ -4,6 +4,8 @@ type Customer = {
   id: string;
   name: string;
   phone?: string;
+  email?: string;
+  docId?: string;
   tier?: string;
 };
 
@@ -21,6 +23,9 @@ export default function CustomerBar({ customer, onPick, onQuickNew }: Props) {
         <div style={{ fontWeight: 700 }}>{customer?.name ?? "Mostrador"}</div>
         {!!customer?.phone && (
           <div style={{ fontSize: 12, color: "#94a3b8" }}>{customer.phone}</div>
+        )}
+        {!!customer?.docId && (
+          <div style={{ fontSize: 12, color: "#38bdf8" }}>RTN: {customer.docId}</div>
         )}
       </div>
       <button onClick={onPick} style={{ padding: "8px 12px", borderRadius: 8 }}>

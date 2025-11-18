@@ -78,7 +78,7 @@ export function QuotesListPage() {
   const [flushMessage, setFlushMessage] = useState<string | null>(null);
 
   // [PACK23-QUOTES-LIST-FETCH-START]
-  async function fetchQuotes(extra?: Partial<QuoteListParams>) {
+  const fetchQuotes = useCallback(async (extra?: Partial<QuoteListParams>) => {
     if (!canList) {
       setItems([]);
       setTotal(0);
@@ -87,15 +87,24 @@ export function QuotesListPage() {
     }
     setLoading(true);
     try {
-      const res = await SalesQuotes.listQuotes({ page, pageSize, q, status, ...extra });
+      const baseParams: QuoteListParams = {
+        page,
+        pageSize,
+        q,
+      };
+      if (status) {
+        baseParams.status = status;
+      }
+      const mergedParams = { ...baseParams, ...extra };
+      const res = await SalesQuotes.listQuotes(mergedParams);
       setItems(res.items || []);
       setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }
-  }
+  }, [canList, page, pageSize, q, status]);
 
-  useEffect(() => { fetchQuotes(); }, [page, pageSize, status, canList]);
+  useEffect(() => { void fetchQuotes(); }, [fetchQuotes]);
   // [PACK23-QUOTES-LIST-FETCH-END]
 
   useEffect(() => {
@@ -110,7 +119,15 @@ export function QuotesListPage() {
 
   // [PACK23-QUOTES-LIST-UI-START]
   function onSearch(e: React.FormEvent) { e.preventDefault(); setPage(1); fetchQuotes({ page: 1 }); }
-  function onStatusChange(s: Quote["status"] | undefined) { setStatus(s); setPage(1); fetchQuotes({ page: 1, status: s }); }
+  function onStatusChange(s: Quote["status"] | undefined) {
+    setStatus(s);
+    setPage(1);
+    const params: Partial<QuoteListParams> = { page: 1 };
+    if (s) {
+      params.status = s;
+    }
+    fetchQuotes(params);
+  }
   // [PACK23-QUOTES-LIST-UI-END]
 
   const rows: QuoteRow[] = useMemo(
@@ -313,3 +330,5 @@ export function QuotesListPage() {
     </div>
   );
 }
+
+export default QuotesListPage;

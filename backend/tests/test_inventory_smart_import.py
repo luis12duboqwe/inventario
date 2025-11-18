@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import base64
+from decimal import Decimal
+from pathlib import Path
+
 from fastapi import status
 
 from backend.app import crud, models
 from backend.app.core.roles import ADMIN
 from backend.app.services import inventory_smart_import
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "imports"
+
+
+def _vendor_layout_xlsx_bytes() -> bytes:
+    base64_payload = (FIXTURES_DIR / "vendor_layout.xlsx.b64").read_text()
+    return base64.b64decode(base64_payload)
 
 
 def _auth_headers(client) -> dict[str, str]:
@@ -19,12 +30,14 @@ def _auth_headers(client) -> dict[str, str]:
 
     token_response = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert token_response.status_code == status.HTTP_200_OK
     token = token_response.json()["access_token"]
-    sanitized_reason = "Importación inventario".encode("ascii", "ignore").decode("ascii") or "Importacion inventario"
+    sanitized_reason = "Importación inventario".encode(
+        "ascii", "ignore").decode("ascii") or "Importacion inventario"
     return {"Authorization": f"Bearer {token}", "X-Reason": sanitized_reason}
 
 
@@ -47,7 +60,8 @@ def test_inventory_smart_import_preview_and_commit(db_session):
 
     assert preview_response.resultado is None
     assert preview_response.preview.total_filas == 1
-    mapped_columns = {match.campo: match.estado for match in preview_response.preview.columnas}
+    mapped_columns = {
+        match.campo: match.estado for match in preview_response.preview.columnas}
     assert mapped_columns.get("tienda") == "ok"
     assert mapped_columns.get("imei") in {"ok", "pendiente"}
 
@@ -89,7 +103,8 @@ def test_inventory_smart_import_preview_and_commit(db_session):
     assert last_record.nombre_archivo == "inventario.csv"
 
     system_logs = db_session.query(models.SystemLog).all()
-    assert any("Importación inteligente ejecutada" in log.descripcion for log in system_logs)
+    assert any(
+        "Importación inteligente ejecutada" in log.descripcion for log in system_logs)
 
 
 def test_inventory_smart_import_handles_overrides_and_incomplete_records(db_session):
@@ -109,7 +124,8 @@ def test_inventory_smart_import_handles_overrides_and_incomplete_records(db_sess
         reason="Carga inicial",
     )
 
-    mapped_columns = {match.campo: match.encabezado_origen for match in initial_preview.preview.columnas}
+    mapped_columns = {
+        match.campo: match.encabezado_origen for match in initial_preview.preview.columnas}
     assert mapped_columns.get("modelo") is None
     assert "imei" in initial_preview.preview.columnas_faltantes
 
@@ -149,6 +165,61 @@ def test_inventory_smart_import_handles_overrides_and_incomplete_records(db_sess
     assert record.total_registros == 1
     assert record.registros_incompletos == 1
     assert record.columnas_detectadas.get("modelo") == "Dispositivo"
+
+
+def test_inventory_smart_import_vendor_layout_detects_advanced_columns(db_session):
+    fixture_bytes = _vendor_layout_xlsx_bytes()
+
+    response = inventory_smart_import.process_smart_import(
+        db_session,
+        file_bytes=fixture_bytes,
+        filename="vendor_layout.xlsx",
+        commit=False,
+        overrides=None,
+        performed_by_id=None,
+        username="tester",
+        reason="Plantilla proveedor",
+    )
+
+    preview = response.preview
+    assert preview.total_filas == 1
+    assert "garantia_meses" not in preview.columnas_faltantes
+    assert preview.columnas_detectadas.get("garantia_meses") == "Warranty (months)"
+    assert preview.columnas_detectadas.get("margen_porcentaje") == "Margin %"
+    assert preview.columnas_detectadas.get("imagen_url") == "Image URL"
+    assert preview.columnas_detectadas.get("descripcion") == "Descripción extendida"
+
+
+def test_inventory_smart_import_vendor_layout_commit_maps_advanced_fields(db_session):
+    fixture_bytes = (FIXTURES_DIR / "vendor_layout.csv").read_bytes()
+
+    response = inventory_smart_import.process_smart_import(
+        db_session,
+        file_bytes=fixture_bytes,
+        filename="vendor_layout.csv",
+        commit=True,
+        overrides=None,
+        performed_by_id=None,
+        username="tester",
+        reason="Plantilla proveedor",
+    )
+
+    result = response.resultado
+    assert result is not None
+    assert result.total_procesados == 1
+    assert result.nuevos == 1
+    store = crud.get_store_by_name(db_session, "Sucursal Centro")
+    assert store is not None
+    device = crud.find_device_for_import(
+        db_session,
+        store_id=store.id,
+        imei="490000123456789",
+    )
+    assert device is not None
+    assert device.margen_porcentaje == Decimal("35")
+    assert device.garantia_meses == 24
+    assert device.imagen_url == "https://cdn.megasupplier.mx/catalogo/s23-5g.png"
+    assert device.descripcion == "Kit corporativo con cargador y cable oficial."
 
 
 def test_inventory_smart_import_endpoint_rejects_invalid_overrides(client):
@@ -207,3 +278,30 @@ def test_detect_column_type_boolean_column_detection():
     samples = ["Sí", "No", "si", "no", "TRUE", "false"]
     detected = inventory_smart_import._detect_column_type(samples)
     assert detected == "booleano"
+
+
+def test_smart_import_sets_timezone_and_initial_inventory_value(db_session):
+    csv_content = (
+        "Sucursal,Marca,Modelo,IMEI,Color,Cantidad,Precio,Costo\n"
+        "Sucursal Timezone,Motorola,Moto G,990001112223334,Gris,2,3500,2000\n"
+    )
+
+    commit_response = inventory_smart_import.process_smart_import(
+        db_session,
+        file_bytes=csv_content.encode("utf-8"),
+        filename="inventario_timezone.csv",
+        commit=True,
+        overrides=None,
+        performed_by_id=None,
+        username="tester",
+        reason="Carga inicial",
+    )
+
+    assert commit_response.resultado is not None
+    store = crud.get_store_by_name(db_session, "Sucursal Timezone")
+    assert store is not None
+    # La normalización posterior a ensure_store_by_name debe fijar el timezone corporativo
+    assert store.timezone == "America/Mexico_City"
+    # inventory_value debe ser un Decimal no negativo tras registrar dispositivos.
+    assert isinstance(store.inventory_value, Decimal)
+    assert store.inventory_value >= Decimal("0")

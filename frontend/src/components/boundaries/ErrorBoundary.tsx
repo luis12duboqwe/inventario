@@ -1,23 +1,23 @@
 import React from "react";
 
 type Props = { children: React.ReactNode };
-type State = { hasError: boolean; info?: string; errMsg?: string };
+type State = { hasError: boolean; info: string | null; errMsg: string | null };
 
 export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, info: null, errMsg: null };
   }
   static getDerivedStateFromError(error: unknown): State {
-    return { hasError: true, errMsg: String(error) };
+    return { hasError: true, info: null, errMsg: String(error) };
   }
-  componentDidCatch(error: unknown, info: React.ErrorInfo) {
+  override componentDidCatch(error: unknown, info: React.ErrorInfo): void {
     try {
       const payload = {
         type: "react_error",
         message: String(error),
         stack: (error as any)?.stack || "",
-        componentStack: info?.componentStack || "",
+        componentStack: info.componentStack || "",
         ts: Date.now(),
       };
       if (navigator?.sendBeacon) {
@@ -30,10 +30,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
     } catch {}
   }
   handleRetry = () => {
-    this.setState({ hasError: false, info: undefined, errMsg: undefined });
+    this.setState({ hasError: false, info: null, errMsg: null });
     // window.location.reload(); // opcional
   };
-  render() {
+  override render(): React.ReactNode {
     if (this.state.hasError) {
       return (
         <div
@@ -103,7 +103,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         </div>
       );
     }
-    return this.props.children as React.ReactElement;
+    return this.props.children;
   }
 }
 

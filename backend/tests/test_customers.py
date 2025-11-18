@@ -1,6 +1,10 @@
+import json
+from datetime import datetime
+
 import pytest
 from fastapi import status
 
+from backend.app import crud, models, schemas
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN, OPERADOR
 
@@ -62,6 +66,9 @@ def test_customer_crud_flow(client):
         "phone": "+52 55 0000 0000",
         "customer_type": "corporativo",
         "status": "activo",
+        "tax_id": "0801-1999-000123",
+        "segment_category": "b2b",
+        "tags": ["vip", "corporativo"],
         "credit_limit": 5000.0,
         "history": [{"note": "Cliente corporativo", "timestamp": "2025-02-15T10:00:00"}],
     }
@@ -71,10 +78,25 @@ def test_customer_crud_flow(client):
     created_payload = create_response.json()
     assert created_payload["customer_type"] == "corporativo"
     assert created_payload["credit_limit"] == 5000.0
+    assert created_payload["tax_id"] == "0801-1999-000123"
+    assert set(created_payload["tags"]) == {"vip", "corporativo"}
 
     list_response = client.get("/customers", headers={"Authorization": f"Bearer {token}"})
     assert list_response.status_code == status.HTTP_200_OK
     assert any(item["id"] == customer_id for item in list_response.json())
+
+    filtered_response = client.get(
+        "/customers",
+        headers={"Authorization": f"Bearer {token}"},
+        params={
+            "segment_category": "b2b",
+            "tags": ["vip", "corporativo"],
+            "customer_type": "corporativo",
+        },
+    )
+    assert filtered_response.status_code == status.HTTP_200_OK
+    filtered_ids = {item["id"] for item in filtered_response.json()}
+    assert customer_id in filtered_ids
 
     csv_response = client.get(
         "/customers", headers={"Authorization": f"Bearer {token}"}, params={"export": "csv"}
@@ -98,6 +120,17 @@ def test_customer_crud_flow(client):
     assert all(item["id"] != customer_id for item in list_after_delete.json())
 
 
+def test_customers_list_requires_reason_header(client):
+    token = _bootstrap_admin(client)
+    unauthorized_headers = {"Authorization": f"Bearer {token}", "X-Reason": ""}
+    response = client.get("/customers", headers=unauthorized_headers)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    valid_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Consulta clientes QA"}
+    ok_response = client.get("/customers", headers=valid_headers)
+    assert ok_response.status_code == status.HTTP_200_OK
+
+
 def test_customers_require_reason_and_roles(client):
     token = _bootstrap_admin(client)
     auth_headers = {"Authorization": f"Bearer {token}"}
@@ -107,7 +140,8 @@ def test_customers_require_reason_and_roles(client):
     assert response_without_reason.status_code == status.HTTP_400_BAD_REQUEST
 
     reason_headers = {**auth_headers, "X-Reason": "Registro Clientes"}
-    create_response = client.post("/customers", json=payload, headers=reason_headers)
+    payload_with_tax = {**payload, "tax_id": "0801-1999-000124"}
+    create_response = client.post("/customers", json=payload_with_tax, headers=reason_headers)
     assert create_response.status_code == status.HTTP_201_CREATED
     customer_id = create_response.json()["id"]
 
@@ -190,6 +224,7 @@ def test_customer_payments_and_summary(client):
                 "phone": "555-404-5050",
                 "customer_type": "corporativo",
                 "status": "activo",
+                "tax_id": "0801-1999-000125",
                 "credit_limit": 1000.0,
             },
             headers=reason_headers,
@@ -233,8 +268,15 @@ def test_customer_payments_and_summary(client):
         )
         assert payment_response.status_code == status.HTTP_201_CREATED
         payment_data = payment_response.json()
-        assert payment_data["details"]["sale_id"] == sale_data["id"]
-        assert payment_data["balance_after"] == pytest.approx(sale_data["total_amount"] - 80.0)
+        ledger_entry = payment_data["ledger_entry"]
+        assert ledger_entry["details"]["sale_id"] == sale_data["id"]
+        assert ledger_entry["balance_after"] == pytest.approx(
+            sale_data["total_amount"] - 80.0
+        )
+        assert payment_data["debt_summary"]["remaining_balance"] == pytest.approx(
+            sale_data["total_amount"] - 80.0
+        )
+        assert payment_data["receipt_pdf_base64"]
 
         summary_response = client.get(
             f"/customers/{customer_id}/summary", headers=auth_headers
@@ -273,6 +315,7 @@ def test_customer_debt_cannot_exceed_credit_limit(client):
     invalid_payload = {
         "name": "Cliente Sobreendeudado",
         "phone": "555-600-7000",
+        "tax_id": "0801-1999-009900",
         "credit_limit": 300.0,
         "outstanding_debt": 320.0,
     }
@@ -291,6 +334,7 @@ def test_customer_debt_cannot_exceed_credit_limit(client):
         json={
             "name": "Cliente Controlado",
             "phone": "555-101-3030",
+            "tax_id": "0801-1999-009901",
             "credit_limit": 500.0,
             "outstanding_debt": 300.0,
         },
@@ -348,6 +392,7 @@ def test_customer_manual_debt_adjustment_creates_ledger_entry(client):
         json={
             "name": "Cliente Ajuste",
             "phone": "555-303-4040",
+            "tax_id": "0801-1999-009902",
             "credit_limit": 800.0,
         },
         headers=reason_headers,
@@ -418,7 +463,9 @@ def test_customer_filters_and_reports(client):
             json={
                 "name": "Cliente Moroso",
                 "phone": "555-777-8888",
+                "customer_type": "minorista",
                 "status": "moroso",
+                "tax_id": "0801-1999-000126",
                 "credit_limit": 500.0,
                 "outstanding_debt": 280.0,
             },
@@ -433,6 +480,7 @@ def test_customer_filters_and_reports(client):
                 "name": "Cliente Frecuente",
                 "phone": "555-666-5555",
                 "customer_type": "corporativo",
+                "tax_id": "0801-1999-000127",
                 "credit_limit": 1500.0,
             },
             headers=reason_headers,
@@ -529,6 +577,7 @@ def test_customer_portfolio_exports(client):
                 "name": "Cliente Reporte",
                 "phone": "555-123-9090",
                 "customer_type": "corporativo",
+                "tax_id": "0801-1999-000128",
                 "credit_limit": 2500.0,
                 "outstanding_debt": 600.0,
                 "status": "moroso",
@@ -580,6 +629,46 @@ def test_customer_portfolio_exports(client):
         )
     finally:
         settings.enable_purchases_sales = previous_flag
+
+
+def test_customer_sync_payload_includes_segmentation(db_session):
+    create_payload = schemas.CustomerCreate(
+        name="Cliente Sincronizado",
+        phone="555-700-8000",
+        customer_type="corporativo",
+        status="activo",
+        tax_id="0801-1999-000129",
+        segment_category="b2b",
+        tags=["vip", "sync"],
+        history=[schemas.ContactHistoryEntry(note="Alta inicial", timestamp=datetime.utcnow())],
+    )
+
+    customer = crud.create_customer(db_session, create_payload)
+
+    outbox_entries = (
+        db_session.query(models.SyncOutbox)
+        .filter_by(entity_type="customer", entity_id=str(customer.id))
+        .all()
+    )
+    assert outbox_entries, "Debe generarse una entrada en sync_outbox"
+    latest_payload = outbox_entries[-1].payload
+    assert latest_payload["tax_id"] == "0801-1999-000129"
+    assert latest_payload["segment_category"] == "b2b"
+    assert set(latest_payload["tags"]) == {"vip", "sync"}
+
+    audit_entry = (
+        db_session.query(models.AuditLog)
+        .filter_by(entity_id=str(customer.id), action="customer_created")
+        .order_by(models.AuditLog.id.desc())
+        .first()
+    )
+    assert audit_entry is not None
+    audit_details = json.loads(audit_entry.details or "{}")
+    assert audit_details.get("tax_id") == "0801-1999-000129"
+    assert audit_details.get("segment_category") == "b2b"
+    assert set(audit_details.get("tags", [])) == {"vip", "sync"}
+
+
 def test_customer_list_filters_by_status_and_type(client):
     token = _bootstrap_admin(client)
     auth_headers = {"Authorization": f"Bearer {token}"}
@@ -591,18 +680,21 @@ def test_customer_list_filters_by_status_and_type(client):
             "phone": "555-010-0001",
             "customer_type": "minorista",
             "status": "activo",
+            "tax_id": "0801-1999-000130",
         },
         {
             "name": "Cliente Filtro Corporativo",
             "phone": "555-010-0002",
             "customer_type": "corporativo",
             "status": "moroso",
+            "tax_id": "0801-1999-000131",
         },
         {
             "name": "Cliente Filtro Mayorista",
             "phone": "555-010-0003",
             "customer_type": "mayorista",
             "status": "inactivo",
+            "tax_id": "0801-1999-000132",
         },
     ]
 
@@ -650,3 +742,182 @@ def test_customer_list_filters_by_status_and_type(client):
     assert "estado de cliente" in invalid_status_response.json()["detail"].lower()
 
 
+def test_customer_accounts_receivable_endpoints(client):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Operaciones cuentas por cobrar"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Sucursal Centro", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "SKU-CXC-001",
+                "name": "Terminal Crédito",
+                "quantity": 10,
+                "unit_price": 1200.0,
+                "costo_unitario": 950.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        customer_response = client.post(
+            "/customers",
+            json={
+                "name": "Cliente CXC",
+                "phone": "555-700-8080",
+                "email": "cxc@example.com",
+                "customer_type": "corporativo",
+                "credit_limit": 5000.0,
+            },
+            headers=reason_headers,
+        )
+        assert customer_response.status_code == status.HTTP_201_CREATED
+        customer_id = customer_response.json()["id"]
+
+        sale_response = client.post(
+            "/sales",
+            json={
+                "store_id": store_id,
+                "customer_id": customer_id,
+                "payment_method": "CREDITO",
+                "items": [{"device_id": device_id, "quantity": 1}],
+                "notes": "Venta inicial",
+            },
+            headers={**auth_headers, "X-Reason": "Venta crédito cxc"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+
+        receivable_response = client.get(
+            f"/customers/{customer_id}/accounts-receivable",
+            headers=auth_headers,
+        )
+        assert receivable_response.status_code == status.HTTP_200_OK
+        payload = receivable_response.json()
+        assert payload["customer"]["id"] == customer_id
+        assert payload["summary"]["total_outstanding"] > 0
+        assert isinstance(payload["aging"], list) and payload["aging"]
+        assert isinstance(payload["credit_schedule"], list) and payload["credit_schedule"]
+
+        statement_response = client.get(
+            f"/customers/{customer_id}/accounts-receivable/statement.pdf",
+            headers=reason_headers,
+        )
+        assert statement_response.status_code == status.HTTP_200_OK
+        assert statement_response.headers["content-type"] == "application/pdf"
+        assert statement_response.content.startswith(b"%PDF")
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+
+def test_customer_privacy_consent_request(client):
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Gestión privacidad clientes"}
+
+    create_response = client.post(
+        "/customers",
+        json={
+            "name": "Cliente Consentimiento",
+            "phone": "555-880-1122",
+            "customer_type": "corporativo",
+            "status": "activo",
+            "tax_id": "0801-1999-019901",
+        },
+        headers=reason_headers,
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    customer_id = create_response.json()["id"]
+
+    privacy_response = client.post(
+        f"/customers/{customer_id}/privacy-requests",
+        json={
+            "request_type": "consent",
+            "details": "Actualización consentimiento marketing",
+            "consent": {"marketing": True, "sms": False},
+        },
+        headers=reason_headers,
+    )
+    assert privacy_response.status_code == status.HTTP_201_CREATED
+    payload = privacy_response.json()
+    assert payload["request"]["request_type"] == "consent"
+    assert payload["request"]["consent_snapshot"]["marketing"] is True
+    assert payload["request"]["consent_snapshot"]["sms"] is False
+
+    summary_response = client.get(
+        f"/customers/{customer_id}/summary", headers=auth_headers
+    )
+    assert summary_response.status_code == status.HTTP_200_OK
+    summary = summary_response.json()
+    assert summary["customer"]["privacy_consents"]["marketing"] is True
+    assert summary["customer"]["privacy_consents"]["sms"] is False
+    assert summary["privacy_requests"]
+    latest_request = summary["privacy_requests"][0]
+    assert latest_request["request_type"] == "consent"
+    assert latest_request["details"] == "Actualización consentimiento marketing"
+
+
+def test_customer_privacy_anonymization_masks_fields(client):
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Anonimización clientes"}
+
+    original_email = "contacto@privacidad.com"
+    original_phone = "+504 2212 9988"
+    original_address = "Residencial Privada 123, Tegucigalpa"
+
+    create_response = client.post(
+        "/customers",
+        json={
+            "name": "Cliente Anonimizar",
+            "phone": original_phone,
+            "email": original_email,
+            "address": original_address,
+            "customer_type": "minorista",
+            "status": "activo",
+            "tax_id": "0801-1999-019902",
+        },
+        headers=reason_headers,
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    customer_id = create_response.json()["id"]
+
+    privacy_response = client.post(
+        f"/customers/{customer_id}/privacy-requests",
+        json={
+            "request_type": "anonymization",
+            "details": "Anonimización parcial por solicitud",
+            "mask_fields": ["email", "phone", "address"],
+        },
+        headers=reason_headers,
+    )
+    assert privacy_response.status_code == status.HTTP_201_CREATED
+    payload = privacy_response.json()
+    assert payload["request"]["request_type"] == "anonymization"
+    assert set(payload["request"]["masked_fields"]) == {"email", "phone", "address"}
+
+    summary_response = client.get(
+        f"/customers/{customer_id}/summary", headers=auth_headers
+    )
+    assert summary_response.status_code == status.HTTP_200_OK
+    summary = summary_response.json()
+    masked_customer = summary["customer"]
+    assert masked_customer["email"] != original_email
+    assert masked_customer["email"].endswith("@privacidad.com")
+    assert masked_customer["phone"].endswith("9988")
+    assert "*" in masked_customer["phone"]
+    assert masked_customer["address"] != original_address
+    assert summary["privacy_requests"][0]["request_type"] == "anonymization"
+    assert "address" in summary["privacy_requests"][0]["masked_fields"]

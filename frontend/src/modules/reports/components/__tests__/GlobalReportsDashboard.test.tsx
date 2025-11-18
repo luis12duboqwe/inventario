@@ -24,8 +24,10 @@ vi.mock("../../hooks/useReportsModule", () => ({
   useReportsModule: () => moduleStub,
 }));
 
-vi.mock("../../../../api", async (original) => {
-  const actual = await original();
+vi.mock(
+  "../../../../api",
+  async (importOriginal: () => Promise<typeof import("../../../../api")>) => {
+    const actual = await importOriginal();
   return {
     ...actual,
     getGlobalReportOverview: vi.fn(),
@@ -34,7 +36,8 @@ vi.mock("../../../../api", async (original) => {
     downloadGlobalReportXlsx: vi.fn(),
     downloadGlobalReportCsv: vi.fn(),
   };
-});
+  },
+);
 
 vi.mock("../../../../shared/components/ScrollableTable", () => ({
   __esModule: true,

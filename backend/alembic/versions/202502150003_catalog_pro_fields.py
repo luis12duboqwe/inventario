@@ -19,12 +19,18 @@ def upgrade() -> None:
     estado_enum = sa.Enum("nuevo", "A", "B", "C", name=ESTADO_ENUM_NAME)
     estado_enum.create(bind, checkfirst=True)
 
-    op.add_column("devices", sa.Column("imei", sa.String(length=18), nullable=True))
-    op.add_column("devices", sa.Column("serial", sa.String(length=120), nullable=True))
-    op.add_column("devices", sa.Column("marca", sa.String(length=80), nullable=True))
-    op.add_column("devices", sa.Column("modelo", sa.String(length=120), nullable=True))
-    op.add_column("devices", sa.Column("color", sa.String(length=60), nullable=True))
-    op.add_column("devices", sa.Column("capacidad_gb", sa.Integer(), nullable=True))
+    op.add_column("devices", sa.Column(
+        "imei", sa.String(length=18), nullable=True))
+    op.add_column("devices", sa.Column(
+        "serial", sa.String(length=120), nullable=True))
+    op.add_column("devices", sa.Column(
+        "marca", sa.String(length=80), nullable=True))
+    op.add_column("devices", sa.Column(
+        "modelo", sa.String(length=120), nullable=True))
+    op.add_column("devices", sa.Column(
+        "color", sa.String(length=60), nullable=True))
+    op.add_column("devices", sa.Column(
+        "capacidad_gb", sa.Integer(), nullable=True))
     op.add_column(
         "devices",
         sa.Column(
@@ -34,7 +40,8 @@ def upgrade() -> None:
             server_default="nuevo",
         ),
     )
-    op.add_column("devices", sa.Column("proveedor", sa.String(length=120), nullable=True))
+    op.add_column("devices", sa.Column(
+        "proveedor", sa.String(length=120), nullable=True))
     op.add_column(
         "devices",
         sa.Column(
@@ -55,23 +62,27 @@ def upgrade() -> None:
     )
     op.add_column(
         "devices",
-        sa.Column("garantia_meses", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("garantia_meses", sa.Integer(),
+                  nullable=False, server_default="0"),
     )
-    op.add_column("devices", sa.Column("lote", sa.String(length=80), nullable=True))
-    op.add_column("devices", sa.Column("fecha_compra", sa.Date(), nullable=True))
+    op.add_column("devices", sa.Column(
+        "lote", sa.String(length=80), nullable=True))
+    op.add_column("devices", sa.Column(
+        "fecha_compra", sa.Date(), nullable=True))
 
-    op.create_unique_constraint("uq_devices_imei", "devices", ["imei"])
-    op.create_unique_constraint("uq_devices_serial", "devices", ["serial"])
+    op.create_index("uq_devices_imei", "devices", ["imei"], unique=True)
+    op.create_index("uq_devices_serial", "devices", ["serial"], unique=True)
 
-    op.alter_column("devices", "estado_comercial", server_default=None)
-    op.alter_column("devices", "costo_unitario", server_default=None)
-    op.alter_column("devices", "margen_porcentaje", server_default=None)
-    op.alter_column("devices", "garantia_meses", server_default=None)
+    if bind.dialect.name != "sqlite":  # SQLite no permite DROP DEFAULT directo
+        op.alter_column("devices", "estado_comercial", server_default=None)
+        op.alter_column("devices", "costo_unitario", server_default=None)
+        op.alter_column("devices", "margen_porcentaje", server_default=None)
+        op.alter_column("devices", "garantia_meses", server_default=None)
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_devices_serial", "devices", type_="unique")
-    op.drop_constraint("uq_devices_imei", "devices", type_="unique")
+    op.drop_index("uq_devices_serial", table_name="devices")
+    op.drop_index("uq_devices_imei", table_name="devices")
     op.drop_column("devices", "fecha_compra")
     op.drop_column("devices", "lote")
     op.drop_column("devices", "garantia_meses")

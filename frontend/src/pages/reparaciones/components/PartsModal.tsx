@@ -41,18 +41,21 @@ function PartsModal({
   onAppendParts,
   onRemovePart,
 }: PartsModalProps) {
-  if (!order) {
-    return null;
-  }
 
   const [form, setForm] = useState<ManagePartForm>(initialPartForm);
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setForm(initialPartForm);
-    setSearchTerm("");
-    setError(null);
+    // Difere el reseteo del formulario para evitar setState sincrónico dentro del efecto
+    // y solo cuando el modal está abierto o cambia la orden activa.
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
+      setForm(initialPartForm);
+      setSearchTerm("");
+      setError(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [order?.id, open]);
 
   const filteredDevices = useMemo(() => {
@@ -120,6 +123,10 @@ function PartsModal({
       setError("No fue posible quitar el repuesto seleccionado.");
     }
   };
+
+  if (!order) {
+    return null;
+  }
 
   return (
     <Modal

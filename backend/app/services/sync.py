@@ -14,6 +14,7 @@ from backend.core.logging import logger as core_logger
 
 from .. import crud, models
 from ..config import settings
+from ..core.session_provider import SessionProvider
 from ..database import SessionLocal
 from ..core.transactions import transactional_session
 
@@ -133,10 +134,13 @@ def detect_inventory_discrepancies(db: Session) -> list[dict[str, object]]:
 def _entry_matches_store(entry: models.SyncOutbox, store_id: int | None) -> bool:
     if store_id is None:
         return True
-    try:
-        payload = json.loads(entry.payload)
-    except (TypeError, json.JSONDecodeError):
-        return False
+    payload = entry.payload
+    if not isinstance(payload, dict):
+        try:
+            raw_value = getattr(entry, "payload_raw", payload)
+            payload = json.loads(raw_value)
+        except (TypeError, json.JSONDecodeError):
+            return False
     candidate: object | None = payload.get("store_id")
     if candidate is None:
         candidate = payload.get("origin_store_id")
@@ -173,6 +177,13 @@ def run_sync_cycle(
         )
 
     discrepancies = detect_inventory_discrepancies(db)
+    if discrepancies:
+        logger.warning(
+            "Discrepancias de inventario detectadas tras sincronización",
+            discrepancies=discrepancies,
+            processed_entries=len(processed),
+            store_filter=store_id,
+        )
     crud.log_sync_discrepancies(db, discrepancies, performed_by_id=performed_by_id)
     return {"processed": len(processed), "discrepancies": discrepancies}
 
@@ -180,10 +191,16 @@ def run_sync_cycle(
 class SyncScheduler:
     """Ejecuta sincronizaciones automáticas cada intervalo configurado."""
 
-    def __init__(self, interval_seconds: int) -> None:
+    def __init__(
+        self,
+        interval_seconds: int,
+        *,
+        session_provider: SessionProvider | None = None,
+    ) -> None:
         self.interval_seconds = interval_seconds
         self._task: asyncio.Task[None] | None = None
         self._running = False
+        self._session_provider: SessionProvider = session_provider or SessionLocal
 
     async def start(self) -> None:
         if self._task is not None:
@@ -212,7 +229,7 @@ class SyncScheduler:
                 )
 
     def _execute_sync(self) -> None:
-        with SessionLocal() as session:
+        with self._session_provider() as session:
             status = models.SyncStatus.SUCCESS
             processed_events = 0
             differences_count = 0

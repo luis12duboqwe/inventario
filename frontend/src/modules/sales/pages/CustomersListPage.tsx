@@ -47,7 +47,7 @@ export function CustomersListPage() {
   const [flushMessage, setFlushMessage] = useState<string | null>(null);
 
   // [PACK23-CUSTOMERS-LIST-FETCH-START]
-  async function fetchCustomers(extra?: Partial<CustomerListParams>) {
+  const fetchCustomers = useCallback(async (extra?: Partial<CustomerListParams>) => {
     if (!canList) {
       setItems([]);
       setTotal(0);
@@ -56,14 +56,48 @@ export function CustomersListPage() {
     }
     setLoading(true);
     try {
-      const res = await SalesCustomers.listCustomers({ page, pageSize, q, tier, tag, ...extra });
+      const params: CustomerListParams = { page, pageSize };
+
+      const trimmedQ = q.trim();
+      if (trimmedQ) {
+        params.q = trimmedQ;
+      }
+      if (tier && tier.trim()) {
+        params.tier = tier.trim();
+      }
+      if (tag && tag.trim()) {
+        params.tag = tag.trim();
+      }
+
+      if (extra) {
+        if (typeof extra.page === "number") {
+          params.page = extra.page;
+        }
+        if (typeof extra.pageSize === "number") {
+          params.pageSize = extra.pageSize;
+        }
+        if (typeof extra.sort === "string" && extra.sort.trim()) {
+          params.sort = extra.sort.trim();
+        }
+        if (typeof extra.q === "string" && extra.q.trim()) {
+          params.q = extra.q.trim();
+        }
+        if (typeof extra.tier === "string" && extra.tier.trim()) {
+          params.tier = extra.tier.trim();
+        }
+        if (typeof extra.tag === "string" && extra.tag.trim()) {
+          params.tag = extra.tag.trim();
+        }
+      }
+
+      const res = await SalesCustomers.listCustomers(params);
       setItems(res.items || []);
       setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }
-  }
-  useEffect(() => { fetchCustomers(); }, [page, pageSize, tier, tag, q, canList]);
+  }, [canList, page, pageSize, q, tier, tag]);
+  useEffect(() => { void fetchCustomers(); }, [fetchCustomers]);
   // [PACK23-CUSTOMERS-LIST-FETCH-END]
 
   useEffect(() => {
@@ -78,14 +112,25 @@ export function CustomersListPage() {
 
   const rows: CustomerRow[] = useMemo(
     () =>
-      items.map((customer) => ({
-        id: String(customer.id),
-        name: customer.name,
-        phone: customer.phone,
-        email: customer.email,
-        tier: customer.tier,
-        lastSale: customer.lastSaleAt ? new Date(customer.lastSaleAt).toLocaleDateString() : "—",
-      })),
+      items.map((customer) => {
+        const entry: CustomerRow = {
+          id: String(customer.id),
+          name: customer.name,
+        };
+        if (customer.phone && customer.phone.trim().length > 0) {
+          entry.phone = customer.phone;
+        }
+        if (customer.email && customer.email.trim().length > 0) {
+          entry.email = customer.email;
+        }
+        if (customer.tier && customer.tier.trim().length > 0) {
+          entry.tier = customer.tier;
+        }
+        if (customer.lastSaleAt) {
+          entry.lastSale = new Date(customer.lastSaleAt).toLocaleDateString();
+        }
+        return entry;
+      }),
     [items],
   );
 
@@ -102,7 +147,7 @@ export function CustomersListPage() {
       const result = await flushOffline();
       setPendingOffline(result.pending);
       setFlushMessage(`Reintentadas: ${result.flushed}. Pendientes: ${result.pending}.`);
-    } catch (error) {
+    } catch {
       setFlushMessage("No fue posible sincronizar. Intenta más tarde.");
     } finally {
       setFlushing(false);
@@ -207,3 +252,5 @@ export function CustomersListPage() {
     </div>
   );
 }
+
+export default CustomersListPage;

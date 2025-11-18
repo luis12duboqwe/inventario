@@ -6,6 +6,8 @@ type Variant = {
   attrs: string;
   price: number;
   stock: number;
+  minimumStock: number;
+  reorderPoint: number;
 };
 
 type Props = {
@@ -28,6 +30,8 @@ export default function VariantsTable({ items }: Props) {
             <th style={{ textAlign: "left", padding: 10 }}>Atributos</th>
             <th style={{ textAlign: "right", padding: 10 }}>Precio</th>
             <th style={{ textAlign: "center", padding: 10 }}>Stock</th>
+            <th style={{ textAlign: "center", padding: 10 }}>Mínimo</th>
+            <th style={{ textAlign: "center", padding: 10 }}>Reorden</th>
           </tr>
         </thead>
         <tbody>
@@ -37,6 +41,12 @@ export default function VariantsTable({ items }: Props) {
               <td style={{ padding: 10 }}>{variant.attrs}</td>
               <td style={{ padding: 10, textAlign: "right" }}>{Intl.NumberFormat().format(variant.price)}</td>
               <td style={{ padding: 10, textAlign: "center" }}>{variant.stock}</td>
+              <td style={{ padding: 10, textAlign: "center", color: variant.stock <= variant.minimumStock ? "#f87171" : "#38bdf8" }}>
+                {variant.minimumStock}
+              </td>
+              <td style={{ padding: 10, textAlign: "center", color: variant.stock <= variant.reorderPoint ? "#facc15" : "#38bdf8" }}>
+                {variant.reorderPoint}
+              </td>
             </tr>
           ))}
         </tbody>

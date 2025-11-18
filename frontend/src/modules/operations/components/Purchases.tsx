@@ -14,7 +14,10 @@ import {
 } from "./usePurchasesController";
 
 const statusLabels: Record<PurchaseOrder["status"], string> = {
+  BORRADOR: "Borrador",
   PENDIENTE: "Pendiente",
+  APROBADA: "Aprobada",
+  ENVIADA: "Enviada",
   PARCIAL: "Recepción parcial",
   COMPLETADA: "Completada",
   CANCELADA: "Cancelada",
@@ -165,7 +168,12 @@ function Purchases(props: Props) {
         onVendorExport={handleVendorExport}
         onVendorEdit={handleVendorEdit}
         onVendorSelect={handleSelectVendor}
-        onVendorToggleStatus={handleVendorStatusToggle}
+        onVendorToggleStatus={(vendor) =>
+          handleVendorStatusToggle(
+            vendor,
+            vendor.estado === "activo" ? "inactivo" : "activo",
+          )
+        }
         onVendorHistoryFiltersSubmit={handleVendorHistoryFiltersSubmit}
         onVendorHistoryFiltersReset={handleVendorHistoryFiltersReset}
         onVendorHistoryFiltersChange={handleVendorHistoryFiltersDraftChange}

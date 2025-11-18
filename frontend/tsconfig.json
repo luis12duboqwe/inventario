@@ -1,21 +1,33 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "moduleResolution": "Node",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "strict": true,
+    "noImplicitAny": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "baseUrl": ".", // [PACK37-frontend]
-    "paths": { // [PACK37-frontend]
-      "@/*": ["src/*"]
-    },
-    "resolveJsonModule": true,
-    "types": ["vite/client"]
+  "noEmit": true,
+  "types": ["vite/client", "vitest/globals", "node"],
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["src/*"],
+      "@api/*": ["src/services/api/*"],
+      "@components/*": ["src/components/*"],
+      "@modules/*": ["src/modules/*"],
+      "@pages/*": ["src/pages/*"],
+      "@services/*": ["src/services/*"],
+      "@shared/*": ["src/shared/*"],
+      "@ui/*": ["src/ui/*"],
+      "@utils/*": ["src/utils/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@lib/*": ["src/lib/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "vite.config.*", "env.d.ts"],
+  "exclude": ["dist", "build", "node_modules"]
 }

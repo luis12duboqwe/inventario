@@ -1,10 +1,19 @@
 from collections.abc import Iterator
-
 import pytest
+
+pytest.importorskip(
+    "fastapi",
+    reason="Las pruebas de autenticación requieren la librería fastapi instalada.",
+)
+pytest.importorskip(
+    "fastapi_limiter",
+    reason="Las pruebas de autenticación requieren fastapi-limiter para emular el rate limiter.",
+)
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.database import SessionLocal, init_db
+from backend.database import SessionLocal, run_migrations
 from backend.models import User
 from backend.routes.auth import router as auth_router, verify_email
 from backend.schemas.auth import VerifyEmailRequest
@@ -20,7 +29,7 @@ class _DummyLimiter:
 def _reset_database() -> None:
     """Limpia las tablas antes de ejecutar los escenarios de autenticación."""
 
-    init_db()
+    run_migrations()
     with SessionLocal() as session:
         with session.begin():
             session.query(User).delete()
@@ -58,7 +67,7 @@ def test_auth_status_route_returns_success(client: TestClient) -> None:
     register_payload = {
         "username": "estado_user",
         "email": "estado_user@example.com",
-        "password": "estado_seguro",
+        "password": "EstadoSeguro123",
     }
     register_response = client.post("/auth/register", json=register_payload)
     assert register_response.status_code == 200
@@ -88,7 +97,7 @@ def test_register_login_and_verify_flow(client: TestClient) -> None:
     register_payload = {
         "username": "soporte",
         "email": "soporte@example.com",
-        "password": "contraseña_segura",
+        "password": "ContrasenaSegura123",
     }
     register_response = client.post("/auth/register", json=register_payload)
 
@@ -125,7 +134,7 @@ def test_register_without_explicit_email_reuses_username(client: TestClient) -> 
 
     payload = {
         "username": "softmobile1@gmail.com",
-        "password": "clave_segura",
+        "password": "ClaveSegura123",
     }
     response = client.post("/auth/register", json=payload)
 
@@ -141,7 +150,7 @@ def test_register_repeated_user_is_rejected(client: TestClient) -> None:
     payload = {
         "username": "soporte",
         "email": "soporte@example.com",
-        "password": "contraseña_segura",
+        "password": "ContrasenaSegura123",
     }
 
     first_response = client.post("/auth/register", json=payload)
@@ -153,13 +162,39 @@ def test_register_repeated_user_is_rejected(client: TestClient) -> None:
     assert conflict_response.json()["detail"] == "El nombre de usuario o correo ya están registrados."
 
 
+def test_register_normalizes_identifiers_and_rejects_case_insensitive_duplicate(
+    client: TestClient,
+) -> None:
+    """El registro debe normalizar identificadores y bloquear duplicados por mayúsculas/minúsculas."""
+
+    create_payload = {
+        "username": "  UsuarioNuevo@Softmobile.COM  ",
+        "password": "ClaveSegura123",
+    }
+    create_response = client.post("/auth/register", json=create_payload)
+
+    assert create_response.status_code == 200
+    created_user = create_response.json()
+    assert created_user["username"] == "usuarionuevo@softmobile.com"
+    assert created_user["email"] == "usuarionuevo@softmobile.com"
+
+    duplicate_payload = {
+        "email": "USUARIONUEVO@SOFTMOBILE.COM",
+        "password": "OtraClaveSegura123",
+    }
+    duplicate_response = client.post("/auth/register", json=duplicate_payload)
+
+    assert duplicate_response.status_code == 400
+    assert duplicate_response.json()["detail"] == "El nombre de usuario o correo ya están registrados."
+
+
 def test_refresh_reset_and_verify_flow(client: TestClient) -> None:
     """Cubre la renovación de tokens, restablecimiento y verificación de correo."""
 
     register_payload = {
         "username": "refresh_user",
         "email": "refresh_user@example.com",
-        "password": "clave_inicial_segura",
+        "password": "ClaveInicial123",
     }
     register_response = client.post("/auth/register", json=register_payload)
 

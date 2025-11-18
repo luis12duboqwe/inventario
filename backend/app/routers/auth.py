@@ -1,5 +1,6 @@
 """Rutas de autenticación y alta inicial del sistema."""
 from __future__ import annotations
+from fastapi import Security
 
 from datetime import datetime, timedelta, timezone
 import secrets
@@ -17,70 +18,31 @@ from ..security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    ensure_rate_limiter,
+    enforce_password_policy,
     get_current_user,
     hash_password,
+    rate_limit,
     require_active_user,
+    reset_rate_limiter,
     verify_password,
     verify_totp,
 )
 
 
-def _authenticate_user(
-    db: Session,
-    *,
-    username: str,
-    password: str,
-    otp: str,
-):
-    user = crud.get_user_by_username(db, username)
-    if user is None:
-        crud.log_unknown_login_attempt(db, username)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales inválidas",
-        )
-    crud.clear_login_lock(db, user)
-    if user.locked_until and user.locked_until > datetime.utcnow():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Cuenta bloqueada hasta {user.locked_until.isoformat()}",
-        )
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Usuario inactivo.",
-        )
-    if not verify_password(password, user.password_hash):
-        crud.register_failed_login(db, user, reason="invalid_credentials")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales inválidas",
-        )
-    roles = {assignment.role.name for assignment in user.roles}
-    secret = crud.get_totp_secret(db, user.id)
-    requires_totp = (
-        settings.enable_2fa
-        and roles.intersection({ADMIN, GERENTE})
-        and secret is not None
-        and secret.is_active
-    )
-    if requires_totp and not otp:
-        crud.register_failed_login(db, user, reason="missing_totp")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Código TOTP requerido",
-        )
-    if requires_totp and not verify_totp(secret.secret, otp):
-        crud.register_failed_login(db, user, reason="invalid_totp")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Código TOTP inválido",
-        )
-    if requires_totp:
-        crud.update_totp_last_verified(db, user.id)
-    return user
-
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+async def _setup_rate_limiter() -> None:
+    await ensure_rate_limiter()
+
+
+async def _shutdown_rate_limiter() -> None:
+    await reset_rate_limiter()
+
+
+router.add_event_handler("startup", _setup_rate_limiter)
+router.add_event_handler("shutdown", _shutdown_rate_limiter)
 
 
 # // [PACK28-auth]
@@ -117,7 +79,8 @@ def _resolve_primary_role(user) -> str:
 
 # // [PACK28-auth]
 def _resolve_display_name(user) -> str:
-    full_name = getattr(user, "full_name", None) or getattr(user, "nombre", None)
+    full_name = getattr(user, "full_name", None) or getattr(
+        user, "nombre", None)
     if full_name:
         stripped = str(full_name).strip()
         if stripped:
@@ -144,6 +107,75 @@ def _set_refresh_cookie(response: Response, token: str, expires_at: datetime) ->
     )
 
 
+def _authenticate_user(
+    db: Session,
+    *,
+    username: str,
+    password: str,
+    otp: str | None,
+):
+    normalized_username = (username or "").strip()
+    normalized_password = (password or "").strip()
+    if not normalized_username or not normalized_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usuario y contraseña son obligatorios.",
+        )
+
+    invalid_credentials = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Usuario o contraseña inválidos.",
+    )
+
+    user = crud.get_user_by_username(db, normalized_username)
+    if user is None:
+        crud.log_unknown_login_attempt(db, normalized_username)
+        raise invalid_credentials
+
+    user = crud.clear_login_lock(db, user)
+    locked_until = getattr(user, "locked_until", None)
+    if locked_until is not None:
+        if locked_until.tzinfo is None:
+            locked_deadline = locked_until.replace(tzinfo=timezone.utc)
+        else:
+            locked_deadline = locked_until.astimezone(timezone.utc)
+        if locked_deadline > datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="La cuenta está bloqueada temporalmente. Intenta nuevamente más tarde.",
+            )
+
+    if not getattr(user, "is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuario inactivo.",
+        )
+
+    if not verify_password(normalized_password, user.password_hash):
+        crud.register_failed_login(db, user, reason="invalid_credentials")
+        raise invalid_credentials
+
+    if settings.enable_2fa:
+        totp_secret = getattr(user, "totp_secret", None)
+        if totp_secret and totp_secret.is_active:
+            otp_code = (otp or "").strip()
+            if not otp_code:
+                crud.register_failed_login(db, user, reason="otp_required")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Se requiere un código TOTP para iniciar sesión.",
+                )
+            if not verify_totp(totp_secret.secret, otp_code):
+                crud.register_failed_login(db, user, reason="otp_invalid")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Código TOTP inválido.",
+                )
+            crud.update_totp_last_verified(db, user.id)
+
+    return user
+
+
 @router.get(
     "/bootstrap/status",
     response_model=schemas.BootstrapStatusResponse,
@@ -157,22 +189,41 @@ def get_bootstrap_status(db: Session = Depends(get_db)):
     )
 
 
+# Permitir bootstrap sin autenticación si no hay usuarios
+
+
 @router.post(
     "/bootstrap",
     response_model=schemas.UserResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(get_current_user)],
 )
-def bootstrap_admin(payload: schemas.UserCreate, db: Session = Depends(get_db)):
-    if crud.count_users(db) > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El sistema ya cuenta con usuarios registrados.",
-        )
+def bootstrap_admin(
+    payload: schemas.UserCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    total_users = crud.count_users(db)
+    if total_users > 0:
+        # Si ya hay usuarios, requiere autenticación
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Autenticación requerida para registrar nuevos usuarios.",
+            )
+        # Solo ADMIN puede crear más usuarios por bootstrap
+        roles = {assignment.role.name for assignment in getattr(
+            current_user, "roles", [])}
+        if ADMIN not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo un administrador puede registrar nuevos usuarios.",
+            )
+    enforce_password_policy(payload.password, username=payload.username)
     try:
         role_names = normalize_roles(payload.roles) | {ADMIN}
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     user = crud.create_user(
         db,
         payload,
@@ -186,7 +237,8 @@ def bootstrap_admin(payload: schemas.UserCreate, db: Session = Depends(get_db)):
 @router.post(
     "/login",
     response_model=schemas.AuthLoginResponse,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(rate_limit(times=5, minutes=1)),
+                  Depends(get_current_user)],
 )
 def login_with_jwt(
     response: Response,
@@ -213,7 +265,8 @@ def login_with_jwt(
         session_token=session_token,
         expires_at=refresh_expires,
     )
-    crud.register_successful_login(db, user, session_token=session.session_token)
+    crud.register_successful_login(
+        db, user, session_token=session.session_token)
     refresh_token, refresh_expiration = create_refresh_token(
         subject=user.username,
         session_token=session.session_token,
@@ -245,17 +298,24 @@ class OAuth2PasswordRequestFormWithOTP(OAuth2PasswordRequestForm):
         self.otp = otp.strip()
 
 
+# Endpoint estándar para compatibilidad con pruebas y clientes OAuth2
+
+
 @router.post(
     "/token",
     response_model=schemas.TokenResponse,
-    dependencies=[Depends(get_current_user)],
+    summary="Obtener token de acceso JWT (OAuth2 compatible)",
+    tags=["auth"],
+    status_code=200,
+    description="Autenticación estándar para pruebas y clientes OAuth2. No requiere autenticación previa.",
+    # No requiere Depends(get_current_user)
 )
-def login(form_data: OAuth2PasswordRequestFormWithOTP = Depends(), db: Session = Depends(get_db)):
+def login_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = _authenticate_user(
         db,
         username=form_data.username,
         password=form_data.password,
-        otp=form_data.otp,
+        otp=getattr(form_data, "otp", ""),
     )
     claims = _build_pack28_claims(user)
     token, session_token, expires_at = create_access_token(
@@ -268,14 +328,16 @@ def login(form_data: OAuth2PasswordRequestFormWithOTP = Depends(), db: Session =
         session_token=session_token,
         expires_at=expires_at,
     )
-    crud.register_successful_login(db, user, session_token=session.session_token)
+    crud.register_successful_login(
+        db, user, session_token=session.session_token)
     return schemas.TokenResponse(access_token=token, session_id=session.id)
 
 
 @router.post(
     "/session",
     response_model=schemas.SessionLoginResponse,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(rate_limit(times=5, minutes=1)),
+                  Depends(get_current_user)],
 )
 def login_with_session(
     response: Response,
@@ -298,7 +360,8 @@ def login_with_session(
         session_token=session_token,
         expires_at=expires_at,
     )
-    crud.register_successful_login(db, user, session_token=session.session_token)
+    crud.register_successful_login(
+        db, user, session_token=session.session_token)
     response.set_cookie(
         key=settings.session_cookie_name,
         value=session_token,
@@ -332,6 +395,11 @@ def refresh_access_token(
             detail="Token de refresco ausente.",
         )
     payload = decode_token(refresh_token_cookie)
+    if crud.is_jwt_blacklisted(db, payload.jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El token de refresco fue revocado.",
+        )
     if payload.token_type != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -376,6 +444,14 @@ def refresh_access_token(
         session.expires_at = refresh_expires
         flush_session(db)
     db.refresh(session)
+    crud.add_jwt_to_blacklist(
+        db,
+        jti=payload.jti,
+        token_type="refresh",
+        expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
+        revoked_by_id=user.id,
+        reason="refresh_token_rotated",
+    )
     _set_refresh_cookie(response, new_refresh_token, refresh_expires)
     return schemas.AuthLoginResponse(access_token=access_token)
 
@@ -391,7 +467,8 @@ def verify_access_token(
     try:
         token_payload = decode_token(payload.token)
     except HTTPException as exc:
-        detail = exc.detail if isinstance(exc.detail, str) else "Token inválido."
+        detail = exc.detail if isinstance(
+            exc.detail, str) else "Token inválido."
         return schemas.TokenVerificationResponse(is_valid=False, detail=detail)
 
     session = crud.mark_session_used(db, token_payload.jti)
@@ -424,7 +501,8 @@ def verify_access_token(
     dependencies=[Depends(get_current_user)],
 )
 async def read_current_user(current_user=Depends(require_active_user)):
-    base_payload = schemas.UserResponse.model_validate(current_user).model_dump()
+    base_payload = schemas.UserResponse.model_validate(
+        current_user).model_dump()
     base_payload.update(
         {
             "name": _resolve_display_name(current_user),
@@ -439,7 +517,8 @@ async def read_current_user(current_user=Depends(require_active_user)):
     "/password/request",
     response_model=schemas.PasswordResetResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(rate_limit(times=3, minutes=5)),
+                  Depends(get_current_user)],
 )
 def request_password_reset(
     payload: schemas.PasswordRecoveryRequest, db: Session = Depends(get_db)
@@ -453,7 +532,7 @@ def request_password_reset(
             expires_minutes=settings.password_reset_token_minutes,
         )
         if settings.testing_mode:
-            reset_token = record.token
+            reset_token = getattr(record, "plaintext_token", record.token)
     detail = "Si el usuario existe, se envió un enlace de recuperación."
     return schemas.PasswordResetResponse(detail=detail, reset_token=reset_token)
 
@@ -482,8 +561,10 @@ def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado.",
         ) from exc
+    enforce_password_policy(payload.new_password, username=user.username)
     hashed = hash_password(payload.new_password)
-    crud.reset_user_password(db, user, password_hash=hashed, performed_by_id=None)
+    crud.reset_user_password(
+        db, user, password_hash=hashed, performed_by_id=None)
     crud.mark_password_reset_token_used(db, record)
     active_sessions = crud.list_active_sessions(
         db,
@@ -502,5 +583,6 @@ def reset_password(payload: schemas.PasswordResetConfirm, db: Session = Depends(
     detail = "Contraseña actualizada correctamente."
     response_payload = schemas.PasswordResetResponse(detail=detail)
     if settings.testing_mode:
-        response_payload.reset_token = record.token
+        response_payload.reset_token = getattr(
+            record, "plaintext_token", record.token)
     return response_payload

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import logging
 import os
 import sys
 from collections.abc import AsyncIterator, Callable
@@ -21,18 +22,14 @@ PROJECT_ROOT = CURRENT_DIR.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.routing import APIRoute, Mount
-from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.engine import URL, make_url
 
-from backend.app import schemas as app_schemas
-from backend.app.security import get_current_user
 from backend.core.logging import (
     bind_context,
     logger as app_logger,
@@ -40,7 +37,6 @@ from backend.core.logging import (
     setup_logging,
     update_context,
 )
-from backend.schemas.common import APIStatusResponse
 
 def _import_module_with_fallback(module_name: str, candidate_path: Path) -> object:
     """Importa ``module_name`` con una ruta alternativa si el paquete no existe."""
@@ -68,17 +64,23 @@ _database_module = _import_module_with_fallback(
 )
 
 # Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``users``.
-db_utils = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
+db_module = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
 core_main_module = _import_module_with_fallback(
     "backend.app.main", CURRENT_DIR / "app" / "main.py"
 )
-from backend import db as db_utils
-from backend.app.main import create_app as create_core_app
 
-init_db = getattr(db_utils, "init_db")
-create_core_app = getattr(core_main_module, "create_app")
+try:
+    run_migrations = getattr(db_module, "run_migrations")
+except AttributeError as exc:  # pragma: no cover - protección ante refactors futuros
+    raise RuntimeError("backend.db debe exponer la función run_migrations") from exc
 
-LOGGER = app_logger.bind(component="backend.main.bootstrap")
+try:
+    create_core_app = getattr(core_main_module, "create_app")
+except AttributeError as exc:  # pragma: no cover - protección ante refactors futuros
+    raise RuntimeError("backend.app.main debe exponer la función create_app") from exc
+
+logging.basicConfig(level=logging.INFO)
+LOGGER = logging.getLogger("softmobile.bootstrap")
 
 
 _ENVIRONMENT_READY = False
@@ -88,18 +90,10 @@ class Settings(BaseSettings):
     """Configuración base del backend Softmobile 2025 v2.2.0."""
 
     db_path: str = "database/softmobile.db"
-    database_url: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("DATABASE_URL", "SOFTMOBILE_DATABASE_URL"),
-    )
     api_port: int = 8000
     debug: bool = True
     secret_key: str | None = None
     access_token_expire_minutes: int | None = None
-    bootstrap_token: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("SOFTMOBILE_BOOTSTRAP_TOKEN", "BOOTSTRAP_TOKEN"),
-    )
 
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).resolve().parent / ".env"),
@@ -113,10 +107,6 @@ BASE_DIR: Final[Path] = Path(__file__).resolve().parent
 ROOT_DIR: Final[Path] = BASE_DIR.parent
 FRONTEND_DIST: Final[Path] = ROOT_DIR / "frontend" / "dist"
 DATABASE_FILE: Final[Path] = BASE_DIR / settings.db_path
-DEFAULT_DATABASE_URL: Final[str] = URL.create(
-    "sqlite", database=str(DATABASE_FILE.resolve())
-).render_as_string(hide_password=False)
-RESOLVED_DATABASE_URL: Final[str] = settings.database_url or DEFAULT_DATABASE_URL
 FAVICON_FALLBACK_SVG: Final[str] = dedent(
     """
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Softmobile">
@@ -215,16 +205,13 @@ FALLBACK_FRONTEND_HTML: Final[str] = dedent(
     """
 ).strip()
 
-os.environ.setdefault("SOFTMOBILE_DATABASE_URL", RESOLVED_DATABASE_URL)
-os.environ.setdefault("DATABASE_URL", RESOLVED_DATABASE_URL)
+os.environ.setdefault("SOFTMOBILE_DATABASE_URL", f"sqlite:///{DATABASE_FILE}")
 if settings.secret_key:
     os.environ.setdefault("SOFTMOBILE_SECRET_KEY", settings.secret_key)
 if settings.access_token_expire_minutes is not None:
     os.environ.setdefault(
         "SOFTMOBILE_TOKEN_MINUTES", str(settings.access_token_expire_minutes)
     )
-if settings.bootstrap_token:
-    os.environ.setdefault("SOFTMOBILE_BOOTSTRAP_TOKEN", settings.bootstrap_token)
 
 setup_logging()
 app = create_core_app()
@@ -366,27 +353,10 @@ def _include_routers(target_app: FastAPI) -> None:
         )
 
 
-def _resolve_sqlite_path(database_url: str) -> Path | None:
-    """Obtiene la ruta absoluta del archivo SQLite cuando aplica."""
-
-    url = make_url(database_url)
-    if url.get_backend_name() != "sqlite":
-        return None
-
-    database = url.database
-    if not database:
-        return None
-
-    path = Path(database)
-    if not path.is_absolute():
-        path = (BASE_DIR / path).resolve()
-    return path
-
-
-def _ensure_database_file(database_path: Path | None) -> None:
+def _ensure_database_file(database_path: Path) -> None:
     """Crea el archivo SQLite si no existe previamente."""
 
-    if database_path is None or database_path.exists():
+    if database_path.exists():
         return
 
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -394,19 +364,16 @@ def _ensure_database_file(database_path: Path | None) -> None:
     LOGGER.info("Se creó la base de datos SQLite en %s", database_path)
 
 
-def _validate_database_connection(database_url: str) -> None:
-    """Valida que la base de datos configurada sea accesible."""
+def _validate_database_connection(database_path: Path) -> None:
+    """Valida que la base de datos SQLite sea accesible."""
 
     try:
-        engine_kwargs: dict[str, Any] = {"future": True}
-        if make_url(database_url).get_backend_name() == "sqlite":
-            engine_kwargs["connect_args"] = {"check_same_thread": False}
-        engine = create_engine(database_url, **engine_kwargs)
+        engine = create_engine(f"sqlite:///{database_path}")
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:  # pragma: no cover - validación de arranque
         LOGGER.error(
-            "No fue posible validar la conexión a la base de datos: %s",
+            "No fue posible validar la base de datos SQLite: %s",
             exc,
         )
 
@@ -460,22 +427,14 @@ def _mount_frontend(target_app: FastAPI) -> None:
                 "application/octet-stream",
             )
 
-            @target_app.get(
-                "/favicon.ico",
-                include_in_schema=False,
-                response_model=app_schemas.BinaryFileResponse,
-            )
+            @target_app.get("/favicon.ico", include_in_schema=False)
             async def read_frontend_favicon() -> FileResponse:
                 """Devuelve el favicon compilado del frontend."""
 
                 return FileResponse(favicon_path, media_type=favicon_media_type)
         else:
 
-            @target_app.get(
-                "/favicon.ico",
-                include_in_schema=False,
-                response_model=app_schemas.BinaryFileResponse,
-            )
+            @target_app.get("/favicon.ico", include_in_schema=False)
             async def read_frontend_favicon_placeholder() -> Response:
                 """Evita respuestas 404 cuando el favicon no existe en la compilación."""
 
@@ -492,11 +451,7 @@ def _mount_frontend(target_app: FastAPI) -> None:
 
     if not _has_route(target_app, "/"):
 
-        @target_app.get(
-            "/",
-            include_in_schema=False,
-            response_model=app_schemas.HTMLDocumentResponse,
-        )
+        @target_app.get("/", include_in_schema=False)
         async def read_fallback_frontend() -> HTMLResponse:
             """Devuelve un panel informativo cuando el frontend no está compilado."""
 
@@ -504,11 +459,7 @@ def _mount_frontend(target_app: FastAPI) -> None:
 
     if not _has_route(target_app, "/favicon.ico"):
 
-        @target_app.get(
-            "/favicon.ico",
-            include_in_schema=False,
-            response_model=app_schemas.BinaryFileResponse,
-        )
+        @target_app.get("/favicon.ico", include_in_schema=False)
         async def read_favicon_placeholder() -> Response:
             """Entrega un favicon mínimo cuando no existe compilación del frontend."""
 
@@ -521,19 +472,10 @@ def _prepare_environment(target_app: FastAPI) -> None:
     global _ENVIRONMENT_READY
 
     if not _ENVIRONMENT_READY:
-        database_path = _resolve_sqlite_path(RESOLVED_DATABASE_URL)
-        _ensure_database_file(database_path)
-        _validate_database_connection(RESOLVED_DATABASE_URL)
-        init_db()
-        if database_path is not None:
-            LOGGER.info(
-                "Tablas de autenticación verificadas/creadas en %s",
-                database_path,
-            )
-        else:
-            LOGGER.info(
-                "Tablas de autenticación verificadas/creadas en la URL configurada",
-            )
+        _ensure_database_file(DATABASE_FILE)
+        _validate_database_connection(DATABASE_FILE)
+        run_migrations()
+        LOGGER.info("Migraciones aplicadas correctamente en %s", DATABASE_FILE)
 
         for directory_name in ("models", "routes"):
             directory_path = BASE_DIR / directory_name
@@ -548,18 +490,11 @@ def _prepare_environment(target_app: FastAPI) -> None:
     _mount_frontend(target_app)
 
 
-@app.get(
-    "/api",
-    tags=["estado"],
-    summary="Consultar el estado base de la API",
-    response_model=APIStatusResponse,
-    dependencies=[Depends(get_current_user)],
-)
-async def read_status(current_user=Depends(get_current_user)) -> APIStatusResponse:  # noqa: ANN001
+@app.get("/api", tags=["estado"])
+async def read_status() -> dict[str, str]:
     """Devuelve el estado base de la API para verificaciones rápidas."""
 
-    del current_user
-    return APIStatusResponse(message="API online ✅ - Softmobile 2025 v2.2.0")
+    return {"message": "API online ✅ - Softmobile 2025 v2.2.0"}
 
 
 def get_application() -> FastAPI:

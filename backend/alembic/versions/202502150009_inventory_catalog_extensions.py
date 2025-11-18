@@ -6,26 +6,36 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "202502150009_inventory_catalog_extensions"
-down_revision = "202502150008_operations_recurring_and_history"
+down_revision = "202502150008"
 branch_labels: tuple[str, ...] | None = None
 depends_on: tuple[str, ...] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("devices", sa.Column("categoria", sa.String(length=80), nullable=True))
-    op.add_column("devices", sa.Column("condicion", sa.String(length=60), nullable=True))
-    op.add_column("devices", sa.Column("capacidad", sa.String(length=80), nullable=True))
+    op.add_column("devices", sa.Column(
+        "categoria", sa.String(length=80), nullable=True))
+    op.add_column("devices", sa.Column(
+        "condicion", sa.String(length=60), nullable=True))
+    op.add_column("devices", sa.Column(
+        "capacidad", sa.String(length=80), nullable=True))
     op.add_column(
         "devices",
-        sa.Column("estado", sa.String(length=40), nullable=False, server_default="disponible"),
+        sa.Column("estado", sa.String(length=40),
+                  nullable=False, server_default="disponible"),
     )
-    op.add_column("devices", sa.Column("fecha_ingreso", sa.Date(), nullable=True))
-    op.add_column("devices", sa.Column("ubicacion", sa.String(length=120), nullable=True))
-    op.add_column("devices", sa.Column("descripcion", sa.Text(), nullable=True))
-    op.add_column("devices", sa.Column("imagen_url", sa.String(length=255), nullable=True))
+    op.add_column("devices", sa.Column(
+        "fecha_ingreso", sa.Date(), nullable=True))
+    op.add_column("devices", sa.Column(
+        "ubicacion", sa.String(length=120), nullable=True))
+    op.add_column("devices", sa.Column(
+        "descripcion", sa.Text(), nullable=True))
+    op.add_column("devices", sa.Column(
+        "imagen_url", sa.String(length=255), nullable=True))
 
     op.execute("UPDATE devices SET estado = 'disponible' WHERE estado IS NULL")
-    op.alter_column("devices", "estado", server_default=None)
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        op.alter_column("devices", "estado", server_default=None)
 
 
 def downgrade() -> None:

@@ -16,8 +16,8 @@ type AppErrorBoundaryProps = {
 // [PACK36-error-boundary]
 type AppErrorBoundaryState = {
   hasError: boolean;
-  errorMessage?: string;
-  stack?: string;
+  errorMessage: string | null;
+  stack: string | null;
 };
 
 async function reportAuditError(message: string, stack?: string) {
@@ -40,29 +40,30 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
   // [PACK36-error-boundary]
   constructor(props: AppErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, errorMessage: null, stack: null };
   }
 
   static getDerivedStateFromError(error: unknown): AppErrorBoundaryState {
     return {
       hasError: true,
       errorMessage: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+      stack: error instanceof Error ? error.stack ?? null : null,
     };
   }
 
-  componentDidCatch(error: unknown, info: React.ErrorInfo) {
+  override componentDidCatch(error: unknown, info: React.ErrorInfo): void {
     const message = error instanceof Error ? error.message : String(error);
-    const stack = (error instanceof Error ? error.stack : undefined) ?? info?.componentStack;
-    void reportAuditError(message, stack);
+  const stackSource = error instanceof Error ? error.stack : undefined;
+  const stack = stackSource ?? (info.componentStack || undefined);
+  void reportAuditError(message, stack);
   }
 
   private handleRetry = () => {
-    this.setState({ hasError: false, errorMessage: undefined, stack: undefined });
+    this.setState({ hasError: false, errorMessage: null, stack: null });
     this.props.onRetry?.();
   };
 
-  render() {
+  override render(): React.ReactNode {
     const shouldShowFallback = this.state.hasError || this.props.forceFallback;
 
     if (!shouldShowFallback) {
@@ -71,7 +72,7 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
 
     const { variant = "full", title, description, details } = this.props;
     const isInline = variant === "inline";
-    const errorDetails = this.state.errorMessage ?? details;
+  const errorDetails = this.state.errorMessage ?? details ?? null;
 
     return (
       <div

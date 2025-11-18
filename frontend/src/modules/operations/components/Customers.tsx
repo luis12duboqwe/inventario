@@ -1,3 +1,5 @@
+import { isFeatureEnabled } from "@/config/featureFlags";
+
 import {
   CustomersFiltersPanel,
   CustomersFormModal,
@@ -5,6 +7,7 @@ import {
   CustomersSummaryCards,
   CustomersTable,
   CustomersToolbar,
+  CustomersSegmentExports,
 } from "./customers";
 import {
   CUSTOMER_STATUSES,
@@ -25,6 +28,7 @@ function Customers({ token }: Props) {
     savingCustomer,
     error,
     message,
+    privacyProcessing,
     formState,
     editingId,
     selectedCustomer,
@@ -32,6 +36,9 @@ function Customers({ token }: Props) {
     customerSummary,
     summaryLoading,
     summaryError,
+    accountsReceivable,
+    receivableLoading,
+    receivableError,
     portfolio,
     portfolioFilters,
     portfolioLoading,
@@ -56,15 +63,23 @@ function Customers({ token }: Props) {
     handleSelectCustomer,
     handleEdit,
     handleAddNote,
+    handleRegisterPrivacyConsent,
+    handleRegisterPrivacyAnonymization,
     handleRegisterPayment,
     handleAdjustDebt,
+    handleDownloadStatement,
     handleDelete,
     handlePortfolioFiltersChange,
     refreshPortfolio,
     handleExportPortfolio,
     handleDashboardFiltersChange,
     refreshDashboard,
+    customerSegmentExports,
+    handleExportSegment,
+    exportingSegment,
   } = useCustomersController({ token });
+
+  const privacyCenterEnabled = isFeatureEnabled("privacyCenter");
 
   const customerList = Array.isArray(customers) ? customers : [];
   const notesList = Array.isArray(customerNotes) ? customerNotes : [];
@@ -73,7 +88,17 @@ function Customers({ token }: Props) {
 
   return (
     <section className="customers-module">
-      <CustomersToolbar error={error} message={message} />
+      <CustomersToolbar
+        error={error}
+        message={message}
+        extraContent={
+          <CustomersSegmentExports
+            segments={customerSegmentExports}
+            exportingKey={exportingSegment}
+            onExport={handleExportSegment}
+          />
+        }
+      />
 
       <CustomersFormModal
         formState={formState}
@@ -135,12 +160,24 @@ function Customers({ token }: Props) {
           summary={customerSummary}
           summaryLoading={summaryLoading}
           summaryError={summaryError}
+          receivable={accountsReceivable}
+          receivableLoading={receivableLoading}
+          receivableError={receivableError}
           customerHistory={historyList}
           customerNotes={notesList}
           recentInvoices={invoicesList}
           ledgerLabels={LEDGER_LABELS}
           resolveDetails={resolveDetails}
           formatCurrency={formatCurrency}
+          onDownloadStatement={handleDownloadStatement}
+          privacyEnabled={privacyCenterEnabled}
+          privacyProcessing={privacyProcessing}
+          onRegisterConsent={(customer) => {
+            void handleRegisterPrivacyConsent(customer);
+          }}
+          onRegisterAnonymization={(customer) => {
+            void handleRegisterPrivacyAnonymization(customer);
+          }}
         />
       </div>
 

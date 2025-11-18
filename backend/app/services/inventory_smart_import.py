@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+"""Herramientas para la importación inteligente de inventario.
+
+Este módulo concentra la lectura flexible de archivos tabulares, la detección de
+encabezados y la persistencia segura de dispositivos con tolerancia a datos
+incompletos. La intención de los docstrings añadidos es documentar los pasos del
+análisis y los puntos de extensión usados por los equipos de catálogo y
+sincronización híbrida.
+"""
+
 import csv
 import re
 import unicodedata
@@ -51,8 +60,16 @@ BOOLEAN_FALSE_VALUES = frozenset(
 )
 
 CANONICAL_FIELDS: dict[str, set[str]] = {
-    "sku": {"sku", "codigo", "product_code", "code"},
-    "name": {"nombre", "name", "descripcion", "description", "producto"},
+    "sku": {"sku", "codigo", "product_code", "code", "sku_proveedor", "vendor_sku"},
+    "name": {
+        "nombre",
+        "name",
+        "descripcion",
+        "description",
+        "producto",
+        "nombre_catalogo",
+        "catalog_name",
+    },
     "marca": {"marca", "brand", "fabricante", "manufacturer"},
     "modelo": {"modelo", "model", "device", "modelo_equipo"},
     "imei": {"imei", "imei1", "imei_1", "imei principal"},
@@ -64,15 +81,56 @@ CANONICAL_FIELDS: dict[str, set[str]] = {
     "estado": {"estado", "status", "estado_actual", "situacion"},
     "categoria": {"categoria", "category", "segmento"},
     "condicion": {"condicion", "condition", "grado"},
-    "cantidad": {"cantidad", "qty", "existencia", "stock", "units"},
-    "precio": {"precio", "precio_venta", "precio_publico", "price", "unit_price"},
-    "costo": {"costo", "costo_compra", "cost", "unit_cost"},
+    "cantidad": {"cantidad", "qty", "existencia", "stock", "units", "unidades"},
+    "precio": {"precio", "precio_venta", "precio_publico", "price", "unit_price", "msrp"},
+    "costo": {
+        "costo",
+        "costo_compra",
+        "cost",
+        "unit_cost",
+        "costo_distribuidor",
+        "supplier_cost",
+    },
     "ubicacion": {"ubicacion_interna", "pasillo", "rack", "ubicacion"},
     "proveedor": {"proveedor", "vendor", "supplier"},
     "lote": {"lote", "batch"},
     "fecha_compra": {"fecha_compra", "purchase_date", "fecha de compra"},
     "fecha_ingreso": {"fecha_ingreso", "arrival_date", "fecha alta"},
     "estado_comercial": {"estado_comercial", "grade", "tier"},
+    "descripcion": {
+        "descripcion",
+        "description",
+        "detalle",
+        "detalle_producto",
+        "product_description",
+        "descripcion_extendida",
+        "notes",
+    },
+    "imagen_url": {
+        "imagen_url",
+        "image_url",
+        "imagen",
+        "image",
+        "photo",
+        "foto",
+    },
+    "garantia_meses": {
+        "garantia_meses",
+        "garantia",
+        "warranty_months",
+        "warranty",
+        "warranty_mes",
+        "warranty_month",
+    },
+    "margen_porcentaje": {
+        "margen_porcentaje",
+        "margin",
+        "margin_percent",
+        "margin_pct",
+        "margin_%",
+        "margin_percentaje",
+        "markup",
+    },
 }
 
 CRITICAL_FIELDS = {"marca", "modelo", "tienda"}
@@ -96,10 +154,30 @@ def process_smart_import(
     username: str | None,
     reason: str,
 ) -> schemas.InventorySmartImportResponse:
+    """Analiza o persiste un archivo tabular de inventario.
+
+    El flujo se compone de tres pasos principales:
+
+    1. ``_read_tabular_file`` interpreta CSV o Excel (con *fallback* a CSV si el
+       archivo está dañado) y genera una estructura homogénea ``ParsedFile``.
+    2. ``_analyze_dataset`` cruza encabezados con sinónimos conocidos y
+       aprendizaje previo para construir la vista previa consumida por la UI.
+    3. ``_commit_import`` crea/actualiza dispositivos y registra historial sólo
+       cuando ``commit`` es ``True``. Esta fase se ejecuta dentro de una
+       transacción para mantener la consistencia entre dispositivos y bitácoras.
+
+    Los docstrings detallan dependencias y escenarios cubiertos por
+    ``tests/test_inventory_smart_import.py`` para facilitar extensiones futuras.
+    """
     overrides = overrides or {}
     parsed = _read_tabular_file(file_bytes, filename)
     learned_patterns = crud.get_known_import_column_patterns(db)
-    preview = _analyze_dataset(db, parsed, overrides=overrides, learned_patterns=learned_patterns)
+    preview = _analyze_dataset(
+        db, parsed, overrides=overrides, learned_patterns=learned_patterns)
+    # Normalización proactiva: garantizar que sucursales creadas durante la vista previa
+    # (cuando se confirme posteriormente) cuenten con timezone corporativo por defecto y
+    # inventory_value inicializado en 0. Esta lógica se ejecuta sólo en commit dentro de
+    # _commit_import, pero dejamos aquí un comentario explícito para la traza operativa.
     result: schemas.InventorySmartImportResult | None = None
     if commit:
         result = _commit_import(
@@ -116,6 +194,11 @@ def process_smart_import(
 
 
 def _parse_csv_bytes(file_bytes: bytes) -> ParsedFile:
+    """Convierte ``bytes`` CSV en ``ParsedFile`` normalizado.
+
+    Asegura la limpieza de encabezados y descarta filas completamente vacías para
+    evitar falsos positivos durante el análisis y la escritura en base.
+    """
     decoded = file_bytes.decode("utf-8-sig")
     reader = csv.DictReader(StringIO(decoded))
     if reader.fieldnames is None:
@@ -123,7 +206,8 @@ def _parse_csv_bytes(file_bytes: bytes) -> ParsedFile:
     headers = [header.strip() for header in reader.fieldnames]
     rows: list[dict[str, Any]] = []
     for raw in reader:
-        normalized_row = {(key or "").strip(): value for key, value in raw.items()}
+        normalized_row = {(key or "").strip(): value for key,
+                          value in raw.items()}
         if not _row_has_data(normalized_row.values()):
             continue
         rows.append(normalized_row)
@@ -131,11 +215,19 @@ def _parse_csv_bytes(file_bytes: bytes) -> ParsedFile:
 
 
 def _read_tabular_file(file_bytes: bytes, filename: str) -> ParsedFile:
+    """Lee archivos CSV/XLSX devolviendo filas homogéneas para el análisis.
+
+    La función intenta abrir Excel en modo de sólo lectura; si el contenedor ZIP
+    es inválido se vuelve a intentar como CSV. Los encabezados vacíos provocan un
+    ``ValueError`` que es propagado hasta la capa API para mostrar mensajes en la
+    UI de importaciones inteligentes.
+    """
     if filename.lower().endswith(".csv"):
         return _parse_csv_bytes(file_bytes)
     # default excel
     try:
-        workbook = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
+        workbook = load_workbook(
+            BytesIO(file_bytes), read_only=True, data_only=True)
     except BadZipFile:
         return _parse_csv_bytes(file_bytes)
     sheet = workbook.active
@@ -144,13 +236,15 @@ def _read_tabular_file(file_bytes: bytes, filename: str) -> ParsedFile:
         header_row = next(rows_iter)
     except StopIteration as exc:  # pragma: no cover - empty file defensive
         raise ValueError("archivo_vacio") from exc
-    headers = [str(cell).strip() if cell is not None else "" for cell in header_row]
+    headers = [str(cell).strip()
+               if cell is not None else "" for cell in header_row]
     cleaned_headers = [header for header in headers if header]
     if not cleaned_headers:
         raise ValueError("archivo_sin_encabezados")
     parsed_rows: list[dict[str, Any]] = []
     for row in rows_iter:
-        record = {headers[index]: row[index] for index in range(min(len(headers), len(row)))}
+        record = {headers[index]: row[index]
+                  for index in range(min(len(headers), len(row)))}
         if not _row_has_data(record.values()):
             continue
         parsed_rows.append(record)
@@ -164,6 +258,18 @@ def _analyze_dataset(
     overrides: dict[str, str],
     learned_patterns: dict[str, str],
 ) -> schemas.InventorySmartImportPreview:
+    """Construye la vista previa de importación con base en sinónimos y muestras.
+
+    - Asocia encabezados a campos canónicos combinando sinónimos, *overrides* y
+      patrones aprendidos mediante ``crud.get_known_import_column_patterns``.
+    - Calcula advertencias de columnas faltantes o no mapeadas y estima registros
+      incompletos según ``CRITICAL_FIELDS`` y ``IMEI_IMPORTANT_FIELDS``.
+    - Prepara ``SmartImportColumnMatch`` consumidos por el frontend para mostrar
+      estados («ok»/«pendiente»/«falta»).
+
+    Las decisiones documentadas están cubiertas por ``test_inventory_smart_import_preview_and_commit``
+    y ``test_inventory_smart_import_handles_overrides_and_incomplete_records``.
+    """
     normalized_headers = {
         _normalize_header(header): header for header in parsed.headers if header
     }
@@ -194,7 +300,8 @@ def _analyze_dataset(
         else:
             column_map[canonical] = None
 
-    missing_columns = [field for field, header in column_map.items() if header is None]
+    missing_columns = [field for field,
+                       header in column_map.items() if header is None]
     if missing_columns:
         warnings.append(
             "Columnas faltantes: " + ", ".join(sorted(missing_columns))
@@ -207,7 +314,8 @@ def _analyze_dataset(
     ]
     if unknown_headers:
         warnings.append(
-            "Columnas sin asignar detectadas: " + ", ".join(sorted(set(unknown_headers)))
+            "Columnas sin asignar detectadas: " +
+            ", ".join(sorted(set(unknown_headers)))
         )
 
     registros_incompletos = 0
@@ -266,8 +374,26 @@ def _commit_import(
     overrides: dict[str, str],
     reason: str,
 ) -> schemas.InventorySmartImportResult:
+    """Persiste dispositivos y registra historial cuando la importación es confirmada.
+
+    La rutina recorre ``canonical_rows`` y aplica la siguiente estrategia:
+
+    * Garantiza la existencia de la sucursal con ``crud.ensure_store_by_name``
+      antes de crear dispositivos.
+    * Calcula *payloads* a partir de campos canónicos, normalizando cantidades,
+      fechas y precios mediante los helpers ``_parse_int`` y ``_parse_decimal``.
+    * Identifica registros incompletos y agrega notas a ``import_validation`` para
+      que el endpoint ``/inventory/devices/incomplete`` pueda exhibirlos.
+    * Registra la operación en el historial con duración y advertencias para la
+      auditoría de inventario.
+
+    ``test_inventory_smart_import_preview_and_commit`` y
+    ``test_inventory_smart_import_handles_overrides_and_incomplete_records``
+    validan los escenarios críticos descritos en esta documentación.
+    """
     start_time = perf_counter()
-    canonical_rows = _extract_canonical_rows(parsed.rows, preview.columnas_detectadas)
+    canonical_rows = _extract_canonical_rows(
+        parsed.rows, preview.columnas_detectadas)
     total_processed = 0
     created = 0
     updated = 0
@@ -315,26 +441,44 @@ def _commit_import(
                 "device_id": None,
             }
             if not store_name:
-                warnings.append(f"Fila {row_index}: no se especificó la tienda.")
+                warnings.append(
+                    f"Fila {row_index}: no se especificó la tienda.")
                 registros_incompletos += 1
-                processed_records.append(import_validation.build_record(**record_kwargs))
+                processed_records.append(
+                    import_validation.build_record(**record_kwargs))
                 continue
             store, was_created = crud.ensure_store_by_name(
                 db,
                 store_name,
                 performed_by_id=performed_by_id,
             )
+            # Hook de normalización de sucursal recién creada: timezone y valor inventario.
+            if was_created:
+                # Alinear timezone estándar corporativo si quedó en blanco o genérico.
+                if not store.timezone or store.timezone == "UTC":
+                    store.timezone = "America/Mexico_City"
+                # inventory_value debe mantenerse en 0 Decimal de forma explícita
+                # para instalaciones con motores que no respetan defaults al crear via ensure_store_by_name.
+                if store.inventory_value is None:
+                    from decimal import Decimal as _D  # import local para aislar dependencia
+                    store.inventory_value = _D("0")
+                db.add(store)
             record_kwargs["store_id"] = store.id
             record_kwargs["store_name"] = store.name
             if was_created:
                 new_stores.append(store.name)
-            sku = row.get("sku") or _generate_sku(store.code, row.get("modelo"), row_index)
+            sku = row.get("sku") or _generate_sku(
+                store.code, row.get("modelo"), row_index)
             name = row.get("name") or _generate_name(row)
             capacidad_gb = _parse_int(row.get("capacidad_gb"))
             estado = row.get("estado") or "pendiente"
             estado_comercial, estado_comercial_original = _resolve_estado_comercial(
                 row.get("estado_comercial")
             )
+            margen = _parse_decimal(row.get("margen_porcentaje"))
+            garantia_meses = _parse_int(row.get("garantia_meses"))
+            descripcion = _normalize_optional(row.get("descripcion")) or name
+            imagen_url = _normalize_optional(row.get("imagen_url"))
             completo = not _is_row_incomplete(row)
             if not completo:
                 registros_incompletos += 1
@@ -358,14 +502,18 @@ def _commit_import(
                 "ubicacion": row.get("ubicacion"),
                 "proveedor": row.get("proveedor"),
                 "lote": row.get("lote"),
-                "descripcion": row.get("descripcion") or name,
-                "imagen_url": None,
+                "descripcion": descripcion,
+                "imagen_url": imagen_url,
                 "imei": imei,
                 "serial": serial,
                 "fecha_compra": fecha_compra,
                 "fecha_ingreso": fecha_ingreso,
                 "completo": completo,
             }
+            if margen is not None:
+                base_payload["margen_porcentaje"] = margen
+            if garantia_meses is not None:
+                base_payload["garantia_meses"] = garantia_meses
             existing = crud.find_device_for_import(
                 db,
                 store_id=store.id,
@@ -380,7 +528,8 @@ def _commit_import(
                 )
                 registros_incompletos += 1
                 record_kwargs["device_id"] = existing.id
-                processed_records.append(import_validation.build_record(**record_kwargs))
+                processed_records.append(
+                    import_validation.build_record(**record_kwargs))
                 continue
             device: models.Device | None = existing
             if existing is None:
@@ -397,7 +546,8 @@ def _commit_import(
                         f"Fila {row_index}: no se pudo crear el dispositivo ({exc})."
                     )
                     registros_incompletos += 1
-                    processed_records.append(import_validation.build_record(**record_kwargs))
+                    processed_records.append(
+                        import_validation.build_record(**record_kwargs))
                     continue
                 created += 1
             else:
@@ -423,6 +573,10 @@ def _commit_import(
                 if costo is not None:
                     update_numeric["costo_unitario"] = costo
                     update_numeric["costo_compra"] = costo
+                if margen is not None:
+                    update_numeric["margen_porcentaje"] = margen
+                if garantia_meses is not None:
+                    update_numeric["garantia_meses"] = garantia_meses
                 update_payload.update(update_numeric)
                 update_payload["completo"] = completo
                 try:
@@ -438,7 +592,8 @@ def _commit_import(
                         f"Fila {row_index}: no se pudo actualizar el dispositivo ({exc})."
                     )
                     registros_incompletos += 1
-                    processed_records.append(import_validation.build_record(**record_kwargs))
+                    processed_records.append(
+                        import_validation.build_record(**record_kwargs))
                     continue
                 updated += 1
             record_kwargs["device_id"] = device.id if device else None
@@ -472,7 +627,8 @@ def _commit_import(
                     warnings.append(
                         f"Fila {row_index}: no se pudo registrar el movimiento ({exc})."
                     )
-            processed_records.append(import_validation.build_record(**record_kwargs))
+            processed_records.append(
+                import_validation.build_record(**record_kwargs))
         duration = perf_counter() - start_time
         warnings = list(dict.fromkeys(warnings))
         resumen = (
@@ -632,7 +788,8 @@ def _looks_like_date(value: str) -> bool:
 
 def _normalize_boolean_token(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value or "")
-    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = "".join(
+        char for char in normalized if not unicodedata.combining(char))
     return normalized.strip().lower()
 
 
@@ -645,7 +802,8 @@ def _looks_boolean(value: str) -> bool:
 
 def _normalize_header(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value or "")
-    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = "".join(
+        char for char in normalized if not unicodedata.combining(char))
     normalized = normalized.lower()
     cleaned = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
     return cleaned
@@ -710,7 +868,8 @@ def _parse_decimal(value: Any) -> Decimal | None:
     text = _normalize_cell(value)
     if text is None:
         return None
-    cleaned = text.replace("$", "").replace("€", "").replace(",", "").replace(" ", "")
+    cleaned = text.replace("$", "").replace(
+        "€", "").replace(",", "").replace(" ", "")
     try:
         return Decimal(cleaned)
     except Exception:
@@ -750,7 +909,8 @@ def _generate_sku(store_code: str | None, modelo: str | None, row_index: int) ->
 
 
 def _generate_name(row: dict[str, Any]) -> str:
-    parts = [row.get("marca"), row.get("modelo"), row.get("capacidad"), row.get("color")]
+    parts = [row.get("marca"), row.get("modelo"),
+             row.get("capacidad"), row.get("color")]
     return " ".join(filter(None, parts)) or "Producto importado"
 
 

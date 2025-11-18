@@ -111,6 +111,11 @@ def test_inventory_flow(client) -> None:
     assert metrics["top_stores"][0]["store_id"] == store_id
     low_stock_devices = metrics["low_stock_devices"]
     assert any(device["device_id"] == low_stock_id for device in low_stock_devices)
+    sales_insights = metrics["sales_insights"]
+    assert sales_insights["average_ticket"] == 0
+    assert isinstance(sales_insights["top_products"], list)
+    assert isinstance(sales_insights["top_customers"], list)
+    assert isinstance(sales_insights["payment_mix"], list)
     audit_alerts = metrics["audit_alerts"]
     assert audit_alerts["total"] == audit_alerts["critical"] + audit_alerts["warning"] + audit_alerts["info"]
     assert audit_alerts["has_alerts"] == (

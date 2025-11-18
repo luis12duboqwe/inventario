@@ -1,7 +1,6 @@
 import { Suspense, lazy } from "react";
 
 import { motion } from "framer-motion";
-import { Building2, RefreshCcw } from "lucide-react";
 
 import Loader from "../../../../components/common/Loader";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
@@ -163,7 +162,7 @@ function InventoryStatusSection() {
             {" "}uds
           </span>
         </header>
-        <Suspense fallback={<Loader message="Cargando gráfica por categoría…" variant="compact" />}>
+        <Suspense fallback={<Loader label="Cargando gráfica por categoría…" variant="spinner" />}>
           <InventoryCategoryChart data={stockByCategory} totalUnits={totalCategoryUnits} />
         </Suspense>
       </section>

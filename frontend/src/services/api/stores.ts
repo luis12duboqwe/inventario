@@ -15,9 +15,7 @@ export async function fetchStoreDevices(
     params.set("include_identifier", "true");
   }
   const suffix = params.size > 0 ? `?${params.toString()}` : "";
-  const response = await httpClient.get<Device[]>(`/stores/${storeId}/devices${suffix}`, {
-    signal: options.signal,
-  });
+  const response = await httpClient.get<Device[]>(`/stores/${storeId}/devices${suffix}`);
   return response.data;
 }
 

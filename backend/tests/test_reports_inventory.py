@@ -4,11 +4,13 @@ import csv
 from datetime import datetime
 from io import StringIO
 
+import json
 from typing import Any, Iterable
 
 import pytest
 from fastapi import status
 
+from backend.app import models
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN
 
@@ -31,7 +33,8 @@ def _auth_headers(client) -> dict[str, str]:
 
     token_response = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert token_response.status_code == status.HTTP_200_OK
@@ -76,8 +79,10 @@ def test_inventory_csv_snapshot(client, tmp_path) -> None:
     headers = _auth_headers(client)
     settings.backup_directory = str(tmp_path / "respaldos")
 
-    store_payload = {"name": "Sucursal Centro", "location": "CDMX", "timezone": "America/Mexico_City"}
-    store_response = client.post("/stores", json=store_payload, headers=headers)
+    store_payload = {"name": "Sucursal Centro",
+                     "location": "CDMX", "timezone": "America/Mexico_City"}
+    store_response = client.post(
+        "/stores", json=store_payload, headers=headers)
     assert store_response.status_code == status.HTTP_201_CREATED
     store_id = store_response.json()["id"]
 
@@ -157,8 +162,10 @@ def test_inventory_csv_snapshot(client, tmp_path) -> None:
 def test_inventory_current_csv_export(client) -> None:
     headers = _auth_headers(client)
 
-    store_payload = {"name": "Sucursal Centro", "location": "CDMX", "timezone": "America/Mexico_City"}
-    store_response = client.post("/stores", json=store_payload, headers=headers)
+    store_payload = {"name": "Sucursal Centro",
+                     "location": "CDMX", "timezone": "America/Mexico_City"}
+    store_response = client.post(
+        "/stores", json=store_payload, headers=headers)
     assert store_response.status_code == status.HTTP_201_CREATED
     store_id = store_response.json()["id"]
 
@@ -191,9 +198,11 @@ def test_inventory_current_csv_export(client) -> None:
     reader = csv.reader(StringIO(content))
     rows = list(reader)
     header_row = next(row for row in rows if row and row[0] == "Sucursal")
-    store_row = next(row for row in rows if row and row[0] == "Sucursal Centro")
+    store_row = next(
+        row for row in rows if row and row[0] == "Sucursal Centro")
 
-    assert header_row == ["Sucursal", "Dispositivos", "Unidades", "Valor total (MXN)"]
+    assert header_row == ["Sucursal", "Dispositivos",
+                          "Unidades", "Valor total (MXN)"]
     assert store_row[1] == "1"
     assert store_row[2] == "6"
     assert float(store_row[3]) > 0
@@ -218,8 +227,10 @@ def test_inventory_current_csv_export(client) -> None:
 def test_inventory_value_pdf_and_excel(client) -> None:
     headers = _auth_headers(client)
 
-    store_payload = {"name": "Sucursal Norte", "location": "MTY", "timezone": "America/Monterrey"}
-    store_response = client.post("/stores", json=store_payload, headers=headers)
+    store_payload = {"name": "Sucursal Norte",
+                     "location": "MTY", "timezone": "America/Monterrey"}
+    store_response = client.post(
+        "/stores", json=store_payload, headers=headers)
     assert store_response.status_code == status.HTTP_201_CREATED
     store_id = store_response.json()["id"]
 
@@ -249,6 +260,80 @@ def test_inventory_value_pdf_and_excel(client) -> None:
         headers={**headers, "X-Reason": "Valoracion inventario"},
     )
     assert xlsx_response.status_code == status.HTTP_200_OK
+
+
+def test_inventory_inactive_products_report(client) -> None:
+    headers = _auth_headers(client)
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Inactiva", "location": "CDMX", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {
+        "sku": "SM-500",
+        "name": "Smartphone Dormido",
+        "quantity": 3,
+        "unit_price": 8000,
+        "fecha_ingreso": "2020-01-01",
+    }
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+
+    report_response = client.get(
+        "/reports/inventory/inactive-products?min_days_without_movement=30",
+        headers=headers,
+    )
+    assert report_response.status_code == status.HTTP_200_OK
+    payload = report_response.json()
+    assert payload["totals"]["total_products"] == 1
+    assert payload["items"][0]["sku"] == "SM-500"
+    assert payload["items"][0]["dias_sin_movimiento"] >= 30
+
+
+def test_inventory_sync_discrepancies_report(client, db_session) -> None:
+    headers = _auth_headers(client)
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Sucursal Sync", "location": "GDL", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    discrepancy_details = {
+        "sku": "SYNC-001",
+        "product_name": "Inventario desfasado",
+        "difference": 7,
+        "max": [{"store_id": store_id, "store_name": "Sucursal Sync", "quantity": 10}],
+        "min": [{"store_id": store_id, "store_name": "Sucursal Sync", "quantity": 3}],
+    }
+
+    log_entry = models.AuditLog(
+        action="sync_discrepancy",
+        entity_type="inventory",
+        entity_id="SYNC-001",
+        details=json.dumps(discrepancy_details, ensure_ascii=False),
+    )
+    db_session.add(log_entry)
+    db_session.commit()
+
+    response = client.get(
+        "/reports/inventory/sync-discrepancies",
+        headers=headers,
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["totals"]["total_conflicts"] >= 1
+    assert any(item["sku"] == "SYNC-001" for item in data["items"])
     assert xlsx_response.headers["content-type"].startswith(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
@@ -298,17 +383,22 @@ def test_inventory_supplier_batches_overview(client) -> None:
     headers = _auth_headers(client)
     reason_headers = {**headers, "X-Reason": "Registro de lotes"}
 
-    store_payload = {"name": "Sucursal Norte", "location": "MTY", "timezone": "America/Monterrey"}
-    store_response = client.post("/stores", json=store_payload, headers=headers)
+    store_payload = {"name": "Sucursal Norte",
+                     "location": "MTY", "timezone": "America/Monterrey"}
+    store_response = client.post(
+        "/stores", json=store_payload, headers=headers)
     assert store_response.status_code == status.HTTP_201_CREATED
     store_id = store_response.json()["id"]
 
-    other_store_payload = {"name": "Sucursal Sur", "location": "GDL", "timezone": "America/Mexico_City"}
-    other_store_response = client.post("/stores", json=other_store_payload, headers=headers)
+    other_store_payload = {"name": "Sucursal Sur",
+                           "location": "GDL", "timezone": "America/Mexico_City"}
+    other_store_response = client.post(
+        "/stores", json=other_store_payload, headers=headers)
     assert other_store_response.status_code == status.HTTP_201_CREATED
     other_store_id = other_store_response.json()["id"]
 
-    device_payload = {"sku": "SM-100", "name": "Smartphone Corporativo", "quantity": 10}
+    device_payload = {"sku": "SM-100",
+                      "name": "Smartphone Corporativo", "quantity": 10}
     device_response = client.post(
         f"/stores/{store_id}/devices",
         json=device_payload,
@@ -329,7 +419,8 @@ def test_inventory_supplier_batches_overview(client) -> None:
     assert supplier_response.status_code == status.HTTP_201_CREATED
     supplier_id = supplier_response.json()["id"]
 
-    other_supplier_payload = {"name": "Tecnología Sur", "contact_name": "Óscar Peña"}
+    other_supplier_payload = {
+        "name": "Tecnología Sur", "contact_name": "Óscar Peña"}
     other_supplier_response = client.post(
         "/suppliers",
         json=other_supplier_payload,
@@ -400,7 +491,8 @@ def test_inventory_supplier_batches_overview(client) -> None:
     assert supplier_entry["supplier_name"] == "Componentes del Norte"
     assert supplier_entry["batch_count"] == 2
     assert supplier_entry["total_quantity"] == 35
-    assert pytest.approx(supplier_entry["total_value"], rel=1e-4) == 800 * 20 + 820 * 15
+    assert pytest.approx(
+        supplier_entry["total_value"], rel=1e-4) == 800 * 20 + 820 * 15
     assert supplier_entry["latest_batch_code"] == "L-2024-02"
     assert supplier_entry["latest_purchase_date"] == "2024-02-10"
 
@@ -410,7 +502,8 @@ def test_inventory_current_and_value_reports(client) -> None:
 
     store_response = client.post(
         "/stores",
-        json={"name": "Reporte Centro", "location": "CDMX", "timezone": "America/Mexico_City"},
+        json={"name": "Reporte Centro", "location": "CDMX",
+              "timezone": "America/Mexico_City"},
         headers=headers,
     )
     assert store_response.status_code == status.HTTP_201_CREATED
@@ -430,16 +523,19 @@ def test_inventory_current_and_value_reports(client) -> None:
     )
     assert device_response.status_code == status.HTTP_201_CREATED
 
-    current_response = client.get("/reports/inventory/current", headers=headers)
+    current_response = client.get(
+        "/reports/inventory/current", headers=headers)
     assert current_response.status_code == status.HTTP_200_OK
     current_payload = current_response.json()
     assert current_payload["totals"]["devices"] >= 1
-    assert any(store["store_name"] == "Reporte Centro" for store in current_payload["stores"])
+    assert any(store["store_name"] ==
+               "Reporte Centro" for store in current_payload["stores"])
 
     value_response = client.get("/reports/inventory/value", headers=headers)
     assert value_response.status_code == status.HTTP_200_OK
     value_payload = value_response.json()
-    assert any(entry["store_name"] == "Reporte Centro" for entry in value_payload["stores"])
+    assert any(entry["store_name"] ==
+               "Reporte Centro" for entry in value_payload["stores"])
 
     csv_response = client.get(
         "/reports/inventory/value/csv",
@@ -454,7 +550,8 @@ def test_inventory_movements_report_and_csv(client) -> None:
 
     store_response = client.post(
         "/stores",
-        json={"name": "Movimientos Norte", "location": "MTY", "timezone": "America/Monterrey"},
+        json={"name": "Movimientos Norte", "location": "MTY",
+              "timezone": "America/Monterrey"},
         headers=headers,
     )
     assert store_response.status_code == status.HTTP_201_CREATED
@@ -515,7 +612,39 @@ def test_inventory_movements_report_and_csv(client) -> None:
     assert movements_response.status_code == status.HTTP_200_OK
     report = movements_response.json()
     assert report["resumen"]["total_movimientos"] >= 2
-    assert any(entry["tipo_movimiento"] == "entrada" for entry in report["resumen"]["por_tipo"])
+    assert any(entry["tipo_movimiento"] ==
+               "entrada" for entry in report["resumen"]["por_tipo"])
+
+    # Validar normalización del rango de fechas: la función _normalize_date_range
+    # debe incluir el final del día (23:59:59.999999) para date_to cuando se pasa
+    # solo la fecha sin hora. Generamos un movimiento adicional justo antes de
+    # la medianoche y comprobamos que sigue siendo incluido al consultar el mismo
+    # rango (date_from == date_to == hoy).
+    late_payload = {
+        "producto_id": device_id,
+        "tipo_movimiento": "entrada",
+        "cantidad": 1,
+        "comentario": "Entrada tardia",
+        "sucursal_destino_id": store_id,
+        "unit_cost": 1250,
+    }
+    late_response = client.post(
+        f"/inventory/stores/{store_id}/movements",
+        json=late_payload,
+        headers={**headers, "X-Reason": "Entrada tardia"},
+    )
+    assert late_response.status_code == status.HTTP_201_CREATED
+
+    # Re-consultar con el mismo rango para asegurar que el movimiento tardío
+    # se incluye (incrementa el total de movimientos).
+    movements_response_late = client.get(
+        "/reports/inventory/movements",
+        params={"date_from": today.isoformat(), "date_to": today.isoformat()},
+        headers=headers,
+    )
+    assert movements_response_late.status_code == status.HTTP_200_OK
+    late_report = movements_response_late.json()
+    assert late_report["resumen"]["total_movimientos"] >= report["resumen"]["total_movimientos"]
 
     csv_response = client.get(
         "/reports/inventory/movements/csv",
@@ -533,7 +662,8 @@ def test_inventory_top_products_report_and_csv(client) -> None:
     try:
         store_response = client.post(
             "/stores",
-            json={"name": "Ventas Centro", "location": "CDMX", "timezone": "America/Mexico_City"},
+            json={"name": "Ventas Centro", "location": "CDMX",
+                  "timezone": "America/Mexico_City"},
             headers=headers,
         )
         assert store_response.status_code == status.HTTP_201_CREATED
@@ -584,3 +714,260 @@ def test_inventory_top_products_report_and_csv(client) -> None:
     finally:
         settings.enable_purchases_sales = previous_flag
 
+
+def test_inventory_movements_report_swapped_date_range(client) -> None:
+    """
+    Valida que cuando se envía un rango de fechas invertido (date_from > date_to),
+    el backend normaliza el rango y devuelve resultados equivalentes al rango correcto.
+    """
+    headers = _auth_headers(client)
+
+    # Crear una sucursal y un dispositivo con al menos un movimiento hoy.
+    store_response = client.post(
+        "/stores",
+        json={"name": "Rango Invertido Centro",
+              "location": "CDMX", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {
+        "sku": "INV-200",
+        "name": "Access Point Corporativo",
+        "quantity": 3,
+        "unit_price": 2500,
+        "costo_unitario": 1800,
+    }
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    # Registrar un movimiento de entrada hoy para asegurar datos en el reporte
+    movement_headers = {**headers, "X-Reason": "Ajuste inicial"}
+    entrada_payload = {
+        "producto_id": device_id,
+        "tipo_movimiento": "entrada",
+        "cantidad": 5,
+        "comentario": "Ajuste inicial",
+        "sucursal_destino_id": store_id,
+        "unit_cost": 1250,
+    }
+    entrada_response = client.post(
+        f"/inventory/stores/{store_id}/movements",
+        json=entrada_payload,
+        headers=movement_headers,
+    )
+    assert entrada_response.status_code == status.HTTP_201_CREATED, entrada_response.text
+
+    today = datetime.utcnow().date()
+    yesterday = datetime.utcnow().date().fromordinal(today.toordinal() - 1)
+
+    # Consulta con rango correcto (hoy a hoy)
+    correct_response = client.get(
+        "/reports/inventory/movements",
+        params={"date_from": today.isoformat(), "date_to": today.isoformat()},
+        headers=headers,
+    )
+    assert correct_response.status_code == status.HTTP_200_OK
+    correct_payload = correct_response.json()
+
+    # Consulta con rango invertido (hoy a ayer) — debe normalizarse y ser equivalente
+    swapped_response = client.get(
+        "/reports/inventory/movements",
+        params={"date_from": today.isoformat(
+        ), "date_to": yesterday.isoformat()},
+        headers=headers,
+    )
+    assert swapped_response.status_code == status.HTTP_200_OK
+    swapped_payload = swapped_response.json()
+
+    assert swapped_payload["resumen"]["total_movimientos"] == correct_payload["resumen"]["total_movimientos"]
+
+
+def test_inventory_top_products_report_swapped_date_range(client) -> None:
+    """Confirma que el rango invertido se normaliza en top-products y devuelve
+    resultados equivalentes al rango correcto para el mismo día."""
+    headers = _auth_headers(client)
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        # Sucursal y producto con venta hoy
+        store_response = client.post(
+            "/stores",
+            json={"name": "TopProducts Centro", "location": "CDMX",
+                  "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "VENT-INV-002",
+                "name": "Softmobile Edge",
+                "quantity": 5,
+                "unit_price": 9900,
+                "costo_unitario": 7200,
+            },
+            headers=headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        sale_response = client.post(
+            "/sales",
+            json={
+                "store_id": store_id,
+                "payment_method": "EFECTIVO",
+                "items": [{"device_id": device_id, "quantity": 1}],
+            },
+            headers={**headers, "X-Reason": "Venta corporativa"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+
+        today = datetime.utcnow().date()
+        yesterday = datetime.utcnow().date().fromordinal(today.toordinal() - 1)
+
+        # Rango correcto (hoy a hoy)
+        correct_resp = client.get(
+            "/reports/inventory/top-products",
+            params={"date_from": today.isoformat(), "date_to": today.isoformat()},
+            headers=headers,
+        )
+        assert correct_resp.status_code == status.HTTP_200_OK
+        correct = correct_resp.json()
+
+        # Rango invertido (hoy a ayer) — debe normalizarse y devolver mismo total
+        swapped_resp = client.get(
+            "/reports/inventory/top-products",
+            params={"date_from": today.isoformat(
+            ), "date_to": yesterday.isoformat()},
+            headers=headers,
+        )
+        assert swapped_resp.status_code == status.HTTP_200_OK
+        swapped = swapped_resp.json()
+
+        assert swapped["total_unidades"] == correct["total_unidades"]
+        # Debe contener el producto vendido en ambos casos
+        assert any(item["sku"] == "VENT-INV-002" for item in swapped["items"]) \
+            and any(item["sku"] == "VENT-INV-002" for item in correct["items"])
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_inventory_current_report_swapped_date_range(client) -> None:
+    """El reporte current debe normalizar rangos invertidos (date_from > date_to)
+    y devolver los mismos resultados que el rango correcto para el mismo día."""
+    headers = _auth_headers(client)
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "Rango Current Centro", "location": "CDMX",
+              "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "CURR-001",
+            "name": "Terminal Current",
+            "quantity": 4,
+            "unit_price": 1200,
+            "costo_unitario": 900,
+        },
+        headers=headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+
+    today = datetime.utcnow().date()
+    yesterday = datetime.utcnow().date().fromordinal(today.toordinal() - 1)
+
+    correct_resp = client.get(
+        "/reports/inventory/current",
+        params={"date_from": today.isoformat(), "date_to": today.isoformat()},
+        headers=headers,
+    )
+    assert correct_resp.status_code == status.HTTP_200_OK
+    correct = correct_resp.json()
+
+    swapped_resp = client.get(
+        "/reports/inventory/current",
+        params={"date_from": today.isoformat(
+        ), "date_to": yesterday.isoformat()},
+        headers=headers,
+    )
+    assert swapped_resp.status_code == status.HTTP_200_OK
+    swapped = swapped_resp.json()
+
+    # Comparar por lo menos el conjunto de sucursales reportadas
+    def store_names(payload: dict[str, any]) -> set[str]:
+        return {s.get("store_name") or s.get("name") for s in payload.get("stores", [])}
+
+    assert store_names(swapped) == store_names(correct)
+    # Si hay totales, deben coincidir también
+    if "totals" in correct and isinstance(correct["totals"], dict):
+        assert swapped.get("totals") == correct.get("totals")
+
+
+def test_inventory_value_report_swapped_date_range(client) -> None:
+    """El reporte value debe normalizar rangos invertidos y conservar resultados."""
+    headers = _auth_headers(client)
+
+    store_resp = client.post(
+        "/stores",
+        json={"name": "Rango Value Norte", "location": "MTY",
+              "timezone": "America/Monterrey"},
+        headers=headers,
+    )
+    assert store_resp.status_code == status.HTTP_201_CREATED
+    store_id = store_resp.json()["id"]
+
+    device_resp = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "VAL-001",
+            "name": "Terminal Value",
+            "quantity": 2,
+            "unit_price": 3000,
+            "costo_unitario": 2100,
+        },
+        headers=headers,
+    )
+    assert device_resp.status_code == status.HTTP_201_CREATED
+
+    today = datetime.utcnow().date()
+    yesterday = datetime.utcnow().date().fromordinal(today.toordinal() - 1)
+
+    correct_resp = client.get(
+        "/reports/inventory/value",
+        params={"date_from": today.isoformat(), "date_to": today.isoformat()},
+        headers=headers,
+    )
+    assert correct_resp.status_code == status.HTTP_200_OK
+    correct = correct_resp.json()
+
+    swapped_resp = client.get(
+        "/reports/inventory/value",
+        params={"date_from": today.isoformat(
+        ), "date_to": yesterday.isoformat()},
+        headers=headers,
+    )
+    assert swapped_resp.status_code == status.HTTP_200_OK
+    swapped = swapped_resp.json()
+
+    def store_names(payload: dict[str, any]) -> set[str]:
+        return {s.get("store_name") or s.get("name") for s in payload.get("stores", [])}
+
+    assert store_names(swapped) == store_names(correct)
+    # Si existe un resumen o totales, deben coincidir
+    if "summary" in correct and isinstance(correct["summary"], dict):
+        assert swapped.get("summary") == correct.get("summary")

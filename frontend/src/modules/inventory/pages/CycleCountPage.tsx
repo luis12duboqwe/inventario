@@ -33,14 +33,17 @@ function CycleCountPage() {
 
   const recalcDiffs = (nextRows: CycleCountRow[]) => {
     const nextDiffs = nextRows
-      .map((row) => ({
-        id: row.id,
-        sku: row.sku,
-        name: row.name,
-        expected: row.expected,
-        counted: row.counted,
-        delta: row.counted - row.expected,
-      }))
+      .map((row) => {
+        const base = {
+          id: row.id,
+          name: row.name,
+          expected: row.expected,
+          counted: row.counted,
+          delta: row.counted - row.expected,
+        } satisfies Omit<DiscrepancyRow, "sku">;
+
+        return row.sku ? { ...base, sku: row.sku } : base;
+      })
       .filter((item) => item.delta !== 0);
     setDiffs(nextDiffs);
   };

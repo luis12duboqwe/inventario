@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Device, MovementInput } from "../../../api";
 
 type Props = {
@@ -13,17 +13,11 @@ function MovementForm({ devices, onSubmit }: Props) {
   const [comment, setComment] = useState("");
   const [unitCost, setUnitCost] = useState("");
 
-  useEffect(() => {
-    if (movementType !== "entrada") {
-      setUnitCost("");
-    }
-  }, [movementType]);
-
-  useEffect(() => {
-    if (devices.length > 0) {
-      setDeviceId(devices[0].id);
-    }
-  }, [devices]);
+  // Derivar el dispositivo efectivo sin setState en efectos: si no hay selección explicita, usar el primero.
+  const effectiveDeviceId = useMemo<number | "">(
+    () => (deviceId === "" ? (devices[0]?.id ?? "") : deviceId),
+    [deviceId, devices],
+  );
 
   if (devices.length === 0) {
     return <p>Registra al menos un dispositivo para habilitar los movimientos.</p>;
@@ -61,7 +55,7 @@ function MovementForm({ devices, onSubmit }: Props) {
       <label htmlFor="deviceId">Dispositivo</label>
       <select
         id="deviceId"
-        value={deviceId ?? ""}
+        value={effectiveDeviceId ?? ""}
         onChange={(event) => setDeviceId(event.target.value ? Number(event.target.value) : "")}
         required
       >

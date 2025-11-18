@@ -1,16 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Store, Supplier, SupplierBatch, SupplierBatchPayload } from "../../../api";
+import type {
+  ContactHistoryEntry,
+  Store,
+  Supplier,
+  SupplierAccountsPayableResponse,
+  SupplierAccountsPayableSupplier,
+  SupplierBatch,
+  SupplierBatchPayload,
+  SupplierPayload,
+  SupplierContact,
+} from "../../../api";
 import {
   createSupplier,
   createSupplierBatch,
   deleteSupplier,
   deleteSupplierBatch,
   exportSuppliersCsv,
+  getSuppliersAccountsPayable,
   listSupplierBatches,
   listSuppliers,
   updateSupplier,
   updateSupplierBatch,
 } from "../../../api";
+import { normalizeRtn, RTN_ERROR_MESSAGE } from "../utils/rtn";
 
 type Props = {
   token: string;
@@ -19,22 +31,30 @@ type Props = {
 
 type SupplierForm = {
   name: string;
+  rtn: string;
+  paymentTerms: string;
   contactName: string;
+  contactRole: string;
   email: string;
   phone: string;
   address: string;
   notes: string;
+  productsSupplied: string;
   outstandingDebt: number;
   historyNote: string;
 };
 
 const initialForm: SupplierForm = {
   name: "",
+  rtn: "",
+  paymentTerms: "",
   contactName: "",
+  contactRole: "",
   email: "",
   phone: "",
   address: "",
   notes: "",
+  productsSupplied: "",
   outstandingDebt: 0,
   historyNote: "",
 };
@@ -76,6 +96,9 @@ function Suppliers({ token, stores }: Props) {
   const [batchForm, setBatchForm] = useState<SupplierBatchForm>(createInitialBatchForm);
   const [batchEditingId, setBatchEditingId] = useState<number | null>(null);
   const [loadingBatches, setLoadingBatches] = useState(false);
+  const [accountsPayable, setAccountsPayable] =
+    useState<SupplierAccountsPayableResponse | null>(null);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
     []
@@ -100,6 +123,22 @@ function Suppliers({ token, stores }: Props) {
     [token]
   );
 
+  const refreshAccountsPayable = useCallback(async () => {
+    try {
+      setLoadingAccounts(true);
+      const summary = await getSuppliersAccountsPayable(token);
+      setAccountsPayable(summary);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible cargar el resumen de cuentas por pagar."
+      );
+    } finally {
+      setLoadingAccounts(false);
+    }
+  }, [token]);
+
   const refreshBatches = useCallback(
     async (supplierId: number) => {
       try {
@@ -121,7 +160,8 @@ function Suppliers({ token, stores }: Props) {
 
   useEffect(() => {
     void refreshSuppliers();
-  }, [refreshSuppliers]);
+    void refreshAccountsPayable();
+  }, [refreshSuppliers, refreshAccountsPayable]);
 
   useEffect(() => {
     const trimmed = search.trim();
@@ -141,6 +181,15 @@ function Suppliers({ token, stores }: Props) {
     stores.forEach((store) => map.set(store.id, store.name));
     return map;
   }, [stores]);
+
+  const payablesBySupplier = useMemo(() => {
+    if (!accountsPayable) {
+      return new Map<number, SupplierAccountsPayableSupplier>();
+    }
+    return new Map(
+      accountsPayable.suppliers.map((item) => [item.supplier_id, item] as const)
+    );
+  }, [accountsPayable]);
 
   const updateForm = (updates: Partial<SupplierForm>) => {
     setForm((current) => ({ ...current, ...updates }));
@@ -181,35 +230,106 @@ function Suppliers({ token, stores }: Props) {
     if (!reason) {
       return;
     }
-    const payload = {
-      name: form.name.trim(),
-      contact_name: form.contactName.trim() || undefined,
-      email: form.email.trim() || undefined,
-      phone: form.phone.trim() || undefined,
-      address: form.address.trim() || undefined,
-      notes: form.notes.trim() || undefined,
-      outstanding_debt: Number.isFinite(form.outstandingDebt)
-        ? Math.max(0, Number(form.outstandingDebt))
-        : undefined,
-    } as Record<string, unknown>;
+    const trimmedName = form.name.trim();
+    const rawRtn = form.rtn.trim();
+    const normalizedRtn = rawRtn ? normalizeRtn(rawRtn) : null;
+    if (rawRtn && !normalizedRtn) {
+      setError(RTN_ERROR_MESSAGE);
+      return;
+    }
+    const paymentTerms = form.paymentTerms.trim();
+    const contactName = form.contactName.trim();
+    const contactRole = form.contactRole.trim();
+    const email = form.email.trim();
+    const phone = form.phone.trim();
+    const address = form.address.trim();
+    const notes = form.notes.trim();
+    const products = form.productsSupplied
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    const contactInfo: SupplierContact[] =
+      contactName || contactRole || email || phone
+        ? [
+            {
+              name: contactName || undefined,
+              position: contactRole || undefined,
+              email: email || undefined,
+              phone: phone || undefined,
+            },
+          ]
+        : [];
+    const outstandingValue = Number.isFinite(form.outstandingDebt)
+      ? Math.max(0, Number(form.outstandingDebt))
+      : null;
 
     try {
       setError(null);
       if (editingId) {
+        const payload: Partial<SupplierPayload> = { name: trimmedName };
+        if (normalizedRtn) {
+          payload.rtn = normalizedRtn;
+        } else if (rawRtn.length === 0) {
+          payload.rtn = undefined;
+        }
+        payload.payment_terms = paymentTerms;
+        payload.contact_name = contactName;
+        payload.email = email;
+        payload.phone = phone;
+        payload.address = address;
+        payload.notes = notes;
+        if (outstandingValue !== null) {
+          payload.outstanding_debt = outstandingValue;
+        }
         const existing = suppliers.find((supplier) => supplier.id === editingId);
         if (form.historyNote.trim() && existing) {
-          payload.history = [
+          const historyEntries: ContactHistoryEntry[] = [
             ...existing.history,
             { timestamp: new Date().toISOString(), note: form.historyNote.trim() },
           ];
+          payload.history = historyEntries;
         }
+        payload.contact_info = contactInfo;
+        payload.products_supplied = products;
         await updateSupplier(token, editingId, payload, reason);
         setMessage("Proveedor actualizado correctamente.");
       } else {
+        const payload: SupplierPayload = { name: trimmedName };
+        if (normalizedRtn) {
+          payload.rtn = normalizedRtn;
+        }
+        if (paymentTerms) {
+          payload.payment_terms = paymentTerms;
+        }
+        if (contactName) {
+          payload.contact_name = contactName;
+        }
+        if (email) {
+          payload.email = email;
+        }
+        if (phone) {
+          payload.phone = phone;
+        }
+        if (address) {
+          payload.address = address;
+        }
+        if (notes) {
+          payload.notes = notes;
+        }
+        if (outstandingValue !== null) {
+          payload.outstanding_debt = outstandingValue;
+        }
         if (form.historyNote.trim()) {
-          payload.history = [
+          const historyEntries: ContactHistoryEntry[] = [
             { timestamp: new Date().toISOString(), note: form.historyNote.trim() },
           ];
+          payload.history = historyEntries;
+        }
+        if (contactInfo.length > 0) {
+          payload.contact_info = contactInfo;
+        }
+        if (products.length > 0) {
+          payload.products_supplied = products;
         }
         await createSupplier(token, payload, reason);
         setMessage("Proveedor registrado exitosamente.");
@@ -217,6 +337,7 @@ function Suppliers({ token, stores }: Props) {
       resetForm();
       const trimmed = search.trim();
       await refreshSuppliers(trimmed.length >= 2 ? trimmed : undefined);
+      await refreshAccountsPayable();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible guardar la información del proveedor.");
     }
@@ -228,13 +349,18 @@ function Suppliers({ token, stores }: Props) {
     setSelectedSupplierName(supplier.name);
     resetBatchForm();
     void refreshBatches(supplier.id);
+    const primaryContact = supplier.contact_info.length > 0 ? supplier.contact_info[0] : undefined;
     setForm({
       name: supplier.name,
-      contactName: supplier.contact_name ?? "",
-      email: supplier.email ?? "",
-      phone: supplier.phone ?? "",
+      rtn: supplier.rtn ?? "",
+      paymentTerms: supplier.payment_terms ?? "",
+      contactName: primaryContact?.name ?? supplier.contact_name ?? "",
+      contactRole: primaryContact?.position ?? "",
+      email: primaryContact?.email ?? supplier.email ?? "",
+      phone: primaryContact?.phone ?? supplier.phone ?? "",
       address: supplier.address ?? "",
       notes: supplier.notes ?? "",
+      productsSupplied: supplier.products_supplied.join(", "),
       outstandingDebt: Number(supplier.outstanding_debt ?? 0),
       historyNote: "",
     });
@@ -253,6 +379,7 @@ function Suppliers({ token, stores }: Props) {
       setMessage("Proveedor eliminado.");
       const trimmed = search.trim();
       await refreshSuppliers(trimmed.length >= 2 ? trimmed : undefined);
+      await refreshAccountsPayable();
       if (editingId === supplier.id) {
         resetForm();
       }
@@ -285,6 +412,7 @@ function Suppliers({ token, stores }: Props) {
       setMessage("Nota agregada correctamente.");
       const trimmed = search.trim();
       await refreshSuppliers(trimmed.length >= 2 ? trimmed : undefined);
+      await refreshAccountsPayable();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible agregar la nota al proveedor.");
     }
@@ -312,6 +440,7 @@ function Suppliers({ token, stores }: Props) {
       setMessage("Saldo del proveedor actualizado.");
       const trimmed = search.trim();
       await refreshSuppliers(trimmed.length >= 2 ? trimmed : undefined);
+      await refreshAccountsPayable();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible ajustar la cuenta del proveedor.");
     }
@@ -391,10 +520,18 @@ function Suppliers({ token, stores }: Props) {
       unit_cost: unitCostValue,
       quantity: Number.isFinite(quantityValue) && quantityValue >= 0 ? quantityValue : 0,
       purchase_date: batchForm.purchaseDate,
-      notes: batchForm.notes.trim() ? batchForm.notes.trim() : undefined,
-      store_id: batchForm.storeId !== "" ? Number(batchForm.storeId) : undefined,
-      device_id: batchForm.deviceId !== "" ? Number(batchForm.deviceId) : undefined,
     };
+
+    const noteValue = batchForm.notes.trim();
+    if (noteValue) {
+      payload.notes = noteValue;
+    }
+    if (batchForm.storeId !== "") {
+      payload.store_id = Number(batchForm.storeId);
+    }
+    if (batchForm.deviceId !== "") {
+      payload.device_id = Number(batchForm.deviceId);
+    }
 
     try {
       setError(null);
@@ -447,8 +584,32 @@ function Suppliers({ token, stores }: Props) {
           <input value={form.name} onChange={(event) => updateForm({ name: event.target.value })} required />
         </label>
         <label>
+          RTN
+          <input
+            value={form.rtn}
+            onChange={(event) => updateForm({ rtn: event.target.value })}
+            placeholder="Ej. 08011999000123"
+          />
+        </label>
+        <label>
+          Términos de pago
+          <input
+            value={form.paymentTerms}
+            onChange={(event) => updateForm({ paymentTerms: event.target.value })}
+            placeholder="Ej. 30 días"
+          />
+        </label>
+        <label>
           Contacto
           <input value={form.contactName} onChange={(event) => updateForm({ contactName: event.target.value })} />
+        </label>
+        <label>
+          Cargo del contacto
+          <input
+            value={form.contactRole}
+            onChange={(event) => updateForm({ contactRole: event.target.value })}
+            placeholder="Compras, finanzas, soporte"
+          />
         </label>
         <label>
           Correo
@@ -475,6 +636,15 @@ function Suppliers({ token, stores }: Props) {
             step="0.01"
             value={form.outstandingDebt}
             onChange={(event) => updateForm({ outstandingDebt: Number(event.target.value) })}
+          />
+        </label>
+        <label className="wide">
+          Productos suministrados
+          <textarea
+            value={form.productsSupplied}
+            onChange={(event) => updateForm({ productsSupplied: event.target.value })}
+            rows={2}
+            placeholder="Lista separada por comas de líneas clave"
           />
         </label>
         <label className="wide">
@@ -527,7 +697,76 @@ function Suppliers({ token, stores }: Props) {
           <span className="muted-text">Saldo pendiente</span>
           <strong>${totalDebt.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
         </div>
+        <div>
+          <span className="muted-text">Saldo total CxP</span>
+          <strong>
+            {accountsPayable
+              ? `$${accountsPayable.summary.total_balance.toLocaleString("es-MX", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
+              : loadingAccounts
+              ? "Calculando..."
+              : "$0.00"}
+          </strong>
+        </div>
+        <div>
+          <span className="muted-text">Saldo vencido</span>
+          <strong>
+            {accountsPayable
+              ? `$${accountsPayable.summary.total_overdue.toLocaleString("es-MX", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
+              : loadingAccounts
+              ? "Calculando..."
+              : "$0.00"}
+          </strong>
+        </div>
       </div>
+      <div className="actions-row">
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={() => void refreshAccountsPayable()}
+          disabled={loadingAccounts}
+        >
+          {loadingAccounts ? "Actualizando aging..." : "Actualizar aging"}
+        </button>
+      </div>
+      {accountsPayable ? (
+        <div className="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Tramo</th>
+                <th>Saldo</th>
+                <th>% cartera</th>
+                <th>Proveedores</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accountsPayable.summary.buckets.map((bucket) => (
+                <tr key={bucket.label}>
+                  <td>{bucket.label}</td>
+                  <td>
+                    ${bucket.amount.toLocaleString("es-MX", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td>{bucket.percentage.toFixed(1)}%</td>
+                  <td>{bucket.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : loadingAccounts ? (
+        <p className="muted-text">Calculando aging de proveedores...</p>
+      ) : (
+        <p className="muted-text">Aún no hay datos de cuentas por pagar registrados.</p>
+      )}
       {loading ? (
         <p className="muted-text">Cargando proveedores...</p>
       ) : suppliers.length === 0 ? (
@@ -539,10 +778,15 @@ function Suppliers({ token, stores }: Props) {
               <tr>
                 <th>ID</th>
                 <th>Nombre</th>
+                <th>RTN</th>
                 <th>Contacto</th>
+                <th>Cargo</th>
                 <th>Correo</th>
                 <th>Teléfono</th>
+                <th>Términos</th>
+                <th>Productos clave</th>
                 <th>Saldo</th>
+                <th>Aging</th>
                 <th>Última nota</th>
                 <th>Acciones</th>
               </tr>
@@ -550,18 +794,41 @@ function Suppliers({ token, stores }: Props) {
             <tbody>
               {suppliers.map((supplier) => {
                 const historyLength = supplier.history.length;
-                const lastHistory = historyLength
-                  ? supplier.history[historyLength - 1].note
-                  : "—";
+                const lastEntry = historyLength > 0 ? supplier.history[historyLength - 1] : null;
+                const lastHistory = lastEntry?.note ?? "—";
                 const outstanding = Number(supplier.outstanding_debt ?? 0);
+                const primaryContact =
+                  supplier.contact_info.length > 0 ? supplier.contact_info[0] : undefined;
+                const displayContactName = primaryContact?.name ?? supplier.contact_name ?? "—";
+                const displayContactRole = primaryContact?.position ?? "—";
+                const displayEmail = primaryContact?.email ?? supplier.email ?? "—";
+                const displayPhone = primaryContact?.phone ?? supplier.phone ?? "—";
+                const productsLabel =
+                  supplier.products_supplied.length > 0
+                    ? supplier.products_supplied.join(", ")
+                    : "—";
+                const payable = payablesBySupplier.get(supplier.id);
+                const agingLabel = payable
+                  ? `${payable.bucket_label} (${payable.days_outstanding} días)`
+                  : "—";
                 return (
                   <tr key={supplier.id}>
                     <td>#{supplier.id}</td>
                     <td>{supplier.name}</td>
-                    <td>{supplier.contact_name ?? "—"}</td>
-                    <td>{supplier.email ?? "—"}</td>
-                    <td>{supplier.phone ?? "—"}</td>
-                    <td>${outstanding.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>{supplier.rtn ?? "—"}</td>
+                    <td>{displayContactName}</td>
+                    <td>{displayContactRole}</td>
+                    <td>{displayEmail}</td>
+                    <td>{displayPhone}</td>
+                    <td>{supplier.payment_terms ?? "—"}</td>
+                    <td>{productsLabel}</td>
+                    <td>
+                      {`$${outstanding.toLocaleString("es-MX", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}`}
+                    </td>
+                    <td>{agingLabel}</td>
                     <td>{lastHistory}</td>
                     <td>
                       <div className="actions-row">

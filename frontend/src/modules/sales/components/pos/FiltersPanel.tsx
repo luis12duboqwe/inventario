@@ -1,10 +1,12 @@
 import React from "react";
 
+type AvailabilityFilter = "IN_STOCK" | "OUT_OF_STOCK";
+
 export type POSFilters = {
   storeId?: string;
   category?: string;
   brand?: string;
-  availability?: "IN_STOCK" | "OUT_OF_STOCK" | "ALL";
+  availability?: AvailabilityFilter;
 };
 
 type Props = {
@@ -25,24 +27,60 @@ export default function FiltersPanel({ value, onChange }: Props) {
       <input
         placeholder="Sucursal ID"
         value={v.storeId || ""}
-        onChange={(e) => onChange({ ...v, storeId: e.target.value })}
+        onChange={(e) => {
+          const next: POSFilters = { ...v };
+          const value = e.target.value.trim();
+          if (value) {
+            next.storeId = value;
+          } else {
+            delete next.storeId;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         placeholder="Categoría"
         value={v.category || ""}
-        onChange={(e) => onChange({ ...v, category: e.target.value })}
+        onChange={(e) => {
+          const next: POSFilters = { ...v };
+          const value = e.target.value.trim();
+          if (value) {
+            next.category = value;
+          } else {
+            delete next.category;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         placeholder="Marca"
         value={v.brand || ""}
-        onChange={(e) => onChange({ ...v, brand: e.target.value })}
+        onChange={(e) => {
+          const next: POSFilters = { ...v };
+          const value = e.target.value.trim();
+          if (value) {
+            next.brand = value;
+          } else {
+            delete next.brand;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <select
         value={v.availability || "ALL"}
-        onChange={(e) => onChange({ ...v, availability: e.target.value as POSFilters["availability"] })}
+        onChange={(e) => {
+          const selected = e.target.value as AvailabilityFilter | "ALL";
+          const next: POSFilters = { ...v };
+          if (selected === "ALL") {
+            delete next.availability;
+          } else {
+            next.availability = selected;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       >
         <option value="ALL">Disponibilidad (todas)</option>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Customer, Device, PosConfig, Sale, Store, UserAccount } from "../../../api";
+import type { Customer, Device, PosConfig, Sale, SaleCreateInput, Store, UserAccount } from "../../../api";
 import {
   createSale,
   downloadPosReceipt,
@@ -206,10 +206,12 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
     setIsLoadingDevices(true);
     const timeout = window.setTimeout(async () => {
       try {
-        const data = await getDevices(token, saleForm.storeId!, {
-          estado_inventario: "disponible",
-          search: deviceQuery.trim() || undefined,
-        });
+        const searchTerm = deviceQuery.trim();
+        const deviceFilters = {
+          estado_inventario: "disponible" as const,
+          ...(searchTerm ? { search: searchTerm } : {}),
+        };
+        const data = await getDevices(token, saleForm.storeId!, deviceFilters);
         if (active) {
           setDevices(data);
         }
@@ -232,15 +234,17 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
   const refreshSalesList = useCallback(async () => {
     setIsLoadingSales(true);
     try {
-      const data = await listSales(token, {
-        storeId: filters.storeId ?? undefined,
-        customerId: filters.customerId ?? undefined,
-        userId: filters.userId ?? undefined,
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-        query: filters.query.trim() || undefined,
+      const trimmedQuery = filters.query.trim();
+      const filtersPayload = {
+        ...(typeof filters.storeId === "number" ? { storeId: filters.storeId } : {}),
+        ...(typeof filters.customerId === "number" ? { customerId: filters.customerId } : {}),
+        ...(typeof filters.userId === "number" ? { userId: filters.userId } : {}),
+        ...(filters.dateFrom ? { dateFrom: filters.dateFrom } : {}),
+        ...(filters.dateTo ? { dateTo: filters.dateTo } : {}),
+        ...(trimmedQuery ? { query: trimmedQuery } : {}),
         limit: 200,
-      });
+      } as const;
+      const data = await listSales(token, filtersPayload);
       setSales(data);
     } catch (err) {
       setError((err as Error).message ?? "No fue posible cargar las ventas");
@@ -274,7 +278,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
             : line
         );
       }
-      return [...current, { device, quantity: 1 }];
+      return [...current, { device, quantity: 1, batchCode: device.lote ?? "" }];
     });
   };
 
@@ -284,6 +288,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         line.device.id === deviceId
           ? { ...line, quantity: Math.max(1, Math.min(line.device.quantity, quantity)) }
           : line
+      )
+    );
+  };
+
+  const handleBatchCodeChange = (deviceId: number, batchCode: string) => {
+    setSaleItems((current) =>
+      current.map((line) =>
+        line.device.id === deviceId ? { ...line, batchCode } : line
       )
     );
   };
@@ -319,32 +331,51 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
       setError("El motivo corporativo debe tener al menos 5 caracteres.");
       return;
     }
-    const payloadItems = saleItems.map((line) => ({
-      device_id: line.device.id,
-      quantity: Math.max(1, line.quantity),
-    }));
+    const payloadItems = saleItems.map((line) => {
+      const entry: SaleCreateInput["items"][number] = {
+        device_id: line.device.id,
+        quantity: Math.max(1, line.quantity),
+      };
+      const normalizedBatch = line.batchCode.trim();
+      if (normalizedBatch) {
+        entry.batch_code = normalizedBatch;
+      }
+      return entry;
+    });
     const normalizedDiscount = Math.min(Math.max(saleForm.discountPercent, 0), 100);
-    const customerName = saleForm.customerName.trim() || selectedCustomer?.name || undefined;
+    const customerName = saleForm.customerName.trim() || selectedCustomer?.name || "";
+    const payload: SaleCreateInput = {
+      store_id: saleForm.storeId,
+      payment_method: saleForm.paymentMethod,
+      items: payloadItems,
+      discount_percent: normalizedDiscount,
+    };
+    if (saleForm.customerId !== null && saleForm.customerId !== undefined) {
+      payload.customer_id = saleForm.customerId;
+    }
+    if (customerName) {
+      payload.customer_name = customerName;
+    }
+    const notes = saleForm.notes.trim();
+    if (notes) {
+      payload.notes = notes;
+    }
     setIsSaving(true);
     try {
       const sale = await createSale(
         token,
-        {
-          store_id: saleForm.storeId,
-          payment_method: saleForm.paymentMethod,
-          items: payloadItems,
-          discount_percent: normalizedDiscount,
-          customer_id: saleForm.customerId ?? undefined,
-          customer_name: customerName,
-          notes: saleForm.notes.trim() || undefined,
-        },
+        payload,
         saleForm.reason.trim()
       );
       setError(null);
       setMessage("Venta registrada correctamente");
       setLastSaleId(sale.id);
       setLastSaleSnapshot({
-        items: saleItems.map((line) => ({ device: line.device, quantity: line.quantity })),
+        items: saleItems.map((line) => ({
+          device: line.device,
+          quantity: line.quantity,
+          batchCode: line.batchCode,
+        })),
         summary: saleSummary,
       });
       resetSaleForm();
@@ -364,13 +395,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
     }
     setIsExporting(true);
     try {
+      const trimmedQuery = filters.query.trim();
       const filtersPayload = {
-        storeId: filters.storeId ?? undefined,
-        customerId: filters.customerId ?? undefined,
-        userId: filters.userId ?? undefined,
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-        query: filters.query.trim() || undefined,
+        ...(typeof filters.storeId === "number" ? { storeId: filters.storeId } : {}),
+        ...(typeof filters.customerId === "number" ? { customerId: filters.customerId } : {}),
+        ...(typeof filters.userId === "number" ? { userId: filters.userId } : {}),
+        ...(filters.dateFrom ? { dateFrom: filters.dateFrom } : {}),
+        ...(filters.dateTo ? { dateTo: filters.dateTo } : {}),
+        ...(trimmedQuery ? { query: trimmedQuery } : {}),
       };
       const blob =
         format === "pdf"
@@ -436,20 +468,21 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         message={message}
         error={error}
       >
-        <SidePanel
-          stores={stores}
-          customers={customers}
-          saleForm={saleForm}
-          onSaleFormChange={updateSaleForm}
-          deviceQuery={deviceQuery}
-          onDeviceQueryChange={setDeviceQuery}
-          devices={devices}
-          isLoadingDevices={isLoadingDevices}
-          onAddDevice={handleAddDevice}
-          saleItems={saleItems}
-          onQuantityChange={handleQuantityChange}
-          onRemoveLine={handleRemoveLine}
-          saleSummary={saleSummary}
+      <SidePanel
+        stores={stores}
+        customers={customers}
+        saleForm={saleForm}
+        onSaleFormChange={updateSaleForm}
+        deviceQuery={deviceQuery}
+        onDeviceQueryChange={setDeviceQuery}
+        devices={devices}
+        isLoadingDevices={isLoadingDevices}
+        onAddDevice={handleAddDevice}
+        saleItems={saleItems}
+        onQuantityChange={handleQuantityChange}
+        onBatchCodeChange={handleBatchCodeChange}
+        onRemoveLine={handleRemoveLine}
+        saleSummary={saleSummary}
           paymentLabels={paymentLabels}
           isSaving={isSaving}
           isPrinting={isPrinting}

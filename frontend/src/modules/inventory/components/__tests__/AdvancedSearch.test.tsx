@@ -2,13 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getApiBaseUrl } from "../../../../config/api";
-
 import type { CatalogDevice } from "../../../../api";
-
-const API_BASE_URL = (import.meta.env.VITE_API_URL?.trim() ?? "") || getApiBaseUrl();
-
-const buildImageUrl = (path: string): string => new URL(path, API_BASE_URL).toString();
 
 const searchCatalogDevicesMock = vi.hoisted(() => vi.fn());
 
@@ -53,6 +47,7 @@ describe("AdvancedSearch", () => {
         id: 200,
         sku: "IPH-15-PRO",
         name: "iPhone 15 Pro",
+        completo: true,
         quantity: 4,
         store_id: 2,
         unit_price: 23999,
@@ -79,7 +74,7 @@ describe("AdvancedSearch", () => {
         lote: "L-15P-2025",
         fecha_compra: "2025-02-10",
         descripcion: "Equipo sellado",
-        imagen_url: buildImageUrl("/media/devices/iphone15pro.png"),
+        imagen_url: "https://cdn.softmobile.test/media/devices/iphone15pro.png",
       },
     ];
 
@@ -95,19 +90,7 @@ describe("AdvancedSearch", () => {
 
     await waitFor(() => {
       expect(searchCatalogDevicesMock).toHaveBeenCalledWith("token-123", {
-        imei: "",
-        serial: "",
-        capacidad_gb: undefined,
-        color: "",
-        marca: "",
         modelo: "iPhone 15 Pro",
-        categoria: undefined,
-        condicion: undefined,
-        estado: undefined,
-        ubicacion: undefined,
-        proveedor: undefined,
-        fecha_ingreso_desde: undefined,
-        fecha_ingreso_hasta: undefined,
       });
     });
 
@@ -118,6 +101,25 @@ describe("AdvancedSearch", () => {
     expect(
       screen.queryByText("Ingresa al menos un criterio de búsqueda"),
     ).not.toBeInTheDocument();
+  });
+
+  it("envía el filtro de estado comercial cuando se selecciona", async () => {
+    const user = userEvent.setup();
+    searchCatalogDevicesMock.mockResolvedValueOnce([]);
+
+    render(<AdvancedSearch token="token-123" />);
+
+    const estadoSelect = screen.getByLabelText("Estado comercial");
+    await user.selectOptions(estadoSelect, "Grado A");
+
+    const submitButton = screen.getByRole("button", { name: /buscar/i });
+    await user.click(submitButton);
+
+    await waitFor(() => {
+      expect(searchCatalogDevicesMock).toHaveBeenCalledWith("token-123", {
+        estado_comercial: "A",
+      });
+    });
   });
 });
 

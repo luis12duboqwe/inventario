@@ -17,12 +17,10 @@ type Props = {
 
 const statusOptions: Array<{ value: Filters["status"]; label: string }> = [
   { value: "ALL", label: "Estado" },
-  { value: "REQUESTED", label: "Solicitado" },
-  { value: "PICKING", label: "Picking" },
-  { value: "PACKED", label: "Empaquetado" },
-  { value: "IN_TRANSIT", label: "En tránsito" },
-  { value: "RECEIVED", label: "Recibido" },
-  { value: "CANCELLED", label: "Cancelado" },
+  { value: "SOLICITADA", label: "Solicitada" },
+  { value: "EN_TRANSITO", label: "En tránsito" },
+  { value: "RECIBIDA", label: "Recibida" },
+  { value: "CANCELADA", label: "Cancelada" },
 ];
 
 function FiltersBar({ value, onChange, onNew }: Props) {

@@ -1,5 +1,8 @@
 import json
+from decimal import Decimal
 from typing import Any, Iterable
+
+import pytest
 
 from fastapi import status
 from sqlalchemy import select
@@ -8,6 +11,7 @@ from backend.app import models
 
 from backend.app.config import settings
 from backend.app.core.roles import ADMIN, OPERADOR
+from backend.app.services import notifications
 
 
 def _extract_items(payload: Any) -> Iterable[dict[str, Any]]:
@@ -60,6 +64,18 @@ def _bootstrap_operator(client, admin_token: str | None = None) -> str:
     )
     assert token_response.status_code == status.HTTP_200_OK
     return token_response.json()["access_token"]
+
+
+def test_pos_config_requires_reason_header(client):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    headers = {"Authorization": f"Bearer {token}", "X-Reason": ""}
+    response = client.get("/pos/config", headers=headers)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    valid_headers = {"Authorization": f"Bearer {token}", "X-Reason": "Consulta POS QA"}
+    ok_response = client.get("/pos/config", headers=valid_headers)
+    assert ok_response.status_code != status.HTTP_400_BAD_REQUEST
 
 
 def test_pos_sale_with_receipt_and_config(client, db_session):
@@ -115,6 +131,11 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     assert config_response.status_code == 200
     default_config = config_response.json()
     assert default_config["store_id"] == store_id
+    assert default_config["hardware_settings"]["printers"] == []
+    assert default_config["hardware_settings"]["cash_drawer"]["enabled"] is False
+    assert default_config["default_document_type"] == "TICKET"
+    catalog_types = {entry["type"] for entry in default_config["document_catalog"]}
+    assert {"FACTURA", "TICKET", "NOTA_CREDITO", "NOTA_DEBITO"}.issubset(catalog_types)
 
     update_payload = {
         "store_id": store_id,
@@ -123,6 +144,38 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
         "printer_name": "TM-88V",
         "printer_profile": "USB",
         "quick_product_ids": [device_id],
+        "default_document_type": "FACTURA",
+        "hardware_settings": {
+            "printers": [
+                {
+                    "name": "TM-88V",
+                    "mode": "thermal",
+                    "is_default": True,
+                    "connector": {
+                        "type": "usb",
+                        "identifier": "TM-88V",
+                    },
+                    "paper_width_mm": 80,
+                    "supports_qr": True,
+                }
+            ],
+            "cash_drawer": {
+                "enabled": True,
+                "connector": {
+                    "type": "usb",
+                    "identifier": "Drawer-01",
+                },
+                "auto_open_on_cash_sale": True,
+                "pulse_duration_ms": 200,
+            },
+            "customer_display": {
+                "enabled": True,
+                "channel": "websocket",
+                "brightness": 85,
+                "theme": "dark",
+                "message_template": "Gracias por tu compra",
+            },
+        },
     }
     update_response = client.put(
         "/pos/config",
@@ -133,6 +186,9 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     updated_config = update_response.json()
     assert updated_config["tax_rate"] == 16.0
     assert updated_config["invoice_prefix"] == "POSCDMX"
+    assert updated_config["hardware_settings"]["printers"][0]["name"] == "TM-88V"
+    assert updated_config["hardware_settings"]["cash_drawer"]["enabled"] is True
+    assert updated_config["default_document_type"] == "FACTURA"
 
     customer_response = client.post(
         "/customers",
@@ -175,6 +231,10 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     assert sale_info["total_amount"] == 110.2
     assert any("Stock bajo" in message for message in sale_data["warnings"])
     assert sale_data["receipt_url"] == f"/pos/receipt/{sale_info['id']}"
+    assert sale_data["document_type"] == "FACTURA"
+    assert sale_data["document_number"].startswith("POSCDMX")
+    assert sale_info["document_type"] == "FACTURA"
+    assert sale_info["document_number"].startswith("POSCDMX")
 
     persisted_sale = db_session.execute(
         select(models.Sale).where(models.Sale.id == sale_info["id"])
@@ -182,6 +242,8 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
     assert persisted_sale.customer_id == customer_id
     assert persisted_sale.customer is not None
     assert persisted_sale.customer.name == "Cliente POS"
+    assert persisted_sale.document_type == models.POSDocumentType.FACTURA
+    assert persisted_sale.document_number.startswith("POSCDMX")
 
     receipt_response = client.get(
         f"/pos/receipt/{sale_info['id']}",
@@ -197,6 +259,97 @@ def test_pos_sale_with_receipt_and_config(client, db_session):
         item for item in _extract_items(devices_after.json()) if item["id"] == device_id
     )
     assert remaining["quantity"] == 1
+
+    settings.enable_purchases_sales = False
+
+
+def test_pos_receipt_delivery_records_audit(client, db_session, monkeypatch):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "POS Notificaciones", "location": "TEG", "timezone": "America/Tegucigalpa"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "NOTIF-001",
+            "name": "Impresora POS",
+            "quantity": 1,
+            "unit_price": 50.0,
+            "costo_unitario": 30.0,
+        },
+        headers={**auth_headers, "X-Reason": "Alta dispositivo"},
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "payment_method": "EFECTIVO",
+        "items": [{"device_id": device_id, "quantity": 1}],
+        "confirm": True,
+    }
+    sale_response = client.post(
+        "/pos/sale",
+        json=sale_payload,
+        headers={**auth_headers, "X-Reason": "Registrar venta"},
+    )
+    assert sale_response.status_code == status.HTTP_201_CREATED
+    sale_id = sale_response.json()["sale"]["id"]
+
+    email_called: dict[str, Any] = {}
+    whatsapp_called: dict[str, Any] = {}
+
+    def fake_email_notification(**kwargs):
+        email_called.update(kwargs)
+
+    async def fake_whatsapp_notification(**kwargs):
+        whatsapp_called.update(kwargs)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(notifications, "send_email_notification", fake_email_notification)
+    monkeypatch.setattr(notifications, "send_whatsapp_message", fake_whatsapp_notification)
+
+    send_headers = {**auth_headers, "X-Reason": "Enviar recibo"}
+    email_response = client.post(
+        f"/pos/receipt/{sale_id}/send",
+        json={"channel": "email", "recipient": "cliente@test.com", "message": "Gracias"},
+        headers=send_headers,
+    )
+    assert email_response.status_code == status.HTTP_202_ACCEPTED
+    assert email_called["recipients"] == ["cliente@test.com"]
+
+    log_entry = db_session.execute(
+        select(models.AuditLog)
+        .where(models.AuditLog.entity_type == "sale")
+        .order_by(models.AuditLog.created_at.desc())
+    ).scalar_one()
+    assert json.loads(log_entry.details)["canal"] == "email"
+
+    whatsapp_response = client.post(
+        f"/pos/receipt/{sale_id}/send",
+        json={"channel": "whatsapp", "recipient": "+50499998888"},
+        headers=send_headers,
+    )
+    assert whatsapp_response.status_code == status.HTTP_202_ACCEPTED
+    assert whatsapp_called["to_number"] == "+50499998888"
+
+    latest_log = db_session.execute(
+        select(models.AuditLog)
+        .where(models.AuditLog.action == "pos_receipt_sent")
+        .order_by(models.AuditLog.created_at.desc())
+    ).scalars().first()
+    assert latest_log is not None
+    details = json.loads(latest_log.details)
+    assert details["canal"] == "whatsapp"
+    assert details["destinatario"] == "+50499998888"
 
     settings.enable_purchases_sales = False
 
@@ -269,6 +422,10 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
     assert sale_data["sale"]["customer_id"] == customer_id
     assert sale_data["cash_session_id"] == session_id
     assert sale_data["payment_breakdown"]["CREDITO"] == 200.0
+    assert sale_data["debt_summary"]["remaining_balance"] == pytest.approx(200.0)
+    assert sale_data["credit_schedule"]
+    assert sale_data["debt_receipt_pdf_base64"]
+    assert sale_data["payment_receipts"] == []
 
     customer_details = client.get(
         f"/customers/{customer_id}", headers=auth_headers
@@ -299,6 +456,313 @@ def test_pos_cash_sessions_and_credit_sales(client, db_session):
     assert history_response.status_code == 200
     history_items = _extract_items(history_response.json())
     assert any(item["id"] == session_id for item in history_items)
+
+    settings.enable_purchases_sales = False
+
+
+def test_pos_credit_note_emission(client, db_session):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+
+        store_response = client.post(
+            "/stores",
+            json={
+                "name": "POS Fiscal",
+                "location": "San Pedro Sula",
+                "timezone": "America/Tegucigalpa",
+            },
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        config_payload = {
+            "store_id": store_id,
+            "tax_rate": 15.0,
+            "invoice_prefix": "POSNC",
+            "printer_name": "Fiscal Printer",
+            "printer_profile": "USB",
+            "quick_product_ids": [],
+            "hardware_settings": {
+                "printers": [
+                    {
+                        "name": "Fiscal Printer",
+                        "mode": "thermal",
+                        "is_default": True,
+                        "connector": {"type": "usb", "identifier": "Fiscal-01"},
+                        "paper_width_mm": 80,
+                        "supports_qr": True,
+                    }
+                ],
+                "cash_drawer": {
+                    "enabled": True,
+                    "connector": {"type": "usb", "identifier": "DrawerFiscal"},
+                    "auto_open_on_cash_sale": True,
+                    "pulse_duration_ms": 200,
+                },
+                "customer_display": {
+                    "enabled": False,
+                    "channel": "websocket",
+                    "brightness": 60,
+                    "theme": "dark",
+                },
+            },
+            "document_catalog": [
+                {
+                    "type": "FACTURA",
+                    "label": "Factura POS",
+                    "prefix": "POSNCF",
+                    "requires_customer": True,
+                },
+                {
+                    "type": "TICKET",
+                    "label": "Ticket POS",
+                    "prefix": "POSNCTK",
+                    "requires_customer": False,
+                },
+                {
+                    "type": "NOTA_CREDITO",
+                    "label": "Nota de crédito POS",
+                    "prefix": "POSNCNC",
+                    "requires_customer": True,
+                },
+                {
+                    "type": "NOTA_DEBITO",
+                    "label": "Nota de débito POS",
+                    "prefix": "POSNCND",
+                    "requires_customer": True,
+                },
+            ],
+            "default_document_type": "FACTURA",
+        }
+        config_response = client.put(
+            "/pos/config",
+            json=config_payload,
+            headers={**auth_headers, "X-Reason": "Configurar comprobantes POS"},
+        )
+        assert config_response.status_code == status.HTTP_200_OK
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "POS-NC-001",
+                "name": "Terminal Fiscal",
+                "quantity": 2,
+                "unit_price": 100.0,
+                "costo_unitario": 60.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        customer_response = client.post(
+            "/customers",
+            json={
+                "name": "Cliente Fiscal",
+                "email": "fiscal@example.com",
+                "phone": "504-1234-5678",
+                "tax_id": "08011985123960",
+            },
+            headers={**auth_headers, "X-Reason": "Alta cliente fiscal"},
+        )
+        assert customer_response.status_code == status.HTTP_201_CREATED
+        customer_id = customer_response.json()["id"]
+
+        sale_payload = {
+            "store_id": store_id,
+            "customer_id": customer_id,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": device_id, "quantity": 1}],
+            "confirm": True,
+            "notes": "Venta fiscalizada",
+        }
+        sale_response = client.post(
+            "/pos/sale",
+            json=sale_payload,
+            headers={**auth_headers, "X-Reason": "Registrar venta fiscal"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+        sale_data = sale_response.json()
+        assert sale_data["document_type"] == "FACTURA"
+        sale_id = sale_data["sale"]["id"]
+
+        note_payload = {
+            "document_type": "NOTA_CREDITO",
+            "amount": 25.0,
+            "reason": "Devolución parcial"
+        }
+        note_response = client.post(
+            f"/pos/documents/{sale_id}/notes",
+            json=note_payload,
+            headers={**auth_headers, "X-Reason": "Emitir nota fiscal"},
+        )
+        assert note_response.status_code == status.HTTP_201_CREATED
+        note_data = note_response.json()
+        assert note_data["document_type"] == "NOTA_CREDITO"
+        assert note_data["reference_document_number"] == sale_data["document_number"]
+        assert note_data["amount"] == pytest.approx(25.0)
+
+        document_record = db_session.execute(
+            select(models.FiscalDocument).where(models.FiscalDocument.id == note_data["id"])
+        ).scalar_one()
+        assert document_record.reference is not None
+        assert document_record.reference.document_number == sale_data["document_number"]
+        assert document_record.amount == Decimal("25.00")
+        assert document_record.reason == "Devolución parcial"
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
+def test_pos_credit_note_requires_invoice_document(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+
+        store_response = client.post(
+            "/stores",
+            json={
+                "name": "POS Tickets",
+                "location": "La Ceiba",
+                "timezone": "America/Tegucigalpa",
+            },
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "POS-TK-001",
+                "name": "Lector Básico",
+                "quantity": 1,
+                "unit_price": 80.0,
+                "costo_unitario": 40.0,
+            },
+            headers=auth_headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        customer_response = client.post(
+            "/customers",
+            json={
+                "name": "Cliente Ticket",
+                "email": "ticket@example.com",
+                "phone": "504-5555-0000",
+            },
+            headers={**auth_headers, "X-Reason": "Alta cliente POS"},
+        )
+        assert customer_response.status_code == status.HTTP_201_CREATED
+        customer_id = customer_response.json()["id"]
+
+        sale_response = client.post(
+            "/pos/sale",
+            json={
+                "store_id": store_id,
+                "customer_id": customer_id,
+                "payment_method": "EFECTIVO",
+                "items": [{"device_id": device_id, "quantity": 1}],
+                "confirm": True,
+                "notes": "Venta con ticket",
+            },
+            headers={**auth_headers, "X-Reason": "Registrar venta POS"},
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+        sale_id = sale_response.json()["sale"]["id"]
+        assert sale_response.json()["document_type"] == "TICKET"
+
+        note_response = client.post(
+            f"/pos/documents/{sale_id}/notes",
+            json={
+                "document_type": "NOTA_CREDITO",
+                "amount": 10.0,
+                "reason": "Reverso parcial",
+            },
+            headers={**auth_headers, "X-Reason": "Intentar nota"},
+        )
+        assert note_response.status_code == status.HTTP_409_CONFLICT
+        assert "factura" in note_response.json()["detail"].lower()
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
+def test_pos_electronic_payment_with_tip_and_terminal(client, db_session):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    reason_headers = {**auth_headers, "X-Reason": "Pago electrónico POS"}
+
+    store_response = client.post(
+        "/stores",
+        json={"name": "POS Atlántida", "location": "TGU", "timezone": "America/Tegucigalpa"},
+        headers=auth_headers,
+    )
+    assert store_response.status_code == 201
+    store_id = store_response.json()["id"]
+
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "ATL-001",
+            "name": "Teléfono Premium",
+            "quantity": 2,
+            "unit_price": 250.0,
+            "costo_unitario": 140.0,
+        },
+        headers=reason_headers,
+    )
+    assert device_response.status_code == 201
+    device_id = device_response.json()["id"]
+
+    open_response = client.post(
+        "/pos/cash/open",
+        json={"store_id": store_id, "opening_amount": 300.0, "notes": "Turno mañana"},
+        headers=reason_headers,
+    )
+    assert open_response.status_code == 201
+    session_id = open_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "payment_method": "TARJETA",
+        "items": [{"device_id": device_id, "quantity": 1}],
+        "confirm": True,
+        "cash_session_id": session_id,
+        "payments": [
+            {
+                "method": "TARJETA",
+                "amount": 250.0,
+                "terminalId": "atl-01",
+                "tipAmount": 15.0,
+                "reference": "1234",
+            }
+        ],
+    }
+    sale_response = client.post(
+        "/pos/sale",
+        json=sale_payload,
+        headers=reason_headers,
+    )
+    assert sale_response.status_code == 201, sale_response.text
+    sale_data = sale_response.json()
+    assert sale_data["status"] == "registered"
+    assert sale_data["payment_breakdown"]["TARJETA"] == 265.0
+    electronic = sale_data.get("electronic_payments", [])
+    assert electronic and electronic[0]["terminal_id"] == "atl-01"
+    assert electronic[0]["status"]
+
+    session_model = db_session.get(models.CashRegisterSession, session_id)
+    assert session_model is not None
+    breakdown = session_model.payment_breakdown or {}
+    assert breakdown.get("cobrado_TARJETA") == 265.0
+    assert breakdown.get("propina_TARJETA") == 15.0
 
     settings.enable_purchases_sales = False
 
@@ -380,6 +844,26 @@ def test_pos_requires_auth_reason_and_roles(client):
         settings.enable_purchases_sales = original_flag
 
 
+def test_pos_sale_rejects_unknown_store(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        headers = {"Authorization": f"Bearer {token}", "X-Reason": "Validar sucursal"}
+        payload = {
+            "store_id": 9999,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": 1, "quantity": 1}],
+            "confirm": True,
+        }
+
+        response = client.post("/pos/sale", json=payload, headers=headers)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.json()["detail"] == "Sucursal no encontrada."
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
 def test_pos_config_requires_reason_and_audit(client, db_session):
     original_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
@@ -427,6 +911,197 @@ def test_pos_config_requires_reason_and_audit(client, db_session):
         settings.enable_purchases_sales = original_flag
 
 
+def test_pos_hardware_channels_and_drawer(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Prueba hardware POS"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Hardware POS", "location": "MTY", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        config_payload = {
+            "store_id": store_id,
+            "tax_rate": 16.0,
+            "invoice_prefix": "POSHW",
+            "printer_name": "TM-HW",
+            "printer_profile": "USB",
+            "quick_product_ids": [],
+            "hardware_settings": {
+                "printers": [
+                    {
+                        "name": "TM-HW",
+                        "mode": "thermal",
+                        "is_default": True,
+                        "connector": {
+                            "type": "usb",
+                            "identifier": "TM-HW",
+                        },
+                    }
+                ],
+                "cash_drawer": {
+                    "enabled": True,
+                    "connector": {
+                        "type": "usb",
+                        "identifier": "Drawer-HW",
+                    },
+                    "auto_open_on_cash_sale": True,
+                    "pulse_duration_ms": 180,
+                },
+                "customer_display": {
+                    "enabled": True,
+                    "channel": "websocket",
+                    "brightness": 90,
+                    "theme": "dark",
+                },
+            },
+        }
+        config_response = client.put(
+            "/pos/config",
+            json=config_payload,
+            headers=reason_headers,
+        )
+        assert config_response.status_code == status.HTTP_200_OK
+
+        with client.websocket_connect(f"/pos/hardware/ws?storeId={store_id}") as websocket:
+            ready_message = websocket.receive_json()
+            assert ready_message["event"] == "hardware.ready"
+
+            print_response = client.post(
+                "/pos/hardware/print-test",
+                json={
+                    "store_id": store_id,
+                    "printer_name": "TM-HW",
+                    "mode": "thermal",
+                },
+                headers=reason_headers,
+            )
+            assert print_response.status_code == status.HTTP_200_OK
+            assert print_response.json()["status"] == "ok"
+
+            drawer_response = client.post(
+                "/pos/hardware/drawer/open",
+                json={"store_id": store_id},
+                headers=reason_headers,
+            )
+            assert drawer_response.status_code == status.HTTP_200_OK
+            drawer_event = websocket.receive_json()
+            assert drawer_event["event"] == "cash_drawer.open"
+            assert drawer_event["store_id"] == store_id
+
+            display_response = client.post(
+                "/pos/hardware/display/push",
+                json={
+                    "store_id": store_id,
+                    "headline": "Gracias",
+                    "message": "Total a pagar",
+                    "total_amount": 199.99,
+                },
+                headers=reason_headers,
+            )
+            assert display_response.status_code == status.HTTP_200_OK
+            display_event = websocket.receive_json()
+            assert display_event["event"] == "customer_display.message"
+            assert display_event["headline"] == "Gracias"
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
+def test_pos_fiscal_printer_prints_sequence(client):
+    original_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        reason_headers = {**auth_headers, "X-Reason": "Configurar fiscal"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Fiscal POS", "location": "CDMX", "timezone": "America/Mexico_City"},
+            headers=auth_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        config_payload = {
+            "store_id": store_id,
+            "tax_rate": 16.0,
+            "invoice_prefix": "FISCAL",
+            "printer_name": "TM-Default",
+            "printer_profile": "USB",
+            "quick_product_ids": [],
+            "hardware_settings": {
+                "printers": [
+                    {
+                        "name": "TM-Default",
+                        "mode": "thermal",
+                        "is_default": True,
+                        "connector": {"type": "usb", "identifier": "TM-Default"},
+                    },
+                    {
+                        "name": "HASAR-01",
+                        "mode": "fiscal",
+                        "connector": {
+                            "type": "network",
+                            "identifier": "HASAR-01",
+                            "host": "192.168.1.50",
+                            "port": 9100,
+                        },
+                        "fiscal_profile": {
+                            "adapter": "hasar",
+                            "taxpayer_id": "RTN123456789",
+                            "serial_number": "H001-XYZ",
+                            "model": "PR5F",
+                            "document_type": "ticket",
+                            "extra_settings": {"caja": "1"},
+                        },
+                    },
+                ],
+            },
+        }
+
+        config_response = client.put(
+            "/pos/config",
+            json=config_payload,
+            headers=reason_headers,
+        )
+        assert config_response.status_code == status.HTTP_200_OK
+
+        print_response = client.post(
+            "/pos/hardware/print-test",
+            json={
+                "store_id": store_id,
+                "printer_name": "HASAR-01",
+                "mode": "fiscal",
+                "sample": "PRUEBA FISCAL",
+            },
+            headers=reason_headers,
+        )
+        assert print_response.status_code == status.HTTP_200_OK
+        body = print_response.json()
+        assert body["status"] == "ok"
+        details = body["details"]
+        assert details["adapter"] == "hasar"
+        assert details["simulated"] is True
+        commands = [command["command"] for command in details["commands"]]
+        assert commands == [
+            "ABRIR_COMPROBANTE",
+            "IMPRIMIR_TEXTO",
+            "CERRAR_COMPROBANTE",
+        ]
+        assert all(command["simulated"] is True for command in details["commands"])
+        assert details["commands"][0]["payload"]["metadata"]["adapter"] == "hasar"
+    finally:
+        settings.enable_purchases_sales = original_flag
+
+
 def test_pos_cash_history_requires_reason(client):
     original_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
@@ -456,3 +1131,96 @@ def test_pos_cash_history_requires_reason(client):
         assert ok_response.status_code == status.HTTP_200_OK
     finally:
         settings.enable_purchases_sales = original_flag
+
+def test_pos_sale_with_store_credit_breakdown(client, db_session):
+    settings.enable_purchases_sales = True
+    token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    store_payload = {
+        "name": "POS Notas",
+        "location": "Guadalajara",
+        "timezone": "America/Mexico_City",
+    }
+    store_response = client.post("/stores", json=store_payload, headers=auth_headers)
+    assert store_response.status_code == status.HTTP_201_CREATED
+    store_id = store_response.json()["id"]
+
+    device_payload = {
+        "sku": "NC-001",
+        "name": "Dispositivo con nota",
+        "quantity": 3,
+        "unit_price": 120.0,
+        "costo_unitario": 80.0,
+        "margen_porcentaje": 15.0,
+    }
+    device_response = client.post(
+        f"/stores/{store_id}/devices",
+        json=device_payload,
+        headers=auth_headers,
+    )
+    assert device_response.status_code == status.HTTP_201_CREATED
+    device_id = device_response.json()["id"]
+
+    customer_payload = {
+        "name": "Cliente Nota POS",
+        "phone": "+52 55 1111 5555",
+        "customer_type": "minorista",
+        "status": "activo",
+        "credit_limit": 0.0,
+        "history": [],
+    }
+    customer_response = client.post(
+        "/customers",
+        json=customer_payload,
+        headers={**auth_headers, "X-Reason": "Alta cliente POS"},
+    )
+    assert customer_response.status_code == status.HTTP_201_CREATED
+    customer_id = customer_response.json()["id"]
+
+    issue_payload = {
+        "customer_id": customer_id,
+        "amount": 120.0,
+        "notes": "Reposición venta anterior",
+    }
+    credit_response = client.post(
+        "/store-credits",
+        json=issue_payload,
+        headers={**auth_headers, "X-Reason": "Emisión nota"},
+    )
+    assert credit_response.status_code == status.HTTP_201_CREATED
+    credit_id = credit_response.json()["id"]
+
+    sale_payload = {
+        "store_id": store_id,
+        "customer_id": customer_id,
+        "payment_method": "NOTA_CREDITO",
+        "items": [
+            {"device_id": device_id, "quantity": 1},
+        ],
+        "confirm": True,
+        "save_as_draft": False,
+        "apply_taxes": False,
+        "payment_breakdown": {"NOTA_CREDITO": 120.0},
+        "notes": "Venta cubierta con nota",
+    }
+    sale_response = client.post(
+        "/pos/sale",
+        json=sale_payload,
+        headers={**auth_headers, "X-Reason": "Venta con nota"},
+    )
+    assert sale_response.status_code == status.HTTP_201_CREATED
+    sale_data = sale_response.json()
+    assert sale_data["status"] == "registered"
+    assert any("nota de crédito" in warning.lower() for warning in sale_data.get("warnings", []))
+
+    credits_after = client.get(
+        f"/store-credits/by-customer/{customer_id}",
+        headers={**auth_headers, "X-Reason": "Verificar saldo nota"},
+    )
+    assert credits_after.status_code == status.HTTP_200_OK
+    credit_items = credits_after.json()
+    assert credit_items[0]["id"] == credit_id
+    assert credit_items[0]["balance_amount"] == 0.0
+    assert credit_items[0]["status"] == "REDIMIDO"
+    assert len(credit_items[0]["redemptions"]) >= 1

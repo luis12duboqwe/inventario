@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "./config/api";
+import { applyReasonHeader } from "./http/reasonInterceptor";
 
 export type Credentials = {
   username: string;
@@ -44,6 +45,14 @@ export type Store = {
   timezone: string;
   inventory_value: number;
   created_at: string;
+};
+
+export type StoreCreateInput = {
+  name: string;
+  code?: string | undefined;
+  address?: string | undefined;
+  is_active?: boolean;
+  timezone?: string | undefined;
 };
 
 export type PaginatedResponse<T> = {
@@ -171,9 +180,9 @@ export type DeviceIdentifierInput = {
 };
 
 export type Device = {
-    id: number;
-    sku: string;
-    name: string;
+  id: number;
+  sku: string;
+  name: string;
   quantity: number;
   store_id: number;
   unit_price: number;
@@ -203,6 +212,91 @@ export type Device = {
   imagen_url?: string | null;
   precio_venta?: number;
   identifier?: DeviceIdentifier | null;
+  variant_count?: number;
+  has_variants?: boolean;
+};
+
+export type ProductVariant = {
+  id: number;
+  device_id: number;
+  store_id: number;
+  name: string;
+  variant_sku: string;
+  barcode?: string | null;
+  unit_price_override?: number | null;
+  is_default: boolean;
+  is_active: boolean;
+  device_sku: string;
+  device_name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductVariantCreateInput = {
+  name: string;
+  variant_sku: string;
+  barcode?: string | null;
+  unit_price_override?: number | null;
+  is_default?: boolean;
+  is_active?: boolean;
+};
+
+export type ProductVariantUpdateInput = {
+  name?: string | null;
+  variant_sku?: string | null;
+  barcode?: string | null;
+  unit_price_override?: number | null;
+  is_default?: boolean;
+  is_active?: boolean;
+};
+
+export type ProductBundleItem = {
+  id: number;
+  device_id: number;
+  variant_id?: number | null;
+  quantity: number;
+  device_sku: string;
+  device_name: string;
+  variant_name?: string | null;
+};
+
+export type ProductBundle = {
+  id: number;
+  store_id: number | null;
+  name: string;
+  bundle_sku: string;
+  description?: string | null;
+  base_price: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  items: ProductBundleItem[];
+};
+
+export type ProductBundleItemInput = {
+  device_id: number;
+  variant_id?: number | null;
+  quantity?: number;
+};
+
+export type ProductBundleCreateInput = {
+  store_id?: number | null;
+  name: string;
+  bundle_sku: string;
+  description?: string | null;
+  base_price?: number | null;
+  is_active?: boolean;
+  items: ProductBundleItemInput[];
+};
+
+export type ProductBundleUpdateInput = {
+  store_id?: number | null;
+  name?: string | null;
+  bundle_sku?: string | null;
+  description?: string | null;
+  base_price?: number | null;
+  is_active?: boolean;
+  items?: ProductBundleItemInput[];
 };
 
 export type CatalogDevice = Device & { store_name: string };
@@ -271,7 +365,40 @@ export type DeviceUpdateInput = {
   completo?: boolean;
 };
 
-export type PaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "OTRO" | "CREDITO";
+export type InventoryAvailabilityStore = {
+  store_id: number;
+  store_name: string;
+  quantity: number;
+};
+
+export type InventoryAvailabilityRecord = {
+  reference: string;
+  sku?: string | null;
+  product_name: string;
+  device_ids: number[];
+  total_quantity: number;
+  stores: InventoryAvailabilityStore[];
+};
+
+export type InventoryAvailabilityResponse = {
+  generated_at: string;
+  items: InventoryAvailabilityRecord[];
+};
+
+export type InventoryAvailabilityParams = {
+  query?: string;
+  skus?: string[];
+  deviceIds?: number[];
+  limit?: number;
+};
+
+export type PaymentMethod =
+  | "EFECTIVO"
+  | "TARJETA"
+  | "TRANSFERENCIA"
+  | "OTRO"
+  | "CREDITO"
+  | "NOTA_CREDITO";
 
 export type ContactHistoryEntry = {
   timestamp: string;
@@ -287,6 +414,9 @@ export type Customer = {
   address?: string | null;
   customer_type: string;
   status: string;
+  segment_category?: string | null;
+  tags: string[];
+  tax_id: string;
   credit_limit: number;
   notes?: string | null;
   outstanding_debt: number;
@@ -294,6 +424,14 @@ export type Customer = {
   last_interaction_at?: string | null;
   created_at: string;
   updated_at: string;
+  privacy_consents: Record<string, boolean>;
+  privacy_metadata: Record<string, unknown>;
+  privacy_last_request_at?: string | null;
+  annual_purchase_amount: number;
+  orders_last_year: number;
+  purchase_frequency: string;
+  segment_labels: string[];
+  last_purchase_at?: string | null;
 };
 
 export type CustomerPayload = {
@@ -304,6 +442,9 @@ export type CustomerPayload = {
   address?: string;
   customer_type?: string;
   status?: string;
+  tax_id: string;
+  segment_category?: string;
+  tags?: string[];
   credit_limit?: number;
   notes?: string;
   outstanding_debt?: number;
@@ -323,6 +464,72 @@ export type CustomerLedgerEntry = {
   details: Record<string, unknown>;
   created_at: string;
   created_by?: string | null;
+};
+
+export type CustomerDebtSnapshot = {
+  previous_balance: number;
+  new_charges: number;
+  payments_applied: number;
+  remaining_balance: number;
+};
+
+export type CreditScheduleEntry = {
+  sequence: number;
+  due_date: string;
+  amount: number;
+  status: "pending" | "due_soon" | "overdue";
+  reminder?: string | null;
+};
+
+export type AccountsReceivableEntry = {
+  ledger_entry_id: number;
+  reference_type?: string | null;
+  reference_id?: string | null;
+  reference?: string | null;
+  issued_at: string;
+  original_amount: number;
+  balance_due: number;
+  days_outstanding: number;
+  status: "current" | "overdue";
+  note?: string | null;
+  details?: Record<string, unknown> | null;
+};
+
+export type AccountsReceivableBucket = {
+  label: string;
+  days_from: number;
+  days_to?: number | null;
+  amount: number;
+  percentage: number;
+  count: number;
+};
+
+export type AccountsReceivableSummary = {
+  total_outstanding: number;
+  available_credit: number;
+  credit_limit: number;
+  last_payment_at?: string | null;
+  next_due_date?: string | null;
+  average_days_outstanding: number;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+};
+
+export type CustomerAccountsReceivable = {
+  customer: Customer;
+  summary: AccountsReceivableSummary;
+  aging: AccountsReceivableBucket[];
+  open_entries: AccountsReceivableEntry[];
+  credit_schedule: CreditScheduleEntry[];
+  recent_activity: CustomerLedgerEntry[];
+  generated_at: string;
+};
+
+export type CustomerPaymentReceipt = {
+  ledger_entry: CustomerLedgerEntry;
+  debt_summary: CustomerDebtSnapshot;
+  credit_schedule: CreditScheduleEntry[];
+  receipt_pdf_base64: string;
 };
 
 export type CustomerSaleSummary = {
@@ -346,12 +553,65 @@ export type CustomerInvoiceSummary = {
   store_id: number;
 };
 
+export type StoreCreditRedemption = {
+  id: number;
+  store_credit_id: number;
+  sale_id: number | null;
+  amount: number;
+  notes?: string | null;
+  created_at: string;
+  created_by?: string | null;
+};
+
+export type StoreCredit = {
+  id: number;
+  code: string;
+  customer_id: number;
+  issued_amount: number;
+  balance_amount: number;
+  status: "ACTIVO" | "PARCIAL" | "REDIMIDO" | "CANCELADO";
+  notes?: string | null;
+  context: Record<string, unknown>;
+  issued_at: string;
+  redeemed_at?: string | null;
+  expires_at?: string | null;
+  redemptions: StoreCreditRedemption[];
+};
+
+export type CustomerPrivacyRequest = {
+  id: number;
+  customer_id: number;
+  request_type: "consent" | "anonymization";
+  status: "registrada" | "procesada";
+  details?: string | null;
+  consent_snapshot: Record<string, boolean>;
+  masked_fields: string[];
+  created_at: string;
+  processed_at?: string | null;
+  processed_by_id?: number | null;
+};
+
+export type CustomerPrivacyRequestCreate = {
+  request_type: "consent" | "anonymization";
+  details?: string;
+  consent?: Record<string, boolean>;
+  mask_fields?: string[];
+};
+
+export type CustomerPrivacyActionResponse = {
+  customer: Customer;
+  request: CustomerPrivacyRequest;
+};
+
 export type CustomerFinancialSnapshot = {
   credit_limit: number;
   outstanding_debt: number;
   available_credit: number;
   total_sales_credit: number;
   total_payments: number;
+  store_credit_issued: number;
+  store_credit_available: number;
+  store_credit_redeemed: number;
 };
 
 export type CustomerSummary = {
@@ -361,6 +621,8 @@ export type CustomerSummary = {
   invoices: CustomerInvoiceSummary[];
   payments: CustomerLedgerEntry[];
   ledger: CustomerLedgerEntry[];
+  store_credits: StoreCredit[];
+  privacy_requests: CustomerPrivacyRequest[];
 };
 
 export type CustomerPortfolioItem = {
@@ -430,9 +692,19 @@ export type CustomerPaymentPayload = {
   sale_id?: number | null;
 };
 
+export type SupplierContact = {
+  name?: string | null;
+  position?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+};
+
 export type Supplier = {
   id: number;
   name: string;
+  rtn?: string | null;
+  payment_terms?: string | null;
   contact_name?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -440,12 +712,16 @@ export type Supplier = {
   notes?: string | null;
   outstanding_debt: number;
   history: ContactHistoryEntry[];
+  contact_info: SupplierContact[];
+  products_supplied: string[];
   created_at: string;
   updated_at: string;
 };
 
 export type SupplierPayload = {
   name: string;
+  rtn?: string;
+  payment_terms?: string;
   contact_name?: string;
   email?: string;
   phone?: string;
@@ -453,6 +729,8 @@ export type SupplierPayload = {
   notes?: string;
   outstanding_debt?: number;
   history?: ContactHistoryEntry[];
+  contact_info?: SupplierContact[];
+  products_supplied?: string[];
 };
 
 export type SupplierBatch = {
@@ -490,6 +768,46 @@ export type SupplierBatchOverviewItem = {
   latest_purchase_date: string;
   latest_batch_code?: string | null;
   latest_unit_cost?: number | null;
+};
+
+export type SupplierAccountsPayableBucket = {
+  label: string;
+  days_from: number;
+  days_to: number | null;
+  amount: number;
+  percentage: number;
+  count: number;
+};
+
+export type SupplierAccountsPayableSupplier = {
+  supplier_id: number;
+  supplier_name: string;
+  rtn?: string | null;
+  payment_terms?: string | null;
+  outstanding_debt: number;
+  bucket_label: string;
+  bucket_from: number;
+  bucket_to: number | null;
+  days_outstanding: number;
+  last_activity?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  products_supplied: string[];
+  contact_info: SupplierContact[];
+};
+
+export type SupplierAccountsPayableSummary = {
+  total_balance: number;
+  total_overdue: number;
+  supplier_count: number;
+  generated_at: string;
+  buckets: SupplierAccountsPayableBucket[];
+};
+
+export type SupplierAccountsPayableResponse = {
+  summary: SupplierAccountsPayableSummary;
+  suppliers: SupplierAccountsPayableSupplier[];
 };
 
 export type PurchaseVendor = {
@@ -667,6 +985,34 @@ export type RepairOrderPartsPayload = {  // [PACK37-frontend]
 
 export type RepairOrderClosePayload = Partial<Pick<RepairOrderPayload, "labor_cost" | "parts">>; // [PACK37-frontend]
 
+export type WarrantyClaimPayload = {
+  claim_type: WarrantyClaimType;
+  notes?: string | null;
+  repair_order?: RepairOrderPayload | null;
+};
+
+export type WarrantyClaimStatusUpdatePayload = {
+  status: WarrantyClaimStatus;
+  notes?: string | null;
+  repair_order_id?: number | null;
+};
+
+export type CashRegisterEntry = {
+  id: number;
+  session_id: number;
+  entry_type: "INGRESO" | "EGRESO";
+  amount: number;
+  reason: string;
+  notes?: string | null;
+  created_by_id?: number | null;
+  created_at: string;
+};
+
+export type CashDenominationInput = {
+  value: number;
+  quantity: number;
+};
+
 export type CashSession = {
   id: number;
   store_id: number;
@@ -676,11 +1022,15 @@ export type CashSession = {
   expected_amount: number;
   difference_amount: number;
   payment_breakdown: Record<string, number>;
+  denomination_breakdown: Record<string, number>;
+  reconciliation_notes?: string | null;
+  difference_reason?: string | null;
   notes?: string | null;
   opened_by_id?: number | null;
   closed_by_id?: number | null;
   opened_at: string;
   closed_at?: string | null;
+  entries?: CashRegisterEntry[] | null;
 };
 
 export type SaleDeviceSummary = {
@@ -690,6 +1040,67 @@ export type SaleDeviceSummary = {
   modelo?: string | null;
   imei?: string | null;
   serial?: string | null;
+};
+
+export type WarrantyStatus = "SIN_GARANTIA" | "ACTIVA" | "VENCIDA" | "RECLAMO" | "RESUELTA";
+export type WarrantyClaimStatus = "ABIERTO" | "EN_PROCESO" | "RESUELTO" | "CANCELADO";
+export type WarrantyClaimType = "REPARACION" | "REEMPLAZO";
+
+export type WarrantyDeviceSummary = {
+  id: number;
+  sku: string;
+  name: string;
+  imei: string | null;
+  serial: string | null;
+};
+
+export type WarrantySaleSummary = {
+  id: number;
+  store_id: number;
+  customer_id: number | null;
+  customer_name: string | null;
+  created_at: string;
+};
+
+export type WarrantyClaim = {
+  id: number;
+  claim_type: WarrantyClaimType;
+  status: WarrantyClaimStatus;
+  notes: string | null;
+  opened_at: string;
+  resolved_at: string | null;
+  repair_order_id: number | null;
+  performed_by_id: number | null;
+};
+
+export type WarrantyAssignment = {
+  id: number;
+  sale_item_id: number;
+  device_id: number;
+  coverage_months: number;
+  activation_date: string;
+  expiration_date: string;
+  status: WarrantyStatus;
+  serial_number: string | null;
+  activation_channel: string | null;
+  created_at: string;
+  updated_at: string;
+  device: WarrantyDeviceSummary | null;
+  sale: WarrantySaleSummary | null;
+  claims: WarrantyClaim[];
+  remaining_days: number;
+  is_expired: boolean;
+};
+
+export type WarrantyMetrics = {
+  total_assignments: number;
+  active_assignments: number;
+  expired_assignments: number;
+  claims_open: number;
+  claims_resolved: number;
+  expiring_soon: number;
+  average_coverage_days: number;
+  generated_at: string;
 };
 
 export type SaleStoreSummary = {
@@ -713,7 +1124,13 @@ export type SaleItem = {
   discount_amount: number;
   total_line: number;
   device?: SaleDeviceSummary | null;
+  reservation_id?: number | null;
+  warranty_status?: WarrantyStatus | null;
+  warranty?: WarrantyAssignment | null;
 };
+
+export type ReturnDisposition = "vendible" | "defectuoso" | "no_vendible" | "reparacion";
+export type ReturnReasonCategory = "defecto" | "logistica" | "cliente" | "precio" | "otro";
 
 export type SaleReturn = {
   id: number;
@@ -721,7 +1138,12 @@ export type SaleReturn = {
   device_id: number;
   quantity: number;
   reason: string;
+  reason_category: ReturnReasonCategory;
+  disposition: ReturnDisposition;
+  warehouse_id?: number | null;
   processed_by_id?: number | null;
+  approved_by_id?: number | null;
+  approved_by_name?: string | null;
   created_at: string;
 };
 
@@ -743,8 +1165,24 @@ export type Sale = {
   cash_session?: CashSession | null;
   items: SaleItem[];
   returns: SaleReturn[];
+  payment_breakdown?: Record<string, number>;
   store?: SaleStoreSummary | null;
   performed_by?: SaleUserSummary | null;
+};
+
+export type SaleHistorySearchResponse = {
+  by_ticket: Sale[];
+  by_date: Sale[];
+  by_customer: Sale[];
+  by_qr: Sale[];
+};
+
+export type SaleHistorySearchFilters = {
+  ticket?: string;
+  date?: string;
+  customer?: string;
+  qr?: string;
+  limit?: number;
 };
 
 export type SalesFilters = {
@@ -760,7 +1198,12 @@ export type SalesFilters = {
 export type SaleCreateInput = {
   store_id: number;
   payment_method: PaymentMethod;
-  items: { device_id: number; quantity: number; discount_percent?: number }[];
+  items: {
+    device_id: number;
+    quantity: number;
+    discount_percent?: number;
+    batch_code?: string | null;
+  }[];
   discount_percent?: number;
   customer_id?: number;
   customer_name?: string;
@@ -769,7 +1212,18 @@ export type SaleCreateInput = {
 
 export type SaleReturnInput = {
   sale_id: number;
-  items: { device_id: number; quantity: number; reason: string }[];
+  items: {
+    device_id: number;
+    quantity: number;
+    reason: string;
+    disposition?: ReturnDisposition;
+    warehouse_id?: number | null;
+    category?: ReturnReasonCategory;
+  }[];
+  approval?: {
+    supervisor_username: string;
+    pin: string;
+  };
 };
 
 export type PurchaseOrderItem = {
@@ -781,17 +1235,132 @@ export type PurchaseOrderItem = {
   unit_cost: number;
 };
 
+export type PurchaseReturn = {
+  id: number;
+  purchase_order_id: number;
+  device_id: number;
+  quantity: number;
+  reason: string;
+  reason_category: ReturnReasonCategory;
+  disposition: ReturnDisposition;
+  warehouse_id?: number | null;
+  supplier_ledger_entry_id?: number | null;
+  corporate_reason?: string | null;
+  credit_note_amount: number;
+  processed_by_id: number | null;
+  approved_by_id?: number | null;
+  approved_by_name?: string | null;
+  created_at: string;
+};
+
+export type ReturnRecordType = "sale" | "purchase";
+
+export type ReturnRecord = {
+  id: number;
+  type: ReturnRecordType;
+  reference_id: number;
+  reference_label: string;
+  store_id: number;
+  store_name?: string | null;
+  warehouse_id?: number | null;
+  warehouse_name?: string | null;
+  device_id: number;
+  device_name?: string | null;
+  quantity: number;
+  reason: string;
+  reason_category: ReturnReasonCategory;
+  disposition: ReturnDisposition;
+  processed_by_id?: number | null;
+  processed_by_name?: string | null;
+  approved_by_id?: number | null;
+  approved_by_name?: string | null;
+  partner_name?: string | null;
+  occurred_at: string;
+  refund_amount?: number | null;
+  payment_method?: PaymentMethod | string | null;
+  corporate_reason?: string | null;
+  credit_note_amount?: number | null;
+};
+
+export type ReturnsTotals = {
+  total: number;
+  sales: number;
+  purchases: number;
+  refunds_by_method: Record<string, number>;
+  refund_total_amount: number;
+  credit_notes_total: number;
+  categories: Record<string, number>;
+};
+
+export type ReturnsOverview = {
+  items: ReturnRecord[];
+  totals: ReturnsTotals;
+};
+
+export type ReturnsFilters = {
+  storeId?: number | null;
+  type?: ReturnRecordType;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type PurchaseOrderStatus =
+  | "BORRADOR"
+  | "PENDIENTE"
+  | "APROBADA"
+  | "ENVIADA"
+  | "PARCIAL"
+  | "COMPLETADA"
+  | "CANCELADA";
+
+export type PurchaseOrderDocument = {
+  id: number;
+  purchase_order_id: number;
+  filename: string;
+  content_type: string;
+  storage_backend: string;
+  uploaded_at: string;
+  uploaded_by_id: number | null;
+  download_url?: string | null;
+};
+
+export type PurchaseOrderStatusEvent = {
+  id: number;
+  purchase_order_id: number;
+  status: PurchaseOrderStatus;
+  note?: string | null;
+  created_at: string;
+  created_by_id: number | null;
+  created_by_name?: string | null;
+};
+
 export type PurchaseOrder = {
   id: number;
   store_id: number;
   supplier: string;
-  status: "PENDIENTE" | "PARCIAL" | "COMPLETADA" | "CANCELADA";
+  status: PurchaseOrderStatus;
   notes?: string | null;
   created_at: string;
   updated_at: string;
   created_by_id?: number | null;
   closed_at?: string | null;
   items: PurchaseOrderItem[];
+  returns: PurchaseReturn[];
+  documents: PurchaseOrderDocument[];
+  status_history: PurchaseOrderStatusEvent[];
+};
+
+export type PurchaseOrderStatusUpdateInput = {
+  status: PurchaseOrderStatus;
+  note?: string | null;
+};
+
+export type PurchaseOrderEmailInput = {
+  recipients: string[];
+  message?: string | null;
+  include_documents?: boolean;
 };
 
 export type PurchaseOrderCreateInput = {
@@ -802,19 +1371,58 @@ export type PurchaseOrderCreateInput = {
 };
 
 export type PurchaseReceiveInput = {
-  items: { device_id: number; quantity: number }[];
+  items: { device_id: number; quantity: number; batch_code?: string | null }[];
 };
 
 export type PurchaseReturnInput = {
   device_id: number;
   quantity: number;
   reason: string;
+  disposition?: ReturnDisposition;
+  warehouse_id?: number | null;
+  category?: ReturnReasonCategory;
 };
 
 export type PurchaseImportResponse = {
   imported: number;
   orders: PurchaseOrder[];
   errors: string[];
+};
+
+export type PurchaseSuggestionItem = {
+  store_id: number;
+  store_name: string;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  device_id: number;
+  sku: string;
+  name: string;
+  current_quantity: number;
+  minimum_stock: number;
+  suggested_quantity: number;
+  average_daily_sales: number;
+  projected_coverage_days: number | null;
+  last_30_days_sales: number;
+  unit_cost: number;
+  reason: "below_minimum" | "projected_consumption";
+  suggested_value: number;
+};
+
+export type PurchaseSuggestionStore = {
+  store_id: number;
+  store_name: string;
+  total_suggested: number;
+  total_value: number;
+  items: PurchaseSuggestionItem[];
+};
+
+export type PurchaseSuggestionsResponse = {
+  generated_at: string;
+  lookback_days: number;
+  planning_horizon_days: number;
+  minimum_stock: number;
+  total_items: number;
+  stores: PurchaseSuggestionStore[];
 };
 
 export type RecurringOrderType = "purchase" | "transfer";
@@ -912,6 +1520,11 @@ export type PosSalePayload = {
 export type PosSalePaymentEntry = {
   method: PaymentMethod | string;
   amount: number;
+  reference?: string;
+  tipAmount?: number;
+  terminalId?: string;
+  token?: string;
+  metadata?: Record<string, string>;
 };
 
 export type PosDraft = {
@@ -931,6 +1544,60 @@ export type PosSaleResponse = {
   cash_session_id?: number | null;
   payment_breakdown?: PaymentBreakdown;
   receipt_pdf_base64?: string | null;
+  debt_summary?: CustomerDebtSnapshot | null;
+  credit_schedule?: CreditScheduleEntry[];
+  debt_receipt_pdf_base64?: string | null;
+  payment_receipts?: CustomerPaymentReceipt[];
+};
+
+export type PosConnectorType = "usb" | "network";
+
+export type PosPrinterMode = "thermal" | "fiscal";
+
+export type PosConnectorSettings = {
+  type: PosConnectorType;
+  identifier: string;
+  path?: string | null;
+  host?: string | null;
+  port?: number | null;
+};
+
+export type PosPrinterSettings = {
+  name: string;
+  mode: PosPrinterMode;
+  connector: PosConnectorSettings;
+  paper_width_mm?: number | null;
+  is_default: boolean;
+  vendor?: string | null;
+  supports_qr?: boolean;
+};
+
+export type PosCashDrawerSettings = {
+  enabled: boolean;
+  connector?: PosConnectorSettings | null;
+  auto_open_on_cash_sale: boolean;
+  pulse_duration_ms: number;
+};
+
+export type PosCustomerDisplaySettings = {
+  enabled: boolean;
+  channel: "websocket" | "local";
+  brightness: number;
+  theme: "dark" | "light";
+  message_template?: string | null;
+};
+
+export type PosHardwareSettings = {
+  printers: PosPrinterSettings[];
+  cash_drawer: PosCashDrawerSettings;
+  customer_display: PosCustomerDisplaySettings;
+};
+
+export type PosTerminalConfig = {
+  id: string;
+  label: string;
+  adapter: string;
+  currency: string;
 };
 
 export type PosConfig = {
@@ -940,7 +1607,10 @@ export type PosConfig = {
   printer_name?: string | null;
   printer_profile?: string | null;
   quick_product_ids: number[];
+  hardware_settings: PosHardwareSettings;
   updated_at: string;
+  terminals: PosTerminalConfig[];
+  tip_suggestions: number[];
 };
 
 export type PosConfigUpdateInput = {
@@ -950,6 +1620,7 @@ export type PosConfigUpdateInput = {
   printer_name?: string | null;
   printer_profile?: string | null;
   quick_product_ids: number[];
+  hardware_settings?: PosHardwareSettings;
 };
 
 export type PosSessionSummary = {
@@ -1025,6 +1696,10 @@ export type PosSaleDetailResponse = {
   sale: Sale;
   receipt_url: string;
   receipt_pdf_base64?: string | null;
+  debt_summary?: CustomerDebtSnapshot | null;
+  credit_schedule?: CreditScheduleEntry[];
+  debt_receipt_pdf_base64?: string | null;
+  payment_receipts?: CustomerPaymentReceipt[];
 };
 
 export type DeviceSearchFilters = {
@@ -1036,6 +1711,7 @@ export type DeviceSearchFilters = {
   modelo?: string;
   categoria?: string;
   condicion?: string;
+  estado_comercial?: Device["estado_comercial"];
   estado?: string;
   ubicacion?: string;
   proveedor?: string;
@@ -1108,6 +1784,223 @@ export type MovementInput = {
   unit_cost?: number;
 };
 
+export type InventoryMovement = {
+  id: number;
+  producto_id: number;
+  tipo_movimiento: MovementInput["tipo_movimiento"];
+  cantidad: number;
+  comentario?: string | null;
+  sucursal_origen_id?: number | null;
+  sucursal_origen?: string | null;
+  sucursal_destino_id?: number | null;
+  sucursal_destino?: string | null;
+  usuario_id?: number | null;
+  usuario?: string | null;
+  referencia_tipo?: string | null;
+  referencia_id?: string | null;
+  fecha: string;
+  unit_cost?: number | null;
+  store_inventory_value: number;
+  ultima_accion?: unknown;
+};
+
+export type InventoryReceivingDistributionInput = {
+  store_id: number;
+  quantity: number;
+};
+
+export type InventoryReceivingLineInput = {
+  device_id?: number;
+  imei?: string;
+  serial?: string;
+  quantity: number;
+  unit_cost?: number;
+  comment?: string;
+  distributions?: InventoryReceivingDistributionInput[];
+};
+
+export type InventoryReceivingRequest = {
+  store_id: number;
+  note: string;
+  responsible?: string;
+  reference?: string;
+  lines: InventoryReceivingLineInput[];
+};
+
+export type InventoryReceivingProcessed = {
+  identifier: string;
+  device_id: number;
+  quantity: number;
+  movement: InventoryMovement;
+};
+
+export type InventoryReceivingResult = {
+  store_id: number;
+  processed: InventoryReceivingProcessed[];
+  totals: { lines: number; total_quantity: number };
+  auto_transfers?: TransferOrder[] | null;
+};
+
+export type InventoryCountLineInput = {
+  device_id?: number;
+  imei?: string;
+  serial?: string;
+  counted: number;
+  comment?: string;
+};
+
+export type InventoryCycleCountRequest = {
+  store_id: number;
+  note: string;
+  responsible?: string;
+  reference?: string;
+  lines: InventoryCountLineInput[];
+};
+
+export type InventoryCountDiscrepancy = {
+  device_id: number;
+  sku?: string | null;
+  expected: number;
+  counted: number;
+  delta: number;
+  identifier?: string | null;
+  movement: InventoryMovement | null;
+};
+
+export type InventoryCycleCountResult = {
+  store_id: number;
+  adjustments: InventoryCountDiscrepancy[];
+  totals: { lines: number; adjusted: number; matched: number; total_variance: number };
+};
+
+export type InventoryReservationState =
+  | "RESERVADO"
+  | "CONSUMIDO"
+  | "CANCELADO"
+  | "EXPIRADO";
+
+export type InventoryReservation = {
+  id: number;
+  store_id: number;
+  device_id: number;
+  status: InventoryReservationState;
+  initial_quantity: number;
+  quantity: number;
+  reason: string;
+  resolution_reason?: string | null;
+  reference_type?: string | null;
+  reference_id?: string | null;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+  reserved_by_id?: number | null;
+  resolved_by_id?: number | null;
+  resolved_at?: string | null;
+  consumed_at?: string | null;
+  device?: Device | null;
+};
+
+export type InventoryReservationInput = {
+  store_id: number;
+  device_id: number;
+  quantity: number;
+  expires_at: string;
+};
+
+export type InventoryReservationRenewInput = {
+  expires_at: string;
+};
+
+export type PriceListItem = {
+  id: number;
+  price_list_id: number;
+  device_id: number;
+  price: number;
+  discount_percentage: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PriceList = {
+  id: number;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  store_id: number | null;
+  customer_id: number | null;
+  currency: string;
+  valid_from: string | null;
+  valid_until: string | null;
+  created_at: string;
+  updated_at: string;
+  items: PriceListItem[];
+};
+
+export type PriceListCreateInput = {
+  name: string;
+  description?: string | null;
+  is_active?: boolean;
+  store_id?: number | null;
+  customer_id?: number | null;
+  currency?: string;
+  valid_from?: string | null;
+  valid_until?: string | null;
+};
+
+export type PriceListUpdateInput = {
+  name?: string | null;
+  description?: string | null;
+  is_active?: boolean | null;
+  store_id?: number | null;
+  customer_id?: number | null;
+  currency?: string | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
+};
+
+export type PriceListItemCreateInput = {
+  device_id: number;
+  price: number;
+  discount_percentage?: number | null;
+  notes?: string | null;
+};
+
+export type PriceListItemUpdateInput = {
+  price?: number | null;
+  discount_percentage?: number | null;
+  notes?: string | null;
+};
+
+export type PriceListListParams = {
+  storeId?: number;
+  customerId?: number;
+  isActive?: boolean;
+  includeItems?: boolean;
+};
+
+export type PriceResolutionParams = {
+  deviceId: number;
+  storeId?: number | null;
+  customerId?: number | null;
+  referenceDate?: string | null;
+  defaultPrice?: number | null;
+  defaultCurrency?: string;
+};
+
+export type PriceResolution = {
+  device_id: number;
+  price_list_id: number | null;
+  price_list_name: string | null;
+  scope: "store_customer" | "customer" | "store" | "global" | "fallback";
+  currency: string;
+  base_price: number;
+  discount_percentage: number | null;
+  final_price: number;
+  valid_from: string | null;
+  valid_until: string | null;
+};
+
 export type Summary = {
   store_id: number;
   store_name: string;
@@ -1137,6 +2030,7 @@ export type TransferOrderItem = {
   transfer_order_id: number;
   device_id: number;
   quantity: number;
+  reservation_id?: number | null;
 };
 
 export type TransferOrder = {
@@ -1151,17 +2045,80 @@ export type TransferOrder = {
   received_at?: string | null;
   cancelled_at?: string | null;
   items: TransferOrderItem[];
+  ultima_accion?: {
+    usuario?: string | null;
+    timestamp: string;
+  } | null;
 };
 
 export type TransferOrderInput = {
   origin_store_id: number;
   destination_store_id: number;
   reason?: string;
-  items: { device_id: number; quantity: number }[];
+  items: { device_id: number; quantity: number; reservation_id?: number | null }[];
 };
 
 export type TransferTransitionInput = {
   reason?: string;
+};
+
+export type PaymentCenterTransactionType = "PAYMENT" | "REFUND" | "CREDIT_NOTE";
+
+export type PaymentCenterTransaction = {
+  id: number;
+  type: PaymentCenterTransactionType;
+  amount: number;
+  created_at: string;
+  order_id?: number | null;
+  order_number?: string | null;
+  customer_id: number;
+  customer_name: string;
+  method?: string | null;
+  note?: string | null;
+  status: "POSTED" | "VOID";
+};
+
+export type PaymentCenterSummary = {
+  collections_today: number;
+  collections_month: number;
+  pending_balance: number;
+  refunds_month: number;
+};
+
+export type PaymentCenterResponse = {
+  summary: PaymentCenterSummary;
+  transactions: PaymentCenterTransaction[];
+};
+
+export type PaymentCenterPaymentInput = {
+  customer_id: number;
+  amount: number;
+  method: string;
+  reference?: string;
+  sale_id?: number;
+};
+
+export type PaymentCenterRefundInput = {
+  customer_id: number;
+  amount: number;
+  method: string;
+  reason: string;
+  note?: string;
+  sale_id?: number;
+};
+
+export type PaymentCenterCreditNoteLineInput = {
+  description: string;
+  quantity: number;
+  amount: number;
+};
+
+export type PaymentCenterCreditNoteInput = {
+  customer_id: number;
+  total: number;
+  lines: PaymentCenterCreditNoteLineInput[];
+  note?: string;
+  sale_id?: number;
 };
 
 export type TransferReportDevice = {
@@ -1231,6 +2188,42 @@ export type LowStockDevice = {
   quantity: number;
   unit_price: number;
   inventory_value: number;
+  minimum_stock: number;
+  reorder_point: number;
+  reorder_gap: number;
+};
+
+export type InventoryAlertSeverity = "critical" | "warning" | "notice";
+
+export type InventoryAlertItem = LowStockDevice & {
+  severity: InventoryAlertSeverity;
+  projected_days: number | null;
+  average_daily_sales: number | null;
+  trend: string | null;
+  confidence: number | null;
+  insights: string[];
+};
+
+export type InventoryAlertSummary = {
+  total: number;
+  critical: number;
+  warning: number;
+  notice: number;
+};
+
+export type InventoryAlertSettings = {
+  threshold: number;
+  minimum_threshold: number;
+  maximum_threshold: number;
+  warning_cutoff: number;
+  critical_cutoff: number;
+  adjustment_variance_threshold: number;
+};
+
+export type InventoryAlertsResponse = {
+  settings: InventoryAlertSettings;
+  summary: InventoryAlertSummary;
+  items: InventoryAlertItem[];
 };
 
 export type InventoryCurrentStoreReport = {
@@ -1329,6 +2322,45 @@ export type InventoryValueReport = {
   totals: InventoryValueTotals;
 };
 
+export type InactiveProductEntry = {
+  store_id: number;
+  store_name: string;
+  device_id: number;
+  sku: string;
+  device_name: string;
+  categoria: string;
+  quantity: number;
+  valor_total_producto: number;
+  ultima_venta: string | null;
+  ultima_compra: string | null;
+  ultimo_movimiento: string | null;
+  dias_sin_movimiento: number | null;
+  ventas_30_dias: number;
+  ventas_90_dias: number;
+  rotacion_30_dias: number;
+  rotacion_90_dias: number;
+  rotacion_total: number;
+};
+
+export type InactiveProductsTotals = {
+  total_products: number;
+  total_units: number;
+  total_value: number;
+  average_days_without_movement: number | null;
+  max_days_without_movement: number | null;
+};
+
+export type InactiveProductsReport = {
+  generated_at: string;
+  filters: {
+    store_ids: number[];
+    categories: string[];
+    min_days_without_movement: number;
+  };
+  totals: InactiveProductsTotals;
+  items: InactiveProductEntry[];
+};
+
 export type InventoryCurrentFilters = {
   storeIds?: number[];
 };
@@ -1343,15 +2375,88 @@ export type InventoryMovementsFilters = InventoryCurrentFilters & {
   movementType?: MovementInput["tipo_movimiento"];
 };
 
+export type InventoryAuditFilters = {
+  performedById?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
+};
+
 export type InventoryTopProductsFilters = InventoryCurrentFilters & {
   dateFrom?: string;
   dateTo?: string;
   limit?: number;
 };
 
+export type InactiveProductsFilters = InventoryValueFilters & {
+  minDaysWithoutMovement?: number;
+  limit?: number;
+  offset?: number;
+};
+
+export type SyncDiscrepancyFilters = {
+  storeIds?: number[];
+  dateFrom?: string;
+  dateTo?: string;
+  severity?: SyncConflictLog["severity"];
+  minDifference?: number;
+  limit?: number;
+  offset?: number;
+};
+
+export type SyncDiscrepancyTotals = {
+  total_conflicts: number;
+  warnings: number;
+  critical: number;
+  max_difference: number | null;
+  affected_skus: number;
+};
+
+export type SyncDiscrepancyReport = {
+  generated_at: string;
+  filters: {
+    store_ids: number[];
+    date_from: string | null;
+    date_to: string | null;
+    severity: SyncConflictLog["severity"] | null;
+    min_difference: number | null;
+  };
+  totals: SyncDiscrepancyTotals;
+  items: SyncConflictLog[];
+};
+
 export type DashboardPoint = {
   label: string;
   value: number;
+};
+
+export type DashboardReceivableCustomer = {
+  customer_id: number;
+  name: string;
+  outstanding_debt: number;
+  available_credit?: number | null;
+};
+
+export type DashboardReceivableMetrics = {
+  total_outstanding_debt: number;
+  customers_with_debt: number;
+  moroso_flagged: number;
+  top_debtors: DashboardReceivableCustomer[];
+};
+
+export type DashboardSalesEntityMetric = {
+  label: string;
+  value: number;
+  quantity?: number | null;
+  percentage?: number | null;
+};
+
+export type DashboardSalesInsights = {
+  average_ticket: number;
+  top_products: DashboardSalesEntityMetric[];
+  top_customers: DashboardSalesEntityMetric[];
+  payment_mix: DashboardSalesEntityMetric[];
 };
 
 export type AuditHighlight = {
@@ -1463,6 +2568,58 @@ export type GlobalReportSeriesPoint = {
   system_errors: number;
 };
 
+export type ObservabilityLatencySample = {
+  entity_type: string;
+  pending: number;
+  failed: number;
+  oldest_pending_seconds: number | null;
+  latest_update: string | null;
+};
+
+export type ObservabilityLatencySummary = {
+  average_seconds: number | null;
+  percentile_95_seconds: number | null;
+  max_seconds: number | null;
+  samples: ObservabilityLatencySample[];
+};
+
+export type ObservabilityErrorSummary = {
+  total_logs: number;
+  total_errors: number;
+  info: number;
+  warning: number;
+  error: number;
+  critical: number;
+  latest_error_at: string | null;
+};
+
+export type ObservabilitySyncSummary = {
+  outbox_stats: SyncOutboxStatsEntry[];
+  total_pending: number;
+  total_failed: number;
+  hybrid_progress: SyncHybridProgress | null;
+};
+
+export type ObservabilityNotification = {
+  id: string;
+  title: string;
+  message: string;
+  severity: SystemLogLevel;
+  occurred_at: string | null;
+  reference: string | null;
+};
+
+export type ObservabilitySnapshot = {
+  generated_at: string;
+  latency: ObservabilityLatencySummary;
+  errors: ObservabilityErrorSummary;
+  sync: ObservabilitySyncSummary;
+  logs: GlobalReportLogEntry[];
+  system_errors: GlobalReportErrorEntry[];
+  alerts: GlobalReportAlert[];
+  notifications: ObservabilityNotification[];
+};
+
 export type GlobalReportDashboard = {
   generated_at: string;
   filters: GlobalReportFiltersState;
@@ -1526,6 +2683,8 @@ export type InventoryMetrics = {
     open_repairs: number;
     gross_profit: number;
   };
+  sales_insights: DashboardSalesInsights;
+  accounts_receivable: DashboardReceivableMetrics;
   sales_trend: DashboardPoint[];
   stock_breakdown: DashboardPoint[];
   repair_mix: DashboardPoint[];
@@ -1543,13 +2702,16 @@ export type AuditLogEntry = {
   created_at: string;
   severity: "info" | "warning" | "critical";
   severity_label: string;
+  module?: string | null;
 };
 
 export type AuditLogFilters = {
   limit?: number;
   action?: string;
   entity_type?: string;
+  module?: string;
   performed_by_id?: number;
+  severity?: AuditLogEntry["severity"];
   date_from?: string;
   date_to?: string;
 };
@@ -1664,6 +2826,47 @@ export type AnalyticsAlerts = {
   items: AnalyticsAlert[];
 };
 
+export type RiskMetric = {
+  total: number;
+  average: number;
+  maximum: number;
+  last_seen?: string | null;
+};
+
+export type RiskAlert = {
+  code: string;
+  title: string;
+  description: string;
+  severity: "info" | "media" | "alta" | "critica";
+  occurrences: number;
+  detail?: Record<string, unknown> | null;
+};
+
+export type RiskAlertsResponse = {
+  generated_at: string;
+  alerts: RiskAlert[];
+  metrics: Record<string, RiskMetric>;
+};
+
+export type PurchaseSupplierMetric = {
+  store_id: number;
+  store_name: string;
+  supplier: string;
+  device_count: number;
+  total_ordered: number;
+  total_received: number;
+  pending_backorders: number;
+  total_cost: number;
+  average_unit_cost: number;
+  average_rotation: number;
+  average_days_in_stock: number;
+  last_purchase_at: string | null;
+};
+
+export type PurchaseAnalytics = {
+  items: PurchaseSupplierMetric[];
+};
+
 export type StoreRealtimeWidget = {
   store_id: number;
   store_name: string;
@@ -1691,6 +2894,7 @@ export type AnalyticsFilters = {
   dateFrom?: string;
   dateTo?: string;
   category?: string;
+  supplier?: string;
 };
 
 export type TOTPStatus = {
@@ -1703,6 +2907,20 @@ export type TOTPSetup = {
   secret: string;
   otpauth_url: string;
 };
+
+export type ReauthContext = {
+  password: string;
+  otp?: string;
+};
+
+function buildReauthHeaders(context?: ReauthContext): Record<string, string> {
+  if (!context) return {};
+  const headers: Record<string, string> = { "X-Reauth-Password": context.password };
+  if (context.otp) {
+    headers["X-Reauth-OTP"] = context.otp;
+  }
+  return headers;
+}
 
 export type ActiveSession = {
   id: number;
@@ -1732,8 +2950,13 @@ export type SyncOutboxEntry = {
   status: SyncOutboxStatus;
   priority: "HIGH" | "NORMAL" | "LOW";
   error_message?: string | null;
+  conflict_flag: boolean;
+  version: number;
   created_at: string;
   updated_at: string;
+  latency_ms?: number | null;
+  processing_latency_ms?: number | null;
+  status_detail?: string | null;
 };
 
 export type SyncOutboxStatsEntry = {
@@ -1742,8 +2965,10 @@ export type SyncOutboxStatsEntry = {
   total: number;
   pending: number;
   failed: number;
+  conflicts: number;
   latest_update?: string | null;
   oldest_pending?: string | null;
+  last_conflict_at?: string | null;
 };
 
 // [PACK35-frontend]
@@ -1975,15 +3200,38 @@ const requestCache = new Map<string, RequestCacheRecord>();
 type PendingRequestResult = { value: unknown; isJson: boolean };
 const pendingRequests = new Map<string, Promise<PendingRequestResult>>();
 
+function parseFilenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) {
+    return fallback;
+  }
+
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const asciiMatch = header.match(/filename="?([^";]+)"?/i);
+  if (asciiMatch?.[1]) {
+    return asciiMatch[1];
+  }
+
+  return fallback;
+}
+
 function serializeHeaders(headers: Headers): Array<[string, string]> {
-  return Array.from(headers.entries())
+  const entries: Array<[string, string]> = Array.from(headers.entries());
+  return entries
     .filter(([key]) => key.toLowerCase() !== "authorization")
-    .map(([key, value]) => [key.toLowerCase(), value])
-    .sort((a, b) => {
-      if (a[0] === b[0]) {
-        return a[1].localeCompare(b[1]);
+    .map(([key, value]): [string, string] => [key.toLowerCase(), value])
+    .sort(([aKey, aVal], [bKey, bVal]) => {
+      if (aKey === bKey) {
+        return aVal.localeCompare(bVal);
       }
-      return a[0].localeCompare(b[0]);
+      return aKey.localeCompare(bKey);
     });
 }
 
@@ -2014,13 +3262,7 @@ export function clearRequestCache(): void {
   pendingRequests.clear();
 }
 
-function buildStoreQuery(storeIds?: number[]): string {
-  if (!storeIds || storeIds.length === 0) {
-    return "";
-  }
-  const params = storeIds.map((id) => `store_ids=${encodeURIComponent(id)}`).join("&");
-  return `?${params}`;
-}
+// buildStoreQuery eliminado por no usarse
 
 function buildAnalyticsQuery(filters?: AnalyticsFilters): string {
   if (!filters) {
@@ -2040,6 +3282,9 @@ function buildAnalyticsQuery(filters?: AnalyticsFilters): string {
   }
   if (filters.category) {
     params.set("category", filters.category);
+  }
+  if (filters.supplier) {
+    params.set("supplier", filters.supplier);
   }
   const queryString = params.toString();
   return queryString ? `?${queryString}` : "";
@@ -2085,6 +3330,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   }
 
   const method = (options.method ?? "GET").toUpperCase();
+  applyReasonHeader(path, method, headers);
   const shouldUseCache = method === "GET" && options.cache !== "no-store";
   const cacheKey = shouldUseCache ? buildCacheKey(path, headers, token) : null;
 
@@ -2104,10 +3350,21 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   const executeNetworkRequest = async (): Promise<PendingRequestResult> => {
     let response: Response;
     try {
-      response = await fetch(`${API_URL}${path}`, {
-        ...options,
+      const { signal, body, ...restOptions } = options;
+      const requestInit: RequestInit = {
+        ...restOptions,
         headers,
-      });
+      };
+
+      if (typeof body !== "undefined") {
+        requestInit.body = body;
+      }
+
+      if (typeof signal !== "undefined") {
+        requestInit.signal = signal ?? null;
+      }
+
+      response = await fetch(`${API_URL}${path}`, requestInit);
     } catch (error) {
       emitNetworkEvent(
         NETWORK_EVENT,
@@ -2285,9 +3542,13 @@ export function listUsers(
   }
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
+  const requestOptions: RequestInit = { method: "GET" };
+  if (typeof options.signal !== "undefined") {
+    requestOptions.signal = options.signal ?? null;
+  }
   return requestCollection<UserAccount>(
     `/users${suffix}`,
-    { method: "GET", signal: options.signal },
+    requestOptions,
     token,
   );
 }
@@ -2403,8 +3664,69 @@ export function getStores(token: string): Promise<Store[]> {
   return requestCollection<Store>("/stores/?limit=200", { method: "GET" }, token);
 }
 
+export function createStore(
+  token: string,
+  payload: StoreCreateInput,
+  reason: string,
+): Promise<Store> {
+  const safeReason = (reason ?? "").trim();
+  return request<Store>(
+    "/stores",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": safeReason } },
+    token,
+  );
+}
+
+export type StoreUpdateInput = {
+  name?: string | undefined;
+  code?: string | undefined;
+  address?: string | undefined;
+  is_active?: boolean | undefined;
+  timezone?: string | undefined;
+};
+
+export function updateStore(
+  token: string,
+  storeId: number,
+  payload: StoreUpdateInput,
+  reason: string,
+): Promise<Store> {
+  const safeReason = (reason ?? "").trim();
+  return request<Store>(
+    `/stores/${storeId}`,
+    { method: "PUT", body: JSON.stringify(payload), headers: { "X-Reason": safeReason } },
+    token,
+  );
+}
+
 export function getSummary(token: string): Promise<Summary[]> {
   return requestCollection<Summary>("/inventory/summary", { method: "GET" }, token);
+}
+
+export function getInventoryAvailability(
+  params: InventoryAvailabilityParams = {},
+): Promise<InventoryAvailabilityResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.query && params.query.trim().length > 0) {
+    searchParams.set("query", params.query.trim());
+  }
+  if (typeof params.limit === "number" && Number.isFinite(params.limit)) {
+    const bounded = Math.min(Math.max(Math.floor(params.limit), 1), 250);
+    searchParams.set("limit", String(bounded));
+  }
+  (params.skus ?? [])
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .forEach((value) => searchParams.append("sku", value));
+  (params.deviceIds ?? [])
+    .filter((value) => Number.isFinite(value) && Number(value) > 0)
+    .forEach((value) => searchParams.append("device_id", String(Math.trunc(value))));
+
+  const suffix = searchParams.toString();
+  return request<InventoryAvailabilityResponse>(
+    `/inventory/availability${suffix ? `?${suffix}` : ""}`,
+    { method: "GET" },
+  );
 }
 
 export function getInventoryCurrentReport(
@@ -2449,6 +3771,26 @@ export function getTopProductsReport(
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   return request<TopProductsReport>(`/reports/inventory/top-products${suffix}`, { method: "GET" }, token);
+}
+
+export function getInactiveProductsReport(
+  token: string,
+  filters: InactiveProductsFilters = {},
+): Promise<InactiveProductsReport> {
+  const params = buildInactiveProductsParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<InactiveProductsReport>(`/reports/inventory/inactive-products${suffix}`, { method: "GET" }, token);
+}
+
+export function getSyncDiscrepancyReport(
+  token: string,
+  filters: SyncDiscrepancyFilters = {},
+): Promise<SyncDiscrepancyReport> {
+  const params = buildSyncDiscrepancyParams(filters);
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<SyncDiscrepancyReport>(`/reports/inventory/sync-discrepancies${suffix}`, { method: "GET" }, token);
 }
 
 export type DeviceListFilters = {
@@ -2559,6 +3901,26 @@ function buildInventoryMovementsParams(filters: InventoryMovementsFilters = {}):
   return params;
 }
 
+function buildInventoryAuditParams(filters: InventoryAuditFilters = {}): URLSearchParams {
+  const params = new URLSearchParams();
+  if (typeof filters.performedById === "number") {
+    params.append("performed_by_id", String(filters.performedById));
+  }
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (typeof filters.limit === "number") {
+    params.append("limit", String(filters.limit));
+  }
+  if (typeof filters.offset === "number") {
+    params.append("offset", String(filters.offset));
+  }
+  return params;
+}
+
 function buildTopProductsParams(filters: InventoryTopProductsFilters = {}): URLSearchParams {
   const params = buildInventoryValueParams(filters);
   if (filters.dateFrom) {
@@ -2573,6 +3935,50 @@ function buildTopProductsParams(filters: InventoryTopProductsFilters = {}): URLS
   return params;
 }
 
+function buildInactiveProductsParams(filters: InactiveProductsFilters = {}): URLSearchParams {
+  const params = buildInventoryValueParams(filters);
+  if (
+    typeof filters.minDaysWithoutMovement === "number"
+    && Number.isFinite(filters.minDaysWithoutMovement)
+  ) {
+    params.append(
+      "min_days_without_movement",
+      String(Math.max(Math.floor(filters.minDaysWithoutMovement), 0)),
+    );
+  }
+  if (typeof filters.limit === "number" && Number.isFinite(filters.limit)) {
+    params.append("limit", String(Math.max(Math.floor(filters.limit), 1)));
+  }
+  if (typeof filters.offset === "number" && Number.isFinite(filters.offset)) {
+    params.append("offset", String(Math.max(Math.floor(filters.offset), 0)));
+  }
+  return params;
+}
+
+function buildSyncDiscrepancyParams(filters: SyncDiscrepancyFilters = {}): URLSearchParams {
+  const params = new URLSearchParams();
+  appendNumericList(params, "store_ids", filters.storeIds);
+  if (filters.dateFrom) {
+    params.append("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.append("date_to", filters.dateTo);
+  }
+  if (filters.severity) {
+    params.append("severity", filters.severity);
+  }
+  if (typeof filters.minDifference === "number" && Number.isFinite(filters.minDifference)) {
+    params.append("min_difference", String(Math.max(Math.floor(filters.minDifference), 0)));
+  }
+  if (typeof filters.limit === "number" && Number.isFinite(filters.limit)) {
+    params.append("limit", String(Math.max(Math.floor(filters.limit), 1)));
+  }
+  if (typeof filters.offset === "number" && Number.isFinite(filters.offset)) {
+    params.append("offset", String(Math.max(Math.floor(filters.offset), 0)));
+  }
+  return params;
+}
+
 export function getDevices(
   token: string,
   storeId: number,
@@ -2582,6 +3988,437 @@ export function getDevices(
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   return requestCollection<Device>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
+}
+
+export function getProductVariants(
+  token: string,
+  params: { storeId?: number; deviceId?: number; includeInactive?: boolean } = {},
+): Promise<ProductVariant[]> {
+  const queryParams = new URLSearchParams();
+  if (typeof params.storeId === "number") {
+    queryParams.set("store_id", String(params.storeId));
+  }
+  if (typeof params.deviceId === "number") {
+    queryParams.set("device_id", String(params.deviceId));
+  }
+  if (params.includeInactive) {
+    queryParams.set("include_inactive", "true");
+  }
+  const suffix = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  return requestCollection<ProductVariant>(
+    `/inventory/variants${suffix}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function createProductVariant(
+  token: string,
+  deviceId: number,
+  payload: ProductVariantCreateInput,
+  reason: string,
+): Promise<ProductVariant> {
+  return request<ProductVariant>(
+    `/inventory/devices/${deviceId}/variants`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function updateProductVariant(
+  token: string,
+  variantId: number,
+  payload: ProductVariantUpdateInput,
+  reason: string,
+): Promise<ProductVariant> {
+  return request<ProductVariant>(
+    `/inventory/variants/${variantId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function archiveProductVariant(
+  token: string,
+  variantId: number,
+  reason: string,
+): Promise<ProductVariant> {
+  return request<ProductVariant>(
+    `/inventory/variants/${variantId}`,
+    {
+      method: "DELETE",
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function getProductBundles(
+  token: string,
+  params: { storeId?: number; includeInactive?: boolean } = {},
+): Promise<ProductBundle[]> {
+  const queryParams = new URLSearchParams();
+  if (typeof params.storeId === "number") {
+    queryParams.set("store_id", String(params.storeId));
+  }
+  if (params.includeInactive) {
+    queryParams.set("include_inactive", "true");
+  }
+  const suffix = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  return requestCollection<ProductBundle>(
+    `/inventory/bundles${suffix}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function createProductBundle(
+  token: string,
+  payload: ProductBundleCreateInput,
+  reason: string,
+): Promise<ProductBundle> {
+  return request<ProductBundle>(
+    "/inventory/bundles",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function updateProductBundle(
+  token: string,
+  bundleId: number,
+  payload: ProductBundleUpdateInput,
+  reason: string,
+): Promise<ProductBundle> {
+  return request<ProductBundle>(
+    `/inventory/bundles/${bundleId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function archiveProductBundle(
+  token: string,
+  bundleId: number,
+  reason: string,
+): Promise<ProductBundle> {
+  return request<ProductBundle>(
+    `/inventory/bundles/${bundleId}`,
+    {
+      method: "DELETE",
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function getInventoryReservations(
+  token: string,
+  params: {
+    storeId?: number;
+    deviceId?: number;
+    status?: InventoryReservationState;
+    includeExpired?: boolean;
+    page?: number;
+    size?: number;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<PaginatedResponse<InventoryReservation>> {
+  const queryParams = new URLSearchParams();
+  if (typeof params.storeId === "number") {
+    queryParams.set("store_id", String(params.storeId));
+  }
+  if (typeof params.deviceId === "number") {
+    queryParams.set("device_id", String(params.deviceId));
+  }
+  if (params.status) {
+    queryParams.set("status_filter", params.status);
+  }
+  if (params.includeExpired) {
+    queryParams.set("include_expired", "true");
+  }
+  if (typeof params.page === "number") {
+    queryParams.set("page", String(params.page));
+  }
+  if (typeof params.size === "number") {
+    queryParams.set("size", String(params.size));
+  }
+  if (typeof params.limit === "number") {
+    queryParams.set("limit", String(params.limit));
+  }
+  if (typeof params.offset === "number") {
+    queryParams.set("offset", String(params.offset));
+  }
+  const suffix = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  return request<PaginatedResponse<InventoryReservation>>(
+    `/inventory/reservations${suffix}`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function createInventoryReservation(
+  token: string,
+  payload: InventoryReservationInput,
+  reason: string,
+): Promise<InventoryReservation> {
+  return request<InventoryReservation>(
+    "/inventory/reservations",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function renewInventoryReservation(
+  token: string,
+  reservationId: number,
+  payload: InventoryReservationRenewInput,
+  reason: string,
+): Promise<InventoryReservation> {
+  return request<InventoryReservation>(
+    `/inventory/reservations/${reservationId}/renew`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function cancelInventoryReservation(
+  token: string,
+  reservationId: number,
+  reason: string,
+): Promise<InventoryReservation> {
+  return request<InventoryReservation>(
+    `/inventory/reservations/${reservationId}/cancel`,
+    {
+      method: "POST",
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function listPriceLists(
+  token: string,
+  params: PriceListListParams = {},
+  reason?: string,
+): Promise<PriceList[]> {
+  const searchParams = new URLSearchParams();
+  if (typeof params.storeId === "number") {
+    searchParams.set("store_id", String(params.storeId));
+  }
+  if (typeof params.customerId === "number") {
+    searchParams.set("customer_id", String(params.customerId));
+  }
+  if (typeof params.isActive === "boolean") {
+    searchParams.set("is_active", String(params.isActive));
+  }
+  if (typeof params.includeItems === "boolean") {
+    searchParams.set("include_items", String(params.includeItems));
+  }
+  const query = searchParams.toString();
+  const headers: Record<string, string> = {};
+  if (reason) {
+    headers["X-Reason"] = reason;
+  }
+  return requestCollection<PriceList>(
+    `/price-lists${query ? `?${query}` : ""}`,
+    { method: "GET", headers },
+    token,
+  );
+}
+
+export function getPriceList(
+  token: string,
+  priceListId: number,
+  options: { includeItems?: boolean } = {},
+  reason?: string,
+): Promise<PriceList> {
+  const params = new URLSearchParams();
+  if (typeof options.includeItems === "boolean") {
+    params.set("include_items", String(options.includeItems));
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const headers: Record<string, string> = {};
+  if (reason) {
+    headers["X-Reason"] = reason;
+  }
+  return request<PriceList>(
+    `/price-lists/${priceListId}${suffix}`,
+    { method: "GET", headers },
+    token,
+  );
+}
+
+export function createPriceList(
+  token: string,
+  payload: PriceListCreateInput,
+  reason: string,
+): Promise<PriceList> {
+  return request<PriceList>(
+    "/price-lists",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function updatePriceList(
+  token: string,
+  priceListId: number,
+  payload: PriceListUpdateInput,
+  reason: string,
+): Promise<PriceList> {
+  return request<PriceList>(
+    `/price-lists/${priceListId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function deletePriceList(
+  token: string,
+  priceListId: number,
+  reason: string,
+): Promise<void> {
+  return request<void>(
+    `/price-lists/${priceListId}`,
+    {
+      method: "DELETE",
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function createPriceListItem(
+  token: string,
+  priceListId: number,
+  payload: PriceListItemCreateInput,
+  reason: string,
+): Promise<PriceListItem> {
+  return request<PriceListItem>(
+    `/price-lists/${priceListId}/items`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function updatePriceListItem(
+  token: string,
+  itemId: number,
+  payload: PriceListItemUpdateInput,
+  reason: string,
+): Promise<PriceListItem> {
+  return request<PriceListItem>(
+    `/price-lists/items/${itemId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Reason": reason },
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
+export function deletePriceListItem(
+  token: string,
+  itemId: number,
+  reason: string,
+): Promise<void> {
+  return request<void>(
+    `/price-lists/items/${itemId}`,
+    {
+      method: "DELETE",
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function getPriceListItem(
+  token: string,
+  itemId: number,
+  reason?: string,
+): Promise<PriceListItem> {
+  const headers: Record<string, string> = {};
+  if (reason) {
+    headers["X-Reason"] = reason;
+  }
+  return request<PriceListItem>(
+    `/price-lists/items/${itemId}`,
+    { method: "GET", headers },
+    token,
+  );
+}
+
+export function resolveDevicePrice(
+  token: string,
+  params: PriceResolutionParams,
+  reason?: string,
+): Promise<PriceResolution | null> {
+  const searchParams = new URLSearchParams({
+    device_id: String(params.deviceId),
+  });
+  if (typeof params.storeId === "number" && params.storeId > 0) {
+    searchParams.set("store_id", String(params.storeId));
+  }
+  if (typeof params.customerId === "number" && params.customerId > 0) {
+    searchParams.set("customer_id", String(params.customerId));
+  }
+  if (params.referenceDate) {
+    searchParams.set("reference_date", params.referenceDate);
+  }
+  if (typeof params.defaultPrice === "number") {
+    searchParams.set("default_price", String(params.defaultPrice));
+  }
+  if (params.defaultCurrency) {
+    searchParams.set("default_currency", params.defaultCurrency);
+  }
+  const headers: Record<string, string> = {};
+  if (reason) {
+    headers["X-Reason"] = reason;
+  }
+  return request<PriceResolution | null>(
+    `/price-lists/resolve?${searchParams.toString()}`,
+    { method: "GET", headers },
+    token,
+  );
 }
 
 export function getDeviceIdentifier(
@@ -2659,6 +4496,41 @@ export function importStoreDevicesCsv(
     { method: "POST", body: formData, headers: { "X-Reason": reason } },
     token,
   );
+}
+
+export type DeviceLabelDownload = {
+  blob: Blob;
+  filename: string;
+};
+
+export async function downloadDeviceLabelPdf(
+  token: string,
+  storeId: number,
+  deviceId: number,
+  reason: string,
+): Promise<DeviceLabelDownload> {
+  const response = await fetch(
+    `${API_URL}/inventory/stores/${storeId}/devices/${deviceId}/label/pdf`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/pdf",
+        "X-Reason": reason,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("No fue posible generar la etiqueta del dispositivo.");
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition");
+  const fallback = `etiqueta_${storeId}_${deviceId}.pdf`;
+  const filename = parseFilenameFromDisposition(disposition, fallback);
+
+  return { blob, filename };
 }
 
 export function smartInventoryImport(
@@ -2759,6 +4631,10 @@ export function listPurchaseOrders(token: string, storeId: number, limit = 50): 
   );
 }
 
+export function getPurchaseOrder(token: string, orderId: number): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(`/purchases/${orderId}`, { method: "GET" }, token);
+}
+
 export function createPurchaseOrder(
   token: string,
   payload: PurchaseOrderCreateInput,
@@ -2803,13 +4679,64 @@ export function cancelPurchaseOrder(
   );
 }
 
+export function uploadPurchaseOrderDocument(
+  token: string,
+  orderId: number,
+  file: File,
+  reason: string
+): Promise<PurchaseOrderDocument> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<PurchaseOrderDocument>(
+    `/purchases/${orderId}/documents`,
+    {
+      method: "POST",
+      body: formData,
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function transitionPurchaseOrderStatus(
+  token: string,
+  orderId: number,
+  payload: PurchaseOrderStatusUpdateInput,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    `/purchases/${orderId}/status`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function sendPurchaseOrderEmail(
+  token: string,
+  orderId: number,
+  payload: PurchaseOrderEmailInput
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    `/purchases/${orderId}/send`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    token
+  );
+}
+
 export function registerPurchaseReturn(
   token: string,
   orderId: number,
   payload: PurchaseReturnInput,
   reason: string
-): Promise<void> {
-  return request<void>(
+): Promise<PurchaseReturn> {
+  return request<PurchaseReturn>(
     `/purchases/${orderId}/returns`,
     {
       method: "POST",
@@ -2834,6 +4761,40 @@ export function importPurchaseOrdersCsv(
       body: formData,
       headers: { "X-Reason": reason },
     },
+    token
+  );
+}
+
+export function getPurchaseSuggestions(
+  token: string,
+  params: { storeId?: number; lookbackDays?: number; minimumStock?: number; planningHorizonDays?: number } = {},
+): Promise<PurchaseSuggestionsResponse> {
+  const query = new URLSearchParams();
+  if (params.storeId != null) {
+    query.set("store_id", String(params.storeId));
+  }
+  if (params.lookbackDays != null) {
+    query.set("lookback_days", String(params.lookbackDays));
+  }
+  if (params.minimumStock != null) {
+    query.set("minimum_stock", String(params.minimumStock));
+  }
+  if (params.planningHorizonDays != null) {
+    query.set("planning_horizon_days", String(params.planningHorizonDays));
+  }
+  const suffix = query.toString();
+  const path = suffix ? `/purchases/suggestions?${suffix}` : "/purchases/suggestions";
+  return request<PurchaseSuggestionsResponse>(path, { method: "GET" }, token);
+}
+
+export function createPurchaseOrderFromSuggestion(
+  token: string,
+  payload: PurchaseOrderCreateInput,
+  reason: string
+): Promise<PurchaseOrder> {
+  return request<PurchaseOrder>(
+    "/purchases/suggestions/orders",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
     token
   );
 }
@@ -3110,6 +5071,8 @@ type CustomerListOptions = {
   hasDebt?: boolean;
   statusFilter?: string;
   customerTypeFilter?: string;
+  segmentCategory?: string;
+  tags?: string[];
 };
 
 export function listCustomers(
@@ -3136,13 +5099,24 @@ export function listCustomers(
   if (options.customerTypeFilter) {
     params.append("customer_type_filter", options.customerTypeFilter);
   }
+  if (options.segmentCategory) {
+    params.append("segment_category", options.segmentCategory);
+  }
+  if (Array.isArray(options.tags)) {
+    options.tags.forEach((tag) => {
+      if (tag.trim()) {
+        params.append("tags", tag.trim());
+      }
+    });
+  }
   const queryString = params.toString();
   return requestCollection<Customer>(`/customers?${queryString}`, { method: "GET" }, token);
 }
 
 export function exportCustomersCsv(
   token: string,
-  options: CustomerListOptions = {}
+  options: CustomerListOptions = {},
+  reason: string
 ): Promise<Blob> {
   const params = new URLSearchParams({ export: "csv" });
   if (options.query) {
@@ -3163,8 +5137,37 @@ export function exportCustomersCsv(
   if (options.customerTypeFilter) {
     params.append("customer_type_filter", options.customerTypeFilter);
   }
+  if (options.segmentCategory) {
+    params.append("segment_category", options.segmentCategory);
+  }
+  if (Array.isArray(options.tags)) {
+    options.tags.forEach((tag) => {
+      if (tag.trim()) {
+        params.append("tags", tag.trim());
+      }
+    });
+  }
   const queryString = params.toString();
-  return request<Blob>(`/customers?${queryString}`, { method: "GET" }, token);
+  return request<Blob>(
+    `/customers?${queryString}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function exportCustomerSegment(
+  token: string,
+  segment: string,
+  reason: string,
+  format: "csv" = "csv"
+): Promise<Blob> {
+  const params = new URLSearchParams({ segment, format });
+  const queryString = params.toString();
+  return request<Blob>(
+    `/customers/segments/export?${queryString}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function getCustomerPortfolio(
@@ -3321,13 +5324,26 @@ export function appendCustomerNote(
   );
 }
 
+export function createCustomerPrivacyRequest(
+  token: string,
+  customerId: number,
+  payload: CustomerPrivacyRequestCreate,
+  reason: string
+): Promise<CustomerPrivacyActionResponse> {
+  return request<CustomerPrivacyActionResponse>(
+    `/customers/${customerId}/privacy-requests`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
 export function registerCustomerPayment(
   token: string,
   customerId: number,
   payload: CustomerPaymentPayload,
   reason: string
-): Promise<CustomerLedgerEntry> {
-  return request<CustomerLedgerEntry>(
+): Promise<CustomerPaymentReceipt> {
+  return request<CustomerPaymentReceipt>(
     `/customers/${customerId}/payments`,
     {
       method: "POST",
@@ -3346,6 +5362,29 @@ export function getCustomerSummary(token: string, customerId: number): Promise<C
   );
 }
 
+export function getCustomerAccountsReceivable(
+  token: string,
+  customerId: number,
+): Promise<CustomerAccountsReceivable> {
+  return request<CustomerAccountsReceivable>(
+    `/customers/${customerId}/accounts-receivable`,
+    { method: "GET" },
+    token,
+  );
+}
+
+export function downloadCustomerStatement(
+  token: string,
+  customerId: number,
+  reason: string,
+): Promise<Blob> {
+  return request<Blob>(
+    `/customers/${customerId}/accounts-receivable/statement.pdf`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
 export function listSuppliers(
   token: string,
   query?: string,
@@ -3356,6 +5395,16 @@ export function listSuppliers(
     params.append("q", query);
   }
   return requestCollection<Supplier>(`/suppliers?${params.toString()}`, { method: "GET" }, token);
+}
+
+export function getSuppliersAccountsPayable(
+  token: string
+): Promise<SupplierAccountsPayableResponse> {
+  return request<SupplierAccountsPayableResponse>(
+    "/suppliers/accounts-payable",
+    { method: "GET" },
+    token
+  );
 }
 
 export function exportSuppliersCsv(token: string, query?: string): Promise<Blob> {
@@ -3566,19 +5615,103 @@ export function closeRepairOrder(  // [PACK37-frontend]
   payload: RepairOrderClosePayload | undefined,
   reason: string
 ): Promise<Blob> {
-  return request<Blob>(
-    `/repairs/${repairId}/close`,
-    {
-      method: "POST",
-      body: payload ? JSON.stringify(payload) : undefined,
-      headers: { "X-Reason": reason },
-    },
-    token
-  );
+  const init: RequestInit = payload
+    ? {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: { "X-Reason": reason },
+      }
+    : {
+        method: "POST",
+        headers: { "X-Reason": reason },
+      };
+
+  return request<Blob>(`/repairs/${repairId}/close`, init, token);
 }
 
 export async function downloadRepairOrderPdf(token: string, repairId: number): Promise<Blob> {
   return request<Blob>(`/repairs/${repairId}/pdf`, { method: "GET" }, token);
+}
+
+export function listWarranties(
+  token: string,
+  params: {
+    store_id?: number;
+    status?: WarrantyStatus;
+    q?: string;
+    expiring_before?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<WarrantyAssignment[]> {
+  const searchParams = new URLSearchParams();
+  if (typeof params.store_id === "number") {
+    searchParams.set("store_id", String(params.store_id));
+  }
+  if (params.status) {
+    searchParams.set("status", params.status);
+  }
+  if (params.q) {
+    searchParams.set("q", params.q);
+  }
+  if (params.expiring_before) {
+    searchParams.set("expiring_before", params.expiring_before);
+  }
+  if (typeof params.limit === "number") {
+    searchParams.set("limit", String(params.limit));
+  }
+  if (typeof params.offset === "number") {
+    searchParams.set("offset", String(params.offset));
+  }
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+  return requestCollection<WarrantyAssignment>(`/warranties${suffix}`, { method: "GET" }, token);
+}
+
+export function getWarranty(token: string, assignmentId: number): Promise<WarrantyAssignment> {
+  return request<WarrantyAssignment>(`/warranties/${assignmentId}`, { method: "GET" }, token);
+}
+
+export function getWarrantyMetrics(
+  token: string,
+  params: { store_id?: number; horizon_days?: number } = {}
+): Promise<WarrantyMetrics> {
+  const searchParams = new URLSearchParams();
+  if (typeof params.store_id === "number") {
+    searchParams.set("store_id", String(params.store_id));
+  }
+  if (typeof params.horizon_days === "number") {
+    searchParams.set("horizon_days", String(params.horizon_days));
+  }
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<WarrantyMetrics>(`/warranties/metrics${suffix}`, { method: "GET" }, token);
+}
+
+export function createWarrantyClaim(
+  token: string,
+  assignmentId: number,
+  payload: WarrantyClaimPayload,
+  reason: string
+): Promise<WarrantyAssignment> {
+  return request<WarrantyAssignment>(
+    `/warranties/${assignmentId}/claims`,
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function updateWarrantyClaimStatus(
+  token: string,
+  claimId: number,
+  payload: WarrantyClaimStatusUpdatePayload,
+  reason: string
+): Promise<WarrantyAssignment> {
+  return request<WarrantyAssignment>(
+    `/warranties/claims/${claimId}`,
+    { method: "PATCH", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export function searchCatalogDevices(
@@ -3594,6 +5727,7 @@ export function searchCatalogDevices(
   if (filters.modelo) params.append("modelo", filters.modelo);
   if (filters.categoria) params.append("categoria", filters.categoria);
   if (filters.condicion) params.append("condicion", filters.condicion);
+  if (filters.estado_comercial) params.append("estado_comercial", filters.estado_comercial);
   if (filters.estado) params.append("estado", filters.estado);
   if (filters.ubicacion) params.append("ubicacion", filters.ubicacion);
   if (filters.proveedor) params.append("proveedor", filters.proveedor);
@@ -3617,6 +5751,38 @@ export function registerMovement(
   }, token);
 }
 
+export function registerInventoryReceiving(
+  token: string,
+  payload: InventoryReceivingRequest,
+  reason: string,
+): Promise<InventoryReceivingResult> {
+  return request<InventoryReceivingResult>(
+    "/inventory/counts/receipts",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function registerInventoryCycleCount(
+  token: string,
+  payload: InventoryCycleCountRequest,
+  reason: string,
+): Promise<InventoryCycleCountResult> {
+  return request<InventoryCycleCountResult>(
+    "/inventory/counts/cycle",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
 export function listSales(token: string, filters: SalesFilters = {}): Promise<Sale[]> {
   const params = buildSalesFilterParams(filters);
   const limit = typeof filters.limit === "number" ? filters.limit : 50;
@@ -3624,6 +5790,32 @@ export function listSales(token: string, filters: SalesFilters = {}): Promise<Sa
   const query = params.toString();
   const path = `/sales?${query}`;
   return requestCollection<Sale>(path, { method: "GET" }, token);
+}
+
+export function searchSalesHistory(
+  token: string,
+  filters: SaleHistorySearchFilters = {}
+): Promise<SaleHistorySearchResponse> {
+  const params = new URLSearchParams();
+  if (filters.ticket?.trim()) {
+    params.set("ticket", filters.ticket.trim());
+  }
+  if (filters.date) {
+    params.set("date", filters.date);
+  }
+  if (filters.customer?.trim()) {
+    params.set("customer", filters.customer.trim());
+  }
+  if (filters.qr?.trim()) {
+    params.set("qr", filters.qr.trim());
+  }
+  const limitValue = typeof filters.limit === "number" ? filters.limit : undefined;
+  if (typeof limitValue === "number") {
+    params.set("limit", String(limitValue));
+  }
+  const query = params.toString();
+  const path = query ? `/sales/history/search?${query}` : "/sales/history/search";
+  return request<SaleHistorySearchResponse>(path, { method: "GET" }, token);
 }
 
 export function createSale(
@@ -3672,6 +5864,34 @@ export function registerSaleReturn(
   );
 }
 
+export function listReturns(
+  token: string,
+  filters: ReturnsFilters = {}
+): Promise<ReturnsOverview> {
+  const params = new URLSearchParams();
+  if (typeof filters.storeId === "number") {
+    params.set("store_id", String(filters.storeId));
+  }
+  if (filters.type) {
+    params.set("type", filters.type);
+  }
+  if (filters.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  if (typeof filters.limit === "number") {
+    params.set("limit", String(filters.limit));
+  }
+  if (typeof filters.offset === "number") {
+    params.set("offset", String(filters.offset));
+  }
+  const query = params.toString();
+  const path = `/returns${query ? `?${query}` : ""}`;
+  return request<ReturnsOverview>(path, { method: "GET" }, token);
+}
+
 export function listStoreMemberships(token: string, storeId: number): Promise<StoreMembership[]> {
   return requestCollection<StoreMembership>(`/stores/${storeId}/memberships`, { method: "GET" }, token);
 }
@@ -3697,6 +5917,74 @@ export function listTransfers(token: string, storeId?: number): Promise<Transfer
   const query = params.toString();
   const path = `/transfers${query ? `?${query}` : ""}`;
   return requestCollection<TransferOrder>(path, { method: "GET" }, token);
+}
+
+export function getPaymentCenter(
+  token: string,
+  filters: {
+    limit?: number;
+    query?: string;
+    method?: PaymentMethod | "ALL";
+    type?: PaymentCenterTransactionType | "ALL";
+    dateFrom?: string;
+    dateTo?: string;
+  } = {},
+): Promise<PaymentCenterResponse> {
+  const params = new URLSearchParams();
+  params.set("limit", String(filters.limit ?? 50));
+  if (filters.query) {
+    params.set("query", filters.query);
+  }
+  if (filters.method && filters.method !== "ALL") {
+    params.set("method", filters.method);
+  }
+  if (filters.type && filters.type !== "ALL") {
+    params.set("type", filters.type);
+  }
+  if (filters.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request<PaymentCenterResponse>(`/payments/center${suffix}`, { method: "GET" }, token);
+}
+
+export function registerPaymentCenterPayment(
+  token: string,
+  payload: PaymentCenterPaymentInput,
+  reason: string,
+): Promise<CustomerLedgerEntry> {
+  return request<CustomerLedgerEntry>(
+    "/payments/center/payment",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function registerPaymentCenterRefund(
+  token: string,
+  payload: PaymentCenterRefundInput,
+  reason: string,
+): Promise<CustomerLedgerEntry> {
+  return request<CustomerLedgerEntry>(
+    "/payments/center/refund",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
+}
+
+export function registerPaymentCenterCreditNote(
+  token: string,
+  payload: PaymentCenterCreditNoteInput,
+  reason: string,
+): Promise<CustomerLedgerEntry> {
+  return request<CustomerLedgerEntry>(
+    "/payments/center/credit-note",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token,
+  );
 }
 
 export function createTransferOrder(
@@ -4276,6 +6564,130 @@ export async function downloadInventoryMovementsXlsx(
   URL.revokeObjectURL(url);
 }
 
+export async function downloadInventoryAdjustmentsCsv(
+  token: string,
+  reason: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<void> {
+  const params = buildInventoryMovementsParams(filters);
+  params.set("format", "csv");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/adjustments/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar los ajustes de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_ajustes.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAdjustmentsPdf(
+  token: string,
+  reason: string,
+  filters: InventoryMovementsFilters = {},
+): Promise<void> {
+  const params = buildInventoryMovementsParams(filters);
+  params.set("format", "pdf");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/adjustments/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de ajustes");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_ajustes.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAuditCsv(
+  token: string,
+  reason: string,
+  filters: InventoryAuditFilters = {},
+): Promise<void> {
+  const params = buildInventoryAuditParams(filters);
+  params.set("format", "csv");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/audit/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar la auditoría de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_auditoria_inventario.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadInventoryAuditPdf(
+  token: string,
+  reason: string,
+  filters: InventoryAuditFilters = {},
+): Promise<void> {
+  const params = buildInventoryAuditParams(filters);
+  params.set("format", "pdf");
+  const query = params.toString();
+  const response = await fetch(`${API_URL}/inventory/counts/audit/report?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible descargar el PDF de auditoría de inventario");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "softmobile_auditoria_inventario.pdf";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export async function downloadTopProductsCsv(
   token: string,
   reason: string,
@@ -4383,6 +6795,22 @@ export function getInventoryMetrics(token: string, lowStockThreshold = 5): Promi
     { method: "GET" },
     token
   );
+}
+
+export function getInventoryAlerts(
+  token: string,
+  params: { storeId?: number; threshold?: number } = {},
+): Promise<InventoryAlertsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.storeId) {
+    searchParams.set("store_id", String(params.storeId));
+  }
+  if (typeof params.threshold === "number") {
+    searchParams.set("threshold", String(params.threshold));
+  }
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<InventoryAlertsResponse>(`/alerts/inventory${suffix}`, { method: "GET" }, token);
 }
 
 export function getRotationAnalytics(
@@ -4634,39 +7062,77 @@ export function getAnalyticsAlerts(
   return request<AnalyticsAlerts>(`/reports/analytics/alerts${query}`, { method: "GET" }, token);
 }
 
+export function getRiskAlerts(
+  token: string,
+  filters?: { dateFrom?: string; dateTo?: string; discountThreshold?: number; cancellationThreshold?: number },
+): Promise<RiskAlertsResponse> {
+  const params = new URLSearchParams();
+  if (filters?.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters?.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  if (typeof filters?.discountThreshold === "number") {
+    params.set("discount_threshold", String(filters.discountThreshold));
+  }
+  if (typeof filters?.cancellationThreshold === "number") {
+    params.set("cancellation_threshold", String(filters.cancellationThreshold));
+  }
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<RiskAlertsResponse>(`/reports/analytics/risk${suffix}`, { method: "GET" }, token);
+}
+
 export function getAnalyticsRealtime(
   token: string,
   filters?: AnalyticsFilters,
 ): Promise<AnalyticsRealtime> {
-  const { storeIds, category } = filters ?? {};
-  const query = buildAnalyticsQuery({ storeIds, category });
+  const query = buildAnalyticsQuery(filters);
   return request<AnalyticsRealtime>(`/reports/analytics/realtime${query}`, { method: "GET" }, token);
+}
+
+export function getPurchaseAnalytics(
+  token: string,
+  filters?: AnalyticsFilters,
+): Promise<PurchaseAnalytics> {
+  const query = buildAnalyticsQuery(filters);
+  return request<PurchaseAnalytics>(`/reports/purchases${query}`, { method: "GET" }, token);
 }
 
 export function getTotpStatus(token: string): Promise<TOTPStatus> {
   return request<TOTPStatus>("/security/2fa/status", { method: "GET" }, token);
 }
 
-export function setupTotp(token: string, reason: string): Promise<TOTPSetup> {
+export function setupTotp(token: string, reason: string, reauth?: ReauthContext): Promise<TOTPSetup> {
   return request<TOTPSetup>(
     "/security/2fa/setup",
-    { method: "POST", headers: { "X-Reason": reason } },
+    { method: "POST", headers: { "X-Reason": reason, ...buildReauthHeaders(reauth) } },
     token
   );
 }
 
-export function activateTotp(token: string, code: string, reason: string): Promise<TOTPStatus> {
+export function activateTotp(
+  token: string,
+  code: string,
+  reason: string,
+  reauth?: ReauthContext,
+): Promise<TOTPStatus> {
   return request<TOTPStatus>(
     "/security/2fa/activate",
-    { method: "POST", body: JSON.stringify({ code }), headers: { "X-Reason": reason } },
+    {
+      method: "POST",
+      body: JSON.stringify({ code }),
+      headers: { "X-Reason": reason, ...buildReauthHeaders(reauth) },
+    },
     token
   );
 }
 
-export function disableTotp(token: string, reason: string): Promise<void> {
+export function disableTotp(token: string, reason: string, reauth?: ReauthContext): Promise<void> {
   return request<void>(
     "/security/2fa/disable",
-    { method: "POST", headers: { "X-Reason": reason } },
+    { method: "POST", headers: { "X-Reason": reason, ...buildReauthHeaders(reauth) } },
     token
   );
 }
@@ -4676,13 +7142,18 @@ export function listActiveSessions(token: string, userId?: number): Promise<Acti
   return requestCollection<ActiveSession>(`/security/sessions${query}`, { method: "GET" }, token);
 }
 
-export function revokeSession(token: string, sessionId: number, reason: string): Promise<ActiveSession> {
+export function revokeSession(
+  token: string,
+  sessionId: number,
+  reason: string,
+  reauth?: ReauthContext,
+): Promise<ActiveSession> {
   return request<ActiveSession>(
     `/security/sessions/${sessionId}/revoke`,
     {
       method: "POST",
       body: JSON.stringify({ reason }),
-      headers: { "X-Reason": reason },
+      headers: { "X-Reason": reason, ...buildReauthHeaders(reauth) },
     },
     token
   );
@@ -4705,8 +7176,45 @@ export function retrySyncOutbox(token: string, ids: number[], reason: string): P
   );
 }
 
+export function updateSyncOutboxPriority(
+  token: string,
+  id: number,
+  priority: "HIGH" | "NORMAL" | "LOW",
+  reason: string,
+): Promise<SyncOutboxEntry> {
+  return request<SyncOutboxEntry>(
+    `/sync/outbox/${id}/priority`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ priority }),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
+export function resolveSyncOutboxConflicts(
+  token: string,
+  ids: number[],
+  reason: string,
+): Promise<SyncOutboxEntry[]> {
+  return request<SyncOutboxEntry[]>(
+    "/sync/outbox/resolve",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+      headers: { "X-Reason": reason },
+    },
+    token,
+  );
+}
+
 export function getSyncOutboxStats(token: string): Promise<SyncOutboxStatsEntry[]> {
   return requestCollection<SyncOutboxStatsEntry>("/sync/outbox/stats", { method: "GET" }, token);
+}
+
+export function getObservabilitySnapshot(token: string): Promise<ObservabilitySnapshot> {
+  return request<ObservabilitySnapshot>("/admin/observability", { method: "GET" }, token);
 }
 
 export function getSyncQueueSummary(token: string): Promise<SyncQueueSummary> {
@@ -4748,6 +7256,34 @@ export function getSyncHistory(token: string, limitPerStore = 5): Promise<SyncSt
     { method: "GET" },
     token,
   );
+}
+
+export async function downloadSyncHistoryCsv(
+  token: string,
+  reason: string,
+  limitPerStore = 10,
+): Promise<void> {
+  const response = await fetch(`${API_URL}/sync/history/export?limit_per_store=${limitPerStore}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Reason": reason,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible exportar el historial de sincronización");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "historial_sincronizacion.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 export function getSyncOverview(token: string, storeId?: number): Promise<SyncBranchOverview[]> {
@@ -4821,8 +7357,14 @@ function buildAuditQuery(filters: AuditLogFilters = {}): string {
   if (filters.entity_type) {
     params.set("entity_type", filters.entity_type);
   }
+  if (filters.module) {
+    params.set("module", filters.module);
+  }
   if (typeof filters.performed_by_id === "number") {
     params.set("performed_by_id", String(filters.performed_by_id));
+  }
+  if (filters.severity) {
+    params.set("severity", filters.severity);
   }
   if (filters.date_from) {
     params.set("date_from", filters.date_from);
@@ -4904,7 +7446,7 @@ export function submitPosSaleOperation(
   payload: PosSaleOperationPayload,
   reason: string
 ): Promise<PosSaleResponse> {
-  const primaryMethod = (payload.payments[0]?.method as PaymentMethod) ?? PaymentMethod.EFECTIVO;
+  const primaryMethod = (payload.payments[0]?.method as PaymentMethod) ?? "EFECTIVO";
   const bodyPayload = {
     branchId: payload.branchId,
     store_id: payload.branchId,
@@ -4963,6 +7505,80 @@ export function updatePosConfig(
   );
 }
 
+export type PosHardwareActionResponse = {
+  status: "queued" | "ok" | "error";
+  message: string;
+  details?: Record<string, unknown> | null;
+};
+
+export type PosHardwarePrintTestInput = {
+  store_id: number;
+  printer_name?: string | null;
+  mode?: PosPrinterMode;
+  sample?: string;
+};
+
+export type PosHardwareDrawerOpenInput = {
+  store_id: number;
+  connector_identifier?: string | null;
+  pulse_duration_ms?: number | null;
+};
+
+export type PosHardwareDisplayPushInput = {
+  store_id: number;
+  headline: string;
+  message?: string | null;
+  total_amount?: number | null;
+};
+
+export function testPosPrinter(
+  token: string,
+  payload: PosHardwarePrintTestInput,
+  reason = "Prueba hardware POS"
+): Promise<PosHardwareActionResponse> {
+  return request<PosHardwareActionResponse>(
+    "/pos/hardware/print-test",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function openPosCashDrawer(
+  token: string,
+  payload: PosHardwareDrawerOpenInput,
+  reason = "Apertura manual gaveta"
+): Promise<PosHardwareActionResponse> {
+  return request<PosHardwareActionResponse>(
+    "/pos/hardware/drawer/open",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
+export function pushCustomerDisplay(
+  token: string,
+  payload: PosHardwareDisplayPushInput,
+  reason = "Mensaje pantalla cliente"
+): Promise<PosHardwareActionResponse> {
+  return request<PosHardwareActionResponse>(
+    "/pos/hardware/display/push",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "X-Reason": reason },
+    },
+    token
+  );
+}
+
 export function openCashSession(
   token: string,
   payload: { store_id: number; opening_amount: number; notes?: string },
@@ -4977,7 +7593,15 @@ export function openCashSession(
 
 export function closeCashSession(
   token: string,
-  payload: { session_id: number; closing_amount: number; payment_breakdown?: Record<string, number>; notes?: string },
+  payload: {
+    session_id: number;
+    closing_amount: number;
+    payment_breakdown?: Record<string, number>;
+    notes?: string;
+    denominations?: CashDenominationInput[];
+    reconciliation_notes?: string;
+    difference_reason?: string;
+  },
   reason: string
 ): Promise<CashSession> {
   return request<CashSession>(
@@ -5072,10 +7696,67 @@ export function registerPosReturn(
 export function listCashSessions(
   token: string,
   storeId: number,
-  limit = 30
+  limit = 30,
+  reason = "Consulta historial de caja"
 ): Promise<CashSession[]> {
   const params = new URLSearchParams({ store_id: String(storeId), limit: String(limit) });
-  return requestCollection<CashSession>(`/pos/cash/history?${params.toString()}`, { method: "GET" }, token);
+  return requestCollection<CashSession>(
+    `/pos/cash/history?${params.toString()}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function createCashRegisterEntry(
+  token: string,
+  payload: { session_id: number; entry_type: CashRegisterEntry["entry_type"]; amount: number; reason: string; notes?: string },
+  reason: string
+): Promise<CashRegisterEntry> {
+  return request<CashRegisterEntry>(
+    "/pos/cash/register/entries",
+    { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function listCashRegisterEntries(
+  token: string,
+  sessionId: number,
+  reason: string
+): Promise<CashRegisterEntry[]> {
+  return requestCollection<CashRegisterEntry>(
+    `/pos/cash/register/entries?session_id=${sessionId}`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
+}
+
+export function getCashRegisterReport(
+  token: string,
+  sessionId: number,
+  reason: string,
+  exportFormat: "json" | "pdf" = "json"
+): Promise<CashSession> | Promise<Blob> {
+  if (exportFormat === "pdf") {
+    return (async () => {
+      const response = await fetch(`${API_URL}/pos/cash/register/${sessionId}/report?export=pdf`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Reason": reason,
+        },
+      });
+      if (!response.ok) {
+        throw new Error("No fue posible descargar el reporte en PDF");
+      }
+      return await response.blob();
+    })();
+  }
+  return request<CashSession>(
+    `/pos/cash/register/${sessionId}/report?export=json`,
+    { method: "GET", headers: { "X-Reason": reason } },
+    token
+  );
 }
 
 export async function downloadPosReceipt(token: string, saleId: number): Promise<Blob> {
