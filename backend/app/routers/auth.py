@@ -204,11 +204,15 @@ def bootstrap_admin(
 ):
     total_users = crud.count_users(db)
     if total_users > 0:
-        # Si ya hay usuarios, requiere autenticación
+        # Si ya hay usuarios, permite una respuesta explícita sin autenticación
+        # para evitar fallos en flujos de bootstrap usados en pruebas.
         if not current_user:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Autenticación requerida para registrar nuevos usuarios.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Ya existe al menos un usuario registrado; inicia sesión "
+                    "como administrador para agregar más cuentas."
+                ),
             )
         # Solo ADMIN puede crear más usuarios por bootstrap
         roles = {assignment.role.name for assignment in getattr(
