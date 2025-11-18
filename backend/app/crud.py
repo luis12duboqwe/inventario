@@ -19875,3 +19875,140 @@ def list_dte_dispatch_queue(
     if statuses:
         statement = statement.where(models.DTEDispatchQueue.status.in_(tuple(statuses)))
     return list(db.scalars(statement))
+
+
+def create_support_feedback(
+    db: Session, *, payload: schemas.FeedbackCreate, user_id: int | None = None
+) -> models.SupportFeedback:
+    entry = models.SupportFeedback(
+        user_id=user_id,
+        contact=payload.contact,
+        module=payload.module,
+        category=payload.category,
+        priority=payload.priority,
+        status=models.FeedbackStatus.ABIERTO,
+        title=payload.title,
+        description=payload.description,
+        metadata_json=payload.metadata,
+        usage_context=payload.usage_context,
+    )
+    flush_session(db, entry)
+    return entry
+
+
+def update_support_feedback_status(
+    db: Session,
+    *,
+    tracking_id: str,
+    status: models.FeedbackStatus,
+    resolution_notes: str | None = None,
+) -> models.SupportFeedback | None:
+    entry = db.scalar(
+        select(models.SupportFeedback).where(
+            models.SupportFeedback.tracking_id == tracking_id
+        )
+    )
+    if entry is None:
+        return None
+
+    entry.status = status
+    entry.resolution_notes = resolution_notes
+    entry.updated_at = datetime.utcnow()
+    db.add(entry)
+    db.flush()
+    db.refresh(entry)
+    return entry
+
+
+def support_feedback_metrics(
+    db: Session, *, days: int = 30
+) -> schemas.FeedbackMetrics:
+    def _group_count(column) -> dict[str, int]:
+        results: dict[str, int] = {}
+        rows = db.execute(
+            select(column, func.count(models.SupportFeedback.id)).group_by(column)
+        ).all()
+        for value, count in rows:
+            key = value.value if hasattr(value, "value") else str(value)
+            results[key] = int(count)
+        return results
+
+    total_feedback = int(
+        db.scalar(select(func.count(models.SupportFeedback.id))) or 0
+    )
+    by_category = _group_count(models.SupportFeedback.category)
+    by_priority = _group_count(models.SupportFeedback.priority)
+    by_status = _group_count(models.SupportFeedback.status)
+
+    recent_feedback = [
+        schemas.FeedbackSummary.model_validate(row)
+        for row in db.scalars(
+            select(models.SupportFeedback)
+            .order_by(models.SupportFeedback.created_at.desc())
+            .limit(10)
+        )
+    ]
+
+    since = datetime.utcnow() - timedelta(days=days)
+    usage_rows = db.execute(
+        select(models.AuditUI.module, func.count(models.AuditUI.id))
+        .where(models.AuditUI.ts >= since)
+        .group_by(models.AuditUI.module)
+    ).all()
+    usage_map = {module: int(count) for module, count in usage_rows}
+
+    open_rows = db.execute(
+        select(models.SupportFeedback.module, func.count(models.SupportFeedback.id))
+        .where(
+            models.SupportFeedback.status.in_(
+                (models.FeedbackStatus.ABIERTO, models.FeedbackStatus.EN_PROGRESO)
+            )
+        )
+        .group_by(models.SupportFeedback.module)
+    ).all()
+    open_map = {module: int(count) for module, count in open_rows}
+
+    priority_weights: dict[models.FeedbackPriority, float] = {
+        models.FeedbackPriority.BAJA: 1.0,
+        models.FeedbackPriority.MEDIA: 1.4,
+        models.FeedbackPriority.ALTA: 2.0,
+        models.FeedbackPriority.CRITICA: 3.2,
+    }
+    status_weights: dict[models.FeedbackStatus, float] = {
+        models.FeedbackStatus.ABIERTO: 1.0,
+        models.FeedbackStatus.EN_PROGRESO: 0.85,
+        models.FeedbackStatus.RESUELTO: 0.3,
+        models.FeedbackStatus.DESCARTADO: 0.05,
+    }
+
+    module_scores: dict[str, float] = {}
+    for record in db.scalars(select(models.SupportFeedback)).all():
+        base_score = priority_weights.get(record.priority, 1.0)
+        status_multiplier = status_weights.get(record.status, 1.0)
+        module_scores[record.module] = module_scores.get(record.module, 0.0) + (
+            base_score * status_multiplier
+        )
+
+    hotspots = [
+        schemas.FeedbackUsageHotspot(
+            module=module,
+            interactions_last_30d=usage_map.get(module, 0),
+            open_feedback=open_map.get(module, 0),
+            priority_score=round(
+                score * (1 + math.log1p(usage_map.get(module, 0))), 2
+            ),
+        )
+        for module, score in module_scores.items()
+    ]
+    hotspots.sort(key=lambda item: item.priority_score, reverse=True)
+
+    return schemas.FeedbackMetrics(
+        totals={"feedback": total_feedback},
+        by_category={schemas.FeedbackCategory(key): value for key, value in by_category.items()},
+        by_priority={
+            schemas.FeedbackPriority(key): value for key, value in by_priority.items()
+        },
+        by_status={schemas.FeedbackStatus(key): value for key, value in by_status.items()},
+        hotspots=hotspots,
+        recent_feedback=recent_feedback,
+    )

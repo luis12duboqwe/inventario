@@ -13,6 +13,7 @@ import {
   Search,
   ShieldCheck,
   ShoppingBag,
+  LifeBuoy,
   SunMoon,
   UserCog,
   Wrench,
@@ -299,6 +300,13 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         label: "Ayuda",
         description: "Guías contextuales, manuales y modo demostración.",
         icon: <HelpCircle className="icon" aria-hidden="true" />,
+        isEnabled: true,
+      },
+      {
+        to: "/dashboard/support",
+        label: "Soporte",
+        description: "Feedback clasificado y métricas de priorización por uso.",
+        icon: <LifeBuoy className="icon" aria-hidden="true" />,
         isEnabled: true,
       },
       {

@@ -580,6 +580,7 @@ def generate_backup(
                 archive_path,
                 critical_directory,
             ]
+        )
     def _write_metadata_with_size(size: int) -> None:
         _write_metadata(
             metadata_path,
@@ -640,26 +641,6 @@ def generate_backup(
             return recalculated_size
         return recalculated_size
 
-    def _write_and_archive(size: int) -> int:
-        return _sync_metadata_and_archive(size)
-
-    total_size_estimate = 0
-    for _ in range(3):
-        recalculated = _write_and_archive(total_size_estimate)
-        if recalculated == total_size_estimate:
-            break
-        total_size_estimate = recalculated
-
-    total_size = _write_and_archive(total_size_estimate)
-        total_size_estimate = 0
-        for _ in range(3):
-            recalculated = _write_and_archive(total_size_estimate)
-            if recalculated == total_size_estimate:
-                break
-            total_size_estimate = recalculated
-
-        total_size = _write_and_archive(total_size_estimate)
-        return total_size
     final_components = [
         pdf_path,
         json_path,

@@ -24,6 +24,7 @@ const OperationsBundles = lazyWithRetry(() => import("../operations/pages/Operat
 const OperationsDte = lazyWithRetry(() => import("../operations/pages/OperationsDte"));
 const AnalyticsPage = lazyWithRetry(() => import("../analytics/pages/AnalyticsPage"));
 const HelpCenterPage = lazyWithRetry(() => import("../help/pages/HelpCenterPage"));
+const SupportFeedbackPage = lazyWithRetry(() => import("../support/Feedback"));
 const SecurityPage = lazyWithRetry(() => import("../security/pages/SecurityPage"));
 const SyncPage = lazyWithRetry(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazyWithRetry(() => import("../users/pages/UsersPage"));
@@ -261,6 +262,20 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
                 description="Intenta nuevamente mientras restablecemos las guías y manuales."
               >
                 <HelpCenterPage />
+              </AppErrorBoundary>
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="support"
+          element={
+            <ModuleBoundary>
+              <AppErrorBoundary
+                variant="inline"
+                title="Soporte momentáneamente no disponible"
+                description="Reintenta en unos segundos mientras restablecemos las métricas de feedback."
+              >
+                <SupportFeedbackPage />
               </AppErrorBoundary>
             </ModuleBoundary>
           }
