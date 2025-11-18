@@ -5,6 +5,7 @@ import enum
 import json
 from datetime import date, datetime, timedelta
 import secrets
+from uuid import uuid4
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -180,6 +181,28 @@ class SystemLogLevel(str, enum.Enum):
     WARNING = "warning"
     ERROR = "error"
     CRITICAL = "critical"
+
+
+class FeedbackCategory(str, enum.Enum):
+    INCIDENTE = "incidente"
+    MEJORA = "mejora"
+    USABILIDAD = "usabilidad"
+    RENDIMIENTO = "rendimiento"
+    CONSULTA = "consulta"
+
+
+class FeedbackPriority(str, enum.Enum):
+    BAJA = "baja"
+    MEDIA = "media"
+    ALTA = "alta"
+    CRITICA = "critica"
+
+
+class FeedbackStatus(str, enum.Enum):
+    ABIERTO = "abierto"
+    EN_PROGRESO = "en_progreso"
+    RESUELTO = "resuelto"
+    DESCARTADO = "descartado"
 
 
 class ConfigRate(Base):
@@ -1293,6 +1316,42 @@ class AuditUI(Base):
     entity_id: Mapped[str | None] = mapped_column(
         String(120), nullable=True, index=True)
     meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+
+class SupportFeedback(Base):
+    """Sugerencias, incidencias y mejoras reportadas por usuarios corporativos."""
+
+    __tablename__ = "support_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tracking_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), unique=True, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
+    )
+    contact: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    module: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    category: Mapped[FeedbackCategory] = mapped_column(
+        Enum(FeedbackCategory, name="feedback_category"), nullable=False
+    )
+    priority: Mapped[FeedbackPriority] = mapped_column(
+        Enum(FeedbackPriority, name="feedback_priority"), nullable=False, default=FeedbackPriority.MEDIA
+    )
+    status: Mapped[FeedbackStatus] = mapped_column(
+        Enum(FeedbackStatus, name="feedback_status"), nullable=False, default=FeedbackStatus.ABIERTO
+    )
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    usage_context: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
 
 class AuditLog(Base):
@@ -3561,6 +3620,10 @@ __all__ = [
     "SystemLog",
     "SystemError",
     "SystemLogLevel",
+    "FeedbackCategory",
+    "FeedbackPriority",
+    "FeedbackStatus",
+    "SupportFeedback",
     "BackupJob",
     "BackupMode",
     "ActiveSession",

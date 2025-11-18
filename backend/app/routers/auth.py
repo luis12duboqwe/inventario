@@ -212,8 +212,8 @@ def bootstrap_admin(
                 detail="El bootstrap ya fue realizado. Inicia sesión para agregar más usuarios.",
                 detail="Bootstrap ya completado; requiere autenticación de administrador para crear más usuarios.",
                 detail=(
-                    "Ya existe al menos un usuario registrado; inicia sesión "
-                    "como administrador para agregar más cuentas."
+                    "Bootstrap ya completado; requiere autenticación de administrador para crear más usuarios. "
+                    "Ya existe al menos un usuario registrado; inicia sesión como administrador para agregar más cuentas."
                 ),
             )
         # Solo ADMIN puede crear más usuarios por bootstrap

@@ -54,6 +54,7 @@ from .routers import (
     price_lists,
     payments,
     pos,
+    support,
     purchases,
     price_lists,
     repairs,
@@ -562,6 +563,7 @@ def create_app() -> FastAPI:
     routers_to_mount: tuple[APIRouter, ...] = (
         health.router,
         help_center.router,
+        support.router,
         alerts.router,
         auth.router,
         users.router,

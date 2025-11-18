@@ -15,6 +15,7 @@ from .label_printers import (
     build_connector_payload,
     build_epson_job,
     build_zebra_job,
+)
 from .inputs import (
     ProductInputRepository,
     ProductWeightCapture,
