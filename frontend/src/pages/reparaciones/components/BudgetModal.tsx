@@ -88,15 +88,15 @@ function BudgetModal({ order, open, onClose, onConfirmClose }: BudgetModalProps)
           <div className="budget-modal__totals">
             <div>
               <span className="muted-text">Mano de obra</span>
-              <strong>${labor.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>${labor.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </div>
             <div>
               <span className="muted-text">Repuestos</span>
-              <strong>${partsTotal.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>${partsTotal.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </div>
             <div>
               <span className="muted-text">Total</span>
-              <strong>${total.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>${total.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </div>
           </div>
         </section>

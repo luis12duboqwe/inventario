@@ -1623,6 +1623,42 @@ button.link:hover:not(:disabled) {
   color: rgba(148, 163, 184, 0.8);
 }
 
+.flow-audit-card {
+  display: grid;
+  gap: 12px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.78), rgba(8, 47, 73, 0.6));
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.flow-audit-card__header h2 {
+  margin: 2px 0;
+}
+
+.flow-audit-card__content {
+  display: grid;
+  gap: 10px;
+}
+
+.flow-audit-card__steps {
+  margin: 0;
+  padding-left: 20px;
+  color: #d1d5db;
+  display: grid;
+  gap: 6px;
+}
+
+.flow-audit-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.flow-audit-card__footer {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
 .operations-subpage-container {
   display: flex;
   flex-direction: column;
@@ -9971,4 +10007,94 @@ ol {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* Centro de ayuda */
+.help-center {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.help-center__grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.help-center__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.help-center__steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.help-center__links {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.help-center__manuals {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.help-center__manual {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.04);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+}
+
+.help-center__demo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.help-center__demo-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.help-center__demo-card {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.chip--success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.chip--muted {
+  background: rgba(100, 116, 139, 0.2);
+  color: #cbd5e1;
+  border: 1px solid rgba(100, 116, 139, 0.35);
 }

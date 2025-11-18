@@ -51,7 +51,7 @@ const bodyCellStyle: React.CSSProperties = {
   borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
 };
 
-const currencyFormatter = new Intl.NumberFormat("es-MX", {
+const currencyFormatter = new Intl.NumberFormat("es-HN", {
   style: "currency",
   currency: "MXN",
 });

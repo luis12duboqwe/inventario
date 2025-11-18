@@ -26,7 +26,7 @@ const STATUS_LABELS: Record<PurchaseOrder["status"], string> = {
   CANCELADA: "Cancelada",
 };
 
-const currencyFormatter = new Intl.NumberFormat("es-MX", {
+const currencyFormatter = new Intl.NumberFormat("es-HN", {
   style: "currency",
   currency: "MXN",
 });
@@ -79,7 +79,7 @@ function formatDate(value: string): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toLocaleDateString("es-MX");
+  return date.toLocaleDateString("es-HN");
 }
 
 function mapOrderToRow(order: PurchaseOrder, deviceLookup: Map<number, { sku: string; name: string }>): EnrichedRow {

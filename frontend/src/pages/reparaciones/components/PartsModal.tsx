@@ -170,13 +170,13 @@ function PartsModal({
                         <td>{part.quantity}</td>
                         <td>
                           $
-                          {Number(part.unit_cost ?? 0).toLocaleString("es-MX", {
+                          {Number(part.unit_cost ?? 0).toLocaleString("es-HN", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
                         </td>
                         <td>
-                          ${total.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ${total.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td>
                           {typeof part.id === "number" ? (

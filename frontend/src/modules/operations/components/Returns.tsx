@@ -148,7 +148,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
 
   const formatCurrency = useCallback(
     (value: number) =>
-      value.toLocaleString("es-MX", {
+      value.toLocaleString("es-HN", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }),
@@ -535,7 +535,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
               <option value="">Selecciona una venta</option>
               {sales.map((sale) => (
                 <option key={sale.id} value={sale.id}>
-                  #{sale.id} · {new Date(sale.created_at).toLocaleString("es-MX")}
+                  #{sale.id} · {new Date(sale.created_at).toLocaleString("es-HN")}
                 </option>
               ))}
             </select>
@@ -753,7 +753,7 @@ function ReturnsInner({ token, stores, defaultStoreId = null, onInventoryRefresh
                 <tbody>
                   {history.map((record) => (
                     <tr key={`${record.type}-${record.id}`}>
-                      <td>{new Date(record.occurred_at).toLocaleString("es-MX")}</td>
+                      <td>{new Date(record.occurred_at).toLocaleString("es-HN")}</td>
                       <td>
                         <span className={`returns-history__badge returns-history__type--${record.type}`}>
                           {record.type === "sale" ? "Cliente" : "Proveedor"}

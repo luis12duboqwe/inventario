@@ -37,7 +37,7 @@ const lineColumns = [
 
 function formatCurrency(value?: number) {
   if (typeof value !== "number") return "—";
-  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value);
+  return new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }).format(value);
 }
 
 export function QuoteDetailPage() {

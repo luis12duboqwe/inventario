@@ -5,7 +5,7 @@ export type POSChangeDueProps = {
   cash: number;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function ChangeDue({ total, cash }: POSChangeDueProps) {
   const change = Math.max(0, (cash ?? 0) - (total ?? 0));

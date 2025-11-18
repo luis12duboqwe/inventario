@@ -1,0 +1,13 @@
+Manual de Operaciones — Softmobile 2025 v2.2.0
+
+Cobertura:
+- POS y ventas simples con descuentos y métodos mixtos.
+- Compras con recepción parcial y promedio ponderado.
+- Transferencias SOLICITADA→EN_TRANSITO→RECIBIDA con control por sucursal.
+- Devoluciones y garantías ligadas a inventario y PDF de recibo.
+
+Pasos rápidos:
+1) Abre Operaciones → POS, captura productos y define motivo corporativo antes de confirmar.
+2) En Compras, registra el proveedor, marca la recepción parcial y valida el costo promedio.
+3) Gestiona transferencias entre tiendas, confirma recepción y revisa decremento de stock.
+4) Usa Devoluciones para revertir ventas manteniendo auditoría y PDFs sincronizados.

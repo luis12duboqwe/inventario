@@ -189,7 +189,7 @@ const CustomersSummaryCards = ({
                       </td>
                       <td>
                         {item.last_sale_at
-                          ? new Date(item.last_sale_at).toLocaleDateString("es-MX")
+                          ? new Date(item.last_sale_at).toLocaleDateString("es-HN")
                           : "—"}
                       </td>
                     </tr>
@@ -331,7 +331,7 @@ const CustomersSummaryCards = ({
               </div>
               <p className="muted-text small">
                 Datos generados el {dashboardMetrics.generated_at
-                  ? new Date(dashboardMetrics.generated_at).toLocaleString("es-MX")
+                  ? new Date(dashboardMetrics.generated_at).toLocaleString("es-HN")
                   : "—"}.
               </p>
             </div>

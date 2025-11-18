@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, isValidElement } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
@@ -100,7 +100,6 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     error,
     setMessage,
     setError,
-    pushToast,
     toasts,
     dismissToast,
     networkAlert,
@@ -120,6 +119,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     token,
   } = useDashboard();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [riskAlerts, setRiskAlerts] = useState<RiskAlert[]>([]);
 
@@ -185,7 +185,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
             ? "warning"
             : "info";
       const occurredLabel = notification.occurred_at
-        ? new Date(notification.occurred_at).toLocaleString("es-MX", {
+        ? new Date(notification.occurred_at).toLocaleString("es-HN", {
             dateStyle: "short",
             timeStyle: "short",
           })
@@ -295,6 +295,13 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         isEnabled: true,
       },
       {
+        to: "/dashboard/help",
+        label: "Ayuda",
+        description: "Guías contextuales, manuales y modo demostración.",
+        icon: <HelpCircle className="icon" aria-hidden="true" />,
+        isEnabled: true,
+      },
+      {
         to: "/dashboard/sync",
         label: "Sincronización",
         description: "Cola híbrida, historial y reintentos locales supervisados.",
@@ -342,11 +349,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     activeNav?.description ?? "Supervisa Softmobile 2025 v2.2.0 y mantén la operación sin interrupciones.";
 
   const handleQuickHelp = () => {
-    setMessage("Consulta docs/logs/softmobile_v2.2_mejoras_ui_navegacion.md para la guía de navegación actualizada.");
-    pushToast({
-      message: "Guía rápida disponible en docs/logs/softmobile_v2.2_mejoras_ui_navegacion.md",
-      variant: "info",
-    });
+    navigate("/dashboard/help", { state: { from: location.pathname } });
   };
 
   const notificationCount =
@@ -411,7 +414,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         title: "Conflictos en sync_outbox",
         description:
           lastOutboxConflict != null
-            ? `Último conflicto: ${lastOutboxConflict.toLocaleString("es-MX")}`
+            ? `Último conflicto: ${lastOutboxConflict.toLocaleString("es-HN")}`
             : "Se detectaron conflictos con prioridad last-write-wins.",
         variant: "warning",
       });

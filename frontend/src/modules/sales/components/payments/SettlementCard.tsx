@@ -5,7 +5,7 @@ type SettlementCardProps = {
   paid: number;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function SettlementCard({ total, paid }: SettlementCardProps) {
   const balance = useMemo(() => Math.max((total ?? 0) - (paid ?? 0), 0), [paid, total]);

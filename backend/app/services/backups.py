@@ -570,6 +570,8 @@ def generate_backup(
     _encrypt_backup_files(cipher, component_files, critical_directory)
 
     def _current_total() -> int:
+    def _calculate_components_size() -> int:
+    def _recalculate() -> int:
         return _calculate_total_size(
             [
                 pdf_path,
@@ -581,6 +583,65 @@ def generate_backup(
                 critical_directory,
             ]
         )
+
+    def _write_metadata_with_size(size: int) -> None:
+        _write_metadata(
+            metadata_path,
+            timestamp=timestamp,
+            mode=mode,
+            notes=notes,
+            components=selected_components,
+            json_path=json_path,
+            sql_path=sql_path,
+            pdf_path=pdf_path,
+            archive_path=archive_path,
+            config_path=config_path,
+            critical_directory=critical_directory,
+            copied_files=copied_files,
+            total_size_bytes=size,
+            triggered_by_id=triggered_by_id,
+            reason=normalized_reason,
+            encryption_enabled=encryption_enabled,
+            encryption_key_path=encryption_key_path,
+            cipher=cipher,
+        )
+
+    def _sync_metadata_and_archive(initial_size: int = 0, max_iterations: int = 8) -> int:
+        current_size = initial_size
+        for _ in range(max_iterations):
+            _write_metadata_with_size(current_size)
+            _build_archive()
+            recalculated = _calculate_components_size()
+            if recalculated == current_size:
+                return recalculated
+            current_size = recalculated
+        return current_size
+
+    total_size = _sync_metadata_and_archive()
+    total_size = _sync_metadata_and_archive(total_size)
+    def _write_metadata_with_size(size: int) -> None:
+        _write_metadata(
+            metadata_path,
+            timestamp=timestamp,
+            mode=mode,
+            notes=notes,
+            components=selected_components,
+            json_path=json_path,
+            sql_path=sql_path,
+            pdf_path=pdf_path,
+            archive_path=archive_path,
+            config_path=config_path,
+            critical_directory=critical_directory,
+            copied_files=copied_files,
+            total_size_bytes=size,
+            triggered_by_id=triggered_by_id,
+            reason=normalized_reason,
+            encryption_enabled=encryption_enabled,
+            encryption_key_path=encryption_key_path,
+            cipher=cipher,
+        )
+
+    def _sync_metadata_and_archive(total_size: int) -> int:
 
     initial_total = _calculate_total_size(
         [
@@ -637,6 +698,49 @@ def generate_backup(
     )
     _build_archive()
     total_size = _current_total()
+        def _write_and_archive(size: int) -> int:
+            """Actualiza metadatos, reconstruye el ZIP y recalcula el tamaño."""
+
+            _write_metadata_with_size(size)
+            _build_archive()
+            return _recalculate()
+
+        current_size = total_size
+        for _ in range(8):
+            _write_metadata_with_size(current_size)
+            _build_archive()
+            recalculated = _recalculate()
+            if recalculated == current_size:
+                return recalculated
+            current_size = recalculated
+
+        _write_metadata_with_size(current_size)
+        _build_archive()
+        recalculated_size = _recalculate()
+        if recalculated_size == current_size:
+            return recalculated_size
+        return recalculated_size
+
+    def _write_and_archive(size: int) -> int:
+        return _sync_metadata_and_archive(size)
+
+    total_size_estimate = 0
+    for _ in range(3):
+        recalculated = _write_and_archive(total_size_estimate)
+        if recalculated == total_size_estimate:
+            break
+        total_size_estimate = recalculated
+
+    total_size = _write_and_archive(total_size_estimate)
+        total_size_estimate = 0
+        for _ in range(3):
+            recalculated = _write_and_archive(total_size_estimate)
+            if recalculated == total_size_estimate:
+                break
+            total_size_estimate = recalculated
+
+        total_size = _write_and_archive(total_size_estimate)
+        return total_size
     final_components = [
         pdf_path,
         json_path,
@@ -699,6 +803,37 @@ def generate_backup(
         cipher=cipher,
     )
     total_size = _calculate_total_size(final_components)
+
+    total_size = _calculate_total_size(final_components)
+
+    for _ in range(5):
+        recalculated = _sync_metadata_and_archive(total_size)
+        if recalculated == total_size:
+            total_size = recalculated
+            break
+        total_size = recalculated
+
+    # Reforzar que los metadatos reflejen el tamaño final luego de reconstruir
+    # el archivo, evitando desviaciones mínimas entre el ZIP y el valor guardado.
+    for _ in range(3):
+        _write_metadata_with_size(total_size)
+        _build_archive()
+        recalculated_total = _calculate_total_size(final_components)
+        if recalculated_total == total_size:
+            break
+        total_size = recalculated_total
+
+    final_size = _calculate_components_size()
+    for _ in range(3):
+        _write_metadata_with_size(final_size)
+        _build_archive()
+        recalculated_total_size = _calculate_components_size()
+        if recalculated_total_size == final_size:
+            total_size = recalculated_total_size
+            break
+        final_size = recalculated_total_size
+    else:
+        total_size = final_size
 
     job = crud.create_backup_job(
         db,

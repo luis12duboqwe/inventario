@@ -14,7 +14,7 @@ type CreditScheduleProps = {
 };
 
 function formatCurrency(value: number): string {
-  return value.toLocaleString("es-MX", {
+  return value.toLocaleString("es-HN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -25,7 +25,7 @@ function formatDate(value: string): string {
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }
-  return parsed.toLocaleDateString("es-MX", {
+  return parsed.toLocaleDateString("es-HN", {
     year: "numeric",
     month: "short",
     day: "numeric",

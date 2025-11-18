@@ -113,7 +113,7 @@ function SidePanel({
           {customers.map((customer) => (
             <option key={customer.id} value={customer.id}>
               {customer.name} · Deuda $
-              {customer.outstanding_debt.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {customer.outstanding_debt.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </option>
           ))}
         </select>

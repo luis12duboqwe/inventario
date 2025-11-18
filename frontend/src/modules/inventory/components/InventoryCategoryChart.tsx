@@ -69,7 +69,7 @@ const InventoryCategoryChart = memo(function InventoryCategoryChart({
             }}
             labelStyle={{ color: colorVar("accent") }}
             formatter={(value: number) => [
-              `${Number(value).toLocaleString("es-MX")} unidades`,
+              `${Number(value).toLocaleString("es-HN")} unidades`,
               "Existencias",
             ]}
           />
@@ -90,7 +90,7 @@ const InventoryCategoryChart = memo(function InventoryCategoryChart({
             <li key={entry.label}>
               <span>{entry.label}</span>
               <span>
-                {entry.value.toLocaleString("es-MX")} uds · {share}%
+                {entry.value.toLocaleString("es-HN")} uds · {share}%
               </span>
             </li>
           );

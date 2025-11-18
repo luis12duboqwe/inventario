@@ -7592,6 +7592,43 @@ class POSHardwarePrintTestRequest(BaseModel):
     sample: str = Field(default="*** PRUEBA DE IMPRESIÓN POS ***", max_length=512)
 
 
+class LabelFormat(str, enum.Enum):
+    """Formatos permitidos para etiquetas físicas."""
+
+    PDF = "pdf"
+    ZPL = "zpl"
+    ESCPOS = "escpos"
+
+
+class LabelTemplateKey(str, enum.Enum):
+    """Plantillas disponibles según tamaño de etiqueta."""
+
+    SIZE_38X25 = "38x25"
+    SIZE_50X30 = "50x30"
+    SIZE_80X50 = "80x50"
+    A7 = "a7"
+
+
+class LabelCommandsResponse(BaseModel):
+    """Respuesta para etiquetas en formatos directos (ZPL/ESC/POS)."""
+
+    format: LabelFormat = Field(default=LabelFormat.ZPL)
+    template: LabelTemplateKey = Field(default=LabelTemplateKey.SIZE_38X25)
+    commands: str = Field(..., max_length=8000)
+    filename: str = Field(..., max_length=255)
+    content_type: str = Field(default="text/plain")
+    connector: POSConnectorSettings | None = Field(default=None)
+    message: str = Field(default="Etiqueta generada para impresión directa.")
+
+
+class InventoryLabelPrintRequest(BaseModel):
+    """Solicitud para enviar una etiqueta a impresión directa."""
+
+    format: LabelFormat = Field(default=LabelFormat.ZPL)
+    template: LabelTemplateKey = Field(default=LabelTemplateKey.SIZE_38X25)
+    connector: POSConnectorSettings | None = Field(default=None)
+
+
 class POSHardwareDrawerOpenRequest(BaseModel):
     """Solicitud para apertura de gaveta."""
 
@@ -8357,6 +8394,10 @@ __all__ = [
     "POSHardwareDrawerOpenRequest",
     "POSHardwareDisplayPushRequest",
     "POSHardwareActionResponse",
+    "LabelFormat",
+    "LabelTemplateKey",
+    "LabelCommandsResponse",
+    "InventoryLabelPrintRequest",
     "POSDraftResponse",
     "POSConfigResponse",
     "POSTerminalConfig",

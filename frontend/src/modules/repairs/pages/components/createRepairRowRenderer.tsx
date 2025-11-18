@@ -31,8 +31,8 @@ const createRepairRowRenderer = ({
   onShowParts,
 }: RepairRowRendererDependencies) => {
   function RepairRow(order: RepairOrder): ReactNode {
-    const updatedAt = new Date(order.updated_at).toLocaleString("es-MX");
-    const total = Number(order.total_cost ?? 0).toLocaleString("es-MX", {
+    const updatedAt = new Date(order.updated_at).toLocaleString("es-HN");
+    const total = Number(order.total_cost ?? 0).toLocaleString("es-HN", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
@@ -77,7 +77,7 @@ const createRepairRowRenderer = ({
                     return (
                       <li key={`${order.id}-${part.id}`}>
                         {part.quantity} × {label} — {part.source === "EXTERNAL" ? "Compra externa" : "Inventario"} (
-                        {part.unit_cost.toLocaleString("es-MX", {
+                        {part.unit_cost.toLocaleString("es-HN", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}

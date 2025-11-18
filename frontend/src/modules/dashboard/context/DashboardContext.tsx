@@ -218,7 +218,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const [lowStockThresholds, setLowStockThresholds] = useState<Record<number, number>>({});
 
   const currencyFormatter = useMemo(
-    () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
+    () => new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }),
     []
   );
 
