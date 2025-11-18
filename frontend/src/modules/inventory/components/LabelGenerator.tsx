@@ -1,6 +1,13 @@
 import React from "react";
 
-import { downloadDeviceLabelPdf } from "../../../api";
+import {
+  DeviceLabelCommands,
+  DeviceLabelFormat,
+  DeviceLabelTemplate,
+  DeviceLabelDownload,
+  requestDeviceLabel,
+  triggerDeviceLabelPrint,
+} from "../../../api";
 import { useAuth } from "../../../auth/useAuth";
 
 type Props = {
@@ -14,6 +21,8 @@ type Props = {
 };
 
 const DEFAULT_REASON = "Impresión de etiqueta";
+const DEFAULT_TEMPLATE: DeviceLabelTemplate = "38x25";
+const DEFAULT_FORMAT: DeviceLabelFormat = "pdf";
 
 export default function LabelGenerator({
   open,
@@ -26,11 +35,15 @@ export default function LabelGenerator({
 }: Props) {
   const { accessToken } = useAuth();
   const [reason, setReason] = React.useState<string>(DEFAULT_REASON);
+  const [template, setTemplate] = React.useState<DeviceLabelTemplate>(DEFAULT_TEMPLATE);
+  const [format, setFormat] = React.useState<DeviceLabelFormat>(DEFAULT_FORMAT);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [filename, setFilename] = React.useState<string>("");
   const [success, setSuccess] = React.useState(false);
   const [previewUrlState, setPreviewUrlState] = React.useState<string | null>(null);
+  const [commandsPayload, setCommandsPayload] = React.useState<DeviceLabelCommands | null>(null);
+  const [directMessage, setDirectMessage] = React.useState<string | null>(null);
   const previewRef = React.useRef<string | null>(null);
 
   const updatePreviewUrl = React.useCallback((next: string | null) => {
@@ -45,9 +58,13 @@ export default function LabelGenerator({
   const resetState = React.useCallback(() => {
     setReason(DEFAULT_REASON);
     setError(null);
+    setTemplate(DEFAULT_TEMPLATE);
+    setFormat(DEFAULT_FORMAT);
     setFilename("");
     setSuccess(false);
     setLoading(false);
+    setCommandsPayload(null);
+    setDirectMessage(null);
     updatePreviewUrl(null);
   }, [updatePreviewUrl]);
 
@@ -90,19 +107,31 @@ export default function LabelGenerator({
       setLoading(true);
       setError(null);
       setSuccess(false);
+      setCommandsPayload(null);
+      setDirectMessage(null);
       const token = accessToken;
       if (!token) {
         throw new Error("Tu sesión no está disponible. Inicia sesión nuevamente.");
       }
-      const { blob, filename: suggested } = await downloadDeviceLabelPdf(
+      const labelResponse = await requestDeviceLabel(
         token,
         storeId as number,
         parsedDeviceId as number,
         trimmedReason,
+        { format, template },
       );
-      const objectUrl = URL.createObjectURL(blob);
-      updatePreviewUrl(objectUrl);
-      setFilename(suggested);
+      if (format === "pdf") {
+        const { blob, filename: suggested } = labelResponse as DeviceLabelDownload;
+        const objectUrl = URL.createObjectURL(blob);
+        updatePreviewUrl(objectUrl);
+        setFilename(suggested);
+      } else {
+        const payload = labelResponse as DeviceLabelCommands;
+        setCommandsPayload(payload);
+        setFilename(payload.filename);
+        setDirectMessage(payload.message || "Etiqueta generada correctamente.");
+        updatePreviewUrl(null);
+      }
       setSuccess(true);
     } catch (generateError) {
       const message =
@@ -189,6 +218,50 @@ export default function LabelGenerator({
               Se enviará como encabezado <code>X-Reason</code> (mínimo 5 caracteres).
             </span>
           </label>
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+            <label style={{ display: "grid", gap: 4, fontSize: 14 }}>
+              <span style={{ color: "#cbd5f5" }}>Formato de etiqueta</span>
+              <select
+                value={format}
+                onChange={(event) => {
+                  setFormat(event.target.value as DeviceLabelFormat);
+                  setCommandsPayload(null);
+                  updatePreviewUrl(null);
+                  setSuccess(false);
+                }}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(148, 163, 184, 0.35)",
+                  background: "#0f172a",
+                  color: "#e2e8f0",
+                }}
+              >
+                <option value="pdf">PDF (descarga)</option>
+                <option value="zpl">ZPL · Zebra (directo)</option>
+                <option value="escpos">ESC/POS · Epson (directo)</option>
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 4, fontSize: 14 }}>
+              <span style={{ color: "#cbd5f5" }}>Plantilla / tamaño</span>
+              <select
+                value={template}
+                onChange={(event) => setTemplate(event.target.value as DeviceLabelTemplate)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(148, 163, 184, 0.35)",
+                  background: "#0f172a",
+                  color: "#e2e8f0",
+                }}
+              >
+                <option value="38x25">38x25 mm — compacto</option>
+                <option value="50x30">50x30 mm — estándar</option>
+                <option value="80x50">80x50 mm — ampliado</option>
+                <option value="a7">A7 — ficha PDF</option>
+              </select>
+            </label>
+          </div>
           {error ? (
             <div
               role="alert"
@@ -215,39 +288,86 @@ export default function LabelGenerator({
           }}
         >
           <h4 style={{ margin: 0 }}>Vista previa</h4>
-          {previewUrl ? (
-            <div style={{ display: "grid", gap: 12 }}>
-              <iframe
-                title="Vista previa de etiqueta"
-                src={previewUrl}
-                style={{ width: "100%", height: 360, border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: 8 }}
+          {format === "pdf" ? (
+            previewUrl ? (
+              <div style={{ display: "grid", gap: 12 }}>
+                <iframe
+                  title="Vista previa de etiqueta"
+                  src={previewUrl}
+                  style={{ width: "100%", height: 360, border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: 8 }}
+                />
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <a
+                    href={previewUrl}
+                    download={filename || "etiqueta.pdf"}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      background: "#38bdf8",
+                      color: "#0f172a",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                    }}
+                  >
+                    Descargar PDF
+                  </a>
+                  <button
+                    onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
+                    style={{ padding: "8px 12px", borderRadius: 8 }}
+                  >
+                    Abrir en nueva pestaña
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p style={{ margin: 0, color: "#94a3b8" }}>
+                Genera la etiqueta para obtener la vista previa y descarga inmediata.
+              </p>
+            )
+          ) : commandsPayload ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  background: "rgba(56, 189, 248, 0.08)",
+                  color: "#e2e8f0",
+                }}
+              >
+                {directMessage || "Comandos listos para impresión directa."}
+              </div>
+              <textarea
+                value={commandsPayload.commands}
+                readOnly
+                style={{
+                  width: "100%",
+                  minHeight: 200,
+                  background: "#0f172a",
+                  color: "#e2e8f0",
+                  borderRadius: 8,
+                  border: "1px solid rgba(56, 189, 248, 0.35)",
+                  padding: 12,
+                  fontFamily: "monospace",
+                }}
               />
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <a
-                  href={previewUrl}
-                  download={filename || "etiqueta.pdf"}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    background: "#38bdf8",
-                    color: "#0f172a",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                  }}
-                >
-                  Descargar PDF
-                </a>
                 <button
-                  onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(commandsPayload.commands);
+                    setDirectMessage("Comandos copiados al portapapeles.");
+                  }}
                   style={{ padding: "8px 12px", borderRadius: 8 }}
                 >
-                  Abrir en nueva pestaña
+                  Copiar comandos
                 </button>
+                <span style={{ color: "#94a3b8", fontSize: 13 }}>
+                  Conecta tu app local o impresora de red y pega el bloque anterior.
+                </span>
               </div>
             </div>
           ) : (
             <p style={{ margin: 0, color: "#94a3b8" }}>
-              Genera la etiqueta para obtener la vista previa y descarga inmediata.
+              Genera la etiqueta para obtener los comandos directos de la impresora.
             </p>
           )}
         </section>
@@ -256,6 +376,60 @@ export default function LabelGenerator({
           <button onClick={handleClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
             Cancelar
           </button>
+          {commandsPayload && format !== "pdf" ? (
+            <button
+              onClick={async () => {
+                if (!canGenerate) {
+                  setError("Selecciona sucursal, producto y motivo corporativo válido.");
+                  return;
+                }
+                const trimmedReason = reason.trim();
+                if (trimmedReason.length < 5) {
+                  setError("Escribe un motivo corporativo de al menos 5 caracteres.");
+                  return;
+                }
+                try {
+                  setLoading(true);
+                  const token = accessToken;
+                  if (!token) {
+                    throw new Error("Tu sesión no está disponible. Inicia sesión nuevamente.");
+                  }
+                  const response = await triggerDeviceLabelPrint(
+                    token,
+                    storeId as number,
+                    parsedDeviceId as number,
+                    trimmedReason,
+                    {
+                      format,
+                      template,
+                      connector: commandsPayload.connector,
+                    },
+                  );
+                  setDirectMessage(response.message);
+                } catch (printError) {
+                  const message =
+                    printError instanceof Error
+                      ? printError.message
+                      : "No fue posible enviar la prueba de impresión.";
+                  setError(message);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                background: "#0ea5e9",
+                color: "#0f172a",
+                fontWeight: 600,
+                border: 0,
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              {loading ? "Enviando…" : "Probar en impresora local"}
+            </button>
+          ) : null}
           <button
             onClick={handleGenerate}
             disabled={loading}
