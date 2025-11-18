@@ -26,6 +26,7 @@ const SecurityPage = lazyWithRetry(() => import("../security/pages/SecurityPage"
 const SyncPage = lazyWithRetry(() => import("../sync/pages/SyncPage"));
 const UsersPage = lazyWithRetry(() => import("../users/pages/UsersPage"));
 const StoresPage = lazyWithRetry(() => import("../stores/pages/StoresPage"));
+const MobileWorkspace = lazyWithRetry(() => import("../../mobile/MobileWorkspace"));
 // Reparaciones: usar el alias RepairsPage para permitir el control de Suspense en pruebas
 const RepairsPage = lazyWithRetry(() => import("../repairs/pages/RepairsPage"));
 const RepairsPending = lazyWithRetry(() => import("../repairs/pages/RepairsPendingPage"));
@@ -50,6 +51,7 @@ const allowedModules = new Set([
   "inventory",
   "operations",
   "analytics",
+  "mobile",
   "reports",
   "security",
   "sync",
@@ -153,6 +155,21 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           <Route path="paquetes" element={<OperationsBundles />} />
           <Route path="dte" element={<OperationsDte />} />
         </Route>
+        <Route
+          path="mobile"
+          element={
+            <ModuleBoundary>
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Módulo móvil fuera de línea"
+                description="Revisa tu conexión y vuelve a intentarlo desde el dispositivo móvil."
+              >
+                <MobileWorkspace />
+              </AppErrorBoundary>
+            </ModuleBoundary>
+          }
+        />
         <Route
           path="/sales/*"
           element={

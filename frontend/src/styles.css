@@ -9746,3 +9746,229 @@ ol {
   color: #67e8f9;
   font-weight: 600;
 }
+
+/* Módulo móvil Softmobile */
+.mobile-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.mobile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.25rem;
+}
+
+.mobile-card {
+  background: linear-gradient(145deg, #0b1628 0%, #0f172a 50%, #0a1222 100%);
+  border: 1px solid #1f2937;
+  border-radius: 14px;
+  padding: 1rem;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.35);
+}
+
+.mobile-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.mobile-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mobile-field,
+.mobile-field-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.mobile-field-grid {
+  flex-direction: row;
+  gap: 0.75rem;
+}
+
+.mobile-field-grid .mobile-field {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.mobile-field input,
+.mobile-field textarea,
+.mobile-field select {
+  background: #0b1628;
+  color: #e2e8f0;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+}
+
+.mobile-field textarea {
+  min-height: 74px;
+}
+
+.mobile-list {
+  background: rgba(31, 41, 55, 0.4);
+  border: 1px dashed #334155;
+  border-radius: 12px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.mobile-list__title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.mobile-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mobile-line {
+  display: grid;
+  grid-template-columns: 1fr 92px 40px;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 10px;
+  background: #0a1424;
+  border: 1px solid #1f2937;
+}
+
+.mobile-line__id {
+  color: #e2e8f0;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.mobile-line input[type="number"] {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #1f2937;
+  background: #0b1628;
+  color: #e2e8f0;
+  padding: 0.4rem 0.5rem;
+}
+
+.mobile-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mobile-scan-wrapper {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.mobile-camera-preview {
+  position: relative;
+  background: #0a1222;
+  border: 1px dashed #334155;
+  border-radius: 12px;
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-camera-preview video {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  object-fit: cover;
+  opacity: 0.2;
+  transition: opacity 0.3s ease;
+}
+
+.mobile-camera-preview video.camera-live {
+  opacity: 0.7;
+  border: 1px solid #38bdf8;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.3);
+}
+
+.mobile-inline-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(248, 180, 0, 0.08);
+  color: #fbbf24;
+  border: 1px solid rgba(248, 180, 0, 0.35);
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.mobile-lookup-results {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mobile-lookup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: #0a1424;
+  border: 1px solid #1f2937;
+}
+
+.lookup-title {
+  color: #e2e8f0;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+}
+
+.lookup-pill {
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.12);
+  color: #67e8f9;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  font-weight: 700;
+}
+
+.mobile-hint {
+  margin-top: 0.75rem;
+  color: #a5b4fc;
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px solid rgba(79, 70, 229, 0.35);
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+}
+
+@media (max-width: 720px) {
+  .mobile-line {
+    grid-template-columns: 1fr 80px 36px;
+  }
+
+  .mobile-field-grid {
+    flex-direction: column;
+  }
+
+  .mobile-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

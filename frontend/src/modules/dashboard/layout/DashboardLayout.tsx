@@ -17,6 +17,7 @@ import {
   UserCog,
   Wrench,
   MapPin,
+  Smartphone,
 } from "lucide-react";
 
 import BackToTopButton from "../../../shared/components/BackToTopButton";
@@ -249,6 +250,13 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         description: "Compras, ventas, devoluciones y transferencias sincronizadas.",
         icon: <Cog className="icon" aria-hidden="true" />,
         isEnabled: enablePurchasesSales || enableTransfers,
+      },
+      {
+        to: "/dashboard/mobile",
+        label: "Móvil",
+        description: "Conteos, recepciones y consulta rápida en dispositivos móviles.",
+        icon: <Smartphone className="icon" aria-hidden="true" />,
+        isEnabled: true,
       },
       {
         to: "/sales",
