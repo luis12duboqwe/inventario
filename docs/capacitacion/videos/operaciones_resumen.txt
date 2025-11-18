@@ -1,0 +1,4 @@
+Video (120s) — Operaciones
+1. Venta en POS con pago mixto y motivo corporativo.
+2. Recepción parcial de compra y actualización de costo promedio.
+3. Transferencia EN_TRANSITO a RECIBIDA con decremento automático.

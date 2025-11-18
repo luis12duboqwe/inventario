@@ -38,6 +38,7 @@ from .routers import (
     customers,
     dte,
     health,
+    help_center,
     discovery,
     import_validation,
     integrations,
@@ -560,6 +561,7 @@ def create_app() -> FastAPI:
 
     routers_to_mount: tuple[APIRouter, ...] = (
         health.router,
+        help_center.router,
         alerts.router,
         auth.router,
         users.router,

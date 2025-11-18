@@ -203,6 +203,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    demo_mode_enabled: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "DEMO_MODE",
+                "SOFTMOBILE_DEMO_MODE",
+            ),
+        ),
+    ]
     # // [PACK35-backend]
     sync_remote_url: Annotated[
         str | None,
