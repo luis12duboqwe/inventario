@@ -9,6 +9,17 @@ from .receipt_printing import (
     hardware_channels,
     receipt_printer_service,
 )
+from .inputs import (
+    ProductInputRepository,
+    ProductWeightCapture,
+    RFIDProductLink,
+    RFIDReaderAdapter,
+    RFIDTagReading,
+    ScaleAdapter,
+    ScaleReading,
+    capture_and_link_epc,
+    capture_weight_for_product,
+)
 
 __all__ = [
     "ConnectorType",
@@ -16,6 +27,15 @@ __all__ = [
     "PrinterMode",
     "ReceiptPrinterService",
     "ReceiptPrintResult",
+    "ProductInputRepository",
+    "ProductWeightCapture",
+    "RFIDProductLink",
+    "RFIDReaderAdapter",
+    "RFIDTagReading",
+    "ScaleAdapter",
+    "ScaleReading",
     "hardware_channels",
     "receipt_printer_service",
+    "capture_and_link_epc",
+    "capture_weight_for_product",
 ]
