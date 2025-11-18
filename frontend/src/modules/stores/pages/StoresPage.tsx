@@ -228,7 +228,7 @@ function StoresPage() {
                           <td>{s.code}</td>
                           <td>{s.status}</td>
                           <td>{s.timezone}</td>
-                          <td>{new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(s.inventory_value)}</td>
+                          <td>{new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }).format(s.inventory_value)}</td>
                         </tr>
                       ))}
                     </tbody>

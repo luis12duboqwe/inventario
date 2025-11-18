@@ -169,7 +169,7 @@ function POSSettingsForm({
           </button>
         </div>
       </form>
-      <p className="muted-text">Última actualización: {new Date(config.updated_at).toLocaleString("es-MX")}</p>
+      <p className="muted-text">Última actualización: {new Date(config.updated_at).toLocaleString("es-HN")}</p>
       <PosHardware
         storeId={config.store_id}
         hardware={hardware}

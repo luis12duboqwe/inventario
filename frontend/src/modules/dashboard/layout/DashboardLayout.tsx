@@ -185,7 +185,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
             ? "warning"
             : "info";
       const occurredLabel = notification.occurred_at
-        ? new Date(notification.occurred_at).toLocaleString("es-MX", {
+        ? new Date(notification.occurred_at).toLocaleString("es-HN", {
             dateStyle: "short",
             timeStyle: "short",
           })
@@ -411,7 +411,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         title: "Conflictos en sync_outbox",
         description:
           lastOutboxConflict != null
-            ? `Último conflicto: ${lastOutboxConflict.toLocaleString("es-MX")}`
+            ? `Último conflicto: ${lastOutboxConflict.toLocaleString("es-HN")}`
             : "Se detectaron conflictos con prioridad last-write-wins.",
         variant: "warning",
       });

@@ -207,8 +207,8 @@ def bootstrap_admin(
         # Si ya hay usuarios, requiere autenticación
         if not current_user:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Autenticación requerida para registrar nuevos usuarios.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El bootstrap ya fue realizado. Inicia sesión para agregar más usuarios.",
             )
         # Solo ADMIN puede crear más usuarios por bootstrap
         roles = {assignment.role.name for assignment in getattr(

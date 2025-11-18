@@ -189,7 +189,7 @@ export const usePurchasesController = ({
   const downloadBlob = useBlobDownloader();
 
   const currencyFormatter = useMemo(
-    () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
+    () => new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }),
     [],
   );
 

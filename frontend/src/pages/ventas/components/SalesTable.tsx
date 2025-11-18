@@ -42,7 +42,7 @@ function SalesTable({ sales, isLoading, formatCurrency }: Props) {
               {sales.map((sale) => (
                 <tr key={sale.id}>
                   <td>#{sale.id}</td>
-                  <td>{new Date(sale.created_at).toLocaleString("es-MX")}</td>
+                  <td>{new Date(sale.created_at).toLocaleString("es-HN")}</td>
                   <td>{sale.store?.name ?? `Sucursal #${sale.store_id}`}</td>
                   <td>{sale.customer_name ?? "Mostrador"}</td>
                   <td>{sale.performed_by?.full_name ?? sale.performed_by?.username ?? "—"}</td>

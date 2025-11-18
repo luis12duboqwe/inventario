@@ -17,6 +17,7 @@ import {
 import type { ProductFilters, ProductCardData, ProductRow } from "../components/products-list";
 import { useInventoryLayout } from "./context/InventoryLayoutContext"; // [PACK30-31-FRONTEND]
 import LabelGenerator from "../components/LabelGenerator";
+import { formatCurrencyWithUsd, formatNumberHn } from "@/utils/locale";
 
 type MovePayload = { categoryId: string };
 type TagPayload = { tags: string[] };
@@ -89,17 +90,12 @@ export default function InventoryProducts() {
   const summaryItems = React.useMemo<SummaryCard[]>(() => {
     const totalStock = rows.reduce((acc, item) => acc + item.stock, 0);
     const inventoryValue = rows.reduce((acc, item) => acc + item.stock * item.price, 0);
-    const currencyFormatter = new Intl.NumberFormat("es-MX", {
-      style: "currency",
-      currency: "MXN",
-      minimumFractionDigits: 2,
-    });
 
     return [
       { label: "Productos", value: rows.length, hint: "Registros activos" },
-      { label: "Stock total", value: totalStock, hint: "Unidades disponibles" },
-      { label: "Valor inventario", value: currencyFormatter.format(inventoryValue) },
-      { label: "Filtros activos", value: activeFilters },
+      { label: "Stock total", value: formatNumberHn(totalStock), hint: "Unidades disponibles" },
+      { label: "Valor inventario", value: formatCurrencyWithUsd(inventoryValue) },
+      { label: "Filtros activos", value: formatNumberHn(activeFilters) },
     ];
   }, [activeFilters, rows]);
 

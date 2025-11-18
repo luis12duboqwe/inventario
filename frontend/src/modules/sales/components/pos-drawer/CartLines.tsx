@@ -16,7 +16,7 @@ export type POSCartLinesProps = {
   onRemove?: (id: string) => void;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function CartLines({ items, onQty, onRemove }: POSCartLinesProps) {
   const data = Array.isArray(items) ? items : [];

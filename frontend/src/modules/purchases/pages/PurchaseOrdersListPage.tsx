@@ -91,7 +91,7 @@ const PURCHASE_ORDERS_SAMPLE: PurchaseOrderRecord[] = [
   },
 ];
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function PurchaseOrdersListPage() {
   const [filters, setFilters] = useState<POFilters>({ status: "ALL" });

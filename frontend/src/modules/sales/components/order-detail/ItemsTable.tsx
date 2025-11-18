@@ -16,7 +16,7 @@ export type OrderItemsTableProps = {
   items?: OrderItem[];
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function ItemsTable({ items }: OrderItemsTableProps) {
   const data = Array.isArray(items) ? items : [];

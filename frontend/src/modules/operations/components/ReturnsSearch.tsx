@@ -53,7 +53,7 @@ function resolveCustomerLabel(sale: Sale): string | null {
 }
 
 function formatCurrency(value: number): string {
-  return value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return value.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {

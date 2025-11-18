@@ -68,7 +68,7 @@ type TransactionRow = {
 
 type ModalState = { open: boolean; orderId?: string; row?: TransactionRow | null } | null;
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function PaymentsCenterPage() {
   const { token, pushToast } = useDashboard();

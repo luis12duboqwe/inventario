@@ -105,14 +105,14 @@ const CustomersSidePanel = ({
     if (!parsed) {
       return "Fecha desconocida";
     }
-    return parsed.toLocaleString("es-MX");
+    return parsed.toLocaleString("es-HN");
   };
   const formatDateOnly = (value: unknown) => { // [PACK36-customers]
     const parsed = safeDate(value);
     if (!parsed) {
       return "—";
     }
-    return parsed.toLocaleDateString("es-MX");
+    return parsed.toLocaleDateString("es-HN");
   };
   const resolveReference = (entry: CustomerAccountsReceivable["open_entries"][number]) => { // [PACK36-customers]
     if (entry.reference) {

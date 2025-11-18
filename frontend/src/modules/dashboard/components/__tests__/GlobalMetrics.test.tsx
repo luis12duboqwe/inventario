@@ -15,7 +15,7 @@ const dashboardState: DashboardStub = {
   enablePriceLists: false,
   metrics: null,
   formatCurrency: (value: number) =>
-    new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value),
+    new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }).format(value),
   loading: false,
 };
 

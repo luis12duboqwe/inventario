@@ -158,7 +158,7 @@ function InventoryStatusSection() {
             <p className="card-subtitle">Visualiza la distribución de existencias en inventario.</p>
           </div>
           <span className="pill neutral">
-            Total {totalCategoryUnits.toLocaleString("es-MX")}
+            Total {totalCategoryUnits.toLocaleString("es-HN")}
             {" "}uds
           </span>
         </header>
