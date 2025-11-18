@@ -7235,6 +7235,33 @@ class POSSessionSummary(BaseModel):
         return {str(denomination): int(count) for denomination, count in value.items()}
 
 
+class POSSessionPageResponse(BaseModel):
+    """Respuesta paginada para historiales de sesiones POS."""
+
+    items: list[POSSessionSummary] = Field(default_factory=list)
+    total: int = Field(ge=0)
+    page: int = Field(ge=1)
+    size: int = Field(ge=1)
+
+
+class AsyncJobStatus(str, enum.Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class AsyncJobResponse(BaseModel):
+    id: str
+    session_id: int
+    job_type: str
+    status: AsyncJobStatus
+    output_path: str | None = None
+    error: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None
+
+
 class POSTaxInfo(BaseModel):
     """Catálogo simple de impuestos POS."""
 
@@ -8278,6 +8305,9 @@ __all__ = [
     "POSSessionOpenPayload",
     "POSSessionClosePayload",
     "POSSessionSummary",
+    "POSSessionPageResponse",
+    "AsyncJobStatus",
+    "AsyncJobResponse",
     "POSTaxInfo",
     "POSReturnItemRequest",
     "PriceListBase",

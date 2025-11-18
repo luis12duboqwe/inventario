@@ -569,6 +569,7 @@ def generate_backup(
     component_files = [pdf_path, json_path, sql_path, config_path]
     _encrypt_backup_files(cipher, component_files, critical_directory)
 
+    def _current_total() -> int:
     def _calculate_components_size() -> int:
     def _recalculate() -> int:
         return _calculate_total_size(
@@ -642,19 +643,61 @@ def generate_backup(
 
     def _sync_metadata_and_archive(total_size: int) -> int:
 
-        def _recalculate() -> int:
-            return _calculate_total_size(
-                [
-                    pdf_path,
-                    json_path,
-                    sql_path,
-                    config_path,
-                    metadata_path,
-                    archive_path,
-                    critical_directory,
-                ]
-            )
+    initial_total = _calculate_total_size(
+        [
+            pdf_path,
+            json_path,
+            sql_path,
+            config_path,
+            critical_directory,
+        ]
+    )
 
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=initial_total,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=encryption_key_path,
+        cipher=cipher,
+    )
+    _build_archive()
+
+    total_size = _current_total()
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=total_size,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=encryption_key_path,
+        cipher=cipher,
+    )
+    _build_archive()
+    total_size = _current_total()
         def _write_and_archive(size: int) -> int:
             """Actualiza metadatos, reconstruye el ZIP y recalcula el tamaño."""
 
@@ -707,6 +750,60 @@ def generate_backup(
         archive_path,
         critical_directory,
     ]
+    final_size = _calculate_total_size(final_components)
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=final_size,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=(
+            str(app_settings.backup_encryption_key_path)
+            if encryption_enabled
+            else None
+        ),
+        cipher=cipher,
+    )
+    _build_archive()
+
+    final_total = _current_total()
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=final_total,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=(
+            str(app_settings.backup_encryption_key_path)
+            if encryption_enabled
+            else None
+        ),
+        cipher=cipher,
+    )
+    total_size = _calculate_total_size(final_components)
+
     total_size = _calculate_total_size(final_components)
 
     for _ in range(5):

@@ -18377,6 +18377,13 @@ def list_cash_sessions(
     return list(db.scalars(statement).unique())
 
 
+def count_cash_sessions(db: Session, *, store_id: int) -> int:
+    statement = select(func.count()).select_from(models.CashRegisterSession).where(
+        models.CashRegisterSession.store_id == store_id
+    )
+    return int(db.scalar(statement) or 0)
+
+
 def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession:
     statement = select(models.CashRegisterSession).where(
         models.CashRegisterSession.id == session_id)
@@ -18384,6 +18391,21 @@ def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession
         return db.scalars(statement).one()
     except NoResultFound as exc:
         raise LookupError("cash_session_not_found") from exc
+
+
+def get_open_cash_session(db: Session, *, store_id: int) -> models.CashRegisterSession:
+    statement = (
+        select(models.CashRegisterSession)
+        .where(
+            models.CashRegisterSession.store_id == store_id,
+            models.CashRegisterSession.status == models.CashSessionStatus.ABIERTO,
+        )
+        .order_by(models.CashRegisterSession.opened_at.desc())
+    )
+    session = db.scalars(statement).first()
+    if session is None:
+        raise LookupError("cash_session_not_found")
+    return session
 
 
 # // [PACK34-lookup]
@@ -18399,6 +18421,19 @@ def get_last_cash_session_for_store(
     if session is None:
         raise LookupError("cash_session_not_found")
     return session
+
+
+def paginate_cash_sessions(
+    db: Session,
+    *,
+    store_id: int,
+    page: int,
+    size: int,
+) -> tuple[int, list[models.CashRegisterSession]]:
+    total = count_cash_sessions(db, store_id=store_id)
+    offset = max(page - 1, 0) * size
+    sessions = list_cash_sessions(db, store_id=store_id, limit=size, offset=offset)
+    return total, sessions
 
 
 def open_cash_session(

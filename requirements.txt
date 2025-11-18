@@ -25,3 +25,4 @@ prometheus-client==0.23.1
 boto3==1.35.41
 pytest==8.3.3
 pytest-asyncio==0.23.8
+locust==2.31.6
