@@ -4,11 +4,20 @@ from __future__ import annotations
 from datetime import date
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, Path, Query, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    status,
+)
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import crud, models, schemas
 from ..core.roles import ADMIN
 from ..database import get_db
 from ..routers.dependencies import require_reason
@@ -17,6 +26,7 @@ from ..services import (
     inventory_catalog_export,
     inventory_import as inventory_import_service,
     inventory_labels,
+    hardware,
 )
 
 router = APIRouter(prefix="/inventory", tags=["inventario"])
@@ -75,6 +85,35 @@ def _render_csv_response(
         headers=metadata.content_disposition(),
         status_code=status.HTTP_200_OK,
     )
+
+
+def _resolve_label_connector(
+    db: Session, store_id: int, printer_name: str | None
+) -> schemas.POSConnectorSettings | None:
+    try:
+        config = crud.get_pos_config(db, store_id)
+    except LookupError:
+        return None
+    hardware_settings = schemas.POSHardwareSettings.model_validate(
+        config.hardware_settings
+    )
+    if not hardware_settings.printers:
+        return None
+    printer = None
+    if printer_name:
+        printer = next(
+            (
+                item
+                for item in hardware_settings.printers
+                if item.name.lower() == printer_name.lower()
+            ),
+            None,
+        )
+    if printer is None:
+        printer = next((item for item in hardware_settings.printers if item.is_default), None)
+    if printer is None:
+        printer = hardware_settings.printers[0]
+    return printer.connector
 
 
 @router.get(
@@ -249,30 +288,117 @@ def export_devices_excel(
 
 
 @router.get(
-    "/stores/{store_id}/devices/{device_id}/label/pdf",
+    "/stores/{store_id}/devices/{device_id}/label/{format}",
     response_class=Response,
-    response_model=schemas.BinaryFileResponse,
     dependencies=[Depends(require_roles(ADMIN))],
 )
-def export_device_label_pdf(
+def export_device_label(
+    store_id: int = Path(..., ge=1),
+    device_id: int = Path(..., ge=1),
+    format: schemas.LabelFormat = Path(...),
+    template: schemas.LabelTemplateKey = Query(
+        default=schemas.LabelTemplateKey.SIZE_38X25
+    ),
+    printer_name: str | None = Query(default=None, max_length=120),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(ADMIN)),
+):
+    """Genera etiquetas en PDF o comandos directos (ZPL/ESC/POS)."""
+
+    connector = _resolve_label_connector(db, store_id, printer_name)
+    if format is schemas.LabelFormat.PDF:
+        pdf_bytes, filename = inventory_labels.render_device_label_pdf(
+            db, store_id, device_id, template_key=template
+        )
+        metadata = schemas.BinaryFileResponse(
+            filename=filename,
+            media_type="application/pdf",
+        )
+        return Response(
+            content=pdf_bytes,
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(disposition="inline"),
+            status_code=status.HTTP_200_OK,
+        )
+
+    commands, filename = inventory_labels.render_device_label_commands(
+        db,
+        store_id,
+        device_id,
+        format=format,
+        template_key=template,
+    )
+    content_type = "text/zpl" if format is schemas.LabelFormat.ZPL else "text/escpos"
+    payload = schemas.LabelCommandsResponse(
+        format=format,
+        template=template,
+        commands=commands,
+        filename=filename,
+        content_type=content_type,
+        connector=connector,
+    )
+    return JSONResponse(content=payload.model_dump(), status_code=status.HTTP_200_OK)
+
+
+@router.post(
+    "/stores/{store_id}/devices/{device_id}/label/print",
+    response_model=schemas.POSHardwareActionResponse,
+)
+async def enqueue_device_label_print(
+    background_tasks: BackgroundTasks,
+    payload: schemas.InventoryLabelPrintRequest,
     store_id: int = Path(..., ge=1),
     device_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(ADMIN)),
 ):
-    """Genera una etiqueta PDF para el dispositivo indicado."""
+    """Encola una impresión directa de etiqueta vía canal de hardware."""
 
-    pdf_bytes, filename = inventory_labels.render_device_label_pdf(
-        db, store_id, device_id
+    commands, filename = inventory_labels.render_device_label_commands(
+        db,
+        store_id,
+        device_id,
+        format=payload.format,
+        template_key=payload.template,
     )
-    metadata = schemas.BinaryFileResponse(
-        filename=filename,
-        media_type="application/pdf",
+    connector = payload.connector or _resolve_label_connector(db, store_id, None)
+    if payload.format is schemas.LabelFormat.ZPL:
+        job = hardware.build_zebra_job(
+            template=payload.template.value,
+            commands=commands,
+            connector=connector,
+        )
+    elif payload.format is schemas.LabelFormat.ESCPOS:
+        job = hardware.build_epson_job(
+            template=payload.template.value,
+            commands=commands,
+            connector=connector,
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de etiqueta no soportado para impresión directa.",
+        )
+    event = job.as_event(store_id=store_id)
+    hardware.hardware_channels.schedule_broadcast(background_tasks, store_id, event)
+    crud.log_audit_event(
+        db,
+        action="inventory_label_direct_print",
+        entity_type="inventory_label",
+        entity_id=f"{store_id}:{device_id}",
+        performed_by_id=current_user.id if current_user else None,
+        details={
+            "formato": payload.format.value,
+            "plantilla": payload.template.value,
+            "archivo": filename,
+            "reason": reason,
+            "connector": connector.model_dump() if connector else None,
+        },
     )
-    return Response(
-        content=pdf_bytes,
-        media_type=metadata.media_type,
-        headers=metadata.content_disposition(disposition="inline"),
-        status_code=status.HTTP_200_OK,
+    return schemas.POSHardwareActionResponse(
+        status="queued",
+        message="Etiqueta encolada para impresión local.",
+        details=event,
     )
