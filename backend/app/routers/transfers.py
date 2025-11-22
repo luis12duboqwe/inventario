@@ -293,8 +293,25 @@ def dispatch_transfer(
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transferencia no encontrada") from exc
     except ValueError as exc:
-        if str(exc) == "transfer_invalid_transition":
+        detail = str(exc)
+        if detail == "transfer_invalid_transition":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No es posible despachar la transferencia en su estado actual.") from exc
+        if detail in {"transfer_insufficient_stock", "transfer_requires_full_unit"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La sucursal de origen no cuenta con stock suficiente o el dispositivo requiere transferencia completa.",
+            ) from exc
+        if detail in {
+            "reservation_store_mismatch",
+            "reservation_device_mismatch",
+            "reservation_not_active",
+            "reservation_quantity_mismatch",
+            "reservation_expired",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La reserva asociada no es válida para esta transferencia.",
+            ) from exc
         raise
 
 
@@ -316,6 +333,7 @@ def receive_transfer(
             transfer_id,
             performed_by_id=current_user.id,
             reason=payload.reason,
+            items=payload.items,
         )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
@@ -330,6 +348,48 @@ def receive_transfer(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La sucursal de origen no cuenta con stock suficiente.") from exc
         if detail == "transfer_requires_full_unit":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Los dispositivos con IMEI o serie deben transferirse completos.") from exc
+        if detail in {"transfer_invalid_received_quantity", "transfer_item_mismatch"}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Las cantidades recibidas no son válidas para la transferencia.",
+            ) from exc
+        raise
+
+
+@router.post(
+    "/{transfer_id}/reject",
+    response_model=schemas.TransferOrderResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def reject_transfer(
+    payload: schemas.TransferOrderTransition,
+    transfer_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+):
+    _ensure_feature_enabled()
+    try:
+        order = crud.reject_transfer_order(
+            db,
+            transfer_id,
+            performed_by_id=current_user.id,
+            reason=payload.reason,
+            items=payload.items,
+        )
+        return _transfers_with_audit(db, [order])[0]
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para rechazar en esta sucursal.") from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transferencia no encontrada") from exc
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "transfer_invalid_transition":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La transferencia no puede rechazarse en su estado actual.") from exc
+        if detail in {"transfer_invalid_received_quantity", "transfer_item_mismatch", "transfer_missing_dispatch"}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Las cantidades indicadas no son válidas para el rechazo de la transferencia.",
+            ) from exc
         raise
 
 

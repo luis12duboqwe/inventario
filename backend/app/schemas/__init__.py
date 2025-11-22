@@ -2592,12 +2592,18 @@ class TransferOrderItemBase(BaseModel):
     reservation_id: int | None = Field(default=None, ge=1)
 
 
+class TransferReceptionItem(BaseModel):
+    item_id: int = Field(..., ge=1)
+    received_quantity: int = Field(default=0, ge=0)
+
+
 class TransferOrderItemCreate(TransferOrderItemBase):
     """Elemento incluido en la creación de una orden de transferencia."""
 
 
 class TransferOrderTransition(BaseModel):
     reason: str | None = Field(default=None, max_length=255)
+    items: list[TransferReceptionItem] | None = None
 
 
 class TransferOrderCreate(BaseModel):
@@ -2626,6 +2632,9 @@ class TransferOrderCreate(BaseModel):
 class TransferOrderItemResponse(TransferOrderItemBase):
     id: int
     transfer_order_id: int
+    dispatched_quantity: int
+    received_quantity: int
+    dispatched_unit_cost: Decimal | None = Field(default=None, ge=0)
 
     model_config = ConfigDict(from_attributes=True)
 
