@@ -52,4 +52,39 @@ def add_device(
     store = db.get(Store, store_id)
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada")
-    return create_device(db, store_id=store_id, device_in=device_in)
+    try:
+        return create_device(db, store_id=store_id, device_in=device_in)
+    except ValueError as exc:
+        if str(exc) == "device_invalid_quantity":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "device_invalid_quantity",
+                    "message": "La cantidad debe ser mayor que cero.",
+                },
+            ) from exc
+        if str(exc) == "device_invalid_cost":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "device_invalid_cost",
+                    "message": "El costo_unitario debe ser mayor que cero.",
+                },
+            ) from exc
+        if str(exc) == "device_already_exists":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "device_already_exists",
+                    "message": "Ya existe un dispositivo con ese SKU en la sucursal.",
+                },
+            ) from exc
+        if str(exc) == "device_identifier_conflict":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "device_identifier_conflict",
+                    "message": "El IMEI o número de serie ya fue registrado por otra sucursal.",
+                },
+            ) from exc
+        raise
