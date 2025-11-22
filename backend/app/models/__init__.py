@@ -23,6 +23,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.sql import false
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from ..database import Base
@@ -2493,11 +2494,20 @@ class PurchaseOrder(Base):
     created_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
+    )
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
+    requires_approval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
     store: Mapped[Store] = relationship("Store")
     created_by: Mapped[User | None] = relationship("User")
+    approved_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[approved_by_id]
+    )
     items: Mapped[list["PurchaseOrderItem"]] = relationship(
         "PurchaseOrderItem", back_populates="order", cascade="all, delete-orphan"
     )

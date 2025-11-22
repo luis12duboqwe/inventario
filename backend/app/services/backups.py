@@ -753,8 +753,6 @@ def generate_backup(
     )
     def _component_paths() -> list[Path]:
         return [
-    def _calculate_components_size(include_metadata: bool = True) -> int:
-        paths: list[Path] = [
             pdf_path,
             json_path,
             sql_path,
@@ -764,8 +762,12 @@ def generate_backup(
             critical_directory,
         ]
 
-    def _current_total() -> int:
-        return _calculate_total_size(_component_paths())
+    def _calculate_components_size(include_metadata: bool = True) -> int:
+        paths: list[Path] = [
+            pdf_path,
+            json_path,
+            sql_path,
+            config_path,
             critical_directory,
         ]
         if include_metadata:
@@ -773,6 +775,9 @@ def generate_backup(
         if archive_path.exists():
             paths.append(archive_path)
         return _calculate_total_size(paths)
+
+    def _current_total() -> int:
+        return _calculate_total_size(_component_paths())
 
     def _write_metadata_with_size(size: int) -> None:
         _write_metadata(
@@ -815,6 +820,9 @@ def generate_backup(
         _refresh_metadata_and_archive(total_size)
         recalculated = _current_total()
         if recalculated == total_size:
+            break
+        total_size = recalculated
+
     pending_size = _calculate_components_size(include_metadata=False)
     final_total = pending_size
     measured_size = pending_size
@@ -831,7 +839,7 @@ def generate_backup(
 
     # Reescribe los metadatos con el tamaño estabilizado para evitar desfases
     # de uno o dos bytes entre el ZIP y la cifra registrada.
-    _refresh_metadata_and_archive(total_size)
+    _refresh_metadata_and_archive(final_total)
     total_size = _current_total()
     _write_metadata_with_size(final_total)
     _build_archive()

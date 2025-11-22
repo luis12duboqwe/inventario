@@ -5131,6 +5131,7 @@ class PurchaseOrderItemResponse(BaseModel):
     quantity_ordered: int
     quantity_received: int
     unit_cost: Decimal
+    quantity_pending: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -5138,6 +5139,20 @@ class PurchaseOrderItemResponse(BaseModel):
     @classmethod
     def _serialize_unit_cost(cls, value: Decimal) -> float:
         return float(value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _add_pending(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            quantity_ordered = int(value.get("quantity_ordered", 0) or 0)
+            quantity_received = int(value.get("quantity_received", 0) or 0)
+            value.setdefault("quantity_pending", max(quantity_ordered - quantity_received, 0))
+            return value
+
+        quantity_ordered = getattr(value, "quantity_ordered", 0) or 0
+        quantity_received = getattr(value, "quantity_received", 0) or 0
+        setattr(value, "quantity_pending", max(quantity_ordered - quantity_received, 0))
+        return value
 
 
 class ReturnDisposition(str, enum.Enum):
@@ -5210,13 +5225,35 @@ class PurchaseOrderResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     created_by_id: int | None
+    approved_by_id: int | None = None
+    approved_by_name: str | None = None
+    requires_approval: bool = False
     closed_at: datetime | None
     items: list[PurchaseOrderItemResponse]
+    pending_items: int = 0
     returns: list[PurchaseReturnResponse] = []
     documents: list["PurchaseOrderDocumentResponse"] = []
     status_history: list["PurchaseOrderStatusEventResponse"] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _compute_pending_items(cls, value: Any) -> Any:
+        data = dict(value) if isinstance(value, dict) else value
+        items = data.get("items") if isinstance(data, dict) else getattr(data, "items", [])
+        pending_total = 0
+        for item in items or []:
+            quantity_ordered = item.get("quantity_ordered") if isinstance(item, dict) else getattr(item, "quantity_ordered", 0)
+            quantity_received = item.get("quantity_received") if isinstance(item, dict) else getattr(item, "quantity_received", 0)
+            pending_total += max(int(quantity_ordered or 0) - int(quantity_received or 0), 0)
+
+        if isinstance(data, dict):
+            data.setdefault("pending_items", pending_total)
+            return data
+
+        setattr(data, "pending_items", pending_total)
+        return data
 
 
 class PurchaseOrderDocumentResponse(BaseModel):

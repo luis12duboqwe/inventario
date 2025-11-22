@@ -1732,6 +1732,8 @@ def _purchase_order_payload(order: models.PurchaseOrder) -> dict[str, object]:
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "updated_at": order.updated_at.isoformat() if order.updated_at else None,
         "closed_at": order.closed_at.isoformat() if order.closed_at else None,
+        "requires_approval": getattr(order, "requires_approval", False),
+        "approved_by_id": getattr(order, "approved_by_id", None),
         "items": items_payload,
         "documents": [
             {
@@ -15085,6 +15087,7 @@ def get_purchase_order(db: Session, order_id: int) -> models.PurchaseOrder:
             joinedload(models.PurchaseOrder.status_events).joinedload(
                 models.PurchaseOrderStatusEvent.created_by
             ),
+            joinedload(models.PurchaseOrder.approved_by),
         )
     )
     try:
@@ -15104,11 +15107,20 @@ def create_purchase_order(
 
     get_store(db, payload.store_id)
 
+    total_amount = Decimal("0")
+    for item in payload.items:
+        total_amount += Decimal(item.quantity_ordered) * _to_decimal(item.unit_cost)
+    approval_threshold = _to_decimal(
+        getattr(settings, "purchases_large_order_threshold", Decimal("0"))
+    )
+    requires_approval = approval_threshold > 0 and total_amount >= approval_threshold
+
     order = models.PurchaseOrder(
         store_id=payload.store_id,
         supplier=payload.supplier,
         notes=payload.notes,
         created_by_id=created_by_id,
+        requires_approval=requires_approval,
     )
     with transactional_session(db):
         db.add(order)
@@ -15234,6 +15246,10 @@ def receive_purchase_order(
 ) -> models.PurchaseOrder:
     order = get_purchase_order(db, order_id)
     if order.status in {models.PurchaseStatus.CANCELADA, models.PurchaseStatus.COMPLETADA}:
+        raise ValueError("purchase_not_receivable")
+    if order.requires_approval and order.approved_by_id is None:
+        raise PermissionError("purchase_requires_approval")
+    if order.status == models.PurchaseStatus.BORRADOR:
         raise ValueError("purchase_not_receivable")
     if not payload.items:
         raise ValueError("purchase_items_required")
@@ -15741,6 +15757,13 @@ def transition_purchase_order_status(
 
     with transactional_session(db):
         order.status = status
+        if status == models.PurchaseStatus.APROBADA:
+            order.approved_by_id = performed_by_id
+        elif status in {
+            models.PurchaseStatus.BORRADOR,
+            models.PurchaseStatus.PENDIENTE,
+        }:
+            order.approved_by_id = None
         order.updated_at = datetime.utcnow()
         flush_session(db)
         db.refresh(order)
