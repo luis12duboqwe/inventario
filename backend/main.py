@@ -283,11 +283,17 @@ def _collect_existing_signatures(target_app: FastAPI) -> set[tuple[str, str]]:
 
 
 def _include_routers(target_app: FastAPI) -> None:
-    """Importa dinámicamente los routers definidos en ``backend.routes``."""
+    """Importa dinámicamente los routers legacy definidos en ``backend.routes``.
+
+    El paquete fue archivado en favor de ``backend.app.routers``; se mantiene un
+    no-op para inicializaciones heredadas sin emitir fallos ruidosos.
+    """
 
     routes_dir = BASE_DIR / "routes"
     if not routes_dir.exists():
-        LOGGER.warning("El directorio de rutas %s no existe", routes_dir)
+        LOGGER.info(
+            "El paquete legacy backend.routes fue archivado; se omite su carga.",
+        )
         return
 
     imported = 0
