@@ -637,13 +637,15 @@ def generate_backup(
     _encrypt_backup_files(cipher, component_files, critical_directory)
     _build_archive()
 
-    final_total = _calculate_total()
-    for _ in range(3):
-        _write_metadata_with_size(final_total)
-        recalculated = _calculate_total()
-        if recalculated == final_total:
-            break
-        final_total = recalculated
+    base_components = [
+        pdf_path,
+        json_path,
+        sql_path,
+        config_path,
+        critical_directory,
+    ]
+    initial_total = _calculate_total_size(base_components)
+
     current_size = initial_total
     measured_size = initial_total
 
@@ -672,65 +674,6 @@ def generate_backup(
         aligned_size = _calculate_components_size()
 
     total_size = aligned_size
-    base_components = [
-        pdf_path,
-        json_path,
-        sql_path,
-        config_path,
-        critical_directory,
-    ]
-
-    initial_total = _calculate_total_size(base_components)
-    _write_metadata(
-        metadata_path,
-        timestamp=timestamp,
-        mode=mode,
-        notes=notes,
-        components=selected_components,
-        json_path=json_path,
-        sql_path=sql_path,
-        pdf_path=pdf_path,
-        archive_path=archive_path,
-        config_path=config_path,
-        critical_directory=critical_directory,
-        copied_files=copied_files,
-        total_size_bytes=initial_total,
-        triggered_by_id=triggered_by_id,
-        reason=normalized_reason,
-        encryption_enabled=encryption_enabled,
-        encryption_key_path=encryption_key_path,
-        cipher=cipher,
-    )
-
-    _build_archive()
-
-    final_components = base_components + [metadata_path, archive_path]
-    final_total = _calculate_total_size(final_components)
-
-    _write_metadata(
-        metadata_path,
-        timestamp=timestamp,
-        mode=mode,
-        notes=notes,
-        components=selected_components,
-        json_path=json_path,
-        sql_path=sql_path,
-        pdf_path=pdf_path,
-        archive_path=archive_path,
-        config_path=config_path,
-        critical_directory=critical_directory,
-        copied_files=copied_files,
-        total_size_bytes=final_total,
-        triggered_by_id=triggered_by_id,
-        reason=normalized_reason,
-        encryption_enabled=encryption_enabled,
-        encryption_key_path=encryption_key_path,
-        cipher=cipher,
-    )
-
-    _build_archive()
-
-    total_size = _calculate_total_size(final_components)
     _write_metadata(
         metadata_path,
         timestamp=timestamp,
@@ -751,10 +694,11 @@ def generate_backup(
         encryption_key_path=encryption_key_path,
         cipher=cipher,
     )
+
+    _build_archive()
+
     def _component_paths() -> list[Path]:
         return [
-    def _calculate_components_size(include_metadata: bool = True) -> int:
-        paths: list[Path] = [
             pdf_path,
             json_path,
             sql_path,
@@ -764,8 +708,12 @@ def generate_backup(
             critical_directory,
         ]
 
-    def _current_total() -> int:
-        return _calculate_total_size(_component_paths())
+    def _calculate_components_size(include_metadata: bool = True) -> int:
+        paths: list[Path] = [
+            pdf_path,
+            json_path,
+            sql_path,
+            config_path,
             critical_directory,
         ]
         if include_metadata:
@@ -773,6 +721,9 @@ def generate_backup(
         if archive_path.exists():
             paths.append(archive_path)
         return _calculate_total_size(paths)
+
+    def _current_total() -> int:
+        return _calculate_total_size(_component_paths())
 
     def _write_metadata_with_size(size: int) -> None:
         _write_metadata(
@@ -815,6 +766,9 @@ def generate_backup(
         _refresh_metadata_and_archive(total_size)
         recalculated = _current_total()
         if recalculated == total_size:
+            break
+        total_size = recalculated
+
     pending_size = _calculate_components_size(include_metadata=False)
     final_total = pending_size
     measured_size = pending_size
