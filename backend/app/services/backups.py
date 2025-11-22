@@ -498,6 +498,8 @@ def _restore_database(
                 db.execute(text(statement))
 
 
+
+
 def generate_backup(
     db: Session,
     *,
@@ -511,7 +513,9 @@ def generate_backup(
     """Genera los archivos de respaldo y persiste el registro en la base."""
 
     selected_components = _normalize_components(
-        components, include_mandatory=True)
+        components,
+        include_mandatory=True,
+    )
     snapshot = build_inventory_snapshot(db)
     pdf_bytes = render_snapshot_pdf(snapshot)
     json_bytes = serialize_snapshot(snapshot)
@@ -558,12 +562,10 @@ def generate_backup(
             zip_file.write(json_path, arcname=f"datos/{json_path.name}")
             zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
             zip_file.write(config_path, arcname=f"config/{config_path.name}")
-            zip_file.write(
-                metadata_path, arcname=f"metadata/{metadata_path.name}")
+            zip_file.write(metadata_path, arcname=f"metadata/{metadata_path.name}")
             for file_path in critical_directory.rglob("*"):
                 if file_path.is_file():
-                    arcname = Path("criticos") / \
-                        file_path.relative_to(critical_directory)
+                    arcname = Path("criticos") / file_path.relative_to(critical_directory)
                     zip_file.write(file_path, arcname=str(arcname))
 
     component_files = [pdf_path, json_path, sql_path, config_path]
@@ -647,6 +649,174 @@ def generate_backup(
         aligned_size = _calculate_components_size()
 
     total_size = aligned_size
+    base_components = [
+        pdf_path,
+        json_path,
+        sql_path,
+        config_path,
+        critical_directory,
+    ]
+
+    initial_total = _calculate_total_size(base_components)
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=initial_total,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=encryption_key_path,
+        cipher=cipher,
+    )
+
+    _build_archive()
+
+    final_components = base_components + [metadata_path, archive_path]
+    final_total = _calculate_total_size(final_components)
+
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=final_total,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=encryption_key_path,
+        cipher=cipher,
+    )
+
+    _build_archive()
+
+    total_size = _calculate_total_size(final_components)
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=total_size,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=encryption_key_path,
+        cipher=cipher,
+    )
+    def _component_paths() -> list[Path]:
+        return [
+    def _calculate_components_size(include_metadata: bool = True) -> int:
+        paths: list[Path] = [
+            pdf_path,
+            json_path,
+            sql_path,
+            config_path,
+            metadata_path,
+            archive_path,
+            critical_directory,
+        ]
+
+    def _current_total() -> int:
+        return _calculate_total_size(_component_paths())
+            critical_directory,
+        ]
+        if include_metadata:
+            paths.append(metadata_path)
+        if archive_path.exists():
+            paths.append(archive_path)
+        return _calculate_total_size(paths)
+
+    def _write_metadata_with_size(size: int) -> None:
+        _write_metadata(
+            metadata_path,
+            timestamp=timestamp,
+            mode=mode,
+            notes=notes,
+            components=selected_components,
+            json_path=json_path,
+            sql_path=sql_path,
+            pdf_path=pdf_path,
+            archive_path=archive_path,
+            config_path=config_path,
+            critical_directory=critical_directory,
+            copied_files=copied_files,
+            total_size_bytes=size,
+            triggered_by_id=triggered_by_id,
+            reason=normalized_reason,
+            encryption_enabled=encryption_enabled,
+            encryption_key_path=encryption_key_path,
+            cipher=cipher,
+        )
+
+    def _refresh_metadata_and_archive(size: int) -> None:
+        _write_metadata_with_size(size)
+        _build_archive()
+
+    initial_total = _calculate_total_size(
+        [
+            pdf_path,
+            json_path,
+            sql_path,
+            config_path,
+            critical_directory,
+        ]
+    )
+
+    total_size = initial_total
+    for _ in range(5):
+        _refresh_metadata_and_archive(total_size)
+        recalculated = _current_total()
+        if recalculated == total_size:
+    pending_size = _calculate_components_size(include_metadata=False)
+    final_total = pending_size
+    measured_size = pending_size
+
+    for _ in range(10):
+        _write_metadata_with_size(pending_size)
+        _build_archive()
+        measured_size = _calculate_components_size()
+        if measured_size == pending_size:
+            final_total = measured_size
+            break
+        pending_size = measured_size
+        final_total = measured_size
+
+    # Reescribe los metadatos con el tamaño estabilizado para evitar desfases
+    # de uno o dos bytes entre el ZIP y la cifra registrada.
+    _refresh_metadata_and_archive(total_size)
+    total_size = _current_total()
+    _write_metadata_with_size(final_total)
+    _build_archive()
+    final_total = _calculate_components_size()
+
+    total_size = final_total
+    if total_size != pending_size:
+        _write_metadata_with_size(total_size)
 
     job = crud.create_backup_job(
         db,

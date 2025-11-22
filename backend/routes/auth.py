@@ -3,6 +3,7 @@ from __future__ import annotations
 """Rutas de autenticación para Softmobile 2025."""
 
 import secrets
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordRequestForm
@@ -29,8 +30,8 @@ else:
         FakeRedis = None  # type: ignore[assignment]
     RateLimiter = _RateLimiter  # type: ignore
     _HAS_RATE_LIMITER = True
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
 
 from backend.app.core.transactions import flush_session, transactional_session
 from backend.core.logging import logger as core_logger
@@ -52,7 +53,7 @@ from backend.db import (
     get_user_by_id,
     run_migrations,
 )
-from backend.models import User
+from backend.app.models import User, UserRole
 from backend.schemas.auth import (
     AuthMessage,
     ForgotPasswordRequest,
@@ -169,18 +170,41 @@ def _normalize_identifier(value: str) -> str:
     return value.strip().lower()
 
 
+def _user_to_user_read(user: User) -> UserRead:
+    created_at = getattr(user, "created_at", None) or getattr(
+        user, "fecha_creacion", None
+    ) or datetime.utcnow()
+    is_verified = getattr(user, "is_verified", None)
+    if is_verified is None:
+        is_verified = True
+    return UserRead(
+        id=int(user.id),
+        email=str(getattr(user, "email", None) or user.username),
+        username=str(getattr(user, "username", "")).strip(),
+        is_active=bool(getattr(user, "is_active", True)),
+        is_verified=bool(is_verified),
+        created_at=created_at,
+    )
+
+
 def _get_user_by_identifier(db: Session, identifier: str) -> User | None:
     normalized = _normalize_identifier(identifier)
-    return (
-        db.query(User)
-        .filter(
-            or_(
-                func.lower(User.username) == normalized,
-                func.lower(User.email) == normalized,
-            )
+    user = get_user_by_email(db, normalized)
+    if user:
+        return user
+
+    if "@" in normalized:
+        return None
+
+    statement = (
+        select(User)
+        .options(
+            selectinload(User.roles).selectinload(UserRole.role),
+            selectinload(User.store),
         )
-        .first()
+        .where(func.lower(User.full_name) == normalized)
     )
+    return db.scalars(statement).first()
 
 
 def _issue_tokens(user: User) -> TokenPairResponse:
@@ -259,16 +283,22 @@ def bootstrap_user(payload: BootstrapRequest, db: Session = Depends(get_db)) -> 
         )
 
     hashed = get_password_hash(payload.password)
-    user = create_user(db, email=email_value, hashed_password=hashed, username=username)
+    user = create_user(
+        db,
+        email=email_value,
+        hashed_password=hashed,
+        username=email_value.lower(),
+        display_name=username,
+    )
     verification_token = _build_verification_token(user)
-    user_read = UserRead.model_validate(user)
+    user_read = _user_to_user_read(user)
     if settings.SMTP_HOST:
         LOGGER.info(
-            f"Token de verificación para bootstrap preparado para envío SMTP a {user.email}"
+            f"Token de verificación para bootstrap preparado para envío SMTP a {user.username}"
         )
     else:
         LOGGER.info(
-            f"Token de verificación para bootstrap de {user.email}: {verification_token}"
+            f"Token de verificación para bootstrap de {user.username}: {verification_token}"
         )
     return RegisterResponse(
         message="Usuario inicial creado correctamente.",
@@ -291,15 +321,8 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Re
     normalized_username = _normalize_identifier(username_value)
     normalized_email = _normalize_identifier(email_value)
 
-    existing_user = (
-        db.query(User)
-        .filter(
-            or_(
-                func.lower(User.username) == normalized_username,
-                func.lower(User.email) == normalized_email,
-            )
-        )
-        .first()
+    existing_user = get_user_by_email(db, normalized_username) or get_user_by_email(
+        db, normalized_email
     )
     if existing_user:
         raise HTTPException(
@@ -312,17 +335,18 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)) -> Re
         db,
         email=normalized_email,
         hashed_password=hashed,
-        username=normalized_username,
+        username=normalized_email,
+        display_name=username_value,
     )
     verification_token = _build_verification_token(user)
-    user_read = UserRead.model_validate(user)
+    user_read = _user_to_user_read(user)
     if settings.SMTP_HOST:
         LOGGER.info(
-            f"Token de verificación preparado para envío SMTP a {user.email}"
+            f"Token de verificación preparado para envío SMTP a {user.username}"
         )
     else:
         LOGGER.info(
-            f"Token de verificación generado para {user.email}: {verification_token}"
+            f"Token de verificación generado para {user.username}: {verification_token}"
         )
     return RegisterResponse(
         message=REGISTER_SUCCESS_MESSAGE,
@@ -343,7 +367,7 @@ async def login(
     """Valida las credenciales del usuario y emite un token JWT."""
 
     user = _get_user_by_identifier(db, credentials.username)
-    if user is None or not verify_password(credentials.password, user.hashed_password):
+    if user is None or not verify_password(credentials.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas.",
@@ -414,11 +438,11 @@ def forgot_password(
     token = _build_password_reset_token(user)
     if settings.SMTP_HOST:
         LOGGER.info(
-            f"Solicitud de restablecimiento lista para envío SMTP a {user.email}"
+            f"Solicitud de restablecimiento lista para envío SMTP a {user.username}"
         )
     else:
         LOGGER.info(
-            f"Token de restablecimiento para {user.email}: {token}"
+            f"Token de restablecimiento para {user.username}: {token}"
         )
     return ForgotPasswordResponse(
         message="Se enviaron las instrucciones de restablecimiento.",
@@ -446,10 +470,10 @@ def reset_password(
         )
 
     with transactional_session(db):
-        user.hashed_password = get_password_hash(payload.new_password)
+        user.password_hash = get_password_hash(payload.new_password)
         db.add(user)
         flush_session(db)
-    LOGGER.info(f"Contraseña restablecida para el usuario {user.email}")
+    LOGGER.info(f"Contraseña restablecida para el usuario {user.username}")
     return AuthMessage(message="Contraseña actualizada correctamente.")
 
 
@@ -475,9 +499,9 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
             user.is_verified = True
             db.add(user)
             flush_session(db)
-        LOGGER.info(f"Correo verificado para {user.email}")
+        LOGGER.info(f"Correo verificado para {user.username}")
     else:
-        LOGGER.info(f"Correo ya verificado para {user.email}")
+        LOGGER.info(f"Correo ya verificado para {user.username}")
 
     return AuthMessage(message="Correo verificado correctamente.")
 

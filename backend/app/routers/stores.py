@@ -181,6 +181,22 @@ def create_device(
                     "message": "La sucursal solicitada no existe."},
         ) from exc
     except ValueError as exc:
+        if str(exc) == "device_invalid_quantity":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "device_invalid_quantity",
+                    "message": "La cantidad debe ser mayor que cero.",
+                },
+            ) from exc
+        if str(exc) == "device_invalid_cost":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "device_invalid_cost",
+                    "message": "El costo_unitario debe ser mayor que cero.",
+                },
+            ) from exc
         if str(exc) == "device_already_exists":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
