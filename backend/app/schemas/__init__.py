@@ -4157,6 +4157,72 @@ class AnalyticsRotationResponse(BaseModel):
     items: list[RotationMetric]
 
 
+class ReportFilterState(BaseModel):
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    store_ids: list[int] = Field(default_factory=list)
+    category: str | None = None
+
+
+class SalesByStoreMetric(BaseModel):
+    store_id: int
+    store_name: str
+    revenue: float
+    orders: int
+    units: int
+
+
+class SalesByCategoryMetric(BaseModel):
+    category: str
+    revenue: float
+    orders: int
+    units: int
+
+
+class SalesTimeseriesPoint(BaseModel):
+    date: date
+    revenue: float
+    orders: int
+    units: int
+
+
+class ProfitMarginMetric(BaseModel):
+    store_id: int
+    store_name: str
+    revenue: float
+    cost: float
+    profit: float
+    margin_percent: float
+
+
+class FinancialTotals(BaseModel):
+    revenue: float
+    cost: float
+    profit: float
+    margin_percent: float
+
+
+class FinancialPerformanceReport(BaseModel):
+    generated_at: datetime
+    filters: ReportFilterState
+    rotation: list[RotationMetric]
+    profit_by_store: list[ProfitMarginMetric]
+    sales_by_store: list[SalesByStoreMetric]
+    sales_by_category: list[SalesByCategoryMetric]
+    sales_trend: list[SalesTimeseriesPoint]
+    totals: FinancialTotals
+
+
+class InventoryPerformanceReport(BaseModel):
+    generated_at: datetime
+    filters: ReportFilterState
+    rotation: list[RotationMetric]
+    profit_by_store: list[ProfitMarginMetric]
+    sales_by_store: list[SalesByStoreMetric]
+    sales_by_category: list[SalesByCategoryMetric]
+    sales_trend: list[SalesTimeseriesPoint]
+
+
 class AgingMetric(BaseModel):
     device_id: int
     sku: str
@@ -8264,6 +8330,14 @@ __all__ = [
     "AnalyticsProfitMarginResponse",
     "AnalyticsRotationResponse",
     "AnalyticsSalesProjectionResponse",
+    "ReportFilterState",
+    "SalesByStoreMetric",
+    "SalesByCategoryMetric",
+    "SalesTimeseriesPoint",
+    "ProfitMarginMetric",
+    "FinancialTotals",
+    "FinancialPerformanceReport",
+    "InventoryPerformanceReport",
     "RiskAlert",
     "RiskAlertsResponse",
     "RiskMetric",

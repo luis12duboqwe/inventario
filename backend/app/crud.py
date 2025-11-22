@@ -11720,6 +11720,171 @@ def calculate_profit_margin(
     return metrics
 
 
+def calculate_sales_by_store(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    stmt = (
+        select(
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.count(func.distinct(models.Sale.id)).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Store, models.Store.id == models.Sale.store_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(models.Store.id, models.Store.name)
+        .order_by(func.coalesce(func.sum(models.SaleItem.total_line), 0).desc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Store.id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    results: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        results.append(
+            {
+                "store_id": int(row.store_id),
+                "store_name": row.store_name,
+                "revenue": float(row.revenue or 0),
+                "orders": int(row.orders or 0),
+                "units": int(row.units or 0),
+            }
+        )
+    return results
+
+
+def calculate_sales_by_category(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    stmt = (
+        select(
+            category_expr.label("category"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.count(func.distinct(models.Sale.id)).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(category_expr)
+        .order_by(func.coalesce(func.sum(models.SaleItem.total_line), 0).desc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    results: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        results.append(
+            {
+                "category": row.category or "Sin categoría",
+                "revenue": float(row.revenue or 0),
+                "orders": int(row.orders or 0),
+                "units": int(row.units or 0),
+            }
+        )
+    return results
+
+
+def calculate_sales_timeseries(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    stmt = (
+        select(
+            func.date(models.Sale.created_at).label("sale_date"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.count(func.distinct(models.Sale.id)).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(func.date(models.Sale.created_at))
+        .order_by(func.date(models.Sale.created_at).asc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    series: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        series.append(
+            {
+                "date": row.sale_date,
+                "revenue": float(row.revenue or 0),
+                "orders": int(row.orders or 0),
+                "units": int(row.units or 0),
+            }
+        )
+    return series
+
+
 def calculate_sales_projection(
     db: Session,
     store_ids: Iterable[int] | None = None,
