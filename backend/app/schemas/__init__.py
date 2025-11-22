@@ -256,6 +256,11 @@ class DeviceBase(BaseModel):
                       description="Descripción del dispositivo")
     quantity: int = Field(
         default=0, ge=0, description="Cantidad disponible en inventario")
+    warehouse_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Almacén dentro de la sucursal que resguarda el stock",
+    )
     unit_price: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
@@ -475,6 +480,7 @@ class DeviceUpdate(BaseModel):
     completo: bool | None = Field(default=None)
     minimum_stock: int | None = Field(default=None, ge=0)
     reorder_point: int | None = Field(default=None, ge=0)
+    warehouse_id: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="before")
     @classmethod
@@ -543,6 +549,7 @@ class DeviceResponse(DeviceBase):
     id: int
     store_id: int
     identifier: DeviceIdentifierResponse | None = Field(default=None)
+    warehouse_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -563,6 +570,93 @@ class DeviceResponse(DeviceBase):
     @computed_field(return_type=bool)  # type: ignore[misc]
     def has_variants(self) -> bool:
         return self.variant_count > 0
+
+    @computed_field(return_type=str | None)
+    def almacen(self) -> str | None:
+        warehouse = getattr(self, "warehouse", None)
+        if warehouse:
+            return getattr(warehouse, "name", None)
+        return self.warehouse_name
+
+    @computed_field(alias="warehouse_name", return_type=str | None)
+    def warehouse_display(self) -> str | None:
+        warehouse = getattr(self, "warehouse", None)
+        if warehouse:
+            return getattr(warehouse, "name", None)
+        return self.warehouse_name
+
+
+class WarehouseBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    code: str = Field(..., min_length=1, max_length=30)
+    is_default: bool = Field(default=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_aliases(cls, data: Any) -> Any:  # pragma: no cover - mapeo directo
+        if not isinstance(data, dict):
+            return data
+        alias_map = {"name": ["nombre"], "code": ["codigo"]}
+        for target, sources in alias_map.items():
+            if target not in data:
+                for source in sources:
+                    if source in data:
+                        data[target] = data[source]
+                        break
+        return data
+
+    @field_validator("name", "code", mode="before")
+    @classmethod
+    def _strip_values(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError("valor_requerido")
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("valor_requerido")
+        return normalized
+
+
+class WarehouseCreate(WarehouseBase):
+    """Carga para registrar un nuevo almacén ligado a una sucursal."""
+
+
+class WarehouseUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    code: str | None = Field(default=None, min_length=1, max_length=30)
+    is_default: bool | None = None
+
+
+class WarehouseResponse(BaseModel):
+    id: int
+    store_id: int
+    name: str
+    code: str
+    is_default: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WarehouseTransferCreate(BaseModel):
+    store_id: int = Field(..., ge=1)
+    device_id: int = Field(..., ge=1)
+    quantity: int = Field(..., ge=1)
+    source_warehouse_id: int = Field(..., ge=1)
+    destination_warehouse_id: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=5, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def _normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("El motivo debe tener al menos 5 caracteres.")
+        return normalized
+
+
+class WarehouseTransferResponse(BaseModel):
+    movement_out: MovementResponse
+    movement_in: MovementResponse
 
 
 class ProductVariantBase(BaseModel):
@@ -3184,6 +3278,8 @@ class MovementBase(BaseModel):
     comentario: str = Field(..., min_length=5, max_length=255)
     sucursal_origen_id: int | None = Field(default=None, ge=1)
     sucursal_destino_id: int | None = Field(default=None, ge=1)
+    almacen_origen_id: int | None = Field(default=None, ge=1)
+    almacen_destino_id: int | None = Field(default=None, ge=1)
     unit_cost: Decimal | None = Field(default=None, ge=Decimal("0"))
 
     @model_validator(mode="before")
@@ -3198,6 +3294,8 @@ class MovementBase(BaseModel):
             "comentario": ["comment"],
             "sucursal_origen_id": ["tienda_origen_id", "source_store_id"],
             "sucursal_destino_id": ["tienda_destino_id", "branch_id", "store_id"],
+            "almacen_origen_id": ["source_warehouse_id"],
+            "almacen_destino_id": ["warehouse_id", "destination_warehouse_id"],
         }
         for target, sources in mapping.items():
             if target not in data:
@@ -3249,6 +3347,8 @@ class MovementResponse(BaseModel):
     comment: str | None = None
     source_store_id: int | None = None
     store_id: int | None = None  # destino
+    source_warehouse_id: int | None = None
+    warehouse_id: int | None = None
     performed_by_id: int | None = None
     created_at: datetime
     unit_cost: Decimal | None = None
@@ -3257,6 +3357,8 @@ class MovementResponse(BaseModel):
     usuario: str | None = None
     sucursal_origen: str | None = None
     sucursal_destino: str | None = None
+    almacen_origen: str | None = None
+    almacen_destino: str | None = None
     referencia_tipo: str | None = None
     referencia_id: str | None = None
     ultima_accion: AuditTrailInfo | None = None
@@ -3287,6 +3389,10 @@ class MovementResponse(BaseModel):
             "sucursal_origen": self.sucursal_origen,
             "sucursal_destino_id": self.store_id,
             "sucursal_destino": self.sucursal_destino,
+            "almacen_origen_id": self.source_warehouse_id,
+            "almacen_origen": self.almacen_origen,
+            "almacen_destino_id": self.warehouse_id,
+            "almacen_destino": self.almacen_destino,
             "usuario_id": self.performed_by_id,
             "usuario": self.usuario,
             "referencia_tipo": self.referencia_tipo,
@@ -8620,6 +8726,12 @@ __all__ = [
     "StoreCreditRedeemRequest",
     "DashboardReceivableCustomer",
     "DashboardReceivableMetrics",
+    "WarehouseBase",
+    "WarehouseCreate",
+    "WarehouseUpdate",
+    "WarehouseResponse",
+    "WarehouseTransferCreate",
+    "WarehouseTransferResponse",
 ]
 
 CashSessionCloseRequest.model_rebuild()
