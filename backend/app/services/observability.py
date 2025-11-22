@@ -189,6 +189,16 @@ def build_observability_snapshot(db: Session) -> schemas.ObservabilitySnapshot:
 
     total_pending = sum(stat.pending for stat in outbox_stats)
     total_failed = sum(stat.failed for stat in outbox_stats)
+
+    dte_failed_count = int(
+        db.execute(
+            select(func.count(models.DTEDispatchQueue.id)).where(
+                models.DTEDispatchQueue.status == models.DTEDispatchStatus.FAILED
+            )
+        ).scalar_one()
+        or 0
+    )
+    total_failed += dte_failed_count
     try:
         hybrid_progress = sync_queue.calculate_hybrid_progress(db)
     except Exception:  # pragma: no cover - defensivo ante esquemas parciales

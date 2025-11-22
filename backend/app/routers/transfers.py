@@ -12,12 +12,16 @@ from sqlalchemy.orm import Session
 from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import MOVEMENT_ROLES
+from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import audit_logger, transfer_reports
 
 router = APIRouter(prefix="/transfers", tags=["transferencias"])
+_transfer_permissions = Depends(
+    require_roles(*MOVEMENT_ROLES, module="transferencias")
+)
 
 
 def _ensure_feature_enabled() -> None:
@@ -106,7 +110,7 @@ def _prepare_transfer_report(
 @router.get(
     "/",
     response_model=list[schemas.TransferOrderResponse],
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+    dependencies=[_transfer_permissions],
 )
 def list_transfers(
     limit: int = Query(default=50, ge=1, le=200),
@@ -118,7 +122,7 @@ def list_transfers(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+    current_user=_transfer_permissions,
 ):
     _ensure_feature_enabled()
     orders = crud.list_transfer_orders(
@@ -138,7 +142,7 @@ def list_transfers(
 @router.get(
     "/report",
     response_model=schemas.TransferReport,
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+    dependencies=[_transfer_permissions],
 )
 def transfer_report(
     store_id: int | None = Query(default=None, ge=1),
@@ -148,7 +152,7 @@ def transfer_report(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+    current_user=_transfer_permissions,
 ):
     _ensure_feature_enabled()
     return _prepare_transfer_report(
@@ -165,7 +169,7 @@ def transfer_report(
 @router.get(
     "/export/pdf",
     response_model=schemas.BinaryFileResponse,
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+    dependencies=[_transfer_permissions],
 )
 def export_transfer_report_pdf(
     store_id: int | None = Query(default=None, ge=1),
@@ -176,7 +180,7 @@ def export_transfer_report_pdf(
     date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
     _reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+    current_user=_transfer_permissions,
 ):
     _ensure_feature_enabled()
     report = _prepare_transfer_report(
@@ -203,7 +207,7 @@ def export_transfer_report_pdf(
 @router.get(
     "/export/xlsx",
     response_model=schemas.BinaryFileResponse,
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+    dependencies=[_transfer_permissions],
 )
 def export_transfer_report_excel(
     store_id: int | None = Query(default=None, ge=1),
@@ -214,7 +218,7 @@ def export_transfer_report_excel(
     date_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
     _reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+    current_user=_transfer_permissions,
 ):
     _ensure_feature_enabled()
     report = _prepare_transfer_report(
@@ -242,16 +246,19 @@ def export_transfer_report_excel(
     "/",
     response_model=schemas.TransferOrderResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+    dependencies=[_transfer_permissions],
 )
 def create_transfer(
     payload: schemas.TransferOrderCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+    current_user=_transfer_permissions,
 ):
     _ensure_feature_enabled()
     try:
-        order = crud.create_transfer_order(db, payload, requested_by_id=current_user.id)
+        with transactional_session(db):
+            order = crud.create_transfer_order(
+                db, payload, requested_by_id=current_user.id
+            )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para transferir desde esta sucursal.") from exc
@@ -271,22 +278,23 @@ def create_transfer(
 @router.post(
     "/{transfer_id}/dispatch",
     response_model=schemas.TransferOrderResponse,
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+    dependencies=[_transfer_permissions],
 )
 def dispatch_transfer(
     payload: schemas.TransferOrderTransition,
     transfer_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+    current_user=_transfer_permissions,
 ):
     _ensure_feature_enabled()
     try:
-        order = crud.dispatch_transfer_order(
-            db,
-            transfer_id,
-            performed_by_id=current_user.id,
-            reason=payload.reason,
-        )
+        with transactional_session(db):
+            order = crud.dispatch_transfer_order(
+                db,
+                transfer_id,
+                performed_by_id=current_user.id,
+                reason=payload.reason,
+            )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para despachar esta transferencia.") from exc
@@ -318,13 +326,13 @@ def dispatch_transfer(
 @router.post(
     "/{transfer_id}/receive",
     response_model=schemas.TransferOrderResponse,
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+    dependencies=[_transfer_permissions],
 )
 def receive_transfer(
     payload: schemas.TransferOrderTransition,
     transfer_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+    current_user=_transfer_permissions,
 ):
     _ensure_feature_enabled()
     try:
@@ -335,6 +343,13 @@ def receive_transfer(
             reason=payload.reason,
             items=payload.items,
         )
+        with transactional_session(db):
+            order = crud.receive_transfer_order(
+                db,
+                transfer_id,
+                performed_by_id=current_user.id,
+                reason=payload.reason,
+            )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para recibir en esta sucursal.") from exc
@@ -389,6 +404,10 @@ def reject_transfer(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Las cantidades indicadas no son válidas para el rechazo de la transferencia.",
+        if detail == "transfer_device_already_sold":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El dispositivo ya fue vendido y no puede transferirse.",
             ) from exc
         raise
 
@@ -396,22 +415,23 @@ def reject_transfer(
 @router.post(
     "/{transfer_id}/cancel",
     response_model=schemas.TransferOrderResponse,
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+    dependencies=[_transfer_permissions],
 )
 def cancel_transfer(
     payload: schemas.TransferOrderTransition,
     transfer_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+    current_user=_transfer_permissions,
 ):
     _ensure_feature_enabled()
     try:
-        order = crud.cancel_transfer_order(
-            db,
-            transfer_id,
-            performed_by_id=current_user.id,
-            reason=payload.reason,
-        )
+        with transactional_session(db):
+            order = crud.cancel_transfer_order(
+                db,
+                transfer_id,
+                performed_by_id=current_user.id,
+                reason=payload.reason,
+            )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para cancelar esta transferencia.") from exc

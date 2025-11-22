@@ -173,6 +173,26 @@ def _ensure_unique_identifiers(
             raise ValueError("device_identifier_conflict")
 
 
+def _validate_device_numeric_fields(values: dict[str, Any]) -> None:
+    quantity = values.get("quantity")
+    if quantity is not None:
+        try:
+            parsed_quantity = int(quantity)
+        except (TypeError, ValueError):
+            raise ValueError("device_invalid_quantity")
+        if parsed_quantity <= 0:
+            raise ValueError("device_invalid_quantity")
+
+    raw_cost = values.get("costo_unitario")
+    if raw_cost is not None:
+        try:
+            parsed_cost = _to_decimal(raw_cost)
+        except (ArithmeticError, TypeError, ValueError):
+            raise ValueError("device_invalid_cost")
+        if parsed_cost <= 0:
+            raise ValueError("device_invalid_cost")
+
+
 def _ensure_unique_identifier_payload(
     db: Session,
     *,
@@ -5634,7 +5654,13 @@ def register_customer_payment(
     current_debt = _to_decimal(customer.outstanding_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    if current_debt <= Decimal("0"):
+    sale = None
+    if payload.sale_id is not None:
+        sale = get_sale(db, payload.sale_id)
+        if sale.customer_id != customer.id:
+            raise ValueError("customer_payment_sale_mismatch")
+
+    if current_debt <= Decimal("0") and sale is None:
         raise ValueError("customer_payment_no_debt")
 
     amount = _to_decimal(payload.amount).quantize(
@@ -5646,12 +5672,6 @@ def register_customer_payment(
     applied_amount = min(current_debt, amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-
-    sale = None
-    if payload.sale_id is not None:
-        sale = get_sale(db, payload.sale_id)
-        if sale.customer_id != customer.id:
-            raise ValueError("customer_payment_sale_mismatch")
 
     customer.outstanding_debt = (current_debt - applied_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -8063,6 +8083,7 @@ def create_device(
     imei = payload_data.get("imei")
     serial = payload_data.get("serial")
     _ensure_unique_identifiers(db, imei=imei, serial=serial)
+    _validate_device_numeric_fields(payload_data)
     minimum_stock = int(payload_data.get("minimum_stock", 0) or 0)
     reorder_point = int(payload_data.get("reorder_point", 0) or 0)
     if reorder_point < minimum_stock:
@@ -9026,7 +9047,7 @@ def update_device(
     payload: schemas.DeviceUpdate,
     *,
     performed_by_id: int | None = None,
-) -> models.Device:
+    ) -> models.Device:
     device = get_device(db, store_id, device_id)
     updated_fields = payload.model_dump(exclude_unset=True)
     manual_price = None
@@ -9042,6 +9063,7 @@ def update_device(
         serial=serial,
         exclude_device_id=device.id,
     )
+    _validate_device_numeric_fields(updated_fields)
     new_minimum_stock = updated_fields.get("minimum_stock")
     new_reorder_point = updated_fields.get("reorder_point")
     current_minimum = int(getattr(device, "minimum_stock", 0) or 0)
@@ -9758,6 +9780,21 @@ def _register_inventory_movement(
     )
 
 
+def _lock_device_inventory_row(
+    db: Session, *, store_id: int, device_id: int
+) -> None:
+    """Aplica un bloqueo de fila sobre el dispositivo antes de modificar stock."""
+
+    db.execute(
+        select(models.Device.id)
+        .where(
+            models.Device.id == device_id,
+            models.Device.store_id == store_id,
+        )
+        .with_for_update()
+    )
+
+
 def create_inventory_movement(
     db: Session,
     store_id: int,
@@ -9778,8 +9815,6 @@ def create_inventory_movement(
 
     device = get_device(db, store_id, payload.producto_id)
 
-    previous_quantity = device.quantity
-    previous_cost = _to_decimal(device.costo_unitario)
     if source_store_id is not None:
         get_store(db, source_store_id)
 
@@ -9791,14 +9826,28 @@ def create_inventory_movement(
         reference_type = "manual_adjustment"
         reference_id = str(device.id)
 
-    if (
-        payload.tipo_movimiento == models.MovementType.OUT
-        and device.quantity < payload.cantidad
-    ):
-        raise ValueError("insufficient_stock")
+    needs_decrement_lock = payload.tipo_movimiento == models.MovementType.OUT or (
+        payload.tipo_movimiento == models.MovementType.ADJUST
+        and device.quantity > payload.cantidad
+    )
 
-    previous_sale_price = device.unit_price
     with transactional_session(db):
+        if needs_decrement_lock:
+            _lock_device_inventory_row(
+                db, store_id=store_id, device_id=device.id
+            )
+            db.refresh(device)
+
+        previous_quantity = device.quantity
+        previous_cost = _to_decimal(device.costo_unitario)
+        previous_sale_price = device.unit_price
+
+        if (
+            payload.tipo_movimiento == models.MovementType.OUT
+            and device.quantity < payload.cantidad
+        ):
+            raise ValueError("insufficient_stock")
+
         movement_unit_cost: Decimal | None = None
         stock_move_type: models.StockMoveType | None = None
         stock_move_quantity: Decimal | None = None
@@ -9863,6 +9912,12 @@ def create_inventory_movement(
             adjustment_difference = payload.cantidad - previous_quantity
             adjustment_decimal = _to_decimal(adjustment_difference)
             branch_for_cost = store_id
+            if (device.imei or device.serial) and (
+                device.estado and device.estado.lower() == "vendido"
+            ):
+                raise ValueError("adjustment_device_already_sold")
+            if adjustment_difference < 0 and abs(adjustment_difference) > previous_quantity:
+                raise ValueError("adjustment_insufficient_stock")
             if adjustment_difference < 0:
                 removal_qty = abs(adjustment_difference)
                 computed_cost = inventory_accounting.compute_unit_cost(
@@ -12962,6 +13017,15 @@ def get_sync_outbox_statistics(
                     else_=0,
                 )
             ).label("failed"),
+            func.max(
+                case(
+                    (
+                        models.SyncOutbox.status == models.SyncOutboxStatus.FAILED,
+                        models.SyncOutbox.attempt_count,
+                    ),
+                    else_=0,
+                )
+            ).label("failed_attempts"),
             func.sum(
                 case(
                     (models.SyncOutbox.conflict_flag.is_(True), 1),
@@ -12998,7 +13062,9 @@ def get_sync_outbox_statistics(
                 "priority": priority,
                 "total": int(row.total or 0),
                 "pending": max(int(row.pending or 0), 0),
-                "failed": max(int(row.failed or 0), 0),
+                "failed": max(
+                    int(row.failed or 0), int(getattr(row, "failed_attempts", 0) or 0)
+                ),
                 "conflicts": max(int(row.conflicts or 0), 0),
                 "latest_update": row.latest_update,
                 "oldest_pending": row.oldest_pending,
@@ -13889,6 +13955,91 @@ def _apply_transfer_reception(
                     device.store_id = order.destination_store_id
                     flush_session(db)
                 destination_device = device
+        if device.store_id != order.origin_store_id:
+            raise ValueError("transfer_device_mismatch")
+        if item.quantity <= 0:
+            raise ValueError("transfer_invalid_quantity")
+        if (device.imei or device.serial) and (
+            device.estado and device.estado.lower() == "vendido"
+        ):
+            raise ValueError("transfer_device_already_sold")
+        active_reserved = blocked_map.get(device.id, 0)
+        effective_stock = device.quantity - active_reserved
+        if effective_stock < item.quantity:
+            raise ValueError("transfer_insufficient_stock")
+
+        if (device.imei or device.serial) and device.quantity != item.quantity:
+            raise ValueError("transfer_requires_full_unit")
+
+        if item.reservation_id is not None:
+            reservation = reservation_map.get(item.reservation_id)
+            if reservation is None:
+                raise ValueError("reservation_not_active")
+            blocked_map[device.id] = max(active_reserved - reservation.quantity, 0)
+
+        origin_cost = _to_decimal(device.costo_unitario)
+        origin_unit_cost = _quantize_currency(origin_cost)
+
+        outgoing_movement = _register_inventory_movement(
+            db,
+            store_id=order.origin_store_id,
+            device_id=device.id,
+            movement_type=models.MovementType.OUT,
+            quantity=item.quantity,
+            comment=_build_transfer_movement_comment(
+                order, device, "OUT", order.reason
+            ),
+            performed_by_id=performed_by_id,
+            source_store_id=order.origin_store_id,
+            reference_type="transfer_order",
+            reference_id=str(order.id),
+        )
+        origin_device = outgoing_movement.device or device
+
+        if origin_device.imei or origin_device.serial:
+            origin_device.store_id = order.destination_store_id
+            origin_device.quantity = 0
+            flush_session(db)
+            destination_device = origin_device
+        else:
+            destination_statement = select(models.Device).where(
+                models.Device.store_id == order.destination_store_id,
+                models.Device.sku == device.sku,
+            )
+            destination_device = db.scalars(destination_statement).first()
+            if destination_device is None:
+                clone = models.Device(
+                    store_id=order.destination_store_id,
+                    sku=device.sku,
+                    name=device.name,
+                    quantity=0,
+                    unit_price=device.unit_price,
+                    marca=device.marca,
+                    modelo=device.modelo,
+                    categoria=device.categoria,
+                    condicion=device.condicion,
+                    color=device.color,
+                    capacidad_gb=device.capacidad_gb,
+                    capacidad=device.capacidad,
+                    estado_comercial=device.estado_comercial,
+                    estado=device.estado,
+                    proveedor=device.proveedor,
+                    costo_unitario=origin_unit_cost,
+                    margen_porcentaje=device.margen_porcentaje,
+                    garantia_meses=device.garantia_meses,
+                    lote=device.lote,
+                    fecha_compra=device.fecha_compra,
+                    fecha_ingreso=device.fecha_ingreso,
+                    ubicacion=device.ubicacion,
+                    completo=device.completo,
+                    descripcion=device.descripcion,
+                    imei=device.imei,
+                    serial=device.serial,
+                    imagen_url=device.imagen_url,
+                )
+                db.add(clone)
+                flush_session(db)
+                destination_device = clone
             else:
                 destination_statement = select(models.Device).where(
                     models.Device.store_id == order.destination_store_id,
