@@ -404,6 +404,7 @@ def reject_transfer(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Las cantidades indicadas no son válidas para el rechazo de la transferencia.",
+            ) from exc
         if detail == "transfer_device_already_sold":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Enum,
@@ -63,6 +64,18 @@ class ReturnReasonCategory(str, enum.Enum):
 RETURN_REASON_CATEGORY_ENUM = Enum(
     ReturnReasonCategory, name="return_reason_category"
 )
+
+
+class RMAStatus(str, enum.Enum):
+    """Flujos principales de una solicitud RMA."""
+
+    PENDIENTE = "PENDIENTE"
+    AUTORIZADA = "AUTORIZADA"
+    EN_PROCESO = "EN_PROCESO"
+    CERRADA = "CERRADA"
+
+
+RMA_STATUS_ENUM = Enum(RMAStatus, name="rma_status")
 
 
 def generate_customer_tax_id_placeholder() -> str:
@@ -2609,6 +2622,12 @@ class PurchaseReturn(Base):
         "Store", foreign_keys=[warehouse_id]
     )
 
+    rma_requests: Mapped[list["RMARequest"]] = relationship(
+        "RMARequest",
+        back_populates="purchase_return",
+        cascade="all, delete-orphan",
+    )
+
 
 class PurchaseOrderDocument(Base):
     __tablename__ = "purchase_order_documents"
@@ -2898,6 +2917,12 @@ class SaleReturn(Base):
         "Store", foreign_keys=[warehouse_id]
     )
 
+    rma_requests: Mapped[list["RMARequest"]] = relationship(
+        "RMARequest",
+        back_populates="sale_return",
+        cascade="all, delete-orphan",
+    )
+
 
 class WarrantyAssignment(Base):
     __tablename__ = "warranty_assignments"
@@ -2938,6 +2963,127 @@ class WarrantyAssignment(Base):
     device: Mapped[Device] = relationship("Device", back_populates="warranty_assignments")
     claims: Mapped[list["WarrantyClaim"]] = relationship(
         "WarrantyClaim", back_populates="assignment", cascade="all, delete-orphan"
+    )
+
+
+class RMARequest(Base):
+    __tablename__ = "rma_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "(sale_return_id IS NOT NULL) <> (purchase_return_id IS NOT NULL)",
+            name="ck_rma_single_return_reference",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sale_return_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sale_returns.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    purchase_return_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("purchase_returns.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    store_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    disposition: Mapped[ReturnDisposition] = mapped_column(
+        RETURN_DISPOSITION_ENUM.copy(),
+        nullable=False,
+        default=ReturnDisposition.DEFECTUOSO,
+    )
+    status: Mapped[RMAStatus] = mapped_column(
+        RMA_STATUS_ENUM.copy(), nullable=False, default=RMAStatus.PENDIENTE
+    )
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    repair_order_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("repair_orders.id", ondelete="SET NULL"), nullable=True
+    )
+    replacement_sale_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    authorized_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    processed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    closed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    sale_return: Mapped[SaleReturn | None] = relationship(
+        "SaleReturn", back_populates="rma_requests"
+    )
+    purchase_return: Mapped[PurchaseReturn | None] = relationship(
+        "PurchaseReturn", back_populates="rma_requests"
+    )
+    store: Mapped[Store] = relationship("Store")
+    device: Mapped[Device] = relationship("Device")
+    repair_order: Mapped["RepairOrder | None"] = relationship("RepairOrder")
+    replacement_sale: Mapped["Sale | None"] = relationship(
+        "Sale", foreign_keys=[replacement_sale_id]
+    )
+    created_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[created_by_id]
+    )
+    authorized_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[authorized_by_id]
+    )
+    processed_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[processed_by_id]
+    )
+    closed_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[closed_by_id]
+    )
+    history: Mapped[list["RMAEvent"]] = relationship(
+        "RMAEvent",
+        back_populates="rma",
+        cascade="all, delete-orphan",
+        order_by="RMAEvent.created_at",
+    )
+
+
+class RMAEvent(Base):
+    __tablename__ = "rma_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    rma_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("rma_requests.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[RMAStatus] = mapped_column(RMA_STATUS_ENUM.copy(), nullable=False)
+    message: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+
+    rma: Mapped[RMARequest] = relationship("RMARequest", back_populates="history")
+    created_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[created_by_id]
     )
 
 
@@ -3707,4 +3853,7 @@ __all__ = [
     "WarrantyClaimType",
     "POSConfig",
     "POSDraftSale",
+    "RMARequest",
+    "RMAEvent",
+    "RMAStatus",
 ]
