@@ -207,7 +207,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 
-_PASSWORD_POLICY = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,128}$")
+_PASSWORD_POLICY = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,128}$")
 
 
 def enforce_password_policy(password: str, *, username: str | None = None) -> None:
@@ -217,7 +217,7 @@ def enforce_password_policy(password: str, *, username: str | None = None) -> No
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                "La contraseña debe tener al menos 10 caracteres e incluir mayúsculas, "
+                "La contraseña debe tener al menos 8 caracteres e incluir mayúsculas, "
                 "minúsculas y números. Se recomienda agregar un símbolo."
             ),
         )

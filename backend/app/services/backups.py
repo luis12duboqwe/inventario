@@ -517,10 +517,6 @@ def generate_backup(
         include_mandatory=True,
     )
     snapshot = build_inventory_snapshot(db)
-    pdf_bytes = render_snapshot_pdf(snapshot)
-    json_bytes = serialize_snapshot(snapshot)
-    sql_bytes = _dump_database_sql(db)
-    config_snapshot = _build_configuration_snapshot()
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     directory = Path(base_dir)
@@ -535,12 +531,12 @@ def generate_backup(
     critical_directory = directory / f"softmobile_criticos_{timestamp}"
     critical_directory.mkdir(parents=True, exist_ok=True)
 
-    pdf_path.write_bytes(pdf_bytes)
-    json_path.write_bytes(json_bytes)
-    sql_path.write_bytes(sql_bytes)
+    pdf_path.write_bytes(render_snapshot_pdf(snapshot))
+    json_path.write_bytes(serialize_snapshot(snapshot))
+    sql_path.write_bytes(_dump_database_sql(db))
     config_path.write_text(
         json.dumps(
-            config_snapshot,
+            _build_configuration_snapshot(),
             ensure_ascii=False,
             indent=2,
             default=_json_default,
@@ -606,21 +602,48 @@ def generate_backup(
             cipher=cipher,
         )
 
+    def _build_archive() -> None:
+        with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as zip_file:
+            zip_file.write(pdf_path, arcname=f"reportes/{pdf_path.name}")
+            zip_file.write(json_path, arcname=f"datos/{json_path.name}")
+            zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
+            zip_file.write(config_path, arcname=f"config/{config_path.name}")
+            zip_file.write(metadata_path, arcname=f"metadata/{metadata_path.name}")
+            for file_path in critical_directory.rglob("*"):
+                if file_path.is_file():
+                    arcname = Path("criticos") / file_path.relative_to(critical_directory)
+                    zip_file.write(file_path, arcname=str(arcname))
     def _archive_and_measure(size: int) -> int:
         _write_metadata_with_size(size)
         _build_archive()
         return _calculate_components_size()
 
-    initial_total = _calculate_total_size(
-        [
+    def _calculate_total() -> int:
+        tracked_paths: list[Path] = [
             pdf_path,
             json_path,
             sql_path,
             config_path,
+            metadata_path,
+            archive_path,
             critical_directory,
         ]
-    )
+        return _calculate_total_size(tracked_paths)
 
+    # Primer metadato de referencia
+    _write_metadata_with_size(0)
+
+    component_files = [pdf_path, json_path, sql_path, config_path]
+    _encrypt_backup_files(cipher, component_files, critical_directory)
+    _build_archive()
+
+    final_total = _calculate_total()
+    for _ in range(3):
+        _write_metadata_with_size(final_total)
+        recalculated = _calculate_total()
+        if recalculated == final_total:
+            break
+        final_total = recalculated
     current_size = initial_total
     measured_size = initial_total
 
@@ -829,7 +852,7 @@ def generate_backup(
         metadata_path=str(metadata_path.resolve()),
         critical_directory=str(critical_directory.resolve()),
         components=selected_components,
-        total_size_bytes=total_size,
+        total_size_bytes=final_total,
         notes=notes,
         triggered_by_id=triggered_by_id,
         reason=normalized_reason,

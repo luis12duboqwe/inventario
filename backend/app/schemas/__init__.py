@@ -948,6 +948,8 @@ class PriceListItemUpdate(BaseModel):
 class PriceListItemResponse(PriceListItemBase):
     id: int
     price_list_id: int
+    is_deleted: bool = Field(default=False)
+    deleted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -969,6 +971,8 @@ class PriceListItemResponse(PriceListItemBase):
 class PriceListResponse(PriceListBase):
     id: int
     scope: str
+    is_deleted: bool = Field(default=False)
+    deleted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     items: list[PriceListItemResponse] = Field(default_factory=list)
@@ -1686,6 +1690,8 @@ class CustomerResponse(CustomerBase):
     last_interaction_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    is_deleted: bool = Field(default=False)
+    deleted_at: datetime | None = None
     privacy_consents: dict[str, bool] = Field(default_factory=dict)
     privacy_metadata: dict[str, Any] = Field(default_factory=dict)
     privacy_last_request_at: datetime | None = None
@@ -2471,6 +2477,8 @@ class SupplierResponse(SupplierBase):
     name: str
     created_at: datetime
     updated_at: datetime
+    is_deleted: bool = Field(default=False)
+    deleted_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

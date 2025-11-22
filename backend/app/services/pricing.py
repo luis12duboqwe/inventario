@@ -175,10 +175,18 @@ def delete_price_list(
     price_list_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     """Elimina una lista de precios existente."""
 
-    crud.delete_price_list(db, price_list_id, performed_by_id=performed_by_id)
+    crud.delete_price_list(
+        db,
+        price_list_id,
+        performed_by_id=performed_by_id,
+        allow_hard_delete=allow_hard_delete,
+        is_superadmin=is_superadmin,
+    )
 
 
 def get_price_list_item(
@@ -232,10 +240,18 @@ def delete_price_list_item(
     item_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     """Elimina un precio asociado a una lista."""
 
-    crud.delete_price_list_item(db, item_id, performed_by_id=performed_by_id)
+    crud.delete_price_list_item(
+        db,
+        item_id,
+        performed_by_id=performed_by_id,
+        allow_hard_delete=allow_hard_delete,
+        is_superadmin=is_superadmin,
+    )
 
 
 def list_applicable_price_lists(

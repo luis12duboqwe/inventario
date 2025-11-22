@@ -2,12 +2,14 @@ from datetime import date
 from decimal import Decimal
 from typing import NoReturn
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..config import settings
-from ..core.roles import GESTION_ROLES, MOVEMENT_ROLES
+from ..core.roles import ADMIN, GESTION_ROLES, MOVEMENT_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -15,6 +17,10 @@ from ..services import pricing
 
 router = APIRouter(prefix="/price-lists", tags=["listas de precios"])
 pricing_router = APIRouter(prefix="/pricing", tags=["precios", "inventario"])
+
+
+def _is_superadmin(user: Any, confirmation: bool) -> bool:
+    return confirmation and str(getattr(user, "rol", "")).upper() == ADMIN
 
 
 def _ensure_feature_enabled() -> None:
@@ -204,6 +210,14 @@ def delete_price_list_endpoint(
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
+    hard_delete: bool = Query(
+        default=False,
+        description="Eliminación definitiva solo con validación de superadmin",
+    ),
+    superadmin_confirmed: bool = Query(
+        default=False,
+        description="Confirma aprobación de superadministrador",
+    ),
 ) -> Response:
     _ensure_feature_enabled()
     _ = reason
@@ -212,6 +226,8 @@ def delete_price_list_endpoint(
             db,
             price_list_id,
             performed_by_id=_performed_by_id(current_user),
+            allow_hard_delete=hard_delete,
+            is_superadmin=_is_superadmin(current_user, superadmin_confirmed),
         )
     except LookupError as exc:
         _raise_lookup(exc)
@@ -288,6 +304,14 @@ def delete_price_list_item_endpoint(
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
+    hard_delete: bool = Query(
+        default=False,
+        description="Eliminación definitiva autorizada por superadmin",
+    ),
+    superadmin_confirmed: bool = Query(
+        default=False,
+        description="Confirma aprobación de superadministrador",
+    ),
 ) -> Response:
     _ensure_feature_enabled()
     _ = reason
@@ -296,6 +320,8 @@ def delete_price_list_item_endpoint(
             db,
             item_id,
             performed_by_id=_performed_by_id(current_user),
+            allow_hard_delete=hard_delete,
+            is_superadmin=_is_superadmin(current_user, superadmin_confirmed),
         )
     except LookupError as exc:
         _raise_lookup(exc)

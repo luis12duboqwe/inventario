@@ -1,11 +1,12 @@
 """Router de clientes corporativos."""
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
-from ..core.roles import GESTION_ROLES
+from ..core.roles import ADMIN, GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -13,6 +14,11 @@ from ..services import credit, customer_segments, pos_receipts
 from ..services import credit, customer_reports, pos_receipts
 
 router = APIRouter(prefix="/customers", tags=["customers"])
+
+
+def _is_superadmin(user: Any, confirmation: bool) -> bool:
+    role = str(getattr(user, "rol", "")).upper()
+    return confirmation and role == ADMIN
 
 
 @router.get("/", response_model=list[schemas.CustomerResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -280,12 +286,22 @@ def delete_customer_endpoint(
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
+    hard_delete: bool = Query(
+        default=False,
+        description="Eliminación definitiva solo con confirmación de superadmin",
+    ),
+    superadmin_confirmed: bool = Query(
+        default=False,
+        description="Confirma que un superadministrador aprobó la eliminación",
+    ),
 ):
     try:
         crud.delete_customer(
             db,
             customer_id,
             performed_by_id=current_user.id if current_user else None,
+            allow_hard_delete=hard_delete,
+            is_superadmin=_is_superadmin(current_user, superadmin_confirmed),
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado") from exc
