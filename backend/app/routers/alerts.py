@@ -9,12 +9,14 @@ from ..core.roles import MOVEMENT_ROLES
 from ..database import get_db
 from ..security import require_roles
 from ..services.inventory_alerts import InventoryAlertsService
+from ..services.minimum_stock import MinimumStockService
 from ..services.stock_alerts import StockAlertsService
 
 router = APIRouter(prefix="/alerts", tags=["alertas"])
 
 _alerts_service = InventoryAlertsService()
 _stock_alerts_service = StockAlertsService(_alerts_service)
+_minimum_stock_service = MinimumStockService()
 
 
 @router.get(
@@ -48,6 +50,27 @@ def list_inventory_alerts(
         summary=result.summary,
         items=result.items,
     )
+
+
+@router.get(
+    "/inventory/minimum",
+    response_model=schemas.MinimumStockAlertsResponse,
+    status_code=status.HTTP_200_OK,
+)
+def list_minimum_stock_alerts(
+    store_id: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(MOVEMENT_ROLES)),
+    service: MinimumStockService = Depends(lambda: _minimum_stock_service),
+) -> schemas.MinimumStockAlertsResponse:
+    """Devuelve los productos que ya están bajo el mínimo o punto de reorden."""
+
+    result = service.detect(
+        db,
+        store_id=store_id,
+        performed_by_id=getattr(current_user, "id", None),
+    )
+    return schemas.MinimumStockAlertsResponse(summary=result.summary, items=result.items)
 
 
 __all__ = ["router"]

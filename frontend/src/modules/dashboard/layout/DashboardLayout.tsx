@@ -24,6 +24,7 @@ import {
 import BackToTopButton from "../../../shared/components/BackToTopButton";
 import CompactModeToggle from "../../../shared/components/CompactModeToggle";
 import GlobalMetrics from "../components/GlobalMetrics";
+import MinimumStockWidget from "../components/MinimumStockWidget";
 import StockAlertsWidget from "../components/StockAlertsWidget";
 import TechMonitor from "../components/TechMonitor";
 import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
@@ -730,6 +731,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
 
           <TechMonitor />
           <GlobalMetrics />
+          <MinimumStockWidget />
           <StockAlertsWidget />
 
           <AnimatePresence>
