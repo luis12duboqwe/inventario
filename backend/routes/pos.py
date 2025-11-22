@@ -6,9 +6,10 @@ from decimal import Decimal
 from io import BytesIO
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Response, status
 from reportlab.pdfgen import canvas
 from sqlalchemy import select
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
@@ -19,24 +20,63 @@ from backend.app.routers.dependencies import require_reason
 from backend.app.schemas import BinaryFileResponse
 from backend.app.security import get_current_user, require_roles
 from backend.core.logging import logger as core_logger
+from backend.app.database import engine as app_engine
 from backend.db import get_db, run_migrations
-from backend.models.pos import Payment, PaymentMethod, Sale, SaleItem, SaleStatus
+from backend.models.pos import (
+    BasePOS,
+    Payment,
+    PaymentMethod,
+    Sale,
+    SaleItem,
+    SaleStatus,
+)
 from backend.schemas import pos as schemas
 
 from ._core_bridge import mount_core_router
 
-extended_router = APIRouter(prefix="/pos", tags=["pos"])
+def _ensure_pos_tables_dependency(db: Session = Depends(get_db)) -> None:
+    """Dependencia que garantiza la existencia de las tablas POS activas."""
+
+    engine = db.get_bind() if db else app_engine
+    _ensure_pos_tables(engine)
+
+
+extended_router = APIRouter(
+    prefix="/pos", tags=["pos"], dependencies=[Depends(_ensure_pos_tables_dependency)]
+)
 
 logger = core_logger.bind(component="backend.routes.pos")
+_POS_STARTUP_REGISTERED: set[int] = set()
 
 
 async def _initialize_pos_tables() -> None:
     """Prepara las tablas requeridas por el POS extendido en el arranque."""
 
     run_migrations()
+    _ensure_pos_tables()
 
 
-extended_router.add_event_handler("startup", _initialize_pos_tables)
+def _ensure_pos_tables(engine: Engine | None = None) -> None:
+    """Crea las tablas POS si no existen en el motor indicado."""
+
+    target_engine = engine or app_engine
+    try:
+        BasePOS.metadata.create_all(bind=target_engine)
+    except OperationalError:
+        logger.bind(module="pos", action="pos_tables_init_failed").warning(
+            "No fue posible crear las tablas de POS en el arranque"
+        )
+
+
+def register_pos_startup(target_app: APIRouter | FastAPI) -> None:
+    """Vincula el arranque de tablas POS al ciclo de vida de la app proporcionada."""
+
+    app_id = id(target_app)
+    if app_id in _POS_STARTUP_REGISTERED:
+        return
+    _ensure_pos_tables()
+    target_app.add_event_handler("startup", _initialize_pos_tables)
+    _POS_STARTUP_REGISTERED.add(app_id)
 
 
 _DECIMAL_ZERO = Decimal("0")
@@ -388,6 +428,7 @@ def read_receipt(
 
 
 router = APIRouter()
+register_pos_startup(router)
 router.include_router(extended_router)
 
 core_router = mount_core_router(core_pos.router)
