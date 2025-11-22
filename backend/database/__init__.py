@@ -13,8 +13,10 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+from backend.app.database import Base as AppBase
 
 # Cargar variables de entorno desde .env antes de configurar la base de datos
 try:
@@ -63,7 +65,9 @@ def _resolve_database_configuration() -> tuple[str, dict[str, object], Path | No
 SQLALCHEMY_DATABASE_URL, _ENGINE_KWARGS, DATABASE_PATH = _resolve_database_configuration()
 _engine = create_engine(SQLALCHEMY_DATABASE_URL, **_ENGINE_KWARGS)
 SessionLocal = sessionmaker(bind=_engine, autocommit=False, autoflush=False, future=True)
-Base = declarative_base()
+Base = AppBase
+# Asegurar que los modelos principales estén registrados en la metadata compartida.
+import backend.app.models  # noqa: F401  # pragma: no cover
 
 
 def _prepare_sqlite_database_file() -> None:
@@ -117,6 +121,7 @@ def run_migrations() -> None:
         else:
             raise
     _ensure_core_user_columns()
+    _migrate_lightweight_users()
     Base.metadata.create_all(bind=_engine)
 
 
@@ -148,6 +153,61 @@ def _ensure_core_user_columns() -> None:
         if "locked_until" not in usuarios_columns:
             connection.execute(
                 text("ALTER TABLE usuarios ADD COLUMN locked_until DATETIME")
+            )
+
+
+def _migrate_lightweight_users() -> None:
+    """Migra registros desde la tabla ``users`` hacia ``usuarios``.
+
+    El modelo ligero almacenaba credenciales básicas en la tabla ``users``. Esta
+    rutina garantiza que dichos registros se sincronicen con el modelo principal
+    con roles y campos extendidos sin duplicar usuarios existentes.
+    """
+
+    inspector = inspect(_engine)
+    table_names = set(inspector.get_table_names())
+    if "users" not in table_names or "usuarios" not in table_names:
+        return
+
+    with _engine.begin() as connection:
+        legacy_rows = list(
+            connection.execute(
+                text(
+                    "SELECT id, username, email, hashed_password, is_active, "
+                    "created_at FROM users"
+                )
+            ).mappings()
+        )
+
+        for row in legacy_rows:
+            correo = (row.get("email") or row.get("username") or "").strip().lower()
+            if not correo:
+                continue
+
+            exists = connection.execute(
+                text("SELECT 1 FROM usuarios WHERE correo = :correo"),
+                {"correo": correo},
+            ).first()
+            if exists:
+                continue
+
+            nombre = (row.get("username") or "").strip()
+            estado = "ACTIVO" if row.get("is_active", True) else "INACTIVO"
+            connection.execute(
+                text(
+                    "INSERT INTO usuarios (correo, nombre, password_hash, rol, estado, "
+                    "is_active, fecha_creacion) VALUES (:correo, :nombre, :password, :rol, "
+                    ":estado, :is_active, COALESCE(:fecha_creacion, CURRENT_TIMESTAMP))"
+                ),
+                {
+                    "correo": correo,
+                    "nombre": nombre or correo,
+                    "password": row.get("hashed_password", ""),
+                    "rol": "OPERADOR",
+                    "estado": estado,
+                    "is_active": bool(row.get("is_active", True)),
+                    "fecha_creacion": row.get("created_at"),
+                },
             )
 
 
