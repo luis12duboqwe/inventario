@@ -15,7 +15,6 @@ from typing import Any
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from fastapi.routing import APIRoute
 from sqlalchemy.orm import Session
 
 from . import crud, security as security_core
@@ -142,40 +141,6 @@ def _resolve_additional_cors_origins() -> set[str]:
                 extra_origins.add(cleaned)
 
     return {origin for origin in extra_origins if origin}
-
-
-def _resolve_router(target_app: FastAPI | APIRouter) -> APIRouter:
-    """Devuelve el enrutador interno independientemente del tipo recibido."""
-
-    if isinstance(target_app, FastAPI):
-        return target_app.router
-    return target_app
-
-
-def _remove_route(target_app: FastAPI | APIRouter, path: str, method: str) -> None:
-    """Elimina del contenedor de rutas la coincidencia especificada."""
-
-    method_upper = method.upper()
-    router = _resolve_router(target_app)
-    routes = router.routes
-    router.routes[:] = [
-        route
-        for route in routes
-        if not (
-            isinstance(route, APIRoute)
-            and route.path == path
-            and method_upper in (route.methods or {"GET"})
-        )
-    ]
-
-
-def _mount_pos_extensions(target_app: FastAPI | APIRouter) -> None:
-    """Registra los endpoints POS extendidos sobre la app o router recibido."""
-
-    from backend.routes.pos import extended_router
-
-    _remove_route(target_app, "/pos/receipt/{sale_id}", "GET")
-    target_app.include_router(extended_router)
 
 
 ROLE_PROTECTED_PREFIXES: dict[str, set[str]] = {
@@ -649,8 +614,6 @@ def create_app() -> FastAPI:
     for module_router in routers_to_mount:
         app.include_router(module_router)
 
-    _mount_pos_extensions(app)
-
     mounted_prefixes: set[str] = set()
 
     def _mount_versioned(prefix: str) -> None:
@@ -666,8 +629,6 @@ def create_app() -> FastAPI:
         versioned_router = APIRouter(prefix=normalized_prefix)
         for module_router in routers_to_mount:
             versioned_router.include_router(module_router)
-
-        _mount_pos_extensions(versioned_router)
         app.include_router(versioned_router)
 
     _mount_versioned(settings.api_v1_prefix)
