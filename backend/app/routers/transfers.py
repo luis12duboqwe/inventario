@@ -393,7 +393,10 @@ def reject_transfer(
         )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para rechazar en esta sucursal.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para rechazar en esta sucursal.",
+        ) from exc
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transferencia no encontrada") from exc
     except ValueError as exc:
@@ -404,6 +407,7 @@ def reject_transfer(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Las cantidades indicadas no son válidas para el rechazo de la transferencia.",
+            ) from exc
         if detail == "transfer_device_already_sold":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

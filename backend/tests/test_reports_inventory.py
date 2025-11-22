@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from datetime import datetime
+from decimal import Decimal
 from io import StringIO
 
 import json
@@ -971,3 +972,70 @@ def test_inventory_value_report_swapped_date_range(client) -> None:
     # Si existe un resumen o totales, deben coincidir
     if "summary" in correct and isinstance(correct["summary"], dict):
         assert swapped.get("summary") == correct.get("summary")
+
+
+def test_inventory_value_uses_weighted_cost_after_adjustment(client) -> None:
+    headers = _auth_headers(client)
+
+    store_resp = client.post(
+        "/stores",
+        json={"name": "Valuacion Costos", "location": "CDMX", "timezone": "America/Mexico_City"},
+        headers=headers,
+    )
+    assert store_resp.status_code == status.HTTP_201_CREATED
+    store_id = store_resp.json()["id"]
+
+    device_resp = client.post(
+        f"/stores/{store_id}/devices",
+        json={
+            "sku": "COST-VAL-01",
+            "name": "Router Balanceado",
+            "quantity": 10,
+            "unit_price": 100.0,
+            "costo_unitario": 50.0,
+        },
+        headers=headers,
+    )
+    assert device_resp.status_code == status.HTTP_201_CREATED
+    device_id = device_resp.json()["id"]
+
+    adjustment_payload = {
+        "producto_id": device_id,
+        "tipo_movimiento": "ajuste",
+        "cantidad": 15,
+        "comentario": "Ajuste ingreso costo",
+        "unit_cost": 70.0,
+    }
+    adjust_headers = {**headers, "X-Reason": adjustment_payload["comentario"]}
+    adjustment_resp = client.post(
+        f"/inventory/stores/{store_id}/movements",
+        json=adjustment_payload,
+        headers=adjust_headers,
+    )
+    assert adjustment_resp.status_code == status.HTTP_201_CREATED
+
+    detail_resp = client.get(
+        f"/stores/{store_id}/devices/{device_id}",
+        headers=headers,
+    )
+    assert detail_resp.status_code == status.HTTP_200_OK
+    device_detail = detail_resp.json()
+
+    expected_cost = (Decimal("50") * Decimal("10") + Decimal("70") * Decimal("5")) / Decimal("15")
+    assert Decimal(str(device_detail["costo_unitario"])).quantize(Decimal("0.01")) == expected_cost.quantize(
+        Decimal("0.01")
+    )
+
+    value_resp = client.get(
+        "/reports/inventory/value",
+        headers={**headers, "X-Reason": "Valuacion consolidada"},
+    )
+    assert value_resp.status_code == status.HTTP_200_OK
+    report = value_resp.json()
+
+    assert report["stores"], "El reporte debe listar al menos una sucursal"
+    store_entry = next(store for store in report["stores"] if store["store_id"] == store_id)
+
+    expected_store_cost = (expected_cost.quantize(Decimal("0.01")) * Decimal("15")).quantize(Decimal("0.01"))
+    assert store_entry["valor_costo"] == pytest.approx(float(expected_store_cost))
+    assert report["totals"]["valor_costo"] == pytest.approx(float(expected_store_cost))

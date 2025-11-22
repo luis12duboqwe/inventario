@@ -180,7 +180,7 @@ def _validate_device_numeric_fields(values: dict[str, Any]) -> None:
             parsed_quantity = int(quantity)
         except (TypeError, ValueError):
             raise ValueError("device_invalid_quantity")
-        if parsed_quantity <= 0:
+        if parsed_quantity < 0:
             raise ValueError("device_invalid_quantity")
 
     raw_cost = values.get("costo_unitario")
@@ -189,7 +189,7 @@ def _validate_device_numeric_fields(values: dict[str, Any]) -> None:
             parsed_cost = _to_decimal(raw_cost)
         except (ArithmeticError, TypeError, ValueError):
             raise ValueError("device_invalid_cost")
-        if parsed_cost <= 0:
+        if parsed_cost < 0:
             raise ValueError("device_invalid_cost")
 
 
@@ -10042,6 +10042,28 @@ def create_inventory_movement(
                 ledger_quantity = _to_decimal(removal_qty)
                 ledger_branch_id = branch_for_cost
                 ledger_unit_cost = movement_unit_cost
+            elif adjustment_difference > 0:
+                if payload.unit_cost is not None:
+                    incoming_cost = _to_decimal(payload.unit_cost)
+                elif previous_cost > Decimal("0"):
+                    incoming_cost = previous_cost
+                elif (
+                    device.unit_price is not None
+                    and device.unit_price > Decimal("0")
+                ):
+                    incoming_cost = _to_decimal(device.unit_price)
+                else:
+                    incoming_cost = previous_cost
+
+                average_cost = _calculate_weighted_average_cost(
+                    previous_quantity,
+                    previous_cost,
+                    adjustment_difference,
+                    incoming_cost,
+                )
+                device.costo_unitario = _quantize_currency(average_cost)
+                movement_unit_cost = _quantize_currency(incoming_cost)
+                _recalculate_sale_price(device)
             elif payload.unit_cost is not None and payload.cantidad > 0:
                 updated_cost = _to_decimal(payload.unit_cost)
                 device.costo_unitario = _quantize_currency(updated_cost)
@@ -14098,6 +14120,27 @@ def _apply_transfer_reception(
     performed_by_id: int,
     received_map: dict[int, int],
 ) -> None:
+    reservation_map: dict[int, models.InventoryReservation] = {}
+    reserved_allowances: dict[int, int] = {}
+    device_ids = [item.device_id for item in order.items]
+    for item in order.items:
+        if item.reservation_id is None:
+            continue
+        reservation = get_inventory_reservation(db, item.reservation_id)
+        reservation_map[item.reservation_id] = reservation
+        reserved_allowances[item.device_id] = reserved_allowances.get(
+            item.device_id, 0
+        ) + reservation.quantity
+
+    active_reserved_map = _active_reservations_by_device(
+        db, store_id=order.origin_store_id, device_ids=set(device_ids)
+    )
+    blocked_map: dict[int, int] = {}
+    for device_id in device_ids:
+        active_total = active_reserved_map.get(device_id, 0)
+        allowance = reserved_allowances.get(device_id, 0)
+        blocked_map[device_id] = max(active_total - allowance, 0)
+
     for item in order.items:
         device = item.device
         shipped_quantity = item.dispatched_quantity or item.quantity
@@ -14140,22 +14183,33 @@ def _apply_transfer_reception(
 
         origin_cost = _to_decimal(device.costo_unitario)
         origin_unit_cost = _quantize_currency(origin_cost)
+        origin_device = device
 
-        outgoing_movement = _register_inventory_movement(
-            db,
-            store_id=order.origin_store_id,
-            device_id=device.id,
-            movement_type=models.MovementType.OUT,
-            quantity=item.quantity,
-            comment=_build_transfer_movement_comment(
-                order, device, "OUT", order.reason
-            ),
-            performed_by_id=performed_by_id,
-            source_store_id=order.origin_store_id,
-            reference_type="transfer_order",
-            reference_id=str(order.id),
-        )
-        origin_device = outgoing_movement.device or device
+        if not item.dispatched_quantity:
+            outgoing_movement = _register_inventory_movement(
+                db,
+                store_id=order.origin_store_id,
+                device_id=device.id,
+                movement_type=models.MovementType.OUT,
+                quantity=item.quantity,
+                comment=_build_transfer_movement_comment(
+                    order, device, "OUT", order.reason
+                ),
+                performed_by_id=performed_by_id,
+                source_store_id=order.origin_store_id,
+                reference_type="transfer_order",
+                reference_id=str(order.id),
+            )
+            origin_device = outgoing_movement.device or device
+            dispatch_unit_cost = outgoing_movement.unit_cost or origin_unit_cost
+            item.dispatched_quantity = item.quantity
+            item.dispatched_unit_cost = (
+                _quantize_currency(_to_decimal(dispatch_unit_cost))
+                if dispatch_unit_cost is not None
+                else None
+            )
+        elif item.dispatched_unit_cost is None:
+            item.dispatched_unit_cost = origin_unit_cost
 
         if origin_device.imei or origin_device.serial:
             origin_device.store_id = order.destination_store_id
@@ -14255,7 +14309,7 @@ def _apply_transfer_reception(
                 performed_by_id=performed_by_id,
                 source_store_id=order.origin_store_id,
                 destination_store_id=order.destination_store_id,
-                unit_cost=origin_unit_cost,
+                unit_cost=item.dispatched_unit_cost or origin_unit_cost,
                 reference_type="transfer_order",
                 reference_id=str(order.id),
             )
