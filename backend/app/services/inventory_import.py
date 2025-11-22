@@ -44,6 +44,13 @@ EXPORT_HEADERS = [
 
 REQUIRED_COLUMNS = {"sku", "name"}
 
+DEVICE_ERROR_MESSAGES = {
+    "device_invalid_cost": "El costo_unitario debe ser mayor que cero.",
+    "device_invalid_quantity": "La cantidad debe ser mayor que cero.",
+    "device_identifier_conflict": "El IMEI o número de serie ya fue registrado.",
+    "device_already_exists": "El SKU ya existe en la sucursal indicada.",
+}
+
 
 def export_devices_csv(
     db: Session,
@@ -150,6 +157,20 @@ def import_devices_from_csv(
             fecha_compra = _parse_date(row.get("fecha_compra"))
             fecha_ingreso = _parse_date(row.get("fecha_ingreso"))
 
+            if quantity is not None and quantity <= 0:
+                result["skipped"] += 1
+                result["errors"].append(
+                    {"row": index, "message": DEVICE_ERROR_MESSAGES["device_invalid_quantity"]}
+                )
+                continue
+
+            if costo_unitario is not None and costo_unitario <= 0:
+                result["skipped"] += 1
+                result["errors"].append(
+                    {"row": index, "message": DEVICE_ERROR_MESSAGES["device_invalid_cost"]}
+                )
+                continue
+
             payload_common: dict[str, Any] = {
                 "sku": sku,
                 "name": name,
@@ -234,7 +255,12 @@ def import_devices_from_csv(
                         result["skipped"] += 1
             except (ValueError, ValidationError) as exc:
                 result["skipped"] += 1
-                result["errors"].append({"row": index, "message": str(exc)})
+                result["errors"].append(
+                    {
+                        "row": index,
+                        "message": _translate_device_error(str(exc)),
+                    }
+                )
 
     return result
 
@@ -288,3 +314,7 @@ def _decimal_to_str(value: Decimal | float | int | None) -> str:
     if isinstance(value, Decimal):
         return f"{value:.2f}"
     return f"{Decimal(str(value)):.2f}"
+
+
+def _translate_device_error(code: str) -> str:
+    return DEVICE_ERROR_MESSAGES.get(code, code)
