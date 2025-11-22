@@ -9775,6 +9775,21 @@ def _register_inventory_movement(
     )
 
 
+def _lock_device_inventory_row(
+    db: Session, *, store_id: int, device_id: int
+) -> None:
+    """Aplica un bloqueo de fila sobre el dispositivo antes de modificar stock."""
+
+    db.execute(
+        select(models.Device.id)
+        .where(
+            models.Device.id == device_id,
+            models.Device.store_id == store_id,
+        )
+        .with_for_update()
+    )
+
+
 def create_inventory_movement(
     db: Session,
     store_id: int,
@@ -9795,8 +9810,6 @@ def create_inventory_movement(
 
     device = get_device(db, store_id, payload.producto_id)
 
-    previous_quantity = device.quantity
-    previous_cost = _to_decimal(device.costo_unitario)
     if source_store_id is not None:
         get_store(db, source_store_id)
 
@@ -9808,14 +9821,28 @@ def create_inventory_movement(
         reference_type = "manual_adjustment"
         reference_id = str(device.id)
 
-    if (
-        payload.tipo_movimiento == models.MovementType.OUT
-        and device.quantity < payload.cantidad
-    ):
-        raise ValueError("insufficient_stock")
+    needs_decrement_lock = payload.tipo_movimiento == models.MovementType.OUT or (
+        payload.tipo_movimiento == models.MovementType.ADJUST
+        and device.quantity > payload.cantidad
+    )
 
-    previous_sale_price = device.unit_price
     with transactional_session(db):
+        if needs_decrement_lock:
+            _lock_device_inventory_row(
+                db, store_id=store_id, device_id=device.id
+            )
+            db.refresh(device)
+
+        previous_quantity = device.quantity
+        previous_cost = _to_decimal(device.costo_unitario)
+        previous_sale_price = device.unit_price
+
+        if (
+            payload.tipo_movimiento == models.MovementType.OUT
+            and device.quantity < payload.cantidad
+        ):
+            raise ValueError("insufficient_stock")
+
         movement_unit_cost: Decimal | None = None
         stock_move_type: models.StockMoveType | None = None
         stock_move_quantity: Decimal | None = None

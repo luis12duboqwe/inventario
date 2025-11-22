@@ -571,6 +571,84 @@ def generate_backup(
     component_files = [pdf_path, json_path, sql_path, config_path]
     _encrypt_backup_files(cipher, component_files, critical_directory)
 
+    def _calculate_components_size() -> int:
+        return _calculate_total_size(
+            [
+                pdf_path,
+                json_path,
+                sql_path,
+                config_path,
+                metadata_path,
+                archive_path,
+                critical_directory,
+            ]
+        )
+
+    def _write_metadata_with_size(size: int) -> None:
+        _write_metadata(
+            metadata_path,
+            timestamp=timestamp,
+            mode=mode,
+            notes=notes,
+            components=selected_components,
+            json_path=json_path,
+            sql_path=sql_path,
+            pdf_path=pdf_path,
+            archive_path=archive_path,
+            config_path=config_path,
+            critical_directory=critical_directory,
+            copied_files=copied_files,
+            total_size_bytes=size,
+            triggered_by_id=triggered_by_id,
+            reason=normalized_reason,
+            encryption_enabled=encryption_enabled,
+            encryption_key_path=encryption_key_path,
+            cipher=cipher,
+        )
+
+    def _archive_and_measure(size: int) -> int:
+        _write_metadata_with_size(size)
+        _build_archive()
+        return _calculate_components_size()
+
+    initial_total = _calculate_total_size(
+        [
+            pdf_path,
+            json_path,
+            sql_path,
+            config_path,
+            critical_directory,
+        ]
+    )
+
+    current_size = initial_total
+    measured_size = initial_total
+
+    for _ in range(8):
+        measured_size = _archive_and_measure(current_size)
+        if measured_size == current_size:
+            break
+        current_size = measured_size
+
+    _write_metadata_with_size(measured_size)
+    _build_archive()
+    total_size = _calculate_components_size()
+
+    if total_size != measured_size:
+        _write_metadata_with_size(total_size)
+        _build_archive()
+        total_size = _calculate_components_size()
+
+    _write_metadata_with_size(total_size)
+    _build_archive()
+    aligned_size = _calculate_components_size()
+
+    if aligned_size != total_size:
+        _write_metadata_with_size(aligned_size)
+        _build_archive()
+        aligned_size = _calculate_components_size()
+
+    total_size = aligned_size
     base_components = [
         pdf_path,
         json_path,
