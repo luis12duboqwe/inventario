@@ -5932,6 +5932,13 @@ class ReturnRecordType(str, enum.Enum):
     SALE = "sale"
 
 
+class RMAStatus(str, enum.Enum):
+    PENDIENTE = "PENDIENTE"
+    AUTORIZADA = "AUTORIZADA"
+    EN_PROCESO = "EN_PROCESO"
+    CERRADA = "CERRADA"
+
+
 class ReturnRecord(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -6003,6 +6010,53 @@ class ReturnsTotals(BaseModel):
 class ReturnsOverview(BaseModel):
     items: list[ReturnRecord]
     totals: ReturnsTotals
+
+
+class RMAHistoryEntry(BaseModel):
+    id: int
+    status: RMAStatus
+    message: str | None = None
+    created_at: datetime
+    created_by_id: int | None = None
+    created_by_name: str | None = None
+
+
+class RMABase(BaseModel):
+    disposition: ReturnDisposition
+    notes: str | None = None
+    repair_order_id: int | None = None
+    replacement_sale_id: int | None = None
+
+
+class RMACreate(RMABase):
+    sale_return_id: int | None = Field(default=None, ge=1)
+    purchase_return_id: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_reference(self) -> "RMACreate":
+        if not self.sale_return_id and not self.purchase_return_id:
+            raise ValueError("return_reference_required")
+        if self.sale_return_id and self.purchase_return_id:
+            raise ValueError("single_return_reference")
+        return self
+
+
+class RMAUpdate(RMABase):
+    pass
+
+
+class RMARecord(BaseModel):
+    id: int
+    status: RMAStatus
+    store_id: int
+    device_id: int
+    disposition: ReturnDisposition
+    notes: str | None = None
+    sale_return_id: int | None = None
+    purchase_return_id: int | None = None
+    repair_order_id: int | None = None
+    replacement_sale_id: int | None = None
+    history: list[RMAHistoryEntry]
 
 
 class WarrantyClaimCreate(BaseModel):
@@ -8680,6 +8734,11 @@ __all__ = [
     "ReturnRecord",
     "ReturnsTotals",
     "ReturnsOverview",
+    "RMAStatus",
+    "RMAHistoryEntry",
+    "RMACreate",
+    "RMAUpdate",
+    "RMARecord",
     "SaleCreate",
     "SaleUpdate",
     "SaleItemCreate",

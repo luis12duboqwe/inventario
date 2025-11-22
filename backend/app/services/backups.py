@@ -500,6 +500,7 @@ def _restore_database(
 
 
 
+
 def generate_backup(
     db: Session,
     *,
@@ -567,6 +568,8 @@ def generate_backup(
     component_files = [pdf_path, json_path, sql_path, config_path]
     _encrypt_backup_files(cipher, component_files, critical_directory)
 
+    def _component_paths(include_metadata: bool = True, include_archive: bool = True) -> list[Path]:
+        paths: list[Path] = [
     base_components = [
         pdf_path,
         json_path,
@@ -669,7 +672,7 @@ def generate_backup(
         paths = list(base_components)
         if include_metadata:
             paths.append(metadata_path)
-        if archive_path.exists():
+        if include_archive and archive_path.exists():
             paths.append(archive_path)
         return paths
 
@@ -701,6 +704,22 @@ def generate_backup(
             cipher=cipher,
         )
 
+    provisional_size = _calculate_total_size(
+        _component_paths(include_metadata=False, include_archive=False)
+    )
+    _write_metadata_with_size(provisional_size)
+    _build_archive()
+
+    final_size = _calculate_total_size(_component_paths())
+    _write_metadata_with_size(final_size)
+    _build_archive()
+    final_size = _calculate_total_size(_component_paths())
+
+    _write_metadata_with_size(final_size)
+    _build_archive()
+    final_size = _calculate_total_size(_component_paths())
+
+    _write_metadata_with_size(final_size)
     _write_metadata_with_size(0)
     _build_archive()
 
@@ -757,14 +776,12 @@ def generate_backup(
         metadata_path=str(metadata_path.resolve()),
         critical_directory=str(critical_directory.resolve()),
         components=selected_components,
-        total_size_bytes=final_total,
+        total_size_bytes=final_size,
         notes=notes,
         triggered_by_id=triggered_by_id,
         reason=normalized_reason,
     )
     return job
-
-
 def restore_backup(
     db: Session,
     *,

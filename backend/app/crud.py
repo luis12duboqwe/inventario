@@ -189,7 +189,7 @@ def _validate_device_numeric_fields(values: dict[str, Any]) -> None:
             parsed_cost = _to_decimal(raw_cost)
         except (ArithmeticError, TypeError, ValueError):
             raise ValueError("device_invalid_cost")
-        if parsed_cost <= 0:
+        if parsed_cost < 0:
             raise ValueError("device_invalid_cost")
 
 
@@ -440,6 +440,7 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "supplier": models.SyncOutboxPriority.NORMAL,
     "cash_session": models.SyncOutboxPriority.NORMAL,
     "device": models.SyncOutboxPriority.NORMAL,
+    "rma_request": models.SyncOutboxPriority.NORMAL,
     "inventory": models.SyncOutboxPriority.HIGH,
     "store": models.SyncOutboxPriority.LOW,
     "global": models.SyncOutboxPriority.LOW,
@@ -19074,6 +19075,261 @@ def register_sale_return(
             if ledger_entry:
                 _sync_customer_ledger_entry(db, ledger_entry)
     return returns
+
+
+def _get_sale_return(db: Session, return_id: int) -> models.SaleReturn:
+    statement = (
+        select(models.SaleReturn)
+        .options(
+            joinedload(models.SaleReturn.sale).joinedload(models.Sale.store),
+            joinedload(models.SaleReturn.device),
+        )
+        .where(models.SaleReturn.id == return_id)
+    )
+    result = db.scalars(statement).unique().first()
+    if result is None:
+        raise LookupError("sale_return_not_found")
+    return result
+
+
+def _get_purchase_return(db: Session, return_id: int) -> models.PurchaseReturn:
+    statement = (
+        select(models.PurchaseReturn)
+        .options(
+            joinedload(models.PurchaseReturn.order).joinedload(models.PurchaseOrder.store),
+            joinedload(models.PurchaseReturn.device),
+        )
+        .where(models.PurchaseReturn.id == return_id)
+    )
+    result = db.scalars(statement).unique().first()
+    if result is None:
+        raise LookupError("purchase_return_not_found")
+    return result
+
+
+def _append_rma_history(
+    db: Session,
+    *,
+    rma: models.RMARequest,
+    status: models.RMAStatus,
+    message: str | None,
+    created_by_id: int | None,
+) -> models.RMAEvent:
+    event = models.RMAEvent(
+        rma=rma,
+        status=status,
+        message=message,
+        created_by_id=created_by_id,
+    )
+    db.add(event)
+    flush_session(db)
+    return event
+
+
+def _rma_sync_payload(rma: models.RMARequest) -> dict[str, Any]:
+    return {
+        "id": rma.id,
+        "sale_return_id": rma.sale_return_id,
+        "purchase_return_id": rma.purchase_return_id,
+        "store_id": rma.store_id,
+        "device_id": rma.device_id,
+        "status": rma.status.value,
+        "disposition": rma.disposition.value,
+        "notes": rma.notes,
+        "repair_order_id": rma.repair_order_id,
+        "replacement_sale_id": rma.replacement_sale_id,
+    }
+
+
+def create_rma_request(
+    db: Session,
+    payload: schemas.RMACreate,
+    *,
+    created_by_id: int,
+) -> models.RMARequest:
+    sale_return: models.SaleReturn | None = None
+    purchase_return: models.PurchaseReturn | None = None
+    if payload.sale_return_id:
+        sale_return = _get_sale_return(db, payload.sale_return_id)
+        store_id = sale_return.sale.store_id if sale_return.sale else sale_return.warehouse_id
+        device_id = sale_return.device_id
+    else:
+        purchase_return = _get_purchase_return(db, payload.purchase_return_id or 0)
+        order = purchase_return.order
+        store_id = order.store_id if order else purchase_return.warehouse_id
+        device_id = purchase_return.device_id
+
+    if payload.repair_order_id is not None:
+        get_repair_order(db, payload.repair_order_id)
+    if payload.replacement_sale_id is not None:
+        get_sale(db, payload.replacement_sale_id)
+
+    with transactional_session(db):
+        rma = models.RMARequest(
+            sale_return_id=sale_return.id if sale_return else None,
+            purchase_return_id=purchase_return.id if purchase_return else None,
+            store_id=store_id,
+            device_id=device_id,
+            disposition=payload.disposition,
+            notes=payload.notes,
+            repair_order_id=payload.repair_order_id,
+            replacement_sale_id=payload.replacement_sale_id,
+            created_by_id=created_by_id,
+        )
+        db.add(rma)
+        flush_session(db)
+        _append_rma_history(
+            db,
+            rma=rma,
+            status=models.RMAStatus.PENDIENTE,
+            message="RMA creada",
+            created_by_id=created_by_id,
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="rma_request",
+            entity_id=str(rma.id),
+            operation="UPSERT",
+            payload=_rma_sync_payload(rma),
+        )
+        db.refresh(rma)
+        return rma
+
+
+def get_rma_request(db: Session, rma_id: int) -> models.RMARequest:
+    statement = (
+        select(models.RMARequest)
+        .options(
+            joinedload(models.RMARequest.history).joinedload(models.RMAEvent.created_by),
+            joinedload(models.RMARequest.sale_return).joinedload(models.SaleReturn.sale),
+            joinedload(models.RMARequest.purchase_return).joinedload(models.PurchaseReturn.order),
+        )
+        .where(models.RMARequest.id == rma_id)
+    )
+    result = db.scalars(statement).unique().first()
+    if result is None:
+        raise LookupError("rma_request_not_found")
+    return result
+
+
+def _update_rma_status(
+    db: Session,
+    rma_id: int,
+    *,
+    status: models.RMAStatus,
+    notes: str | None,
+    repair_order_id: int | None,
+    replacement_sale_id: int | None,
+    actor_id: int,
+    disposition: schemas.ReturnDisposition | None = None,
+) -> models.RMARequest:
+    rma = get_rma_request(db, rma_id)
+    if rma.status == models.RMAStatus.CERRADA:
+        raise ValueError("rma_request_closed")
+
+    if repair_order_id is not None:
+        get_repair_order(db, repair_order_id)
+    if replacement_sale_id is not None:
+        get_sale(db, replacement_sale_id)
+
+    if status == models.RMAStatus.AUTORIZADA and rma.status != models.RMAStatus.PENDIENTE:
+        raise ValueError("rma_request_invalid_status")
+    if status == models.RMAStatus.EN_PROCESO and rma.status not in (
+        models.RMAStatus.PENDIENTE,
+        models.RMAStatus.AUTORIZADA,
+    ):
+        raise ValueError("rma_request_invalid_status")
+
+    with transactional_session(db):
+        rma.status = status
+        if notes:
+            rma.notes = notes
+        if repair_order_id is not None:
+            rma.repair_order_id = repair_order_id
+        if replacement_sale_id is not None:
+            rma.replacement_sale_id = replacement_sale_id
+        if disposition is not None:
+            rma.disposition = disposition
+
+        if status == models.RMAStatus.AUTORIZADA:
+            rma.authorized_by_id = actor_id
+        elif status == models.RMAStatus.EN_PROCESO:
+            rma.processed_by_id = actor_id
+        elif status == models.RMAStatus.CERRADA:
+            rma.closed_by_id = actor_id
+
+        _append_rma_history(
+            db,
+            rma=rma,
+            status=status,
+            message=notes,
+            created_by_id=actor_id,
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="rma_request",
+            entity_id=str(rma.id),
+            operation="UPSERT",
+            payload=_rma_sync_payload(rma),
+        )
+        db.refresh(rma)
+        return rma
+
+
+def authorize_rma_request(
+    db: Session,
+    rma_id: int,
+    *,
+    notes: str | None,
+    actor_id: int,
+) -> models.RMARequest:
+    return _update_rma_status(
+        db,
+        rma_id,
+        status=models.RMAStatus.AUTORIZADA,
+        notes=notes,
+        repair_order_id=None,
+        replacement_sale_id=None,
+        actor_id=actor_id,
+    )
+
+
+def process_rma_request(
+    db: Session,
+    rma_id: int,
+    *,
+    payload: schemas.RMAUpdate,
+    actor_id: int,
+) -> models.RMARequest:
+    return _update_rma_status(
+        db,
+        rma_id,
+        status=models.RMAStatus.EN_PROCESO,
+        notes=payload.notes,
+        repair_order_id=payload.repair_order_id,
+        replacement_sale_id=payload.replacement_sale_id,
+        actor_id=actor_id,
+        disposition=payload.disposition,
+    )
+
+
+def close_rma_request(
+    db: Session,
+    rma_id: int,
+    *,
+    payload: schemas.RMAUpdate,
+    actor_id: int,
+) -> models.RMARequest:
+    return _update_rma_status(
+        db,
+        rma_id,
+        status=models.RMAStatus.CERRADA,
+        notes=payload.notes,
+        repair_order_id=payload.repair_order_id,
+        replacement_sale_id=payload.replacement_sale_id,
+        actor_id=actor_id,
+        disposition=payload.disposition,
+    )
 
 
 def list_operations_history(
