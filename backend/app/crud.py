@@ -173,6 +173,26 @@ def _ensure_unique_identifiers(
             raise ValueError("device_identifier_conflict")
 
 
+def _validate_device_numeric_fields(values: dict[str, Any]) -> None:
+    quantity = values.get("quantity")
+    if quantity is not None:
+        try:
+            parsed_quantity = int(quantity)
+        except (TypeError, ValueError):
+            raise ValueError("device_invalid_quantity")
+        if parsed_quantity <= 0:
+            raise ValueError("device_invalid_quantity")
+
+    raw_cost = values.get("costo_unitario")
+    if raw_cost is not None:
+        try:
+            parsed_cost = _to_decimal(raw_cost)
+        except (ArithmeticError, TypeError, ValueError):
+            raise ValueError("device_invalid_cost")
+        if parsed_cost <= 0:
+            raise ValueError("device_invalid_cost")
+
+
 def _ensure_unique_identifier_payload(
     db: Session,
     *,
@@ -8058,6 +8078,7 @@ def create_device(
     imei = payload_data.get("imei")
     serial = payload_data.get("serial")
     _ensure_unique_identifiers(db, imei=imei, serial=serial)
+    _validate_device_numeric_fields(payload_data)
     minimum_stock = int(payload_data.get("minimum_stock", 0) or 0)
     reorder_point = int(payload_data.get("reorder_point", 0) or 0)
     if reorder_point < minimum_stock:
@@ -9021,7 +9042,7 @@ def update_device(
     payload: schemas.DeviceUpdate,
     *,
     performed_by_id: int | None = None,
-) -> models.Device:
+    ) -> models.Device:
     device = get_device(db, store_id, device_id)
     updated_fields = payload.model_dump(exclude_unset=True)
     manual_price = None
@@ -9037,6 +9058,7 @@ def update_device(
         serial=serial,
         exclude_device_id=device.id,
     )
+    _validate_device_numeric_fields(updated_fields)
     new_minimum_stock = updated_fields.get("minimum_stock")
     new_reorder_point = updated_fields.get("reorder_point")
     current_minimum = int(getattr(device, "minimum_stock", 0) or 0)

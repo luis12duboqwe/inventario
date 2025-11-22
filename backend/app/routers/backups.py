@@ -15,18 +15,19 @@ from ..security import require_roles
 from ..services import backups as backup_services
 
 router = APIRouter(prefix="/backups", tags=["respaldos"])
+_admin_backups = Depends(require_roles(ADMIN, module="respaldos"))
 
 
 @router.post(
     "/run",
     response_model=schemas.BackupJobResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(ADMIN))],
+    dependencies=[_admin_backups],
 )
 def run_backup(
     payload: schemas.BackupRunRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(ADMIN)),
+    current_user=_admin_backups,
     reason: str = Depends(require_reason),
 ):
     notes = (payload.nota or "Respaldo manual").strip() or "Respaldo manual"
@@ -45,13 +46,13 @@ def run_backup(
 @router.get(
     "/history",
     response_model=list[schemas.BackupJobResponse],
-    dependencies=[Depends(require_roles(ADMIN))],
+    dependencies=[_admin_backups],
 )
 def backup_history(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(ADMIN)),
+    current_user=_admin_backups,
 ):
     return crud.list_backup_jobs(db, limit=limit, offset=offset)
 
@@ -59,13 +60,13 @@ def backup_history(
 @router.post(
     "/{job_id}/restore",
     response_model=schemas.BackupRestoreResponse,
-    dependencies=[Depends(require_roles(ADMIN))],
+    dependencies=[_admin_backups],
 )
 def restore_backup(
     job_id: int,
     payload: schemas.BackupRestoreRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(ADMIN)),
+    current_user=_admin_backups,
     reason: str = Depends(require_reason),
 ):
     job = crud.get_backup_job(db, job_id)
@@ -89,13 +90,13 @@ def restore_backup(
 @router.get(
     "/{job_id}/download",
     response_model=schemas.BinaryFileResponse,
-    dependencies=[Depends(require_roles(ADMIN))],
+    dependencies=[_admin_backups],
 )
 def download_backup(
     job_id: int,
     formato: schemas.BackupExportFormat,
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(ADMIN)),
+    current_user=_admin_backups,
     _reason: str = Depends(require_reason),
 ) -> FileResponse:
     job = crud.get_backup_job(db, job_id)
