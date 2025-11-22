@@ -621,6 +621,16 @@ button.link:hover:not(:disabled) {
   font-size: 0.85rem;
 }
 
+.page-header__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.page-header__meta-item strong {
+  color: var(--color-text);
+}
+
 .page-header__status {
   display: inline-flex;
   align-items: center;
@@ -656,6 +666,97 @@ button.link:hover:not(:disabled) {
   background: var(--color-danger-soft);
   border-color: var(--color-danger-border);
   color: var(--color-error);
+}
+
+.page-header__actions-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.page-header__context-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.role-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(15, 23, 42, 0.92));
+  min-width: 220px;
+  box-shadow: var(--shadow-sm);
+}
+
+.role-chip__title {
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.role-chip__description {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.role-chip--manager {
+  background: linear-gradient(135deg, rgba(125, 211, 252, 0.14), rgba(12, 20, 35, 0.96));
+}
+
+.role-chip--operator {
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.12), rgba(12, 19, 32, 0.94));
+}
+
+.role-chip--guest {
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(12, 18, 30, 0.94));
+}
+
+.branch-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 240px;
+}
+
+.branch-selector label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.branch-selector__control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+}
+
+.branch-selector select {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font: inherit;
+}
+
+.branch-selector select:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.branch-selector__hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
 }
 
 .page-header__status--info {
