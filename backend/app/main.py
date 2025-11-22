@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from collections.abc import Callable, Generator, Mapping
+from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from . import crud, security as security_core
 from .config import settings
-from .core.roles import DEFAULT_ROLES
+from .core.roles import ADMIN, DEFAULT_ROLES
 from .core.transactions import transactional_session
 from .database import SessionLocal, get_db, Base, engine
 from .middleware import (
@@ -181,6 +182,27 @@ ROLE_PROTECTED_PREFIXES: dict[str, set[str]] = {
     "/sync": {"ADMIN", "GERENTE"},
     "/integrations": {"ADMIN"},
 }
+
+
+def _collect_user_roles(user: Any) -> set[str]:
+    roles: set[str] = set()
+    assignments = getattr(user, "roles", None) or []
+    for assignment in assignments:
+        role_obj = getattr(assignment, "role", None)
+        role_name = getattr(role_obj, "name", None)
+        if role_name:
+            roles.add(str(role_name).upper())
+            continue
+        fallback_name = getattr(assignment, "name", None)
+        if fallback_name:
+            roles.add(str(fallback_name).upper())
+
+    direct_role = getattr(user, "rol", None) or getattr(user, "role", None) or getattr(user, "role_name", None)
+    if direct_role:
+        direct_name = getattr(direct_role, "name", None)
+        roles.add(str(direct_name or direct_role).upper())
+
+    return roles
 
 MODULE_PERMISSION_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/users", "usuarios"),
@@ -367,18 +389,33 @@ def _authorize_request_sync(
                 content={"detail": "Usuario inactivo o inexistente."},
             )
 
-        user_roles = {assignment.role.name for assignment in user.roles}
-        if required_roles and user_roles.isdisjoint(required_roles):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "No cuentas con permisos suficientes."},
-            )
+        user_roles = _collect_user_roles(user)
+        is_admin = ADMIN in user_roles
+        if required_roles and not is_admin:
+            if not user_roles:
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": "El usuario autenticado no tiene roles asignados.",
+                    },
+                )
+            if user_roles.isdisjoint(required_roles):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "No cuentas con permisos suficientes."},
+                )
 
-        if module and not crud.user_has_module_permission(db, user, module, _resolve_action(method_upper)):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "No cuentas con permisos para este módulo."},
-            )
+        if module and not is_admin:
+            if not user_roles:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "El usuario autenticado no tiene roles asignados."},
+                )
+            if not crud.user_has_module_permission(db, user, module, _resolve_action(method_upper)):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "No cuentas con permisos para este módulo."},
+                )
 
         if session_token:
             crud.mark_session_used(db, session_token)
