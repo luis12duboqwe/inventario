@@ -19,6 +19,9 @@ import {
   downloadTopProductsXlsx,
   exportStoreDevicesCsv,
   getDevices,
+  listWarehouses,
+  createWarehouse,
+  transferBetweenWarehouses,
   getIncompleteDevices,
   getInventoryReservations,
   getInventoryCurrentReport,
@@ -79,10 +82,25 @@ import type {
   InventoryCycleCountRequest,
   InventoryCycleCountResult,
   InventoryAuditFilters,
+  Warehouse,
+  WarehouseTransferInput,
 } from "../../../api";
 
 export const inventoryService = {
   fetchDevices: getDevices,
+  fetchWarehouses: (token: string, storeId: number): Promise<Warehouse[]> =>
+    listWarehouses(token, storeId),
+  createWarehouse: (
+    token: string,
+    storeId: number,
+    payload: Pick<Warehouse, "name" | "code" | "is_default">,
+    reason: string,
+  ): Promise<Warehouse> => createWarehouse(token, storeId, payload, reason),
+  transferBetweenWarehouses: (
+    token: string,
+    payload: WarehouseTransferInput,
+    reason: string,
+  ) => transferBetweenWarehouses(token, payload, reason),
   fetchVariants: (
     token: string,
     params: Parameters<typeof getProductVariants>[1] = {},

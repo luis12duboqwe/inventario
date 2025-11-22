@@ -594,6 +594,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    purchases_large_order_threshold: Annotated[
+        Decimal,
+        Field(
+            default=Decimal("0"),
+            validation_alias=AliasChoices(
+                "PURCHASES_LARGE_ORDER_THRESHOLD",
+                "SOFTMOBILE_PURCHASES_LARGE_ORDER_THRESHOLD",
+            ),
+        ),
+    ]
     purchases_documents_backend: Annotated[
         str,
         Field(
@@ -1267,6 +1277,19 @@ class Settings(BaseSettings):
             base = Path(__file__).resolve().parents[2] / "backups" / "purchase_orders"
             return str(base)
         return str(Path(value).expanduser())
+
+    @field_validator("purchases_large_order_threshold", mode="before")
+    @classmethod
+    def _normalize_purchase_threshold(cls, value: object) -> Decimal:
+        if value is None:
+            return Decimal("0")
+        try:
+            threshold = Decimal(str(value))
+        except Exception:
+            return Decimal("0")
+        if threshold < 0:
+            return Decimal("0")
+        return threshold
 
     @field_validator("config_sync_directory", mode="before")
     @classmethod

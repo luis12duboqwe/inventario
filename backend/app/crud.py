@@ -180,7 +180,7 @@ def _validate_device_numeric_fields(values: dict[str, Any]) -> None:
             parsed_quantity = int(quantity)
         except (TypeError, ValueError):
             raise ValueError("device_invalid_quantity")
-        if parsed_quantity <= 0:
+        if parsed_quantity < 0:
             raise ValueError("device_invalid_quantity")
 
     raw_cost = values.get("costo_unitario")
@@ -1627,6 +1627,8 @@ def _device_sync_payload(device: models.Device) -> dict[str, object]:
         "id": device.id,
         "store_id": device.store_id,
         "store_name": store_name,
+        "warehouse_id": device.warehouse_id,
+        "warehouse_name": getattr(device.warehouse, "name", None),
         "sku": device.sku,
         "name": device.name,
         "quantity": device.quantity,
@@ -1657,6 +1659,10 @@ def _inventory_movement_payload(movement: models.InventoryMovement) -> dict[str,
 
     store_name = movement.store.name if movement.store else None
     source_name = movement.source_store.name if movement.source_store else None
+    warehouse_name = movement.warehouse.name if movement.warehouse else None
+    source_warehouse_name = (
+        movement.source_warehouse.name if movement.source_warehouse else None
+    )
     device = movement.device
     performed_by = _user_display_name(movement.performed_by)
     created_at = movement.created_at.isoformat() if movement.created_at else None
@@ -1668,6 +1674,10 @@ def _inventory_movement_payload(movement: models.InventoryMovement) -> dict[str,
         "store_name": store_name,
         "source_store_id": movement.source_store_id,
         "source_store_name": source_name,
+        "warehouse_id": movement.warehouse_id,
+        "warehouse_name": warehouse_name,
+        "source_warehouse_id": movement.source_warehouse_id,
+        "source_warehouse_name": source_warehouse_name,
         "device_id": movement.device_id,
         "device_sku": device.sku if device else None,
         "movement_type": movement.movement_type.value,
@@ -1733,6 +1743,8 @@ def _purchase_order_payload(order: models.PurchaseOrder) -> dict[str, object]:
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "updated_at": order.updated_at.isoformat() if order.updated_at else None,
         "closed_at": order.closed_at.isoformat() if order.closed_at else None,
+        "requires_approval": getattr(order, "requires_approval", False),
+        "approved_by_id": getattr(order, "approved_by_id", None),
         "items": items_payload,
         "documents": [
             {
@@ -8139,6 +8151,7 @@ def create_device(
     performed_by_id: int | None = None,
 ) -> models.Device:
     get_store(db, store_id)
+    default_warehouse = _ensure_default_warehouse(db, store_id)
     payload_data = payload.model_dump()
     provided_fields = payload.model_fields_set
     imei = payload_data.get("imei")
@@ -8176,6 +8189,10 @@ def create_device(
     if payload_data.get("fecha_ingreso") is None:
         payload_data["fecha_ingreso"] = payload_data.get(
             "fecha_compra") or date.today()
+    warehouse_id = payload_data.get("warehouse_id") or default_warehouse.id
+    if warehouse_id is not None:
+        warehouse = get_warehouse(db, warehouse_id, store_id=store_id)
+        payload_data["warehouse_id"] = warehouse.id
     with transactional_session(db):
         device = models.Device(store_id=store_id, **payload_data)
         if unit_price is None:
@@ -9181,6 +9198,13 @@ def update_device(
     new_reorder_point = updated_fields.get("reorder_point")
     current_minimum = int(getattr(device, "minimum_stock", 0) or 0)
     current_reorder = int(getattr(device, "reorder_point", 0) or 0)
+    if "warehouse_id" in updated_fields:
+        target_warehouse = updated_fields.get("warehouse_id")
+        if target_warehouse is not None:
+            warehouse = get_warehouse(db, int(target_warehouse), store_id=store_id)
+            updated_fields["warehouse_id"] = warehouse.id
+        else:
+            updated_fields["warehouse_id"] = None
     if new_reorder_point is not None:
         target_min = new_minimum_stock if new_minimum_stock is not None else current_minimum
         if int(new_reorder_point) < int(target_min):
@@ -9447,6 +9471,126 @@ def update_wms_bin(
     return bin_obj
 
 
+def _unset_default_warehouse(db: Session, store_id: int, keep_id: int | None = None) -> None:
+    query = db.query(models.Warehouse).filter(models.Warehouse.store_id == store_id)
+    if keep_id is not None:
+        query = query.filter(models.Warehouse.id != keep_id)
+    query.update({"is_default": False}, synchronize_session=False)
+
+
+def _ensure_default_warehouse(db: Session, store_id: int) -> models.Warehouse:
+    existing_default = db.scalars(
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .where(models.Warehouse.is_default.is_(True))
+    ).first()
+    if existing_default:
+        return existing_default
+    fallback = db.scalars(
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .where(func.lower(models.Warehouse.name) == "default")
+    ).first()
+    if fallback:
+        with transactional_session(db):
+            _unset_default_warehouse(db, store_id, keep_id=fallback.id)
+            fallback.is_default = True
+            db.add(fallback)
+        return fallback
+    code = f"DEF-{store_id}"
+    warehouse = models.Warehouse(
+        store_id=store_id,
+        name="Default",
+        code=code,
+        is_default=True,
+    )
+    with transactional_session(db):
+        db.add(warehouse)
+        flush_session(db)
+    return warehouse
+
+
+def list_warehouses(
+    db: Session, store_id: int, *, include_inactive_default: bool = True
+) -> list[models.Warehouse]:
+    get_store(db, store_id)
+    statement = (
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .order_by(models.Warehouse.is_default.desc(), models.Warehouse.name.asc())
+    )
+    warehouses = list(db.scalars(statement))
+    if warehouses:
+        return warehouses
+    default = _ensure_default_warehouse(db, store_id)
+    return [default]
+
+
+def get_warehouse(
+    db: Session, warehouse_id: int, *, store_id: int | None = None
+) -> models.Warehouse:
+    warehouse = db.get(models.Warehouse, warehouse_id)
+    if warehouse is None:
+        raise LookupError("warehouse_not_found")
+    if store_id is not None and warehouse.store_id != store_id:
+        raise LookupError("warehouse_not_found")
+    return warehouse
+
+
+def create_warehouse(
+    db: Session,
+    store_id: int,
+    payload: schemas.WarehouseCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Warehouse:
+    store = get_store(db, store_id)
+    data = payload.model_dump()
+    name = data.get("name", "").strip()
+    code = (data.get("code", "").strip() or name).upper()
+    desired_default = bool(data.get("is_default"))
+    if not name:
+        raise ValueError("warehouse_name_required")
+    if not code:
+        raise ValueError("warehouse_code_required")
+    existing = db.scalars(
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .where(func.upper(models.Warehouse.code) == code.upper())
+    ).first()
+    if existing:
+        raise ValueError("warehouse_code_duplicate")
+    duplicate_name = db.scalars(
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .where(func.lower(models.Warehouse.name) == name.lower())
+    ).first()
+    if duplicate_name:
+        raise ValueError("warehouse_name_duplicate")
+
+    with transactional_session(db):
+        if desired_default:
+            _unset_default_warehouse(db, store_id)
+        warehouse = models.Warehouse(
+            store_id=store.id,
+            name=name,
+            code=code,
+            is_default=desired_default,
+        )
+        db.add(warehouse)
+        flush_session(db)
+        db.refresh(warehouse)
+        _log_action(
+            db,
+            action="warehouse_created",
+            entity_type="warehouse",
+            entity_id=str(warehouse.id),
+            performed_by_id=performed_by_id,
+            details=f"SUCURSAL={store_id}, CODIGO={code}",
+        )
+    return warehouse
+
+
 def assign_device_to_bin(
     db: Session,
     store_id: int,
@@ -9550,6 +9694,7 @@ def list_devices(
     estado_inventario: str | None = None,
     ubicacion: str | None = None,
     proveedor: str | None = None,
+    warehouse_id: int | None = None,
     fecha_ingreso_desde: date | None = None,
     fecha_ingreso_hasta: date | None = None,
     limit: int | None = 50,
@@ -9561,9 +9706,12 @@ def list_devices(
         .options(
             joinedload(models.Device.identifier),
             selectinload(models.Device.variants),
+            joinedload(models.Device.warehouse),
         )
         .where(models.Device.store_id == store_id)
     )
+    if warehouse_id is not None:
+        statement = statement.where(models.Device.warehouse_id == warehouse_id)
     if estado is not None:
         statement = statement.where(models.Device.estado_comercial == estado)
     if categoria:
@@ -9627,12 +9775,15 @@ def count_store_devices(
     estado_inventario: str | None = None,
     ubicacion: str | None = None,
     proveedor: str | None = None,
+    warehouse_id: int | None = None,
     fecha_ingreso_desde: date | None = None,
     fecha_ingreso_hasta: date | None = None,
 ) -> int:
     get_store(db, store_id)
     statement = select(func.count()).select_from(models.Device)
     statement = statement.where(models.Device.store_id == store_id)
+    if warehouse_id is not None:
+        statement = statement.where(models.Device.warehouse_id == warehouse_id)
     if estado is not None:
         statement = statement.where(models.Device.estado_comercial == estado)
     if categoria:
@@ -9869,6 +10020,8 @@ def _register_inventory_movement(
     performed_by_id: int | None,
     source_store_id: int | None = None,
     destination_store_id: int | None = None,
+    source_warehouse_id: int | None = None,
+    warehouse_id: int | None = None,
     unit_cost: Decimal | None = None,
     reference_type: str | None = None,
     reference_id: str | None = None,
@@ -9881,6 +10034,8 @@ def _register_inventory_movement(
         comentario=normalized_comment,
         sucursal_origen_id=source_store_id,
         sucursal_destino_id=destination_store_id,
+        almacen_origen_id=source_warehouse_id,
+        almacen_destino_id=warehouse_id,
         unit_cost=unit_cost,
     )
     return create_inventory_movement(
@@ -9927,6 +10082,13 @@ def create_inventory_movement(
     source_store_id = payload.sucursal_origen_id
 
     device = get_device(db, store_id, payload.producto_id)
+
+    destination_warehouse_id = payload.almacen_destino_id or device.warehouse_id
+    source_warehouse_id = payload.almacen_origen_id or device.warehouse_id
+    if destination_warehouse_id is not None:
+        get_warehouse(db, destination_warehouse_id, store_id=store_id)
+    if source_warehouse_id is not None:
+        get_warehouse(db, source_warehouse_id, store_id=source_store_id or store_id)
 
     if source_store_id is not None:
         get_store(db, source_store_id)
@@ -10075,6 +10237,8 @@ def create_inventory_movement(
         movement = models.InventoryMovement(
             store=store,
             source_store_id=source_store_id,
+            warehouse_id=destination_warehouse_id,
+            source_warehouse_id=source_warehouse_id,
             device=device,
             movement_type=payload.tipo_movimiento,
             quantity=payload.cantidad,
@@ -10136,6 +10300,20 @@ def create_inventory_movement(
             _ = movement.source_store.name
         if movement.performed_by is not None:
             _ = movement.performed_by.username
+        if movement.warehouse is not None:
+            _ = movement.warehouse.name
+        if movement.source_warehouse is not None:
+            _ = movement.source_warehouse.name
+        setattr(
+            movement,
+            "almacen_destino",
+            movement.warehouse.name if movement.warehouse else None,
+        )
+        setattr(
+            movement,
+            "almacen_origen",
+            movement.source_warehouse.name if movement.source_warehouse else None,
+        )
 
         _log_action(
             db,
@@ -10223,6 +10401,63 @@ def create_inventory_movement(
             )
     inventory_availability.invalidate_inventory_availability_cache()
     return movement
+
+
+def transfer_between_warehouses(
+    db: Session,
+    payload: schemas.WarehouseTransferCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> tuple[models.InventoryMovement, models.InventoryMovement]:
+    if payload.source_warehouse_id == payload.destination_warehouse_id:
+        raise ValueError("warehouse_transfer_same_destination")
+    source_warehouse = get_warehouse(
+        db, payload.source_warehouse_id, store_id=payload.store_id
+    )
+    destination_warehouse = get_warehouse(
+        db, payload.destination_warehouse_id, store_id=payload.store_id
+    )
+    device = get_device(db, payload.store_id, payload.device_id)
+    if device.warehouse_id not in {None, source_warehouse.id}:
+        raise ValueError("warehouse_transfer_mismatch")
+    if payload.quantity <= 0:
+        raise ValueError("warehouse_transfer_invalid_quantity")
+    if device.quantity != payload.quantity:
+        raise ValueError("warehouse_transfer_full_quantity_required")
+
+    with transactional_session(db):
+        movement_out = _register_inventory_movement(
+            db,
+            store_id=payload.store_id,
+            device_id=device.id,
+            movement_type=models.MovementType.OUT,
+            quantity=payload.quantity,
+            comment=payload.reason,
+            performed_by_id=performed_by_id,
+            source_store_id=payload.store_id,
+            destination_store_id=payload.store_id,
+            source_warehouse_id=source_warehouse.id,
+            warehouse_id=destination_warehouse.id,
+            reference_type="warehouse_transfer",
+            reference_id=str(destination_warehouse.id),
+        )
+        device.warehouse_id = destination_warehouse.id
+        movement_in = _register_inventory_movement(
+            db,
+            store_id=payload.store_id,
+            device_id=device.id,
+            movement_type=models.MovementType.IN,
+            quantity=payload.quantity,
+            comment=payload.reason,
+            performed_by_id=performed_by_id,
+            source_store_id=payload.store_id,
+            destination_store_id=payload.store_id,
+            source_warehouse_id=source_warehouse.id,
+            warehouse_id=destination_warehouse.id,
+            reference_type="warehouse_transfer",
+            reference_id=str(source_warehouse.id),
+        )
+    return movement_out, movement_in
 
 
 def list_inventory_summary(
@@ -11719,6 +11954,171 @@ def calculate_profit_margin(
         )
 
     return metrics
+
+
+def calculate_sales_by_store(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    stmt = (
+        select(
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.count(func.distinct(models.Sale.id)).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Store, models.Store.id == models.Sale.store_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(models.Store.id, models.Store.name)
+        .order_by(func.coalesce(func.sum(models.SaleItem.total_line), 0).desc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Store.id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    results: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        results.append(
+            {
+                "store_id": int(row.store_id),
+                "store_name": row.store_name,
+                "revenue": float(row.revenue or 0),
+                "orders": int(row.orders or 0),
+                "units": int(row.units or 0),
+            }
+        )
+    return results
+
+
+def calculate_sales_by_category(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    stmt = (
+        select(
+            category_expr.label("category"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.count(func.distinct(models.Sale.id)).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(category_expr)
+        .order_by(func.coalesce(func.sum(models.SaleItem.total_line), 0).desc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    results: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        results.append(
+            {
+                "category": row.category or "Sin categoría",
+                "revenue": float(row.revenue or 0),
+                "orders": int(row.orders or 0),
+                "units": int(row.units or 0),
+            }
+        )
+    return results
+
+
+def calculate_sales_timeseries(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    stmt = (
+        select(
+            func.date(models.Sale.created_at).label("sale_date"),
+            func.coalesce(func.sum(models.SaleItem.total_line), 0).label("revenue"),
+            func.count(func.distinct(models.Sale.id)).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity), 0).label("units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(func.date(models.Sale.created_at))
+        .order_by(func.date(models.Sale.created_at).asc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    series: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        series.append(
+            {
+                "date": row.sale_date,
+                "revenue": float(row.revenue or 0),
+                "orders": int(row.orders or 0),
+                "units": int(row.units or 0),
+            }
+        )
+    return series
 
 
 def calculate_sales_projection(
@@ -15086,6 +15486,7 @@ def get_purchase_order(db: Session, order_id: int) -> models.PurchaseOrder:
             joinedload(models.PurchaseOrder.status_events).joinedload(
                 models.PurchaseOrderStatusEvent.created_by
             ),
+            joinedload(models.PurchaseOrder.approved_by),
         )
     )
     try:
@@ -15105,11 +15506,20 @@ def create_purchase_order(
 
     get_store(db, payload.store_id)
 
+    total_amount = Decimal("0")
+    for item in payload.items:
+        total_amount += Decimal(item.quantity_ordered) * _to_decimal(item.unit_cost)
+    approval_threshold = _to_decimal(
+        getattr(settings, "purchases_large_order_threshold", Decimal("0"))
+    )
+    requires_approval = approval_threshold > 0 and total_amount >= approval_threshold
+
     order = models.PurchaseOrder(
         store_id=payload.store_id,
         supplier=payload.supplier,
         notes=payload.notes,
         created_by_id=created_by_id,
+        requires_approval=requires_approval,
     )
     with transactional_session(db):
         db.add(order)
@@ -15235,6 +15645,10 @@ def receive_purchase_order(
 ) -> models.PurchaseOrder:
     order = get_purchase_order(db, order_id)
     if order.status in {models.PurchaseStatus.CANCELADA, models.PurchaseStatus.COMPLETADA}:
+        raise ValueError("purchase_not_receivable")
+    if order.requires_approval and order.approved_by_id is None:
+        raise PermissionError("purchase_requires_approval")
+    if order.status == models.PurchaseStatus.BORRADOR:
         raise ValueError("purchase_not_receivable")
     if not payload.items:
         raise ValueError("purchase_items_required")
@@ -15536,12 +15950,11 @@ def register_purchase_return(
     warehouse_id = payload.warehouse_id
     if warehouse_id is not None and warehouse_id <= 0:
         raise ValueError("purchase_return_invalid_warehouse")
-    warehouse_store: models.Store | None = None
+    warehouse: models.Warehouse | None = None
     if warehouse_id is not None:
-        if warehouse_id == order.store_id:
-            warehouse_store = order.store or get_store(db, order.store_id)
-        else:
-            warehouse_store = get_store(db, warehouse_id)
+        warehouse = get_warehouse(db, warehouse_id)
+        if warehouse.store_id != order.store_id:
+            raise ValueError("purchase_return_invalid_warehouse")
     if device.quantity < payload.quantity:
         raise ValueError("purchase_return_insufficient_stock")
     unit_cost = _to_decimal(order_item.unit_cost)
@@ -15556,8 +15969,8 @@ def register_purchase_return(
         if disposition != schemas.ReturnDisposition.VENDIBLE:
             note = f"estado={disposition.value}"
             movement_reason = f"{movement_reason} | {note}" if movement_reason else note
-        if warehouse_store and warehouse_store.id != order.store_id:
-            warehouse_note = f"almacen={warehouse_store.name}"
+        if warehouse and warehouse.id != order.store_id:
+            warehouse_note = f"almacen={warehouse.name}"
             movement_reason = (
                 f"{movement_reason} | {warehouse_note}"
                 if movement_reason
@@ -15577,6 +15990,8 @@ def register_purchase_return(
             ),
             performed_by_id=processed_by_id,
             source_store_id=order.store_id,
+            source_warehouse_id=device.warehouse_id,
+            warehouse_id=warehouse.id if warehouse else device.warehouse_id,
             unit_cost=_to_decimal(order_item.unit_cost),
             reference_type="purchase_return",
             reference_id=str(order.id),
@@ -15742,6 +16157,13 @@ def transition_purchase_order_status(
 
     with transactional_session(db):
         order.status = status
+        if status == models.PurchaseStatus.APROBADA:
+            order.approved_by_id = performed_by_id
+        elif status in {
+            models.PurchaseStatus.BORRADOR,
+            models.PurchaseStatus.PENDIENTE,
+        }:
+            order.approved_by_id = None
         order.updated_at = datetime.utcnow()
         flush_session(db)
         db.refresh(order)
@@ -18528,18 +18950,22 @@ def register_sale_return(
             warehouse_id = item.warehouse_id
             if warehouse_id is not None and warehouse_id <= 0:
                 raise ValueError("sale_return_invalid_warehouse")
+            warehouse: models.Warehouse | None = None
+            if warehouse_id is not None:
+                warehouse = get_warehouse(db, warehouse_id)
+                if warehouse.store_id != sale.store_id:
+                    raise ValueError("sale_return_invalid_warehouse")
             if (
-                warehouse_id is None
+                warehouse is None
                 and disposition in non_sellable_dispositions
                 and settings.defective_returns_store_id
             ):
-                warehouse_id = settings.defective_returns_store_id
-            warehouse_store: models.Store | None = None
-            if warehouse_id is not None:
-                if warehouse_id == sale.store_id:
-                    warehouse_store = sale.store or get_store(db, sale.store_id)
-                else:
-                    warehouse_store = get_store(db, warehouse_id)
+                try:
+                    warehouse = get_warehouse(
+                        db, settings.defective_returns_store_id, store_id=sale.store_id
+                    )
+                except LookupError:
+                    warehouse = None
 
             movement = _register_inventory_movement(
                 db,
@@ -18552,9 +18978,11 @@ def register_sale_return(
                     device,
                     item.reason or reason,
                     disposition=disposition,
-                    warehouse_name=warehouse_store.name if warehouse_store else None,
+                    warehouse_name=warehouse.name if warehouse else None,
                 ),
                 performed_by_id=processed_by_id,
+                source_warehouse_id=device.warehouse_id,
+                warehouse_id=warehouse.id if warehouse else device.warehouse_id,
                 unit_cost=_quantize_currency(previous_cost),
                 reference_type="sale_return",
                 reference_id=str(sale.id),
@@ -18575,7 +19003,7 @@ def register_sale_return(
                 reason=item.reason,
                 reason_category=item.category,
                 disposition=disposition,
-                warehouse_id=warehouse_id,
+                warehouse_id=warehouse.id if warehouse else device.warehouse_id,
                 processed_by_id=processed_by_id,
                 approved_by_id=approved_supervisor.id if approved_supervisor else None,
             )

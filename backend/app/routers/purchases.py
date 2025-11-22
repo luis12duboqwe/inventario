@@ -47,6 +47,10 @@ def _enrich_purchase_order(order) -> None:
         if creator is not None:
             name = getattr(creator, "full_name", None) or getattr(creator, "username", None)
             setattr(event, "created_by_name", name)
+    approver = getattr(order, "approved_by", None)
+    if approver is not None:
+        approver_name = getattr(approver, "full_name", None) or getattr(approver, "username", None)
+        setattr(order, "approved_by_name", approver_name)
 
 
 def _prepare_purchase_report(
@@ -787,6 +791,14 @@ def receive_purchase_order_endpoint(
             received_by_id=current_user.id,
             reason=reason,
         )
+    except PermissionError as exc:
+        detail = str(exc)
+        if detail == "purchase_requires_approval":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La orden requiere aprobación gerencial antes de recibir.",
+            ) from exc
+        raise
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

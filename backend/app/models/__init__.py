@@ -24,6 +24,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.sql import false
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from ..database import Base
@@ -331,6 +332,9 @@ class Store(Base):
         back_populates="store",
         cascade="all, delete-orphan",
     )
+    warehouses: Mapped[list["Warehouse"]] = relationship(
+        "Warehouse", back_populates="store", cascade="all, delete-orphan"
+    )
     bundles: Mapped[list["ProductBundle"]] = relationship(
         "ProductBundle",
         back_populates="store",
@@ -345,6 +349,42 @@ class CommercialState(str, enum.Enum):
     A = "A"
     B = "B"
     C = "C"
+
+
+class Warehouse(Base):
+    __tablename__ = "warehouses"
+
+    __table_args__ = (
+        UniqueConstraint("store_id", "code", name="uq_warehouse_store_code"),
+        UniqueConstraint("store_id", "name", name="uq_warehouse_store_name"),
+        Index("ix_warehouses_store_id", "store_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    code: Mapped[str] = mapped_column(String(30), nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+
+    store: Mapped[Store] = relationship("Store", back_populates="warehouses")
+    devices: Mapped[list["Device"]] = relationship("Device", back_populates="warehouse")
+    inventory_movements: Mapped[list["InventoryMovement"]] = relationship(
+        "InventoryMovement",
+        back_populates="warehouse",
+        foreign_keys="InventoryMovement.warehouse_id",
+        cascade="all, delete-orphan",
+    )
+    source_inventory_movements: Mapped[list["InventoryMovement"]] = relationship(
+        "InventoryMovement",
+        back_populates="source_warehouse",
+        foreign_keys="InventoryMovement.source_warehouse_id",
+        cascade="all, delete-orphan",
+    )
 
 
 class TransferStatus(str, enum.Enum):
@@ -443,9 +483,10 @@ LOYALTY_TRANSACTION_TYPE_ENUM = Enum(
 class Device(Base):
     __tablename__ = "devices"
     __table_args__ = (
-        UniqueConstraint("sucursal_id", "sku", name="uq_devices_store_sku"),
+        UniqueConstraint("sucursal_id", "warehouse_id", "sku", name="uq_devices_store_warehouse_sku"),
         UniqueConstraint("imei", name="uq_devices_imei"),
         UniqueConstraint("serial", name="uq_devices_serial"),
+        Index("ix_devices_warehouse_id", "warehouse_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -455,6 +496,11 @@ class Device(Base):
         ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+    warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
+        nullable=True,
     )
     sku: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -500,6 +546,7 @@ class Device(Base):
         Boolean, nullable=False, default=True)
 
     store: Mapped[Store] = relationship("Store", back_populates="devices")
+    warehouse: Mapped[Warehouse | None] = relationship("Warehouse", back_populates="devices")
     movements: Mapped[list["InventoryMovement"]] = relationship(
         "InventoryMovement",
         back_populates="device",
@@ -1085,6 +1132,18 @@ class InventoryMovement(Base):
         nullable=True,
         index=True,
     )
+    warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     device_id: Mapped[int] = mapped_column(
         "producto_id",
         Integer,
@@ -1119,6 +1178,12 @@ class InventoryMovement(Base):
     source_store: Mapped[Store | None] = relationship(
         "Store",
         foreign_keys=[source_store_id],
+    )
+    warehouse: Mapped[Warehouse | None] = relationship(
+        "Warehouse", foreign_keys=[warehouse_id], back_populates="inventory_movements"
+    )
+    source_warehouse: Mapped[Warehouse | None] = relationship(
+        "Warehouse", foreign_keys=[source_warehouse_id], back_populates="source_inventory_movements"
     )
     device: Mapped[Device] = relationship("Device", back_populates="movements")
     performed_by: Mapped[User | None] = relationship(
@@ -2506,11 +2571,20 @@ class PurchaseOrder(Base):
     created_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
+    )
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
+    requires_approval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
     store: Mapped[Store] = relationship("Store")
     created_by: Mapped[User | None] = relationship("User")
+    approved_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[approved_by_id]
+    )
     items: Mapped[list["PurchaseOrderItem"]] = relationship(
         "PurchaseOrderItem", back_populates="order", cascade="all, delete-orphan"
     )
@@ -2580,7 +2654,7 @@ class PurchaseReturn(Base):
     )
     warehouse_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -2618,8 +2692,8 @@ class PurchaseReturn(Base):
     approved_by: Mapped[User | None] = relationship(
         "User", foreign_keys=[approved_by_id]
     )
-    warehouse: Mapped[Store | None] = relationship(
-        "Store", foreign_keys=[warehouse_id]
+    warehouse: Mapped[Warehouse | None] = relationship(
+        "Warehouse", foreign_keys=[warehouse_id]
     )
 
     rma_requests: Mapped[list["RMARequest"]] = relationship(
@@ -2889,7 +2963,7 @@ class SaleReturn(Base):
     )
     warehouse_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -2913,8 +2987,8 @@ class SaleReturn(Base):
     approved_by: Mapped[User | None] = relationship(
         "User", foreign_keys=[approved_by_id]
     )
-    warehouse: Mapped[Store | None] = relationship(
-        "Store", foreign_keys=[warehouse_id]
+    warehouse: Mapped[Warehouse | None] = relationship(
+        "Warehouse", foreign_keys=[warehouse_id]
     )
 
     rma_requests: Mapped[list["RMARequest"]] = relationship(
@@ -3819,6 +3893,7 @@ __all__ = [
     "RepairStatus",
     "Role",
     "Store",
+    "Warehouse",
     "SupplierBatch",
     "SyncMode",
     "SyncSession",

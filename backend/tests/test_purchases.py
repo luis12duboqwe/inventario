@@ -281,6 +281,117 @@ def test_purchase_receipt_and_return_flow(client, db_session):
         settings.enable_purchases_sales = previous_flag
 
 
+def test_large_purchase_requires_approval_before_receiving(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    previous_threshold = settings.purchases_large_order_threshold
+    settings.enable_purchases_sales = True
+    settings.purchases_large_order_threshold = Decimal("1000")
+    token, user_id = _bootstrap_admin(client, db_session)
+    headers = {"Authorization": f"Bearer {token}"}
+    headers_with_reason = {**headers, "X-Reason": "Compra mayor"}
+
+    try:
+        store_id = _create_store(client, headers_with_reason)
+        device_id = _create_device(client, store_id, headers_with_reason)
+
+        order_payload = {
+            "store_id": store_id,
+            "supplier": "Proveedor Mayorista",
+            "items": [
+                {"device_id": device_id, "quantity_ordered": 10, "unit_cost": 150.0},
+            ],
+        }
+        order_response = client.post(
+            "/purchases", json=order_payload, headers=headers_with_reason
+        )
+        assert order_response.status_code == status.HTTP_201_CREATED
+        order_data = order_response.json()
+        assert order_data["requires_approval"] is True
+
+        receive_response = client.post(
+            f"/purchases/{order_data['id']}/receive",
+            json={"items": [{"device_id": device_id, "quantity": 2}]},
+            headers=headers_with_reason,
+        )
+        assert receive_response.status_code == status.HTTP_409_CONFLICT
+
+        approval_response = client.post(
+            f"/purchases/{order_data['id']}/status",
+            json={"status": "APROBADA"},
+            headers=headers,
+        )
+        assert approval_response.status_code == status.HTTP_200_OK
+        assert approval_response.json()["approved_by_id"] == user_id
+
+        received_after_approval = client.post(
+            f"/purchases/{order_data['id']}/receive",
+            json={"items": [{"device_id": device_id, "quantity": 2}]},
+            headers=headers_with_reason,
+        )
+        assert received_after_approval.status_code == status.HTTP_200_OK
+        assert received_after_approval.json()["status"] == "PARCIAL"
+        assert received_after_approval.json()["pending_items"] == 8
+    finally:
+        settings.enable_purchases_sales = previous_flag
+        settings.purchases_large_order_threshold = previous_threshold
+
+
+def test_purchase_completes_after_covering_pending_items(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    previous_threshold = settings.purchases_large_order_threshold
+    settings.enable_purchases_sales = True
+    settings.purchases_large_order_threshold = Decimal("0")
+    token, _ = _bootstrap_admin(client, db_session)
+    headers = {"Authorization": f"Bearer {token}"}
+    headers_with_reason = {**headers, "X-Reason": "Recepcion escalonada"}
+
+    try:
+        store_id = _create_store(client, headers_with_reason)
+        device_id = _create_device(client, store_id, headers_with_reason)
+
+        order_response = client.post(
+            "/purchases",
+            json={
+                "store_id": store_id,
+                "supplier": "Proveedor Parcial",
+                "items": [
+                    {"device_id": device_id, "quantity_ordered": 4, "unit_cost": 90.0},
+                ],
+            },
+            headers=headers_with_reason,
+        )
+        assert order_response.status_code == status.HTTP_201_CREATED
+        order_id = order_response.json()["id"]
+
+        first_receive = client.post(
+            f"/purchases/{order_id}/receive",
+            json={"items": [{"device_id": device_id, "quantity": 2}]},
+            headers=headers_with_reason,
+        )
+        assert first_receive.status_code == status.HTTP_200_OK
+        assert first_receive.json()["status"] == "PARCIAL"
+        assert first_receive.json()["pending_items"] == 2
+
+        second_receive = client.post(
+            f"/purchases/{order_id}/receive",
+            json={"items": [{"device_id": device_id, "quantity": 2}]},
+            headers=headers_with_reason,
+        )
+        assert second_receive.status_code == status.HTTP_200_OK
+        assert second_receive.json()["status"] == "COMPLETADA"
+        assert second_receive.json()["pending_items"] == 0
+
+        devices_after = client.get(f"/stores/{store_id}/devices", headers=headers)
+        assert devices_after.status_code == status.HTTP_200_OK
+        stored_device = next(
+            item for item in _extract_items(devices_after.json()) if item["id"] == device_id
+        )
+        assert stored_device["quantity"] >= 14
+    finally:
+        settings.enable_purchases_sales = previous_flag
+        settings.purchases_large_order_threshold = previous_threshold
+
+
 def test_upload_purchase_order_document_and_download(client, db_session):
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
