@@ -542,7 +542,7 @@ def generate_backup(
             indent=2,
             default=_json_default,
         ),
-        encoding="utf-8",
+        encoding='utf-8',
     )
 
     copied_files = _collect_critical_files(critical_directory)
@@ -554,20 +554,22 @@ def generate_backup(
     )
 
     def _build_archive() -> None:
-        with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as zip_file:
-            zip_file.write(pdf_path, arcname=f"reportes/{pdf_path.name}")
-            zip_file.write(json_path, arcname=f"datos/{json_path.name}")
-            zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
-            zip_file.write(config_path, arcname=f"config/{config_path.name}")
-            zip_file.write(metadata_path, arcname=f"metadata/{metadata_path.name}")
-            for file_path in critical_directory.rglob("*"):
+        with ZipFile(archive_path, 'w', compression=ZIP_DEFLATED) as zip_file:
+            zip_file.write(pdf_path, arcname=f'reportes/{pdf_path.name}')
+            zip_file.write(json_path, arcname=f'datos/{json_path.name}')
+            zip_file.write(sql_path, arcname=f'datos/{sql_path.name}')
+            zip_file.write(config_path, arcname=f'config/{config_path.name}')
+            zip_file.write(metadata_path, arcname=f'metadata/{metadata_path.name}')
+            for file_path in critical_directory.rglob('*'):
                 if file_path.is_file():
-                    arcname = Path("criticos") / file_path.relative_to(critical_directory)
+                    arcname = Path('criticos') / file_path.relative_to(critical_directory)
                     zip_file.write(file_path, arcname=str(arcname))
 
     component_files = [pdf_path, json_path, sql_path, config_path]
     _encrypt_backup_files(cipher, component_files, critical_directory)
 
+    def _component_paths(include_metadata: bool = True) -> list[Path]:
+        paths: list[Path] = [
     def _calculate_components_size() -> int:
         return _calculate_total_size(
             [
@@ -708,10 +710,11 @@ def generate_backup(
             json_path,
             sql_path,
             config_path,
-            metadata_path,
             archive_path,
             critical_directory,
         ]
+        if include_metadata:
+            paths.append(metadata_path)
 
     def _calculate_components_size(include_metadata: bool = True) -> int:
         paths: list[Path] = [
@@ -760,6 +763,25 @@ def generate_backup(
             cipher=cipher,
         )
 
+    def _refresh_metadata_and_archive(size: int) -> None:
+        _write_metadata_with_size(size)
+        _build_archive()
+
+    previous_total = -1
+    current_total = _calculate_components_size()
+    for _ in range(20):
+        _write_metadata_with_size(current_total)
+        _build_archive()
+        if current_total == previous_total:
+            break
+        previous_total = current_total
+        current_total = _calculate_components_size()
+
+    final_total = current_total
+    if final_total != previous_total:
+        _write_metadata_with_size(final_total)
+        _build_archive()
+        final_total = _calculate_components_size()
     provisional_size = _calculate_total_size(
         _component_paths(include_metadata=False, include_archive=False)
     )
@@ -838,6 +860,7 @@ def generate_backup(
         reason=normalized_reason,
     )
     return job
+
 def restore_backup(
     db: Session,
     *,

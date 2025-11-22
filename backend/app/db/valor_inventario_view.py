@@ -65,25 +65,28 @@ movement_stats AS (
     FROM inventory_movements AS im
     GROUP BY im.producto_id
 ),
-device_metrics AS (
-    SELECT
-        d.id AS device_id,
-        d.sucursal_id AS store_id,
-        COALESCE(NULLIF(d.categoria, ''), 'Sin categoría') AS categoria,
-        d.sku AS sku,
-        d.name AS device_name,
-        d.quantity AS quantity,
-        d.unit_price AS unit_price,
-        d.costo_unitario AS costo_unitario,
-        d.margen_porcentaje AS margen_porcentaje,
-        d.fecha_ingreso::timestamp AS fecha_ingreso,
-        CASE
-            WHEN COALESCE(pt.total_quantity, 0) > 0
-                THEN ROUND(pt.total_cost / NULLIF(pt.total_quantity, 0), 2)
-            ELSE d.costo_unitario
-        END AS costo_promedio_ponderado
-    FROM devices AS d
-    LEFT JOIN purchase_totals AS pt ON pt.device_id = d.id
+    device_metrics AS (
+        SELECT
+            d.id AS device_id,
+            d.sucursal_id AS store_id,
+            COALESCE(NULLIF(d.categoria, ''), 'Sin categoría') AS categoria,
+            d.sku AS sku,
+            d.name AS device_name,
+            d.quantity AS quantity,
+            d.unit_price AS unit_price,
+            d.costo_unitario AS costo_unitario,
+            d.margen_porcentaje AS margen_porcentaje,
+            d.fecha_ingreso::timestamp AS fecha_ingreso,
+            ROUND(
+                CASE
+                    WHEN COALESCE(pt.total_quantity, 0) > 0 THEN
+                        pt.total_cost / NULLIF(pt.total_quantity, 0)
+                    ELSE COALESCE(d.costo_unitario, 0)
+                END,
+                2
+            ) AS costo_promedio_ponderado
+        FROM devices AS d
+        LEFT JOIN purchase_totals AS pt ON pt.device_id = d.id
 )
 SELECT
     dm.store_id AS store_id,
@@ -257,11 +260,14 @@ device_metrics AS (
         d.costo_unitario AS costo_unitario,
         d.margen_porcentaje AS margen_porcentaje,
         datetime(d.fecha_ingreso) AS fecha_ingreso,
-        CASE
-            WHEN COALESCE(pt.total_quantity, 0) > 0
-                THEN ROUND(pt.total_cost / NULLIF(pt.total_quantity, 0), 2)
-            ELSE d.costo_unitario
-        END AS costo_promedio_ponderado
+        ROUND(
+            CASE
+                WHEN COALESCE(pt.total_quantity, 0) > 0 THEN
+                    pt.total_cost / NULLIF(pt.total_quantity, 0)
+                ELSE COALESCE(d.costo_unitario, 0)
+            END,
+            2
+        ) AS costo_promedio_ponderado
     FROM devices AS d
     LEFT JOIN purchase_totals AS pt ON pt.device_id = d.id
 )
