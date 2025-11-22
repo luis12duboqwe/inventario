@@ -170,8 +170,9 @@ def _remove_route(target_app: FastAPI | APIRouter, path: str, method: str) -> No
 def _mount_pos_extensions(target_app: FastAPI | APIRouter) -> None:
     """Registra los endpoints POS extendidos sobre la app o router recibido."""
 
-    from backend.routes.pos import extended_router
+    from backend.routes.pos import extended_router, register_pos_startup
 
+    register_pos_startup(target_app)
     _remove_route(target_app, "/pos/receipt/{sale_id}", "GET")
     target_app.include_router(extended_router)
 
