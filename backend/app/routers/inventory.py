@@ -282,6 +282,16 @@ def register_movement(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Stock insuficiente para registrar la salida.",
             ) from exc
+        if str(exc) == "adjustment_insufficient_stock":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Stock insuficiente para registrar el ajuste solicitado.",
+            ) from exc
+        if str(exc) == "adjustment_device_already_sold":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El dispositivo ya fue vendido y no admite ajustes negativos.",
+            ) from exc
         if str(exc) == "invalid_destination_store":
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
