@@ -19,7 +19,6 @@ from backend.app.database import get_db
 def client(db_session, monkeypatch):
     monkeypatch.setattr("backend.database.run_migrations", lambda: None)
     monkeypatch.setattr("backend.db.run_migrations", lambda: None)
-    monkeypatch.setattr("backend.routes.pos.run_migrations", lambda: None, raising=False)
 
     previous_scheduler = settings.enable_background_scheduler
     previous_backup_scheduler = settings.enable_backup_scheduler

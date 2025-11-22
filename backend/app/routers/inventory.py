@@ -31,6 +31,118 @@ router = APIRouter(prefix="/inventory", tags=["inventario"])
 
 
 @router.get(
+    "/stores/{store_id}/warehouses",
+    response_model=list[schemas.WarehouseResponse],
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def list_store_warehouses(
+    store_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    _user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> list[schemas.WarehouseResponse]:
+    try:
+        warehouses = crud.list_warehouses(db, store_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La sucursal solicitada no existe.",
+        ) from exc
+    return [
+        schemas.WarehouseResponse.model_validate(warehouse, from_attributes=True)
+        for warehouse in warehouses
+    ]
+
+
+@router.post(
+    "/stores/{store_id}/warehouses",
+    response_model=schemas.WarehouseResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def create_store_warehouse(
+    payload: schemas.WarehouseCreate,
+    store_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.WarehouseResponse:
+    try:
+        warehouse = crud.create_warehouse(
+            db,
+            store_id,
+            payload,
+            performed_by_id=getattr(current_user, "id", None),
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La sucursal solicitada no existe.",
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message in {"warehouse_code_duplicate", "warehouse_name_duplicate"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=message,
+            ) from exc
+        if message in {"warehouse_name_required", "warehouse_code_required"}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.WarehouseResponse.model_validate(warehouse, from_attributes=True)
+
+
+@router.post(
+    "/warehouses/transfers",
+    response_model=schemas.WarehouseTransferResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def transfer_between_warehouses_endpoint(
+    payload: schemas.WarehouseTransferCreate,
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.WarehouseTransferResponse:
+    try:
+        movement_out, movement_in = crud.transfer_between_warehouses(
+            db, payload, performed_by_id=getattr(current_user, "id", None)
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Almacén no encontrado",
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message in {
+            "warehouse_transfer_same_destination",
+            "warehouse_transfer_invalid_quantity",
+            "warehouse_transfer_full_quantity_required",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=message,
+            ) from exc
+        if message in {"insufficient_stock", "warehouse_transfer_mismatch"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.WarehouseTransferResponse(
+        movement_out=schemas.MovementResponse.model_validate(
+            movement_out, from_attributes=True
+        ),
+        movement_in=schemas.MovementResponse.model_validate(
+            movement_in, from_attributes=True
+        ),
+    )
+
+
+@router.get(
     "/availability",
     response_model=schemas.InventoryAvailabilityResponse,
     dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],

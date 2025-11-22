@@ -219,6 +219,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
             <th scope="col">Estado</th>
             <th scope="col">Estado inventario</th>
             <th scope="col">Ubicación</th>
+            <th scope="col">Almacén</th>
             <th scope="col">Identificadores</th>
             <th scope="col">Sucursales</th>
             <th scope="col">Cantidad</th>
@@ -246,6 +247,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
               </td>
               <td data-label="Estado inventario">{device.estado ?? "—"}</td>
               <td data-label="Ubicación">{device.ubicacion ?? "—"}</td>
+              <td data-label="Almacén">{device.warehouse_name ?? "Default"}</td>
               <td data-label="Identificadores">
                 <div className="identifier-stack">
                   {device.imei ? <span>IMEI catálogo: {device.imei}</span> : null}

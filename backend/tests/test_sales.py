@@ -42,6 +42,191 @@ def _bootstrap_admin(client, db_session):
     return token, user.id
 
 
+def _create_user(client, auth_headers, *, username: str, roles: list[str]) -> str:
+    response = client.post(
+        "/users",
+        json={
+            "username": username,
+            "password": "ClaveSegura123*",
+            "full_name": "Usuario Movimiento",
+            "roles": roles,
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+
+    token_response = client.post(
+        "/auth/token",
+        data={"username": username, "password": "ClaveSegura123*"},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert token_response.status_code == status.HTTP_200_OK
+    return token_response.json()["access_token"]
+
+
+def test_complete_sale_return_flow_requires_valid_role(client, db_session):
+    settings.enable_purchases_sales = True
+    try:
+        token, _ = _bootstrap_admin(client, db_session)
+        admin_headers = {"Authorization": f"Bearer {token}"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Sucursal Permisos", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=admin_headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "SKU-ROL-001",
+                "name": "Terminal Corporativa",
+                "quantity": 3,
+                "unit_price": 320.0,
+                "costo_unitario": 200.0,
+                "margen_porcentaje": 18.0,
+            },
+            headers={**admin_headers, "X-Reason": "Alta inventario roles"},
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        invitado_token = _create_user(
+            client,
+            admin_headers,
+            username="invitado_sales@test.io",
+            roles=["INVITADO"],
+        )
+        operator_token = _create_user(
+            client,
+            admin_headers,
+            username="operador_sales@test.io",
+            roles=["OPERADOR"],
+        )
+
+        sale_payload = {
+            "store_id": store_id,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": device_id, "quantity": 2}],
+        }
+
+        unauthenticated = client.post(
+            "/sales",
+            json=sale_payload,
+            headers={"X-Reason": "Intento sin token"},
+        )
+        assert unauthenticated.status_code == status.HTTP_401_UNAUTHORIZED
+
+        guest_attempt = client.post(
+            "/sales",
+            json=sale_payload,
+            headers={
+                "Authorization": f"Bearer {invitado_token}",
+                "X-Reason": "Intento sin rol",
+            },
+        )
+        assert guest_attempt.status_code == status.HTTP_403_FORBIDDEN
+
+        operator_headers = {
+            "Authorization": f"Bearer {operator_token}",
+            "X-Reason": "Venta completa autorizada",
+        }
+        sale_response = client.post(
+            "/sales",
+            json=sale_payload,
+            headers=operator_headers,
+        )
+        assert sale_response.status_code == status.HTTP_201_CREATED
+        sale_id = sale_response.json()["id"]
+
+        devices_after_sale = client.get(f"/stores/{store_id}/devices", headers=admin_headers)
+        sold_device = next(
+            item
+            for item in _extract_items(devices_after_sale.json())
+            if item["id"] == device_id
+        )
+        assert sold_device["quantity"] == 1
+
+        return_response = client.post(
+            "/sales/returns",
+            json={
+                "sale_id": sale_id,
+                "items": [
+                    {
+                        "device_id": device_id,
+                        "quantity": 2,
+                        "reason": "Cliente devuelve compra completa",
+                    }
+                ],
+            },
+            headers={**operator_headers, "X-Reason": "Devolucion completa"},
+        )
+        assert return_response.status_code == status.HTTP_200_OK
+        assert len(return_response.json()) == 1
+
+        restored_devices = client.get(f"/stores/{store_id}/devices", headers=admin_headers)
+        restored_device = next(
+            item
+            for item in _extract_items(restored_devices.json())
+            if item["id"] == device_id
+        )
+        assert restored_device["quantity"] == 3
+    finally:
+        settings.enable_purchases_sales = False
+
+
+def test_concurrent_sales_produce_conflict_when_inventory_runs_out(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token, _ = _bootstrap_admin(client, db_session)
+        headers = {"Authorization": f"Bearer {token}", "X-Reason": "Ventas simultaneas"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Sucursal Concurrencia", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "SKU-CONC-001",
+                "name": "Scanner 2D",
+                "quantity": 1,
+                "unit_price": 180.0,
+                "costo_unitario": 120.0,
+                "margen_porcentaje": 10.0,
+            },
+            headers=headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        sale_payload = {
+            "store_id": store_id,
+            "payment_method": "EFECTIVO",
+            "items": [{"device_id": device_id, "quantity": 1}],
+        }
+
+        first_sale = client.post("/sales", json=sale_payload, headers=headers)
+        assert first_sale.status_code == status.HTTP_201_CREATED
+
+        second_sale = client.post("/sales", json=sale_payload, headers=headers)
+        assert second_sale.status_code == status.HTTP_409_CONFLICT
+        assert "Inventario" in second_sale.json()["detail"]
+
+        final_device = db_session.execute(
+            select(models.Device).where(models.Device.id == device_id)
+        ).scalar_one()
+        assert final_device.quantity == 0
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
 def test_sale_and_return_flow(client, db_session):
     settings.enable_purchases_sales = True
     token, user_id = _bootstrap_admin(client, db_session)

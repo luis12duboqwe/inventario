@@ -229,6 +229,7 @@ def list_devices(
     estado_inventario: str | None = Query(default=None, max_length=40),
     ubicacion: str | None = Query(default=None, max_length=120),
     proveedor: str | None = Query(default=None, max_length=120),
+    warehouse_id: int | None = Query(default=None, ge=1),
     fecha_ingreso_desde: date | None = Query(default=None),
     fecha_ingreso_hasta: date | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -275,6 +276,7 @@ def list_devices(
             estado_inventario=estado_inventario,
             ubicacion=ubicacion,
             proveedor=proveedor,
+            warehouse_id=warehouse_id,
             fecha_ingreso_desde=fecha_ingreso_desde,
             fecha_ingreso_hasta=fecha_ingreso_hasta,
         )
@@ -288,6 +290,7 @@ def list_devices(
             estado_inventario=estado_inventario,
             ubicacion=ubicacion,
             proveedor=proveedor,
+            warehouse_id=warehouse_id,
             fecha_ingreso_desde=fecha_ingreso_desde,
             fecha_ingreso_hasta=fecha_ingreso_hasta,
             limit=page_size,

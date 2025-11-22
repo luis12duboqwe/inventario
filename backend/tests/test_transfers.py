@@ -155,6 +155,129 @@ def test_full_transfer_flow(client, db_session):
     settings.enable_transfers = False
 
 
+def test_transfer_rejection_and_permissions(client, db_session):
+    previous_flag = settings.enable_transfers
+    settings.enable_transfers = True
+    token, user_id = _bootstrap_admin(client, db_session)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    try:
+        origin = client.post(
+            "/stores",
+            json={"name": "Origen Rechazo", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        destination = client.post(
+            "/stores",
+            json={"name": "Destino Rechazo", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        assert origin.status_code == status.HTTP_201_CREATED
+        assert destination.status_code == status.HTTP_201_CREATED
+        origin_id = origin.json()["id"]
+        destination_id = destination.json()["id"]
+
+        create_membership = client.put(
+            f"/stores/{origin_id}/memberships/{user_id}",
+            json={
+                "user_id": user_id,
+                "store_id": origin_id,
+                "can_create_transfer": True,
+                "can_receive_transfer": False,
+            },
+            headers=headers,
+        )
+        assert create_membership.status_code == status.HTTP_200_OK
+
+        destination_membership = client.put(
+            f"/stores/{destination_id}/memberships/{user_id}",
+            json={
+                "user_id": user_id,
+                "store_id": destination_id,
+                "can_create_transfer": False,
+                "can_receive_transfer": False,
+            },
+            headers=headers,
+        )
+        assert destination_membership.status_code == status.HTTP_200_OK
+
+        device = client.post(
+            f"/stores/{origin_id}/devices",
+            json={
+                "sku": "SKU-RECH-001",
+                "name": "Servidor Edge",
+                "quantity": 2,
+                "unit_price": 2100.0,
+                "costo_unitario": 1500.0,
+                "margen_porcentaje": 12.0,
+            },
+            headers=headers,
+        )
+        assert device.status_code == status.HTTP_201_CREATED
+        device_id = device.json()["id"]
+
+        transfer = client.post(
+            "/transfers",
+            json={
+                "origin_store_id": origin_id,
+                "destination_store_id": destination_id,
+                "reason": "Balanceo de stock",
+                "items": [{"device_id": device_id, "quantity": 1}],
+            },
+            headers={**headers, "X-Reason": "Transferencia a revisar"},
+        )
+        assert transfer.status_code == status.HTTP_201_CREATED
+        transfer_id = transfer.json()["id"]
+
+        dispatch = client.post(
+            f"/transfers/{transfer_id}/dispatch",
+            json={"reason": "Salida a ruta"},
+            headers={**headers, "X-Reason": "Despacho en ruta"},
+        )
+        assert dispatch.status_code == status.HTTP_200_OK
+        assert dispatch.json()["status"] == "EN_TRANSITO"
+
+        reject_forbidden = client.post(
+            f"/transfers/{transfer_id}/reject",
+            json={"reason": "Destino sin permisos"},
+            headers={**headers, "X-Reason": "Rechazo no autorizado"},
+        )
+        assert reject_forbidden.status_code == status.HTTP_403_FORBIDDEN
+
+        enable_receive = client.put(
+            f"/stores/{destination_id}/memberships/{user_id}",
+            json={
+                "user_id": user_id,
+                "store_id": destination_id,
+                "can_create_transfer": False,
+                "can_receive_transfer": True,
+            },
+            headers=headers,
+        )
+        assert enable_receive.status_code == status.HTTP_200_OK
+
+        rejection = client.post(
+            f"/transfers/{transfer_id}/reject",
+            json={"reason": "Mercancia dañada"},
+            headers={**headers, "X-Reason": "Rechazo autorizado"},
+        )
+        assert rejection.status_code == status.HTTP_200_OK
+        rejected_payload = rejection.json()
+        assert rejected_payload["status"] == "RECHAZADA"
+        assert rejected_payload["reason"] == "Mercancia dañada"
+
+        origin_devices = client.get(f"/stores/{origin_id}/devices", headers=headers)
+        origin_qty = next(
+            item for item in _extract_items(origin_devices.json()) if item["id"] == device_id
+        )["quantity"]
+        assert origin_qty >= 1
+
+        destination_devices = client.get(f"/stores/{destination_id}/devices", headers=headers)
+        assert all(item["quantity"] == 0 for item in _extract_items(destination_devices.json()))
+    finally:
+        settings.enable_transfers = previous_flag
+
+
 def test_transfer_without_membership_forbidden(client, db_session):
     settings.enable_transfers = True
     token, user_id = _bootstrap_admin(client, db_session)
