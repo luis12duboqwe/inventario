@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .. import crud, models, schemas
 from ..config import settings
 from ..core.roles import MOVEMENT_ROLES
+from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -251,7 +252,10 @@ def create_transfer(
 ):
     _ensure_feature_enabled()
     try:
-        order = crud.create_transfer_order(db, payload, requested_by_id=current_user.id)
+        with transactional_session(db):
+            order = crud.create_transfer_order(
+                db, payload, requested_by_id=current_user.id
+            )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para transferir desde esta sucursal.") from exc
@@ -281,12 +285,13 @@ def dispatch_transfer(
 ):
     _ensure_feature_enabled()
     try:
-        order = crud.dispatch_transfer_order(
-            db,
-            transfer_id,
-            performed_by_id=current_user.id,
-            reason=payload.reason,
-        )
+        with transactional_session(db):
+            order = crud.dispatch_transfer_order(
+                db,
+                transfer_id,
+                performed_by_id=current_user.id,
+                reason=payload.reason,
+            )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para despachar esta transferencia.") from exc
@@ -311,12 +316,13 @@ def receive_transfer(
 ):
     _ensure_feature_enabled()
     try:
-        order = crud.receive_transfer_order(
-            db,
-            transfer_id,
-            performed_by_id=current_user.id,
-            reason=payload.reason,
-        )
+        with transactional_session(db):
+            order = crud.receive_transfer_order(
+                db,
+                transfer_id,
+                performed_by_id=current_user.id,
+                reason=payload.reason,
+            )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para recibir en esta sucursal.") from exc
@@ -346,12 +352,13 @@ def cancel_transfer(
 ):
     _ensure_feature_enabled()
     try:
-        order = crud.cancel_transfer_order(
-            db,
-            transfer_id,
-            performed_by_id=current_user.id,
-            reason=payload.reason,
-        )
+        with transactional_session(db):
+            order = crud.cancel_transfer_order(
+                db,
+                transfer_id,
+                performed_by_id=current_user.id,
+                reason=payload.reason,
+            )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para cancelar esta transferencia.") from exc
