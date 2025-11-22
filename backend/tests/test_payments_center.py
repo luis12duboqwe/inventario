@@ -7,7 +7,7 @@ from backend.app.core.roles import ADMIN
 def _bootstrap_admin(client):
     payload = {
         "username": "payments_admin",
-        "password": "Pagos123*",
+        "password": "Pagos1234*",
         "full_name": "Pagos Admin",
         "roles": [ADMIN],
     }

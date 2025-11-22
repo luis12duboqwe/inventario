@@ -330,6 +330,11 @@ def receive_transfer(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La sucursal de origen no cuenta con stock suficiente.") from exc
         if detail == "transfer_requires_full_unit":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Los dispositivos con IMEI o serie deben transferirse completos.") from exc
+        if detail == "transfer_device_already_sold":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El dispositivo ya fue vendido y no puede transferirse.",
+            ) from exc
         raise
 
 

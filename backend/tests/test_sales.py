@@ -768,6 +768,102 @@ def test_sales_endpoints_require_feature_flag(client, db_session):
         settings.enable_purchases_sales = previous_flag
 
 
+def test_sale_rejects_when_quantity_exceeds_stock(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token, _ = _bootstrap_admin(client, db_session)
+        headers = {"Authorization": f"Bearer {token}", "X-Reason": "Venta excedida"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Sucursal Venta", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "VENTA-ESCASA",
+                "name": "Smartphone Limitado",
+                "quantity": 1,
+                "unit_price": 1000.0,
+                "costo_unitario": 750.0,
+                "margen_porcentaje": 20.0,
+            },
+            headers=headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        response = client.post(
+            "/sales",
+            json={"store_id": store_id, "items": [{"device_id": device_id, "quantity": 3}]},
+            headers=headers,
+        )
+
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert response.json()["detail"] == "Inventario insuficiente para la venta."
+
+        refreshed_device = db_session.execute(
+            select(models.Device).where(models.Device.id == device_id)
+        ).scalar_one()
+        assert refreshed_device.quantity == 1
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
+def test_sale_rejects_when_device_is_already_sold(client, db_session):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token, _ = _bootstrap_admin(client, db_session)
+        headers = {"Authorization": f"Bearer {token}", "X-Reason": "Venta IMEI vendida"}
+
+        store_response = client.post(
+            "/stores",
+            json={"name": "Sucursal IMEI Vendida", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        assert store_response.status_code == status.HTTP_201_CREATED
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "IMEI-VENDIDO-01",
+                "name": "Smartphone Vendido",
+                "quantity": 1,
+                "unit_price": 900.0,
+                "costo_unitario": 650.0,
+                "margen_porcentaje": 18.0,
+                "imei": "990000862471854",
+            },
+            headers=headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        device_record = db_session.execute(
+            select(models.Device).where(models.Device.id == device_id)
+        ).scalar_one()
+        device_record.estado = "vendido"
+        db_session.commit()
+
+        response = client.post(
+            "/sales",
+            json={"store_id": store_id, "items": [{"device_id": device_id, "quantity": 1}]},
+            headers=headers,
+        )
+
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert response.json()["detail"] == "El dispositivo ya fue vendido y no está disponible."
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
 def test_sale_audit_logs_include_reason(client, db_session):
     previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
