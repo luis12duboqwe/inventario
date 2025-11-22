@@ -1,14 +1,20 @@
 """Router de proveedores estratégicos."""
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
-from ..core.roles import GESTION_ROLES
+from ..core.roles import ADMIN, GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])
+
+
+def _is_superadmin(user: Any, confirmation: bool) -> bool:
+    return confirmation and str(getattr(user, "rol", "")).upper() == ADMIN
 
 
 @router.get("/", response_model=list[schemas.SupplierResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -119,12 +125,22 @@ def delete_supplier_endpoint(
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
+    hard_delete: bool = Query(
+        default=False,
+        description="Eliminación definitiva solo para superadministradores",
+    ),
+    superadmin_confirmed: bool = Query(
+        default=False,
+        description="Confirma que un superadministrador autorizó la eliminación",
+    ),
 ):
     try:
         crud.delete_supplier(
             db,
             supplier_id,
             performed_by_id=current_user.id if current_user else None,
+            allow_hard_delete=hard_delete,
+            is_superadmin=_is_superadmin(current_user, superadmin_confirmed),
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc

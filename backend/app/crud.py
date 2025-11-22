@@ -5193,6 +5193,7 @@ def list_customers(
         select(models.Customer)
         .options(selectinload(models.Customer.loyalty_account))
         .options(selectinload(models.Customer.segment_snapshot))
+        .where(models.Customer.is_deleted.is_(False))
         .order_by(models.Customer.name.asc())
         .offset(offset)
         .limit(limit)
@@ -5246,7 +5247,10 @@ def get_customer(db: Session, customer_id: int) -> models.Customer:
         .options(selectinload(models.Customer.loyalty_account))
         .options(selectinload(models.Customer.segment_snapshot))
         .options(selectinload(models.Customer.privacy_requests))
-        .where(models.Customer.id == customer_id)
+        .where(
+            models.Customer.id == customer_id,
+            models.Customer.is_deleted.is_(False),
+        )
     )
     try:
         return db.scalars(statement).one()
@@ -5477,14 +5481,47 @@ def delete_customer(
     customer_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     customer = get_customer(db, customer_id)
+    has_dependencies = any(
+        [
+            customer.sales,
+            customer.repair_orders,
+            customer.ledger_entries,
+            customer.store_credits,
+        ]
+    )
+    should_hard_delete = allow_hard_delete and (not has_dependencies or is_superadmin)
     with transactional_session(db):
-        db.delete(customer)
+        if should_hard_delete:
+            db.delete(customer)
+            flush_session(db)
+            _log_action(
+                db,
+                action="customer_deleted",
+                entity_type="customer",
+                entity_id=str(customer_id),
+                performed_by_id=performed_by_id,
+            )
+            flush_session(db)
+            enqueue_sync_outbox(
+                db,
+                entity_type="customer",
+                entity_id=str(customer_id),
+                operation="DELETE",
+                payload={"id": customer_id, "hard_deleted": True},
+            )
+            return
+
+        customer.status = _normalize_customer_status("inactivo")
+        customer.is_deleted = True
+        customer.deleted_at = datetime.utcnow()
         flush_session(db)
         _log_action(
             db,
-            action="customer_deleted",
+            action="customer_archived",
             entity_type="customer",
             entity_id=str(customer_id),
             performed_by_id=performed_by_id,
@@ -5494,8 +5531,12 @@ def delete_customer(
             db,
             entity_type="customer",
             entity_id=str(customer_id),
-            operation="DELETE",
-            payload={"id": customer_id},
+            operation="UPDATE",
+            payload={
+                "id": customer_id,
+                "is_deleted": True,
+                "deleted_at": customer.deleted_at.isoformat() if customer.deleted_at else None,
+            },
         )
 
 
@@ -6917,6 +6958,7 @@ def list_suppliers(
 ) -> list[models.Supplier]:
     statement = (
         select(models.Supplier)
+        .where(models.Supplier.is_deleted.is_(False))
         .order_by(models.Supplier.name.asc())
         .offset(offset)
         .limit(limit)
@@ -6939,7 +6981,9 @@ def list_suppliers(
 
 def get_supplier(db: Session, supplier_id: int) -> models.Supplier:
     statement = select(models.Supplier).where(
-        models.Supplier.id == supplier_id)
+        models.Supplier.id == supplier_id,
+        models.Supplier.is_deleted.is_(False),
+    )
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:
@@ -7065,14 +7109,30 @@ def delete_supplier(
     supplier_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     supplier = get_supplier(db, supplier_id)
+    has_dependencies = bool(supplier.batches or supplier.ledger_entries)
+    should_hard_delete = allow_hard_delete and (not has_dependencies or is_superadmin)
     with transactional_session(db):
-        db.delete(supplier)
+        if should_hard_delete:
+            db.delete(supplier)
 
+            _log_action(
+                db,
+                action="supplier_deleted",
+                entity_type="supplier",
+                entity_id=str(supplier_id),
+                performed_by_id=performed_by_id,
+            )
+            return
+
+        supplier.is_deleted = True
+        supplier.deleted_at = datetime.utcnow()
         _log_action(
             db,
-            action="supplier_deleted",
+            action="supplier_archived",
             entity_type="supplier",
             entity_id=str(supplier_id),
             performed_by_id=performed_by_id,
@@ -8522,6 +8582,7 @@ def list_price_lists(
 ) -> list[models.PriceList]:
     statement = (
         select(models.PriceList)
+        .where(models.PriceList.is_deleted.is_(False))
         .order_by(models.PriceList.priority.asc(), models.PriceList.id.asc())
     )
     if include_items:
@@ -8566,7 +8627,10 @@ def get_price_list(
     *,
     include_items: bool = False,
 ) -> models.PriceList:
-    statement = select(models.PriceList).where(models.PriceList.id == price_list_id)
+    statement = select(models.PriceList).where(
+        models.PriceList.id == price_list_id,
+        models.PriceList.is_deleted.is_(False),
+    )
     if include_items:
         statement = statement.options(joinedload(models.PriceList.items))
     result = db.scalars(statement)
@@ -8666,15 +8730,35 @@ def delete_price_list(
     price_list_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     price_list = get_price_list(db, price_list_id)
     name = price_list.name
+    has_dependencies = bool(price_list.items)
+    should_hard_delete = allow_hard_delete and (not has_dependencies or is_superadmin)
     with transactional_session(db):
-        db.delete(price_list)
+        if should_hard_delete:
+            db.delete(price_list)
+            flush_session(db)
+            _log_action(
+                db,
+                action="price_list_deleted",
+                entity_type="price_list",
+                entity_id=str(price_list_id),
+                performed_by_id=performed_by_id,
+                details=json.dumps({"name": name}),
+            )
+            flush_session(db)
+            return
+
+        price_list.is_active = False
+        price_list.is_deleted = True
+        price_list.deleted_at = datetime.utcnow()
         flush_session(db)
         _log_action(
             db,
-            action="price_list_deleted",
+            action="price_list_archived",
             entity_type="price_list",
             entity_id=str(price_list_id),
             performed_by_id=performed_by_id,
@@ -8684,7 +8768,10 @@ def delete_price_list(
 
 
 def get_price_list_item(db: Session, item_id: int) -> models.PriceListItem:
-    statement = select(models.PriceListItem).where(models.PriceListItem.id == item_id)
+    statement = select(models.PriceListItem).where(
+        models.PriceListItem.id == item_id,
+        models.PriceListItem.is_deleted.is_(False),
+    )
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:
@@ -8790,14 +8877,37 @@ def delete_price_list_item(
     item_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     item = get_price_list_item(db, item_id)
+    should_hard_delete = allow_hard_delete or is_superadmin
     with transactional_session(db):
-        db.delete(item)
+        if should_hard_delete:
+            db.delete(item)
+            flush_session(db)
+            _log_action(
+                db,
+                action="price_list_item_deleted",
+                entity_type="price_list_item",
+                entity_id=str(item_id),
+                performed_by_id=performed_by_id,
+                details=json.dumps(
+                    {
+                        "price_list_id": item.price_list_id,
+                        "device_id": item.device_id,
+                    }
+                ),
+            )
+            flush_session(db)
+            return
+
+        item.is_deleted = True
+        item.deleted_at = datetime.utcnow()
         flush_session(db)
         _log_action(
             db,
-            action="price_list_item_deleted",
+            action="price_list_item_archived",
             entity_type="price_list_item",
             entity_id=str(item_id),
             performed_by_id=performed_by_id,
@@ -8831,7 +8941,9 @@ def resolve_price_for_device(
         select(models.PriceListItem, models.PriceList)
         .join(models.PriceList, models.PriceListItem.price_list_id == models.PriceList.id)
         .where(models.PriceListItem.device_id == device_id)
+        .where(models.PriceListItem.is_deleted.is_(False))
         .where(models.PriceList.is_active.is_(True))
+        .where(models.PriceList.is_deleted.is_(False))
         .where(validity_condition)
     )
 
@@ -12951,12 +13063,22 @@ def get_sync_outbox_statistics(
                     else_=0,
                 )
             ).label("pending"),
-            func.sum(
-                case(
-                    (models.SyncOutbox.status == models.SyncOutboxStatus.FAILED, 1),
-                    else_=0,
-                )
-            ).label("failed"),
+           func.sum(
+               case(
+                   (
+                       models.SyncOutbox.status == models.SyncOutboxStatus.FAILED,
+                        case(
+                            (
+                                models.SyncOutbox.attempt_count
+                                >= 1,
+                                models.SyncOutbox.attempt_count,
+                            ),
+                            else_=1,
+                        ),
+                   ),
+                   else_=0,
+               )
+           ).label("failed"),
             func.sum(
                 case(
                     (models.SyncOutbox.conflict_flag.is_(True), 1),
@@ -19113,7 +19235,11 @@ def register_pos_sale(
 
     payments_applied_total = Decimal("0")
     payment_outcomes: list[CustomerPaymentOutcome] = []
-    if payload.payments and sale.customer_id:
+    if (
+        payload.payments
+        and sale.customer_id
+        and sale.payment_method == models.PaymentMethod.CREDITO
+    ):
         for payment in payload.payments:
             payment_amount = _to_decimal(payment.amount).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -19125,6 +19251,10 @@ def register_pos_sale(
                 if isinstance(payment.method, models.PaymentMethod)
                 else str(payment.method).strip()
             )
+            if method_value == models.PaymentMethod.PUNTOS.value:
+                # La redención de puntos se maneja por el módulo de lealtad y
+                # no debe registrar abonos sobre la deuda del cliente.
+                continue
             if not method_value:
                 method_value = "manual"
             note_source = payload.notes or "Abono registrado desde POS"
