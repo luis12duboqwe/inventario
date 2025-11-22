@@ -10237,6 +10237,39 @@ def list_inventory_summary(
     return list(db.scalars(statement).unique())
 
 
+def list_devices_below_minimum_thresholds(
+    db: Session, *, store_id: int | None = None
+) -> list[dict[str, object]]:
+    """Devuelve los dispositivos que están bajo el stock mínimo o punto de reorden."""
+
+    query = (
+        select(
+            models.Device.id.label("device_id"),
+            models.Device.store_id,
+            models.Store.name.label("store_name"),
+            models.Device.sku,
+            models.Device.name,
+            models.Device.quantity,
+            models.Device.unit_price,
+            models.Device.minimum_stock,
+            models.Device.reorder_point,
+        )
+        .join(models.Store, models.Device.store_id == models.Store.id)
+        .where(
+            or_(
+                models.Device.quantity <= models.Device.minimum_stock,
+                models.Device.quantity <= models.Device.reorder_point,
+            )
+        )
+    )
+
+    if store_id:
+        query = query.where(models.Device.store_id == store_id)
+
+    rows = db.execute(query.order_by(models.Device.quantity, models.Device.sku)).mappings()
+    return [dict(row) for row in rows]
+
+
 def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> dict[str, object]:
     stores = list_inventory_summary(db)
 

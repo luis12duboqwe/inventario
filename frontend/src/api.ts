@@ -2226,6 +2226,33 @@ export type InventoryAlertsResponse = {
   items: InventoryAlertItem[];
 };
 
+export type MinimumStockAlert = {
+  store_id: number;
+  store_name: string;
+  device_id: number;
+  sku: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  minimum_stock: number;
+  reorder_point: number;
+  reorder_gap: number;
+  inventory_value: number;
+  below_minimum: boolean;
+  below_reorder_point: boolean;
+};
+
+export type MinimumStockSummary = {
+  total: number;
+  below_minimum: number;
+  below_reorder_point: number;
+};
+
+export type MinimumStockAlertsResponse = {
+  summary: MinimumStockSummary;
+  items: MinimumStockAlert[];
+};
+
 export type InventoryCurrentStoreReport = {
   store_id: number;
   store_name: string;
@@ -6871,6 +6898,19 @@ export function getInventoryAlerts(
   const query = searchParams.toString();
   const suffix = query ? `?${query}` : "";
   return request<InventoryAlertsResponse>(`/alerts/inventory${suffix}`, { method: "GET" }, token);
+}
+
+export function getMinimumStockAlerts(
+  token: string,
+  params: { storeId?: number } = {},
+): Promise<MinimumStockAlertsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.storeId) {
+    searchParams.set("store_id", String(params.storeId));
+  }
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<MinimumStockAlertsResponse>(`/alerts/inventory/minimum${suffix}`, { method: "GET" }, token);
 }
 
 export function getRotationAnalytics(

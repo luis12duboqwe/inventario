@@ -217,3 +217,38 @@ def test_stock_alerts_service_generates_insights(db_session) -> None:
     critical_item = next(item for item in result.items if item.severity == "critical")
     assert critical_item.minimum_stock == 2
     assert "Por debajo del stock mínimo" in critical_item.insights
+
+
+def test_minimum_stock_endpoint_flags_devices(client, db_session) -> None:
+    store_central, _store_norte, _ = _seed_inventory_alerts_dataset(db_session)
+    token = _bootstrap_admin(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.get("/alerts/inventory/minimum", headers=headers)
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()
+
+    assert payload["summary"] == {
+        "total": 3,
+        "below_minimum": 1,
+        "below_reorder_point": 3,
+    }
+    skus = {item["sku"] for item in payload["items"]}
+    assert skus == {"AL-001", "AL-002", "AL-004"}
+    minimum_item = next(item for item in payload["items"] if item["sku"] == "AL-001")
+    assert minimum_item["below_minimum"] is True
+    assert minimum_item["below_reorder_point"] is True
+
+    response_store = client.get(
+        f"/alerts/inventory/minimum?store_id={store_central.id}", headers=headers
+    )
+    assert response_store.status_code == status.HTTP_200_OK
+    payload_store = response_store.json()
+    assert payload_store["summary"] == {
+        "total": 2,
+        "below_minimum": 1,
+        "below_reorder_point": 2,
+    }
+    assert {item["sku"] for item in payload_store["items"]} == {"AL-001", "AL-002"}
+    for item in payload_store["items"]:
+        assert item["reorder_point"] >= item["minimum_stock"]

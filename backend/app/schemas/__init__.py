@@ -3609,6 +3609,22 @@ class InventoryAlertsResponse(BaseModel):
     items: list[InventoryAlertDevice]
 
 
+class MinimumStockAlert(LowStockDevice):
+    below_minimum: bool = False
+    below_reorder_point: bool = False
+
+
+class MinimumStockSummary(BaseModel):
+    total: int
+    below_minimum: int
+    below_reorder_point: int
+
+
+class MinimumStockAlertsResponse(BaseModel):
+    summary: MinimumStockSummary
+    items: list[MinimumStockAlert]
+
+
 class InventoryTotals(BaseModel):
     stores: int
     devices: int
@@ -8356,6 +8372,9 @@ __all__ = [
     "InventoryAlertSummary",
     "InventoryAlertSettingsResponse",
     "InventoryAlertsResponse",
+    "MinimumStockAlert",
+    "MinimumStockSummary",
+    "MinimumStockAlertsResponse",
     "MovementBase",
     "MovementCreate",
     "MovementResponse",
