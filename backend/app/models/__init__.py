@@ -340,6 +340,7 @@ class TransferStatus(str, enum.Enum):
     SOLICITADA = "SOLICITADA"
     EN_TRANSITO = "EN_TRANSITO"
     RECIBIDA = "RECIBIDA"
+    RECHAZADA = "RECHAZADA"
     CANCELADA = "CANCELADA"
 
 
@@ -1627,6 +1628,11 @@ class TransferOrderItem(Base):
         Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    dispatched_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    received_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dispatched_unit_cost: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
     reservation_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("inventory_reservations.id", ondelete="SET NULL"),

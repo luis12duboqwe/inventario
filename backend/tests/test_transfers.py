@@ -227,3 +227,109 @@ def test_transfers_endpoints_return_404_when_feature_flag_disabled(client, db_se
         assert create_response.status_code == status.HTTP_404_NOT_FOUND
     finally:
         settings.enable_transfers = True
+
+
+def test_transfer_reception_rejects_sold_device(client, db_session):
+    previous_flag = settings.enable_transfers
+    settings.enable_transfers = True
+    try:
+        token, _ = _bootstrap_admin(client, db_session)
+        headers = {"Authorization": f"Bearer {token}", "X-Reason": "Transferencia IMEI vendida"}
+
+        origin_response = client.post(
+            "/stores",
+            json={"name": "Almacen Origen", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        assert origin_response.status_code == status.HTTP_201_CREATED
+        origin_id = origin_response.json()["id"]
+
+        destination_response = client.post(
+            "/stores",
+            json={"name": "Almacen Destino", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        assert destination_response.status_code == status.HTTP_201_CREATED
+        destination_id = destination_response.json()["id"]
+
+        user_id = db_session.execute(select(models.User.id)).scalar_one()
+
+        membership_origin_payload = {
+            "user_id": user_id,
+            "store_id": origin_id,
+            "can_create_transfer": True,
+            "can_receive_transfer": False,
+        }
+        membership_origin_response = client.put(
+            f"/stores/{origin_id}/memberships/{user_id}",
+            json=membership_origin_payload,
+            headers=headers,
+        )
+        assert membership_origin_response.status_code == status.HTTP_200_OK
+
+        membership_destination_payload = {
+            "user_id": user_id,
+            "store_id": destination_id,
+            "can_create_transfer": False,
+            "can_receive_transfer": True,
+        }
+        membership_destination_response = client.put(
+            f"/stores/{destination_id}/memberships/{user_id}",
+            json=membership_destination_payload,
+            headers=headers,
+        )
+        assert membership_destination_response.status_code == status.HTTP_200_OK
+
+        device_response = client.post(
+            f"/stores/{origin_id}/devices",
+            json={
+                "sku": "IMEI-TRANSFER-01",
+                "name": "Telefono Transferencia",
+                "quantity": 1,
+                "unit_price": 1200.0,
+                "costo_unitario": 800.0,
+                "margen_porcentaje": 22.0,
+                "imei": "356789012345679",
+            },
+            headers=headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        device_record = db_session.execute(
+            select(models.Device).where(models.Device.id == device_id)
+        ).scalar_one()
+        device_record.estado = "vendido"
+        db_session.commit()
+
+        transfer_payload = {
+            "origin_store_id": origin_id,
+            "destination_store_id": destination_id,
+            "reason": "Reubicacion de equipo",
+            "items": [{"device_id": device_id, "quantity": 1}],
+        }
+
+        transfer_response = client.post("/transfers", json=transfer_payload, headers=headers)
+        assert transfer_response.status_code == status.HTTP_201_CREATED
+        transfer_id = transfer_response.json()["id"]
+
+        dispatch_response = client.post(
+            f"/transfers/{transfer_id}/dispatch",
+            json={"reason": "Salida de almacen"},
+            headers=headers,
+        )
+        assert dispatch_response.status_code == status.HTTP_200_OK
+
+        receive_response = client.post(
+            f"/transfers/{transfer_id}/receive",
+            json={"reason": "Ingreso rechazado"},
+            headers=headers,
+        )
+
+        assert receive_response.status_code == status.HTTP_409_CONFLICT
+        assert (
+            receive_response.json()["detail"]
+            == "El dispositivo ya fue vendido y no puede transferirse."
+        )
+    finally:
+        settings.enable_transfers = previous_flag
