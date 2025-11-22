@@ -185,6 +185,8 @@ export type Device = {
   name: string;
   quantity: number;
   store_id: number;
+  warehouse_id?: number | null;
+  warehouse_name?: string | null;
   unit_price: number;
   inventory_value: number;
   completo: boolean;
@@ -363,6 +365,7 @@ export type DeviceUpdateInput = {
   imagen_url?: string | null;
   precio_venta?: number | null;
   completo?: boolean;
+  warehouse_id?: number | null;
 };
 
 export type InventoryAvailabilityStore = {
@@ -383,6 +386,24 @@ export type InventoryAvailabilityRecord = {
 export type InventoryAvailabilityResponse = {
   generated_at: string;
   items: InventoryAvailabilityRecord[];
+};
+
+export type Warehouse = {
+  id: number;
+  store_id: number;
+  name: string;
+  code: string;
+  is_default: boolean;
+  created_at: string;
+};
+
+export type WarehouseTransferInput = {
+  store_id: number;
+  device_id: number;
+  quantity: number;
+  source_warehouse_id: number;
+  destination_warehouse_id: number;
+  reason: string;
 };
 
 export type InventoryAvailabilityParams = {
@@ -3828,6 +3849,7 @@ export type DeviceListFilters = {
   estado_inventario?: string;
   ubicacion?: string;
   proveedor?: string;
+  warehouse_id?: number | null;
   fecha_ingreso_desde?: string;
   fecha_ingreso_hasta?: string;
 };
@@ -3854,6 +3876,9 @@ function buildDeviceFilterParams(filters: DeviceListFilters): URLSearchParams {
   }
   if (filters.proveedor) {
     params.append("proveedor", filters.proveedor);
+  }
+  if (typeof filters.warehouse_id === "number") {
+    params.append("warehouse_id", String(filters.warehouse_id));
   }
   if (filters.fecha_ingreso_desde) {
     params.append("fecha_ingreso_desde", filters.fecha_ingreso_desde);
@@ -4006,16 +4031,49 @@ function buildSyncDiscrepancyParams(filters: SyncDiscrepancyFilters = {}): URLSe
   return params;
 }
 
-export function getDevices(
-  token: string,
-  storeId: number,
-  filters: DeviceListFilters = {}
-): Promise<Device[]> {
-  const params = buildDeviceFilterParams(filters);
-  const query = params.toString();
-  const suffix = query ? `?${query}` : "";
-  return requestCollection<Device>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
-}
+  export function getDevices(
+    token: string,
+    storeId: number,
+    filters: DeviceListFilters = {}
+  ): Promise<Device[]> {
+    const params = buildDeviceFilterParams(filters);
+    const query = params.toString();
+    const suffix = query ? `?${query}` : "";
+    return requestCollection<Device>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
+  }
+
+  export function listWarehouses(token: string, storeId: number): Promise<Warehouse[]> {
+    return requestCollection<Warehouse>(
+      `/inventory/stores/${storeId}/warehouses`,
+      { method: "GET" },
+      token,
+    );
+  }
+
+  export function createWarehouse(
+    token: string,
+    storeId: number,
+    payload: Pick<Warehouse, "name" | "code" | "is_default">,
+    reason: string,
+  ): Promise<Warehouse> {
+    return request<Warehouse>(
+      `/inventory/stores/${storeId}/warehouses`,
+      { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+      token,
+    );
+  }
+
+  export function transferBetweenWarehouses(
+    token: string,
+    payload: WarehouseTransferInput,
+    reason: string,
+  ): Promise<{ movement_out: MovementResponse; movement_in: MovementResponse }> {
+    return request<{ movement_out: MovementResponse; movement_in: MovementResponse }>(
+      "/inventory/warehouses/transfers",
+      { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+      token,
+    );
+  }
 
 export function getProductVariants(
   token: string,
