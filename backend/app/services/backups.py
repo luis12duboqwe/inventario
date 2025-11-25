@@ -847,8 +847,8 @@ def restore_backup(
     if not Path(target_base).is_absolute():
         target_base = Path(target_base).resolve()
 
-    restore_dir = (
-        target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}").resolve()
+    restore_dir = target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    restore_dir = restore_dir.resolve()
     # Prevención estricta: la restauración debe quedar SIEMPRE dentro de backup_directory
     if not restore_dir.is_relative_to(safe_restore_root):
         raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
