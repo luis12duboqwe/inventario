@@ -796,6 +796,105 @@ def analytics_realtime(
     )
 
 
+@router.get(
+    "/analytics/store_sales_forecast",
+    response_model=schemas.StoreSalesForecastResponse,
+)
+def analytics_store_sales_forecast(
+    store_ids: list[int] | None = Query(default=None),
+    horizon_days: int = Query(default=14, ge=1, le=60),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    items = crud.calculate_store_sales_forecast(
+        db,
+        store_ids=store_ids,
+        horizon_days=horizon_days,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=limit,
+        offset=offset,
+    )
+    return schemas.StoreSalesForecastResponse(
+        items=[schemas.StoreSalesForecast(**item) for item in items]
+    )
+
+
+@router.get(
+    "/analytics/reorder_suggestions",
+    response_model=schemas.ReorderSuggestionsResponse,
+)
+def analytics_reorder_suggestions(
+    store_ids: list[int] | None = Query(default=None),
+    horizon_days: int = Query(default=7, ge=1, le=60),
+    safety_days: int = Query(default=2, ge=0, le=14),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    items = crud.calculate_reorder_suggestions(
+        db,
+        store_ids=store_ids,
+        horizon_days=horizon_days,
+        safety_days=safety_days,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=limit,
+        offset=offset,
+    )
+    return schemas.ReorderSuggestionsResponse(
+        items=[schemas.ReorderSuggestion(**item) for item in items]
+    )
+
+
+@router.get(
+    "/analytics/return_anomalies",
+    response_model=schemas.ReturnAnomaliesResponse,
+)
+def analytics_return_anomalies(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    sigma_threshold: float = Query(default=2.0, ge=0.5, le=4.0),
+    min_returns: int = Query(default=3, ge=1, le=50),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    items = crud.detect_return_anomalies(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        sigma_threshold=sigma_threshold,
+        min_returns=min_returns,
+        limit=limit,
+        offset=offset,
+    )
+    return schemas.ReturnAnomaliesResponse(
+        items=[schemas.ReturnAnomaly(**item) for item in items]
+    )
+
+
 @router.get("/analytics/pdf", response_model=schemas.BinaryFileResponse)
 def analytics_pdf(
     store_ids: list[int] | None = Query(default=None),

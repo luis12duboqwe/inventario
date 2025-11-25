@@ -4800,6 +4800,55 @@ class AnalyticsSalesProjectionResponse(BaseModel):
     items: list[SalesProjectionMetric]
 
 
+class StoreSalesForecast(BaseModel):
+    store_id: int
+    store_name: str
+    average_daily_units: float
+    projected_units: float
+    projected_revenue: float
+    trend: str
+    confidence: float
+
+
+class StoreSalesForecastResponse(BaseModel):
+    items: list[StoreSalesForecast]
+
+
+class ReorderSuggestion(BaseModel):
+    store_id: int
+    store_name: str
+    device_id: int
+    sku: str
+    name: str
+    quantity: int
+    reorder_point: int
+    minimum_stock: int
+    recommended_order: int
+    projected_days: int | None = None
+    average_daily_sales: float | None = None
+    reason: str
+
+
+class ReorderSuggestionsResponse(BaseModel):
+    items: list[ReorderSuggestion]
+
+
+class ReturnAnomaly(BaseModel):
+    user_id: int
+    user_name: str | None
+    return_count: int
+    total_units: int
+    last_return: datetime | None = None
+    store_count: int
+    z_score: float
+    threshold: float
+    is_anomalous: bool = False
+
+
+class ReturnAnomaliesResponse(BaseModel):
+    items: list[ReturnAnomaly]
+
+
 class AnalyticsAlert(BaseModel):
     type: str
     level: str
@@ -8527,6 +8576,12 @@ __all__ = [
     "AnalyticsProfitMarginResponse",
     "AnalyticsRotationResponse",
     "AnalyticsSalesProjectionResponse",
+    "StoreSalesForecast",
+    "StoreSalesForecastResponse",
+    "ReorderSuggestion",
+    "ReorderSuggestionsResponse",
+    "ReturnAnomaly",
+    "ReturnAnomaliesResponse",
     "ReportFilterState",
     "SalesByStoreMetric",
     "SalesByCategoryMetric",
