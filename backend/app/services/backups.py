@@ -829,27 +829,18 @@ def restore_backup(
     import re
     safe_subdir = None
     if target_directory:
-        td_path = Path(target_directory)
-        if td_path.is_absolute():
-            # Permite ruta absoluta si está dentro del mismo tmp o cwd y no contiene '..'
-            if ".." in td_path.parts:
-                raise ValueError("Directorio de restauración no permitido")
-            # En pruebas se usa un tmp distinto de backup_directory; aceptamos siempre que exista el padre
-            td_path.parent.mkdir(parents=True, exist_ok=True)
-            target_base = td_path.resolve()
+        # Sólo nombre simple como subcarpeta bajo backup_directory
+        if (
+            re.fullmatch(r"[a-zA-Z0-9_\-]+", target_directory)
+            and ".." not in target_directory
+            and "/" not in target_directory
+            and "\\" not in target_directory
+        ):
+            safe_subdir = target_directory
+            target_base = (safe_restore_root / safe_subdir).resolve()
         else:
-            # Sólo nombre simple como subcarpeta bajo backup_directory
-            if (
-                re.fullmatch(r"[a-zA-Z0-9_\-]+", target_directory)
-                and ".." not in target_directory
-                and "/" not in target_directory
-                and "\\" not in target_directory
-            ):
-                safe_subdir = target_directory
-                target_base = (safe_restore_root / safe_subdir).resolve()
-            else:
-                raise ValueError(
-                    "Nombre de directorio de restauración no permitido")
+            raise ValueError(
+                "Nombre de directorio de restauración no permitido. Debe ser un nombre de carpeta simple bajo el directorio de respaldo configurado.")
     else:
         target_base = safe_restore_root
     # No permitir escapar al sistema (sólo si relativa), rutas absolutas se validaron arriba
