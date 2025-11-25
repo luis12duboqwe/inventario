@@ -30,13 +30,15 @@ def _create_default_warehouses(connection: sa.engine.Connection) -> dict[int, in
     stores = connection.execute(sa.text("SELECT id_sucursal, nombre FROM sucursales"))
     mapping: dict[int, int] = {}
     for store_id, name in stores:
+        timestamp_expr = "CURRENT_TIMESTAMP"
         warehouse_id = connection.execute(
             sa.text(
                 """
                 INSERT INTO warehouses (store_id, name, code, is_default, created_at)
-                VALUES (:store_id, :name, :code, true, NOW())
+                VALUES (:store_id, :name, :code, true, {timestamp})
                 RETURNING id
                 """
+                .format(timestamp=timestamp_expr)
             ),
             {"store_id": store_id, "name": "Default", "code": f"DEF-{store_id}"},
         ).scalar_one()
@@ -56,7 +58,12 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=120), nullable=False),
         sa.Column("code", sa.String(length=30), nullable=False),
         sa.Column("is_default", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.ForeignKeyConstraint(["store_id"], ["sucursales.id_sucursal"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("store_id", "code", name=op.f("uq_warehouse_store_code")),
@@ -137,7 +144,13 @@ def upgrade() -> None:
         )
         op.execute(
             sa.text(
-                "UPDATE sale_returns SET warehouse_id = :warehouse_id WHERE store_id = :store_id"
+                """
+                UPDATE sale_returns
+                SET warehouse_id = :warehouse_id
+                WHERE venta_id IN (
+                    SELECT id_venta FROM ventas WHERE sucursal_id = :store_id
+                )
+                """
             ).bindparams(warehouse_id=warehouse_id, store_id=store_id)
         )
         op.execute(
