@@ -4800,6 +4800,55 @@ class AnalyticsSalesProjectionResponse(BaseModel):
     items: list[SalesProjectionMetric]
 
 
+class StoreSalesForecast(BaseModel):
+    store_id: int
+    store_name: str
+    average_daily_units: float
+    projected_units: float
+    projected_revenue: float
+    trend: str
+    confidence: float
+
+
+class StoreSalesForecastResponse(BaseModel):
+    items: list[StoreSalesForecast]
+
+
+class ReorderSuggestion(BaseModel):
+    store_id: int
+    store_name: str
+    device_id: int
+    sku: str
+    name: str
+    quantity: int
+    reorder_point: int
+    minimum_stock: int
+    recommended_order: int
+    projected_days: int | None = None
+    average_daily_sales: float | None = None
+    reason: str
+
+
+class ReorderSuggestionsResponse(BaseModel):
+    items: list[ReorderSuggestion]
+
+
+class ReturnAnomaly(BaseModel):
+    user_id: int
+    user_name: str | None
+    return_count: int
+    total_units: int
+    last_return: datetime | None = None
+    store_count: int
+    z_score: float
+    threshold: float
+    is_anomalous: bool = False
+
+
+class ReturnAnomaliesResponse(BaseModel):
+    items: list[ReturnAnomaly]
+
+
 class AnalyticsAlert(BaseModel):
     type: str
     level: str
@@ -8281,6 +8330,48 @@ class IntegrationHealthUpdateRequest(BaseModel):
     )
 
 
+class IntegrationWebhookEvent(BaseModel):
+    id: int
+    event: str
+    entity: str
+    entity_id: str
+    operation: str
+    payload: dict[str, Any]
+    version: int
+    status: SyncOutboxStatus
+    attempt_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _parse_payload(cls, value: Any) -> dict[str, Any]:
+        if isinstance(value, str):
+            try:
+                import json
+
+                return json.loads(value)
+            except Exception:  # pragma: no cover - fallback a payload vacío
+                return {}
+        if isinstance(value, dict):
+            return value
+        return {}
+
+
+class IntegrationWebhookAckRequest(BaseModel):
+    status: Literal["sent", "failed"]
+    error_message: str | None = Field(default=None, max_length=250)
+
+
+class IntegrationWebhookAckResponse(BaseModel):
+    id: int
+    status: SyncOutboxStatus
+    attempts: int
+    error_message: str | None
+
+
 class ConfigurationParameterType(str, enum.Enum):
     """Tipos permitidos para los parámetros configurables."""
 
@@ -8527,6 +8618,12 @@ __all__ = [
     "AnalyticsProfitMarginResponse",
     "AnalyticsRotationResponse",
     "AnalyticsSalesProjectionResponse",
+    "StoreSalesForecast",
+    "StoreSalesForecastResponse",
+    "ReorderSuggestion",
+    "ReorderSuggestionsResponse",
+    "ReturnAnomaly",
+    "ReturnAnomaliesResponse",
     "ReportFilterState",
     "SalesByStoreMetric",
     "SalesByCategoryMetric",
@@ -8596,6 +8693,9 @@ __all__ = [
     "IntegrationProviderDetail",
     "IntegrationRotateSecretResponse",
     "IntegrationHealthUpdateRequest",
+    "IntegrationWebhookEvent",
+    "IntegrationWebhookAckRequest",
+    "IntegrationWebhookAckResponse",
     "BackupExportFormat",
     "DeviceBase",
     "DeviceCreate",

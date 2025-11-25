@@ -23,8 +23,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
-from sqlalchemy.sql import false
+from sqlalchemy.sql import column, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from ..database import Base
@@ -487,6 +488,7 @@ class Device(Base):
         UniqueConstraint("imei", name="uq_devices_imei"),
         UniqueConstraint("serial", name="uq_devices_serial"),
         Index("ix_devices_warehouse_id", "warehouse_id"),
+        Index("ix_devices_sku_lower", func.lower(column("sku"))),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -1117,6 +1119,14 @@ class UserRole(Base):
 
 class InventoryMovement(Base):
     __tablename__ = "inventory_movements"
+    __table_args__ = (
+        Index(
+            "ix_inventory_movements_store_fecha",
+            "sucursal_destino_id",
+            "fecha",
+        ),
+        Index("ix_inventory_movements_fecha", "fecha"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(

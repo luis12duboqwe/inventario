@@ -10,6 +10,7 @@ import json
 import math
 import re
 import secrets
+import textwrap
 from dataclasses import dataclass
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -56,6 +57,16 @@ logger = core_logger.bind(component=__name__)
 _PIN_CONTEXT = CryptContext(
     schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"], deprecated="auto"
 )
+
+_INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
+    ttl_seconds=60.0
+)
+
+
+def invalidate_inventory_movements_cache() -> None:
+    """Limpia la caché de reportes de movimientos de inventario."""
+
+    _INVENTORY_MOVEMENTS_CACHE.clear()
 
 
 def _verify_supervisor_pin_hash(hashed: str, candidate: str) -> bool:
@@ -559,6 +570,26 @@ def _normalize_store_ids(store_ids: Iterable[int] | None) -> set[int] | None:
         return None
     normalized = {int(store_id) for store_id in store_ids if int(store_id) > 0}
     return normalized or None
+
+
+def _inventory_movements_report_cache_key(
+    store_filter: set[int] | None,
+    start_dt: datetime,
+    end_dt: datetime,
+    movement_type: models.MovementType | None,
+    limit: int | None,
+    offset: int,
+) -> tuple[tuple[int, ...], str, str, str | None, int | None, int]:
+    store_key = tuple(sorted(store_filter)) if store_filter else tuple()
+    movement_key = movement_type.value if movement_type else None
+    return (
+        store_key,
+        start_dt.isoformat(),
+        end_dt.isoformat(),
+        movement_key,
+        limit,
+        offset,
+    )
 
 
 def log_audit_event(
@@ -10422,6 +10453,7 @@ def create_inventory_movement(
                 audit_trail_utils.to_audit_trail(latest_log),
             )
     inventory_availability.invalidate_inventory_availability_cache()
+    invalidate_inventory_movements_cache()
     return movement
 
 
@@ -11005,9 +11037,18 @@ def get_inventory_movements_report(
     date_from: date | datetime | None = None,
     date_to: date | datetime | None = None,
     movement_type: models.MovementType | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> schemas.InventoryMovementsReport:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = _normalize_date_range(date_from, date_to)
+
+    cache_key = _inventory_movements_report_cache_key(
+        store_filter, start_dt, end_dt, movement_type, limit, offset
+    )
+    cached_report = _INVENTORY_MOVEMENTS_CACHE.get(cache_key)
+    if cached_report is not None:
+        return cached_report.model_copy(deep=True)
 
     movement_stmt = (
         select(models.InventoryMovement)
@@ -11022,21 +11063,29 @@ def get_inventory_movements_report(
 
     if store_filter:
         movement_stmt = movement_stmt.where(
-            models.InventoryMovement.store_id.in_(store_filter))
+            models.InventoryMovement.store_id.in_(store_filter)
+        )
     movement_stmt = movement_stmt.where(
-        models.InventoryMovement.created_at >= start_dt)
+        models.InventoryMovement.created_at >= start_dt
+    )
     movement_stmt = movement_stmt.where(
-        models.InventoryMovement.created_at <= end_dt)
+        models.InventoryMovement.created_at <= end_dt
+    )
     if movement_type is not None:
         movement_stmt = movement_stmt.where(
-            models.InventoryMovement.movement_type == movement_type)
+            models.InventoryMovement.movement_type == movement_type
+        )
+
+    if offset:
+        movement_stmt = movement_stmt.offset(offset)
+    if limit is not None:
+        movement_stmt = movement_stmt.limit(limit)
 
     movements = list(db.scalars(movement_stmt).unique())
 
     _hydrate_movement_references(db, movements)
 
-    movement_ids = [
-        movement.id for movement in movements if movement.id is not None]
+    movement_ids = [movement.id for movement in movements if movement.id is not None]
     audit_logs = get_last_audit_entries(
         db,
         entity_type="inventory_movement",
@@ -11048,8 +11097,7 @@ def get_inventory_movements_report(
     }
 
     totals_by_type: dict[models.MovementType, dict[str, Decimal | int]] = {}
-    period_map: dict[tuple[date, models.MovementType],
-                     dict[str, Decimal | int]] = {}
+    period_map: dict[tuple[date, models.MovementType], dict[str, Decimal | int]] = {}
     total_units = 0
     total_value = Decimal("0")
     report_entries: list[schemas.MovementReportEntry] = []
@@ -11071,8 +11119,7 @@ def get_inventory_movements_report(
             period_key,
             {"quantity": 0, "value": Decimal("0")},
         )
-        period_data["quantity"] = int(
-            period_data["quantity"]) + movement.quantity
+        period_data["quantity"] = int(period_data["quantity"]) + movement.quantity
         period_data["value"] = _to_decimal(period_data["value"]) + value
 
         report_entries.append(
@@ -11122,11 +11169,13 @@ def get_inventory_movements_report(
         por_tipo=summary_by_type,
     )
 
-    return schemas.InventoryMovementsReport(
+    report = schemas.InventoryMovementsReport(
         resumen=resumen,
         periodos=period_summaries,
         movimientos=report_entries,
     )
+    _INVENTORY_MOVEMENTS_CACHE.set(cache_key, report.model_copy(deep=True))
+    return report
 
 
 def get_top_selling_products(
@@ -11585,6 +11634,8 @@ def calculate_stockout_forecast(
             models.Device.sku,
             models.Device.name,
             models.Device.quantity,
+            models.Device.minimum_stock,
+            models.Device.reorder_point,
             models.Store.id.label("store_id"),
             models.Store.name.label("store_name"),
         )
@@ -11745,6 +11796,8 @@ def calculate_stockout_forecast(
                 "average_daily_sales": round(float(expected_daily), 2),
                 "projected_days": projected_days,
                 "quantity": quantity,
+                "minimum_stock": int(getattr(row, "minimum_stock", 0) or 0),
+                "reorder_point": int(getattr(row, "reorder_point", 0) or 0),
                 "trend": trend_label,
                 "trend_score": round(float(slope), 4),
                 "confidence": round(float(r_squared), 3),
@@ -12404,11 +12457,227 @@ def generate_analytics_alerts(
                 }
             )
 
+    anomalies = detect_return_anomalies(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        min_returns=3,
+        sigma_threshold=1.5,
+        limit=window,
+        offset=offset,
+    )
+
+    for anomaly in anomalies:
+        if not anomaly.get("is_anomalous"):
+            continue
+        alerts.append(
+            {
+                "type": "returns",
+                "level": "warning",
+                "message": (
+                    f"{anomaly['user_name'] or 'Usuario'} registra devoluciones inusuales"
+                    f" ({anomaly['return_count']} en la ventana)"
+                ),
+                "store_id": None,
+                "store_name": "Global",
+                "device_id": None,
+                "sku": None,
+            }
+        )
+
     alerts.sort(key=lambda alert: (
         alert["level"] != "critical", alert["level"] != "warning"))
     if limit is None:
         return alerts[offset:]
     return alerts[offset: offset + limit]
+
+
+def calculate_store_sales_forecast(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    horizon_days: int = 14,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    projections = calculate_sales_projection(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        horizon_days=horizon_days,
+        limit=limit,
+        offset=offset,
+    )
+    forecasts: list[dict[str, object]] = []
+    for item in projections:
+        forecasts.append(
+            {
+                "store_id": int(item["store_id"]),
+                "store_name": item["store_name"],
+                "average_daily_units": float(item.get("average_daily_units", 0)),
+                "projected_units": float(item.get("projected_units", 0)),
+                "projected_revenue": float(item.get("projected_revenue", 0)),
+                "trend": item.get("trend", "estable"),
+                "confidence": float(item.get("confidence", 0)),
+            }
+        )
+    return forecasts
+
+
+def calculate_reorder_suggestions(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    horizon_days: int = 7,
+    safety_days: int = 2,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    horizon = max(horizon_days, 1) + max(safety_days, 0)
+    forecast = calculate_stockout_forecast(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=limit,
+        offset=offset,
+    )
+    suggestions: list[dict[str, object]] = []
+    for item in forecast:
+        quantity = int(item.get("quantity", 0) or 0)
+        reorder_point = int(item.get("reorder_point", 0) or 0)
+        minimum_stock = int(item.get("minimum_stock", 0) or 0)
+        avg_daily = float(item.get("average_daily_sales", 0.0) or 0.0)
+        projected_days = item.get("projected_days")
+
+        buffer_target = max(reorder_point, minimum_stock)
+        demand_target = math.ceil(avg_daily * horizon)
+        target_level = max(buffer_target, demand_target)
+        recommended_order = max(target_level - quantity, 0)
+
+        if recommended_order <= 0:
+            continue
+
+        reason_parts: list[str] = []
+        if projected_days is not None:
+            reason_parts.append(f"Agotamiento estimado en {projected_days} días")
+        if demand_target > buffer_target:
+            reason_parts.append(
+                f"Cubre demanda proyectada ({horizon} días)"
+            )
+        if not reason_parts:
+            reason_parts.append("Stock bajo frente al buffer configurado")
+
+        suggestions.append(
+            {
+                "store_id": int(item["store_id"]),
+                "store_name": item["store_name"],
+                "device_id": int(item["device_id"]),
+                "sku": item["sku"],
+                "name": item["name"],
+                "quantity": quantity,
+                "reorder_point": reorder_point,
+                "minimum_stock": minimum_stock,
+                "recommended_order": recommended_order,
+                "projected_days": projected_days,
+                "average_daily_sales": round(avg_daily, 2) if avg_daily else None,
+                "reason": "; ".join(reason_parts),
+            }
+        )
+
+    suggestions.sort(key=lambda item: item["recommended_order"], reverse=True)
+    return suggestions
+
+
+def detect_return_anomalies(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    sigma_threshold: float = 2.0,
+    min_returns: int = 3,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+
+    stmt = (
+        select(
+            models.User.id.label("user_id"),
+            models.User.username,
+            models.User.full_name,
+            func.count(models.SaleReturn.id).label("return_count"),
+            func.coalesce(func.sum(models.SaleReturn.quantity), 0).label("units"),
+            func.max(models.SaleReturn.created_at).label("last_return"),
+            func.count(func.distinct(models.Sale.store_id)).label("store_count"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleReturn.sale_id)
+        .join(models.Store, models.Store.id == models.Sale.store_id)
+        .join(models.User, models.User.id == models.SaleReturn.processed_by_id)
+        .group_by(models.User.id)
+        .order_by(models.User.username.asc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.SaleReturn.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.SaleReturn.created_at <= end_dt)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    if offset:
+        stmt = stmt.offset(offset)
+
+    rows = list(db.execute(stmt))
+    if not rows:
+        return []
+
+    counts = [int(row.return_count or 0) for row in rows]
+    mean = sum(counts) / len(counts) if counts else 0.0
+    variance = sum((count - mean) ** 2 for count in counts) / len(counts) if counts else 0.0
+    std_dev = math.sqrt(variance)
+    threshold = max(float(min_returns), mean + sigma_threshold * std_dev)
+
+    anomalies: list[dict[str, object]] = []
+    for row in rows:
+        count_value = int(row.return_count or 0)
+        total_units = int(row.units or 0)
+        if count_value < 1:
+            continue
+        z_score = (count_value - mean) / std_dev if std_dev > 0 else 0.0
+        is_anomalous = count_value >= threshold and count_value >= min_returns
+        anomalies.append(
+            {
+                "user_id": int(row.user_id),
+                "user_name": _user_display_name(row) or row.username,
+                "return_count": count_value,
+                "total_units": total_units,
+                "last_return": row.last_return,
+                "store_count": int(row.store_count or 0),
+                "z_score": round(z_score, 2),
+                "threshold": round(threshold, 2),
+                "is_anomalous": is_anomalous,
+            }
+        )
+
+    anomalies.sort(key=lambda item: item["return_count"], reverse=True)
+    return anomalies
 
 
 def calculate_realtime_store_widget(
@@ -12891,6 +13160,48 @@ def mark_outbox_entries_sent(
             )
             db.refresh(entry)
     return entries
+
+
+def mark_outbox_entry_failed(
+    db: Session,
+    *,
+    entry_id: int,
+    error_message: str | None = None,
+    performed_by_id: int | None = None,
+) -> models.SyncOutbox | None:
+    """Marca una entrada de outbox como fallida y registra el error."""
+
+    entry = db.get(models.SyncOutbox, entry_id)
+    if entry is None:
+        return None
+
+    now = datetime.utcnow()
+    with transactional_session(db):
+        entry.status = models.SyncOutboxStatus.FAILED
+        entry.last_attempt_at = now
+        entry.attempt_count = (entry.attempt_count or 0) + 1
+        if error_message:
+            entry.error_message = textwrap.shorten(str(error_message), width=250)
+        entry.updated_at = now
+        flush_session(db)
+        db.refresh(entry)
+
+        _log_action(
+            db,
+            action="sync_outbox_failed",
+            entity_type=entry.entity_type,
+            entity_id=entry.entity_id,
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "operation": entry.operation,
+                    "status": entry.status.value,
+                    "error": entry.error_message,
+                },
+                ensure_ascii=False,
+            ),
+        )
+    return entry
 
 
 def list_sync_sessions(
@@ -13478,6 +13789,47 @@ def list_sync_outbox(
             statement = statement.where(
                 models.SyncOutbox.status.in_(status_tuple))
     return list(db.scalars(statement))
+
+
+def list_sync_outbox_by_entity(
+    db: Session,
+    *,
+    entity_types: Iterable[str] | None = None,
+    statuses: Iterable[models.SyncOutboxStatus] | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.SyncOutbox]:
+    """Obtiene eventos de outbox filtrados por entidad y estado."""
+
+    statement = (
+        select(models.SyncOutbox)
+        .order_by(models.SyncOutbox.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    if entity_types is not None:
+        entity_tuple = tuple(entity_types)
+        if entity_tuple:
+            statement = statement.where(models.SyncOutbox.entity_type.in_(entity_tuple))
+
+    if statuses is not None:
+        status_tuple = tuple(statuses)
+        if status_tuple:
+            statement = statement.where(models.SyncOutbox.status.in_(status_tuple))
+
+    return list(db.scalars(statement))
+
+
+def get_sync_outbox_entry(
+    db: Session, *, entry_id: int, entity_types: Iterable[str] | None = None
+) -> models.SyncOutbox | None:
+    statement = select(models.SyncOutbox).where(models.SyncOutbox.id == entry_id)
+    if entity_types is not None:
+        entity_tuple = tuple(entity_types)
+        if entity_tuple:
+            statement = statement.where(models.SyncOutbox.entity_type.in_(entity_tuple))
+    return db.scalars(statement).first()
 
 
 def reset_outbox_entries(
