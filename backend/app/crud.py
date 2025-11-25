@@ -10,6 +10,7 @@ import json
 import math
 import re
 import secrets
+import textwrap
 from dataclasses import dataclass
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -13113,6 +13114,48 @@ def mark_outbox_entries_sent(
     return entries
 
 
+def mark_outbox_entry_failed(
+    db: Session,
+    *,
+    entry_id: int,
+    error_message: str | None = None,
+    performed_by_id: int | None = None,
+) -> models.SyncOutbox | None:
+    """Marca una entrada de outbox como fallida y registra el error."""
+
+    entry = db.get(models.SyncOutbox, entry_id)
+    if entry is None:
+        return None
+
+    now = datetime.utcnow()
+    with transactional_session(db):
+        entry.status = models.SyncOutboxStatus.FAILED
+        entry.last_attempt_at = now
+        entry.attempt_count = (entry.attempt_count or 0) + 1
+        if error_message:
+            entry.error_message = textwrap.shorten(str(error_message), width=250)
+        entry.updated_at = now
+        flush_session(db)
+        db.refresh(entry)
+
+        _log_action(
+            db,
+            action="sync_outbox_failed",
+            entity_type=entry.entity_type,
+            entity_id=entry.entity_id,
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "operation": entry.operation,
+                    "status": entry.status.value,
+                    "error": entry.error_message,
+                },
+                ensure_ascii=False,
+            ),
+        )
+    return entry
+
+
 def list_sync_sessions(
     db: Session,
     *,
@@ -13698,6 +13741,47 @@ def list_sync_outbox(
             statement = statement.where(
                 models.SyncOutbox.status.in_(status_tuple))
     return list(db.scalars(statement))
+
+
+def list_sync_outbox_by_entity(
+    db: Session,
+    *,
+    entity_types: Iterable[str] | None = None,
+    statuses: Iterable[models.SyncOutboxStatus] | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.SyncOutbox]:
+    """Obtiene eventos de outbox filtrados por entidad y estado."""
+
+    statement = (
+        select(models.SyncOutbox)
+        .order_by(models.SyncOutbox.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    if entity_types is not None:
+        entity_tuple = tuple(entity_types)
+        if entity_tuple:
+            statement = statement.where(models.SyncOutbox.entity_type.in_(entity_tuple))
+
+    if statuses is not None:
+        status_tuple = tuple(statuses)
+        if status_tuple:
+            statement = statement.where(models.SyncOutbox.status.in_(status_tuple))
+
+    return list(db.scalars(statement))
+
+
+def get_sync_outbox_entry(
+    db: Session, *, entry_id: int, entity_types: Iterable[str] | None = None
+) -> models.SyncOutbox | None:
+    statement = select(models.SyncOutbox).where(models.SyncOutbox.id == entry_id)
+    if entity_types is not None:
+        entity_tuple = tuple(entity_types)
+        if entity_tuple:
+            statement = statement.where(models.SyncOutbox.entity_type.in_(entity_tuple))
+    return db.scalars(statement).first()
 
 
 def reset_outbox_entries(

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import BytesIO
-from typing import Literal
+from typing import Literal, Mapping
 
 from fastapi import (
     APIRouter,
@@ -83,6 +83,10 @@ def _queue_hardware_events(
     sale: object,
     payment_method: object,
     hardware_config: schemas.POSHardwareSettings,
+    *,
+    payment_breakdown: Mapping[str, float] | None = None,
+    escpos_ticket: str | None = None,
+    receipt_pdf_base64: str | None = None,
 ) -> None:
     normalized_method = (
         payment_method.value
@@ -90,20 +94,23 @@ def _queue_hardware_events(
         else str(payment_method)
     ).upper()
     store_id = getattr(sale, "store_id", None)
-    if (
-        store_id is not None
-        and hardware_config.cash_drawer.enabled
+    should_open_drawer = (
+        hardware_config.cash_drawer.enabled
         and hardware_config.cash_drawer.auto_open_on_cash_sale
-        and normalized_method == schemas.PaymentMethod.EFECTIVO.value
-    ):
-        drawer_event: dict[str, object] = {
-            "event": "cash_drawer.open",
-            "requested_at": datetime.now(timezone.utc).isoformat(),
-            "pulse_duration_ms": hardware_config.cash_drawer.pulse_duration_ms,
-        }
-        if hardware_config.cash_drawer.connector:
-            drawer_event["connector"] = hardware_config.cash_drawer.connector.model_dump()
-        hardware_channels.schedule_broadcast(background_tasks, store_id, drawer_event)
+    )
+    if payment_breakdown:
+        cash_amount = payment_breakdown.get(schemas.PaymentMethod.EFECTIVO.value)
+        should_open_drawer = should_open_drawer and cash_amount is not None and cash_amount > 0
+    if store_id is not None and should_open_drawer:
+        if normalized_method == schemas.PaymentMethod.EFECTIVO.value or payment_breakdown:
+            drawer_event: dict[str, object] = {
+                "event": "cash_drawer.open",
+                "requested_at": datetime.now(timezone.utc).isoformat(),
+                "pulse_duration_ms": hardware_config.cash_drawer.pulse_duration_ms,
+            }
+            if hardware_config.cash_drawer.connector:
+                drawer_event["connector"] = hardware_config.cash_drawer.connector.model_dump()
+            hardware_channels.schedule_broadcast(background_tasks, store_id, drawer_event)
 
     if store_id is not None and hardware_config.customer_display.enabled:
         sale_payload = _sale_display_payload(sale)
@@ -114,6 +121,25 @@ def _queue_hardware_events(
             "total": sale_payload["total"],
         }
         hardware_channels.schedule_broadcast(background_tasks, store_id, display_event)
+
+    if store_id is not None and hardware_config.printers:
+        printer = next((p for p in hardware_config.printers if p.is_default), None)
+        if printer is None:
+            printer = hardware_config.printers[0]
+        receipt_event: dict[str, object] = {
+            "event": "receipt.print",
+            "sale_id": getattr(sale, "id", None),
+            "store_id": store_id,
+            "requested_at": datetime.now(timezone.utc).isoformat(),
+            "printer": printer.model_dump(),
+            "formats": {},
+        }
+        if receipt_pdf_base64:
+            receipt_event["formats"]["pdf_base64"] = receipt_pdf_base64
+        if escpos_ticket:
+            receipt_event["formats"]["escpos_commands"] = escpos_ticket
+        if receipt_event["formats"]:
+            hardware_channels.schedule_broadcast(background_tasks, store_id, receipt_event)
 
 
 @router.post(
@@ -281,9 +307,14 @@ def register_pos_sale_endpoint(
             debt_snapshot=snapshot,
             schedule=schedule_data,
         )
+        escpos_ticket = pos_receipts.render_receipt_escpos(
+            sale_detail,
+            config,
+            debt_snapshot=snapshot,
+            schedule=schedule_data,
+        )
         if snapshot is not None:
             debt_receipt_pdf_base64 = receipt_pdf
-        receipt_pdf = pos_receipts.render_receipt_base64(sale_detail, config)
         hardware_config = schemas.POSHardwareSettings.model_validate(
             config.hardware_settings
         )
@@ -292,6 +323,14 @@ def register_pos_sale_endpoint(
             sale_detail,
             normalized_payload.payment_method,
             hardware_config,
+            payment_breakdown={
+                key.upper(): float(value)
+                for key, value in (adjusted_payload.payment_breakdown or {}).items()
+            }
+            if adjusted_payload.payment_breakdown
+            else None,
+            escpos_ticket=escpos_ticket,
+            receipt_pdf_base64=receipt_pdf,
         )
         return schemas.POSSaleResponse(
             status="registered",

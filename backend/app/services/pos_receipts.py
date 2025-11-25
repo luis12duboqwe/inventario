@@ -10,11 +10,11 @@ from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 from typing import Sequence
 
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 from .. import models
 from .credit import DebtSnapshot
@@ -312,6 +312,73 @@ def render_receipt_pdf(
     pdf.save()
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def render_receipt_escpos(
+    sale: models.Sale,
+    config: models.POSConfig,
+    *,
+    debt_snapshot: DebtSnapshot | None = None,
+    schedule: Sequence[dict[str, object]] | None = None,
+) -> str:
+    """Genera un ticket plano compatible con impresoras ESC/POS.
+
+    La salida incluye comandos básicos de inicio y corte, manteniendo un
+    formato compacto para que los adaptadores locales puedan enviarlo de
+    inmediato sin post-procesamiento.
+    """
+
+    lines: list[str] = []
+    # Reinicio e inicialización básica
+    lines.append("\x1b@")
+    store_name = sale.store.name if sale.store else "Sucursal"
+    document_number = f"{config.invoice_prefix}-{sale.id:06d}"
+    customer_label = sale.customer_name or "Cliente"
+    payment_method = getattr(sale, "payment_method", None)
+    payment_label = payment_method.value if payment_method else "SIN PAGO"
+
+    lines.append("\x1b!\x18" + store_name)  # Negrita y doble alto
+    lines.append("\x1b!\x00" + f"Ticket: {document_number}")
+    lines.append(f"Fecha: {sale.created_at.strftime('%Y-%m-%d %H:%M')}")
+    lines.append(f"Cliente: {customer_label}")
+    lines.append(f"Método: {payment_label}")
+    lines.append("-")
+
+    for item in sale.items:
+        device_label = item.device.name if item.device else f"ID {item.device_id}"
+        line_total = _format_currency(getattr(item, "total_line", None))
+        quantity = getattr(item, "quantity", 1)
+        lines.append(f"{device_label}")
+        lines.append(f"  Cant: {quantity}  Total: ${line_total}")
+
+    lines.append("-")
+    lines.append(f"Subtotal: ${_format_currency(getattr(sale, 'subtotal_amount', None))}")
+    lines.append(
+        f"Impuestos ({_format_currency(config.tax_rate)}%): ${_format_currency(getattr(sale, 'tax_amount', None))}"
+    )
+    lines.append("\x1b!\x08" + f"TOTAL: ${_format_currency(getattr(sale, 'total_amount', None))}")
+    lines.append("\x1b!\x00")
+
+    if debt_snapshot is not None:
+        lines.append("-")
+        lines.append("Resumen de crédito")
+        lines.append(f"Saldo anterior: ${_format_currency(debt_snapshot.previous_balance)}")
+        lines.append(f"Nuevo cargo: ${_format_currency(debt_snapshot.new_charges)}")
+        lines.append(f"Abonos aplicados: ${_format_currency(debt_snapshot.payments_applied)}")
+        lines.append(f"Saldo pendiente: ${_format_currency(debt_snapshot.remaining_balance)}")
+        if schedule:
+            lines.append("Calendario de pagos:")
+            for entry in schedule:
+                seq = entry.get("sequence", "-")
+                due = entry.get("due_date")
+                due_label = due.strftime("%Y-%m-%d") if isinstance(due, datetime) else str(due)
+                amount = _format_currency(entry.get("amount"))
+                lines.append(f"  #{seq} · {due_label} · ${amount}")
+
+    lines.append("Gracias por tu compra")
+    lines.append("\n\n\n\x1dV\x00")  # Corte parcial
+
+    return "\n".join(lines)
 
 
 def render_receipt_base64(

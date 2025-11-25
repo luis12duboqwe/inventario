@@ -37,12 +37,15 @@ export default function POSQuickScan({
   const [lastCode, setLastCode] = useState<string | null>(null);
   const [lastLabel, setLastLabel] = useState<string | null>(null);
   const [listening, setListening] = useState(initialEnabled);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const statusTimerRef = useRef<number | null>(null);
   const bufferRef = useRef<string>("");
   const bufferResetRef = useRef<number | null>(null);
   const lastKeyRef = useRef<number>(0);
   const listeningRef = useRef(listening);
+  const pendingCodeRef = useRef<string | null>(null);
+  const processingRef = useRef(false);
 
   useEffect(() => {
     listeningRef.current = listening;
@@ -69,6 +72,12 @@ export default function POSQuickScan({
     }
   }, []);
 
+  useEffect(() => {
+    if (listening && inputRef.current) {
+      inputRef.current.focus({ preventScroll: true });
+    }
+  }, [listening]);
+
   const scheduleReset = useCallback(() => {
     if (statusTimerRef.current) {
       clearTimeout(statusTimerRef.current);
@@ -94,6 +103,13 @@ export default function POSQuickScan({
         return false;
       }
 
+      if (processingRef.current && !options?.force) {
+        pendingCodeRef.current = code;
+        setMessage(`Código ${code} en cola para procesar…`);
+        return true;
+      }
+
+      processingRef.current = true;
       setLastCode(code);
       setStatus("processing");
       setMessage(`Procesando ${code}…`);
@@ -132,6 +148,13 @@ export default function POSQuickScan({
         setMessage(errorMessage);
         scheduleReset();
         return false;
+      } finally {
+        processingRef.current = false;
+        const pending = pendingCodeRef.current;
+        pendingCodeRef.current = null;
+        if (pending && listeningRef.current) {
+          void flushBuffer(pending, { force: true });
+        }
       }
     },
     [onSubmit, scheduleReset],
@@ -265,6 +288,7 @@ export default function POSQuickScan({
       </header>
       <form onSubmit={handleSubmit} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
         <input
+          ref={inputRef}
           value={manualValue}
           onChange={(event) => setManualValue(event.target.value)}
           placeholder="Capturar código manual"
