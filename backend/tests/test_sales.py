@@ -65,6 +65,7 @@ def _create_user(client, auth_headers, *, username: str, roles: list[str]) -> st
 
 
 def test_complete_sale_return_flow_requires_valid_role(client, db_session):
+    previous_flag = settings.enable_purchases_sales
     settings.enable_purchases_sales = True
     try:
         token, _ = _bootstrap_admin(client, db_session)
@@ -174,7 +175,7 @@ def test_complete_sale_return_flow_requires_valid_role(client, db_session):
         )
         assert restored_device["quantity"] == 3
     finally:
-        settings.enable_purchases_sales = False
+        settings.enable_purchases_sales = previous_flag
 
 
 def test_concurrent_sales_produce_conflict_when_inventory_runs_out(client, db_session):
