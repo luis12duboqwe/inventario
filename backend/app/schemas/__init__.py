@@ -8281,6 +8281,48 @@ class IntegrationHealthUpdateRequest(BaseModel):
     )
 
 
+class IntegrationWebhookEvent(BaseModel):
+    id: int
+    event: str
+    entity: str
+    entity_id: str
+    operation: str
+    payload: dict[str, Any]
+    version: int
+    status: SyncOutboxStatus
+    attempt_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _parse_payload(cls, value: Any) -> dict[str, Any]:
+        if isinstance(value, str):
+            try:
+                import json
+
+                return json.loads(value)
+            except Exception:  # pragma: no cover - fallback a payload vacío
+                return {}
+        if isinstance(value, dict):
+            return value
+        return {}
+
+
+class IntegrationWebhookAckRequest(BaseModel):
+    status: Literal["sent", "failed"]
+    error_message: str | None = Field(default=None, max_length=250)
+
+
+class IntegrationWebhookAckResponse(BaseModel):
+    id: int
+    status: SyncOutboxStatus
+    attempts: int
+    error_message: str | None
+
+
 class ConfigurationParameterType(str, enum.Enum):
     """Tipos permitidos para los parámetros configurables."""
 
@@ -8596,6 +8638,9 @@ __all__ = [
     "IntegrationProviderDetail",
     "IntegrationRotateSecretResponse",
     "IntegrationHealthUpdateRequest",
+    "IntegrationWebhookEvent",
+    "IntegrationWebhookAckRequest",
+    "IntegrationWebhookAckResponse",
     "BackupExportFormat",
     "DeviceBase",
     "DeviceCreate",
