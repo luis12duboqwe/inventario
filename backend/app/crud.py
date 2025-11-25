@@ -58,6 +58,16 @@ _PIN_CONTEXT = CryptContext(
     schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"], deprecated="auto"
 )
 
+_INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
+    ttl_seconds=60.0
+)
+
+
+def invalidate_inventory_movements_cache() -> None:
+    """Limpia la caché de reportes de movimientos de inventario."""
+
+    _INVENTORY_MOVEMENTS_CACHE.clear()
+
 
 def _verify_supervisor_pin_hash(hashed: str, candidate: str) -> bool:
     try:
@@ -560,6 +570,26 @@ def _normalize_store_ids(store_ids: Iterable[int] | None) -> set[int] | None:
         return None
     normalized = {int(store_id) for store_id in store_ids if int(store_id) > 0}
     return normalized or None
+
+
+def _inventory_movements_report_cache_key(
+    store_filter: set[int] | None,
+    start_dt: datetime,
+    end_dt: datetime,
+    movement_type: models.MovementType | None,
+    limit: int | None,
+    offset: int,
+) -> tuple[tuple[int, ...], str, str, str | None, int | None, int]:
+    store_key = tuple(sorted(store_filter)) if store_filter else tuple()
+    movement_key = movement_type.value if movement_type else None
+    return (
+        store_key,
+        start_dt.isoformat(),
+        end_dt.isoformat(),
+        movement_key,
+        limit,
+        offset,
+    )
 
 
 def log_audit_event(
@@ -10423,6 +10453,7 @@ def create_inventory_movement(
                 audit_trail_utils.to_audit_trail(latest_log),
             )
     inventory_availability.invalidate_inventory_availability_cache()
+    invalidate_inventory_movements_cache()
     return movement
 
 
@@ -11006,9 +11037,18 @@ def get_inventory_movements_report(
     date_from: date | datetime | None = None,
     date_to: date | datetime | None = None,
     movement_type: models.MovementType | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> schemas.InventoryMovementsReport:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = _normalize_date_range(date_from, date_to)
+
+    cache_key = _inventory_movements_report_cache_key(
+        store_filter, start_dt, end_dt, movement_type, limit, offset
+    )
+    cached_report = _INVENTORY_MOVEMENTS_CACHE.get(cache_key)
+    if cached_report is not None:
+        return cached_report.model_copy(deep=True)
 
     movement_stmt = (
         select(models.InventoryMovement)
@@ -11023,21 +11063,29 @@ def get_inventory_movements_report(
 
     if store_filter:
         movement_stmt = movement_stmt.where(
-            models.InventoryMovement.store_id.in_(store_filter))
+            models.InventoryMovement.store_id.in_(store_filter)
+        )
     movement_stmt = movement_stmt.where(
-        models.InventoryMovement.created_at >= start_dt)
+        models.InventoryMovement.created_at >= start_dt
+    )
     movement_stmt = movement_stmt.where(
-        models.InventoryMovement.created_at <= end_dt)
+        models.InventoryMovement.created_at <= end_dt
+    )
     if movement_type is not None:
         movement_stmt = movement_stmt.where(
-            models.InventoryMovement.movement_type == movement_type)
+            models.InventoryMovement.movement_type == movement_type
+        )
+
+    if offset:
+        movement_stmt = movement_stmt.offset(offset)
+    if limit is not None:
+        movement_stmt = movement_stmt.limit(limit)
 
     movements = list(db.scalars(movement_stmt).unique())
 
     _hydrate_movement_references(db, movements)
 
-    movement_ids = [
-        movement.id for movement in movements if movement.id is not None]
+    movement_ids = [movement.id for movement in movements if movement.id is not None]
     audit_logs = get_last_audit_entries(
         db,
         entity_type="inventory_movement",
@@ -11049,8 +11097,7 @@ def get_inventory_movements_report(
     }
 
     totals_by_type: dict[models.MovementType, dict[str, Decimal | int]] = {}
-    period_map: dict[tuple[date, models.MovementType],
-                     dict[str, Decimal | int]] = {}
+    period_map: dict[tuple[date, models.MovementType], dict[str, Decimal | int]] = {}
     total_units = 0
     total_value = Decimal("0")
     report_entries: list[schemas.MovementReportEntry] = []
@@ -11072,8 +11119,7 @@ def get_inventory_movements_report(
             period_key,
             {"quantity": 0, "value": Decimal("0")},
         )
-        period_data["quantity"] = int(
-            period_data["quantity"]) + movement.quantity
+        period_data["quantity"] = int(period_data["quantity"]) + movement.quantity
         period_data["value"] = _to_decimal(period_data["value"]) + value
 
         report_entries.append(
@@ -11123,11 +11169,13 @@ def get_inventory_movements_report(
         por_tipo=summary_by_type,
     )
 
-    return schemas.InventoryMovementsReport(
+    report = schemas.InventoryMovementsReport(
         resumen=resumen,
         periodos=period_summaries,
         movimientos=report_entries,
     )
+    _INVENTORY_MOVEMENTS_CACHE.set(cache_key, report.model_copy(deep=True))
+    return report
 
 
 def get_top_selling_products(

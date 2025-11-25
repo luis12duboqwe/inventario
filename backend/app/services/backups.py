@@ -500,7 +500,6 @@ def _restore_database(
 
 
 
-
 def generate_backup(
     db: Session,
     *,
@@ -542,7 +541,7 @@ def generate_backup(
             indent=2,
             default=_json_default,
         ),
-        encoding='utf-8',
+        encoding="utf-8",
     )
 
     copied_files = _collect_critical_files(critical_directory)
@@ -645,8 +644,10 @@ def generate_backup(
 
     component_files = [pdf_path, json_path, sql_path, config_path]
     _encrypt_backup_files(cipher, component_files, critical_directory)
-    _build_archive()
 
+    def _component_paths(
+        include_metadata: bool = True, include_archive: bool = True
+    ) -> list[Path]:
     def _component_paths(include_metadata: bool = True, include_archive: bool = True) -> list[Path]:
         paths: list[Path] = [
             pdf_path,
@@ -657,6 +658,18 @@ def generate_backup(
         ]
         if include_metadata:
             paths.append(metadata_path)
+        if include_archive and archive_path.exists():
+            paths.append(archive_path)
+        return paths
+
+    def _calculate_components_size(
+        include_metadata: bool = True, include_archive: bool = True
+    ) -> int:
+        return _calculate_total_size(
+            _component_paths(
+                include_metadata=include_metadata, include_archive=include_archive
+            )
+        )
         if include_archive:
             paths.append(archive_path)
         return paths
@@ -744,6 +757,17 @@ def generate_backup(
             cipher=cipher,
         )
 
+    provisional_size = _calculate_components_size(
+        include_metadata=False, include_archive=False
+    )
+    _write_metadata_with_size(provisional_size)
+    _build_archive()
+
+    total_size = _calculate_components_size()
+    _write_metadata_with_size(total_size)
+    _build_archive()
+
+    final_size = _calculate_components_size()
     def _refresh_metadata_and_archive(size: int) -> None:
         _write_metadata_with_size(size)
         _build_archive()
