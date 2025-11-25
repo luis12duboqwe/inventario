@@ -27,7 +27,6 @@ from ..services import inventory_reports as inventory_reports_service
 from ..services import fiscal_books as fiscal_books_service
 from ..services import performance_reports
 from ..services import risk_monitor
-from ..utils import audit as audit_utils
 from backend.schemas.common import Page, PageParams
 
 router = APIRouter(prefix="/reports", tags=["reportes"])
@@ -1388,6 +1387,8 @@ def inventory_movements(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
@@ -1406,6 +1407,8 @@ def inventory_movements(
         date_from=date_from,
         date_to=date_to,
         movement_type=movement_enum,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -1720,6 +1723,8 @@ def inventory_movements_csv(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -1740,6 +1745,8 @@ def inventory_movements_csv(
         date_from=date_from,
         date_to=date_to,
         movement_type=movement_enum,
+        limit=limit,
+        offset=offset,
     )
 
     buffer = StringIO()
@@ -1838,6 +1845,8 @@ def inventory_movements_pdf(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -1858,6 +1867,8 @@ def inventory_movements_pdf(
         date_from=date_from,
         date_to=date_to,
         movement_type=movement_enum,
+        limit=limit,
+        offset=offset,
     )
     pdf_bytes = inventory_reports_service.render_inventory_movements_pdf(report)
     buffer = BytesIO(pdf_bytes)
@@ -1878,6 +1889,8 @@ def inventory_movements_excel(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -1898,6 +1911,8 @@ def inventory_movements_excel(
         date_from=date_from,
         date_to=date_to,
         movement_type=movement_enum,
+        limit=limit,
+        offset=offset,
     )
     workbook_buffer = inventory_reports_service.build_inventory_movements_excel(report)
     metadata = schemas.BinaryFileResponse(
