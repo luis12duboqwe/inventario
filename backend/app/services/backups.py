@@ -858,9 +858,9 @@ def restore_backup(
 
     restore_dir = (
         target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}").resolve()
-    # Si la ruta base era absoluta fuera de backup_directory (escenario de prueba), permitirla.
-    if safe_subdir and not restore_dir.is_relative_to(safe_restore_root):
-        raise ValueError("Directorio de restauración no permitido")
+    # Prevención estricta: la restauración debe quedar SIEMPRE dentro de backup_directory
+    if not restore_dir.is_relative_to(safe_restore_root):
+        raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
     restore_dir.mkdir(parents=True, exist_ok=True)
 
     cipher = _get_backup_cipher()
