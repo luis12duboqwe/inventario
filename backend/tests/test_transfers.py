@@ -1,6 +1,7 @@
-from sqlalchemy import select
 from typing import Any, Iterable
-from starlette import status
+
+from fastapi import status
+from sqlalchemy import select
 
 from backend.app import models
 from backend.app.config import settings
@@ -38,121 +39,262 @@ def _bootstrap_admin(client, db_session):
 
 
 def test_full_transfer_flow(client, db_session):
+    previous_flag = settings.enable_transfers
     settings.enable_transfers = True
-    token, user_id = _bootstrap_admin(client, db_session)
-    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        token, user_id = _bootstrap_admin(client, db_session)
+        headers = {"Authorization": f"Bearer {token}"}
 
-    store_norte = client.post(
-        "/stores",
-        json={"name": "Norte", "location": "MX", "timezone": "America/Mexico_City"},
-        headers=headers,
-    )
-    assert store_norte.status_code == status.HTTP_201_CREATED
-    store_norte_id = store_norte.json()["id"]
+        store_norte = client.post(
+            "/stores",
+            json={"name": "Norte", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        assert store_norte.status_code == status.HTTP_201_CREATED
+        store_norte_id = store_norte.json()["id"]
 
-    store_sur = client.post(
-        "/stores",
-        json={"name": "Sur", "location": "MX", "timezone": "America/Mexico_City"},
-        headers=headers,
-    )
-    assert store_sur.status_code == status.HTTP_201_CREATED
-    store_sur_id = store_sur.json()["id"]
+        store_sur = client.post(
+            "/stores",
+            json={"name": "Sur", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        assert store_sur.status_code == status.HTTP_201_CREATED
+        store_sur_id = store_sur.json()["id"]
 
-    # otorgar permisos por tienda
-    membership_payload = {
-        "user_id": user_id,
-        "store_id": store_norte_id,
-        "can_create_transfer": True,
-        "can_receive_transfer": False,
-    }
-    membership_response = client.put(
-        f"/stores/{store_norte_id}/memberships/{user_id}",
-        json=membership_payload,
-        headers=headers,
-    )
-    assert membership_response.status_code == status.HTTP_200_OK
+        membership_payload = {
+            "user_id": user_id,
+            "store_id": store_norte_id,
+            "can_create_transfer": True,
+            "can_receive_transfer": False,
+        }
+        membership_response = client.put(
+            f"/stores/{store_norte_id}/memberships/{user_id}",
+            json=membership_payload,
+            headers=headers,
+        )
+        assert membership_response.status_code == status.HTTP_200_OK
 
-    membership_dest_payload = {
-        "user_id": user_id,
-        "store_id": store_sur_id,
-        "can_create_transfer": False,
-        "can_receive_transfer": True,
-    }
-    membership_dest_response = client.put(
-        f"/stores/{store_sur_id}/memberships/{user_id}",
-        json=membership_dest_payload,
-        headers=headers,
-    )
-    assert membership_dest_response.status_code == status.HTTP_200_OK
+        membership_dest_payload = {
+            "user_id": user_id,
+            "store_id": store_sur_id,
+            "can_create_transfer": False,
+            "can_receive_transfer": True,
+        }
+        membership_dest_response = client.put(
+            f"/stores/{store_sur_id}/memberships/{user_id}",
+            json=membership_dest_payload,
+            headers=headers,
+        )
+        assert membership_dest_response.status_code == status.HTTP_200_OK
 
-    device_payload = {
-        "sku": "SKU-TR-001",
-        "name": "Router empresarial",
-        "quantity": 5,
-        "unit_price": 1500.0,
-        "costo_unitario": 1000.0,
-        "margen_porcentaje": 10.0,
-    }
-    device_response = client.post(
-        f"/stores/{store_norte_id}/devices",
-        json=device_payload,
-        headers=headers,
-    )
-    assert device_response.status_code == status.HTTP_201_CREATED
-    device_id = device_response.json()["id"]
+        device_payload = {
+            "sku": "SKU-TR-001",
+            "name": "Router empresarial",
+            "quantity": 5,
+            "unit_price": 1500.0,
+            "costo_unitario": 1000.0,
+            "margen_porcentaje": 10.0,
+        }
+        device_response = client.post(
+            f"/stores/{store_norte_id}/devices",
+            json=device_payload,
+            headers=headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
 
-    transfer_payload = {
-        "origin_store_id": store_norte_id,
-        "destination_store_id": store_sur_id,
-        "reason": "Reabastecimiento Sur",
-        "items": [
-            {"device_id": device_id, "quantity": 2},
-        ],
-    }
-    create_transfer = client.post(
-        "/transfers",
-        json=transfer_payload,
-        headers={**headers, "X-Reason": "Crear transferencia"},
-    )
-    assert create_transfer.status_code == status.HTTP_201_CREATED
-    transfer_id = create_transfer.json()["id"]
-    assert create_transfer.json()["status"] == "SOLICITADA"
+        transfer_payload = {
+            "origin_store_id": store_norte_id,
+            "destination_store_id": store_sur_id,
+            "reason": "Reabastecimiento Sur",
+            "items": [
+                {"device_id": device_id, "quantity": 2},
+            ],
+        }
+        create_transfer = client.post(
+            "/transfers",
+            json=transfer_payload,
+            headers={**headers, "X-Reason": "Crear transferencia"},
+        )
+        assert create_transfer.status_code == status.HTTP_201_CREATED
+        transfer_id = create_transfer.json()["id"]
+        assert create_transfer.json()["status"] == "SOLICITADA"
 
-    dispatch_response = client.post(
-        f"/transfers/{transfer_id}/dispatch",
-        json={"reason": "Salida autorizada"},
-        headers={**headers, "X-Reason": "Despachar transferencia"},
-    )
-    assert dispatch_response.status_code == status.HTTP_200_OK
-    assert dispatch_response.json()["status"] == "EN_TRANSITO"
+        dispatch_response = client.post(
+            f"/transfers/{transfer_id}/dispatch",
+            json={"reason": "Salida autorizada"},
+            headers={**headers, "X-Reason": "Despachar transferencia"},
+        )
+        assert dispatch_response.status_code == status.HTTP_200_OK
+        assert dispatch_response.json()["status"] == "EN_TRANSITO"
 
-    receive_response = client.post(
-        f"/transfers/{transfer_id}/receive",
-        json={"reason": "Ingreso completado"},
-        headers={**headers, "X-Reason": "Recibir transferencia"},
-    )
-    assert receive_response.status_code == status.HTTP_200_OK
-    data = receive_response.json()
-    assert data["status"] == "RECIBIDA"
-    assert data["received_at"] is not None
+        receive_response = client.post(
+            f"/transfers/{transfer_id}/receive",
+            json={"reason": "Ingreso completado"},
+            headers={**headers, "X-Reason": "Recibir transferencia"},
+        )
+        assert receive_response.status_code == status.HTTP_200_OK
+        data = receive_response.json()
+        assert data["status"] == "RECIBIDA"
+        assert data["received_at"] is not None
 
-    origen_devices = client.get(f"/stores/{store_norte_id}/devices", headers=headers)
-    assert origen_devices.status_code == status.HTTP_200_OK
-    origen_qty = next(
-        item for item in _extract_items(origen_devices.json()) if item["id"] == device_id
-    )["quantity"]
-    assert origen_qty == 3
+        origen_devices = client.get(f"/stores/{store_norte_id}/devices", headers=headers)
+        assert origen_devices.status_code == status.HTTP_200_OK
+        origen_qty = next(
+            item for item in _extract_items(origen_devices.json()) if item["id"] == device_id
+        )["quantity"]
+        assert origen_qty == 3
 
-    destino_devices = client.get(f"/stores/{store_sur_id}/devices", headers=headers)
-    assert destino_devices.status_code == status.HTTP_200_OK
-    transferred = next(
-        item
-        for item in _extract_items(destino_devices.json())
-        if item["sku"] == "SKU-TR-001"
-    )
-    assert transferred["quantity"] == 2
+        destino_devices = client.get(f"/stores/{store_sur_id}/devices", headers=headers)
+        assert destino_devices.status_code == status.HTTP_200_OK
+        transferred = next(
+            item
+            for item in _extract_items(destino_devices.json())
+            if item["sku"] == "SKU-TR-001"
+        )
+        assert transferred["quantity"] == 2
+    finally:
+        settings.enable_transfers = previous_flag
 
-    settings.enable_transfers = False
+
+def test_transfer_receive_updates_once(client, db_session):
+    previous_flag = settings.enable_transfers
+    settings.enable_transfers = True
+    try:
+        token, user_id = _bootstrap_admin(client, db_session)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        origin = client.post(
+            "/stores",
+            json={"name": "Norte Recepcion", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+        destination = client.post(
+            "/stores",
+            json={"name": "Sur Recepcion", "location": "MX", "timezone": "America/Mexico_City"},
+            headers=headers,
+        )
+
+        assert origin.status_code == status.HTTP_201_CREATED
+        assert destination.status_code == status.HTTP_201_CREATED
+
+        origin_id = origin.json()["id"]
+        destination_id = destination.json()["id"]
+
+        origin_membership = client.put(
+            f"/stores/{origin_id}/memberships/{user_id}",
+            json={
+                "user_id": user_id,
+                "store_id": origin_id,
+                "can_create_transfer": True,
+                "can_receive_transfer": False,
+            },
+            headers=headers,
+        )
+        destination_membership = client.put(
+            f"/stores/{destination_id}/memberships/{user_id}",
+            json={
+                "user_id": user_id,
+                "store_id": destination_id,
+                "can_create_transfer": False,
+                "can_receive_transfer": True,
+            },
+            headers=headers,
+        )
+
+        assert origin_membership.status_code == status.HTTP_200_OK
+        assert destination_membership.status_code == status.HTTP_200_OK
+
+        device_response = client.post(
+            f"/stores/{origin_id}/devices",
+            json={
+                "sku": "SKU-REC-001",
+                "name": "Router industrial",
+                "quantity": 5,
+                "unit_price": 1800.0,
+                "costo_unitario": 1200.0,
+                "margen_porcentaje": 10.0,
+            },
+            headers=headers,
+        )
+        assert device_response.status_code == status.HTTP_201_CREATED
+        device_id = device_response.json()["id"]
+
+        transfer_response = client.post(
+            "/transfers",
+            json={
+                "origin_store_id": origin_id,
+                "destination_store_id": destination_id,
+                "reason": "Reabastecimiento controlado",
+                "items": [{"device_id": device_id, "quantity": 2}],
+            },
+            headers={**headers, "X-Reason": "Crear transferencia control"},
+        )
+        assert transfer_response.status_code == status.HTTP_201_CREATED
+        transfer_id = transfer_response.json()["id"]
+
+        dispatch_response = client.post(
+            f"/transfers/{transfer_id}/dispatch",
+            json={"reason": "Salida hacia sur"},
+            headers={**headers, "X-Reason": "Despachar control"},
+        )
+        assert dispatch_response.status_code == status.HTTP_200_OK
+
+        origin_inventory_before = client.get(
+            f"/stores/{origin_id}/devices", headers=headers
+        ).json()
+        destination_inventory_before = client.get(
+            f"/stores/{destination_id}/devices", headers=headers
+        ).json()
+
+        origin_qty_before = next(
+            item for item in _extract_items(origin_inventory_before) if item["id"] == device_id
+        )["quantity"]
+        destination_qty_before = next(
+            item for item in _extract_items(destination_inventory_before) if item["sku"] == "SKU-REC-001"
+        )["quantity"]
+
+        receive_response = client.post(
+            f"/transfers/{transfer_id}/receive",
+            json={
+                "reason": "Ingreso verificado",
+                "items": [{"device_id": device_id, "quantity": 2}],
+            },
+            headers={**headers, "X-Reason": "Recibir control"},
+        )
+
+        assert receive_response.status_code == status.HTTP_200_OK
+        payload = receive_response.json()
+        assert payload["status"] == "RECIBIDA"
+
+        origin_inventory_after = client.get(
+            f"/stores/{origin_id}/devices", headers=headers
+        ).json()
+        destination_inventory_after = client.get(
+            f"/stores/{destination_id}/devices", headers=headers
+        ).json()
+
+        origin_qty_after = next(
+            item for item in _extract_items(origin_inventory_after) if item["id"] == device_id
+        )["quantity"]
+        destination_qty_after = next(
+            item for item in _extract_items(destination_inventory_after)
+            if item["sku"] == "SKU-REC-001"
+        )["quantity"]
+
+        assert origin_qty_before == origin_qty_after
+        assert destination_qty_after - destination_qty_before == 2
+
+        received_logs = db_session.execute(
+            select(models.AuditLog)
+            .where(models.AuditLog.entity_type == "transfer_order")
+            .where(models.AuditLog.entity_id == str(transfer_id))
+            .where(models.AuditLog.action == "transfer_received")
+        ).scalars()
+
+        assert len(list(received_logs)) == 1
+    finally:
+        settings.enable_transfers = previous_flag
 
 
 def test_transfer_rejection_and_permissions(client, db_session):

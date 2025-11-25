@@ -14782,6 +14782,45 @@ def _apply_transfer_dispatch(
                 reference_id=str(order.id),
             )
 
+        if not (device.imei or device.serial):
+            destination_statement = select(models.Device).where(
+                models.Device.store_id == order.destination_store_id,
+                models.Device.sku == device.sku,
+            )
+            destination_device = db.scalars(destination_statement).first()
+            if destination_device is None:
+                clone = models.Device(
+                    store_id=order.destination_store_id,
+                    sku=device.sku,
+                    name=device.name,
+                    quantity=0,
+                    unit_price=device.unit_price,
+                    marca=device.marca,
+                    modelo=device.modelo,
+                    categoria=device.categoria,
+                    condicion=device.condicion,
+                    color=device.color,
+                    capacidad_gb=device.capacidad_gb,
+                    capacidad=device.capacidad,
+                    estado_comercial=device.estado_comercial,
+                    estado=device.estado,
+                    proveedor=device.proveedor,
+                    costo_unitario=origin_unit_cost,
+                    margen_porcentaje=device.margen_porcentaje,
+                    garantia_meses=device.garantia_meses,
+                    lote=device.lote,
+                    fecha_compra=device.fecha_compra,
+                    fecha_ingreso=device.fecha_ingreso,
+                    ubicacion=device.ubicacion,
+                    completo=device.completo,
+                    descripcion=device.descripcion,
+                    imei=device.imei,
+                    serial=device.serial,
+                    imagen_url=device.imagen_url,
+                )
+                db.add(clone)
+                flush_session(db)
+
     order.dispatched_by_id = order.dispatched_by_id or performed_by_id
     order.dispatched_at = order.dispatched_at or datetime.utcnow()
     if reason:
@@ -14894,6 +14933,9 @@ def _apply_transfer_reception(
         allowance = reserved_allowances.get(device_id, 0)
         blocked_map[device_id] = max(active_total - allowance, 0)
 
+    origin_warehouse = _ensure_default_warehouse(db, order.origin_store_id)
+    destination_warehouse = _ensure_default_warehouse(db, order.destination_store_id)
+
     for item in order.items:
         device = item.device
         shipped_quantity = item.dispatched_quantity or item.quantity
@@ -14906,20 +14948,22 @@ def _apply_transfer_reception(
         )
 
         destination_device: models.Device | None = None
+
+        if device.store_id != order.origin_store_id:
+            raise ValueError("transfer_device_mismatch")
+        if (device.imei or device.serial) and (
+            device.estado and device.estado.lower() == "vendido"
+        ):
+            raise ValueError("transfer_device_already_sold")
+        if item.quantity <= 0:
+            raise ValueError("transfer_invalid_quantity")
+
         if accepted_quantity > 0:
             if device.imei or device.serial:
                 if device.store_id != order.destination_store_id:
                     device.store_id = order.destination_store_id
                     flush_session(db)
                 destination_device = device
-        if device.store_id != order.origin_store_id:
-            raise ValueError("transfer_device_mismatch")
-        if item.quantity <= 0:
-            raise ValueError("transfer_invalid_quantity")
-        if (device.imei or device.serial) and (
-            device.estado and device.estado.lower() == "vendido"
-        ):
-            raise ValueError("transfer_device_already_sold")
         active_reserved = blocked_map.get(device.id, 0)
         effective_stock = device.quantity - active_reserved
         if effective_stock < item.quantity:
@@ -14964,50 +15008,12 @@ def _apply_transfer_reception(
         elif item.dispatched_unit_cost is None:
             item.dispatched_unit_cost = origin_unit_cost
 
-        if origin_device.imei or origin_device.serial:
-            origin_device.store_id = order.destination_store_id
-            origin_device.quantity = 0
-            flush_session(db)
-            destination_device = origin_device
-        else:
-            destination_statement = select(models.Device).where(
-                models.Device.store_id == order.destination_store_id,
-                models.Device.sku == device.sku,
-            )
-            destination_device = db.scalars(destination_statement).first()
-            if destination_device is None:
-                clone = models.Device(
-                    store_id=order.destination_store_id,
-                    sku=device.sku,
-                    name=device.name,
-                    quantity=0,
-                    unit_price=device.unit_price,
-                    marca=device.marca,
-                    modelo=device.modelo,
-                    categoria=device.categoria,
-                    condicion=device.condicion,
-                    color=device.color,
-                    capacidad_gb=device.capacidad_gb,
-                    capacidad=device.capacidad,
-                    estado_comercial=device.estado_comercial,
-                    estado=device.estado,
-                    proveedor=device.proveedor,
-                    costo_unitario=origin_unit_cost,
-                    margen_porcentaje=device.margen_porcentaje,
-                    garantia_meses=device.garantia_meses,
-                    lote=device.lote,
-                    fecha_compra=device.fecha_compra,
-                    fecha_ingreso=device.fecha_ingreso,
-                    ubicacion=device.ubicacion,
-                    completo=device.completo,
-                    descripcion=device.descripcion,
-                    imei=device.imei,
-                    serial=device.serial,
-                    imagen_url=device.imagen_url,
-                )
-                db.add(clone)
+        if accepted_quantity > 0:
+            if origin_device.imei or origin_device.serial:
+                origin_device.store_id = order.destination_store_id
+                origin_device.quantity = 0
                 flush_session(db)
-                destination_device = clone
+                destination_device = origin_device
             else:
                 destination_statement = select(models.Device).where(
                     models.Device.store_id == order.destination_store_id,
@@ -15050,22 +15056,24 @@ def _apply_transfer_reception(
                 else:
                     flush_session(db)
 
-            _register_inventory_movement(
-                db,
-                store_id=order.destination_store_id,
-                device_id=destination_device.id,
-                movement_type=models.MovementType.IN,
-                quantity=accepted_quantity,
-                comment=_build_transfer_movement_comment(
-                    order, destination_device, "IN", order.reason
-                ),
-                performed_by_id=performed_by_id,
-                source_store_id=order.origin_store_id,
-                destination_store_id=order.destination_store_id,
-                unit_cost=item.dispatched_unit_cost or origin_unit_cost,
-                reference_type="transfer_order",
-                reference_id=str(order.id),
-            )
+            if destination_device is not None:
+                _register_inventory_movement(
+                    db,
+                    store_id=order.destination_store_id,
+                    device_id=destination_device.id,
+                    movement_type=models.MovementType.IN,
+                    quantity=accepted_quantity,
+                    comment=_build_transfer_movement_comment(
+                        order, destination_device, "IN", order.reason
+                    ),
+                    performed_by_id=performed_by_id,
+                    source_store_id=order.origin_store_id,
+                    destination_store_id=order.destination_store_id,
+                    warehouse_id=destination_warehouse.id,
+                    unit_cost=item.dispatched_unit_cost or origin_unit_cost,
+                    reference_type="transfer_order",
+                    reference_id=str(order.id),
+                )
 
         pending_return = shipped_quantity - accepted_quantity
         if pending_return > 0:
@@ -15080,7 +15088,9 @@ def _apply_transfer_reception(
                 ),
                 performed_by_id=performed_by_id,
                 source_store_id=order.destination_store_id,
+                source_warehouse_id=destination_warehouse.id,
                 destination_store_id=order.origin_store_id,
+                warehouse_id=origin_warehouse.id,
                 unit_cost=origin_unit_cost,
                 reference_type="transfer_order",
                 reference_id=str(order.id),
@@ -15099,6 +15109,7 @@ def receive_transfer_order(
     performed_by_id: int,
     reason: str | None,
     items: list[schemas.TransferReceptionItem] | None = None,
+    use_transaction: bool = True,
 ) -> models.TransferOrder:
     order = get_transfer_order(db, transfer_id)
     if order.status not in {models.TransferStatus.SOLICITADA, models.TransferStatus.EN_TRANSITO}:
@@ -15111,7 +15122,7 @@ def receive_transfer_order(
         permission="receive",
     )
 
-    with transactional_session(db):
+    def _receive_transfer() -> models.TransferOrder:
         if not any(item.dispatched_quantity > 0 for item in order.items):
             _apply_transfer_dispatch(
                 db, order, performed_by_id=performed_by_id, reason=reason
@@ -15140,16 +15151,23 @@ def receive_transfer_order(
         )
 
         db.refresh(order)
-    order = get_transfer_order(db, order.id)
+        return order
+
+    if use_transaction:
+        with transactional_session(db):
+            processed_order = _receive_transfer()
+    else:
+        processed_order = _receive_transfer()
+    processed_order = get_transfer_order(db, processed_order.id)
     enqueue_sync_outbox(
         db,
         entity_type="transfer_order",
-        entity_id=str(order.id),
+        entity_id=str(processed_order.id),
         operation="UPSERT",
-        payload=_transfer_order_payload(order),
+        payload=_transfer_order_payload(processed_order),
         priority=models.SyncOutboxPriority.HIGH,
     )
-    return order
+    return processed_order
 
 
 def reject_transfer_order(
@@ -15173,13 +15191,25 @@ def reject_transfer_order(
 
     with transactional_session(db):
         reception_map = _normalize_reception_quantities(order, items)
-        rejection_map = {item_id: 0 for item_id in reception_map}
-        _apply_transfer_reception(
-            db,
-            order,
-            performed_by_id=performed_by_id,
-            received_map=rejection_map,
-        )
+        rejection_map = {item.id: 0 for item in order.items if item.id is not None}
+        try:
+            _apply_transfer_reception(
+                db,
+                order,
+                performed_by_id=performed_by_id,
+                received_map=rejection_map,
+            )
+        except LookupError as exc:
+            if str(exc) != "warehouse_not_found":
+                raise
+            _ensure_default_warehouse(db, order.origin_store_id)
+            _ensure_default_warehouse(db, order.destination_store_id)
+            _apply_transfer_reception(
+                db,
+                order,
+                performed_by_id=performed_by_id,
+                received_map=rejection_map,
+            )
 
         order.status = models.TransferStatus.RECHAZADA
         order.received_by_id = performed_by_id
