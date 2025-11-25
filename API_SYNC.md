@@ -181,6 +181,16 @@ Lista eventos pendientes en la outbox central (servidor). Puedes filtrar por `st
 
 Reagenda eventos fallidos. Requiere `X-Reason` y recomienda utilizar `X-Idempotency-Key`.
 
+### Webhooks públicos para contabilidad y e-commerce
+
+`GET /integrations/hooks/{slug}/events`
+
+Entrega eventos de ventas y transferencias listos para despachar a conectores contables o de e-commerce usando el token API del conector (`X-Integration-Token`). Los eventos provienen de la outbox híbrida (`sale`, `transfer_order`, `inventory`) y respetan el motivo corporativo (`X-Reason`).
+
+`POST /integrations/hooks/{slug}/events/{id}/ack`
+
+Permite confirmar (`sent`) o reportar fallo (`failed`) en la entrega del evento. Al confirmar se marca la entrada como `SENT`; al reportar error se conserva el detalle y el estatus `FAILED` en la outbox.
+
 ### Historial por tienda
 
 `GET /history`

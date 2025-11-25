@@ -575,6 +575,12 @@ def generate_backup(
     def _calculate_components_size(
         include_metadata: bool = True, include_archive: bool = True
     ) -> int:
+        ]
+        if include_metadata:
+            paths.append(metadata_path)
+        return paths
+
+    def _calculate_components_size() -> int:
         return _calculate_total_size(
             _component_paths(
                 include_metadata=include_metadata, include_archive=include_archive
@@ -632,6 +638,46 @@ def generate_backup(
     _build_archive()
     final_size = _calculate_components_size()
 
+    component_files = [pdf_path, json_path, sql_path, config_path]
+    _encrypt_backup_files(cipher, component_files, critical_directory)
+    _build_archive()
+
+    tracked_paths: list[Path] = [
+        pdf_path,
+        json_path,
+        sql_path,
+        config_path,
+        metadata_path,
+        archive_path,
+        critical_directory,
+    ]
+    total_size = _calculate_total_size(tracked_paths)
+
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=total_size,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=encryption_key_path,
+        cipher=cipher,
+    )
+
+    _build_archive()
+
+    final_total = _calculate_total_size(tracked_paths)
+
     job = crud.create_backup_job(
         db,
         mode=mode,
@@ -643,7 +689,7 @@ def generate_backup(
         metadata_path=str(metadata_path.resolve()),
         critical_directory=str(critical_directory.resolve()),
         components=selected_components,
-        total_size_bytes=final_size,
+        total_size_bytes=final_total,
         notes=notes,
         triggered_by_id=triggered_by_id,
         reason=normalized_reason,
