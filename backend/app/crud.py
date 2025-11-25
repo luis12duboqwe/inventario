@@ -11170,7 +11170,7 @@ def calculate_rotation_analytics(
     if start_dt:
         sale_stats = sale_stats.where(models.Sale.created_at >= start_dt)
     if end_dt:
-        sale_stats = sale_stats.where(models.Sale.created_at <= end_dt)
+        sale_stats = sale_stats.where(models.Sale.created_at < end_dt)
     if category:
         sale_stats = sale_stats.where(category_expr == category)
     if supplier:
@@ -11199,7 +11199,7 @@ def calculate_rotation_analytics(
             models.PurchaseOrder.created_at >= start_dt)
     if end_dt:
         purchase_stats = purchase_stats.where(
-            models.PurchaseOrder.created_at <= end_dt)
+            models.PurchaseOrder.created_at < end_dt)
     if category:
         purchase_stats = purchase_stats.where(category_expr == category)
     if supplier:
@@ -11690,7 +11690,7 @@ def calculate_profit_margin(
     if start_dt:
         stmt = stmt.where(models.Sale.created_at >= start_dt)
     if end_dt:
-        stmt = stmt.where(models.Sale.created_at <= end_dt)
+        stmt = stmt.where(models.Sale.created_at < end_dt)
     if category:
         stmt = stmt.where(category_expr == category)
     if supplier:
@@ -11753,7 +11753,7 @@ def calculate_sales_by_store(
     if start_dt:
         stmt = stmt.where(models.Sale.created_at >= start_dt)
     if end_dt:
-        stmt = stmt.where(models.Sale.created_at <= end_dt)
+        stmt = stmt.where(models.Sale.created_at < end_dt)
     if category:
         stmt = stmt.where(category_expr == category)
     if supplier:
@@ -11808,7 +11808,7 @@ def calculate_sales_by_category(
     if start_dt:
         stmt = stmt.where(models.Sale.created_at >= start_dt)
     if end_dt:
-        stmt = stmt.where(models.Sale.created_at <= end_dt)
+        stmt = stmt.where(models.Sale.created_at < end_dt)
     if category:
         stmt = stmt.where(category_expr == category)
     if supplier:
@@ -11862,7 +11862,7 @@ def calculate_sales_timeseries(
     if start_dt:
         stmt = stmt.where(models.Sale.created_at >= start_dt)
     if end_dt:
-        stmt = stmt.where(models.Sale.created_at <= end_dt)
+        stmt = stmt.where(models.Sale.created_at < end_dt)
     if category:
         stmt = stmt.where(category_expr == category)
     if supplier:

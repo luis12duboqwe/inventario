@@ -1038,7 +1038,7 @@ def financial_report(
     supplier: str | None = Query(default=None, min_length=1, max_length=120),
     format: Literal["json", "pdf", "xlsx"] = Query(default="json"),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(REPORTE_ROLES)),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
     reason: str = Depends(require_reason_optional),
 ):
     _ensure_analytics_enabled()
@@ -1154,7 +1154,7 @@ def inventory_performance_report(
     supplier: str | None = Query(default=None, min_length=1, max_length=120),
     format: Literal["json", "pdf", "xlsx"] = Query(default="json"),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(REPORTE_ROLES)),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
     reason: str = Depends(require_reason_optional),
 ):
     _ensure_analytics_enabled()
