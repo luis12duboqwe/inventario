@@ -120,8 +120,8 @@ def run_migrations() -> None:
             _safe_upgrade("heads")
         else:
             raise
-    _ensure_core_user_columns()
     _migrate_lightweight_users()
+    _ensure_core_user_columns()
     Base.metadata.create_all(bind=_engine)
 
 
@@ -132,28 +132,27 @@ def _ensure_core_user_columns() -> None:
     if "usuarios" not in inspector.get_table_names():
         return
 
-    usuarios_columns = {
-        column["name"] for column in inspector.get_columns("usuarios")
-    }
-
     with _engine.begin() as connection:
-        if "failed_login_attempts" not in usuarios_columns:
-            connection.execute(
-                text(
-                    "ALTER TABLE usuarios ADD COLUMN failed_login_attempts INTEGER "
-                    "NOT NULL DEFAULT 0"
-                )
-            )
-        if "last_login_attempt_at" not in usuarios_columns:
-            connection.execute(
-                text(
-                    "ALTER TABLE usuarios ADD COLUMN last_login_attempt_at DATETIME"
-                )
-            )
-        if "locked_until" not in usuarios_columns:
-            connection.execute(
-                text("ALTER TABLE usuarios ADD COLUMN locked_until DATETIME")
-            )
+        inspector = inspect(connection)
+        usuarios_columns = {
+            column["name"] for column in inspector.get_columns("usuarios")
+        }
+
+        column_definitions = {
+            "nombre": "ALTER TABLE usuarios ADD COLUMN nombre VARCHAR(120) NOT NULL DEFAULT ''",
+            "password_hash": "ALTER TABLE usuarios ADD COLUMN password_hash VARCHAR(255) NOT NULL DEFAULT ''",
+            "rol": "ALTER TABLE usuarios ADD COLUMN rol VARCHAR(30) NOT NULL DEFAULT 'OPERADOR'",
+            "estado": "ALTER TABLE usuarios ADD COLUMN estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVO'",
+            "is_active": "ALTER TABLE usuarios ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1",
+            "fecha_creacion": "ALTER TABLE usuarios ADD COLUMN fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+            "failed_login_attempts": "ALTER TABLE usuarios ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0",
+            "last_login_attempt_at": "ALTER TABLE usuarios ADD COLUMN last_login_attempt_at DATETIME",
+            "locked_until": "ALTER TABLE usuarios ADD COLUMN locked_until DATETIME",
+        }
+
+        for column, definition in column_definitions.items():
+            if column not in usuarios_columns:
+                connection.execute(text(definition))
 
 
 def _migrate_lightweight_users() -> None:
@@ -166,49 +165,133 @@ def _migrate_lightweight_users() -> None:
 
     inspector = inspect(_engine)
     table_names = set(inspector.get_table_names())
-    if "users" not in table_names or "usuarios" not in table_names:
+    if "usuarios" not in table_names:
+        usuarios_table = Base.metadata.tables.get("usuarios")
+        if usuarios_table is None:
+            return
+
+        usuarios_table.create(bind=_engine, checkfirst=True)
+        table_names = set(inspect(_engine).get_table_names())
+
+    if "users" not in table_names:
         return
 
+    _ensure_core_user_columns()
+
     with _engine.begin() as connection:
+        inspector = inspect(connection)
+        if "usuarios" not in set(inspector.get_table_names()):
+            return
+
+        available_columns = {
+            column["name"] for column in inspector.get_columns("users")
+        }
+        projected_columns = []
+        for column in (
+            "id",
+            "username",
+            "email",
+            "hashed_password",
+            "is_active",
+            "created_at",
+            "role",
+            "rol",
+            "failed_login_attempts",
+            "last_login_attempt_at",
+            "locked_until",
+        ):
+            if column in available_columns:
+                projected_columns.append(column)
+            else:
+                projected_columns.append(f"NULL AS {column}")
+
         legacy_rows = list(
             connection.execute(
                 text(
-                    "SELECT id, username, email, hashed_password, is_active, "
-                    "created_at FROM users"
+                    f"SELECT {', '.join(projected_columns)} FROM users"
                 )
             ).mappings()
         )
+
+        available_roles: dict[str, int] = {}
+        if "roles" in table_names:
+            role_rows = connection.execute(
+                text("SELECT id, name FROM roles")
+            ).mappings()
+            available_roles = {row["name"].upper(): row["id"] for row in role_rows}
 
         for row in legacy_rows:
             correo = (row.get("email") or row.get("username") or "").strip().lower()
             if not correo:
                 continue
 
-            exists = connection.execute(
-                text("SELECT 1 FROM usuarios WHERE correo = :correo"),
+            existing_user = connection.execute(
+                text("SELECT id_usuario FROM usuarios WHERE correo = :correo"),
                 {"correo": correo},
-            ).first()
-            if exists:
-                continue
+            ).scalar_one_or_none()
+            if existing_user is not None:
+                user_id = existing_user
+            else:
+                nombre = (row.get("username") or "").strip()
+                is_active = row.get("is_active")
+                estado = "ACTIVO" if is_active is None or bool(is_active) else "INACTIVO"
+                primary_role = (
+                    row.get("role")
+                    or row.get("rol")
+                    or "OPERADOR"
+                )
+                primary_role = primary_role.strip().upper() or "OPERADOR"
 
-            nombre = (row.get("username") or "").strip()
-            estado = "ACTIVO" if row.get("is_active", True) else "INACTIVO"
-            connection.execute(
-                text(
-                    "INSERT INTO usuarios (correo, nombre, password_hash, rol, estado, "
-                    "is_active, fecha_creacion) VALUES (:correo, :nombre, :password, :rol, "
-                    ":estado, :is_active, COALESCE(:fecha_creacion, CURRENT_TIMESTAMP))"
-                ),
-                {
-                    "correo": correo,
-                    "nombre": nombre or correo,
-                    "password": row.get("hashed_password", ""),
-                    "rol": "OPERADOR",
-                    "estado": estado,
-                    "is_active": bool(row.get("is_active", True)),
-                    "fecha_creacion": row.get("created_at"),
-                },
+                connection.execute(
+                    text(
+                        "INSERT INTO usuarios (correo, nombre, password_hash, rol, estado, "
+                        "is_active, fecha_creacion, failed_login_attempts, last_login_attempt_at, "
+                        "locked_until) VALUES (:correo, :nombre, :password, :rol, :estado, "
+                        ":is_active, COALESCE(:fecha_creacion, CURRENT_TIMESTAMP), :failed_attempts, "
+                        ":last_attempt, :locked_until)"
+                    ),
+                    {
+                        "correo": correo,
+                        "nombre": nombre or correo,
+                        "password": row.get("hashed_password") or "",
+                        "rol": primary_role,
+                        "estado": estado,
+                        "is_active": bool(True if is_active is None else is_active),
+                        "fecha_creacion": row.get("created_at"),
+                        "failed_attempts": int(row.get("failed_login_attempts") or 0),
+                        "last_attempt": row.get("last_login_attempt_at"),
+                        "locked_until": row.get("locked_until"),
+                    },
+                )
+                user_id = connection.execute(
+                    text(
+                        "SELECT id_usuario FROM usuarios WHERE correo = :correo"
+                    ),
+                    {"correo": correo},
+                ).scalar_one()
+
+            role_name = (
+                row.get("role")
+                or row.get("rol")
+                or "OPERADOR"
             )
+            role_name = role_name.strip().upper() or "OPERADOR"
+            role_id = available_roles.get(role_name) or available_roles.get("OPERADOR")
+
+            if role_id and "user_roles" in table_names:
+                connection.execute(
+                    text(
+                        "INSERT INTO user_roles (user_id, role_id)"
+                        " SELECT :user_id, :role_id"
+                        " WHERE NOT EXISTS ("
+                        "   SELECT 1 FROM user_roles"
+                        "   WHERE user_id = :user_id AND role_id = :role_id"
+                        " )"
+                    ),
+                    {"user_id": user_id, "role_id": role_id},
+                )
+
+        connection.execute(text("DROP TABLE users"))
 
 
 def init_db() -> None:

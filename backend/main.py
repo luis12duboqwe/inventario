@@ -63,7 +63,7 @@ _database_module = _import_module_with_fallback(
     "backend.database", CURRENT_DIR / "database" / "__init__.py"
 )
 
-# Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``users``.
+# Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``usuarios``.
 db_module = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
 core_main_module = _import_module_with_fallback(
     "backend.app.main", CURRENT_DIR / "app" / "main.py"

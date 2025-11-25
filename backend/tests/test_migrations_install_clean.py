@@ -15,7 +15,6 @@ EXPECTED_TABLES = {
     "sucursales",
     "devices",
     "inventory_movements",
-    "users",  # nombre inicial antes de renombre a usuarios
     "usuarios",
     "clientes",
     "ventas",
@@ -60,8 +59,7 @@ def test_clean_install_migrations(tmp_path) -> None:
     # Debe existir al menos una tabla representando sucursales y usuarios
     assert ("stores" in existing_tables) or (
         "sucursales" in existing_tables), "No se creó stores/sucursales"
-    assert ("users" in existing_tables) or (
-        "usuarios" in existing_tables), "No se creó users/usuarios"
+    assert "usuarios" in existing_tables, "No se creó usuarios"
     # Conjunto crítico mínimo
     critical = {"devices", "inventory_movements",
                 "audit_logs", "roles", "user_roles", "backup_jobs"}
@@ -82,9 +80,6 @@ def test_clean_install_migrations(tmp_path) -> None:
         usuarios_cols = {col["name"] for col in insp.get_columns("usuarios")}
         assert {"id_usuario", "correo", "rol",
                 "estado"}.issubset(usuarios_cols)
-    else:
-        users_cols = {col["name"] for col in insp.get_columns("users")}
-        assert {"id", "username", "password_hash"}.issubset(users_cols)
 
     # Clientes: tolerar instalaciones donde aún no existe la tabla (según base inicial)
     clientes_table = (
