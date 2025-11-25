@@ -2695,8 +2695,16 @@ class TransferOrderItemBase(BaseModel):
 
 
 class TransferReceptionItem(BaseModel):
-    item_id: int = Field(..., ge=1)
-    received_quantity: int = Field(default=0, ge=0)
+    item_id: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("item_id", "device_id"),
+    )
+    received_quantity: int = Field(
+        default=0,
+        ge=0,
+        validation_alias=AliasChoices("received_quantity", "quantity"),
+    )
 
 
 class TransferOrderItemCreate(TransferOrderItemBase):

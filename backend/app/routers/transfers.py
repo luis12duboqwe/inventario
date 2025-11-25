@@ -336,19 +336,14 @@ def receive_transfer(
 ):
     _ensure_feature_enabled()
     try:
-        order = crud.receive_transfer_order(
-            db,
-            transfer_id,
-            performed_by_id=current_user.id,
-            reason=payload.reason,
-            items=payload.items,
-        )
         with transactional_session(db):
             order = crud.receive_transfer_order(
                 db,
                 transfer_id,
                 performed_by_id=current_user.id,
                 reason=payload.reason,
+                items=payload.items,
+                use_transaction=False,
             )
         return _transfers_with_audit(db, [order])[0]
     except PermissionError as exc:
@@ -363,6 +358,11 @@ def receive_transfer(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La sucursal de origen no cuenta con stock suficiente.") from exc
         if detail == "transfer_requires_full_unit":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Los dispositivos con IMEI o serie deben transferirse completos.") from exc
+        if detail == "transfer_device_already_sold":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El dispositivo ya fue vendido y no puede transferirse.",
+            ) from exc
         if detail in {"transfer_invalid_received_quantity", "transfer_item_mismatch"}:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
