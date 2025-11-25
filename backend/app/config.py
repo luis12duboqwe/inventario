@@ -131,6 +131,26 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    security_login_alert_threshold: Annotated[
+        int,
+        Field(
+            default=4,
+            validation_alias=AliasChoices(
+                "SECURITY_LOGIN_ALERT_THRESHOLD",
+                "SOFTMOBILE_SECURITY_LOGIN_ALERT_THRESHOLD",
+            ),
+        ),
+    ]
+    security_alert_window_minutes: Annotated[
+        int,
+        Field(
+            default=60,
+            validation_alias=AliasChoices(
+                "SECURITY_ALERT_WINDOW_MINUTES",
+                "SOFTMOBILE_SECURITY_ALERT_WINDOW_MINUTES",
+            ),
+        ),
+    ]
     account_lock_minutes: Annotated[
         int,
         Field(
@@ -351,6 +371,26 @@ class Settings(BaseSettings):
             validation_alias=AliasChoices(
                 "RISK_ALERT_WEBHOOK_URL",
                 "SOFTMOBILE_RISK_ALERT_WEBHOOK_URL",
+            ),
+        ),
+    ]
+    monitoring_alert_webhook_url: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "MONITORING_ALERT_WEBHOOK_URL",
+                "SOFTMOBILE_MONITORING_ALERT_WEBHOOK_URL",
+            ),
+        ),
+    ]
+    monitoring_alert_token: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "MONITORING_ALERT_TOKEN",
+                "SOFTMOBILE_MONITORING_ALERT_TOKEN",
             ),
         ),
     ]

@@ -126,3 +126,55 @@ def test_observability_snapshot_consolidates_metrics(client, db_session):
     assert "dte-dispatch-failures" in notification_ids
 
     assert payload["logs"], "Se esperaban logs recientes en el snapshot"
+
+
+def test_observability_snapshot_exposes_internal_alerts(client, db_session):
+    token = _bootstrap_admin(client)
+
+    store = models.Store(name="Seguridad", code="SEG-001", timezone="UTC")
+    db_session.add(store)
+    db_session.flush()
+
+    zero_device = models.Device(
+        store=store,
+        sku="ALR-01",
+        name="Alarma crítica",
+        quantity=0,
+        unit_price=Decimal("10.00"),
+    )
+    db_session.add(zero_device)
+
+    for _ in range(5):
+        crud.log_audit_event(
+            db_session,
+            action="auth_login_failed",
+            entity_type="auth",
+            entity_id="intruder",
+            performed_by_id=None,
+            details=None,
+        )
+
+    crud.record_sync_session(
+        db_session,
+        store_id=store.id,
+        mode=models.SyncMode.AUTOMATIC,
+        status=models.SyncStatus.FAILED,
+        triggered_by_id=None,
+        error_message="Timeout de replicación",
+    )
+    db_session.commit()
+
+    response = client.get(
+        "/admin/observability",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()
+    notification_ids = {item["id"] for item in payload["notifications"]}
+
+    assert "login-alert-intruder" in notification_ids
+    assert "stockout-global" in notification_ids
+    assert any(
+        notification_id.startswith("task-failure-") for notification_id in notification_ids
+    )

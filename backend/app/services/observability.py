@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas
+from . import observability_alerts
 from . import sync_queue
 
 _SYNC_FAILURE_WARNING_THRESHOLD = 3
@@ -213,6 +214,13 @@ def build_observability_snapshot(db: Session) -> schemas.ObservabilitySnapshot:
     notifications: list[schemas.ObservabilityNotification] = []
     notifications.extend(_resolve_sync_notifications(outbox_stats))
     notifications.extend(_resolve_dte_notifications(db, now))
+
+    operational_alerts = observability_alerts.collect_operational_notifications(db)
+    notifications.extend(operational_alerts.notifications)
+    if operational_alerts.newly_logged:
+        observability_alerts.dispatch_external_notifications(
+            operational_alerts.newly_logged
+        )
 
     snapshot = schemas.ObservabilitySnapshot(
         generated_at=now,
