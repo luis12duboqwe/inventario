@@ -908,10 +908,10 @@ def restore_backup(
             if file_path.is_file():
                 destination = critical_dest / \
                     file_path.relative_to(critical_source)
-                destination.parent.mkdir(parents=True, exist_ok=True)
                 # Prevent directory traversal: destination must stay within critical_dest
                 if not destination.resolve().is_relative_to(critical_dest.resolve()):
                     raise ValueError(f"Extracción de archivo no permitida: {destination}")
+                destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(_decrypt_file(file_path, cipher))
         results["critical_files"] = str(critical_dest)
 
