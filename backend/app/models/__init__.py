@@ -2591,7 +2591,9 @@ class PurchaseOrder(Base):
     )
 
     store: Mapped[Store] = relationship("Store")
-    created_by: Mapped[User | None] = relationship("User")
+    created_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[created_by_id]
+    )
     approved_by: Mapped[User | None] = relationship(
         "User", foreign_keys=[approved_by_id]
     )
