@@ -42,6 +42,7 @@ from .routers import (
     discovery,
     import_validation,
     integrations,
+    integration_hooks,
     inventory,
     inventory_export,
     inventory_import,
@@ -538,6 +539,10 @@ def create_app() -> FastAPI:
             if allow_method:
                 response.headers["Access-Control-Allow-Methods"] = allow_method
             return response
+
+        # Endpoints públicos de webhooks de integraciones (push outbox)
+        if "/integrations/hooks" in request.url.path:
+            return await call_next(request)
         module = _resolve_module(request.url.path)
         required_roles: set[str] = set()
         for prefix, roles in ROLE_PROTECTED_PREFIXES.items():
@@ -597,6 +602,7 @@ def create_app() -> FastAPI:
         price_lists.router,
         sync.router,
         integrations.router,
+        integration_hooks.router,
         transfers.router,
         updates.router,
         backups.router,
