@@ -11120,7 +11120,26 @@ def calculate_rotation_analytics(
     offset: int = 0,
 ) -> list[dict[str, object]]:
     store_filter = _normalize_store_ids(store_ids)
-    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    if isinstance(date_from, datetime) or isinstance(date_to, datetime):
+        now = datetime.utcnow()
+        start_dt = (
+            date_from
+            if isinstance(date_from, datetime)
+            else datetime.combine(date_from, datetime.min.time())
+            if isinstance(date_from, date)
+            else now - timedelta(days=30)
+        )
+        end_dt = (
+            date_to
+            if isinstance(date_to, datetime)
+            else datetime.combine(date_to, datetime.max.time())
+            if isinstance(date_to, date)
+            else now
+        )
+        if start_dt > end_dt:
+            start_dt, end_dt = end_dt, start_dt
+    else:
+        start_dt, end_dt = _normalize_date_range(date_from, date_to)
     category_expr = _device_category_expr()
 
     device_stmt = (
