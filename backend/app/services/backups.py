@@ -837,7 +837,11 @@ def restore_backup(
             and "\\" not in target_directory
         ):
             safe_subdir = target_directory
-            target_base = (safe_restore_root / safe_subdir).resolve()
+            candidate_base = (safe_restore_root / safe_subdir).resolve()
+            # Ensure the restored directory is a DIRECT child of the restore root
+            if candidate_base.parent != safe_restore_root:
+                raise ValueError("El directorio de restauración debe ser una subcarpeta directa de backup_directory.")
+            target_base = candidate_base
         else:
             raise ValueError(
                 "Nombre de directorio de restauración no permitido. Debe ser un nombre de carpeta simple bajo el directorio de respaldo configurado.")
