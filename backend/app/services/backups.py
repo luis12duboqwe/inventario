@@ -568,6 +568,8 @@ def generate_backup(
         ]
         if include_metadata:
             paths.append(metadata_path)
+        if include_archive and archive_path.exists():
+            paths.append(archive_path)
         return paths
 
     def _calculate_components_size() -> int:
@@ -757,6 +759,27 @@ def generate_backup(
             cipher=cipher,
         )
 
+    def _build_archive() -> None:
+        with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as zip_file:
+            zip_file.write(pdf_path, arcname=f"reportes/{pdf_path.name}")
+            zip_file.write(json_path, arcname=f"datos/{json_path.name}")
+            zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
+            zip_file.write(config_path, arcname=f"config/{config_path.name}")
+            if metadata_path.exists():
+                zip_file.write(metadata_path, arcname=f"metadata/{metadata_path.name}")
+            for file_path in critical_directory.rglob("*"):
+                if file_path.is_file():
+                    arcname = Path("criticos") / file_path.relative_to(critical_directory)
+                    zip_file.write(file_path, arcname=str(arcname))
+
+    # Primer metadato de referencia
+    _write_metadata_with_size(0)
+    _build_archive()
+
+    total_size = _calculate_components_size()
+    _write_metadata_with_size(total_size)
+    _build_archive()
+    total_size = _calculate_components_size()
     provisional_size = _calculate_components_size(
         include_metadata=False, include_archive=False
     )
@@ -790,6 +813,7 @@ def generate_backup(
         metadata_path=str(metadata_path.resolve()),
         critical_directory=str(critical_directory.resolve()),
         components=selected_components,
+        total_size_bytes=total_size,
         total_size_bytes=final_total,
         notes=notes,
         triggered_by_id=triggered_by_id,
