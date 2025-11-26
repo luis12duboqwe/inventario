@@ -2,88 +2,104 @@ import React, { useMemo, useState } from "react";
 // [PACK26-CASH-PERMS-START]
 import { DisableIfNoPerm, PERMS } from "../../../auth/useAuthz";
 // [PACK26-CASH-PERMS-END]
+import FlowAuditCard from "../../../shared/components/FlowAuditCard";
 
 type Totals = {
   cash: number;
   card: number;
   transfer: number;
   other: number;
-  total: number;
 };
 
-const INITIAL_TOTALS: Totals = { cash: 0, card: 0, transfer: 0, other: 0, total: 0 };
+const INITIAL_TOTALS: Totals = { cash: 0, card: 0, transfer: 0, other: 0 };
 
-export default function CashClosePage() {
+export function CashClosePage() {
   const [theoretical] = useState<Totals>(INITIAL_TOTALS); // TODO(wire)
   const [counted, setCounted] = useState<Totals>(INITIAL_TOTALS);
 
-  const diff = useMemo(() => ({
-    cash: counted.cash - theoretical.cash,
-    card: counted.card - theoretical.card,
-    transfer: counted.transfer - theoretical.transfer,
-    other: counted.other - theoretical.other,
-    total: counted.total - theoretical.total,
-  }), [counted, theoretical]);
+  const computedTheoreticalTotal = useMemo(
+    () => theoretical.cash + theoretical.card + theoretical.transfer + theoretical.other,
+    [theoretical],
+  );
+
+  const computedCountedTotal = useMemo(
+    () => counted.cash + counted.card + counted.transfer + counted.other,
+    [counted],
+  );
+
+  const diff = useMemo(
+    () => ({
+      cash: counted.cash - theoretical.cash,
+      card: counted.card - theoretical.card,
+      transfer: counted.transfer - theoretical.transfer,
+      other: counted.other - theoretical.other,
+      total: computedCountedTotal - computedTheoreticalTotal,
+    }),
+    [counted, computedCountedTotal, computedTheoreticalTotal, theoretical],
+  );
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ fontWeight: 700 }}>Cierre de caja</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12 }}>
-          <div style={{ fontWeight: 700 }}>Teórico</div>
-          {(["cash", "card", "transfer", "other", "total"] as const).map((key) => (
-            <div key={key} style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-              <span>{key}</span>
-              <span>{(theoretical as Record<string, number>)[key]}</span>
-            </div>
-          ))}
+    <div
+      data-testid="cash-close"
+      className="operations-subpage"
+      style={{ display: "grid", gap: 12 }}
+    >
+      <FlowAuditCard
+        title="Cierre de caja auditado"
+        subtitle="Reordenamos los pasos para capturar montos y validar diferencias sin romper la grilla"
+        flows={[
+          {
+            id: "conteo",
+            title: "Conteo y conciliación",
+            summary:
+              "Llena importes por método, verifica el total automático y documenta diferencias.",
+            steps: [
+              "Confirma que el efectivo inicial esté registrado en el teórico.",
+              "Captura montos contados por método; el total se calcula en automático.",
+              "Revisa la sección de diferencias antes de cerrar para evitar reprocesos.",
+            ],
+            actions: [
+              {
+                id: "ir-conteo",
+                label: "Ir al conteo",
+                tooltip: "Desplázate al bloque de captura",
+                onClick: () =>
+                  document
+                    .getElementById("cash-close-counted")
+                    ?.scrollIntoView({ behavior: "smooth" }),
+              },
+            ],
+          },
+          {
+            id: "arqueo",
+            title: "Entrega y comprobante",
+            summary:
+              "Valida diferencias y cierra la caja con un solo botón protegido por permisos.",
+            steps: [
+              "Confirma que las diferencias estén en 0 o documenta el motivo en el recibo.",
+              "Descarga el comprobante de cierre y adjúntalo al arqueo diario.",
+              "Notifica al responsable de operaciones cuando se detecten ajustes manuales.",
+            ],
+            actions: [
+              // ...resto de acciones...
+            ],
+          },
+        ]}
+      />
+      {/* Bloque placeholder mientras se integran formularios */}
+      <div id="cash-close-counted" style={{ display: "grid", gap: 8 }}>
+        <h3 style={{ margin: 0 }}>Conteo rápido</h3>
+        <p style={{ fontSize: 12, color: "#94a3b8" }}>
+          Placeholder temporal para levantar la aplicación. Integraremos inputs detallados en
+          iteración posterior.
+        </p>
+        <div style={{ fontSize: 12, color: "#38bdf8" }}>
+          Teórico: {computedTheoreticalTotal} | Contado: {computedCountedTotal} | Diferencia:{" "}
+          {diff.total}
         </div>
-        <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12 }}>
-          <div style={{ fontWeight: 700 }}>Conteo</div>
-          {(["cash", "card", "transfer", "other", "total"] as const).map((key) => (
-            <label
-              key={key}
-              style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}
-            >
-              <span>{key}</span>
-              <input
-                type="number"
-                value={(counted as Record<string, number>)[key] ?? 0}
-                onChange={(event) =>
-                  setCounted({
-                    ...counted,
-                    [key]: Number(event.target.value ?? 0),
-                  })
-                }
-                style={{ padding: 6, borderRadius: 8, width: 160, textAlign: "right" }}
-              />
-            </label>
-          ))}
-        </div>
-      </div>
-      <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12 }}>
-        <div style={{ fontWeight: 700 }}>Diferencias</div>
-        {Object.entries(diff).map(([key, value]) => (
-          <div key={key} style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-            <span>{key}</span>
-            <span>{value}</span>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        {/* [PACK26-CASH-PERMS-START] */}
-        <DisableIfNoPerm perm={PERMS.CASH_CLOSE}>
-          <button
-            style={{ padding: "8px 12px", borderRadius: 8 }}
-            onClick={() => {
-              // TODO(save+print)
-            }}
-          >
-            Cerrar caja
-          </button>
-        </DisableIfNoPerm>
-        {/* [PACK26-CASH-PERMS-END] */}
       </div>
     </div>
   );
 }
+
+export default CashClosePage;

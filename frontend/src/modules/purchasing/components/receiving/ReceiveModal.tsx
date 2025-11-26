@@ -17,6 +17,7 @@ type Props = {
   lines?: Line[];
   onClose?: () => void;
   onSubmit?: (dto: { qtys: Record<string, number>; serials: Record<string, string[]> }) => void;
+  loading?: boolean;
 };
 
 const overlayStyle: React.CSSProperties = {
@@ -50,28 +51,33 @@ const lineStyle: React.CSSProperties = {
   background: "rgba(15, 23, 42, 0.6)",
 };
 
-export default function ReceiveModal({ open, poNumber, lines, onClose, onSubmit }: Props) {
+export default function ReceiveModal({ open, poNumber, lines, onClose, onSubmit, loading = false }: Props) {
   const data = useMemo(() => (Array.isArray(lines) ? lines : []), [lines]);
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [serials, setSerials] = useState<Record<string, string[]>>({});
+
+  // Evitamos setState en efectos: limpiamos el estado local al cancelar o confirmar.
 
   if (!open) {
     return null;
   }
 
   const patchQty = (id: string, value: number) => {
-    setQtys((prev) => ({ ...prev, [id]: Number.isNaN(value) ? 0 : Math.max(0, value) }));
+    const normalized = Number.isNaN(value) ? 0 : Math.max(0, Math.floor(value));
+    setQtys((prev) => ({ ...prev, [id]: normalized }));
   };
 
   const patchSerials = (id: string, arr: string[]) => {
     setSerials((prev) => ({ ...prev, [id]: arr }));
   };
 
-  const isValid = data.every((line) => {
+  const withinLimits = data.every((line) => {
     const currentQty = qtys[line.id] ?? 0;
     const alreadyReceived = line.qtyReceived ?? 0;
-    return currentQty + alreadyReceived <= line.qtyOrdered;
+    return currentQty >= 0 && currentQty + alreadyReceived <= line.qtyOrdered;
   });
+  const hasQuantities = data.some((line) => (qtys[line.id] ?? 0) > 0);
+  const isValid = withinLimits && hasQuantities;
 
   return (
     <div style={overlayStyle}>
@@ -105,24 +111,49 @@ export default function ReceiveModal({ open, poNumber, lines, onClose, onSubmit 
           ))}
           <PutawayPanel />
         </div>
+        {!withinLimits ? (
+          <p style={{ color: "#fca5a5", fontSize: 12 }}>
+            Verifica que la cantidad a recibir no exceda lo pendiente en cada línea.
+          </p>
+        ) : null}
+        {withinLimits && !hasQuantities ? (
+          <p style={{ color: "#fca5a5", fontSize: 12 }}>
+            Indica al menos una línea con unidades a recibir.
+          </p>
+        ) : null}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button type="button" onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
+          <button
+            type="button"
+            onClick={() => {
+              setQtys({});
+              setSerials({});
+              onClose?.();
+            }}
+            style={{ padding: "8px 12px", borderRadius: 8 }}
+          >
             Cancelar
           </button>
           <button
             type="button"
-            disabled={!isValid}
-            onClick={() => onSubmit?.({ qtys, serials })}
+            disabled={!isValid || loading}
+            onClick={() => {
+              if (!loading) {
+                onSubmit?.({ qtys, serials });
+                // Limpiar tras confirmar para que un nuevo ciclo inicie sin residuos.
+                setQtys({});
+                setSerials({});
+              }
+            }}
             style={{
               padding: "8px 12px",
               borderRadius: 8,
-              background: isValid ? "#22c55e" : "rgba(34, 197, 94, 0.3)",
-              color: "#0b1220",
+              background: isValid && !loading ? "#22c55e" : "rgba(34, 197, 94, 0.3)",
+              color: isValid && !loading ? "#0b1220" : "#1f2937",
               border: 0,
-              cursor: isValid ? "pointer" : "not-allowed",
+              cursor: isValid && !loading ? "pointer" : "not-allowed",
             }}
           >
-            Confirmar recepción
+            {loading ? "Registrando…" : "Confirmar recepción"}
           </button>
         </div>
       </div>

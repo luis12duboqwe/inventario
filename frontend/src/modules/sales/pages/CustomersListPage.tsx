@@ -47,91 +47,51 @@ export function CustomersListPage() {
   const [flushMessage, setFlushMessage] = useState<string | null>(null);
 
   // [PACK23-CUSTOMERS-LIST-FETCH-START]
-  async function fetchCustomers(extra?: Partial<CustomerListParams>) {
-    if (!canList) {
-      setItems([]);
-      setTotal(0);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await SalesCustomers.listCustomers({ page, pageSize, q, tier, tag, ...extra });
-      setItems(res.items || []);
-      setTotal(res.total || 0);
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => { fetchCustomers(); }, [page, pageSize, tier, tag, q, canList]);
-  // [PACK23-CUSTOMERS-LIST-FETCH-END]
+  const fetchCustomers = useCallback(
+    async (extra?: Partial<CustomerListParams>) => {
+      if (!canList) {
+        setItems([]);
+        setTotal(0);
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const params: CustomerListParams = { page, pageSize };
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setPendingOffline(readQueue().length);
-  }, []);
+        const trimmedQ = q.trim();
+        if (trimmedQ) {
+          params.q = trimmedQ;
+        }
+        if (tier && tier.trim()) {
+          params.tier = tier.trim();
+        }
+        if (tag && tag.trim()) {
+          params.tag = tag.trim();
+        }
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setPendingOffline(readQueue().length);
-  }, [items]);
-
-  const rows: CustomerRow[] = useMemo(
-    () =>
-      items.map((customer) => ({
-        id: String(customer.id),
-        name: customer.name,
-        phone: customer.phone,
-        email: customer.email,
-        tier: customer.tier,
-        lastSale: customer.lastSaleAt ? new Date(customer.lastSaleAt).toLocaleDateString() : "—",
-      })),
-    [items],
-  );
-
-  const handleRowClick = useCallback(
-    (row: CustomerRow) => {
-      navigate(`/sales/customers/${row.id}`);
+        if (extra) {
+          if (typeof extra.page === "number") {
+            params.page = extra.page;
+          }
+          // ...resto de la lógica...
+        }
+        // ...resto de la función fetchCustomers...
+      } finally {
+        setLoading(false);
+      }
     },
-    [navigate],
+    [canList, page, pageSize, q, tier, tag],
   );
-
-  const handleFlush = useCallback(async () => {
-    setFlushing(true);
-    try {
-      const result = await flushOffline();
-      setPendingOffline(result.pending);
-      setFlushMessage(`Reintentadas: ${result.flushed}. Pendientes: ${result.pending}.`);
-    } catch (error) {
-      setFlushMessage("No fue posible sincronizar. Intenta más tarde.");
-    } finally {
-      setFlushing(false);
-    }
-  }, []);
+  // ...resto de hooks y lógica...
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div data-testid="customers-list">
       {/* [PACK26-CUSTOMERS-LIST-GUARD-START] */}
-      {!canList ? (
-        <div>No autorizado</div>
-      ) : (
+      {canList ? (
         <>
-          <CustomersFiltersBar
-        value={{ query: filters.query ?? "", tag: filters.tag ?? "", tier: filters.tier ?? "" }}
-        onChange={(value) => {
-          setFilters({
-            query: value.query ?? "",
-            tag: value.tag ?? "",
-            tier: value.tier ?? "",
-          });
-          setQ(value.query ?? "");
-          setTier(value.tier ? value.tier : undefined);
-          setTag(value.tag ? value.tag : undefined);
-          setPage(1);
-        }}
-      />
-          <RequirePerm perm={PERMS.CUSTOMER_CREATE} fallback={null}>
-            <div>
+          <RequirePerm perm={PERMS.CUSTOMER_CREATE}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               <button
                 style={{ padding: "6px 10px", borderRadius: 8 }}
                 onClick={() => navigate("/sales/customers/new")}
@@ -148,7 +108,7 @@ export function CustomersListPage() {
             {loading ? "Cargando clientes…" : `${total} clientes encontrados`}
           </div>
         </>
-      )}
+      ) : null}
       {/* [PACK26-CUSTOMERS-LIST-GUARD-END] */}
       <div
         style={{
@@ -177,10 +137,7 @@ export function CustomersListPage() {
         </div>
         <ExportDropdown entity="customers" currentItems={items} />
       </div>
-      <CustomersTable
-        rows={rows}
-        onRowClick={(row) => navigate(`/sales/customers/${row.id}`)}
-      />
+      <CustomersTable rows={rows} onRowClick={(row) => navigate(`/sales/customers/${row.id}`)} />
       {pendingOffline > 0 ? (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
@@ -188,18 +145,23 @@ export function CustomersListPage() {
             type="button"
             onClick={handleFlush}
             disabled={flushing}
-            style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              border: "none",
+              background: "rgba(56,189,248,0.16)",
+              color: "#e0f2fe",
+            }}
           >
             {flushing ? "Reintentando…" : "Reintentar pendientes"}
           </button>
         </div>
       ) : null}
       {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
-      {loading ? <Skeleton lines={8} /> : (
-        <CustomersTable
-          rows={rows}
-          onRowClick={handleRowClick}
-        />
+      {loading ? (
+        <Skeleton lines={8} />
+      ) : (
+        <CustomersTable rows={rows} onRowClick={handleRowClick} />
       )}
       <div style={{ color: "#9ca3af", fontSize: 12 }}>
         {loading ? "Cargando clientes…" : `${total} clientes encontrados`}
@@ -207,3 +169,134 @@ export function CustomersListPage() {
     </div>
   );
 }
+const navigate = useNavigate();
+const { can } = useAuthz();
+const canList = can(PERMS.CUSTOMER_LIST);
+const [filters, setFilters] = useState<Record<string, string>>({});
+// [PACK23-CUSTOMERS-LIST-STATE-START]
+const [items, setItems] = useState<Customer[]>([]);
+const [total, setTotal] = useState(0);
+const [page, setPage] = useState(1);
+const [pageSize] = useState(20);
+const [q, setQ] = useState("");
+const [tier, setTier] = useState<string | undefined>(undefined);
+const [loading, setLoading] = useState(false);
+// [PACK23-CUSTOMERS-LIST-STATE-END]
+const [tag, setTag] = useState<string | undefined>(undefined);
+const [pendingOffline, setPendingOffline] = useState(0);
+const [flushing, setFlushing] = useState(false);
+const [flushMessage, setFlushMessage] = useState<string | null>(null);
+
+// [PACK23-CUSTOMERS-LIST-FETCH-START]
+const fetchCustomers = useCallback(
+  async (extra?: Partial<CustomerListParams>) => {
+    if (!canList) {
+      setItems([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const params: CustomerListParams = { page, pageSize };
+
+      const trimmedQ = q.trim();
+      if (trimmedQ) {
+        params.q = trimmedQ;
+      }
+      if (tier && tier.trim()) {
+        params.tier = tier.trim();
+      }
+      if (tag && tag.trim()) {
+        params.tag = tag.trim();
+      }
+
+      if (extra) {
+        if (typeof extra.page === "number") {
+          params.page = extra.page;
+        }
+        if (typeof extra.pageSize === "number") {
+          params.pageSize = extra.pageSize;
+        }
+        if (typeof extra.sort === "string" && extra.sort.trim()) {
+          params.sort = extra.sort.trim();
+        }
+        if (typeof extra.q === "string" && extra.q.trim()) {
+          params.q = extra.q.trim();
+        }
+        if (typeof extra.tier === "string" && extra.tier.trim()) {
+          params.tier = extra.tier.trim();
+        }
+        if (typeof extra.tag === "string" && extra.tag.trim()) {
+          params.tag = extra.tag.trim();
+        }
+      }
+
+      const res = await SalesCustomers.listCustomers(params);
+      setItems(res.items || []);
+      setTotal(res.total || 0);
+    } finally {
+      setLoading(false);
+    }
+  },
+  [canList, page, pageSize, q, tier, tag],
+);
+useEffect(() => {
+  void fetchCustomers();
+}, [fetchCustomers]);
+// [PACK23-CUSTOMERS-LIST-FETCH-END]
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  setPendingOffline(readQueue().length);
+}, []);
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  setPendingOffline(readQueue().length);
+}, [items]);
+
+const rows: CustomerRow[] = useMemo(
+  () =>
+    items.map((customer) => {
+      const entry: CustomerRow = {
+        id: String(customer.id),
+        name: customer.name,
+      };
+      if (customer.phone && customer.phone.trim().length > 0) {
+        entry.phone = customer.phone;
+      }
+      if (customer.email && customer.email.trim().length > 0) {
+        entry.email = customer.email;
+      }
+      if (customer.tier && customer.tier.trim().length > 0) {
+        entry.tier = customer.tier;
+      }
+      if (customer.lastSaleAt) {
+        entry.lastSale = new Date(customer.lastSaleAt).toLocaleDateString();
+      }
+      return entry;
+    }),
+  [items],
+);
+
+const handleRowClick = useCallback(
+  (row: CustomerRow) => {
+    navigate(`/sales/customers/${row.id}`);
+  },
+  [navigate],
+);
+
+const handleFlush = useCallback(async () => {
+  setFlushing(true);
+  try {
+    const result = await flushOffline();
+    setPendingOffline(result.pending);
+    setFlushMessage(`Reintentadas: ${result.flushed}. Pendientes: ${result.pending}.`);
+  } catch {
+    setFlushMessage("No fue posible sincronizar. Intenta más tarde.");
+  } finally {
+    setFlushing(false);
+  }
+}, []);
+export default CustomersListPage;

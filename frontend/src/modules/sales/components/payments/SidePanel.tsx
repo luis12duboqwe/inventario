@@ -20,8 +20,8 @@ type PaymentsSidePanelProps = {
   onCreditNote?: () => void;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
+const dateFormatter = new Intl.DateTimeFormat("es-HN", { dateStyle: "medium", timeStyle: "short" });
 
 function PaymentsSidePanel({ row, onClose, onPay, onRefund, onCreditNote }: PaymentsSidePanelProps) {
   if (!row) {

@@ -12,8 +12,8 @@ type TransactionsTimelineProps = {
   items?: TimelineEntry[];
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
+const dateFormatter = new Intl.DateTimeFormat("es-HN", { dateStyle: "medium", timeStyle: "short" });
 
 function TransactionsTimeline({ items }: TransactionsTimelineProps) {
   const entries = Array.isArray(items) ? items : [];

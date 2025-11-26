@@ -111,6 +111,11 @@ def test_inventory_flow(client) -> None:
     assert metrics["top_stores"][0]["store_id"] == store_id
     low_stock_devices = metrics["low_stock_devices"]
     assert any(device["device_id"] == low_stock_id for device in low_stock_devices)
+    sales_insights = metrics["sales_insights"]
+    assert sales_insights["average_ticket"] == 0
+    assert isinstance(sales_insights["top_products"], list)
+    assert isinstance(sales_insights["top_customers"], list)
+    assert isinstance(sales_insights["payment_mix"], list)
     audit_alerts = metrics["audit_alerts"]
     assert audit_alerts["total"] == audit_alerts["critical"] + audit_alerts["warning"] + audit_alerts["info"]
     assert audit_alerts["has_alerts"] == (
@@ -197,7 +202,7 @@ def test_device_filters_by_search_and_state(client) -> None:
         headers=headers,
         params={"estado": "Z"},
     )
-    assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_requires_authentication(client) -> None:
@@ -260,7 +265,7 @@ def test_inventory_movement_requires_comment_length(client) -> None:
         json=movement_payload,
         headers={**headers, "X-Reason": "Operacion de prueba"},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     detail = response.json()["detail"]
     assert any(
         "El comentario debe tener al menos 5 caracteres." in error.get("msg", "")
@@ -293,7 +298,7 @@ def test_inventory_movement_requires_comment_matching_reason(client) -> None:
         json=movement_payload,
         headers=headers,
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     detail = response.json()["detail"]
     assert detail["code"] == "reason_comment_mismatch"
     assert "coincidir" in detail["message"]

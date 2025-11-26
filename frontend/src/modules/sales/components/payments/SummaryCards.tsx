@@ -23,7 +23,6 @@ function PaymentsSummaryCards({ items, loading }: PaymentsSummaryCardsProps) {
       >
         {Array.from({ length: Math.max(items.length, 4) }).map((_, index) => (
           <div
-            // eslint-disable-next-line react/no-array-index-key
             key={index}
             style={{
               padding: 16,

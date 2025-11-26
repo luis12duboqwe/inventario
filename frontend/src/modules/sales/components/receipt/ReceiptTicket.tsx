@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 
 export type ReceiptBusiness = {
   name?: string;
@@ -37,13 +38,43 @@ export type ReceiptTicketProps = {
   customer?: ReceiptCustomer;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function ReceiptTicket({ business, order, customer }: ReceiptTicketProps) {
   const businessInfo = business ?? {};
   const orderInfo = order ?? {};
   const items = Array.isArray(orderInfo.items) ? orderInfo.items : [];
   const customerInfo = customer ?? {};
+  const docType = customerInfo.taxId ? "Factura" : "Ticket";
+  const [qrSrc, setQrSrc] = useState<string | null>(null);
+
+  const qrPayload = useMemo(() => {
+    return {
+      number: orderInfo.number ?? null,
+      issuedAt: orderInfo.date ?? null,
+      total: orderInfo.total ?? null,
+      customer: customerInfo.name ?? null,
+      customerTaxId: customerInfo.taxId ?? null,
+      businessTaxId: businessInfo.taxId ?? null,
+      type: docType.toLowerCase(),
+    };
+  }, [orderInfo.number, orderInfo.date, orderInfo.total, customerInfo.name, customerInfo.taxId, businessInfo.taxId, docType]);
+
+  useEffect(() => {
+    let alive = true;
+    const generate = async () => {
+      try {
+        const dataUrl = await QRCode.toDataURL(JSON.stringify(qrPayload));
+        if (alive) setQrSrc(dataUrl);
+      } catch {
+        if (alive) setQrSrc(null);
+      }
+    };
+    void generate();
+    return () => {
+      alive = false;
+    };
+  }, [qrPayload]);
 
   return (
     <div
@@ -62,6 +93,7 @@ function ReceiptTicket({ business, order, customer }: ReceiptTicketProps) {
       {businessInfo.phone ? <div style={{ textAlign: "center" }}>{businessInfo.phone}</div> : null}
       {businessInfo.taxId ? <div style={{ textAlign: "center" }}>RTN: {businessInfo.taxId}</div> : null}
       <hr />
+      <div style={{ fontWeight: 600 }}>{docType}</div>
       <div>Pedido: {orderInfo.number ?? "—"}</div>
       <div>Fecha: {orderInfo.date ? new Date(orderInfo.date).toLocaleString() : "—"}</div>
       {customerInfo.name ? <div>Cliente: {customerInfo.name}</div> : null}
@@ -108,6 +140,12 @@ function ReceiptTicket({ business, order, customer }: ReceiptTicketProps) {
       </div>
       <hr />
       <div style={{ textAlign: "center" }}>¡Gracias por su compra!</div>
+      {qrSrc ? (
+        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+          <img src={qrSrc} alt="Código QR de validación" style={{ width: 120, height: 120 }} />
+          <span style={{ fontSize: 10, color: "#64748b" }}>Escanea para validar el comprobante</span>
+        </div>
+      ) : null}
     </div>
   );
 }

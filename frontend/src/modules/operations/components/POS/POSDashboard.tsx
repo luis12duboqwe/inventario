@@ -8,6 +8,7 @@ import ProductGrid from "../../../../pages/pos/components/ProductGrid";
 import QuickSaleForm from "../../../../pages/pos/components/QuickSaleForm";
 import ReceiptPreview from "../../../../pages/pos/components/ReceiptPreview";
 import Toolbar from "../../../../pages/pos/components/Toolbar";
+import CashRegisterModule from "../../cash/CashRegister";
 import POSSettings from "./POSSettings";
 import {
   usePosDashboardController,
@@ -24,6 +25,7 @@ function POSDashboard(props: Props) {
     cart,
     paymentModal,
     cashHistory,
+    cashRegister,
     receipt,
     settings,
     configReasonModal,
@@ -31,7 +33,7 @@ function POSDashboard(props: Props) {
   const sessions = safeArray(cashHistory.sessions); // [PACK36-pos]
 
   return (
-    <div className="section-grid pos-touch-area">
+    <div className="section-grid pos-touch-area" data-testid="pos-page">
       <Toolbar
         title="Venta directa POS"
         subtitle="Busca dispositivos por IMEI, modelo o nombre y controla stock, impuestos y recibos en un solo flujo."
@@ -61,7 +63,8 @@ function POSDashboard(props: Props) {
       <section className="card">
         <h3>Arqueos de caja POS</h3>
         <p className="card-subtitle">
-          Controla aperturas, cierres y diferencias por sucursal para cuadrar el efectivo cada turno.
+          Controla aperturas, cierres y diferencias por sucursal para cuadrar el efectivo cada
+          turno.
         </p>
         <div className="actions-row">
           <button
@@ -74,7 +77,8 @@ function POSDashboard(props: Props) {
           </button>
         </div>
         {cashHistory.loading ? (
-          <div className="table-wrapper" role="status" aria-busy="true">{/* [PACK36-pos] */}
+          <div className="table-wrapper" role="status" aria-busy="true">
+            {/* [PACK36-pos] */}
             <Skeleton lines={6} />
           </div>
         ) : sessions.length === 0 ? (
@@ -99,20 +103,15 @@ function POSDashboard(props: Props) {
               </thead>
               <tbody>
                 {sessions.slice(0, 8).map((session) => {
-                  const breakdownEntries = Object.entries(
-                    session.payment_breakdown ?? {},
-                  )
+                  const breakdownEntries = Object.entries(session.payment_breakdown ?? {})
                     .filter(([, value]) => Number(value) > 0)
                     .map(
                       ([method, value]) =>
                         `${method}: $${cashHistory.formatCurrency(Number(value))}`,
                     );
                   const breakdownText =
-                    breakdownEntries.length > 0
-                      ? breakdownEntries.join(" · ")
-                      : "—";
-                  const differenceFlag =
-                    Math.abs(Number(session.difference_amount ?? 0)) > 0.01;
+                    breakdownEntries.length > 0 ? breakdownEntries.join(" · ") : "—";
+                  const differenceFlag = Math.abs(Number(session.difference_amount ?? 0)) > 0.01;
                   return (
                     <tr key={session.id}>
                       <td>#{session.id}</td>
@@ -140,12 +139,31 @@ function POSDashboard(props: Props) {
         )}
       </section>
 
+      <CashRegisterModule
+        session={cashRegister.session}
+        entries={cashRegister.entries}
+        loading={cashRegister.loading}
+        error={cashRegister.error}
+        denominations={cashRegister.denominations}
+        onDenominationChange={cashRegister.onDenominationChange}
+        reconciliationNotes={cashRegister.reconciliationNotes}
+        onReconciliationNotesChange={cashRegister.onReconciliationNotesChange}
+        differenceReason={cashRegister.differenceReason}
+        onDifferenceReasonChange={cashRegister.onDifferenceReasonChange}
+        onRegisterEntry={cashRegister.onRegisterEntry}
+        onRefreshEntries={cashRegister.onRefreshEntries}
+        onDownloadReport={cashRegister.onDownloadReport}
+      />
+
       <ReceiptPreview token={props.token} sale={receipt.sale} receiptUrl={receipt.receiptUrl} />
 
       <POSSettings
         config={settings.config}
         devices={settings.devices}
         onSave={settings.onSave}
+        onTestPrinter={settings.onTestPrinter}
+        onOpenDrawer={settings.onOpenDrawer}
+        onDisplayPreview={settings.onDisplayPreview}
         loading={settings.loading}
       />
 
@@ -175,10 +193,15 @@ function POSDashboard(props: Props) {
           </>
         }
       >
-        <form id="pos-config-reason-form" className="form-grid" onSubmit={configReasonModal.onSubmit}>
+        <form
+          id="pos-config-reason-form"
+          className="form-grid"
+          onSubmit={configReasonModal.onSubmit}
+        >
           {configReasonModal.pendingPayload ? (
             <p className="form-span muted-text">
-              Se actualizará la configuración de la sucursal #{configReasonModal.pendingPayload.store_id}.
+              Se actualizará la configuración de la sucursal #
+              {configReasonModal.pendingPayload.store_id}.
             </p>
           ) : null}
           <label className="form-span">
@@ -205,4 +228,3 @@ function POSDashboard(props: Props) {
 }
 
 export default POSDashboard;
-

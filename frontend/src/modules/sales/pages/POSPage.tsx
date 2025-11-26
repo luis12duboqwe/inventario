@@ -12,16 +12,17 @@ import {
   PriceOverrideModal,
   ProductGrid,
   ProductSearchBar,
+  POSQuickScan,
 } from "../components/pos";
 // [PACK22-POS-PAGE-IMPORTS-START]
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Product, ProductSearchParams, PaymentInput } from "../../../services/sales";
 import { SalesProducts } from "../../../services/sales";
 import { usePOS } from "../hooks/usePOS";
 // [PACK22-POS-PAGE-IMPORTS-END]
 import { calcTotalsLocal } from "../utils/totals";
 // [PACK26-POS-PERMS-START]
-import { useAuthz, PERMS, RequirePerm, DisableIfNoPerm } from "../../../auth/useAuthz";
+import { useAuthz, PERMS } from "../../../auth/useAuthz";
 import { logUI } from "../../../services/audit";
 // [PACK26-POS-PERMS-END]
 // [PACK27-PRINT-POS-IMPORT-START]
@@ -106,14 +107,27 @@ export default function POSPage() {
 
   const productCards = useMemo(
     () =>
-      products.map((product) => ({
-        id: String(product.id),
-        sku: product.sku,
-        name: product.name,
-        price: product.price,
-        stock: product.stock,
-        image: product.imageUrl,
-      })),
+      products.map((product) => {
+        const card: React.ComponentProps<typeof ProductGrid>["items"][number] = {
+          id: String(product.id),
+          name: product.name,
+          price: product.price,
+        };
+
+        if (product.sku !== undefined) {
+          card.sku = product.sku;
+        }
+
+        if (product.stock !== undefined) {
+          card.stock = product.stock;
+        }
+
+        if (product.imageUrl) {
+          card.image = product.imageUrl;
+        }
+
+        return card;
+      }),
     [products],
   );
 
@@ -129,17 +143,27 @@ export default function POSPage() {
     });
   }, [pendingOffline]);
 
-  const cartLines = useMemo(
+  const cartLines = useMemo<React.ComponentProps<typeof CartPanel>["lines"]>(
     () =>
-      lines.map((line) => ({
-        id: String(line.productId),
-        sku: line.sku,
-        name: line.name ?? "Producto",
-        qty: line.qty,
-        price: line.price,
-        discount: line.discount ?? null,
-        imei: line.imei,
-      })),
+      lines.map((line) => {
+        const cartLine: React.ComponentProps<typeof CartPanel>["lines"][number] = {
+          id: String(line.productId),
+          name: line.name ?? "Producto",
+          qty: line.qty,
+          price: line.price,
+          discount: line.discount ?? null,
+        };
+
+        if (line.sku !== undefined) {
+          cartLine.sku = line.sku;
+        }
+
+        if (line.imei !== undefined) {
+          cartLine.imei = line.imei;
+        }
+
+        return cartLine;
+      }),
     [lines],
   );
 
@@ -148,24 +172,58 @@ export default function POSPage() {
     : 0;
 
   // [PACK26-POS-AUDIT-START]
-  async function onAfterCheckout(result: any){
-    await logUI({ ts: Date.now(), userId: user?.id, module: "POS", action: "checkout", entityId: result?.saleId, meta: { total: result?.totals?.grand, lines: lines.length } });
+  async function onAfterCheckout(result: any) {
+    const auditEvent: Parameters<typeof logUI>[0] = {
+      ts: Date.now(),
+      userId: user?.id ?? null,
+      module: "POS",
+      action: "checkout",
+      meta: {
+        total: result?.totals?.grand ?? 0,
+        lines: lines.length,
+      },
+    };
+
+    if (result?.saleId) {
+      auditEvent.entityId = String(result.saleId);
+    }
+
+    await logUI(auditEvent);
   }
 
-  async function onApplyDiscount(lineId: string, value: number, type: "PERCENT"|"AMOUNT"){
-    await logUI({ ts: Date.now(), userId: user?.id, module: "POS", action: "discount.apply", entityId: lineId, meta: { value, type } });
+  async function onApplyDiscount(lineId: string, value: number, type: "PERCENT" | "AMOUNT") {
+    await logUI({
+      ts: Date.now(),
+      userId: user?.id ?? null,
+      module: "POS",
+      action: "discount.apply",
+      entityId: lineId,
+      meta: { value, type },
+    });
   }
 
-  async function onHeld(holdId: string){
-    await logUI({ ts: Date.now(), userId: user?.id, module: "POS", action: "hold.create", entityId: holdId });
+  async function onHeld(holdId: string) {
+    await logUI({
+      ts: Date.now(),
+      userId: user?.id ?? null,
+      module: "POS",
+      action: "hold.create",
+      entityId: holdId,
+    });
   }
 
-  async function onResumed(holdId: string){
-    await logUI({ ts: Date.now(), userId: user?.id, module: "POS", action: "hold.resume", entityId: holdId });
+  async function onResumed(holdId: string) {
+    await logUI({
+      ts: Date.now(),
+      userId: user?.id ?? null,
+      module: "POS",
+      action: "hold.resume",
+      entityId: holdId,
+    });
   }
   // [PACK26-POS-AUDIT-END]
 
-  async function doSearch(extra?: Partial<ProductSearchParams>) {
+  const doSearch = useCallback(async (extra?: Partial<ProductSearchParams>) => {
     setLoadingSearch(true);
     try {
       const params: ProductSearchParams = {
@@ -183,12 +241,12 @@ export default function POSPage() {
       }
       const res = await SalesProducts.searchProducts(params);
       setProducts(res.items ?? []);
-    } catch (error) {
+    } catch {
       // TODO(wire): manejar error de búsqueda
     } finally {
       setLoadingSearch(false);
     }
-  }
+  }, [page, pageSize, q]);
 
   function handleSearch(value: string) {
     setQ(value);
@@ -199,6 +257,53 @@ export default function POSPage() {
   function onAddToCart(product: Product) {
     addProduct(product, 1);
   }
+
+  const handleQuickScan = useCallback(
+    async (code: string) => {
+      const normalized = code.trim();
+      if (!normalized) {
+        throw new Error("Ingresa un código válido.");
+      }
+
+      const params: ProductSearchParams = {
+        q: normalized,
+        page: 1,
+        pageSize: 1,
+        onlyInStock: true,
+        sku: normalized,
+        imei: normalized,
+      };
+
+      let response;
+      try {
+        response = await SalesProducts.searchProducts(params);
+      } catch {
+        throw new Error("No se pudo consultar el catálogo.");
+      }
+
+      const items = Array.isArray(response.items) ? response.items : [];
+      const candidate =
+        items.find((item) => item.sku && item.sku.toLowerCase() === normalized.toLowerCase()) ||
+        items[0];
+
+      if (!candidate) {
+        throw new Error("No se encontró ningún producto con ese código.");
+      }
+
+      onAddToCart(candidate);
+      setQ(normalized);
+      setPage(1);
+      setProducts((prev) => {
+        if (prev.some((item) => item.id === candidate.id)) {
+          return prev;
+        }
+        return [candidate, ...prev];
+      });
+
+      return { label: candidate.name };
+    },
+    [onAddToCart, setPage, setProducts, setQ],
+  );
 
   function handleQty(id: string, qty: number) {
     updateQty(id, Math.max(1, qty));
@@ -232,7 +337,13 @@ export default function POSPage() {
 
   const handlePaymentsSubmit = async (paymentDrafts: PaymentDraft[]) => {
     if (!can(PERMS.POS_CHECKOUT)) return;
-    const payload: PaymentInput[] = paymentDrafts.map(({ type, amount, ref }) => ({ type, amount, ref }));
+    const payload: PaymentInput[] = paymentDrafts.map(({ type, amount, ref }) => {
+      const payment: PaymentInput = { type, amount };
+      if (ref !== undefined) {
+        payment.ref = ref;
+      }
+      return payment;
+    });
     setPayments(payload);
     try {
       const result = await checkout();
@@ -258,22 +369,26 @@ export default function POSPage() {
     try {
       const holdId = await holdSale();
       if (holdId) {
-        setHoldItems((prev) => [
-          ...prev,
-          {
+        setHoldItems((prev) => {
+          const next: HoldSale = {
             id: holdId,
             number: holdId,
             date: new Date().toISOString(),
-            customer: customer?.name,
             total: totals.grand,
-          },
-        ]);
+          };
+
+          if (customer?.name) {
+            next.customer = customer.name;
+          }
+
+          return [...prev, next];
+        });
         clearCart();
         setCustomer(null);
         setHoldDrawerOpen(false);
         await onHeld(holdId);
       }
-    } catch (error) {
+    } catch {
       // errores manejados por banner POS
     }
   }
@@ -285,7 +400,7 @@ export default function POSPage() {
       setHoldItems((prev) => prev.filter((item) => item.id !== holdId));
       setHoldDrawerOpen(false);
       await onResumed(holdId);
-    } catch (error) {
+    } catch {
       // errores manejados por banner POS
     }
   }
@@ -305,7 +420,12 @@ export default function POSPage() {
   }
 
   // [PACK22-POS-SEARCH-INIT-START]
-  useEffect(() => { doSearch(); /* carga inicial */ }, []);
+  const didInitRef = useRef(false);
+  useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    void doSearch(); /* carga inicial */
+  }, [doSearch]);
   // [PACK22-POS-SEARCH-INIT-END]
 
   // [PACK26-POS-GUARD-START]
@@ -361,7 +481,10 @@ export default function POSPage() {
       <POSLayout
         left={
           <>
-            <ProductSearchBar value={q} onChange={setQ} onSearch={handleSearch} />
+            <div style={{ display: "grid", gap: 10 }}>
+              <POSQuickScan onSubmit={handleQuickScan} />
+              <ProductSearchBar value={q} onChange={setQ} onSearch={handleSearch} />
+            </div>
             {loadingSearch && (
               <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8" }}>Buscando productos…</div>
             )}
@@ -436,7 +559,13 @@ export default function POSPage() {
         open={fastCustomerOpen}
         onClose={() => setFastCustomerOpen(false)}
         onSubmit={(payload) => {
-          setCustomer({ id: `fast-${Date.now()}`, name: payload.name, phone: payload.phone });
+          setCustomer(() => {
+            const nextCustomer: Customer = { id: `fast-${Date.now()}`, name: payload.name };
+            if (payload.phone) {
+              nextCustomer.phone = payload.phone;
+            }
+            return nextCustomer;
+          });
           setFastCustomerOpen(false);
           // TODO(wire): creación inmediata de cliente
         }}

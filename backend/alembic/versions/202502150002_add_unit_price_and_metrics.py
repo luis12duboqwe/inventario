@@ -14,10 +14,13 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "devices",
-        sa.Column("unit_price", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("unit_price", sa.Numeric(12, 2),
+                  nullable=False, server_default="0"),
     )
     op.execute("UPDATE devices SET unit_price = 0 WHERE unit_price IS NULL")
-    op.alter_column("devices", "unit_price", server_default=None)
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":  # SQLite no soporta DROP DEFAULT
+        op.alter_column("devices", "unit_price", server_default=None)
 
 
 def downgrade() -> None:

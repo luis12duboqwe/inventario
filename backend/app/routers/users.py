@@ -4,7 +4,7 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,7 @@ from .. import crud, schemas
 from ..core.roles import ADMIN, GERENTE, normalize_roles
 from ..database import get_db
 from ..routers.dependencies import require_reason
-from ..security import hash_password, require_roles
+from ..security import enforce_password_policy, hash_password, require_roles
 from ..services import audit_logger, user_reports
 
 router = APIRouter(prefix="/users", tags=["usuarios"])
@@ -116,6 +116,7 @@ def create_user(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if not role_names:
         role_names = {GERENTE}
+    enforce_password_policy(payload.password, username=payload.username)
     try:
         user = crud.create_user(
             db,
@@ -305,6 +306,7 @@ def update_user(
     password_value = updates.pop("password", None)
     password_hash = None
     if isinstance(password_value, str) and password_value:
+        enforce_password_policy(password_value, username=user.username)
         password_hash = hash_password(password_value)
 
     try:
@@ -325,7 +327,7 @@ def update_user(
             ) from exc
         if message == "invalid_store_id":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El identificador de sucursal es inválido",
             ) from exc
         raise
@@ -357,3 +359,26 @@ def update_user_status(
         reason=reason,
     )
     return _user_with_audit(db, updated)
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def delete_user(
+    user_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+    reason: str = Depends(require_reason),
+) -> Response:
+    try:
+        crud.soft_delete_user(
+            db,
+            user_id,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

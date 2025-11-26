@@ -205,6 +205,39 @@ def test_role_permissions_update(client):
     assert confirm_permission == inventario_permission
 
 
+def test_user_role_duplicates_are_collapsed(client):
+    _, admin_token = _bootstrap_admin(client)
+    auth_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    create_payload = {
+        "username": "roles_duplicados@softmobile.test",
+        "password": "RolesDuplicados123*",
+        "full_name": "Roles Duplicados",
+        "roles": ["ADMIN", "ADMIN", "GERENTE"],
+    }
+    create_response = client.post("/users", json=create_payload, headers=auth_headers)
+    assert create_response.status_code == status.HTTP_201_CREATED
+    created_user = create_response.json()
+    created_role_names = [role["name"] for role in created_user["roles"]]
+    assert sorted(created_role_names) == ["ADMIN", "GERENTE"]
+    assert len(created_role_names) == 2
+    assert created_user["rol"] == "ADMIN"
+
+    update_headers = {**auth_headers, "X-Reason": "Normalizacion duplicados"}
+    update_payload = {"roles": ["GERENTE", "GERENTE", "ADMIN"]}
+    update_response = client.put(
+        f"/users/{created_user['id']}/roles",
+        json=update_payload,
+        headers=update_headers,
+    )
+    assert update_response.status_code == status.HTTP_200_OK
+    updated_user = update_response.json()
+    updated_role_names = [role["name"] for role in updated_user["roles"]]
+    assert sorted(updated_role_names) == ["ADMIN", "GERENTE"]
+    assert len(updated_role_names) == 2
+    assert updated_user["rol"] == "ADMIN"
+
+
 def test_update_user_roles_requires_reason(client):
     _, admin_token = _bootstrap_admin(client)
     auth_headers = {"Authorization": f"Bearer {admin_token}"}

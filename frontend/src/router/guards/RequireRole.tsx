@@ -2,7 +2,8 @@ import { type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 
 import { useAuth } from "../../auth/useAuth";
-import { useAuthz, type Role } from "../../auth/useAuthz";
+import { type Role } from "../../auth/roles";
+import { useAuthz } from "../../auth/useAuthz";
 import Loader from "../../shared/components/Loader";
 
 // [PACK28-guards]

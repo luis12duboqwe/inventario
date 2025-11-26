@@ -8,7 +8,14 @@ import {
   AuditListResponse,
 } from "../../../services/audit";
 
-type Row = { ts:number; userId?:string; module:string; action:string; entityId?:string; meta?:any };
+type Row = {
+  ts: number;
+  userId: string | null;
+  module: string;
+  action: string;
+  entityId: string | null;
+  meta: Record<string, unknown> | null;
+};
 
 export default function AuditPage(){
   const { can } = useAuthz();
@@ -36,11 +43,11 @@ export default function AuditPage(){
         setRows(
           (response.items || []).map((item) => ({
             ts: typeof item.ts === "string" ? new Date(item.ts).getTime() : item.ts,
-            userId: item.userId ?? undefined,
+            userId: item.userId ?? null,
             module: item.module,
             action: item.action,
-            entityId: item.entityId ?? undefined,
-            meta: item.meta,
+            entityId: item.entityId ?? null,
+            meta: (item.meta as Record<string, unknown> | null | undefined) ?? null,
           }))
         );
         setPagination((prev) => {
@@ -53,7 +60,17 @@ export default function AuditPage(){
       } catch (err) {
         // fallback: mostrar cola local si no hay backend
         try {
-          const local = JSON.parse(localStorage.getItem("sm_ui_audit_queue") || "[]");
+          const localRaw = JSON.parse(localStorage.getItem("sm_ui_audit_queue") || "[]");
+          const local: Row[] = Array.isArray(localRaw)
+            ? localRaw.map((entry): Row => ({
+                ts: typeof entry?.ts === "number" ? entry.ts : Date.now(),
+                userId: typeof entry?.userId === "string" ? entry.userId : null,
+                module: typeof entry?.module === "string" ? entry.module : "OTHER",
+                action: typeof entry?.action === "string" ? entry.action : "unknown",
+                entityId: typeof entry?.entityId === "string" ? entry.entityId : null,
+                meta: (entry?.meta as Record<string, unknown> | null | undefined) ?? null,
+              }))
+            : [];
           setRows(local);
           setPagination((prev) => {
             const next = { total: local.length, limit: local.length || 1, offset: 0 };
@@ -122,11 +139,11 @@ export default function AuditPage(){
             {rows.map((r,i)=>(
               <tr key={i}>
                 <td>{new Date(r.ts).toLocaleString()}</td>
-                <td>{r.userId || "-"}</td>
+                <td>{r.userId ?? "-"}</td>
                 <td>{r.module}</td>
                 <td>{r.action}</td>
-                <td>{r.entityId || "-"}</td>
-                <td><pre style={{whiteSpace:"pre-wrap"}}>{JSON.stringify(r.meta||{}, null, 2)}</pre></td>
+                <td>{r.entityId ?? "-"}</td>
+                <td><pre style={{whiteSpace:"pre-wrap"}}>{JSON.stringify(r.meta ?? {}, null, 2)}</pre></td>
               </tr>
             ))}
           </tbody>

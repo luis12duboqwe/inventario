@@ -38,11 +38,19 @@ def commit_session(session: Session) -> None:
         raise
 
 
-def flush_session(session: Session) -> None:
-    """Sincroniza cambios pendientes garantizando rollback en caso de fallo."""
+def flush_session(session: Session, *objects: object) -> None:
+    """Sincroniza cambios pendientes garantizando rollback en caso de fallo.
+
+    Permite opcionalmente especificar objetos a *flushear* para facilitar
+    pruebas y callbacks que solo necesitan materializar un subconjunto de
+    cambios.
+    """
 
     try:
-        session.flush()
+        if objects:
+            session.flush(objects)
+        else:
+            session.flush()
     except Exception:
         session.rollback()
         raise

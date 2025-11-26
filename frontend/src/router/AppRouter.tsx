@@ -1,4 +1,4 @@
-import React, { Suspense, memo, useMemo, useState, useCallback, useEffect } from "react";
+import React, { Suspense, memo, useMemo, useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Navigate, createBrowserRouter, useLocation, useRoutes } from "react-router-dom";
@@ -12,6 +12,7 @@ export { ReportsRoutes as __Pack29ReportsRoutesKeep };
 import Loader from "../shared/components/Loader";
 import Button from "../shared/components/ui/Button";
 import AppErrorBoundary from "../shared/components/AppErrorBoundary"; // [PACK36-router]
+import { lazyWithRetry } from "../shared/utils/lazyWithRetry";
 // [PACK28-router-guards]
 import RequireAuth from "./guards/RequireAuth";
 // [PACK28-router-guards]
@@ -20,15 +21,16 @@ import RouteErrorElement from "./RouteErrorElement"; // [PACK36-router]
 import {
   bootstrapAdmin,
   getBootstrapStatus,
+  type BootstrapRequest,
   type BootstrapStatus,
   type Credentials,
 } from "../services/api/auth";
 import type { BootstrapFormValues } from "../shared/components/BootstrapForm";
 
-const Dashboard = React.lazy(() => import("../shared/components/Dashboard"));
-const WelcomeHero = React.lazy(() => import("../shared/components/WelcomeHero"));
-const LoginForm = React.lazy(() => import("../shared/components/LoginForm"));
-const BootstrapForm = React.lazy(() => import("../shared/components/BootstrapForm"));
+const Dashboard = lazyWithRetry(() => import("../shared/components/Dashboard"));
+const WelcomeHero = lazyWithRetry(() => import("../shared/components/WelcomeHero"));
+const LoginForm = lazyWithRetry(() => import("../shared/components/LoginForm"));
+const BootstrapForm = lazyWithRetry(() => import("../shared/components/BootstrapForm"));
 
 export type ThemeMode = "dark" | "light";
 
@@ -211,7 +213,8 @@ const LoginScene = memo(function LoginScene({
   onLogin: (credentials: Credentials) => Promise<void>;
 }) {
   const [bootstrapSuccess, setBootstrapSuccess] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"login" | "bootstrap">("login");
+  // El tab efectivo sigue la sugerencia del servidor salvo que el usuario elija manualmente
+  const [userSelectedTab, setUserSelectedTab] = useState<"login" | "bootstrap" | null>(null);
 
   const {
     data: bootstrapStatus,
@@ -223,34 +226,25 @@ const LoginScene = memo(function LoginScene({
     staleTime: 5 * 60 * 1000,
   });
 
-  useEffect(() => {
-    const disponible = bootstrapStatus?.disponible;
-    if (disponible === true) {
-      setActiveTab("bootstrap");
-    } else if (disponible === false) {
-      setActiveTab("login");
-    }
-  }, [bootstrapStatus?.disponible]);
-
-  useEffect(() => {
-    if (activeTab !== "bootstrap") {
-      setBootstrapSuccess(null);
-    }
-  }, [activeTab]);
+  // Determina el tab efectivo: servidor sugiere y el usuario puede anular manualmente
+  const effectiveTab: "login" | "bootstrap" =
+    userSelectedTab ?? (bootstrapStatus?.disponible === true ? "bootstrap" : "login");
 
   const bootstrapMutation = useMutation({
     mutationFn: async (values: BootstrapFormValues) => {
-      await bootstrapAdmin({
+      const payload: BootstrapRequest = {
         username: values.username,
         password: values.password,
-        full_name: values.fullName,
-        telefono: values.telefono,
-      });
+        full_name: values.fullName ?? null,
+        telefono: values.telefono ?? null,
+      };
+      await bootstrapAdmin(payload);
     },
   });
 
+  // Asume el bootstrap disponible mientras el estado se resuelve para evitar bloquear la UI inicial
+  const allowBootstrap = bootstrapStatus?.disponible ?? true;
   const canDisplayBootstrap = bootstrapStatus?.disponible !== false;
-  const allowBootstrap = bootstrapStatus?.disponible === true;
   const bootstrapLoading = bootstrapMutation.isPending;
 
   const statusErrorMessage = bootstrapStatusError
@@ -266,14 +260,16 @@ const LoginScene = memo(function LoginScene({
     : null;
 
   const handleShowLogin = useCallback(() => {
-    setActiveTab("login");
+    setBootstrapSuccess(null);
+    setUserSelectedTab("login");
   }, []);
 
   const handleShowBootstrap = useCallback(() => {
     if (!canDisplayBootstrap) {
       return;
     }
-    setActiveTab("bootstrap");
+    setBootstrapSuccess(null);
+    setUserSelectedTab("bootstrap");
   }, [canDisplayBootstrap]);
 
   const handleBootstrapSubmit = useCallback(
@@ -284,7 +280,7 @@ const LoginScene = memo(function LoginScene({
         setBootstrapSuccess("Cuenta creada correctamente. Iniciando sesión…");
         await refetchBootstrapStatus();
         await onLogin({ username: values.username, password: values.password });
-      } catch (_error) {
+      } catch {
         setBootstrapSuccess(null);
       }
     },
@@ -292,7 +288,7 @@ const LoginScene = memo(function LoginScene({
   );
 
   const description =
-    activeTab === "bootstrap"
+    effectiveTab === "bootstrap"
       ? "Registra la primera cuenta administradora para comenzar a usar Softmobile."
       : "Ingresa con tus credenciales corporativas para continuar.";
 
@@ -313,24 +309,24 @@ const LoginScene = memo(function LoginScene({
         transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
       >
         <div className="login-card__header">
-          <h2 className="accent-title">{activeTab === "bootstrap" ? "Registro inicial" : "Ingreso seguro"}</h2>
+          <h2 className="accent-title">{effectiveTab === "bootstrap" ? "Registro inicial" : "Ingreso seguro"}</h2>
           {canDisplayBootstrap ? (
             <div className="login-card__switcher" role="tablist" aria-label="Modos de acceso">
               <Button
                 type="button"
-                variant={activeTab === "login" ? "primary" : "ghost"}
+                variant={effectiveTab === "login" ? "primary" : "ghost"}
                 size="sm"
                 onClick={handleShowLogin}
-                aria-pressed={activeTab === "login"}
+                aria-pressed={effectiveTab === "login"}
               >
                 Iniciar sesión
               </Button>
               <Button
                 type="button"
-                variant={activeTab === "bootstrap" ? "secondary" : "ghost"}
+                variant={effectiveTab === "bootstrap" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={handleShowBootstrap}
-                aria-pressed={activeTab === "bootstrap"}
+                aria-pressed={effectiveTab === "bootstrap"}
                 disabled={!allowBootstrap && bootstrapStatus?.disponible === false}
               >
                 Crear cuenta inicial
@@ -340,7 +336,7 @@ const LoginScene = memo(function LoginScene({
         </div>
         <p className="login-card__description">{description}</p>
         {statusErrorMessage ? <div className="alert warning">{statusErrorMessage}</div> : null}
-        {activeTab === "bootstrap" && canDisplayBootstrap ? (
+        {effectiveTab === "bootstrap" && canDisplayBootstrap ? (
           <BootstrapForm
             loading={bootstrapLoading || loading}
             error={bootstrapErrorMessage}

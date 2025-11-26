@@ -50,8 +50,8 @@ function formatTimestamp(value: number | null | undefined): string {
     return "—";
   }
   try {
-    return new Date(value).toLocaleString("es-MX");
-  } catch (error) {
+    return new Date(value).toLocaleString("es-HN");
+  } catch {
     return "—";
   }
 }
@@ -145,7 +145,7 @@ export function HybridQueuePanel({
       ? Math.max(0, Math.round(forecast.estimatedMinutesRemaining))
       : null;
   const etaDate = forecast.estimatedCompletion
-    ? new Date(forecast.estimatedCompletion).toLocaleString("es-MX")
+    ? new Date(forecast.estimatedCompletion).toLocaleString("es-HN")
     : null;
   const moduleBreakdown = useMemo(() => {
     if (!modules || modules.length === 0) {

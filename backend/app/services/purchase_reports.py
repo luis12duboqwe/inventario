@@ -13,11 +13,11 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .. import models, schemas
+from .locale_helpers import format_dual_currency
 
 
 def _format_currency(value: Decimal | float | int) -> str:
-    normalized = float(value)
-    return f"${normalized:,.2f}"
+    return format_dual_currency(value)
 
 
 def _build_pdf_table(data: list[list[str]]) -> Table:

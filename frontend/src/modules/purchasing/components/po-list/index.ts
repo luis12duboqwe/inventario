@@ -1,6 +1,8 @@
 export { default as POFiltersBar } from "./FiltersBar";
+export type { PurchaseOrderFilters, PurchaseOrderStatusFilter } from "./FiltersBar";
 export { default as POSummaryCards } from "./SummaryCards";
 export { default as POTable } from "./Table";
+export type { PurchaseOrderListRow } from "./Table";
 export { default as POSidePanel } from "./SidePanel";
 export { default as POBulkActions } from "./BulkActions";
 export { default as POImportModal } from "./ImportModal";

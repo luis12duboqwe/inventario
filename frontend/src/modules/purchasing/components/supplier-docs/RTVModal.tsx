@@ -134,7 +134,16 @@ export default function RTVModal({ open, poId, onClose, onSubmit }: Props) {
           <button
             type="button"
             disabled={!valid}
-            onClick={() => onSubmit?.({ poId, lines })}
+            onClick={() => {
+              if (!valid) {
+                return;
+              }
+              const payload = { lines } as { lines: Line[]; poId?: string };
+              if (poId) {
+                payload.poId = poId;
+              }
+              onSubmit?.(payload);
+            }}
             style={{
               ...buttonStyle,
               background: valid ? "#ef4444" : "rgba(239, 68, 68, 0.2)",

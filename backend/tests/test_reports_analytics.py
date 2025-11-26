@@ -27,6 +27,8 @@ def _bootstrap_admin(client):
 
 
 def test_advanced_analytics_endpoints(client, db_session: Session):
+    previous_analytics = settings.enable_analytics_adv
+    previous_sales = settings.enable_purchases_sales
     settings.enable_analytics_adv = True
     settings.enable_purchases_sales = True
     token = _bootstrap_admin(client)
@@ -119,6 +121,23 @@ def test_advanced_analytics_endpoints(client, db_session: Session):
     north_sale.created_at = datetime.utcnow() - timedelta(days=3)
     db_session.commit()
 
+    admin_user = db_session.query(models.User).filter_by(
+        username="analytics_admin"
+    ).first()
+    assert admin_user is not None
+    for index in range(4):
+        db_session.add(
+            models.SaleReturn(
+                sale_id=sale_id,
+                device_id=device_id,
+                quantity=1,
+                reason="Cliente insatisfecho",
+                processed_by_id=admin_user.id,
+                created_at=datetime.utcnow() - timedelta(days=index),
+            )
+        )
+    db_session.commit()
+
     device_record = db_session.get(models.Device, device_id)
     device_record.quantity = 3
     db_session.commit()
@@ -165,6 +184,29 @@ def test_advanced_analytics_endpoints(client, db_session: Session):
         assert "trend" in item
         assert "revenue_trend_score" in item
 
+    forecast_response_store = client.get(
+        "/reports/analytics/store_sales_forecast", headers=headers
+    )
+    assert forecast_response_store.status_code == status.HTTP_200_OK
+    store_forecast_items = forecast_response_store.json()["items"]
+    assert any(item["store_id"] == store_id for item in store_forecast_items)
+    assert all("projected_revenue" in item for item in store_forecast_items)
+
+    reorder_response = client.get(
+        "/reports/analytics/reorder_suggestions", headers=headers
+    )
+    assert reorder_response.status_code == status.HTTP_200_OK
+    reorder_items = reorder_response.json()["items"]
+    assert any(item["store_id"] == store_id for item in reorder_items)
+    assert all(item["recommended_order"] >= 0 for item in reorder_items)
+
+    anomalies_response = client.get(
+        "/reports/analytics/return_anomalies", headers=headers
+    )
+    assert anomalies_response.status_code == status.HTTP_200_OK
+    anomalies = anomalies_response.json()["items"]
+    assert any(item["is_anomalous"] for item in anomalies)
+
     download_headers = {**headers, "X-Reason": "Descarga analitica"}
     pdf_response = client.get("/reports/analytics/pdf", headers=download_headers)
     assert pdf_response.status_code == status.HTTP_200_OK
@@ -202,5 +244,18 @@ def test_advanced_analytics_endpoints(client, db_session: Session):
     assert rotation_filtered.status_code == status.HTTP_200_OK
     assert all(item["store_id"] == store_id for item in rotation_filtered.json()["items"])
 
-    settings.enable_analytics_adv = False
-    settings.enable_purchases_sales = False
+    try:
+        settings.enable_purchases_sales = False
+        disabled_sales_response = client.get("/reports/analytics/rotation", headers=headers)
+        assert disabled_sales_response.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_purchases_sales = True
+
+    try:
+        settings.enable_analytics_adv = False
+        settings.enable_purchases_sales = True
+        disabled_response = client.get("/reports/analytics/rotation", headers=headers)
+        assert disabled_response.status_code == status.HTTP_404_NOT_FOUND
+    finally:
+        settings.enable_analytics_adv = previous_analytics
+        settings.enable_purchases_sales = previous_sales

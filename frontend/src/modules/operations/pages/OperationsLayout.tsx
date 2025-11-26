@@ -1,16 +1,32 @@
-import React, { Suspense } from "react";
+import React, { Suspense, useMemo } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Loader } from "../../../components/common/Loader";
 import { PageToolbar } from "../../../components/layout/PageToolbar";
+import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 export default function OperationsLayout() {
   const { pathname } = useLocation();
-  const tabs = [
-    { to: "pos", label: "POS / Caja" },
-    { to: "compras", label: "Compras" },
-    { to: "devoluciones", label: "Devoluciones" },
-    { to: "transferencias", label: "Transferencias" },
-  ];
+  const { enableBundles, enableDte } = useDashboard();
+  const tabs = useMemo(() => {
+    const base = [
+      { to: "pos", label: "POS / Caja" },
+      { to: "compras", label: "Compras" },
+      { to: "devoluciones", label: "Devoluciones" },
+      { to: "garantias", label: "Garantías" },
+      { to: "transferencias", label: "Transferencias" },
+      { to: "diagnosticos", label: "Diagnósticos" },
+    ];
+
+    if (enableBundles) {
+      base.push({ to: "paquetes", label: "Paquetes" });
+    }
+
+    if (enableDte) {
+      base.push({ to: "dte", label: "DTE" });
+    }
+
+    return base;
+  }, [enableBundles, enableDte]);
   return (
     <section style={{ display: "grid", gap: 16 }}>
       <header style={{ display: "grid", gap: 12 }}>

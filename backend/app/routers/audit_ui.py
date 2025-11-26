@@ -8,10 +8,12 @@ from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import schemas
 from ..core.roles import ADMIN
 from ..database import get_db
 from ..security import require_roles
+from ..services import audit_ui as audit_ui_service
+from ..usecases import audit_ui as audit_ui_usecases
 
 router = APIRouter(prefix="/api/audit/ui", tags=["auditoría"])
 
@@ -29,7 +31,7 @@ def bulk_insert_audit_ui(
     """Inserta un lote de eventos de auditoría de la interfaz."""
 
     # // [PACK32-33-BE] Inserción masiva para sincronizar la cola local del frontend.
-    inserted = crud.create_audit_ui_entries(db, items=payload.items)
+    inserted = audit_ui_usecases.create_entries(db, items=payload.items)
     return schemas.AuditUIBulkResponse(inserted=inserted)
 
 
@@ -49,7 +51,7 @@ def list_audit_ui(
 ) -> schemas.AuditUIListResponse:
     """Lista eventos almacenados con filtros y paginación sencilla."""
 
-    entries, total = crud.list_audit_ui_entries(
+    entries, total = audit_ui_usecases.list_entries(
         db,
         limit=limit,
         offset=offset,
@@ -57,6 +59,7 @@ def list_audit_ui(
         date_to=date_to,
         user_id=user_id,
         module=module,
+        range_normalizer=audit_ui_service.normalize_range,
     )
     has_more = offset + limit < total
     items = [schemas.AuditUIRecord.model_validate(entry) for entry in entries]
@@ -74,7 +77,8 @@ def list_audit_ui(
     dependencies=[Depends(require_roles(ADMIN))],
 )
 def export_audit_ui(
-    format: schemas.AuditUIExportFormat = Query(default=schemas.AuditUIExportFormat.JSON),
+    format: schemas.AuditUIExportFormat = Query(
+        default=schemas.AuditUIExportFormat.JSON),
     date_from: datetime | date | None = Query(default=None, alias="from"),
     date_to: datetime | date | None = Query(default=None, alias="to"),
     user_id: str | None = Query(default=None, alias="userId", max_length=120),
@@ -84,7 +88,7 @@ def export_audit_ui(
 ) -> Response:
     """Exporta la bitácora como CSV o JSON listo para descarga."""
 
-    payload = crud.export_audit_ui_entries(
+    payload = audit_ui_usecases.export_entries(
         db,
         export_format=format,
         date_from=date_from,
@@ -92,6 +96,8 @@ def export_audit_ui(
         user_id=user_id,
         module=module,
         limit=limit,
+        range_normalizer=audit_ui_service.normalize_range,
+        serializer=audit_ui_service.serialize_entries,
     )
 
     filename = f"audit_ui.{format.value}"

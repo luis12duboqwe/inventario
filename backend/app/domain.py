@@ -57,6 +57,8 @@ class Device:
     sku: str
     name: str
     quantity: int = 0
+    minimum_stock: int = 0
+    reorder_point: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -65,6 +67,8 @@ class Device:
             "sku": self.sku,
             "name": self.name,
             "quantity": self.quantity,
+            "minimum_stock": self.minimum_stock,
+            "reorder_point": self.reorder_point,
         }
 
 

@@ -14,7 +14,7 @@ const formatDateTime = (value: string | null | undefined): string => {
     if (Number.isNaN(date.getTime())) {
       return value;
     }
-    return new Intl.DateTimeFormat("es-MX", { dateStyle: "short", timeStyle: "short" }).format(date);
+    return new Intl.DateTimeFormat("es-HN", { dateStyle: "short", timeStyle: "short" }).format(date);
   } catch {
     return value;
   }

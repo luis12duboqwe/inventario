@@ -28,10 +28,12 @@ def _auth_headers(client) -> dict[str, str]:
 
 
 def _load_payload_store_id(entry: models.SyncOutbox) -> int | None:
-    try:
-        payload = json.loads(entry.payload)
-    except (TypeError, json.JSONDecodeError):  # pragma: no cover - defensivo
-        return None
+    payload = entry.payload
+    if not isinstance(payload, dict):
+        try:
+            payload = json.loads(entry.payload_raw)
+        except (TypeError, json.JSONDecodeError):  # pragma: no cover - defensivo
+            return None
     candidate = payload.get("store_id")
     if candidate is None:
         candidate = payload.get("origin_store_id")

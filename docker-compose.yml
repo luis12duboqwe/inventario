@@ -1,34 +1,55 @@
-# // [PACK32-33-OPS] Orquestación mínima para backend + Postgres.
 version: "3.9"
 
 services:
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: softmobile
-      POSTGRES_USER: softmobile
-      POSTGRES_PASSWORD: softmobile
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    profiles: ["dev", "ops"]
-
-  app:
+  backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    image: softmobile/backend:2.2.0
+    restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql+psycopg2://softmobile:softmobile@db:5432/softmobile
-      SOFTMOBILE_BOOTSTRAP_TOKEN: ${SOFTMOBILE_BOOTSTRAP_TOKEN:-test-bootstrap-token}
-      UVICORN_RELOAD: "0"
-    depends_on:
-      - db
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/softmobile.db}
+      SOFTMOBILE_ENABLE_ANALYTICS_ADV: ${SOFTMOBILE_ENABLE_ANALYTICS_ADV:-1}
+      SOFTMOBILE_ENABLE_CATALOG_PRO: ${SOFTMOBILE_ENABLE_CATALOG_PRO:-1}
+      SOFTMOBILE_ENABLE_TRANSFERS: ${SOFTMOBILE_ENABLE_TRANSFERS:-1}
+      SOFTMOBILE_ENABLE_PURCHASES_SALES: ${SOFTMOBILE_ENABLE_PURCHASES_SALES:-1}
+      SOFTMOBILE_ENABLE_HYBRID_PREP: ${SOFTMOBILE_ENABLE_HYBRID_PREP:-1}
+      SOFTMOBILE_ENABLE_2FA: ${SOFTMOBILE_ENABLE_2FA:-0}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app/backend:rw
+      - ./fastapi_limiter:/app/fastapi_limiter:rw
+      - softmobile-data:/data
     ports:
       - "8000:8000"
-    profiles: ["dev", "ops"]
-    command: ["uvicorn", "backend.app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      - redis
+
+  frontend:
+    image: node:18-bullseye
+    working_dir: /app
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    volumes:
+      - ./frontend:/app:rw
+      - frontend-node-modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
 
 volumes:
-  postgres_data:
-    driver: local
+  softmobile-data:
+  frontend-node-modules:
+  redis-data:

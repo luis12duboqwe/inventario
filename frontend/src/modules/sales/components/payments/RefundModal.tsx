@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 type RefundModalPayload = {
   orderId?: string;
@@ -21,28 +21,33 @@ function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
   const [reason, setReason] = useState<"DEFECT" | "CUSTOMER_CHANGE" | "PRICE_ADJUST" | "OTHER">("OTHER");
   const [notes, setNotes] = useState<string>("");
 
-  useEffect(() => {
-    if (!open) {
-      setAmount(0);
-      setMethod("CASH");
-      setReason("OTHER");
-      setNotes("");
-    }
-  }, [open]);
+  // Sin setState en efectos: limpiar en handlers.
 
-  const isValid = useMemo(() => amount > 0, [amount]);
+  const isValid = useMemo(() => amount > 0 && notes.trim().length >= 5, [amount, notes]);
 
   const handleSubmit = () => {
     if (!isValid) {
       return;
     }
-    onSubmit?.({
-      orderId,
+    const payload: RefundModalPayload = {
       amount,
       method,
       reason,
-      notes: notes.trim() || undefined,
-    });
+    };
+    const trimmedNotes = notes.trim();
+    if (trimmedNotes) {
+      payload.notes = trimmedNotes;
+    }
+    if (orderId) {
+      payload.orderId = orderId;
+    }
+    onSubmit?.(payload);
+    // reset para un nuevo ciclo y cerrar el modal
+    setAmount(0);
+    setMethod("CASH");
+    setReason("OTHER");
+    setNotes("");
+    onClose?.();
   };
 
   const handleAmountChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,17 +93,28 @@ function RefundModal({ open, orderId, onClose, onSubmit }: RefundModalProps) {
             </select>
           </label>
           <label style={{ display: "grid", gap: 4 }}>
-            <span>Notas</span>
+            <span>Motivo corporativo (mín. 5 caracteres)</span>
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               style={{ width: "100%", padding: 8, borderRadius: 8, minHeight: 96 }}
-              placeholder="Detalle la razón del reembolso"
+              placeholder="Describe el motivo corporativo"
             />
           </label>
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>Cancelar</button>
+          <button
+            onClick={() => {
+              setAmount(0);
+              setMethod("CASH");
+              setReason("OTHER");
+              setNotes("");
+              onClose?.();
+            }}
+            style={{ padding: "8px 12px", borderRadius: 8 }}
+          >
+            Cancelar
+          </button>
           <button
             type="button"
             disabled={!isValid}

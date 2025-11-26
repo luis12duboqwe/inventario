@@ -20,14 +20,14 @@ import { flushOffline, safeCreateCustomer, safeUpdateCustomer } from "../utils/o
 type CustomerProfile = {
   id?: string;
   name: string;
-  email?: string;
-  phone?: string;
-  tier?: string;
-  tags?: string[];
-  notes?: string;
+  email: string;
+  phone: string;
+  tier: string;
+  tags: string[];
+  notes: string;
 };
 
-const emptyProfile: CustomerProfile = { id: undefined, name: "", email: "", phone: "", tier: "", notes: "" };
+const emptyProfile: CustomerProfile = { name: "", email: "", phone: "", tier: "", notes: "", tags: [] };
 
 export function CustomerDetailPage() {
   const { can, user } = useAuthz();
@@ -50,7 +50,7 @@ export function CustomerDetailPage() {
   useEffect(() => {
     if (!id) {
       setData(null);
-      setForm(emptyProfile);
+      setForm({ ...emptyProfile });
       return;
     }
     (async () => {
@@ -73,11 +73,11 @@ export function CustomerDetailPage() {
       setForm({
         id: String(data.id),
         name: data.name,
-        email: data.email,
-        phone: data.phone,
-        tier: data.tier,
-        tags: data.tags,
-        notes: data.notes,
+        email: data.email ?? "",
+        phone: data.phone ?? "",
+        tier: data.tier ?? "",
+        tags: Array.isArray(data.tags) ? [...data.tags] : [],
+        notes: data.notes ?? "",
       });
     }
   }, [data]);
@@ -115,7 +115,13 @@ export function CustomerDetailPage() {
         if (updated) {
           setData(updated);
           setOfflineNotice(null);
-          await logUI({ ts: Date.now(), userId: user?.id, module: "CUSTOMERS", action: "update", entityId: id }); // [PACK37-frontend]
+          await logUI({
+            ts: Date.now(),
+            userId: user?.id ?? null,
+            module: "CUSTOMERS",
+            action: "update",
+            ...(id ? { entityId: id } : {}),
+          }); // [PACK37-frontend]
         } else {
           setOfflineNotice("Cambios guardados offline. Reintenta cuando vuelvas a tener conexión."); // [PACK37-frontend]
         }
@@ -126,10 +132,10 @@ export function CustomerDetailPage() {
           setOfflineNotice(null);
           await logUI({
             ts: Date.now(),
-            userId: user?.id,
+            userId: user?.id ?? null,
             module: "CUSTOMERS",
             action: "create",
-            entityId: created?.id ? String(created.id) : undefined,
+            ...(created?.id ? { entityId: String(created.id) } : {}),
           }); // [PACK37-frontend]
           // TODO: navegar a detalle created.id si el router lo soporta
         } else {
@@ -147,18 +153,25 @@ export function CustomerDetailPage() {
 
   const isCreateMode = !id;
   const actionPerm = isCreateMode ? PERMS.CUSTOMER_CREATE : PERMS.CUSTOMER_EDIT;
-  const detailCardValue: CustomerProfile = data ?? {
-    ...form,
-    id: form.id ?? "nuevo",
-  };
+  const detailCardValueMemo: CustomerProfile = useMemo(() => {
+    if (data) {
+      return {
+        id: String(data.id),
+        name: data.name,
+        email: data.email ?? "",
+        phone: data.phone ?? "",
+        tier: data.tier ?? "",
+        tags: Array.isArray(data.tags) ? [...data.tags] : [],
+        notes: data.notes ?? "",
+      };
+    }
+    return { ...form };
+  }, [data, form]);
 
   // [PACK26-CUSTOMERS-DETAIL-GUARD-START]
-  if (id && !canView) {
-    return <div>No autorizado</div>;
-  }
-  if (!id && !canCreate) {
-    return <div>No autorizado</div>;
-  }
+  const unauthorizedView = Boolean(id) && !canView;
+  const unauthorizedCreate = !id && !canCreate;
+  const unauthorized = unauthorizedView || unauthorizedCreate;
   // [PACK26-CUSTOMERS-DETAIL-GUARD-END]
 
 
@@ -182,113 +195,121 @@ export function CustomerDetailPage() {
     return (
       <CustomerDetailCard
         value={{
-          id: detailCardValue.id ?? "nuevo",
-          name: detailCardValue.name,
-          email: detailCardValue.email,
-          phone: detailCardValue.phone,
-          tier: detailCardValue.tier,
-          tags: detailCardValue.tags,
-          notes: detailCardValue.notes,
+          id: detailCardValueMemo.id ?? "nuevo",
+          name: detailCardValueMemo.name,
+          ...(detailCardValueMemo.email ? { email: detailCardValueMemo.email } : {}),
+          ...(detailCardValueMemo.phone ? { phone: detailCardValueMemo.phone } : {}),
+          ...(detailCardValueMemo.tier ? { tier: detailCardValueMemo.tier } : {}),
+          ...(detailCardValueMemo.tags.length ? { tags: detailCardValueMemo.tags } : {}),
+          ...(detailCardValueMemo.notes ? { notes: detailCardValueMemo.notes } : {}),
         }}
       />
     );
-  }, [data, detailCardValue, id, loading]);
+  }, [data, detailCardValueMemo, id, loading]);
 
   return (
     <div style={{ display: "grid", gap: 16, maxWidth: 600 }}>
-      {pendingOffline > 0 ? (
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
-          <button
-            type="button"
-            onClick={handleFlush}
-            disabled={flushing}
-            style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
+      {unauthorized ? (
+        <div>No autorizado</div>
+      ) : (
+        <>
+          {pendingOffline > 0 ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
+              <button
+                type="button"
+                onClick={handleFlush}
+                disabled={flushing}
+                style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
+              >
+                {flushing ? "Reintentando…" : "Reintentar pendientes"}
+              </button>
+            </div>
+          ) : null}
+          {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
+          {offlineNotice ? <div style={{ color: "#fbbf24", fontSize: 13 }}>{offlineNotice}</div> : null}
+          {headerSection}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSave({
+                name: form.name,
+                email: form.email,
+                phone: form.phone,
+                tier: form.tier,
+                notes: form.notes,
+                tags: form.tags,
+              });
+            }}
+            style={{ display: "grid", gap: 12 }}
           >
-            {flushing ? "Reintentando…" : "Reintentar pendientes"}
-          </button>
-        </div>
-      ) : null}
-      {flushMessage ? <div style={{ color: "#9ca3af", fontSize: 12 }}>{flushMessage}</div> : null}
-      {offlineNotice ? <div style={{ color: "#fbbf24", fontSize: 13 }}>{offlineNotice}</div> : null}
-      {headerSection}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSave({
-            name: form.name,
-            email: form.email,
-            phone: form.phone,
-            tier: form.tier,
-            notes: form.notes,
-            tags: form.tags,
-          });
-        }}
-        style={{ display: "grid", gap: 12 }}
-      >
-        <div>
-          <label style={{ display: "block", marginBottom: 4 }}>Nombre</label>
-          <input
-            value={form.name}
-            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-            style={{ padding: 8, borderRadius: 8, width: "100%" }}
-            disabled={loading || saving}
-          />
-          {errors.name && <span style={{ color: "#f87171", fontSize: 12 }}>{errors.name}</span>}
-        </div>
-        <div>
-          <label style={{ display: "block", marginBottom: 4 }}>Email</label>
-          <input
-            value={form.email ?? ""}
-            onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-            style={{ padding: 8, borderRadius: 8, width: "100%" }}
-            disabled={loading || saving}
-            type="email"
-          />
-          {errors.email && <span style={{ color: "#f87171", fontSize: 12 }}>{errors.email}</span>}
-        </div>
-        <div>
-          <label style={{ display: "block", marginBottom: 4 }}>Teléfono</label>
-          <input
-            value={form.phone ?? ""}
-            onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
-            style={{ padding: 8, borderRadius: 8, width: "100%" }}
-            disabled={loading || saving}
-          />
-          {errors.phone && <span style={{ color: "#f87171", fontSize: 12 }}>{errors.phone}</span>}
-        </div>
-        <div>
-          <label style={{ display: "block", marginBottom: 4 }}>Tier</label>
-          <input
-            value={form.tier ?? ""}
-            onChange={(event) => setForm((prev) => ({ ...prev, tier: event.target.value }))}
-            style={{ padding: 8, borderRadius: 8, width: "100%" }}
-            disabled={loading || saving}
-          />
-        </div>
-        <div>
-          <label style={{ display: "block", marginBottom: 4 }}>Notas</label>
-          <textarea
-            value={form.notes ?? ""}
-            onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-            style={{ padding: 8, borderRadius: 8, minHeight: 100, width: "100%" }}
-            disabled={loading || saving}
-          />
-        </div>
-        <RequirePerm perm={actionPerm} fallback={null}>
-          <button
-            type="submit"
-            style={{ padding: "10px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none", fontWeight: 600 }}
-            disabled={saving || loading}
-          >
-            {saving ? "Guardando…" : isCreateMode ? "Crear cliente" : "Actualizar cliente"}
-          </button>
-        </RequirePerm>
-      </form>
-      <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12 }}>
-        <div style={{ fontWeight: 700 }}>Historial de compras</div>
-        {/* TODO(wire) tabla de ventas del cliente */}
-      </div>
+            <div>
+              <label style={{ display: "block", marginBottom: 4 }}>Nombre</label>
+              <input
+                value={form.name}
+                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                style={{ padding: 8, borderRadius: 8, width: "100%" }}
+                disabled={loading || saving}
+              />
+              {errors.name && <span style={{ color: "#f87171", fontSize: 12 }}>{errors.name}</span>}
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: 4 }}>Email</label>
+              <input
+                value={form.email ?? ""}
+                onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+                style={{ padding: 8, borderRadius: 8, width: "100%" }}
+                disabled={loading || saving}
+                type="email"
+              />
+              {errors.email && <span style={{ color: "#f87171", fontSize: 12 }}>{errors.email}</span>}
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: 4 }}>Teléfono</label>
+              <input
+                value={form.phone ?? ""}
+                onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
+                style={{ padding: 8, borderRadius: 8, width: "100%" }}
+                disabled={loading || saving}
+              />
+              {errors.phone && <span style={{ color: "#f87171", fontSize: 12 }}>{errors.phone}</span>}
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: 4 }}>Tier</label>
+              <input
+                value={form.tier ?? ""}
+                onChange={(event) => setForm((prev) => ({ ...prev, tier: event.target.value }))}
+                style={{ padding: 8, borderRadius: 8, width: "100%" }}
+                disabled={loading || saving}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: 4 }}>Notas</label>
+              <textarea
+                value={form.notes ?? ""}
+                onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                style={{ padding: 8, borderRadius: 8, minHeight: 100, width: "100%" }}
+                disabled={loading || saving}
+              />
+            </div>
+            <RequirePerm perm={actionPerm} fallback={null}>
+              <button
+                type="submit"
+                style={{ padding: "10px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none", fontWeight: 600 }}
+                disabled={saving || loading}
+              >
+                {saving ? "Guardando…" : isCreateMode ? "Crear cliente" : "Actualizar cliente"}
+              </button>
+            </RequirePerm>
+          </form>
+          <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12 }}>
+            <div style={{ fontWeight: 700 }}>Historial de compras</div>
+            {/* TODO(wire) tabla de ventas del cliente */}
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
+export default CustomerDetailPage;

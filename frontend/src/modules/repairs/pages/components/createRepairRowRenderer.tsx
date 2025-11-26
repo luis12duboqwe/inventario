@@ -30,9 +30,9 @@ const createRepairRowRenderer = ({
   onShowBudget,
   onShowParts,
 }: RepairRowRendererDependencies) => {
-  return (order: RepairOrder): ReactNode => {
-    const updatedAt = new Date(order.updated_at).toLocaleString("es-MX");
-    const total = Number(order.total_cost ?? 0).toLocaleString("es-MX", {
+  function RepairRow(order: RepairOrder): ReactNode {
+    const updatedAt = new Date(order.updated_at).toLocaleString("es-HN");
+    const total = Number(order.total_cost ?? 0).toLocaleString("es-HN", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
@@ -77,7 +77,7 @@ const createRepairRowRenderer = ({
                     return (
                       <li key={`${order.id}-${part.id}`}>
                         {part.quantity} × {label} — {part.source === "EXTERNAL" ? "Compra externa" : "Inventario"} (
-                        {part.unit_cost.toLocaleString("es-MX", {
+                        {part.unit_cost.toLocaleString("es-HN", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
@@ -135,8 +135,14 @@ const createRepairRowRenderer = ({
         </td>
       </tr>
     );
-  };
+  }
+
+  (RepairRow as any).displayName = "RepairRow";
+  return RepairRow;
 };
+
+// Nota: se deja el nombre de fábrica para depuración de creación del renderer
+(createRepairRowRenderer as any).displayName = "createRepairRowRenderer";
 
 export type { RepairRowRendererDependencies };
 export { createRepairRowRenderer };

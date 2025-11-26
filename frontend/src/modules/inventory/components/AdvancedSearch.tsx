@@ -1,53 +1,91 @@
 import { FormEvent, useMemo, useState } from "react";
-import type { CatalogDevice, DeviceSearchFilters } from "../../../api";
+import type { CatalogDevice, Device, DeviceSearchFilters } from "../../../api";
 import { searchCatalogDevices } from "../../../api";
 
 type Props = {
   token: string;
 };
 
-const initialFilters: DeviceSearchFilters = {
+type AdvancedFiltersState = DeviceSearchFilters & {
+  estado_comercial?: NonNullable<Device["estado_comercial"]> | "";
+};
+
+const createInitialFilters = (): AdvancedFiltersState => ({
   imei: "",
   serial: "",
-  capacidad_gb: undefined,
   color: "",
   marca: "",
   modelo: "",
   categoria: "",
   condicion: "",
+  estado_comercial: "",
   estado: "",
   ubicacion: "",
   proveedor: "",
   fecha_ingreso_desde: "",
   fecha_ingreso_hasta: "",
-};
+});
 
 function AdvancedSearch({ token }: Props) {
-  const [filters, setFilters] = useState<DeviceSearchFilters>(initialFilters);
+  const [filters, setFilters] = useState<AdvancedFiltersState>(() => createInitialFilters());
   const [results, setResults] = useState<CatalogDevice[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
-  const hasFilters = useMemo(
-    () =>
-      Boolean(
-        filters.imei ||
-          filters.serial ||
-          filters.color ||
-          filters.marca ||
-          filters.modelo ||
-          filters.categoria ||
-          filters.condicion ||
-          filters.estado ||
-          filters.ubicacion ||
-          filters.proveedor ||
-          typeof filters.capacidad_gb === "number" ||
-          (filters.fecha_ingreso_desde ?? "") ||
-          (filters.fecha_ingreso_hasta ?? "")
-      ),
-    [filters]
-  );
+  const sanitizedFilters = useMemo(() => {
+    const payload: DeviceSearchFilters = {};
+
+    if (filters.imei?.trim()) {
+      payload.imei = filters.imei.trim();
+    }
+    if (filters.serial?.trim()) {
+      payload.serial = filters.serial.trim();
+    }
+    if (filters.color?.trim()) {
+      payload.color = filters.color.trim();
+    }
+    if (filters.marca?.trim()) {
+      payload.marca = filters.marca.trim();
+    }
+    if (filters.modelo?.trim()) {
+      payload.modelo = filters.modelo.trim();
+    }
+    if (filters.categoria?.trim()) {
+      payload.categoria = filters.categoria.trim();
+    }
+    if (filters.condicion?.trim()) {
+      payload.condicion = filters.condicion.trim();
+    }
+    if (filters.estado_comercial && filters.estado_comercial !== "") {
+      payload.estado_comercial = filters.estado_comercial;
+    }
+    if (filters.estado?.trim()) {
+      payload.estado = filters.estado.trim();
+    }
+    if (filters.ubicacion?.trim()) {
+      payload.ubicacion = filters.ubicacion.trim();
+    }
+    if (filters.proveedor?.trim()) {
+      payload.proveedor = filters.proveedor.trim();
+    }
+
+    if (typeof filters.capacidad_gb === "number" && Number.isFinite(filters.capacidad_gb)) {
+      payload.capacidad_gb = filters.capacidad_gb;
+    }
+
+    if (filters.fecha_ingreso_desde) {
+      payload.fecha_ingreso_desde = filters.fecha_ingreso_desde;
+    }
+
+    if (filters.fecha_ingreso_hasta) {
+      payload.fecha_ingreso_hasta = filters.fecha_ingreso_hasta;
+    }
+
+    return payload;
+  }, [filters]);
+
+  const hasFilters = useMemo(() => Object.keys(sanitizedFilters).length > 0, [sanitizedFilters]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -58,17 +96,7 @@ function AdvancedSearch({ token }: Props) {
     try {
       setLoading(true);
       setError(null);
-      const response = await searchCatalogDevices(token, {
-        ...filters,
-        capacidad_gb: typeof filters.capacidad_gb === "number" ? filters.capacidad_gb : undefined,
-        categoria: filters.categoria?.trim() ? filters.categoria.trim() : undefined,
-        condicion: filters.condicion?.trim() ? filters.condicion.trim() : undefined,
-        estado: filters.estado?.trim() ? filters.estado.trim() : undefined,
-        ubicacion: filters.ubicacion?.trim() ? filters.ubicacion.trim() : undefined,
-        proveedor: filters.proveedor?.trim() ? filters.proveedor.trim() : undefined,
-        fecha_ingreso_desde: filters.fecha_ingreso_desde || undefined,
-        fecha_ingreso_hasta: filters.fecha_ingreso_hasta || undefined,
-      });
+      const response = await searchCatalogDevices(token, sanitizedFilters);
       setResults(response);
       setSearched(true);
     } catch (err) {
@@ -79,7 +107,7 @@ function AdvancedSearch({ token }: Props) {
   };
 
   const handleReset = () => {
-    setFilters(initialFilters);
+    setFilters(() => createInitialFilters());
     setResults([]);
     setError(null);
     setSearched(false);
@@ -119,12 +147,17 @@ function AdvancedSearch({ token }: Props) {
               type="number"
               value={typeof filters.capacidad_gb === "number" ? filters.capacidad_gb : ""}
               min={0}
-              onChange={(event) =>
-                setFilters((state) => ({
-                  ...state,
-                  capacidad_gb: event.target.value === "" ? undefined : Number(event.target.value),
-                }))
-              }
+              onChange={(event) => {
+                const value = event.target.value;
+                setFilters((state) => {
+                  if (value === "") {
+                    const nextState = { ...state };
+                    delete nextState.capacidad_gb;
+                    return nextState;
+                  }
+                  return { ...state, capacidad_gb: Number(value) };
+                });
+              }}
             />
           </label>
           <label>
@@ -171,6 +204,24 @@ function AdvancedSearch({ token }: Props) {
               maxLength={60}
               onChange={(event) => setFilters((state) => ({ ...state, condicion: event.target.value }))}
             />
+          </label>
+          <label>
+            <span>Estado comercial</span>
+            <select
+              value={filters.estado_comercial ?? ""}
+              onChange={(event) =>
+                setFilters((state) => ({
+                  ...state,
+                  estado_comercial: event.target.value as AdvancedFiltersState["estado_comercial"],
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              <option value="nuevo">Nuevo</option>
+              <option value="A">Grado A</option>
+              <option value="B">Grado B</option>
+              <option value="C">Grado C</option>
+            </select>
           </label>
           <label>
             <span>Estado inventario</span>
@@ -252,12 +303,12 @@ function AdvancedSearch({ token }: Props) {
                 <tr key={`${device.id}-${device.store_id}`}>
                   <td>{device.store_name}</td>
                   <td>{device.sku}</td>
-                  <td>{device.categoria ?? "—"}</td>
-                  <td>{device.condicion ?? "—"}</td>
                   <td>{device.marca ?? "—"}</td>
                   <td>{device.modelo ?? "—"}</td>
+                  <td>{device.categoria ?? "—"}</td>
+                  <td>{device.condicion ?? "—"}</td>
                   <td>{device.color ?? "—"}</td>
-                  <td>{device.capacidad_gb ?? "—"}</td>
+                  <td>{device.capacidad ?? device.capacidad_gb ?? "—"}</td>
                   <td>{device.imei ?? "—"}</td>
                   <td>{device.serial ?? "—"}</td>
                   <td>{device.estado_comercial ?? "—"}</td>

@@ -1,5 +1,9 @@
-import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig } from "axios";
-import { getApiBaseUrl } from "../../config/api";
+import axios, { type AxiosError, type AxiosInstance, type AxiosRequestConfig, type InternalAxiosRequestConfig } from "axios";
+import {
+  clearApiBaseUrlOverride,
+  getApiBaseUrl,
+  setApiBaseUrlOverride,
+} from "../../config/api";
 import { emitClientWarning } from "../../utils/clientLog";
 
 export const UNAUTHORIZED_EVENT = "softmobile:unauthorized";
@@ -52,12 +56,12 @@ function dispatchUnauthorized(detail?: string): void {
   window.dispatchEvent(new CustomEvent<string | undefined>(UNAUTHORIZED_EVENT, { detail }));
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL?.trim() ?? "") || getApiBaseUrl();
+let apiBaseUrl = getApiBaseUrl();
 
 async function requestRefreshToken(): Promise<string | null> {
   try {
     const response = await axios.post<{ access_token?: string | null }>(
-      `${API_BASE_URL}/auth/refresh`,
+      `${apiBaseUrl}/auth/refresh`,
       {},
       {
         withCredentials: true,
@@ -70,7 +74,7 @@ async function requestRefreshToken(): Promise<string | null> {
       clearAuthToken();
     }
     return newToken;
-  } catch (error) {
+  } catch {
     clearAuthToken();
     return null;
   }
@@ -87,20 +91,19 @@ async function refreshAccessToken(): Promise<string | null> {
 
 type RetryConfig = AxiosRequestConfig & { __isRetryRequest?: boolean };
 
-function attachAuthorization(config: AxiosRequestConfig): AxiosRequestConfig {
+function attachAuthorization(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
   const token = getAuthToken();
   if (token) {
-    config.headers = {
-      ...(config.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    };
+    // Asegurar cabeceras sin romper el tipo AxiosHeaders
+    config.headers = (config.headers ?? ({} as unknown as typeof config.headers));
+    (config.headers as unknown as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
   return config;
 }
 
-export function createHttpClient(): AxiosInstance {
+export function createHttpClient(baseUrl: string = apiBaseUrl): AxiosInstance {
   const instance = axios.create({
-    baseURL: API_BASE_URL,
+    baseURL: baseUrl,
     withCredentials: true,
   });
 
@@ -133,6 +136,30 @@ export function createHttpClient(): AxiosInstance {
   return instance;
 }
 
-export const httpClient = createHttpClient();
+export function getCurrentApiBaseUrl(): string {
+  return apiBaseUrl;
+}
+
+export function reconfigureHttpClientBaseUrl(nextBaseUrl: string): string {
+  apiBaseUrl = nextBaseUrl;
+  httpClient.defaults.baseURL = nextBaseUrl;
+  return apiBaseUrl;
+}
+
+export function applyApiBaseUrlOverride(nextBaseUrl: string): string | null {
+  const normalized = setApiBaseUrlOverride(nextBaseUrl);
+  if (normalized) {
+    reconfigureHttpClientBaseUrl(normalized);
+  }
+  return normalized;
+}
+
+export function resetApiBaseUrlOverride(): string {
+  clearApiBaseUrlOverride();
+  const resolved = getApiBaseUrl();
+  return reconfigureHttpClientBaseUrl(resolved);
+}
+
+export const httpClient = createHttpClient(apiBaseUrl);
 
 export default httpClient;

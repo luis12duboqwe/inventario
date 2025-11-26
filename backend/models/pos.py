@@ -14,9 +14,9 @@ from sqlalchemy import (
     Numeric,
     String,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
 
-from backend.database import Base
+BasePOS = declarative_base()
 
 
 class SaleStatus(str, enum.Enum):
@@ -34,9 +34,10 @@ class PaymentMethod(str, enum.Enum):
     CASH = "CASH"
     CARD = "CARD"
     TRANSFER = "TRANSFER"
+    STORE_CREDIT = "STORE_CREDIT"
 
 
-class Sale(Base):
+class Sale(BasePOS):
     """Encabezado de venta POS con totales consolidados."""
 
     __tablename__ = "pos_sales"
@@ -98,7 +99,7 @@ class Sale(Base):
         self.updated_at = datetime.utcnow()
 
 
-class SaleItem(Base):
+class SaleItem(BasePOS):
     """Detalle de producto/servicio asociado a una venta POS."""
 
     __tablename__ = "pos_sale_items"
@@ -134,7 +135,7 @@ class SaleItem(Base):
     sale: Mapped[Sale] = relationship(back_populates="items")
 
 
-class Payment(Base):
+class Payment(BasePOS):
     """Registro de pago capturado en una venta POS."""
 
     __tablename__ = "pos_payments"

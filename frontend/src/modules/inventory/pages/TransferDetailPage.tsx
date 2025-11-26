@@ -44,7 +44,7 @@ function TransferDetailPage() {
       id: item.id,
       name: item.name,
       qty: item.qty,
-      picked: item.picked,
+      picked: item.picked ?? 0,
     }));
   }, [transfer.items]);
 
@@ -56,7 +56,7 @@ function TransferDetailPage() {
       id: item.id,
       name: item.name,
       qty: item.qty,
-      shipped: item.shipped,
+      shipped: item.shipped ?? 0,
       allowSerial: Boolean(item.imeis && item.imeis.length > 0),
     }));
   }, [transfer.items]);
@@ -66,10 +66,10 @@ function TransferDetailPage() {
       <PageHeader title="Detalle de transferencia" subtitle="Seguimiento y acciones operativas." />
 
       <TransferHeader
-        number={transfer.number}
-        status={transfer.status}
-        from={transfer.from}
-        to={transfer.to}
+        number={transfer.number ?? ""}
+        status={transfer.status ?? "SOLICITADA"}
+        from={transfer.from ?? ""}
+        to={transfer.to ?? ""}
         onPick={() => setPickOpen(true)}
         onPack={() => setPackOpen(true)}
         onShip={() => setShipOpen(true)}
@@ -79,9 +79,9 @@ function TransferDetailPage() {
         }}
       />
 
-      <TransferTimeline steps={transfer.steps} />
+  <TransferTimeline steps={transfer.steps ?? []} />
 
-      <TransferItemsTable items={transfer.items} />
+  <TransferItemsTable items={transfer.items ?? []} />
 
       <TransferActionsBar
         onPick={() => setPickOpen(true)}

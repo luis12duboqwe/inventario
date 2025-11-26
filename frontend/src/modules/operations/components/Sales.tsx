@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Customer, Device, PosConfig, Sale, Store, UserAccount } from "../../../api";
+import type {
+  Customer,
+  Device,
+  PosConfig,
+  Sale,
+  SaleCreateInput,
+  Store,
+  UserAccount,
+} from "../../../api";
 import {
   createSale,
   downloadPosReceipt,
@@ -40,20 +48,18 @@ const paymentLabels: Record<Sale["payment_method"], string> = {
   CREDITO: "Crédito",
 };
 
-const currencyFormatter = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currencyFormatter = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Props) {
-  const [saleForm, setSaleForm] = useState<SaleFormState>(
-    () => ({
-      storeId: defaultStoreId ?? null,
-      paymentMethod: "EFECTIVO",
-      discountPercent: 0,
-      customerId: null,
-      customerName: "",
-      notes: "",
-      reason: "Venta mostrador",
-    })
-  );
+  const [saleForm, setSaleForm] = useState<SaleFormState>(() => ({
+    storeId: defaultStoreId ?? null,
+    paymentMethod: "EFECTIVO",
+    discountPercent: 0,
+    customerId: null,
+    customerName: "",
+    notes: "",
+    reason: "Venta mostrador",
+  }));
   const [saleItems, setSaleItems] = useState<SaleLine[]>([]);
   const [deviceQuery, setDeviceQuery] = useState<string>("");
   const [devices, setDevices] = useState<Device[]>([]);
@@ -86,11 +92,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
 
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.id === saleForm.customerId) ?? null,
-    [customers, saleForm.customerId]
+    [customers, saleForm.customerId],
   );
 
   const saleSummary = useMemo<SaleSummary>(() => {
-    const gross = saleItems.reduce((total, line) => total + line.device.unit_price * line.quantity, 0);
+    const gross = saleItems.reduce(
+      (total, line) => total + line.device.unit_price * line.quantity,
+      0,
+    );
     const discountPercent = Math.min(Math.max(saleForm.discountPercent, 0), 100);
     const discountAmount = gross * (discountPercent / 100);
     const subtotal = Math.max(0, gross - discountAmount);
@@ -120,7 +129,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         acc.daily.set(dayKey, current);
         return acc;
       },
-      { total: 0, subtotal: 0, tax: 0, daily: new Map<string, { total: number; count: number }>() }
+      { total: 0, subtotal: 0, tax: 0, daily: new Map<string, { total: number; count: number }>() },
     );
     const totalSales = sales.length;
     const dailyStats = Array.from(aggregate.daily.entries())
@@ -206,10 +215,12 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
     setIsLoadingDevices(true);
     const timeout = window.setTimeout(async () => {
       try {
-        const data = await getDevices(token, saleForm.storeId!, {
-          estado_inventario: "disponible",
-          search: deviceQuery.trim() || undefined,
-        });
+        const searchTerm = deviceQuery.trim();
+        const deviceFilters = {
+          estado_inventario: "disponible" as const,
+          ...(searchTerm ? { search: searchTerm } : {}),
+        };
+        const data = await getDevices(token, saleForm.storeId!, deviceFilters);
         if (active) {
           setDevices(data);
         }
@@ -232,22 +243,32 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
   const refreshSalesList = useCallback(async () => {
     setIsLoadingSales(true);
     try {
-      const data = await listSales(token, {
-        storeId: filters.storeId ?? undefined,
-        customerId: filters.customerId ?? undefined,
-        userId: filters.userId ?? undefined,
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-        query: filters.query.trim() || undefined,
+      const trimmedQuery = filters.query.trim();
+      const filtersPayload = {
+        ...(typeof filters.storeId === "number" ? { storeId: filters.storeId } : {}),
+        ...(typeof filters.customerId === "number" ? { customerId: filters.customerId } : {}),
+        ...(typeof filters.userId === "number" ? { userId: filters.userId } : {}),
+        ...(filters.dateFrom ? { dateFrom: filters.dateFrom } : {}),
+        ...(filters.dateTo ? { dateTo: filters.dateTo } : {}),
+        ...(trimmedQuery ? { query: trimmedQuery } : {}),
         limit: 200,
-      });
+      } as const;
+      const data = await listSales(token, filtersPayload);
       setSales(data);
     } catch (err) {
       setError((err as Error).message ?? "No fue posible cargar las ventas");
     } finally {
       setIsLoadingSales(false);
     }
-  }, [filters.customerId, filters.dateFrom, filters.dateTo, filters.query, filters.storeId, filters.userId, token]);
+  }, [
+    filters.customerId,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.query,
+    filters.storeId,
+    filters.userId,
+    token,
+  ]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -271,10 +292,10 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         return current.map((line) =>
           line.device.id === device.id
             ? { ...line, quantity: Math.min(device.quantity, line.quantity + 1) }
-            : line
+            : line,
         );
       }
-      return [...current, { device, quantity: 1 }];
+      return [...current, { device, quantity: 1, batchCode: device.lote ?? "" }];
     });
   };
 
@@ -283,8 +304,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
       current.map((line) =>
         line.device.id === deviceId
           ? { ...line, quantity: Math.max(1, Math.min(line.device.quantity, quantity)) }
-          : line
-      )
+          : line,
+      ),
+    );
+  };
+
+  const handleBatchCodeChange = (deviceId: number, batchCode: string) => {
+    setSaleItems((current) =>
+      current.map((line) => (line.device.id === deviceId ? { ...line, batchCode } : line)),
     );
   };
 
@@ -319,32 +346,47 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
       setError("El motivo corporativo debe tener al menos 5 caracteres.");
       return;
     }
-    const payloadItems = saleItems.map((line) => ({
-      device_id: line.device.id,
-      quantity: Math.max(1, line.quantity),
-    }));
+    const payloadItems = saleItems.map((line) => {
+      const entry: SaleCreateInput["items"][number] = {
+        device_id: line.device.id,
+        quantity: Math.max(1, line.quantity),
+      };
+      const normalizedBatch = line.batchCode.trim();
+      if (normalizedBatch) {
+        entry.batch_code = normalizedBatch;
+      }
+      return entry;
+    });
     const normalizedDiscount = Math.min(Math.max(saleForm.discountPercent, 0), 100);
-    const customerName = saleForm.customerName.trim() || selectedCustomer?.name || undefined;
+    const customerName = saleForm.customerName.trim() || selectedCustomer?.name || "";
+    const payload: SaleCreateInput = {
+      store_id: saleForm.storeId,
+      payment_method: saleForm.paymentMethod,
+      items: payloadItems,
+      discount_percent: normalizedDiscount,
+    };
+    if (saleForm.customerId !== null && saleForm.customerId !== undefined) {
+      payload.customer_id = saleForm.customerId;
+    }
+    if (customerName) {
+      payload.customer_name = customerName;
+    }
+    const notes = saleForm.notes.trim();
+    if (notes) {
+      payload.notes = notes;
+    }
     setIsSaving(true);
     try {
-      const sale = await createSale(
-        token,
-        {
-          store_id: saleForm.storeId,
-          payment_method: saleForm.paymentMethod,
-          items: payloadItems,
-          discount_percent: normalizedDiscount,
-          customer_id: saleForm.customerId ?? undefined,
-          customer_name: customerName,
-          notes: saleForm.notes.trim() || undefined,
-        },
-        saleForm.reason.trim()
-      );
+      const sale = await createSale(token, payload, saleForm.reason.trim());
       setError(null);
       setMessage("Venta registrada correctamente");
       setLastSaleId(sale.id);
       setLastSaleSnapshot({
-        items: saleItems.map((line) => ({ device: line.device, quantity: line.quantity })),
+        items: saleItems.map((line) => ({
+          device: line.device,
+          quantity: line.quantity,
+          batchCode: line.batchCode,
+        })),
         summary: saleSummary,
       });
       resetSaleForm();
@@ -364,13 +406,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
     }
     setIsExporting(true);
     try {
+      const trimmedQuery = filters.query.trim();
       const filtersPayload = {
-        storeId: filters.storeId ?? undefined,
-        customerId: filters.customerId ?? undefined,
-        userId: filters.userId ?? undefined,
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-        query: filters.query.trim() || undefined,
+        ...(typeof filters.storeId === "number" ? { storeId: filters.storeId } : {}),
+        ...(typeof filters.customerId === "number" ? { customerId: filters.customerId } : {}),
+        ...(typeof filters.userId === "number" ? { userId: filters.userId } : {}),
+        ...(filters.dateFrom ? { dateFrom: filters.dateFrom } : {}),
+        ...(filters.dateTo ? { dateTo: filters.dateTo } : {}),
+        ...(trimmedQuery ? { query: trimmedQuery } : {}),
       };
       const blob =
         format === "pdf"
@@ -448,6 +491,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
           onAddDevice={handleAddDevice}
           saleItems={saleItems}
           onQuantityChange={handleQuantityChange}
+          onBatchCodeChange={handleBatchCodeChange}
           onRemoveLine={handleRemoveLine}
           saleSummary={saleSummary}
           paymentLabels={paymentLabels}
@@ -459,7 +503,10 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
           formatCurrency={(value) => currencyFormatter.format(value)}
           invoiceAvailable={Boolean(lastSaleId)}
         />
-        <SummaryCards dashboard={salesDashboard} formatCurrency={(value) => currencyFormatter.format(value)} />
+        <SummaryCards
+          dashboard={salesDashboard}
+          formatCurrency={(value) => currencyFormatter.format(value)}
+        />
         <FiltersPanel
           stores={stores}
           customers={customers}
@@ -472,13 +519,21 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
           onExportPdf={() => handleExport("pdf")}
           onExportExcel={() => handleExport("xlsx")}
           onClearFilters={() =>
-            setFilters({ storeId: null, customerId: null, userId: null, dateFrom: "", dateTo: "", query: "" })
+            setFilters({
+              storeId: null,
+              customerId: null,
+              userId: null,
+              dateFrom: "",
+              dateTo: "",
+              query: "",
+            })
           }
         />
         <SalesTable
           sales={sales}
           isLoading={isLoadingSales}
           formatCurrency={(value) => currencyFormatter.format(value)}
+          data-testid="quotes-list"
         />
       </Toolbar>
       <InvoiceModal

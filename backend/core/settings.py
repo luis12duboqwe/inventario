@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import AliasChoices, Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -10,40 +11,49 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Carga los parámetros sensibles y de correo desde ``.env``."""
 
-    SECRET_KEY: str = Field(
-        ...,
-        validation_alias=AliasChoices(
-            "JWT_SECRET_KEY",
-            "SOFTMOBILE_SECRET_KEY",
-            "SECRET_KEY",
+    SECRET_KEY: Annotated[
+        str,
+        Field(
+            ...,
+            validation_alias=AliasChoices(
+                "JWT_SECRET_KEY",
+                "SOFTMOBILE_SECRET_KEY",
+                "SECRET_KEY",
+            ),
+            description="Clave usada para firmar y verificar los tokens JWT.",
         ),
-        description="Clave usada para firmar y verificar los tokens JWT.",
-    )
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
-        ...,
-        ge=1,
-        validation_alias=AliasChoices(
-            "ACCESS_TOKEN_EXPIRE_MINUTES",
-            "SOFTMOBILE_TOKEN_MINUTES",
+    ]
+    ACCESS_TOKEN_EXPIRE_MINUTES: Annotated[
+        int,
+        Field(
+            ...,
+            ge=1,
+            validation_alias=AliasChoices(
+                "ACCESS_TOKEN_EXPIRE_MINUTES",
+                "SOFTMOBILE_TOKEN_MINUTES",
+            ),
+            description="Minutos de vigencia para cada token de acceso.",
         ),
-        description="Minutos de vigencia para cada token de acceso.",
-    )
+    ]
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(
         7,
         ge=1,
         description="Días de vigencia para cada token de refresco.",
     )
-    BOOTSTRAP_TOKEN: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices(
-            "SOFTMOBILE_BOOTSTRAP_TOKEN",
-            "BOOTSTRAP_TOKEN",
+    BOOTSTRAP_TOKEN: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "SOFTMOBILE_BOOTSTRAP_TOKEN",
+                "BOOTSTRAP_TOKEN",
+            ),
+            description=(
+                "Token maestro opcional que habilita el bootstrap inicial cuando aún no"
+                " existen usuarios registrados."
+            ),
         ),
-        description=(
-            "Token maestro opcional que habilita el bootstrap inicial cuando aún no"
-            " existen usuarios registrados."
-        ),
-    )
+    ]
     SMTP_HOST: str | None = Field(
         default=None,
         description="Servidor SMTP utilizado para notificaciones por correo.",
@@ -71,7 +81,6 @@ class Settings(BaseSettings):
         extra="allow",
     )
 
-
     @model_validator(mode="after")
     def _ensure_required(self) -> "Settings":
         missing: list[str] = []
@@ -81,9 +90,11 @@ class Settings(BaseSettings):
             missing.append("ACCESS_TOKEN_EXPIRE_MINUTES")
         if missing:
             raise ValueError(
-                "Faltan variables de entorno obligatorias: " + ", ".join(missing)
+                "Faltan variables de entorno obligatorias: " +
+                ", ".join(missing)
             )
         return self
+
 
 try:
     settings = Settings()

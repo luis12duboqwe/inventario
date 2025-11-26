@@ -32,6 +32,25 @@ def _bootstrap_admin(client) -> str:
     return token_response.json()["access_token"]
 
 
+def test_reports_sales_summary_requires_reason(client):
+    previous_flag = settings.enable_purchases_sales
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        missing_reason_headers = {"Authorization": f"Bearer {token}", "X-Reason": ""}
+        response = client.get("/reports/sales/summary", headers=missing_reason_headers)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        valid_headers = {
+            "Authorization": f"Bearer {token}",
+            "X-Reason": "Consulta reportes QA",
+        }
+        ok_response = client.get("/reports/sales/summary", headers=valid_headers)
+        assert ok_response.status_code != status.HTTP_400_BAD_REQUEST
+    finally:
+        settings.enable_purchases_sales = previous_flag
+
+
 # // [PACK29-*] Verifica resumen, top de productos y cierre sugerido
 def test_sales_reports_summary_products_and_cash_close(client, db_session: Session) -> None:
     previous_analytics_flag = settings.enable_analytics_adv
@@ -154,6 +173,39 @@ def test_sales_reports_summary_products_and_cash_close(client, db_session: Sessi
         assert cash_report["salesGross"] == pytest.approx(750.0)
         assert cash_report["refunds"] == pytest.approx(150.0)
         assert cash_report["closingSuggested"] == pytest.approx(600.0)
+    finally:
+        settings.enable_analytics_adv = previous_analytics_flag
+        settings.enable_purchases_sales = previous_sales_flag
+
+
+def test_sales_daily_report_default_payload(client) -> None:
+    previous_analytics_flag = settings.enable_analytics_adv
+    previous_sales_flag = settings.enable_purchases_sales
+    settings.enable_analytics_adv = True
+    settings.enable_purchases_sales = True
+    try:
+        token = _bootstrap_admin(client)
+        headers = {"Authorization": f"Bearer {token}"}
+        target_date = date.today().isoformat()
+
+        response = client.get(
+            "/reports/sales/daily",
+            params={"date": target_date},
+            headers=headers,
+        )
+        assert response.status_code == status.HTTP_200_OK
+        payload = response.json()
+        assert payload["date"] == target_date
+        assert payload["totals"]["gross"] == pytest.approx(0.0)
+
+        csv_response = client.get(
+            "/reports/sales/daily/export.csv",
+            params={"date": target_date},
+            headers=headers,
+        )
+        assert csv_response.status_code == status.HTTP_200_OK
+        assert "text/csv" in csv_response.headers["content-type"].lower()
+        assert target_date in csv_response.text
     finally:
         settings.enable_analytics_adv = previous_analytics_flag
         settings.enable_purchases_sales = previous_sales_flag

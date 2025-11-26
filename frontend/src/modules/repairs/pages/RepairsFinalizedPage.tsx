@@ -21,7 +21,7 @@ function RepairsFinalizedPage() {
         onModuleStatusChange={setModuleStatus}
         initialStatusFilter="LISTO"
         statusFilterOptions={["TODOS", "LISTO", "EN_PROCESO", "ENTREGADO", "CANCELADO"]} // [PACK37-frontend]
-        renderToolbar={({ filters, actions }) => <PageToolbar actions={actions}>{filters}</PageToolbar>}
+        renderToolbar={({ filters, actions }) => <PageToolbar actions={actions} filters={filters} disableSearch />}
         showCreateForm={false}
       />
     </div>

@@ -1,33 +1,47 @@
-import { Suspense, lazy, memo, type ReactNode, useState } from "react";
+import { Suspense, memo, type ReactNode, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import NotFound from "../../components/feedback/NotFound";
-const DashboardLayout = lazy(() => import("./layout/DashboardLayout"));
+import { lazyWithRetry } from "../../shared/utils/lazyWithRetry";
 
-const InventoryLayout = lazy(() => import("../inventory/pages/InventoryLayout"));
-const InventoryProducts = lazy(() => import("../inventory/pages/InventoryProducts"));
-const InventoryMoves = lazy(() => import("../inventory/pages/InventoryMovements"));
-const InventorySuppliers = lazy(() => import("../inventory/pages/InventorySuppliers"));
-const InventoryAlerts = lazy(() => import("../inventory/pages/InventoryAlerts"));
-const OperationsLayout = lazy(() => import("../operations/pages/OperationsLayout"));
-const OperationsPOS = lazy(() => import("../operations/pages/OperationsPOS"));
-const OperationsPurchases = lazy(() => import("../operations/pages/OperationsPurchases"));
-const OperationsReturns = lazy(() => import("../operations/pages/OperationsReturns"));
-const OperationsTransfers = lazy(() => import("../operations/pages/OperationsTransfers"));
-const AnalyticsPage = lazy(() => import("../analytics/pages/AnalyticsPage"));
-const SecurityPage = lazy(() => import("../security/pages/SecurityPage"));
-const SyncPage = lazy(() => import("../sync/pages/SyncPage"));
-const UsersPage = lazy(() => import("../users/pages/UsersPage"));
-const RepairsLayout = lazy(() => import("../repairs/pages/RepairsLayout"));
-const RepairsPending = lazy(() => import("../repairs/pages/RepairsPendingPage"));
-const RepairsInProgress = lazy(() => import("../repairs/pages/RepairsInProgressPage"));
-const RepairsReady = lazy(() => import("../repairs/pages/RepairsReadyPage"));
-const RepairsDelivered = lazy(() => import("../repairs/pages/RepairsDeliveredPage"));
-const RepairsParts = lazy(() => import("../repairs/pages/RepairsPartsPage"));
-const RepairsBudgets = lazy(() => import("../repairs/pages/RepairsBudgetsPage"));
-const GlobalReportsPage = lazy(() => import("../reports/pages/GlobalReportsPage"));
+const DashboardLayout = lazyWithRetry(() => import("./layout/DashboardLayout"));
+
+const InventoryLayout = lazyWithRetry(() => import("../inventory/pages/InventoryLayout"));
+// Usar las variantes *Page para permitir mocks de pruebas y loaders dedicados
+const InventoryProducts = lazyWithRetry(() => import("../inventory/pages/InventoryProductsPage"));
+const InventoryPriceLists = lazyWithRetry(() => import("../inventory/pages/InventoryPriceListsPage"));
+const InventoryMoves = lazyWithRetry(() => import("../inventory/pages/InventoryMovementsPage"));
+const InventorySuppliers = lazyWithRetry(() => import("../inventory/pages/InventorySuppliersPage"));
+const InventoryAlerts = lazyWithRetry(() => import("../inventory/pages/InventoryAlertsPage"));
+const InventoryReservations = lazyWithRetry(() => import("../inventory/pages/InventoryReservationsPage"));
+const OperationsLayout = lazyWithRetry(() => import("../operations/pages/OperationsLayout"));
+const OperationsPOS = lazyWithRetry(() => import("../operations/pages/OperationsPOS"));
+const OperationsPurchases = lazyWithRetry(() => import("../operations/pages/OperationsPurchases"));
+const OperationsReturns = lazyWithRetry(() => import("../operations/pages/OperationsReturns"));
+const OperationsTransfers = lazyWithRetry(() => import("../operations/pages/OperationsTransfers"));
+const OperationsWarranties = lazyWithRetry(() => import("../operations/pages/OperationsWarranties"));
+const OperationsDiagnostics = lazyWithRetry(() => import("../operations/pages/OperationsDiagnostics"));
+const OperationsBundles = lazyWithRetry(() => import("../operations/pages/OperationsBundles"));
+const OperationsDte = lazyWithRetry(() => import("../operations/pages/OperationsDte"));
+const AnalyticsPage = lazyWithRetry(() => import("../analytics/pages/AnalyticsPage"));
+const HelpCenterPage = lazyWithRetry(() => import("../help/pages/HelpCenterPage"));
+const SupportFeedbackPage = lazyWithRetry(() => import("../support/Feedback"));
+const SecurityPage = lazyWithRetry(() => import("../security/pages/SecurityPage"));
+const SyncPage = lazyWithRetry(() => import("../sync/pages/SyncPage"));
+const UsersPage = lazyWithRetry(() => import("../users/pages/UsersPage"));
+const StoresPage = lazyWithRetry(() => import("../stores/pages/StoresPage"));
+const MobileWorkspace = lazyWithRetry(() => import("../../mobile/MobileWorkspace"));
+// Reparaciones: usar el alias RepairsPage para permitir el control de Suspense en pruebas
+const RepairsPage = lazyWithRetry(() => import("../repairs/pages/RepairsPage"));
+const RepairsPending = lazyWithRetry(() => import("../repairs/pages/RepairsPendingPage"));
+const RepairsInProgress = lazyWithRetry(() => import("../repairs/pages/RepairsInProgressPage"));
+const RepairsReady = lazyWithRetry(() => import("../repairs/pages/RepairsReadyPage"));
+const RepairsDelivered = lazyWithRetry(() => import("../repairs/pages/RepairsDeliveredPage"));
+const RepairsParts = lazyWithRetry(() => import("../repairs/pages/RepairsPartsPage"));
+const RepairsBudgets = lazyWithRetry(() => import("../repairs/pages/RepairsBudgetsPage"));
+const GlobalReportsPage = lazyWithRetry(() => import("../reports/pages/GlobalReportsPage"));
 // [PACK29-*] Ruta autónoma de reportes operativos
-const SalesReportsRoutes = lazy(() => import("../reports/routes"));
-const SalesModuleRoutes = lazy(() => import("../sales/routes"));
+const SalesReportsRoutes = lazyWithRetry(() => import("../reports/routes"));
+const SalesModuleRoutes = lazyWithRetry(() => import("../sales/routes"));
 import AppErrorBoundary from "../../shared/components/AppErrorBoundary"; // [PACK36-dashboard-routes]
 
 type DashboardRoutesProps = {
@@ -40,11 +54,14 @@ const allowedModules = new Set([
   "inventory",
   "operations",
   "analytics",
+  "mobile",
   "reports",
   "security",
   "sync",
   "users",
+  "stores",
   "repairs",
+  "help",
 ]);
 
 function resolveInitialModule(): string {
@@ -111,9 +128,12 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
         >
           <Route index element={<Navigate to="productos" replace />} />
           <Route path="productos" element={<InventoryProducts />} />
+          <Route path="listas-precios" element={<InventoryPriceLists />} />
           <Route path="movimientos" element={<InventoryMoves />} />
           <Route path="proveedores" element={<InventorySuppliers />} />
           <Route path="alertas" element={<InventoryAlerts />} />
+          <Route path="reservas" element={<InventoryReservations />} />
+          <Route path="listas" element={<InventoryPriceLists />} />
         </Route>
         <Route
           path="operations/*"
@@ -134,8 +154,27 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           <Route path="pos" element={<OperationsPOS />} />
           <Route path="compras" element={<OperationsPurchases />} />
           <Route path="devoluciones" element={<OperationsReturns />} />
+          <Route path="garantias" element={<OperationsWarranties />} />
           <Route path="transferencias" element={<OperationsTransfers />} />
+          <Route path="diagnosticos" element={<OperationsDiagnostics />} />
+          <Route path="paquetes" element={<OperationsBundles />} />
+          <Route path="dte" element={<OperationsDte />} />
         </Route>
+        <Route
+          path="mobile"
+          element={
+            <ModuleBoundary>
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Módulo móvil fuera de línea"
+                description="Revisa tu conexión y vuelve a intentarlo desde el dispositivo móvil."
+              >
+                <MobileWorkspace />
+              </AppErrorBoundary>
+            </ModuleBoundary>
+          }
+        />
         <Route
           path="/sales/*"
           element={
@@ -213,6 +252,35 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           }
         />
         <Route
+          path="help"
+          element={
+            <ModuleBoundary>
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Centro de ayuda no disponible"
+                description="Intenta nuevamente mientras restablecemos las guías y manuales."
+              >
+                <HelpCenterPage />
+              </AppErrorBoundary>
+            </ModuleBoundary>
+          }
+        />
+        <Route
+          path="support"
+          element={
+            <ModuleBoundary>
+              <AppErrorBoundary
+                variant="inline"
+                title="Soporte momentáneamente no disponible"
+                description="Reintenta en unos segundos mientras restablecemos las métricas de feedback."
+              >
+                <SupportFeedbackPage />
+              </AppErrorBoundary>
+            </ModuleBoundary>
+          }
+        />
+        <Route
           path="sync"
           element={
             <ModuleBoundary>
@@ -243,6 +311,21 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
           }
         />
         <Route
+          path="stores"
+          element={
+            <ModuleBoundary>
+              {/* [PACK36-dashboard-routes] */}
+              <AppErrorBoundary
+                variant="inline"
+                title="Sucursales temporalmente no disponibles"
+                description="Intenta nuevamente en unos momentos mientras restablecemos el módulo."
+              >
+                <StoresPage />
+              </AppErrorBoundary>
+            </ModuleBoundary>
+          }
+        />
+        <Route
           path="repairs/*"
           element={
             <ModuleBoundary>
@@ -252,7 +335,7 @@ const DashboardRoutes = memo(function DashboardRoutes({ theme, onToggleTheme, on
                 title="Reparaciones no disponibles"
                 description="Espera un momento e intenta nuevamente ingresar a reparaciones."
               >
-                <RepairsLayout />
+                <RepairsPage />
               </AppErrorBoundary>
             </ModuleBoundary>
           }

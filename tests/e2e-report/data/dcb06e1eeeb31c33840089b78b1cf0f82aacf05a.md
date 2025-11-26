@@ -1,0 +1,41 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - link "Ir al contenido principal" [ref=e4] [cursor=pointer]:
+    - /url: "#main-content"
+  - main [ref=e6]:
+    - generic [ref=e7]:
+      - img [ref=e9]
+      - generic [ref=e12]:
+        - heading "Softmobile Inventario" [level=1] [ref=e13]
+        - paragraph [ref=e14]: Plataforma corporativa para sincronizar existencias, capturar movimientos y obtener reportes en tiempo real con tema claro.
+        - button "Cambiar a tema oscuro" [ref=e16] [cursor=pointer]:
+          - generic [ref=e17]: Cambiar a tema oscuro
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - heading "Ingreso seguro" [level=2] [ref=e20]
+        - tablist "Modos de acceso" [ref=e21]:
+          - button "Iniciar sesión" [pressed] [ref=e22] [cursor=pointer]:
+            - generic [ref=e23]: Iniciar sesión
+          - button "Crear cuenta inicial" [ref=e24] [cursor=pointer]:
+            - generic [ref=e25]: Crear cuenta inicial
+      - paragraph [ref=e26]: Ingresa con tus credenciales corporativas para continuar.
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - generic [ref=e29]: Usuario
+          - textbox "Usuario" [ref=e31]:
+            - /placeholder: usuario@softmobile
+        - generic [ref=e32]:
+          - generic [ref=e33]: Contraseña
+          - textbox "Contraseña" [ref=e35]:
+            - /placeholder: ••••••••
+        - generic [ref=e36]:
+          - generic [ref=e37]: Código TOTP
+          - textbox "Código TOTP" [ref=e39]:
+            - /placeholder: "123456"
+        - generic [ref=e40]: Network Error
+        - button "Ingresar" [ref=e41] [cursor=pointer]:
+          - generic [ref=e42]: Ingresar
+      - note [ref=e43]: La primera cuenta creada tendrá privilegios de administración completa.
+```

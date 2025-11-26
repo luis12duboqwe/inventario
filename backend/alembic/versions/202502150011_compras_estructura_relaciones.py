@@ -7,7 +7,7 @@ import sqlalchemy as sa
 
 
 revision = "202502150011"
-down_revision = "202502150010"
+down_revision = "202502150011_inventory_smart_import"
 branch_labels = None
 depends_on = None
 
@@ -32,7 +32,8 @@ def upgrade() -> None:
         op.create_table(
             "proveedores",
             sa.Column("id_proveedor", sa.Integer(), primary_key=True),
-            sa.Column("nombre", sa.String(length=150), nullable=False, unique=True),
+            sa.Column("nombre", sa.String(length=150),
+                      nullable=False, unique=True),
             sa.Column("telefono", sa.String(length=40), nullable=True),
             sa.Column("correo", sa.String(length=120), nullable=True),
             sa.Column("direccion", sa.String(length=255), nullable=True),
@@ -52,7 +53,8 @@ def upgrade() -> None:
         existing_columns = _table_columns(inspector, "proveedores")
         if "tipo" not in existing_columns:
             op.add_column(
-                "proveedores", sa.Column("tipo", sa.String(length=60), nullable=True)
+                "proveedores", sa.Column(
+                    "tipo", sa.String(length=60), nullable=True)
             )
         if "estado" not in existing_columns:
             op.add_column(
@@ -65,7 +67,8 @@ def upgrade() -> None:
                 ),
             )
         if "notas" not in existing_columns:
-            op.add_column("proveedores", sa.Column("notas", sa.Text(), nullable=True))
+            op.add_column("proveedores", sa.Column(
+                "notas", sa.Text(), nullable=True))
         inspector = sa.inspect(bind)
         indexes = _index_names(inspector, "proveedores")
         if "ix_proveedores_nombre" not in indexes:
@@ -150,7 +153,8 @@ def upgrade() -> None:
         inspector = sa.inspect(bind)
         indexes = _index_names(inspector, "compras")
         if "ix_compras_proveedor_id" not in indexes:
-            op.create_index("ix_compras_proveedor_id", "compras", ["proveedor_id"])
+            op.create_index("ix_compras_proveedor_id",
+                            "compras", ["proveedor_id"])
         if "ix_compras_usuario_id" not in indexes:
             op.create_index("ix_compras_usuario_id", "compras", ["usuario_id"])
         inspector = sa.inspect(bind)
@@ -211,7 +215,8 @@ def upgrade() -> None:
             "ix_detalle_compras_compra_id", "detalle_compras", ["compra_id"]
         )
         op.create_index(
-            "ix_detalle_compras_producto_id", "detalle_compras", ["producto_id"]
+            "ix_detalle_compras_producto_id", "detalle_compras", [
+                "producto_id"]
         )
     else:
         existing_columns = _table_columns(inspector, "detalle_compras")

@@ -4,22 +4,22 @@ import { SalesCustomers, SalesQuotes, SalesReturns } from "@/services/sales";
 
 export async function safeCreateCustomer(dto:any){
   try { return await SalesCustomers.createCustomer(dto); }
-  catch(e){ enqueue({ type:"customer:create", payload:dto }); return null; }
+  catch{ enqueue({ type:"customer:create", payload:dto }); return null; }
 }
 
 export async function safeUpdateCustomer(id:string, dto:any){
   try { return await SalesCustomers.updateCustomer(id, dto); }
-  catch(e){ enqueue({ type:"customer:update", payload:{ id, dto } }); return null; }
+  catch{ enqueue({ type:"customer:update", payload:{ id, dto } }); return null; }
 }
 
 export async function safeCreateQuote(dto:any){
   try { return await SalesQuotes.createQuote(dto); }
-  catch(e){ enqueue({ type:"quote:create", payload:dto }); return null; }
+  catch{ enqueue({ type:"quote:create", payload:dto }); return null; }
 }
 
 export async function safeCreateReturn(dto:any){
   try { return await SalesReturns.createReturn(dto); }
-  catch(e){ enqueue({ type:"return:create", payload:dto }); return null; }
+  catch{ enqueue({ type:"return:create", payload:dto }); return null; }
 }
 
 export async function flushOffline(){

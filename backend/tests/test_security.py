@@ -1,5 +1,6 @@
 from fastapi import status
 import pyotp
+from fastapi_limiter import FastAPILimiter
 
 from backend.app import models
 from backend.app.config import settings
@@ -47,16 +48,22 @@ def test_totp_flow_and_session_revocation(client):
 
     login_response = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert login_response.status_code == status.HTTP_200_OK
     token_data = login_response.json()
     access_token = token_data["access_token"]
 
-    security_headers = {"Authorization": f"Bearer {access_token}", "X-Reason": "Configurar 2FA"}
+    security_headers = {
+        "Authorization": f"Bearer {access_token}",
+        "X-Reason": "Configurar 2FA",
+        "X-Reauth-Password": payload["password"],
+    }
 
-    setup_response = client.post("/security/2fa/setup", headers=security_headers)
+    setup_response = client.post(
+        "/security/2fa/setup", headers=security_headers)
     assert setup_response.status_code == status.HTTP_201_CREATED
     secret = setup_response.json()["secret"]
     totp = pyotp.TOTP(secret)
@@ -71,7 +78,8 @@ def test_totp_flow_and_session_revocation(client):
 
     bad_login = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert bad_login.status_code == status.HTTP_401_UNAUTHORIZED
@@ -90,7 +98,12 @@ def test_totp_flow_and_session_revocation(client):
     good_data = good_login.json()
     assert "session_id" in good_data
     session_id = good_data["session_id"]
-    auth_headers = {"Authorization": f"Bearer {good_data['access_token']}", "X-Reason": "Revocacion"}
+    auth_headers = {
+        "Authorization": f"Bearer {good_data['access_token']}",
+        "X-Reason": "Revocacion",
+        "X-Reauth-Password": payload["password"],
+        "X-Reauth-OTP": otp_code,
+    }
 
     sessions_list = client.get("/security/sessions", headers=auth_headers)
     assert sessions_list.status_code == status.HTTP_200_OK
@@ -104,7 +117,8 @@ def test_totp_flow_and_session_revocation(client):
     assert revoke_response.status_code == status.HTTP_200_OK
     assert revoke_response.json()["revoked_at"] is not None
 
-    me_response = client.get("/auth/me", headers={"Authorization": f"Bearer {good_data['access_token']}"})
+    me_response = client.get(
+        "/auth/me", headers={"Authorization": f"Bearer {good_data['access_token']}"})
     assert me_response.status_code == status.HTTP_401_UNAUTHORIZED
 
     settings.enable_2fa = False
@@ -130,7 +144,8 @@ def test_login_lockout_and_password_reset_flow(client):
 
         locked_response = client.post(
             "/auth/token",
-            data={"username": payload["username"], "password": payload["password"]},
+            data={"username": payload["username"],
+                  "password": payload["password"]},
             headers={"content-type": "application/x-www-form-urlencoded"},
         )
         assert locked_response.status_code == status.HTTP_403_FORBIDDEN
@@ -156,6 +171,14 @@ def test_login_lockout_and_password_reset_flow(client):
             headers={"content-type": "application/x-www-form-urlencoded"},
         )
         assert success_login.status_code == status.HTTP_200_OK
+        # Opcionalmente verificamos que se pueda acceder al perfil,
+        # lo que implica que el usuario ya no está bloqueado ni con intentos activos
+        me = client.get(
+            "/auth/me",
+            headers={
+                "Authorization": f"Bearer {success_login.json()['access_token']}"},
+        )
+        assert me.status_code == status.HTTP_200_OK
     finally:
         settings.max_failed_login_attempts = original_max
         settings.account_lock_minutes = original_lock
@@ -167,7 +190,8 @@ def test_session_cookie_login_allows_me_endpoint(client):
 
     session_login = client.post(
         "/auth/session",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert session_login.status_code == status.HTTP_200_OK
@@ -193,7 +217,8 @@ def test_token_verification_endpoint_reports_status_changes(client):
 
     login_response = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert login_response.status_code == status.HTTP_200_OK
@@ -219,13 +244,15 @@ def test_token_verification_endpoint_reports_status_changes(client):
     )
     assert revoke_response.status_code == status.HTTP_200_OK
 
-    revoked_verification = client.post("/auth/verify", json={"token": access_token})
+    revoked_verification = client.post(
+        "/auth/verify", json={"token": access_token})
     assert revoked_verification.status_code == status.HTTP_200_OK
     revoked_payload = revoked_verification.json()
     assert revoked_payload["is_valid"] is False
 
     tampered_token = access_token + "invalido"
-    invalid_verification = client.post("/auth/verify", json={"token": tampered_token})
+    invalid_verification = client.post(
+        "/auth/verify", json={"token": tampered_token})
     assert invalid_verification.status_code == status.HTTP_200_OK
     assert invalid_verification.json()["is_valid"] is False
 
@@ -234,7 +261,8 @@ def test_module_permissions_block_operator_edit_without_permission(client, db_se
     admin_payload = _bootstrap_admin(client)
     login_response = client.post(
         "/auth/token",
-        data={"username": admin_payload["username"], "password": admin_payload["password"]},
+        data={"username": admin_payload["username"],
+              "password": admin_payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert login_response.status_code == status.HTTP_200_OK
@@ -266,7 +294,8 @@ def test_module_permissions_block_operator_edit_without_permission(client, db_se
 
     operator_login = client.post(
         "/auth/token",
-        data={"username": operator_payload["username"], "password": operator_payload["password"]},
+        data={"username": operator_payload["username"],
+              "password": operator_payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert operator_login.status_code == status.HTTP_200_OK
@@ -288,3 +317,8 @@ def test_module_permissions_block_operator_edit_without_permission(client, db_se
         },
     )
     assert denied_response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_rate_limiter_initializes_within_app(client):
+    assert FastAPILimiter.redis is not None
+    assert FastAPILimiter.identifier is not None

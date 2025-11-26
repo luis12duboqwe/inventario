@@ -84,9 +84,11 @@ vi.mock("../../modules/inventory/pages/InventoryAlertsPage", () => ({
   default: createLazyStub("Inventario: Alertas"),
 }));
 
+vi.mock("../../modules/dashboard/context/DashboardContext");
+
 const mockInventoryState = {
   contextValue: {
-    module: {},
+    module: { token: "test-token" },
     smartImport: {
       smartImportFile: null,
       setSmartImportFile: vi.fn(),
@@ -199,7 +201,9 @@ vi.mock("../../modules/inventory/pages/InventoryPage", async () => {
   const SuspendedInventoryPage = () => {
     if (resolvedForRun !== suspenseRunId) {
       if (!pending) {
+        // eslint-disable-next-line react-hooks/globals
         pending = new Promise<void>((resolve) => {
+          // eslint-disable-next-line react-hooks/globals
           resolveInventoryModule = () => {
             resolvedForRun = suspenseRunId;
             pending = null;

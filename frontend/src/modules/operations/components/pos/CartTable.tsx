@@ -7,10 +7,14 @@ export type CartLine = PosSaleItemRequest & {
   description?: string;
 };
 
+const CLEAR_PRODUCT_FIELDS: (keyof CartLine)[] = ["productId", "device_id"];
+const CLEAR_PRICE_FIELDS: (keyof CartLine)[] = ["price"];
+const CLEAR_DISCOUNT_FIELDS: (keyof CartLine)[] = ["discount"];
+
 type CartTableProps = {
   items: CartLine[];
   onAdd: (item: Omit<CartLine, "id">) => void;
-  onUpdate: (id: string, update: Partial<CartLine>) => void;
+  onUpdate: (id: string, update: Partial<CartLine>, options?: { clear?: ReadonlyArray<keyof CartLine> }) => void;
   onRemove: (id: string) => void;
 };
 
@@ -46,7 +50,17 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
             min={1}
             onChange={(event) => {
               const value = event.target.value ? Number(event.target.value) : undefined;
-              setDraft((prev) => ({ ...prev, productId: value, device_id: value }));
+              setDraft((prev) => {
+                const next = { ...prev };
+                if (value != null) {
+                  next.productId = value;
+                  next.device_id = value;
+                } else {
+                  delete next.productId;
+                  delete next.device_id;
+                }
+                return next;
+              });
             }}
             placeholder="ID de producto"
           />
@@ -80,9 +94,17 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
             min={0}
             step="0.01"
             value={draft.price ?? ""}
-            onChange={(event) =>
-              setDraft((prev) => ({ ...prev, price: event.target.value ? Number(event.target.value) : undefined }))
-            }
+              onChange={(event) =>
+                setDraft((prev) => {
+                  const raw = event.target.value;
+                  if (raw) {
+                    return { ...prev, price: Number(raw) };
+                  }
+                  const next = { ...prev };
+                  delete next.price;
+                  return next;
+                })
+              }
           />
         </label>
         <label>
@@ -93,9 +115,17 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
             max={100}
             step="0.1"
             value={draft.discount ?? ""}
-            onChange={(event) =>
-              setDraft((prev) => ({ ...prev, discount: event.target.value ? Number(event.target.value) : undefined }))
-            }
+              onChange={(event) =>
+                setDraft((prev) => {
+                  const raw = event.target.value;
+                  if (raw) {
+                    return { ...prev, discount: Number(raw) };
+                  }
+                  const next = { ...prev };
+                  delete next.discount;
+                  return next;
+                })
+              }
           />
         </label>
         <label className="pos-cart-form__description">
@@ -145,12 +175,14 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
                         type="number"
                         min={1}
                         value={item.productId ?? item.device_id ?? ""}
-                        onChange={(event) =>
-                          onUpdate(item.id, {
-                            productId: event.target.value ? Number(event.target.value) : undefined,
-                            device_id: event.target.value ? Number(event.target.value) : undefined,
-                          })
-                        }
+                        onChange={(event) => {
+                          const value = event.target.value ? Number(event.target.value) : null;
+                          if (value != null) {
+                            onUpdate(item.id, { productId: value, device_id: value });
+                          } else {
+                            onUpdate(item.id, {}, { clear: CLEAR_PRODUCT_FIELDS });
+                          }
+                        }}
                       />
                       <small className="muted-text">{item.description ?? "Sin descripción"}</small>
                     </td>
@@ -177,11 +209,14 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
                         min={0}
                         step="0.01"
                         value={item.price ?? ""}
-                        onChange={(event) =>
-                          onUpdate(item.id, {
-                            price: event.target.value ? Number(event.target.value) : undefined,
-                          })
-                        }
+                        onChange={(event) => {
+                          const raw = event.target.value;
+                          if (raw) {
+                            onUpdate(item.id, { price: Number(raw) });
+                          } else {
+                            onUpdate(item.id, {}, { clear: CLEAR_PRICE_FIELDS });
+                          }
+                        }}
                       />
                     </td>
                     <td>
@@ -191,11 +226,14 @@ export default function CartTable({ items, onAdd, onUpdate, onRemove }: CartTabl
                         max={100}
                         step="0.1"
                         value={item.discount ?? ""}
-                        onChange={(event) =>
-                          onUpdate(item.id, {
-                            discount: event.target.value ? Number(event.target.value) : undefined,
-                          })
-                        }
+                        onChange={(event) => {
+                          const raw = event.target.value;
+                          if (raw) {
+                            onUpdate(item.id, { discount: Number(raw) });
+                          } else {
+                            onUpdate(item.id, {}, { clear: CLEAR_DISCOUNT_FIELDS });
+                          }
+                        }}
                       />
                     </td>
                     <td>${lineTotal.toFixed(2)}</td>

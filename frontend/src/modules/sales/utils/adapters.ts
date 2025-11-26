@@ -1,5 +1,5 @@
 // [PACK23-UTILS-ADAPTERS-START]
-import type { CartLineInput, Quote, ReturnDoc, Customer } from "../../../services/sales";
+import type { CartLineInput, Customer } from "../../../services/sales";
 
 export function linesToTable(lines: CartLineInput[]) {
   return (lines || []).map((l) => ({

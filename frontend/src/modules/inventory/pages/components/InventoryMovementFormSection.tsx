@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react";
 
-import { FileSpreadsheet, RefreshCcw } from "lucide-react";
+import { FileSpreadsheet } from "lucide-react";
 
 import Button from "../../../../shared/components/ui/Button";
 import Loader from "../../../../components/common/Loader";
@@ -45,7 +45,7 @@ function InventoryMovementFormSection() {
           </Button>
         </div>
       </header>
-      <Suspense fallback={<Loader message="Cargando formulario de movimientos…" variant="compact" />}>
+      <Suspense fallback={<Loader label="Cargando formulario de movimientos…" variant="spinner" />}>
         <MovementForm devices={devices} onSubmit={handleMovement} />
       </Suspense>
     </section>

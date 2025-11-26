@@ -1,8 +1,10 @@
+type Frequency = "DAILY" | "WEEKLY" | "MONTHLY" | "CUSTOM";
+
 type Plan = {
   warehouse?: string;
   area?: string;
   families?: string;
-  frequency?: "DAILY" | "WEEKLY" | "MONTHLY" | "CUSTOM";
+  frequency?: Frequency;
 };
 
 type Props = {
@@ -11,7 +13,7 @@ type Props = {
   onStart?: () => void;
 };
 
-const frequencies: Array<{ value: Plan["frequency"]; label: string }> = [
+const frequencies: Array<{ value: Frequency; label: string }> = [
   { value: "DAILY", label: "Diario" },
   { value: "WEEKLY", label: "Semanal" },
   { value: "MONTHLY", label: "Mensual" },
@@ -38,7 +40,7 @@ function PlanBar({ value, onChange, onStart }: Props) {
       />
       <select
         value={value.frequency ?? "WEEKLY"}
-        onChange={(event) => onChange({ ...value, frequency: event.target.value as Plan["frequency"] })}
+        onChange={(event) => onChange({ ...value, frequency: event.target.value as Frequency })}
       >
         {frequencies.map((option) => (
           <option key={option.value} value={option.value}>

@@ -26,7 +26,7 @@ export type OrdersTableProps = {
   onRowClick?: (row: OrderRow) => void;
 };
 
-const numberFormatter = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const numberFormatter = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function Table({
   rows,

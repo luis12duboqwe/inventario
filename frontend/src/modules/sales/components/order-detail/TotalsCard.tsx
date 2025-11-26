@@ -9,7 +9,7 @@ export type OrderTotalsCardProps = {
   balance: number;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 type TotalsRowProps = {
   label: string;

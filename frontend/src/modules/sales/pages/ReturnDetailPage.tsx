@@ -38,7 +38,7 @@ const reasonLabels: Record<ReturnDoc["reason"], string> = {
 
 function formatCurrency(value?: number) {
   if (typeof value !== "number") return "—";
-  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value);
+  return new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }).format(value);
 }
 
 function formatDate(value?: string) {
@@ -96,7 +96,17 @@ export function ReturnDetailPage() {
       const created = await safeCreateReturn(payload); // [PACK37-frontend]
       if (created) {
         setData(created);
-        await logUI({ ts: Date.now(), userId: user?.id, module: "RETURNS", action: "create", entityId: created?.id ? String(created.id) : undefined }); // [PACK37-frontend]
+        const entityId = created?.id ? String(created.id) : undefined;
+        const auditPayload: Parameters<typeof logUI>[0] = {
+          ts: Date.now(),
+          userId: user?.id ?? null,
+          module: "RETURNS",
+          action: "create",
+        };
+        if (entityId) {
+          auditPayload.entityId = entityId;
+        }
+        await logUI(auditPayload); // [PACK37-frontend]
         if (created.printable) {
           openPrintable(created.printable, "nota-devolucion"); // [PACK37-frontend]
         }
@@ -138,12 +148,9 @@ export function ReturnDetailPage() {
   );
 
   // [PACK26-RETURNS-DETAIL-GUARD-START]
-  if (id && !canView) {
-    return <div>No autorizado</div>;
-  }
-  if (!id && !canCreate) {
-    return <div>No autorizado</div>;
-  }
+  const unauthorizedView = Boolean(id) && !canView;
+  const unauthorizedCreate = !id && !canCreate;
+  const unauthorized = unauthorizedView || unauthorizedCreate;
   // [PACK26-RETURNS-DETAIL-GUARD-END]
   const headerSection = useMemo(() => {
     if (!isCreateMode && loading && !data) {
@@ -161,6 +168,10 @@ export function ReturnDetailPage() {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {unauthorized ? (
+        <div>No autorizado</div>
+      ) : (
+        <>
       {pendingOffline > 0 ? (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ color: "#fbbf24" }}>Pendientes offline: {pendingOffline}</span>
@@ -182,19 +193,31 @@ export function ReturnDetailPage() {
             <ReturnEditor
               onSubmit={(payload) => {
                 if (saving) return;
-                onCreate({
+                const request: ReturnCreate = {
                   reason: payload.reason as ReturnDoc["reason"],
-                  note: payload.note,
-                  lines: payload.lines.map((line) => ({
-                    productId: line.id,
-                    name: line.name,
-                    qty: line.qty,
-                    price: line.price,
-                    imei: line.imei,
-                    restock: line.restock,
-                  })),
-                  ticketNumber: payload.lines[0]?.ticket,
-                });
+                  lines: payload.lines.map((line) => {
+                    const linePayload: ReturnCreate["lines"][number] = {
+                      productId: line.id,
+                      name: line.name,
+                      qty: line.qty,
+                      price: line.price,
+                    };
+                    if (line.imei) {
+                      linePayload.imei = line.imei;
+                    }
+                    if (typeof line.restock === "boolean") {
+                      linePayload.restock = line.restock;
+                    }
+                    return linePayload;
+                  }),
+                };
+                if (payload.note) {
+                  request.note = payload.note;
+                }
+                if (payload.lines[0]?.ticket) {
+                  request.ticketNumber = payload.lines[0]?.ticket;
+                }
+                onCreate(request);
               }}
             />
           </RequirePerm>
@@ -255,6 +278,10 @@ export function ReturnDetailPage() {
           <Table cols={lineColumns} rows={lineRows} />
         </div>
       )}
+        </>
+      )}
     </div>
   );
 }
+
+export default ReturnDetailPage;

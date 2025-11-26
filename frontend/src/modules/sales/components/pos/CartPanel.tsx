@@ -13,6 +13,7 @@ type Line = {
   price: number;
   discount?: Discount;
   imei?: string;
+  badges?: string[];
 };
 
 type Totals = {
@@ -63,6 +64,24 @@ export default function CartPanel({
                   {line.sku ?? "—"}
                   {line.imei ? ` · IMEI ${line.imei}` : ""}
                 </div>
+                {Array.isArray(line.badges) && line.badges.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                    {line.badges.map((badge) => (
+                      <span
+                        key={badge}
+                        style={{
+                          background: "rgba(56,189,248,0.18)",
+                          color: "#38bdf8",
+                          padding: "2px 8px",
+                          borderRadius: 9999,
+                          fontSize: 11,
+                        }}
+                      >
+                        {badge}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <input
                 type="number"

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Permite omitir las pruebas de forma explícita.
+if [ "${SKIP_TEST_HOOK:-0}" = "1" ]; then
+  echo "[pre-commit] Hook omitido por SKIP_TEST_HOOK=1."
+  exit 0
+fi
+
+# Determina si hay cambios relevantes en backend o frontend.
+STAGED_FILES="$(git diff --cached --name-only --diff-filter=ACMRTUXB)"
+
+run_tests=false
+if echo "$STAGED_FILES" | grep -qE '^(backend/|fastapi_limiter/|tests/|build/|tools/|requirements\.txt|environment\.yml|pytest\.ini|mypy\.ini).*'; then
+  run_tests=true
+elif echo "$STAGED_FILES" | grep -qE '\.(py|pyi)$'; then
+  run_tests=true
+elif echo "$STAGED_FILES" | grep -qE '^(frontend/|playwright\.config\.ts)'; then
+  run_tests=true
+elif echo "$STAGED_FILES" | grep -qE '\.(ts|tsx|js|jsx|json|css)$'; then
+  # Cambios de frontend fuera de la carpeta principal.
+  run_tests=true
+fi
+
+if [ "$run_tests" = true ]; then
+  echo "[pre-commit] Ejecutando pytest..."
+  pytest
+  echo "[pre-commit] Ejecutando pruebas de frontend (Vitest)..."
+  npm --prefix frontend run test
+else
+  echo "[pre-commit] Sin cambios en backend/frontend. Se omiten pytest y Vitest."
+fi

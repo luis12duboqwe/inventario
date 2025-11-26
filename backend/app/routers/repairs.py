@@ -33,11 +33,11 @@ def list_repairs_endpoint(
         try:
             status_enum = RepairStatus(status_filter.upper())
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Estado inválido") from exc
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Estado inválido") from exc
     effective_store_id = store_id or branch_id
     if store_id and branch_id and store_id != branch_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Los parámetros store_id y branchId deben coincidir.",
         )
     return crud.list_repair_orders(
@@ -75,17 +75,17 @@ def create_repair_order_endpoint(
             ) from exc
         if detail == "repair_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida de piezas.",
             ) from exc
         if detail == "repair_part_device_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Selecciona un dispositivo válido para las piezas de inventario.",
             ) from exc
         if detail == "repair_part_name_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Describe el repuesto externo antes de registrarlo.",
             ) from exc
         raise
@@ -130,17 +130,17 @@ def update_repair_order_endpoint(
             ) from exc
         if detail == "repair_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida de piezas.",
             ) from exc
         if detail == "repair_part_device_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Selecciona un dispositivo válido para las piezas de inventario.",
             ) from exc
         if detail == "repair_part_name_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Describe el repuesto externo antes de registrarlo.",
             ) from exc
         raise
@@ -177,17 +177,17 @@ def append_repair_parts_endpoint(
             ) from exc
         if detail == "repair_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida de piezas.",
             ) from exc
         if detail == "repair_part_device_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Selecciona un dispositivo válido para las piezas de inventario.",
             ) from exc
         if detail == "repair_part_name_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Describe el repuesto externo antes de registrarlo.",
             ) from exc
         raise
@@ -248,17 +248,17 @@ def close_repair_order_endpoint(
             ) from exc
         if detail == "repair_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida de piezas.",
             ) from exc
         if detail == "repair_part_device_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Selecciona un dispositivo válido para las piezas de inventario.",
             ) from exc
         if detail == "repair_part_name_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Describe el repuesto externo antes de registrarlo.",
             ) from exc
         raise

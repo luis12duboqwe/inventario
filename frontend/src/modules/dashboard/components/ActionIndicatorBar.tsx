@@ -35,6 +35,13 @@ function formatRelative(date: Date | null) {
   );
 }
 
+/**
+ * Barra accesible con el estado resumido del guardado, sincronización y alertas.
+ *
+ * La estructura y los estados visuales se consumen en las pruebas de
+ * `ActionIndicatorBar.test.tsx`, garantizando que los mensajes anunciados sean
+ * consistentes con los escenarios documentados para el dashboard híbrido.
+ */
 function ActionIndicatorBar({
   loading,
   hasSuccessMessage,
@@ -45,6 +52,9 @@ function ActionIndicatorBar({
   lastInventoryRefresh,
 }: ActionIndicatorBarProps) {
   const indicators = useMemo<Indicator[]>(() => {
+    // Cada indicador comunica un estado operativo diferente. La combinación de
+    // `status` y `description` mantiene la compatibilidad con lectores de
+    // pantalla, alineado con la documentación del dashboard en docs/.
     const saveIndicator: Indicator = loading
       ? {
           id: "save",

@@ -14,6 +14,7 @@ type Props = {
   onAddDevice: (device: Device) => void;
   saleItems: SaleLine[];
   onQuantityChange: (deviceId: number, quantity: number) => void;
+  onBatchCodeChange: (deviceId: number, batchCode: string) => void;
   onRemoveLine: (deviceId: number) => void;
   saleSummary: SaleSummary;
   paymentLabels: Record<Sale["payment_method"], string>;
@@ -38,6 +39,7 @@ function SidePanel({
   onAddDevice,
   saleItems,
   onQuantityChange,
+  onBatchCodeChange,
   onRemoveLine,
   saleSummary,
   paymentLabels,
@@ -182,7 +184,7 @@ function SidePanel({
                   <tr key={device.id}>
                     <td>{device.sku}</td>
                     <td>{device.name}</td>
-                    <td>{device.condition_label ?? device.condition}</td>
+                    <td>{device.condicion ?? device.estado ?? "—"}</td>
                     <td>{formatCurrency(device.unit_price)}</td>
                     <td>{device.quantity}</td>
                     <td>
@@ -215,6 +217,7 @@ function SidePanel({
                   <th>SKU</th>
                   <th>Descripción</th>
                   <th>Cantidad</th>
+                  <th>Lote</th>
                   <th>Precio unitario</th>
                   <th>Total línea</th>
                   <th />
@@ -234,6 +237,15 @@ function SidePanel({
                         onChange={(event) =>
                           onQuantityChange(line.device.id, Number(event.target.value))
                         }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={line.batchCode}
+                        onChange={(event) =>
+                          onBatchCodeChange(line.device.id, event.target.value)
+                        }
+                        placeholder="Ej. L-2024-01"
                       />
                     </td>
                     <td>{formatCurrency(line.device.unit_price)}</td>

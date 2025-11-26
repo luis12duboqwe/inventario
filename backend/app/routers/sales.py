@@ -1,7 +1,7 @@
 """Endpoints para ventas y devoluciones."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,6 +12,7 @@ from .. import crud, schemas
 from ..config import settings
 from ..core.roles import MOVEMENT_ROLES
 from ..core.transactions import transactional_session
+from ..core.settings import return_policy_settings
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -22,7 +23,8 @@ router = APIRouter(prefix="/sales", tags=["ventas"])
 
 def _ensure_feature_enabled() -> None:
     if not settings.enable_purchases_sales:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Funcionalidad no disponible")
 
 
 def _prepare_sales_report(
@@ -100,6 +102,33 @@ def list_sales_endpoint(
         performed_by_id=performed_by_id,
         product_id=product_id,
         query=search,
+    )
+
+
+@router.get(
+    "/history/search",
+    response_model=schemas.SaleHistorySearchResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def search_sales_history_endpoint(
+    ticket: str | None = Query(default=None, min_length=1, max_length=120),
+    search_date: date | None = Query(default=None, alias="date"),
+    customer: str | None = Query(default=None, min_length=2, max_length=120),
+    qr: str | None = Query(default=None, min_length=10, max_length=2048),
+    limit: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+):
+    _ensure_feature_enabled()
+    # Deshabilitar expire_on_commit para evitar DetachedInstanceError al serializar
+    db.expire_on_commit = False
+    return crud.search_sales_history(
+        db,
+        ticket=ticket,
+        date_value=search_date,
+        customer=customer,
+        qr=qr,
+        limit=limit,
     )
 
 
@@ -208,6 +237,11 @@ def create_sale_endpoint(
             )
         return sale
     except LookupError as exc:
+        if str(exc) == "supplier_batch_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="El lote indicado no existe o no coincide con el producto.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Recurso no encontrado",
@@ -216,12 +250,12 @@ def create_sale_endpoint(
         detail = str(exc)
         if detail == "sale_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes agregar artículos a la venta.",
             ) from exc
         if detail == "sale_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la venta.",
             ) from exc
         if detail == "sale_insufficient_stock":
@@ -234,9 +268,19 @@ def create_sale_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="El dispositivo ya fue vendido y no está disponible.",
             ) from exc
+        if detail == "supplier_batch_code_required":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Debes indicar un lote válido para cada artículo.",
+            ) from exc
+        if detail == "supplier_batch_insufficient_stock":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El lote seleccionado no cuenta con unidades suficientes.",
+            ) from exc
         if detail == "sale_requires_single_unit":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Los dispositivos con IMEI o serie se venden por unidad.",
             ) from exc
         if detail == "customer_credit_limit_exceeded":
@@ -277,7 +321,7 @@ def register_sale_return_endpoint(
         detail = str(exc)
         if detail == "sale_return_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes indicar artículos a devolver.",
             ) from exc
         if detail == "sale_return_invalid_quantity":
@@ -285,7 +329,41 @@ def register_sale_return_endpoint(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Cantidad de devolución inválida.",
             ) from exc
+        if detail == "sale_return_invalid_warehouse":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Selecciona un almacén válido para la devolución.",
+            ) from exc
         raise
+    except PermissionError as exc:
+        code = str(exc)
+        limit_days = return_policy_settings.sale_without_supervisor_days
+        roles = ", ".join(return_policy_settings.authorizer_roles)
+        messages: dict[str, str] = {
+            "sale_return_supervisor_required": (
+                f"[sale_return_supervisor_required] La devolución supera el límite de {limit_days}"
+                " días y requiere la autorización de un supervisor (roles: "
+                f"{roles})."
+            ),
+            "sale_return_supervisor_not_found": (
+                "[sale_return_supervisor_not_found] No se encontró al supervisor indicado para autorizar la devolución."
+            ),
+            "sale_return_supervisor_not_authorized": (
+                "[sale_return_supervisor_not_authorized] El supervisor indicado no cuenta con un rol autorizado."
+            ),
+            "sale_return_supervisor_pin_not_configured": (
+                "[sale_return_supervisor_pin_not_configured] El supervisor seleccionado no tiene un PIN configurado."
+            ),
+            "sale_return_invalid_supervisor_pin": (
+                "[sale_return_invalid_supervisor_pin] El PIN de supervisor es inválido."
+            ),
+        }
+        message = messages.get(
+            code,
+            "[sale_return_supervisor_error] No fue posible validar la autorización del supervisor.",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=message) from exc
 
 
 @router.put(
@@ -320,12 +398,12 @@ def update_sale_endpoint(
         detail = str(exc)
         if detail == "sale_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes agregar artículos a la venta.",
             ) from exc
         if detail == "sale_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la venta.",
             ) from exc
         if detail == "sale_insufficient_stock":
@@ -340,7 +418,7 @@ def update_sale_endpoint(
             ) from exc
         if detail == "sale_requires_single_unit":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Los dispositivos con IMEI o serie se venden por unidad.",
             ) from exc
         if detail == "sale_has_returns":
@@ -392,5 +470,10 @@ def cancel_sale_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La venta ya se encuentra anulada.",
+            ) from exc
+        if str(exc) == "sale_reported_requires_customer":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="La venta requiere un cliente asociado para emitir la nota de crédito.",
             ) from exc
         raise

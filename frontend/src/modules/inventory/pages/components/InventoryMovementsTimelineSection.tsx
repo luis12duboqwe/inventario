@@ -47,12 +47,12 @@ function InventoryMovementsTimelineSection() {
                 <div className="inventory-timeline__meta">
                   <span className="inventory-timeline__type">{movement.tipo_movimiento.toUpperCase()}</span>
                   <span className="inventory-timeline__date">
-                    {new Date(movement.fecha).toLocaleString("es-MX")}
+                    {new Date(movement.fecha).toLocaleString("es-HN")}
                   </span>
                 </div>
                 <div className="inventory-timeline__summary">
                   <span>
-                    {movement.cantidad.toLocaleString("es-MX")} unidades · {formatCurrency(movement.valor_total)}
+                    {movement.cantidad.toLocaleString("es-HN")} unidades · {formatCurrency(movement.valor_total)}
                   </span>
                   {movement.usuario ? (
                     <span className="inventory-timeline__user">{movement.usuario}</span>

@@ -15,7 +15,7 @@ type Props = {
   onDelete?: (id: string) => void;
 };
 
-const formatter = new Intl.NumberFormat("es-MX", {
+const formatter = new Intl.NumberFormat("es-HN", {
   style: "currency",
   currency: "MXN",
   maximumFractionDigits: 2,
