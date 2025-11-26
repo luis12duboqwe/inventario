@@ -616,6 +616,16 @@ def generate_backup(
                     arcname = Path("criticos") / file_path.relative_to(critical_directory)
                     zip_file.write(file_path, arcname=str(arcname))
 
+    def _archive_and_measure(previous_size: int) -> int:
+        """Reconstruye el paquete y devuelve su tamaño total para detectar cambios.
+
+        La función es idempotente y sirve únicamente para validar que las
+        operaciones de escritura no alteraron el peso final del respaldo.
+        """
+
+        _build_archive()
+        return _calculate_components_size()
+
     _write_metadata_with_size(0)
     _build_archive()
     total_size = _calculate_components_size()
@@ -679,21 +689,30 @@ def generate_backup(
 
     _build_archive()
 
-    def _component_paths(include_metadata: bool = True) -> list[Path]:
-        paths = [
+    def _component_paths(
+        include_metadata: bool = True, include_archive: bool = True
+    ) -> list[Path]:
+        paths: list[Path] = [
             pdf_path,
             json_path,
             sql_path,
             config_path,
-            archive_path,
             critical_directory,
         ]
+        if include_archive:
+            paths.append(archive_path)
         if include_metadata:
             paths.append(metadata_path)
         return paths
 
-    def _calculate_components_size(include_metadata: bool = True) -> int:
-        return _calculate_total_size(_component_paths(include_metadata))
+    def _calculate_components_size(
+        include_metadata: bool = True, include_archive: bool = True
+    ) -> int:
+        return _calculate_total_size(
+            _component_paths(
+                include_metadata=include_metadata, include_archive=include_archive
+            )
+        )
 
     def _write_metadata_with_size(size: int) -> None:
         _write_metadata(

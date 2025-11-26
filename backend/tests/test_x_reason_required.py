@@ -80,8 +80,8 @@ def auth_headers(client: TestClient) -> dict[str, str]:
     unique_user = f"xreason_admin_{uuid.uuid4().hex[:8]}"
     register_payload = {
         "username": unique_user,
-        "password": "secret123",
-        "email": f"{unique_user}@example.com"
+        "password": "Secret123!",
+        "email": f"{unique_user}@example.com",
     }
     # Usar bootstrap si está disponible para crear ADMIN
     bootstrap_payload = {
