@@ -1,8 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from typing import NoReturn
-
-from typing import Any
+from typing import Any, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.orm import Session
@@ -14,6 +12,11 @@ from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import pricing
+
+numeric_errors = {
+    "price_list_item_price_invalid",
+    "price_list_item_discount_invalid",
+}
 
 router = APIRouter(prefix="/price-lists", tags=["listas de precios"])
 pricing_router = APIRouter(prefix="/pricing", tags=["precios", "inventario"])
@@ -54,7 +57,6 @@ def _raise_value_error(exc: ValueError) -> NoReturn:
             status_code=status.HTTP_409_CONFLICT,
             detail=detail_map[message],
         ) from exc
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail_map[message]) from exc
     if message in {"price_list_conflict", "price_list_duplicate"}:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -357,6 +359,7 @@ def evaluate_device_price_endpoint(
         return schemas.PriceEvaluationResponse(
             device_id=device_id,
             price_list_id=None,
+            priority=None,
             scope=None,
             price=None,
             currency=None,
@@ -365,8 +368,9 @@ def evaluate_device_price_endpoint(
     return schemas.PriceEvaluationResponse(
         device_id=resolution.device_id,
         price_list_id=resolution.price_list_id,
+        priority=resolution.priority,
         scope=resolution.scope,
-        price=resolution.price,
+        price=resolution.final_price,
         currency=resolution.currency,
     )
 
