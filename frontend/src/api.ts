@@ -213,6 +213,9 @@ export type Device = {
   descripcion?: string | null;
   imagen_url?: string | null;
   precio_venta?: number;
+  imeis_adicionales?: string[];
+  imagenes?: string[];
+  enlaces?: Array<{ titulo?: string | null; url: string }>;
   identifier?: DeviceIdentifier | null;
   variant_count?: number;
   has_variants?: boolean;
@@ -364,6 +367,9 @@ export type DeviceUpdateInput = {
   descripcion?: string | null;
   imagen_url?: string | null;
   precio_venta?: number | null;
+  imeis_adicionales?: string[];
+  imagenes?: string[];
+  enlaces?: Array<{ titulo?: string | null; url: string }>;
   completo?: boolean;
   warehouse_id?: number | null;
 };
