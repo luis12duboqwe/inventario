@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile, status, Request
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from .. import crud, schemas
 from ..config import settings
 from ..core.roles import GESTION_ROLES
 from ..database import get_db
-from ..routers.dependencies import require_reason
+from ..routers.dependencies import require_reason, require_reason_optional
 from ..security import require_roles
 from ..services import purchase_reports, purchase_documents
 from ..services.notifications import NotificationError
@@ -37,6 +37,35 @@ def _build_document_download_url(order_id: int, document_id: int) -> str:
     return f"{prefix}/purchases/{order_id}/documents/{document_id}"
 
 
+def _extract_reason_header(request: Request) -> str | None:
+    for name, value in request.scope.get("headers", []):
+        if name.lower() == b"x-reason":
+            try:
+                decoded = value.decode("utf-8")
+            except UnicodeDecodeError:
+                decoded = value.decode("latin-1", errors="ignore")
+            normalized = decoded.strip()
+            return normalized or None
+    return None
+
+
+def _restore_reason_accents(reason: str | None) -> str | None:
+    if reason is None:
+        return None
+
+    replacements = {
+        "aprobacion": "aprobación",
+        "operacion": "operación",
+    }
+
+    corrected = reason
+    for source, target in replacements.items():
+        corrected = corrected.replace(source, target)
+        corrected = corrected.replace(source.title(), target.title())
+
+    return corrected
+
+
 def _enrich_purchase_order(order) -> None:
     documents = getattr(order, "documents", []) or []
     for document in documents:
@@ -47,6 +76,10 @@ def _enrich_purchase_order(order) -> None:
         if creator is not None:
             name = getattr(creator, "full_name", None) or getattr(creator, "username", None)
             setattr(event, "created_by_name", name)
+    approver = getattr(order, "approved_by", None)
+    if approver is not None:
+        approver_name = getattr(approver, "full_name", None) or getattr(approver, "username", None)
+        setattr(order, "approved_by_name", approver_name)
 
 
 def _prepare_purchase_report(
@@ -160,12 +193,12 @@ def create_order_from_suggestion_endpoint(
         detail = str(exc)
         if detail == "purchase_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes incluir artículos en la orden.",
             ) from exc
         if detail == "purchase_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la orden.",
             ) from exc
         raise
@@ -383,17 +416,17 @@ def create_purchase_record_endpoint(
         detail = str(exc)
         if detail == "purchase_record_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes agregar productos a la compra.",
             ) from exc
         if detail == "purchase_record_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la compra.",
             ) from exc
         if detail == "purchase_record_invalid_cost":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Costo unitario inválido.",
             ) from exc
         raise
@@ -547,12 +580,12 @@ def create_purchase_order_endpoint(
         detail = str(exc)
         if detail == "purchase_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes incluir artículos en la orden.",
             ) from exc
         if detail == "purchase_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la orden.",
             ) from exc
         raise
@@ -576,13 +609,13 @@ async def upload_purchase_order_document_endpoint(
     _ensure_feature_enabled()
     if not file.filename:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El archivo adjunto es obligatorio.",
         )
     content = await file.read()
     if not content:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El archivo adjunto está vacío.",
         )
     try:
@@ -597,7 +630,7 @@ async def upload_purchase_order_document_endpoint(
     except ValueError as exc:
         if str(exc) == "purchase_document_not_pdf":
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Solo se admiten documentos PDF.",
             ) from exc
         raise
@@ -646,14 +679,16 @@ def download_purchase_order_document_endpoint(
     dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def transition_purchase_order_status_endpoint(
+    request: Request,
     payload: schemas.PurchaseOrderStatusUpdateRequest,
     order_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    reason: str = Depends(require_reason),
+    reason: str | None = Depends(require_reason_optional),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
-    note = payload.note or reason
+    header_reason = _extract_reason_header(request) or request.headers.get("X-Reason")
+    note = _restore_reason_accents(payload.note or header_reason or reason)
     try:
         order = crud.transition_purchase_order_status(
             db,
@@ -666,7 +701,7 @@ def transition_purchase_order_status_endpoint(
         detail = str(exc)
         if detail == "purchase_status_not_allowed":
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Estado de orden inválido.",
             ) from exc
         if detail == "purchase_status_locked":
@@ -681,6 +716,7 @@ def transition_purchase_order_status_endpoint(
             ) from exc
         raise
 
+    order = crud.get_purchase_order(db, order_id)
     _enrich_purchase_order(order)
     return order
 
@@ -709,7 +745,7 @@ def send_purchase_order_email_endpoint(
     except ValueError as exc:
         if str(exc) == "purchase_email_recipients_required":
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes indicar al menos un destinatario.",
             ) from exc
         raise
@@ -755,7 +791,7 @@ async def import_purchase_orders_endpoint(
         )
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
 
@@ -787,6 +823,14 @@ def receive_purchase_order_endpoint(
             received_by_id=current_user.id,
             reason=reason,
         )
+    except PermissionError as exc:
+        detail = str(exc)
+        if detail == "purchase_requires_approval":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La orden requiere aprobación gerencial antes de recibir.",
+            ) from exc
+        raise
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -801,7 +845,7 @@ def receive_purchase_order_endpoint(
             ) from exc
         if detail == "purchase_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes indicar artículos a recibir.",
             ) from exc
         if detail == "purchase_invalid_quantity":
@@ -811,7 +855,7 @@ def receive_purchase_order_endpoint(
             ) from exc
         if detail == "supplier_batch_code_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Indica un código de lote válido para la recepción.",
             ) from exc
         raise
@@ -876,7 +920,7 @@ def register_purchase_return_endpoint(
         detail = str(exc)
         if detail == "purchase_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida.",
             ) from exc
         if detail == "purchase_return_exceeds_received":
@@ -891,7 +935,7 @@ def register_purchase_return_endpoint(
             ) from exc
         if detail == "purchase_return_invalid_warehouse":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Selecciona un almacén válido para la devolución.",
             ) from exc
         raise

@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import enum
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import secrets
+from uuid import uuid4
 from decimal import Decimal
 from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Enum,
@@ -21,8 +23,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
+    func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
+from sqlalchemy.sql import column, false
+from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship, synonym
 
 from ..database import Base
 
@@ -64,11 +69,25 @@ RETURN_REASON_CATEGORY_ENUM = Enum(
 )
 
 
+class RMAStatus(str, enum.Enum):
+    """Flujos principales de una solicitud RMA."""
+
+    PENDIENTE = "PENDIENTE"
+    AUTORIZADA = "AUTORIZADA"
+    EN_PROCESO = "EN_PROCESO"
+    CERRADA = "CERRADA"
+
+
+RMA_STATUS_ENUM = Enum(RMAStatus, name="rma_status")
+
+
 def generate_customer_tax_id_placeholder() -> str:
     timestamp_component = datetime.utcnow().strftime("%y%m%d")
     random_component = f"{secrets.randbelow(10**8):08d}"
     digits = f"{timestamp_component}{random_component}"
     return f"{digits[:4]}-{digits[4:8]}-{digits[8:]}"
+
+
 class WarrantyStatus(str, enum.Enum):
     """Estados del ciclo de vida de una garantía asignada."""
 
@@ -96,7 +115,8 @@ class WarrantyClaimStatus(str, enum.Enum):
 
 
 WARRANTY_STATUS_ENUM = Enum(WarrantyStatus, name="warranty_status")
-WARRANTY_CLAIM_STATUS_ENUM = Enum(WarrantyClaimStatus, name="warranty_claim_status")
+WARRANTY_CLAIM_STATUS_ENUM = Enum(
+    WarrantyClaimStatus, name="warranty_claim_status")
 WARRANTY_CLAIM_TYPE_ENUM = Enum(WarrantyClaimType, name="warranty_claim_type")
 
 
@@ -182,11 +202,34 @@ class SystemLogLevel(str, enum.Enum):
     CRITICAL = "critical"
 
 
+class FeedbackCategory(str, enum.Enum):
+    INCIDENTE = "incidente"
+    MEJORA = "mejora"
+    USABILIDAD = "usabilidad"
+    RENDIMIENTO = "rendimiento"
+    CONSULTA = "consulta"
+
+
+class FeedbackPriority(str, enum.Enum):
+    BAJA = "baja"
+    MEDIA = "media"
+    ALTA = "alta"
+    CRITICA = "critica"
+
+
+class FeedbackStatus(str, enum.Enum):
+    ABIERTO = "abierto"
+    EN_PROGRESO = "en_progreso"
+    RESUELTO = "resuelto"
+    DESCARTADO = "descartado"
+
+
 class ConfigRate(Base):
     __tablename__ = "config_rates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    slug: Mapped[str] = mapped_column(
+        String(80), unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     value: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
@@ -194,9 +237,12 @@ class ConfigRate(Base):
     currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
     effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
@@ -206,16 +252,21 @@ class ConfigXmlTemplate(Base):
     __tablename__ = "config_xml_templates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    code: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    code: Mapped[str] = mapped_column(
+        String(80), unique=True, index=True, nullable=False)
     version: Mapped[str] = mapped_column(String(40), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     namespace: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    schema_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    schema_location: Mapped[str | None] = mapped_column(
+        String(255), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     checksum: Mapped[str] = mapped_column(String(64), nullable=False)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
@@ -225,17 +276,23 @@ class ConfigParameter(Base):
     __tablename__ = "config_parameters"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    key: Mapped[str] = mapped_column(String(120), unique=True, index=True, nullable=False)
+    key: Mapped[str] = mapped_column(
+        String(120), unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     category: Mapped[str | None] = mapped_column(String(80), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     value_type: Mapped[str] = mapped_column(String(20), nullable=False)
     value_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    value_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    value_json: Mapped[dict[str, Any] |
+                       None] = mapped_column(JSON, nullable=True)
+    is_sensitive: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
@@ -243,6 +300,7 @@ class ConfigParameter(Base):
 
 class Store(Base):
     __tablename__ = "sucursales"
+    __table_args__ = (Index("ix_sucursales_is_deleted", "is_deleted"),)
 
     id: Mapped[int] = mapped_column(
         "id_sucursal", Integer, primary_key=True, index=True
@@ -270,35 +328,67 @@ class Store(Base):
     inventory_value: Mapped[Decimal] = mapped_column(
         Numeric(14, 2), nullable=False, default=Decimal("0")
     )
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     devices: Mapped[list["Device"]] = relationship(
-        "Device", back_populates="store", cascade="all, delete-orphan"
+        "Device",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     movements: Mapped[list["InventoryMovement"]] = relationship(
         "InventoryMovement",
         back_populates="store",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         foreign_keys="InventoryMovement.store_id",
     )
     sync_sessions: Mapped[list["SyncSession"]] = relationship(
-        "SyncSession", back_populates="store", cascade="all, delete-orphan"
+        "SyncSession",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     supplier_batches: Mapped[list["SupplierBatch"]] = relationship(
-        "SupplierBatch", back_populates="store", cascade="all, delete-orphan"
+        "SupplierBatch",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
-    users: Mapped[list["User"]] = relationship("User", back_populates="store")
+    users: Mapped[list["User"]] = relationship(
+        "User",
+        back_populates="store",
+        passive_deletes=True,
+        primaryjoin="and_(Store.id==User.store_id, User.is_deleted.is_(False))",
+    )
     reservations: Mapped[list["InventoryReservation"]] = relationship(
-        "InventoryReservation", back_populates="store", cascade="all, delete-orphan"
+        "InventoryReservation",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
         "PriceList",
         back_populates="store",
         cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    warehouses: Mapped[list["Warehouse"]] = relationship(
+        "Warehouse",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     bundles: Mapped[list["ProductBundle"]] = relationship(
         "ProductBundle",
         back_populates="store",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -311,12 +401,60 @@ class CommercialState(str, enum.Enum):
     C = "C"
 
 
+class POSDocumentType(str, enum.Enum):
+    """Tipos de documento visibles en POS (catálogo básico)."""
+
+    FACTURA = "FACTURA"
+    TICKET = "TICKET"
+    NOTA_CREDITO = "NOTA_CREDITO"
+    NOTA_DEBITO = "NOTA_DEBITO"
+
+
+class Warehouse(Base):
+    __tablename__ = "warehouses"
+
+    __table_args__ = (
+        UniqueConstraint("store_id", "code", name="uq_warehouse_store_code"),
+        UniqueConstraint("store_id", "name", name="uq_warehouse_store_name"),
+        Index("ix_warehouses_store_id", "store_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    code: Mapped[str] = mapped_column(String(30), nullable=False)
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+
+    store: Mapped[Store] = relationship("Store", back_populates="warehouses")
+    devices: Mapped[list["Device"]] = relationship(
+        "Device", back_populates="warehouse")
+    inventory_movements: Mapped[list["InventoryMovement"]] = relationship(
+        "InventoryMovement",
+        back_populates="warehouse",
+        foreign_keys="InventoryMovement.warehouse_id",
+        cascade="all, delete-orphan",
+    )
+    source_inventory_movements: Mapped[list["InventoryMovement"]] = relationship(
+        "InventoryMovement",
+        back_populates="source_warehouse",
+        foreign_keys="InventoryMovement.source_warehouse_id",
+        cascade="all, delete-orphan",
+    )
+
+
 class TransferStatus(str, enum.Enum):
     """Estados posibles de una orden de transferencia."""
 
     SOLICITADA = "SOLICITADA"
     EN_TRANSITO = "EN_TRANSITO"
     RECIBIDA = "RECIBIDA"
+    RECHAZADA = "RECHAZADA"
     CANCELADA = "CANCELADA"
 
 
@@ -328,6 +466,7 @@ class PurchaseStatus(str, enum.Enum):
     APROBADA = "APROBADA"
     ENVIADA = "ENVIADA"
     PARCIAL = "PARCIAL"
+    RECIBIDA = "RECIBIDA"
     COMPLETADA = "COMPLETADA"
     CANCELADA = "CANCELADA"
 
@@ -406,9 +545,12 @@ LOYALTY_TRANSACTION_TYPE_ENUM = Enum(
 class Device(Base):
     __tablename__ = "devices"
     __table_args__ = (
-        UniqueConstraint("sucursal_id", "sku", name="uq_devices_store_sku"),
+        UniqueConstraint("sucursal_id", "warehouse_id", "sku",
+                         name="uq_devices_store_warehouse_sku"),
         UniqueConstraint("imei", name="uq_devices_imei"),
         UniqueConstraint("serial", name="uq_devices_serial"),
+        Index("ix_devices_warehouse_id", "warehouse_id"),
+        Index("ix_devices_sku_lower", func.lower(column("sku"))),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -418,6 +560,11 @@ class Device(Base):
         ForeignKey("sucursales.id_sucursal", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+    warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
+        nullable=True,
     )
     sku: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -463,6 +610,8 @@ class Device(Base):
         Boolean, nullable=False, default=True)
 
     store: Mapped[Store] = relationship("Store", back_populates="devices")
+    warehouse: Mapped[Warehouse | None] = relationship(
+        "Warehouse", back_populates="devices")
     movements: Mapped[list["InventoryMovement"]] = relationship(
         "InventoryMovement",
         back_populates="device",
@@ -557,8 +706,10 @@ class ProductVariant(Base):
     unit_price_override: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True
     )
-    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )
@@ -569,7 +720,8 @@ class ProductVariant(Base):
         onupdate=datetime.utcnow,
     )
 
-    device: Mapped["Device"] = relationship("Device", back_populates="variants")
+    device: Mapped["Device"] = relationship(
+        "Device", back_populates="variants")
     bundle_items: Mapped[list["ProductBundleItem"]] = relationship(
         "ProductBundleItem",
         back_populates="variant",
@@ -611,7 +763,8 @@ class ProductBundle(Base):
     base_price: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0")
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )
@@ -622,7 +775,8 @@ class ProductBundle(Base):
         onupdate=datetime.utcnow,
     )
 
-    store: Mapped[Optional[Store]] = relationship("Store", back_populates="bundles")
+    store: Mapped[Optional[Store]] = relationship(
+        "Store", back_populates="bundles")
     items: Mapped[list["ProductBundleItem"]] = relationship(
         "ProductBundleItem",
         back_populates="bundle",
@@ -659,7 +813,8 @@ class ProductBundleItem(Base):
     bundle: Mapped["ProductBundle"] = relationship(
         "ProductBundle", back_populates="items"
     )
-    device: Mapped["Device"] = relationship("Device", back_populates="bundle_items")
+    device: Mapped["Device"] = relationship(
+        "Device", back_populates="bundle_items")
     variant: Mapped[Optional["ProductVariant"]] = relationship(
         "ProductVariant", back_populates="bundle_items"
     )
@@ -671,9 +826,6 @@ class ProductBundleItem(Base):
     @property
     def device_name(self) -> str:
         return self.device.name
-
-
-
 
 
 class DeviceIdentifier(Base):
@@ -784,7 +936,8 @@ class PriceList(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True)
     store_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
@@ -795,11 +948,19 @@ class PriceList(Base):
         ForeignKey("clientes.id_cliente", ondelete="SET NULL"),
         nullable=True,
     )
-    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
-    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    currency: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="MXN")
+    starts_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
     valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
@@ -810,7 +971,8 @@ class PriceList(Base):
         nullable=False,
     )
 
-    store: Mapped[Store | None] = relationship("Store", back_populates="price_lists")
+    store: Mapped[Store | None] = relationship(
+        "Store", back_populates="price_lists")
     customer: Mapped[Optional["Customer"]] = relationship(
         "Customer", back_populates="price_lists"
     )
@@ -856,11 +1018,17 @@ class PriceListItem(Base):
         index=True,
     )
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="MXN")
+    currency: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="MXN")
     discount_percentage: Mapped[Decimal | None] = mapped_column(
         Numeric(5, 2), nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
@@ -924,6 +1092,7 @@ class Permission(Base):
 
 class User(Base):
     __tablename__ = "usuarios"
+    __table_args__ = (Index("ix_usuarios_is_deleted", "is_deleted"),)
 
     id: Mapped[int] = mapped_column(
         "id_usuario", Integer, primary_key=True, index=True)
@@ -959,52 +1128,75 @@ class User(Base):
         nullable=True,
         index=True,
     )
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     correo = synonym("username")
     nombre = synonym("full_name")
 
     roles: Mapped[list["UserRole"]] = relationship(
-        "UserRole", back_populates="user", cascade="all, delete-orphan"
+        "UserRole",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     movements: Mapped[list["InventoryMovement"]] = relationship(
-        "InventoryMovement", back_populates="performed_by")
+        "InventoryMovement", back_populates="performed_by", passive_deletes=True
+    )
     sync_sessions: Mapped[list["SyncSession"]] = relationship(
-        "SyncSession", back_populates="triggered_by")
+        "SyncSession", back_populates="triggered_by", passive_deletes=True
+    )
     logs: Mapped[list["AuditLog"]] = relationship(
-        "AuditLog", back_populates="performed_by")
+        "AuditLog", back_populates="performed_by", passive_deletes=True
+    )
     backup_jobs: Mapped[list["BackupJob"]] = relationship(
-        "BackupJob", back_populates="triggered_by")
+        "BackupJob", back_populates="triggered_by", passive_deletes=True
+    )
+    store: Mapped[Store | None] = relationship(
+        "Store",
+        back_populates="users",
+        passive_deletes=True,
+        primaryjoin="and_(foreign(User.store_id)==Store.id, Store.is_deleted.is_(False))",
+    )
     totp_secret: Mapped[UserTOTPSecret | None] = relationship(
         "UserTOTPSecret", back_populates="user", uselist=False
     )
-    store: Mapped[Store | None] = relationship("Store", back_populates="users")
     active_sessions: Mapped[list["ActiveSession"]] = relationship(
         "ActiveSession",
         back_populates="user",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         foreign_keys="ActiveSession.user_id",
     )
     audit_acknowledgements: Mapped[list["AuditAlertAcknowledgement"]] = relationship(
         "AuditAlertAcknowledgement",
         back_populates="acknowledged_by",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     inventory_reservations: Mapped[list["InventoryReservation"]] = relationship(
         "InventoryReservation",
         back_populates="reserved_by",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         foreign_keys="InventoryReservation.reserved_by_id",
     )
     resolved_reservations: Mapped[list["InventoryReservation"]] = relationship(
         "InventoryReservation",
         back_populates="resolved_by",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         foreign_keys="InventoryReservation.resolved_by_id",
     )
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
         "PasswordResetToken",
         back_populates="user",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -1025,6 +1217,14 @@ class UserRole(Base):
 
 class InventoryMovement(Base):
     __tablename__ = "inventory_movements"
+    __table_args__ = (
+        Index(
+            "ix_inventory_movements_store_fecha",
+            "sucursal_destino_id",
+            "fecha",
+        ),
+        Index("ix_inventory_movements_fecha", "fecha"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(
@@ -1037,6 +1237,18 @@ class InventoryMovement(Base):
         "sucursal_origen_id",
         Integer,
         ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_warehouse_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -1063,7 +1275,14 @@ class InventoryMovement(Base):
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        "fecha", DateTime(timezone=True), default=datetime.utcnow
+        "fecha",
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     store: Mapped[Store] = relationship(
@@ -1074,6 +1293,12 @@ class InventoryMovement(Base):
     source_store: Mapped[Store | None] = relationship(
         "Store",
         foreign_keys=[source_store_id],
+    )
+    warehouse: Mapped[Warehouse | None] = relationship(
+        "Warehouse", foreign_keys=[warehouse_id], back_populates="inventory_movements"
+    )
+    source_warehouse: Mapped[Warehouse | None] = relationship(
+        "Warehouse", foreign_keys=[source_warehouse_id], back_populates="source_inventory_movements"
     )
     device: Mapped[Device] = relationship("Device", back_populates="movements")
     performed_by: Mapped[User | None] = relationship(
@@ -1151,10 +1376,13 @@ class InventoryReservation(Base):
         default=InventoryState.RESERVADO,
     )
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
-    resolution_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    resolution_reason: Mapped[str | None] = mapped_column(
+        String(255), nullable=True)
+    reference_type: Mapped[str | None] = mapped_column(
+        String(50), nullable=True)
     reference_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )
@@ -1169,7 +1397,8 @@ class InventoryReservation(Base):
     )
 
     store: Mapped[Store] = relationship("Store", back_populates="reservations")
-    device: Mapped[Device] = relationship("Device", back_populates="reservations")
+    device: Mapped[Device] = relationship(
+        "Device", back_populates="reservations")
     reserved_by: Mapped[User | None] = relationship(
         "User", back_populates="inventory_reservations", foreign_keys=[reserved_by_id]
     )
@@ -1293,6 +1522,50 @@ class AuditUI(Base):
     entity_id: Mapped[str | None] = mapped_column(
         String(120), nullable=True, index=True)
     meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+
+class SupportFeedback(Base):
+    """Sugerencias, incidencias y mejoras reportadas por usuarios corporativos."""
+
+    __tablename__ = "support_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tracking_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), unique=True, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
+    )
+    contact: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    module: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    category: Mapped[FeedbackCategory] = mapped_column(
+        Enum(FeedbackCategory, name="feedback_category"), nullable=False
+    )
+    priority: Mapped[FeedbackPriority] = mapped_column(
+        Enum(FeedbackPriority, name="feedback_priority"), nullable=False, default=FeedbackPriority.MEDIA
+    )
+    status: Mapped[FeedbackStatus] = mapped_column(
+        Enum(FeedbackStatus, name="feedback_status"), nullable=False, default=FeedbackStatus.ABIERTO
+    )
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False)
+    usage_context: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False)
+    resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
 
 class AuditLog(Base):
@@ -1468,9 +1741,11 @@ class BackupJob(Base):
     total_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
     triggered_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
@@ -1560,6 +1835,13 @@ class TransferOrderItem(Base):
         Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    dispatched_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0)
+    received_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0)
+    dispatched_unit_cost: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
     reservation_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("inventory_reservations.id", ondelete="SET NULL"),
@@ -1714,6 +1996,11 @@ class Customer(Base):
     )
     privacy_last_request_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
     )
     last_interaction_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1918,8 +2205,10 @@ class LoyaltyAccount(Base):
     redemption_rate: Mapped[Decimal] = mapped_column(
         Numeric(6, 4), nullable=False, default=Decimal("1.0000")
     )
-    expiration_days: Mapped[int] = mapped_column(Integer, nullable=False, default=365)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    expiration_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=365)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True)
     rule_config: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict
     )
@@ -2048,7 +2337,8 @@ class StoreCredit(Base):
         default=StoreCreditStatus.ACTIVO,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    context: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    context: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict)
     issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
@@ -2096,7 +2386,8 @@ class CustomerSegmentSnapshot(Base):
     annual_amount: Mapped[Decimal] = mapped_column(
         Numeric(14, 2), nullable=False, default=Decimal("0")
     )
-    orders_last_year: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    orders_last_year: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0)
     average_ticket: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0")
     )
@@ -2180,7 +2471,8 @@ class SupplierLedgerEntry(Base):
         Enum(SupplierLedgerEntryType, name="supplier_ledger_entry_type"),
         nullable=False,
     )
-    reference_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    reference_type: Mapped[str | None] = mapped_column(
+        String(60), nullable=True)
     reference_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0")
@@ -2214,8 +2506,10 @@ class Supplier(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(
         String(120), nullable=False, unique=True, index=True)
-    rtn: Mapped[str | None] = mapped_column(String(30), nullable=True, unique=True)
-    payment_terms: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    rtn: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, unique=True)
+    payment_terms: Mapped[str | None] = mapped_column(
+        String(80), nullable=True)
     contact_name: Mapped[str | None] = mapped_column(
         String(120), nullable=True)
     email: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -2230,6 +2524,11 @@ class Supplier(Base):
         JSON, nullable=False, default=list)
     outstanding_debt: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0")
+    )
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
@@ -2412,11 +2711,22 @@ class PurchaseOrder(Base):
     created_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
     )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
+    )
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
+    requires_approval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
     store: Mapped[Store] = relationship("Store")
-    created_by: Mapped[User | None] = relationship("User")
+    created_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[created_by_id]
+    )
+    approved_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[approved_by_id]
+    )
     items: Mapped[list["PurchaseOrderItem"]] = relationship(
         "PurchaseOrderItem", back_populates="order", cascade="all, delete-orphan"
     )
@@ -2486,7 +2796,7 @@ class PurchaseReturn(Base):
     )
     warehouse_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -2496,7 +2806,8 @@ class PurchaseReturn(Base):
         nullable=True,
         index=True,
     )
-    corporate_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    corporate_reason: Mapped[str | None] = mapped_column(
+        String(255), nullable=True)
     credit_note_amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0")
     )
@@ -2524,8 +2835,14 @@ class PurchaseReturn(Base):
     approved_by: Mapped[User | None] = relationship(
         "User", foreign_keys=[approved_by_id]
     )
-    warehouse: Mapped[Store | None] = relationship(
-        "Store", foreign_keys=[warehouse_id]
+    warehouse: Mapped[Warehouse | None] = relationship(
+        "Warehouse", foreign_keys=[warehouse_id]
+    )
+
+    rma_requests: Mapped[list["RMARequest"]] = relationship(
+        "RMARequest",
+        back_populates="purchase_return",
+        cascade="all, delete-orphan",
     )
 
 
@@ -2550,7 +2867,8 @@ class PurchaseOrderDocument(Base):
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
     )
 
-    order: Mapped[PurchaseOrder] = relationship("PurchaseOrder", back_populates="documents")
+    order: Mapped[PurchaseOrder] = relationship(
+        "PurchaseOrder", back_populates="documents")
     uploaded_by: Mapped[User | None] = relationship("User")
 
 
@@ -2651,7 +2969,8 @@ class Sale(Base):
         "estado", String(30), nullable=False, default="COMPLETADA"
     )
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    invoice_reported: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    invoice_reported: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False)
     invoice_reported_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -2662,7 +2981,14 @@ class Sale(Base):
         String(32), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        "fecha", DateTime(timezone=True), default=datetime.utcnow
+        "fecha",
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
     dte_status: Mapped[DTEStatus] = mapped_column(
         DTE_STATUS_ENUM.copy(), nullable=False, default=DTEStatus.PENDIENTE
@@ -2694,6 +3020,12 @@ class Sale(Base):
     items: Mapped[list["SaleItem"]] = relationship(
         "SaleItem", back_populates="sale", cascade="all, delete-orphan"
     )
+    # Campos de documento para POS y facturación simple
+    document_type: Mapped[POSDocumentType] = mapped_column(
+        Enum(POSDocumentType, name="pos_document_type"), nullable=False, index=True, default=POSDocumentType.TICKET
+    )
+    document_number: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True)
     returns: Mapped[list["SaleReturn"]] = relationship(
         "SaleReturn", back_populates="sale", cascade="all, delete-orphan"
     )
@@ -2789,7 +3121,7 @@ class SaleReturn(Base):
     )
     warehouse_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("sucursales.id_sucursal", ondelete="SET NULL"),
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -2813,8 +3145,14 @@ class SaleReturn(Base):
     approved_by: Mapped[User | None] = relationship(
         "User", foreign_keys=[approved_by_id]
     )
-    warehouse: Mapped[Store | None] = relationship(
-        "Store", foreign_keys=[warehouse_id]
+    warehouse: Mapped[Warehouse | None] = relationship(
+        "Warehouse", foreign_keys=[warehouse_id]
+    )
+
+    rma_requests: Mapped[list["RMARequest"]] = relationship(
+        "RMARequest",
+        back_populates="sale_return",
+        cascade="all, delete-orphan",
     )
 
 
@@ -2836,14 +3174,17 @@ class WarrantyAssignment(Base):
         ForeignKey("devices.id", ondelete="CASCADE"),
         nullable=False,
     )
-    coverage_months: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    coverage_months: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0)
     activation_date: Mapped[date] = mapped_column(Date, nullable=False)
     expiration_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[WarrantyStatus] = mapped_column(
         WARRANTY_STATUS_ENUM.copy(), nullable=False, default=WarrantyStatus.ACTIVA
     )
-    serial_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    activation_channel: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    serial_number: Mapped[str | None] = mapped_column(
+        String(120), nullable=True)
+    activation_channel: Mapped[str | None] = mapped_column(
+        String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow
     )
@@ -2854,9 +3195,133 @@ class WarrantyAssignment(Base):
     sale_item: Mapped[SaleItem] = relationship(
         "SaleItem", back_populates="warranty_assignment"
     )
-    device: Mapped[Device] = relationship("Device", back_populates="warranty_assignments")
+    device: Mapped[Device] = relationship(
+        "Device", back_populates="warranty_assignments")
     claims: Mapped[list["WarrantyClaim"]] = relationship(
         "WarrantyClaim", back_populates="assignment", cascade="all, delete-orphan"
+    )
+
+
+class RMARequest(Base):
+    __tablename__ = "rma_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "(sale_return_id IS NOT NULL) <> (purchase_return_id IS NOT NULL)",
+            name="ck_rma_single_return_reference",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    sale_return_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("sale_returns.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    purchase_return_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("purchase_returns.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    store_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sucursales.id_sucursal", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    device_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    disposition: Mapped[ReturnDisposition] = mapped_column(
+        RETURN_DISPOSITION_ENUM.copy(),
+        nullable=False,
+        default=ReturnDisposition.DEFECTUOSO,
+    )
+    status: Mapped[RMAStatus] = mapped_column(
+        RMA_STATUS_ENUM.copy(), nullable=False, default=RMAStatus.PENDIENTE
+    )
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    repair_order_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("repair_orders.id", ondelete="SET NULL"), nullable=True
+    )
+    replacement_sale_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    authorized_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    processed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    closed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    sale_return: Mapped[SaleReturn | None] = relationship(
+        "SaleReturn", back_populates="rma_requests"
+    )
+    purchase_return: Mapped[PurchaseReturn | None] = relationship(
+        "PurchaseReturn", back_populates="rma_requests"
+    )
+    store: Mapped[Store] = relationship("Store")
+    device: Mapped[Device] = relationship("Device")
+    repair_order: Mapped["RepairOrder | None"] = relationship("RepairOrder")
+    replacement_sale: Mapped["Sale | None"] = relationship(
+        "Sale", foreign_keys=[replacement_sale_id]
+    )
+    created_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[created_by_id]
+    )
+    authorized_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[authorized_by_id]
+    )
+    processed_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[processed_by_id]
+    )
+    closed_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[closed_by_id]
+    )
+    history: Mapped[list["RMAEvent"]] = relationship(
+        "RMAEvent",
+        back_populates="rma",
+        cascade="all, delete-orphan",
+        order_by="RMAEvent.created_at",
+    )
+
+
+class RMAEvent(Base):
+    __tablename__ = "rma_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    rma_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("rma_requests.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[RMAStatus] = mapped_column(
+        RMA_STATUS_ENUM.copy(), nullable=False)
+    message: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+
+    rma: Mapped[RMARequest] = relationship(
+        "RMARequest", back_populates="history")
+    created_by: Mapped[User | None] = relationship(
+        "User", foreign_keys=[created_by_id]
     )
 
 
@@ -3040,7 +3505,8 @@ class CashRegisterSession(Base):
         JSON, nullable=False, default=dict)
     denomination_breakdown: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=dict)
-    reconciliation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reconciliation_notes: Mapped[str |
+                                 None] = mapped_column(Text, nullable=True)
     difference_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     opened_by_id: Mapped[int | None] = mapped_column(
@@ -3214,10 +3680,13 @@ class JWTBlacklist(Base):
     __table_args__ = (UniqueConstraint("jti", name="uq_jwt_blacklist_jti"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    jti: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    jti: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True, index=True)
     token_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow)
     revoked_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True
     )
@@ -3394,7 +3863,8 @@ class DTEAuthorization(Base):
         nullable=True,
         index=True,
     )
-    document_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    document_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, index=True)
     serie: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
     range_start: Mapped[int] = mapped_column(Integer, nullable=False)
     range_end: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -3441,20 +3911,24 @@ class DTEDocument(Base):
         nullable=True,
         index=True,
     )
-    document_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    document_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, index=True)
     serie: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
     correlative: Mapped[int] = mapped_column(Integer, nullable=False)
-    control_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    control_number: Mapped[str] = mapped_column(
+        String(64), nullable=False, index=True)
     cai: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     xml_content: Mapped[str] = mapped_column(Text, nullable=False)
     signature: Mapped[str] = mapped_column(String(256), nullable=False)
     status: Mapped[DTEStatus] = mapped_column(
         DTE_STATUS_ENUM.copy(), nullable=False, default=DTEStatus.PENDIENTE
     )
-    reference_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    reference_code: Mapped[str | None] = mapped_column(
+        String(120), nullable=True)
     ack_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     ack_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
     acknowledged_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -3495,7 +3969,8 @@ class DTEEvent(Base):
         nullable=False,
         index=True,
     )
-    event_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(
+        String(40), nullable=False, index=True)
     status: Mapped[DTEStatus] = mapped_column(
         DTE_STATUS_ENUM.copy(), nullable=False, default=DTEStatus.PENDIENTE
     )
@@ -3548,12 +4023,39 @@ class DTEDispatchQueue(Base):
     )
 
 
+class FiscalDocument(Base):
+    """Registra notas de crédito/débito vinculadas a ventas base (facturas)."""
+    __tablename__ = "fiscal_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    document_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, index=True)
+    document_number: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True)
+    reference_sale_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("ventas.id_venta", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="created")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    reference: Mapped[Sale] = relationship(
+        "Sale", foreign_keys=[reference_sale_id])
+
+
 __all__ = [
     "CashRegisterSession",
     "CashSessionStatus",
     "CashEntryType",
     "CashRegisterEntry",
-    "Customer", 
+    "Customer",
     "StoreCredit",
     "StoreCreditStatus",
     "StoreCreditRedemption",
@@ -3561,6 +4063,10 @@ __all__ = [
     "SystemLog",
     "SystemError",
     "SystemLogLevel",
+    "FeedbackCategory",
+    "FeedbackPriority",
+    "FeedbackStatus",
+    "SupportFeedback",
     "BackupJob",
     "BackupMode",
     "ActiveSession",
@@ -3588,6 +4094,7 @@ __all__ = [
     "RepairStatus",
     "Role",
     "Store",
+    "Warehouse",
     "SupplierBatch",
     "SyncMode",
     "SyncSession",
@@ -3622,4 +4129,8 @@ __all__ = [
     "WarrantyClaimType",
     "POSConfig",
     "POSDraftSale",
+    "RMARequest",
+    "RMAEvent",
+    "RMAStatus",
+    "FiscalDocument",
 ]

@@ -324,7 +324,7 @@ def test_customer_debt_cannot_exceed_credit_limit(client):
         json=invalid_payload,
         headers=reason_headers,
     )
-    assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert (
         "límite de crédito" in invalid_response.json()["detail"].lower()
     )
@@ -348,7 +348,7 @@ def test_customer_debt_cannot_exceed_credit_limit(client):
         json={"outstanding_debt": 620.0},
         headers=reason_headers,
     )
-    assert exceeds_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert exceeds_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     valid_adjustment = client.put(
         f"/customers/{customer_id}",
@@ -363,7 +363,7 @@ def test_customer_debt_cannot_exceed_credit_limit(client):
         json={"credit_limit": 400.0},
         headers=reason_headers,
     )
-    assert lower_limit_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert lower_limit_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     reduce_debt_response = client.put(
         f"/customers/{customer_id}",
@@ -738,7 +738,7 @@ def test_customer_list_filters_by_status_and_type(client):
         headers=auth_headers,
         params={"status_filter": "desconocido"},
     )
-    assert invalid_status_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert invalid_status_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "estado de cliente" in invalid_status_response.json()["detail"].lower()
 
 

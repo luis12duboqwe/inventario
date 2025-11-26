@@ -31,6 +31,8 @@ def _auth_headers(client) -> dict[str, str]:
         "roles": [ADMIN],
     }
     response = client.post("/auth/bootstrap", json=payload)
+    if response.status_code == status.HTTP_401_UNAUTHORIZED:
+        return _login_headers(client, payload["username"], payload["password"])
     assert response.status_code in {
         status.HTTP_201_CREATED,
         status.HTTP_400_BAD_REQUEST,
@@ -234,7 +236,7 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
         json={"componentes": ["unknown_component"]},
         headers=_with_reason(headers, "Intento restauracion invalido"),
     )
-    assert invalid_restore.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert invalid_restore.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     error_detail = invalid_restore.json()["detail"][0]["msg"]
     assert "Input should be" in error_detail and "critical_files" in error_detail
 

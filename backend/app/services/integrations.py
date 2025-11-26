@@ -54,6 +54,10 @@ class IntegrationNotFoundError(LookupError):
     """Señala que la integración solicitada no existe en el registro."""
 
 
+class IntegrationTokenInvalidError(PermissionError):
+    """Token de integración no coincide con el registro autorizado."""
+
+
 class IntegrationRegistry:
     """Registro en memoria de integraciones externas certificadas."""
 
@@ -251,6 +255,27 @@ class IntegrationRegistry:
             self._providers[slug] = record
             return copy.deepcopy(record)
 
+    def validate_token(self, slug: str, token: str) -> IntegrationRecord:
+        """Valida el token proporcionado y devuelve la integración si es correcto."""
+
+        if not token:
+            raise IntegrationTokenInvalidError("token_required")
+
+        with self._lock:
+            record = self._providers.get(slug)
+            if record is None:
+                raise IntegrationNotFoundError(slug)
+
+            credential = record.credential
+            if credential is None:
+                raise IntegrationTokenInvalidError("credential_missing")
+
+            candidate_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            if not secrets.compare_digest(candidate_hash, credential.token_hash):
+                raise IntegrationTokenInvalidError("token_mismatch")
+
+            return copy.deepcopy(record)
+
 
 integration_registry = IntegrationRegistry()
 
@@ -260,5 +285,6 @@ __all__ = [
     "IntegrationCredentialState",
     "IntegrationHealthState",
     "IntegrationNotFoundError",
+    "IntegrationTokenInvalidError",
     "integration_registry",
 ]

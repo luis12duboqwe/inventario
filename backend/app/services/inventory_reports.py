@@ -16,15 +16,15 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .. import schemas
+from .locale_helpers import format_dual_currency, format_units
 
 
 def _format_currency(value: Decimal | float | int) -> str:
-    normalized = float(value)
-    return f"${normalized:,.2f}"
+    return format_dual_currency(value)
 
 
 def _format_units(value: int) -> str:
-    return f"{value:,}".replace(",", ".")
+    return format_units(value)
 
 
 def _format_reference(reference_type: str | None, reference_id: str | None) -> str:

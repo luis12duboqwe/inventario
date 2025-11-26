@@ -38,7 +38,7 @@ export type ReceiptTicketProps = {
   customer?: ReceiptCustomer;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function ReceiptTicket({ business, order, customer }: ReceiptTicketProps) {
   const businessInfo = business ?? {};

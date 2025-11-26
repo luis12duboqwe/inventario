@@ -10,6 +10,7 @@ import json
 import math
 import re
 import secrets
+import textwrap
 from dataclasses import dataclass
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -56,6 +57,16 @@ logger = core_logger.bind(component=__name__)
 _PIN_CONTEXT = CryptContext(
     schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"], deprecated="auto"
 )
+
+_INVENTORY_MOVEMENTS_CACHE: TTLCache[schemas.InventoryMovementsReport] = TTLCache(
+    ttl_seconds=60.0
+)
+
+
+def invalidate_inventory_movements_cache() -> None:
+    """Limpia la caché de reportes de movimientos de inventario."""
+
+    _INVENTORY_MOVEMENTS_CACHE.clear()
 
 
 def _verify_supervisor_pin_hash(hashed: str, candidate: str) -> bool:
@@ -171,6 +182,26 @@ def _ensure_unique_identifiers(
             )
         if db.scalars(identifier_statement).first() is not None:
             raise ValueError("device_identifier_conflict")
+
+
+def _validate_device_numeric_fields(values: dict[str, Any]) -> None:
+    quantity = values.get("quantity")
+    if quantity is not None:
+        try:
+            parsed_quantity = int(quantity)
+        except (TypeError, ValueError):
+            raise ValueError("device_invalid_quantity")
+        if parsed_quantity < 0:
+            raise ValueError("device_invalid_quantity")
+
+    raw_cost = values.get("costo_unitario")
+    if raw_cost is not None:
+        try:
+            parsed_cost = _to_decimal(raw_cost)
+        except (ArithmeticError, TypeError, ValueError):
+            raise ValueError("device_invalid_cost")
+        if parsed_cost < 0:
+            raise ValueError("device_invalid_cost")
 
 
 def _ensure_unique_identifier_payload(
@@ -407,6 +438,7 @@ def _project_linear_sum(
         total += max(0.0, estimate)
     return total
 
+
 _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "sale": models.SyncOutboxPriority.HIGH,
     "transfer_order": models.SyncOutboxPriority.HIGH,
@@ -420,6 +452,7 @@ _OUTBOX_PRIORITY_MAP: dict[str, models.SyncOutboxPriority] = {
     "supplier": models.SyncOutboxPriority.NORMAL,
     "cash_session": models.SyncOutboxPriority.NORMAL,
     "device": models.SyncOutboxPriority.NORMAL,
+    "rma_request": models.SyncOutboxPriority.NORMAL,
     "inventory": models.SyncOutboxPriority.HIGH,
     "store": models.SyncOutboxPriority.LOW,
     "global": models.SyncOutboxPriority.LOW,
@@ -467,7 +500,8 @@ _SYSTEM_MODULE_MAP: dict[str, str] = {
 def _resolve_outbox_priority(entity_type: str, priority: models.SyncOutboxPriority | None) -> models.SyncOutboxPriority:
     if priority is not None:
         return priority
-    return _OUTBOX_PRIORITY_MAP.get(entity_type, models.SyncOutboxPriority.NORMAL)
+    normalized = (entity_type or "").lower()
+    return _OUTBOX_PRIORITY_MAP.get(normalized, models.SyncOutboxPriority.NORMAL)
 
 
 def _priority_weight(priority: models.SyncOutboxPriority | None) -> int:
@@ -538,6 +572,26 @@ def _normalize_store_ids(store_ids: Iterable[int] | None) -> set[int] | None:
         return None
     normalized = {int(store_id) for store_id in store_ids if int(store_id) > 0}
     return normalized or None
+
+
+def _inventory_movements_report_cache_key(
+    store_filter: set[int] | None,
+    start_dt: datetime,
+    end_dt: datetime,
+    movement_type: models.MovementType | None,
+    limit: int | None,
+    offset: int,
+) -> tuple[tuple[int, ...], str, str, str | None, int | None, int]:
+    store_key = tuple(sorted(store_filter)) if store_filter else tuple()
+    movement_key = movement_type.value if movement_type else None
+    return (
+        store_key,
+        start_dt.isoformat(),
+        end_dt.isoformat(),
+        movement_key,
+        limit,
+        offset,
+    )
 
 
 def log_audit_event(
@@ -1606,6 +1660,8 @@ def _device_sync_payload(device: models.Device) -> dict[str, object]:
         "id": device.id,
         "store_id": device.store_id,
         "store_name": store_name,
+        "warehouse_id": device.warehouse_id,
+        "warehouse_name": getattr(device.warehouse, "name", None),
         "sku": device.sku,
         "name": device.name,
         "quantity": device.quantity,
@@ -1636,6 +1692,10 @@ def _inventory_movement_payload(movement: models.InventoryMovement) -> dict[str,
 
     store_name = movement.store.name if movement.store else None
     source_name = movement.source_store.name if movement.source_store else None
+    warehouse_name = movement.warehouse.name if movement.warehouse else None
+    source_warehouse_name = (
+        movement.source_warehouse.name if movement.source_warehouse else None
+    )
     device = movement.device
     performed_by = _user_display_name(movement.performed_by)
     created_at = movement.created_at.isoformat() if movement.created_at else None
@@ -1647,6 +1707,10 @@ def _inventory_movement_payload(movement: models.InventoryMovement) -> dict[str,
         "store_name": store_name,
         "source_store_id": movement.source_store_id,
         "source_store_name": source_name,
+        "warehouse_id": movement.warehouse_id,
+        "warehouse_name": warehouse_name,
+        "source_warehouse_id": movement.source_warehouse_id,
+        "source_warehouse_name": source_warehouse_name,
         "device_id": movement.device_id,
         "device_sku": device.sku if device else None,
         "movement_type": movement.movement_type.value,
@@ -1712,6 +1776,8 @@ def _purchase_order_payload(order: models.PurchaseOrder) -> dict[str, object]:
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "updated_at": order.updated_at.isoformat() if order.updated_at else None,
         "closed_at": order.closed_at.isoformat() if order.closed_at else None,
+        "requires_approval": getattr(order, "requires_approval", False),
+        "approved_by_id": getattr(order, "approved_by_id", None),
         "items": items_payload,
         "documents": [
             {
@@ -1752,6 +1818,11 @@ def _transfer_order_payload(order: models.TransferOrder) -> dict[str, object]:
             {
                 "device_id": item.device_id,
                 "quantity": item.quantity,
+                "dispatched_quantity": item.dispatched_quantity,
+                "received_quantity": item.received_quantity,
+                "dispatched_unit_cost": float(item.dispatched_unit_cost)
+                if item.dispatched_unit_cost is not None
+                else None,
                 "sku": getattr(device, "sku", None),
                 "imei": getattr(device, "imei", None),
                 "serial": getattr(device, "serial", None),
@@ -1854,7 +1925,8 @@ def _repair_payload(order: models.RepairOrder) -> dict[str, object]:
 
 def _merge_defaults(default: object, provided: object) -> object:
     if isinstance(default, dict) and isinstance(provided, dict):
-        merged: dict[str, object] = {key: _merge_defaults(value, provided.get(key)) for key, value in default.items()}
+        merged: dict[str, object] = {key: _merge_defaults(
+            value, provided.get(key)) for key, value in default.items()}
         for key, value in provided.items():
             if key not in merged:
                 merged[key] = value
@@ -2052,6 +2124,7 @@ def _mask_generic_text(value: str) -> str:
     if len(text) <= 4:
         return "*" * len(text)
     return f"{text[:2]}***{text[-2:]}"
+
 
 def _apply_customer_anonymization(
     customer: models.Customer, fields: Sequence[str]
@@ -2331,7 +2404,8 @@ def _create_supplier_ledger_entry(
         entry_type=entry_type,
         reference_type=reference_type,
         reference_id=reference_id,
-        amount=_to_decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        amount=_to_decimal(amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP),
         balance_after=_to_decimal(supplier.outstanding_debt).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         ),
@@ -2417,7 +2491,8 @@ def _generate_store_credit_code(db: Session) -> str:
     for _ in range(10):
         candidate = f"NC-{uuid4().hex[:10].upper()}"
         exists = db.scalar(
-            select(models.StoreCredit.id).where(models.StoreCredit.code == candidate)
+            select(models.StoreCredit.id).where(
+                models.StoreCredit.code == candidate)
         )
         if not exists:
             return candidate
@@ -2447,7 +2522,8 @@ def _apply_store_credit_redemption(
     notes: str | None,
     performed_by_id: int | None,
 ) -> models.StoreCreditRedemption:
-    amount_value = _ensure_positive_decimal(amount, "store_credit_invalid_amount")
+    amount_value = _ensure_positive_decimal(
+        amount, "store_credit_invalid_amount")
     current_balance = _to_decimal(credit.balance_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
@@ -2506,10 +2582,12 @@ def issue_store_credit(
     reason: str | None = None,
 ) -> models.StoreCredit:
     customer = get_customer(db, payload.customer_id)
-    amount = _ensure_positive_decimal(payload.amount, "store_credit_invalid_amount")
+    amount = _ensure_positive_decimal(
+        payload.amount, "store_credit_invalid_amount")
     code = (payload.code or "").strip().upper()
     if code:
-        existing = db.scalar(select(models.StoreCredit.id).where(models.StoreCredit.code == code))
+        existing = db.scalar(select(models.StoreCredit.id).where(
+            models.StoreCredit.code == code))
         if existing:
             raise ValueError("store_credit_code_in_use")
     else:
@@ -2611,9 +2689,11 @@ def redeem_store_credit(
         )
     )
     if payload.store_credit_id is not None:
-        statement = statement.where(models.StoreCredit.id == payload.store_credit_id)
+        statement = statement.where(
+            models.StoreCredit.id == payload.store_credit_id)
     else:
-        statement = statement.where(models.StoreCredit.code == payload.code.strip().upper())
+        statement = statement.where(
+            models.StoreCredit.code == payload.code.strip().upper())
 
     credit = db.scalars(statement).unique().first()
     if credit is None:
@@ -2687,7 +2767,8 @@ def redeem_store_credit_for_customer(
     performed_by_id: int | None,
     reason: str | None = None,
 ) -> list[models.StoreCreditRedemption]:
-    total_requested = _ensure_positive_decimal(amount, "store_credit_invalid_amount")
+    total_requested = _ensure_positive_decimal(
+        amount, "store_credit_invalid_amount")
     statement = (
         select(models.StoreCredit)
         .options(
@@ -2709,7 +2790,8 @@ def redeem_store_credit_for_customer(
         raise LookupError("store_credit_not_found")
 
     available_total = sum(
-        _to_decimal(credit.balance_amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        _to_decimal(credit.balance_amount).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP)
         for credit in credits
     )
     if available_total < total_requested:
@@ -3196,7 +3278,8 @@ def list_loyalty_transactions(
             models.LoyaltyAccount.customer_id == customer_id
         )
     if sale_id is not None:
-        statement = statement.where(models.LoyaltyTransaction.sale_id == sale_id)
+        statement = statement.where(
+            models.LoyaltyTransaction.sale_id == sale_id)
     if offset:
         statement = statement.offset(max(0, offset))
     if limit:
@@ -3210,7 +3293,8 @@ def get_loyalty_summary(db: Session) -> schemas.LoyaltyReportSummary:
     )
     active_accounts = int(
         db.scalar(
-            select(func.count()).where(models.LoyaltyAccount.is_active.is_(True))
+            select(func.count()).where(
+                models.LoyaltyAccount.is_active.is_(True))
         )
         or 0
     )
@@ -3218,9 +3302,12 @@ def get_loyalty_summary(db: Session) -> schemas.LoyaltyReportSummary:
     totals = db.execute(
         select(
             func.coalesce(func.sum(models.LoyaltyAccount.balance_points), 0),
-            func.coalesce(func.sum(models.LoyaltyAccount.lifetime_points_earned), 0),
-            func.coalesce(func.sum(models.LoyaltyAccount.lifetime_points_redeemed), 0),
-            func.coalesce(func.sum(models.LoyaltyAccount.expired_points_total), 0),
+            func.coalesce(
+                func.sum(models.LoyaltyAccount.lifetime_points_earned), 0),
+            func.coalesce(
+                func.sum(models.LoyaltyAccount.lifetime_points_redeemed), 0),
+            func.coalesce(
+                func.sum(models.LoyaltyAccount.expired_points_total), 0),
         )
     ).one()
     balance_sum = _quantize_points(_to_decimal(totals[0]))
@@ -3370,7 +3457,8 @@ def list_audit_logs(
             func.coalesce(models.AuditLog.details, "").ilike(pattern),
         )
 
-    statement = select(models.AuditLog).order_by(models.AuditLog.created_at.desc())
+    statement = select(models.AuditLog).order_by(
+        models.AuditLog.created_at.desc())
     if module:
         statement = statement.join(
             models.SystemLog,
@@ -3387,9 +3475,9 @@ def list_audit_logs(
             models.AuditLog.performed_by_id == performed_by_id)
     if severity:
         critical_conditions = [_keyword_condition(keyword)
-                                for keyword in critical_keywords]
+                               for keyword in critical_keywords]
         warning_conditions = [_keyword_condition(keyword)
-                                for keyword in warning_keywords]
+                              for keyword in warning_keywords]
         critical_condition = or_(*critical_conditions)
         warning_condition = or_(*warning_conditions)
         if severity == "critical":
@@ -3397,7 +3485,8 @@ def list_audit_logs(
         elif severity == "warning":
             statement = statement.where(warning_condition, ~critical_condition)
         elif severity == "info":
-            statement = statement.where(~critical_condition, ~warning_condition)
+            statement = statement.where(
+                ~critical_condition, ~warning_condition)
     if date_from is not None or date_to is not None:
         start_dt, end_dt = _normalize_date_range(date_from, date_to)
         statement = statement.where(
@@ -3445,9 +3534,9 @@ def count_audit_logs(
             models.AuditLog.performed_by_id == performed_by_id)
     if severity:
         critical_conditions = [_keyword_condition(keyword)
-                                for keyword in critical_keywords]
+                               for keyword in critical_keywords]
         warning_conditions = [_keyword_condition(keyword)
-                                for keyword in warning_keywords]
+                              for keyword in warning_keywords]
         critical_condition = or_(*critical_conditions)
         warning_condition = or_(*warning_conditions)
         if severity == "critical":
@@ -3455,7 +3544,8 @@ def count_audit_logs(
         elif severity == "warning":
             statement = statement.where(warning_condition, ~critical_condition)
         elif severity == "info":
-            statement = statement.where(~critical_condition, ~warning_condition)
+            statement = statement.where(
+                ~critical_condition, ~warning_condition)
     if date_from is not None or date_to is not None:
         start_dt, end_dt = _normalize_date_range(date_from, date_to)
         statement = statement.where(
@@ -3880,7 +3970,10 @@ def get_user_by_username(db: Session, username: str) -> models.User | None:
             joinedload(models.User.roles).joinedload(models.UserRole.role),
             joinedload(models.User.store),
         )
-        .where(models.User.username == username)
+        .where(
+            models.User.username == username,
+            models.User.is_deleted.is_(False),
+        )
     )
     return db.scalars(statement).first()
 
@@ -3892,7 +3985,10 @@ def get_user(db: Session, user_id: int) -> models.User:
             joinedload(models.User.roles).joinedload(models.UserRole.role),
             joinedload(models.User.store),
         )
-        .where(models.User.id == user_id)
+        .where(
+            models.User.id == user_id,
+            models.User.is_deleted.is_(False),
+        )
     )
     try:
         return db.scalars(statement).unique().one()
@@ -4029,6 +4125,7 @@ def list_users(
             joinedload(models.User.roles).joinedload(models.UserRole.role),
             joinedload(models.User.store),
         )
+        .where(models.User.is_deleted.is_(False))
         .order_by(models.User.username.asc())
     )
 
@@ -4081,11 +4178,51 @@ def count_users(
     *,
     include_inactive: bool = True,
 ) -> int:
-    statement = select(func.count()).select_from(models.User)
+    statement = select(func.count()).select_from(models.User).where(
+        models.User.is_deleted.is_(False)
+    )
     if not include_inactive:
         statement = statement.where(models.User.is_active.is_(True))
     total = db.scalar(statement)
     return int(total or 0)
+
+
+def soft_delete_user(
+    db: Session,
+    user_id: int,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.User:
+    user = get_user(db, user_id)
+    if user.is_deleted:
+        return user
+
+    with transactional_session(db):
+        user.is_deleted = True
+        user.is_active = False
+        user.estado = "DESACTIVADO"
+        user.locked_until = None
+        db.add(user)
+
+        details = {
+            "description": f"Usuario desactivado: {user.username}",
+            "metadata": {"user_id": user.id},
+        }
+        if reason:
+            details["metadata"]["reason"] = reason.strip()
+
+        _log_action(
+            db,
+            action="user_soft_deleted",
+            entity_type="user",
+            entity_id=str(user.id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
+        flush_session(db)
+        db.refresh(user)
+    return user
 
 
 def set_user_roles(
@@ -4972,7 +5109,8 @@ def add_jwt_to_blacklist(
 
 
 def is_jwt_blacklisted(db: Session, jti: str) -> bool:
-    statement = select(models.JWTBlacklist).where(models.JWTBlacklist.jti == jti)
+    statement = select(models.JWTBlacklist).where(
+        models.JWTBlacklist.jti == jti)
     record = db.scalars(statement).first()
     if record is None:
         return False
@@ -5164,7 +5302,11 @@ def list_stores(
     limit: int | None = 50,
     offset: int = 0,
 ) -> list[models.Store]:
-    statement = select(models.Store).order_by(models.Store.name.asc())
+    statement = (
+        select(models.Store)
+        .where(models.Store.is_deleted.is_(False))
+        .order_by(models.Store.name.asc())
+    )
     if offset:
         statement = statement.offset(offset)
     if limit is not None:
@@ -5173,7 +5315,9 @@ def list_stores(
 
 
 def count_stores(db: Session) -> int:
-    statement = select(func.count()).select_from(models.Store)
+    statement = select(func.count()).select_from(models.Store).where(
+        models.Store.is_deleted.is_(False)
+    )
     return int(db.scalar(statement) or 0)
 
 
@@ -5193,6 +5337,7 @@ def list_customers(
         select(models.Customer)
         .options(selectinload(models.Customer.loyalty_account))
         .options(selectinload(models.Customer.segment_snapshot))
+        .where(models.Customer.is_deleted.is_(False))
         .order_by(models.Customer.name.asc())
         .offset(offset)
         .limit(limit)
@@ -5206,7 +5351,8 @@ def list_customers(
         statement = statement.where(
             models.Customer.customer_type == normalized_type)
     if segment_category:
-        normalized_category = _normalize_customer_segment_category(segment_category)
+        normalized_category = _normalize_customer_segment_category(
+            segment_category)
         if normalized_category:
             statement = statement.where(
                 models.Customer.segment_category == normalized_category
@@ -5226,11 +5372,14 @@ def list_customers(
                 func.lower(models.Customer.phone).like(normalized),
                 func.lower(models.Customer.customer_type).like(normalized),
                 func.lower(models.Customer.status).like(normalized),
-                func.lower(func.coalesce(models.Customer.segment_category, "")).like(normalized),
+                func.lower(func.coalesce(models.Customer.segment_category, "")).like(
+                    normalized),
                 func.lower(func.coalesce(models.Customer.notes, "")
                            ).like(normalized),
-                func.lower(cast(models.Customer.tags, String)).like(normalized),
-                func.lower(func.coalesce(models.Customer.tax_id, "")).like(normalized),
+                func.lower(cast(models.Customer.tags, String)
+                           ).like(normalized),
+                func.lower(func.coalesce(models.Customer.tax_id, "")
+                           ).like(normalized),
             )
         )
     if has_debt is True:
@@ -5246,7 +5395,10 @@ def get_customer(db: Session, customer_id: int) -> models.Customer:
         .options(selectinload(models.Customer.loyalty_account))
         .options(selectinload(models.Customer.segment_snapshot))
         .options(selectinload(models.Customer.privacy_requests))
-        .where(models.Customer.id == customer_id)
+        .where(
+            models.Customer.id == customer_id,
+            models.Customer.is_deleted.is_(False),
+        )
     )
     try:
         return db.scalars(statement).one()
@@ -5477,14 +5629,48 @@ def delete_customer(
     customer_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     customer = get_customer(db, customer_id)
+    has_dependencies = any(
+        [
+            customer.sales,
+            customer.repair_orders,
+            customer.ledger_entries,
+            customer.store_credits,
+        ]
+    )
+    should_hard_delete = allow_hard_delete and (
+        not has_dependencies or is_superadmin)
     with transactional_session(db):
-        db.delete(customer)
+        if should_hard_delete:
+            db.delete(customer)
+            flush_session(db)
+            _log_action(
+                db,
+                action="customer_deleted",
+                entity_type="customer",
+                entity_id=str(customer_id),
+                performed_by_id=performed_by_id,
+            )
+            flush_session(db)
+            enqueue_sync_outbox(
+                db,
+                entity_type="customer",
+                entity_id=str(customer_id),
+                operation="DELETE",
+                payload={"id": customer_id, "hard_deleted": True},
+            )
+            return
+
+        customer.status = _normalize_customer_status("inactivo")
+        customer.is_deleted = True
+        customer.deleted_at = datetime.utcnow()
         flush_session(db)
         _log_action(
             db,
-            action="customer_deleted",
+            action="customer_archived",
             entity_type="customer",
             entity_id=str(customer_id),
             performed_by_id=performed_by_id,
@@ -5494,8 +5680,12 @@ def delete_customer(
             db,
             entity_type="customer",
             entity_id=str(customer_id),
-            operation="DELETE",
-            payload={"id": customer_id},
+            operation="UPDATE",
+            payload={
+                "id": customer_id,
+                "is_deleted": True,
+                "deleted_at": customer.deleted_at.isoformat() if customer.deleted_at else None,
+            },
         )
 
 
@@ -5629,7 +5819,13 @@ def register_customer_payment(
     current_debt = _to_decimal(customer.outstanding_debt).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    if current_debt <= Decimal("0"):
+    sale = None
+    if payload.sale_id is not None:
+        sale = get_sale(db, payload.sale_id)
+        if sale.customer_id != customer.id:
+            raise ValueError("customer_payment_sale_mismatch")
+
+    if current_debt <= Decimal("0") and sale is None:
         raise ValueError("customer_payment_no_debt")
 
     amount = _to_decimal(payload.amount).quantize(
@@ -5641,12 +5837,6 @@ def register_customer_payment(
     applied_amount = min(current_debt, amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-
-    sale = None
-    if payload.sale_id is not None:
-        sale = get_sale(db, payload.sale_id)
-        if sale.customer_id != customer.id:
-            raise ValueError("customer_payment_sale_mismatch")
 
     customer.outstanding_debt = (current_debt - applied_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -6273,7 +6463,8 @@ def create_customer_privacy_request(
                 customer, payload.mask_fields
             )
             consent_snapshot = dict(customer.privacy_consents or {})
-            summary = ", ".join(masked_fields) if masked_fields else "sin cambios"
+            summary = ", ".join(
+                masked_fields) if masked_fields else "sin cambios"
             _append_customer_history(
                 customer, f"Anonimización parcial aplicada ({summary})."
             )
@@ -6355,7 +6546,8 @@ def _resolve_sale_references(
     config_stmt = select(models.POSConfig).where(
         models.POSConfig.store_id.in_(store_ids)
     )
-    config_map = {config.store_id: config for config in db.scalars(config_stmt)}
+    config_map = {
+        config.store_id: config for config in db.scalars(config_stmt)}
     return sale_map, config_map
 
 
@@ -6384,7 +6576,8 @@ def _ledger_entry_label(entry: models.CustomerLedgerEntry) -> str:
         models.CustomerLedgerEntryType.STORE_CREDIT_ISSUED: "Nota de crédito emitida",
         models.CustomerLedgerEntryType.STORE_CREDIT_REDEEMED: "Nota de crédito aplicada",
     }
-    base = mapping.get(entry.entry_type, entry.entry_type.value.replace("_", " ").title())
+    base = mapping.get(
+        entry.entry_type, entry.entry_type.value.replace("_", " ").title())
     if entry.note:
         return f"{base} — {entry.note}" if entry.note.strip() else base
     return base
@@ -6425,7 +6618,8 @@ def get_customer_accounts_receivable(
                 if remaining <= Decimal("0"):
                     continue
                 allocation = min(remaining, credit_amount)
-                charge["remaining"] = remaining - allocation  # type: ignore[index]
+                charge["remaining"] = remaining - \
+                    allocation  # type: ignore[index]
                 credit_amount -= allocation
                 if credit_amount <= Decimal("0"):
                     break
@@ -6451,7 +6645,8 @@ def get_customer_accounts_receivable(
 
     sale_ids: set[int] = set()
     for charge in charges:
-        entry: models.CustomerLedgerEntry = charge["entry"]  # type: ignore[index]
+        # type: ignore[index]
+        entry: models.CustomerLedgerEntry = charge["entry"]
         if (
             entry.reference_type == "sale"
             and entry.reference_id
@@ -6468,7 +6663,8 @@ def get_customer_accounts_receivable(
         ("90+ días", 91, None),
     ]
     bucket_totals: list[dict[str, object]] = [
-        {"label": label, "from": start, "to": end, "amount": Decimal("0.00"), "count": 0}
+        {"label": label, "from": start, "to": end,
+            "amount": Decimal("0.00"), "count": 0}
         for label, start, end in bucket_defs
     ]
 
@@ -6476,7 +6672,8 @@ def get_customer_accounts_receivable(
     weighted_days = Decimal("0.00")
     open_entries: list[schemas.AccountsReceivableEntry] = []
     for charge in charges:
-        entry: models.CustomerLedgerEntry = charge["entry"]  # type: ignore[index]
+        # type: ignore[index]
+        entry: models.CustomerLedgerEntry = charge["entry"]
         remaining: Decimal = charge["remaining"]  # type: ignore[index]
         original: Decimal = charge["original"]  # type: ignore[index]
         if remaining <= Decimal("0"):
@@ -6497,7 +6694,8 @@ def get_customer_accounts_receivable(
             elif idx == len(bucket_defs) - 1:
                 bucket_index = idx
         bucket = bucket_totals[bucket_index]
-        bucket["amount"] = _to_decimal(bucket["amount"]) + remaining  # type: ignore[index]
+        bucket["amount"] = _to_decimal(
+            bucket["amount"]) + remaining  # type: ignore[index]
         bucket["count"] = int(bucket["count"]) + 1  # type: ignore[index]
 
         weighted_days += remaining * Decimal(days_outstanding)
@@ -6505,11 +6703,13 @@ def get_customer_accounts_receivable(
         reference_label: str | None = None
         if entry.reference_type == "sale" and entry.reference_id and entry.reference_id.isdigit():
             sale_id = int(entry.reference_id)
-            reference_label = _format_sale_reference(sale_id, sale_map, config_map)
+            reference_label = _format_sale_reference(
+                sale_id, sale_map, config_map)
         elif entry.reference_id:
             reference_label = f"{entry.reference_type} #{entry.reference_id}" if entry.reference_type else entry.reference_id
 
-        details_payload = entry.details if isinstance(entry.details, dict) else None
+        details_payload = entry.details if isinstance(
+            entry.details, dict) else None
         status = "overdue" if days_outstanding > 30 else "current"
         open_entries.append(
             schemas.AccountsReceivableEntry(
@@ -6519,7 +6719,8 @@ def get_customer_accounts_receivable(
                 reference=reference_label,
                 issued_at=entry.created_at,
                 original_amount=float(original),
-                balance_due=float(remaining.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                balance_due=float(remaining.quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP)),
                 days_outstanding=days_outstanding,
                 status=status,  # type: ignore[arg-type]
                 note=entry.note,
@@ -6543,7 +6744,8 @@ def get_customer_accounts_receivable(
                 label=label,
                 days_from=start,
                 days_to=end,
-                amount=float(amount_decimal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                amount=float(amount_decimal.quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP)),
                 percentage=percentage,
                 count=int(bucket["count"]),  # type: ignore[index]
             )
@@ -6562,7 +6764,8 @@ def get_customer_accounts_receivable(
         base_date = None
         for charge in reversed(charges):
             if _to_decimal(charge["remaining"]) > Decimal("0"):  # type: ignore[index]
-                entry: models.CustomerLedgerEntry = charge["entry"]  # type: ignore[index]
+                # type: ignore[index]
+                entry: models.CustomerLedgerEntry = charge["entry"]
                 base_date = entry.created_at
                 break
         schedule = credit.build_credit_schedule(
@@ -6654,7 +6857,8 @@ def build_customer_statement_report(
     for entry in ledger_entries:
         reference: str | None = None
         if entry.reference_type == "sale" and entry.reference_id and entry.reference_id.isdigit():
-            reference = _format_sale_reference(int(entry.reference_id), sale_map, config_map)
+            reference = _format_sale_reference(
+                int(entry.reference_id), sale_map, config_map)
         elif entry.reference_id:
             reference = (
                 f"{entry.reference_type} #{entry.reference_id}"
@@ -6917,6 +7121,7 @@ def list_suppliers(
 ) -> list[models.Supplier]:
     statement = (
         select(models.Supplier)
+        .where(models.Supplier.is_deleted.is_(False))
         .order_by(models.Supplier.name.asc())
         .offset(offset)
         .limit(limit)
@@ -6939,7 +7144,9 @@ def list_suppliers(
 
 def get_supplier(db: Session, supplier_id: int) -> models.Supplier:
     statement = select(models.Supplier).where(
-        models.Supplier.id == supplier_id)
+        models.Supplier.id == supplier_id,
+        models.Supplier.is_deleted.is_(False),
+    )
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:
@@ -6955,7 +7162,8 @@ def create_supplier(
     history = _history_to_json(payload.history)
     normalized_rtn = None
     if payload.rtn:
-        normalized_rtn = _normalize_rtn(payload.rtn, error_code="supplier_rtn_invalid")
+        normalized_rtn = _normalize_rtn(
+            payload.rtn, error_code="supplier_rtn_invalid")
     supplier = models.Supplier(
         name=payload.name,
         rtn=normalized_rtn,
@@ -7065,14 +7273,31 @@ def delete_supplier(
     supplier_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     supplier = get_supplier(db, supplier_id)
+    has_dependencies = bool(supplier.batches or supplier.ledger_entries)
+    should_hard_delete = allow_hard_delete and (
+        not has_dependencies or is_superadmin)
     with transactional_session(db):
-        db.delete(supplier)
+        if should_hard_delete:
+            db.delete(supplier)
 
+            _log_action(
+                db,
+                action="supplier_deleted",
+                entity_type="supplier",
+                entity_id=str(supplier_id),
+                performed_by_id=performed_by_id,
+            )
+            return
+
+        supplier.is_deleted = True
+        supplier.deleted_at = datetime.utcnow()
         _log_action(
             db,
-            action="supplier_deleted",
+            action="supplier_archived",
             entity_type="supplier",
             entity_id=str(supplier_id),
             performed_by_id=performed_by_id,
@@ -7354,19 +7579,22 @@ def compute_purchase_suggestions(
                 vendor.nombre,
             )
 
-    stores_payload: dict[int, list[schemas.PurchaseSuggestionItem]] = defaultdict(list)
+    stores_payload: dict[int,
+                         list[schemas.PurchaseSuggestionItem]] = defaultdict(list)
     store_value_totals: dict[int, Decimal] = defaultdict(lambda: Decimal("0"))
     total_items = 0
 
     for row in device_rows:
         device_id = int(row.id)
         quantity = int(row.quantity or 0)
-        unit_cost = _to_decimal(getattr(row, "costo_unitario", None) or Decimal("0"))
+        unit_cost = _to_decimal(
+            getattr(row, "costo_unitario", None) or Decimal("0"))
         supplier_name = (row.proveedor or "").strip() or None
 
         sales_info = sales_map.get(device_id)
         sold_units = int(sales_info["sold_units"]) if sales_info else 0
-        span_days = int(sales_info["span_days"]) if sales_info else normalized_lookback
+        span_days = int(sales_info["span_days"]
+                        ) if sales_info else normalized_lookback
         average_daily = float(sold_units) / span_days if span_days > 0 else 0.0
         projected_coverage = (
             max(int(math.ceil(quantity / average_daily)), 0)
@@ -7374,7 +7602,8 @@ def compute_purchase_suggestions(
             else None
         )
 
-        buffer_units = int(math.ceil(average_daily * normalized_horizon)) if average_daily > 0 else 0
+        buffer_units = int(
+            math.ceil(average_daily * normalized_horizon)) if average_daily > 0 else 0
         target_stock = max(threshold, buffer_units)
         if target_stock <= 0:
             continue
@@ -7422,7 +7651,8 @@ def compute_purchase_suggestions(
 
     stores: list[schemas.PurchaseSuggestionStore] = []
     for store_id, items in stores_payload.items():
-        items.sort(key=lambda entry: (entry.suggested_quantity, entry.name), reverse=True)
+        items.sort(key=lambda entry: (
+            entry.suggested_quantity, entry.name), reverse=True)
         total_recommended = sum(item.suggested_quantity for item in items)
         total_value = float(store_value_totals[store_id])
         store_name = items[0].store_name if items else ""
@@ -7846,7 +8076,8 @@ def export_suppliers_csv(
                 supplier.name,
                 supplier.rtn or "",
                 supplier.payment_terms or "",
-                (contact_entry.get("name") if contact_entry else supplier.contact_name or ""),
+                (contact_entry.get("name")
+                 if contact_entry else supplier.contact_name or ""),
                 (contact_entry.get("position") if contact_entry else ""),
                 supplier.email or "",
                 supplier.phone or "",
@@ -7862,7 +8093,8 @@ def get_suppliers_accounts_payable(
     db: Session,
 ) -> schemas.SupplierAccountsPayableResponse:
     suppliers = list(
-        db.scalars(select(models.Supplier).order_by(models.Supplier.name.asc()))
+        db.scalars(select(models.Supplier).order_by(
+            models.Supplier.name.asc()))
     )
 
     bucket_defs: list[tuple[str, int, int | None]] = [
@@ -7872,7 +8104,8 @@ def get_suppliers_accounts_payable(
         ("90+ días", 91, None),
     ]
     bucket_totals: list[dict[str, object]] = [
-        {"label": label, "from": start, "to": end, "amount": Decimal("0.00"), "count": 0}
+        {"label": label, "from": start, "to": end,
+            "amount": Decimal("0.00"), "count": 0}
         for label, start, end in bucket_defs
     ]
 
@@ -7909,7 +8142,8 @@ def get_suppliers_accounts_payable(
                     break
 
         bucket = bucket_totals[bucket_index]
-        bucket["amount"] = _to_decimal(bucket["amount"]) + balance  # type: ignore[index]
+        bucket["amount"] = _to_decimal(
+            bucket["amount"]) + balance  # type: ignore[index]
         if balance > Decimal("0"):
             bucket["count"] = int(bucket["count"]) + 1  # type: ignore[index]
 
@@ -7928,7 +8162,8 @@ def get_suppliers_accounts_payable(
         if sanitized_contacts:
             primary = sanitized_contacts[0]
             if isinstance(primary, Mapping):
-                contact_name = (primary.get("name") or contact_name) if contact_name else primary.get("name")
+                contact_name = (primary.get(
+                    "name") or contact_name) if contact_name else primary.get("name")
                 contact_email = (
                     primary.get("email") or contact_email
                 ) if contact_email else primary.get("email")
@@ -7939,7 +8174,8 @@ def get_suppliers_accounts_payable(
         contact_schemas: list[schemas.SupplierContact] = []
         for entry in sanitized_contacts:
             try:
-                contact_schemas.append(schemas.SupplierContact.model_validate(entry))
+                contact_schemas.append(
+                    schemas.SupplierContact.model_validate(entry))
             except ValidationError:
                 continue
 
@@ -7971,7 +8207,8 @@ def get_suppliers_accounts_payable(
 
     aging_buckets: list[schemas.SupplierAccountsPayableBucket] = []
     for bucket_data, (label, start, end) in zip(bucket_totals, bucket_defs):
-        amount_decimal = _to_decimal(bucket_data["amount"])  # type: ignore[index]
+        amount_decimal = _to_decimal(
+            bucket_data["amount"])  # type: ignore[index]
         percentage = 0.0
         if total_balance > Decimal("0"):
             percentage = float(
@@ -7984,7 +8221,8 @@ def get_suppliers_accounts_payable(
                 days_from=start,
                 days_to=end,
                 amount=float(
-                    amount_decimal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    amount_decimal.quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP)
                 ),
                 percentage=percentage,
                 count=int(bucket_data["count"]),  # type: ignore[index]
@@ -7992,8 +8230,10 @@ def get_suppliers_accounts_payable(
         )
 
     summary = schemas.SupplierAccountsPayableSummary(
-        total_balance=float(total_balance.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-        total_overdue=float(total_overdue.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        total_balance=float(total_balance.quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        total_overdue=float(total_overdue.quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP)),
         supplier_count=len(suppliers),
         generated_at=datetime.utcnow(),
         buckets=aging_buckets,
@@ -8003,13 +8243,16 @@ def get_suppliers_accounts_payable(
         summary=summary,
         suppliers=sorted(
             items,
-            key=lambda item: (item.bucket_from, -item.outstanding_debt, item.supplier_name.lower()),
+            key=lambda item: (
+                item.bucket_from, -item.outstanding_debt, item.supplier_name.lower()),
         ),
     )
 
 
 def get_store(db: Session, store_id: int) -> models.Store:
-    statement = select(models.Store).where(models.Store.id == store_id)
+    statement = select(models.Store).where(
+        models.Store.id == store_id, models.Store.is_deleted.is_(False)
+    )
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:
@@ -8020,10 +8263,50 @@ def get_store_by_name(db: Session, name: str) -> models.Store | None:
     normalized = (name or "").strip()
     if not normalized:
         return None
-    statement = select(models.Store).where(
-        func.lower(models.Store.name) == normalized.lower()
+    statement = (
+        select(models.Store)
+        .where(
+            func.lower(models.Store.name) == normalized.lower(),
+            models.Store.is_deleted.is_(False),
+        )
     )
     return db.scalars(statement).first()
+
+
+def soft_delete_store(
+    db: Session,
+    store_id: int,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.Store:
+    store = get_store(db, store_id)
+    if store.is_deleted:
+        return store
+
+    with transactional_session(db):
+        store.is_deleted = True
+        store.deleted_at = datetime.utcnow()
+        db.add(store)
+
+        details = {
+            "description": f"Sucursal desactivada: {store.name}",
+            "metadata": {"store_id": store.id},
+        }
+        if reason:
+            details["metadata"]["reason"] = reason.strip()
+
+        _log_action(
+            db,
+            action="store_soft_deleted",
+            entity_type="store",
+            entity_id=str(store.id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
+        flush_session(db)
+        db.refresh(store)
+    return store
 
 
 def ensure_store_by_name(
@@ -8053,11 +8336,13 @@ def create_device(
     performed_by_id: int | None = None,
 ) -> models.Device:
     get_store(db, store_id)
+    default_warehouse = _ensure_default_warehouse(db, store_id)
     payload_data = payload.model_dump()
     provided_fields = payload.model_fields_set
     imei = payload_data.get("imei")
     serial = payload_data.get("serial")
     _ensure_unique_identifiers(db, imei=imei, serial=serial)
+    _validate_device_numeric_fields(payload_data)
     minimum_stock = int(payload_data.get("minimum_stock", 0) or 0)
     reorder_point = int(payload_data.get("reorder_point", 0) or 0)
     if reorder_point < minimum_stock:
@@ -8089,6 +8374,10 @@ def create_device(
     if payload_data.get("fecha_ingreso") is None:
         payload_data["fecha_ingreso"] = payload_data.get(
             "fecha_compra") or date.today()
+    warehouse_id = payload_data.get("warehouse_id") or default_warehouse.id
+    if warehouse_id is not None:
+        warehouse = get_warehouse(db, warehouse_id, store_id=store_id)
+        payload_data["warehouse_id"] = warehouse.id
     with transactional_session(db):
         device = models.Device(store_id=store_id, **payload_data)
         if unit_price is None:
@@ -8137,7 +8426,8 @@ def get_device(db: Session, store_id: int, device_id: int) -> models.Device:
         )
     )
     try:
-        return db.scalars(statement).unique().one()
+        device = db.scalars(statement).unique().one()
+        return device
     except NoResultFound as exc:
         raise LookupError("device_not_found") from exc
 
@@ -8170,7 +8460,8 @@ def list_product_variants(
         .order_by(models.ProductVariant.variant_sku.asc())
     )
     if device_id is not None:
-        statement = statement.where(models.ProductVariant.device_id == device_id)
+        statement = statement.where(
+            models.ProductVariant.device_id == device_id)
     if store_id is not None:
         statement = statement.join(models.ProductVariant.device).where(
             models.Device.store_id == store_id
@@ -8469,7 +8760,8 @@ def update_product_bundle(
         flush_session(db)
         db.refresh(bundle)
 
-        changed_fields = sorted(list(updates.keys()) + (["items"] if items is not None else []))
+        changed_fields = sorted(list(updates.keys()) +
+                                (["items"] if items is not None else []))
         _log_action(
             db,
             action="product_bundle_updated",
@@ -8522,6 +8814,7 @@ def list_price_lists(
 ) -> list[models.PriceList]:
     statement = (
         select(models.PriceList)
+        .where(models.PriceList.is_deleted.is_(False))
         .order_by(models.PriceList.priority.asc(), models.PriceList.id.asc())
     )
     if include_items:
@@ -8551,7 +8844,8 @@ def list_price_lists(
                 )
             )
         else:
-            statement = statement.where(models.PriceList.customer_id == customer_id)
+            statement = statement.where(
+                models.PriceList.customer_id == customer_id)
     elif not include_global:
         statement = statement.where(models.PriceList.customer_id.isnot(None))
     results = db.scalars(statement)
@@ -8566,7 +8860,10 @@ def get_price_list(
     *,
     include_items: bool = False,
 ) -> models.PriceList:
-    statement = select(models.PriceList).where(models.PriceList.id == price_list_id)
+    statement = select(models.PriceList).where(
+        models.PriceList.id == price_list_id,
+        models.PriceList.is_deleted.is_(False),
+    )
     if include_items:
         statement = statement.options(joinedload(models.PriceList.items))
     result = db.scalars(statement)
@@ -8654,7 +8951,8 @@ def update_price_list(
             entity_type="price_list",
             entity_id=str(price_list.id),
             performed_by_id=performed_by_id,
-            details=json.dumps({"updated_fields": sorted(sanitized_updates.keys())}),
+            details=json.dumps(
+                {"updated_fields": sorted(sanitized_updates.keys())}),
         )
         flush_session(db)
         db.refresh(price_list)
@@ -8666,15 +8964,36 @@ def delete_price_list(
     price_list_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     price_list = get_price_list(db, price_list_id)
     name = price_list.name
+    has_dependencies = bool(price_list.items)
+    should_hard_delete = allow_hard_delete and (
+        not has_dependencies or is_superadmin)
     with transactional_session(db):
-        db.delete(price_list)
+        if should_hard_delete:
+            db.delete(price_list)
+            flush_session(db)
+            _log_action(
+                db,
+                action="price_list_deleted",
+                entity_type="price_list",
+                entity_id=str(price_list_id),
+                performed_by_id=performed_by_id,
+                details=json.dumps({"name": name}),
+            )
+            flush_session(db)
+            return
+
+        price_list.is_active = False
+        price_list.is_deleted = True
+        price_list.deleted_at = datetime.utcnow()
         flush_session(db)
         _log_action(
             db,
-            action="price_list_deleted",
+            action="price_list_archived",
             entity_type="price_list",
             entity_id=str(price_list_id),
             performed_by_id=performed_by_id,
@@ -8684,7 +9003,10 @@ def delete_price_list(
 
 
 def get_price_list_item(db: Session, item_id: int) -> models.PriceListItem:
-    statement = select(models.PriceListItem).where(models.PriceListItem.id == item_id)
+    statement = select(models.PriceListItem).where(
+        models.PriceListItem.id == item_id,
+        models.PriceListItem.is_deleted.is_(False),
+    )
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:
@@ -8702,7 +9024,8 @@ def create_price_list_item(
     device = get_device_global(db, payload.device_id)
     if price_list.store_id is not None and device.store_id != price_list.store_id:
         raise ValueError("price_list_item_invalid_store")
-    price = _ensure_positive_decimal(payload.price, "price_list_item_price_invalid")
+    price = _ensure_positive_decimal(
+        payload.price, "price_list_item_price_invalid")
     discount = _ensure_discount_percentage(
         payload.discount_percentage, "price_list_item_discount_invalid"
     )
@@ -8790,14 +9113,37 @@ def delete_price_list_item(
     item_id: int,
     *,
     performed_by_id: int | None = None,
+    allow_hard_delete: bool = False,
+    is_superadmin: bool = False,
 ) -> None:
     item = get_price_list_item(db, item_id)
+    should_hard_delete = allow_hard_delete or is_superadmin
     with transactional_session(db):
-        db.delete(item)
+        if should_hard_delete:
+            db.delete(item)
+            flush_session(db)
+            _log_action(
+                db,
+                action="price_list_item_deleted",
+                entity_type="price_list_item",
+                entity_id=str(item_id),
+                performed_by_id=performed_by_id,
+                details=json.dumps(
+                    {
+                        "price_list_id": item.price_list_id,
+                        "device_id": item.device_id,
+                    }
+                ),
+            )
+            flush_session(db)
+            return
+
+        item.is_deleted = True
+        item.deleted_at = datetime.utcnow()
         flush_session(db)
         _log_action(
             db,
-            action="price_list_item_deleted",
+            action="price_list_item_archived",
             entity_type="price_list_item",
             entity_id=str(item_id),
             performed_by_id=performed_by_id,
@@ -8823,15 +9169,19 @@ def resolve_price_for_device(
     effective_date = reference_date or date.today()
 
     validity_condition = and_(
-        or_(models.PriceList.valid_from.is_(None), models.PriceList.valid_from <= effective_date),
-        or_(models.PriceList.valid_until.is_(None), models.PriceList.valid_until >= effective_date),
+        or_(models.PriceList.valid_from.is_(None),
+            models.PriceList.valid_from <= effective_date),
+        or_(models.PriceList.valid_until.is_(None),
+            models.PriceList.valid_until >= effective_date),
     )
 
     statement = (
         select(models.PriceListItem, models.PriceList)
         .join(models.PriceList, models.PriceListItem.price_list_id == models.PriceList.id)
         .where(models.PriceListItem.device_id == device_id)
+        .where(models.PriceListItem.is_deleted.is_(False))
         .where(models.PriceList.is_active.is_(True))
+        .where(models.PriceList.is_deleted.is_(False))
         .where(validity_condition)
     )
 
@@ -8862,21 +9212,29 @@ def resolve_price_for_device(
         return 99
 
     best_match: tuple[models.PriceList, models.PriceListItem] | None = None
-    best_priority = 99
+    best_scope_rank = 99
+    best_priority_value = 10000
     for item, price_list in results:
         priority = _priority(price_list)
         if priority >= 99:
             continue
-        if (
-            best_match is None
-            or priority < best_priority
-            or (
-                priority == best_priority
-                and price_list.updated_at > best_match[0].updated_at
-            )
-        ):
+        if priority < best_scope_rank:
             best_match = (price_list, item)
-            best_priority = priority
+            best_scope_rank = priority
+            best_priority_value = price_list.priority or 0
+            continue
+
+        is_same_scope = priority == best_scope_rank
+        has_better_priority = is_same_scope and price_list.priority < best_priority_value
+        is_newer = (
+            is_same_scope
+            and price_list.priority == best_priority_value
+            and price_list.updated_at > (best_match[0].updated_at if best_match else datetime.min)
+        )
+
+        if has_better_priority or is_newer:
+            best_match = (price_list, item)
+            best_priority_value = price_list.priority or 0
 
     return best_match
 
@@ -9037,10 +9395,19 @@ def update_device(
         serial=serial,
         exclude_device_id=device.id,
     )
+    _validate_device_numeric_fields(updated_fields)
     new_minimum_stock = updated_fields.get("minimum_stock")
     new_reorder_point = updated_fields.get("reorder_point")
     current_minimum = int(getattr(device, "minimum_stock", 0) or 0)
     current_reorder = int(getattr(device, "reorder_point", 0) or 0)
+    if "warehouse_id" in updated_fields:
+        target_warehouse = updated_fields.get("warehouse_id")
+        if target_warehouse is not None:
+            warehouse = get_warehouse(
+                db, int(target_warehouse), store_id=store_id)
+            updated_fields["warehouse_id"] = warehouse.id
+        else:
+            updated_fields["warehouse_id"] = None
     if new_reorder_point is not None:
         target_min = new_minimum_stock if new_minimum_stock is not None else current_minimum
         if int(new_reorder_point) < int(target_min):
@@ -9307,6 +9674,127 @@ def update_wms_bin(
     return bin_obj
 
 
+def _unset_default_warehouse(db: Session, store_id: int, keep_id: int | None = None) -> None:
+    query = db.query(models.Warehouse).filter(
+        models.Warehouse.store_id == store_id)
+    if keep_id is not None:
+        query = query.filter(models.Warehouse.id != keep_id)
+    query.update({"is_default": False}, synchronize_session=False)
+
+
+def _ensure_default_warehouse(db: Session, store_id: int) -> models.Warehouse:
+    existing_default = db.scalars(
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .where(models.Warehouse.is_default.is_(True))
+    ).first()
+    if existing_default:
+        return existing_default
+    fallback = db.scalars(
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .where(func.lower(models.Warehouse.name) == "default")
+    ).first()
+    if fallback:
+        with transactional_session(db):
+            _unset_default_warehouse(db, store_id, keep_id=fallback.id)
+            fallback.is_default = True
+            db.add(fallback)
+        return fallback
+    code = f"DEF-{store_id}"
+    warehouse = models.Warehouse(
+        store_id=store_id,
+        name="Default",
+        code=code,
+        is_default=True,
+    )
+    with transactional_session(db):
+        db.add(warehouse)
+        flush_session(db)
+    return warehouse
+
+
+def list_warehouses(
+    db: Session, store_id: int, *, include_inactive_default: bool = True
+) -> list[models.Warehouse]:
+    get_store(db, store_id)
+    statement = (
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .order_by(models.Warehouse.is_default.desc(), models.Warehouse.name.asc())
+    )
+    warehouses = list(db.scalars(statement))
+    if warehouses:
+        return warehouses
+    default = _ensure_default_warehouse(db, store_id)
+    return [default]
+
+
+def get_warehouse(
+    db: Session, warehouse_id: int, *, store_id: int | None = None
+) -> models.Warehouse:
+    warehouse = db.get(models.Warehouse, warehouse_id)
+    if warehouse is None:
+        raise LookupError("warehouse_not_found")
+    if store_id is not None and warehouse.store_id != store_id:
+        raise LookupError("warehouse_not_found")
+    return warehouse
+
+
+def create_warehouse(
+    db: Session,
+    store_id: int,
+    payload: schemas.WarehouseCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> models.Warehouse:
+    store = get_store(db, store_id)
+    data = payload.model_dump()
+    name = data.get("name", "").strip()
+    code = (data.get("code", "").strip() or name).upper()
+    desired_default = bool(data.get("is_default"))
+    if not name:
+        raise ValueError("warehouse_name_required")
+    if not code:
+        raise ValueError("warehouse_code_required")
+    existing = db.scalars(
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .where(func.upper(models.Warehouse.code) == code.upper())
+    ).first()
+    if existing:
+        raise ValueError("warehouse_code_duplicate")
+    duplicate_name = db.scalars(
+        select(models.Warehouse)
+        .where(models.Warehouse.store_id == store_id)
+        .where(func.lower(models.Warehouse.name) == name.lower())
+    ).first()
+    if duplicate_name:
+        raise ValueError("warehouse_name_duplicate")
+
+    with transactional_session(db):
+        if desired_default:
+            _unset_default_warehouse(db, store_id)
+        warehouse = models.Warehouse(
+            store_id=store.id,
+            name=name,
+            code=code,
+            is_default=desired_default,
+        )
+        db.add(warehouse)
+        flush_session(db)
+        db.refresh(warehouse)
+        _log_action(
+            db,
+            action="warehouse_created",
+            entity_type="warehouse",
+            entity_id=str(warehouse.id),
+            performed_by_id=performed_by_id,
+            details=f"SUCURSAL={store_id}, CODIGO={code}",
+        )
+    return warehouse
+
+
 def assign_device_to_bin(
     db: Session,
     store_id: int,
@@ -9410,6 +9898,7 @@ def list_devices(
     estado_inventario: str | None = None,
     ubicacion: str | None = None,
     proveedor: str | None = None,
+    warehouse_id: int | None = None,
     fecha_ingreso_desde: date | None = None,
     fecha_ingreso_hasta: date | None = None,
     limit: int | None = 50,
@@ -9421,9 +9910,12 @@ def list_devices(
         .options(
             joinedload(models.Device.identifier),
             selectinload(models.Device.variants),
+            joinedload(models.Device.warehouse),
         )
         .where(models.Device.store_id == store_id)
     )
+    if warehouse_id is not None:
+        statement = statement.where(models.Device.warehouse_id == warehouse_id)
     if estado is not None:
         statement = statement.where(models.Device.estado_comercial == estado)
     if categoria:
@@ -9487,12 +9979,15 @@ def count_store_devices(
     estado_inventario: str | None = None,
     ubicacion: str | None = None,
     proveedor: str | None = None,
+    warehouse_id: int | None = None,
     fecha_ingreso_desde: date | None = None,
     fecha_ingreso_hasta: date | None = None,
 ) -> int:
     get_store(db, store_id)
     statement = select(func.count()).select_from(models.Device)
     statement = statement.where(models.Device.store_id == store_id)
+    if warehouse_id is not None:
+        statement = statement.where(models.Device.warehouse_id == warehouse_id)
     if estado is not None:
         statement = statement.where(models.Device.estado_comercial == estado)
     if categoria:
@@ -9729,6 +10224,8 @@ def _register_inventory_movement(
     performed_by_id: int | None,
     source_store_id: int | None = None,
     destination_store_id: int | None = None,
+    source_warehouse_id: int | None = None,
+    warehouse_id: int | None = None,
     unit_cost: Decimal | None = None,
     reference_type: str | None = None,
     reference_id: str | None = None,
@@ -9741,6 +10238,8 @@ def _register_inventory_movement(
         comentario=normalized_comment,
         sucursal_origen_id=source_store_id,
         sucursal_destino_id=destination_store_id,
+        almacen_origen_id=source_warehouse_id,
+        almacen_destino_id=warehouse_id,
         unit_cost=unit_cost,
     )
     return create_inventory_movement(
@@ -9750,6 +10249,21 @@ def _register_inventory_movement(
         performed_by_id=performed_by_id,
         reference_type=reference_type,
         reference_id=reference_id,
+    )
+
+
+def _lock_device_inventory_row(
+    db: Session, *, store_id: int, device_id: int
+) -> None:
+    """Aplica un bloqueo de fila sobre el dispositivo antes de modificar stock."""
+
+    db.execute(
+        select(models.Device.id)
+        .where(
+            models.Device.id == device_id,
+            models.Device.store_id == store_id,
+        )
+        .with_for_update()
     )
 
 
@@ -9763,18 +10277,30 @@ def create_inventory_movement(
     reference_id: str | None = None,
 ) -> models.InventoryMovement:
     store = get_store(db, store_id)
-    if (
-        payload.sucursal_destino_id is not None
-        and payload.sucursal_destino_id != store_id
-    ):
-        raise ValueError("invalid_destination_store")
+    # Nota: permitimos sucursal_destino_id diferente para devoluciones entre tiendas
+    # if (
+    #     payload.sucursal_destino_id is not None
+    #     and payload.sucursal_destino_id != store_id
+    # ):
+    #     raise ValueError("invalid_destination_store")
 
     source_store_id = payload.sucursal_origen_id
+    destination_store_id = payload.sucursal_destino_id
+    destination_store_id = payload.sucursal_destino_id
 
     device = get_device(db, store_id, payload.producto_id)
 
-    previous_quantity = device.quantity
-    previous_cost = _to_decimal(device.costo_unitario)
+    destination_warehouse_id = payload.almacen_destino_id or device.warehouse_id
+    source_warehouse_id = payload.almacen_origen_id or device.warehouse_id
+    if destination_warehouse_id is not None:
+        # Validar contra la tienda destino si existe, sino contra la tienda actual
+        warehouse_store_id = destination_store_id if destination_store_id else store_id
+        get_warehouse(db, destination_warehouse_id,
+                      store_id=warehouse_store_id)
+    if source_warehouse_id is not None:
+        get_warehouse(db, source_warehouse_id,
+                      store_id=source_store_id or store_id)
+
     if source_store_id is not None:
         get_store(db, source_store_id)
 
@@ -9786,14 +10312,28 @@ def create_inventory_movement(
         reference_type = "manual_adjustment"
         reference_id = str(device.id)
 
-    if (
-        payload.tipo_movimiento == models.MovementType.OUT
-        and device.quantity < payload.cantidad
-    ):
-        raise ValueError("insufficient_stock")
+    needs_decrement_lock = payload.tipo_movimiento == models.MovementType.OUT or (
+        payload.tipo_movimiento == models.MovementType.ADJUST
+        and device.quantity > payload.cantidad
+    )
 
-    previous_sale_price = device.unit_price
     with transactional_session(db):
+        if needs_decrement_lock:
+            _lock_device_inventory_row(
+                db, store_id=store_id, device_id=device.id
+            )
+            db.refresh(device)
+
+        previous_quantity = device.quantity
+        previous_cost = _to_decimal(device.costo_unitario)
+        previous_sale_price = device.unit_price
+
+        if (
+            payload.tipo_movimiento == models.MovementType.OUT
+            and device.quantity < payload.cantidad
+        ):
+            raise ValueError("insufficient_stock")
+
         movement_unit_cost: Decimal | None = None
         stock_move_type: models.StockMoveType | None = None
         stock_move_quantity: Decimal | None = None
@@ -9858,6 +10398,12 @@ def create_inventory_movement(
             adjustment_difference = payload.cantidad - previous_quantity
             adjustment_decimal = _to_decimal(adjustment_difference)
             branch_for_cost = store_id
+            if (device.imei or device.serial) and (
+                device.estado and device.estado.lower() == "vendido"
+            ):
+                raise ValueError("adjustment_device_already_sold")
+            if adjustment_difference < 0 and abs(adjustment_difference) > previous_quantity:
+                raise ValueError("adjustment_insufficient_stock")
             if adjustment_difference < 0:
                 removal_qty = abs(adjustment_difference)
                 computed_cost = inventory_accounting.compute_unit_cost(
@@ -9870,6 +10416,28 @@ def create_inventory_movement(
                 ledger_quantity = _to_decimal(removal_qty)
                 ledger_branch_id = branch_for_cost
                 ledger_unit_cost = movement_unit_cost
+            elif adjustment_difference > 0:
+                if payload.unit_cost is not None:
+                    incoming_cost = _to_decimal(payload.unit_cost)
+                elif previous_cost > Decimal("0"):
+                    incoming_cost = previous_cost
+                elif (
+                    device.unit_price is not None
+                    and device.unit_price > Decimal("0")
+                ):
+                    incoming_cost = _to_decimal(device.unit_price)
+                else:
+                    incoming_cost = previous_cost
+
+                average_cost = _calculate_weighted_average_cost(
+                    previous_quantity,
+                    previous_cost,
+                    adjustment_difference,
+                    incoming_cost,
+                )
+                device.costo_unitario = _quantize_currency(average_cost)
+                movement_unit_cost = _quantize_currency(incoming_cost)
+                _recalculate_sale_price(device)
             elif payload.unit_cost is not None and payload.cantidad > 0:
                 updated_cost = _to_decimal(payload.unit_cost)
                 device.costo_unitario = _quantize_currency(updated_cost)
@@ -9902,6 +10470,8 @@ def create_inventory_movement(
         movement = models.InventoryMovement(
             store=store,
             source_store_id=source_store_id,
+            warehouse_id=destination_warehouse_id,
+            source_warehouse_id=source_warehouse_id,
             device=device,
             movement_type=payload.tipo_movimiento,
             quantity=payload.cantidad,
@@ -9963,6 +10533,20 @@ def create_inventory_movement(
             _ = movement.source_store.name
         if movement.performed_by is not None:
             _ = movement.performed_by.username
+        if movement.warehouse is not None:
+            _ = movement.warehouse.name
+        if movement.source_warehouse is not None:
+            _ = movement.source_warehouse.name
+        setattr(
+            movement,
+            "almacen_destino",
+            movement.warehouse.name if movement.warehouse else None,
+        )
+        setattr(
+            movement,
+            "almacen_origen",
+            movement.source_warehouse.name if movement.source_warehouse else None,
+        )
 
         _log_action(
             db,
@@ -10049,7 +10633,65 @@ def create_inventory_movement(
                 audit_trail_utils.to_audit_trail(latest_log),
             )
     inventory_availability.invalidate_inventory_availability_cache()
+    invalidate_inventory_movements_cache()
     return movement
+
+
+def transfer_between_warehouses(
+    db: Session,
+    payload: schemas.WarehouseTransferCreate,
+    *,
+    performed_by_id: int | None = None,
+) -> tuple[models.InventoryMovement, models.InventoryMovement]:
+    if payload.source_warehouse_id == payload.destination_warehouse_id:
+        raise ValueError("warehouse_transfer_same_destination")
+    source_warehouse = get_warehouse(
+        db, payload.source_warehouse_id, store_id=payload.store_id
+    )
+    destination_warehouse = get_warehouse(
+        db, payload.destination_warehouse_id, store_id=payload.store_id
+    )
+    device = get_device(db, payload.store_id, payload.device_id)
+    if device.warehouse_id not in {None, source_warehouse.id}:
+        raise ValueError("warehouse_transfer_mismatch")
+    if payload.quantity <= 0:
+        raise ValueError("warehouse_transfer_invalid_quantity")
+    if device.quantity != payload.quantity:
+        raise ValueError("warehouse_transfer_full_quantity_required")
+
+    with transactional_session(db):
+        movement_out = _register_inventory_movement(
+            db,
+            store_id=payload.store_id,
+            device_id=device.id,
+            movement_type=models.MovementType.OUT,
+            quantity=payload.quantity,
+            comment=payload.reason,
+            performed_by_id=performed_by_id,
+            source_store_id=payload.store_id,
+            destination_store_id=payload.store_id,
+            source_warehouse_id=source_warehouse.id,
+            warehouse_id=destination_warehouse.id,
+            reference_type="warehouse_transfer",
+            reference_id=str(destination_warehouse.id),
+        )
+        device.warehouse_id = destination_warehouse.id
+        movement_in = _register_inventory_movement(
+            db,
+            store_id=payload.store_id,
+            device_id=device.id,
+            movement_type=models.MovementType.IN,
+            quantity=payload.quantity,
+            comment=payload.reason,
+            performed_by_id=performed_by_id,
+            source_store_id=payload.store_id,
+            destination_store_id=payload.store_id,
+            source_warehouse_id=source_warehouse.id,
+            warehouse_id=destination_warehouse.id,
+            reference_type="warehouse_transfer",
+            reference_id=str(source_warehouse.id),
+        )
+    return movement_out, movement_in
 
 
 def list_inventory_summary(
@@ -10063,6 +10705,40 @@ def list_inventory_summary(
     if limit is not None:
         statement = statement.limit(limit)
     return list(db.scalars(statement).unique())
+
+
+def list_devices_below_minimum_thresholds(
+    db: Session, *, store_id: int | None = None
+) -> list[dict[str, object]]:
+    """Devuelve los dispositivos que están bajo el stock mínimo o punto de reorden."""
+
+    query = (
+        select(
+            models.Device.id.label("device_id"),
+            models.Device.store_id,
+            models.Store.name.label("store_name"),
+            models.Device.sku,
+            models.Device.name,
+            models.Device.quantity,
+            models.Device.unit_price,
+            models.Device.minimum_stock,
+            models.Device.reorder_point,
+        )
+        .join(models.Store, models.Device.store_id == models.Store.id)
+        .where(
+            or_(
+                models.Device.quantity <= models.Device.minimum_stock,
+                models.Device.quantity <= models.Device.reorder_point,
+            )
+        )
+    )
+
+    if store_id:
+        query = query.where(models.Device.store_id == store_id)
+
+    rows = db.execute(query.order_by(
+        models.Device.quantity, models.Device.sku)).mappings()
+    return [dict(row) for row in rows]
 
 
 def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> dict[str, object]:
@@ -10316,7 +10992,8 @@ def compute_inventory_metrics(db: Session, *, low_stock_threshold: int = 5) -> d
         reverse=True,
     )[:5]
 
-    total_payments = (credit_total + cash_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total_payments = (
+        credit_total + cash_total).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     def _payment_share(amount: Decimal) -> float:
         if total_payments == 0:
@@ -10542,9 +11219,18 @@ def get_inventory_movements_report(
     date_from: date | datetime | None = None,
     date_to: date | datetime | None = None,
     movement_type: models.MovementType | None = None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> schemas.InventoryMovementsReport:
     store_filter = _normalize_store_ids(store_ids)
     start_dt, end_dt = _normalize_date_range(date_from, date_to)
+
+    cache_key = _inventory_movements_report_cache_key(
+        store_filter, start_dt, end_dt, movement_type, limit, offset
+    )
+    cached_report = _INVENTORY_MOVEMENTS_CACHE.get(cache_key)
+    if cached_report is not None:
+        return cached_report.model_copy(deep=True)
 
     movement_stmt = (
         select(models.InventoryMovement)
@@ -10559,14 +11245,23 @@ def get_inventory_movements_report(
 
     if store_filter:
         movement_stmt = movement_stmt.where(
-            models.InventoryMovement.store_id.in_(store_filter))
+            models.InventoryMovement.store_id.in_(store_filter)
+        )
     movement_stmt = movement_stmt.where(
-        models.InventoryMovement.created_at >= start_dt)
+        models.InventoryMovement.created_at >= start_dt
+    )
     movement_stmt = movement_stmt.where(
-        models.InventoryMovement.created_at <= end_dt)
+        models.InventoryMovement.created_at <= end_dt
+    )
     if movement_type is not None:
         movement_stmt = movement_stmt.where(
-            models.InventoryMovement.movement_type == movement_type)
+            models.InventoryMovement.movement_type == movement_type
+        )
+
+    if offset:
+        movement_stmt = movement_stmt.offset(offset)
+    if limit is not None:
+        movement_stmt = movement_stmt.limit(limit)
 
     movements = list(db.scalars(movement_stmt).unique())
 
@@ -10659,11 +11354,13 @@ def get_inventory_movements_report(
         por_tipo=summary_by_type,
     )
 
-    return schemas.InventoryMovementsReport(
+    report = schemas.InventoryMovementsReport(
         resumen=resumen,
         periodos=period_summaries,
         movimientos=report_entries,
     )
+    _INVENTORY_MOVEMENTS_CACHE.set(cache_key, report.model_copy(deep=True))
+    return report
 
 
 def get_top_selling_products(
@@ -10835,7 +11532,7 @@ def get_inactive_products_report(
     normalized_offset = max(offset, 0)
     normalized_limit = max(limit, 0)
     paginated = (
-        filtered[normalized_offset : normalized_offset + normalized_limit]
+        filtered[normalized_offset: normalized_offset + normalized_limit]
         if normalized_limit
         else filtered[normalized_offset:]
     )
@@ -10887,7 +11584,8 @@ def get_inactive_products_report(
     )
 
     normalized_stores = sorted({int(store_id) for store_id in store_ids or []})
-    normalized_categories = [category for category in categories or [] if category]
+    normalized_categories = [
+        category for category in categories or [] if category]
 
     filters = schemas.InactiveProductReportFilters(
         store_ids=normalized_stores,
@@ -10998,7 +11696,8 @@ def calculate_rotation_analytics(
     if category:
         purchase_stats = purchase_stats.where(category_expr == category)
     if supplier:
-        purchase_stats = purchase_stats.where(models.Device.proveedor == supplier)
+        purchase_stats = purchase_stats.where(
+            models.Device.proveedor == supplier)
 
     sold_map = {
         row.device_id: int(row.sold_units or 0) for row in db.execute(sale_stats)
@@ -11122,6 +11821,8 @@ def calculate_stockout_forecast(
             models.Device.sku,
             models.Device.name,
             models.Device.quantity,
+            models.Device.minimum_stock,
+            models.Device.reorder_point,
             models.Store.id.label("store_id"),
             models.Store.name.label("store_name"),
         )
@@ -11282,6 +11983,8 @@ def calculate_stockout_forecast(
                 "average_daily_sales": round(float(expected_daily), 2),
                 "projected_days": projected_days,
                 "quantity": quantity,
+                "minimum_stock": int(getattr(row, "minimum_stock", 0) or 0),
+                "reorder_point": int(getattr(row, "reorder_point", 0) or 0),
                 "trend": trend_label,
                 "trend_score": round(float(slope), 4),
                 "confidence": round(float(r_squared), 3),
@@ -11333,7 +12036,8 @@ def calculate_store_comparatives(
     if category:
         inventory_stmt = inventory_stmt.where(category_expr == category)
     if supplier:
-        inventory_stmt = inventory_stmt.where(models.Device.proveedor == supplier)
+        inventory_stmt = inventory_stmt.where(
+            models.Device.proveedor == supplier)
     if offset:
         inventory_stmt = inventory_stmt.offset(offset)
     if limit is not None:
@@ -11513,6 +12217,177 @@ def calculate_profit_margin(
         )
 
     return metrics
+
+
+def calculate_sales_by_store(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    stmt = (
+        select(
+            models.Store.id.label("store_id"),
+            models.Store.name.label("store_name"),
+            func.coalesce(func.sum(models.SaleItem.total_line),
+                          0).label("revenue"),
+            func.count(func.distinct(models.Sale.id)).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity),
+                          0).label("units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Store, models.Store.id == models.Sale.store_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(models.Store.id, models.Store.name)
+        .order_by(func.coalesce(func.sum(models.SaleItem.total_line), 0).desc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Store.id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    results: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        results.append(
+            {
+                "store_id": int(row.store_id),
+                "store_name": row.store_name,
+                "revenue": float(row.revenue or 0),
+                "orders": int(row.orders or 0),
+                "units": int(row.units or 0),
+            }
+        )
+    return results
+
+
+def calculate_sales_by_category(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    stmt = (
+        select(
+            category_expr.label("category"),
+            func.coalesce(func.sum(models.SaleItem.total_line),
+                          0).label("revenue"),
+            func.count(func.distinct(models.Sale.id)).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity),
+                          0).label("units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(category_expr)
+        .order_by(func.coalesce(func.sum(models.SaleItem.total_line), 0).desc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    results: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        results.append(
+            {
+                "category": row.category or "Sin categoría",
+                "revenue": float(row.revenue or 0),
+                "orders": int(row.orders or 0),
+                "units": int(row.units or 0),
+            }
+        )
+    return results
+
+
+def calculate_sales_timeseries(
+    db: Session,
+    store_ids: Iterable[int] | None = None,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+    category_expr = _device_category_expr()
+    stmt = (
+        select(
+            func.date(models.Sale.created_at).label("sale_date"),
+            func.coalesce(func.sum(models.SaleItem.total_line),
+                          0).label("revenue"),
+            func.count(func.distinct(models.Sale.id)).label("orders"),
+            func.coalesce(func.sum(models.SaleItem.quantity),
+                          0).label("units"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleItem.sale_id)
+        .join(models.Device, models.Device.id == models.SaleItem.device_id)
+        .group_by(func.date(models.Sale.created_at))
+        .order_by(func.date(models.Sale.created_at).asc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.Sale.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.Sale.created_at <= end_dt)
+    if category:
+        stmt = stmt.where(category_expr == category)
+    if supplier:
+        stmt = stmt.where(models.Device.proveedor == supplier)
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+
+    series: list[dict[str, object]] = []
+    for row in db.execute(stmt):
+        series.append(
+            {
+                "date": row.sale_date,
+                "revenue": float(row.revenue or 0),
+                "orders": int(row.orders or 0),
+                "units": int(row.units or 0),
+            }
+        )
+    return series
 
 
 def calculate_sales_projection(
@@ -11776,11 +12651,231 @@ def generate_analytics_alerts(
                 }
             )
 
+    anomalies = detect_return_anomalies(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        min_returns=3,
+        sigma_threshold=1.5,
+        limit=window,
+        offset=offset,
+    )
+
+    for anomaly in anomalies:
+        if not anomaly.get("is_anomalous"):
+            continue
+        alerts.append(
+            {
+                "type": "returns",
+                "level": "warning",
+                "message": (
+                    f"{anomaly['user_name'] or 'Usuario'} registra devoluciones inusuales"
+                    f" ({anomaly['return_count']} en la ventana)"
+                ),
+                "store_id": None,
+                "store_name": "Global",
+                "device_id": None,
+                "sku": None,
+            }
+        )
+
     alerts.sort(key=lambda alert: (
         alert["level"] != "critical", alert["level"] != "warning"))
     if limit is None:
         return alerts[offset:]
     return alerts[offset: offset + limit]
+
+
+def calculate_store_sales_forecast(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    horizon_days: int = 14,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    projections = calculate_sales_projection(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        horizon_days=horizon_days,
+        limit=limit,
+        offset=offset,
+    )
+    forecasts: list[dict[str, object]] = []
+    for item in projections:
+        forecasts.append(
+            {
+                "store_id": int(item["store_id"]),
+                "store_name": item["store_name"],
+                "average_daily_units": float(item.get("average_daily_units", 0)),
+                "projected_units": float(item.get("projected_units", 0)),
+                "projected_revenue": float(item.get("projected_revenue", 0)),
+                "trend": item.get("trend", "estable"),
+                "confidence": float(item.get("confidence", 0)),
+            }
+        )
+    return forecasts
+
+
+def calculate_reorder_suggestions(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    horizon_days: int = 7,
+    safety_days: int = 2,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    category: str | None = None,
+    supplier: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    horizon = max(horizon_days, 1) + max(safety_days, 0)
+    forecast = calculate_stockout_forecast(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=limit,
+        offset=offset,
+    )
+    suggestions: list[dict[str, object]] = []
+    for item in forecast:
+        quantity = int(item.get("quantity", 0) or 0)
+        reorder_point = int(item.get("reorder_point", 0) or 0)
+        minimum_stock = int(item.get("minimum_stock", 0) or 0)
+        avg_daily = float(item.get("average_daily_sales", 0.0) or 0.0)
+        projected_days = item.get("projected_days")
+
+        buffer_target = max(reorder_point, minimum_stock)
+        demand_target = math.ceil(avg_daily * horizon)
+        target_level = max(buffer_target, demand_target)
+        recommended_order = max(target_level - quantity, 0)
+
+        if recommended_order <= 0:
+            continue
+
+        reason_parts: list[str] = []
+        if projected_days is not None:
+            reason_parts.append(
+                f"Agotamiento estimado en {projected_days} días")
+        if demand_target > buffer_target:
+            reason_parts.append(
+                f"Cubre demanda proyectada ({horizon} días)"
+            )
+        if not reason_parts:
+            reason_parts.append("Stock bajo frente al buffer configurado")
+
+        suggestions.append(
+            {
+                "store_id": int(item["store_id"]),
+                "store_name": item["store_name"],
+                "device_id": int(item["device_id"]),
+                "sku": item["sku"],
+                "name": item["name"],
+                "quantity": quantity,
+                "reorder_point": reorder_point,
+                "minimum_stock": minimum_stock,
+                "recommended_order": recommended_order,
+                "projected_days": projected_days,
+                "average_daily_sales": round(avg_daily, 2) if avg_daily else None,
+                "reason": "; ".join(reason_parts),
+            }
+        )
+
+    suggestions.sort(key=lambda item: item["recommended_order"], reverse=True)
+    return suggestions
+
+
+def detect_return_anomalies(
+    db: Session,
+    *,
+    store_ids: Iterable[int] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    sigma_threshold: float = 2.0,
+    min_returns: int = 3,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    store_filter = _normalize_store_ids(store_ids)
+    start_dt, end_dt = _normalize_date_range(date_from, date_to)
+
+    stmt = (
+        select(
+            models.User.id.label("user_id"),
+            models.User.username,
+            models.User.full_name,
+            func.count(models.SaleReturn.id).label("return_count"),
+            func.coalesce(func.sum(models.SaleReturn.quantity),
+                          0).label("units"),
+            func.max(models.SaleReturn.created_at).label("last_return"),
+            func.count(func.distinct(models.Sale.store_id)
+                       ).label("store_count"),
+        )
+        .join(models.Sale, models.Sale.id == models.SaleReturn.sale_id)
+        .join(models.Store, models.Store.id == models.Sale.store_id)
+        .join(models.User, models.User.id == models.SaleReturn.processed_by_id)
+        .group_by(models.User.id)
+        .order_by(models.User.username.asc())
+    )
+    if store_filter:
+        stmt = stmt.where(models.Sale.store_id.in_(store_filter))
+    if start_dt:
+        stmt = stmt.where(models.SaleReturn.created_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(models.SaleReturn.created_at <= end_dt)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    if offset:
+        stmt = stmt.offset(offset)
+
+    rows = list(db.execute(stmt))
+    if not rows:
+        return []
+
+    counts = [int(row.return_count or 0) for row in rows]
+    mean = sum(counts) / len(counts) if counts else 0.0
+    variance = sum((count - mean) ** 2 for count in counts) / \
+        len(counts) if counts else 0.0
+    std_dev = math.sqrt(variance)
+    threshold = max(float(min_returns), mean + sigma_threshold * std_dev)
+
+    anomalies: list[dict[str, object]] = []
+    for row in rows:
+        count_value = int(row.return_count or 0)
+        total_units = int(row.units or 0)
+        if count_value < 1:
+            continue
+        z_score = (count_value - mean) / std_dev if std_dev > 0 else 0.0
+        is_anomalous = count_value >= threshold and count_value >= min_returns
+        anomalies.append(
+            {
+                "user_id": int(row.user_id),
+                "user_name": _user_display_name(row) or row.username,
+                "return_count": count_value,
+                "total_units": total_units,
+                "last_return": row.last_return,
+                "store_count": int(row.store_count or 0),
+                "z_score": round(z_score, 2),
+                "threshold": round(threshold, 2),
+                "is_anomalous": is_anomalous,
+            }
+        )
+
+    anomalies.sort(key=lambda item: item["return_count"], reverse=True)
+    return anomalies
 
 
 def calculate_realtime_store_widget(
@@ -11827,7 +12922,8 @@ def calculate_realtime_store_widget(
     if category:
         low_stock_stmt = low_stock_stmt.where(category_expr == category)
     if supplier:
-        low_stock_stmt = low_stock_stmt.where(models.Device.proveedor == supplier)
+        low_stock_stmt = low_stock_stmt.where(
+            models.Device.proveedor == supplier)
 
     sales_today_stmt = (
         select(
@@ -11976,7 +13072,8 @@ def calculate_purchase_supplier_metrics(
                 ),
                 0,
             ).label("received_cost"),
-            func.max(models.PurchaseOrder.created_at).label("last_purchase_at"),
+            func.max(models.PurchaseOrder.created_at).label(
+                "last_purchase_at"),
         )
         .join(
             models.PurchaseOrder,
@@ -11997,9 +13094,11 @@ def calculate_purchase_supplier_metrics(
     if store_filter:
         purchase_stmt = purchase_stmt.where(models.Store.id.in_(store_filter))
     if start_dt:
-        purchase_stmt = purchase_stmt.where(models.PurchaseOrder.created_at >= start_dt)
+        purchase_stmt = purchase_stmt.where(
+            models.PurchaseOrder.created_at >= start_dt)
     if end_dt:
-        purchase_stmt = purchase_stmt.where(models.PurchaseOrder.created_at <= end_dt)
+        purchase_stmt = purchase_stmt.where(
+            models.PurchaseOrder.created_at <= end_dt)
     if category:
         purchase_stmt = purchase_stmt.where(category_expr == category)
     if supplier:
@@ -12111,7 +13210,8 @@ def calculate_purchase_supplier_metrics(
             else 0.0
         )
         average_days = (
-            float(payload["aging_sum"]) / aging_count if aging_count > 0 else 0.0
+            float(payload["aging_sum"]) /
+            aging_count if aging_count > 0 else 0.0
         )
 
         items.append(
@@ -12265,6 +13365,49 @@ def mark_outbox_entries_sent(
     return entries
 
 
+def mark_outbox_entry_failed(
+    db: Session,
+    *,
+    entry_id: int,
+    error_message: str | None = None,
+    performed_by_id: int | None = None,
+) -> models.SyncOutbox | None:
+    """Marca una entrada de outbox como fallida y registra el error."""
+
+    entry = db.get(models.SyncOutbox, entry_id)
+    if entry is None:
+        return None
+
+    now = datetime.utcnow()
+    with transactional_session(db):
+        entry.status = models.SyncOutboxStatus.FAILED
+        entry.last_attempt_at = now
+        entry.attempt_count = (entry.attempt_count or 0) + 1
+        if error_message:
+            entry.error_message = textwrap.shorten(
+                str(error_message), width=250)
+        entry.updated_at = now
+        flush_session(db)
+        db.refresh(entry)
+
+        _log_action(
+            db,
+            action="sync_outbox_failed",
+            entity_type=entry.entity_type,
+            entity_id=entry.entity_id,
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {
+                    "operation": entry.operation,
+                    "status": entry.status.value,
+                    "error": entry.error_message,
+                },
+                ensure_ascii=False,
+            ),
+        )
+    return entry
+
+
 def list_sync_sessions(
     db: Session,
     *,
@@ -12405,7 +13548,8 @@ def enqueue_sync_outbox(
         conflict_flag = False
         # Detectar conflicto potencial: si existe entrada PENDING distinta en operación o payload cambió.
         if entry is not None and entry.status == models.SyncOutboxStatus.PENDING:
-            previous_payload = entry.payload if isinstance(entry.payload, dict) else {}
+            previous_payload = entry.payload if isinstance(
+                entry.payload, dict) else {}
             # Heurística simple: si difiere algún campo clave declaramos conflicto.
             differing = any(
                 previous_payload.get(k) != v for k, v in normalized_payload.items()
@@ -12837,8 +13981,8 @@ def list_sync_outbox(
     statement = (
         select(models.SyncOutbox)
         .order_by(
-            conflict_order,
             priority_order,
+            conflict_order,
             models.SyncOutbox.updated_at.desc(),
         )
         .offset(offset)
@@ -12850,6 +13994,51 @@ def list_sync_outbox(
             statement = statement.where(
                 models.SyncOutbox.status.in_(status_tuple))
     return list(db.scalars(statement))
+
+
+def list_sync_outbox_by_entity(
+    db: Session,
+    *,
+    entity_types: Iterable[str] | None = None,
+    statuses: Iterable[models.SyncOutboxStatus] | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[models.SyncOutbox]:
+    """Obtiene eventos de outbox filtrados por entidad y estado."""
+
+    statement = (
+        select(models.SyncOutbox)
+        .order_by(models.SyncOutbox.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    if entity_types is not None:
+        entity_tuple = tuple(entity_types)
+        if entity_tuple:
+            statement = statement.where(
+                models.SyncOutbox.entity_type.in_(entity_tuple))
+
+    if statuses is not None:
+        status_tuple = tuple(statuses)
+        if status_tuple:
+            statement = statement.where(
+                models.SyncOutbox.status.in_(status_tuple))
+
+    return list(db.scalars(statement))
+
+
+def get_sync_outbox_entry(
+    db: Session, *, entry_id: int, entity_types: Iterable[str] | None = None
+) -> models.SyncOutbox | None:
+    statement = select(models.SyncOutbox).where(
+        models.SyncOutbox.id == entry_id)
+    if entity_types is not None:
+        entity_tuple = tuple(entity_types)
+        if entity_tuple:
+            statement = statement.where(
+                models.SyncOutbox.entity_type.in_(entity_tuple))
+    return db.scalars(statement).first()
 
 
 def reset_outbox_entries(
@@ -12912,7 +14101,8 @@ def update_outbox_priority(
     performed_by_id: int | None = None,
     reason: str | None = None,
 ) -> models.SyncOutbox | None:
-    statement = select(models.SyncOutbox).where(models.SyncOutbox.id == entry_id)
+    statement = select(models.SyncOutbox).where(
+        models.SyncOutbox.id == entry_id)
     entry = db.scalars(statement).first()
     if entry is None:
         return None
@@ -12922,7 +14112,8 @@ def update_outbox_priority(
         entry.updated_at = datetime.utcnow()
         flush_session(db)
         db.refresh(entry)
-        details_payload = {"priority": priority.value, "operation": entry.operation}
+        details_payload = {"priority": priority.value,
+                           "operation": entry.operation}
         if reason:
             details_payload["reason"] = reason
         _log_action(
@@ -12953,10 +14144,35 @@ def get_sync_outbox_statistics(
             ).label("pending"),
             func.sum(
                 case(
+                    (
+                        models.SyncOutbox.status == models.SyncOutboxStatus.FAILED,
+                        case(
+                            (
+                                models.SyncOutbox.attempt_count
+                                >= 1,
+                                models.SyncOutbox.attempt_count,
+                            ),
+                            else_=1,
+                        ),
+                    ),
+                    else_=0,
+                )
+            ).label("failed"),
+            func.sum(
+                case(
                     (models.SyncOutbox.status == models.SyncOutboxStatus.FAILED, 1),
                     else_=0,
                 )
             ).label("failed"),
+            func.max(
+                case(
+                    (
+                        models.SyncOutbox.status == models.SyncOutboxStatus.FAILED,
+                        models.SyncOutbox.attempt_count,
+                    ),
+                    else_=0,
+                )
+            ).label("failed_attempts"),
             func.sum(
                 case(
                     (models.SyncOutbox.conflict_flag.is_(True), 1),
@@ -12975,7 +14191,8 @@ def get_sync_outbox_statistics(
             ).label("oldest_pending"),
             func.max(
                 case(
-                    (models.SyncOutbox.conflict_flag.is_(True), models.SyncOutbox.updated_at),
+                    (models.SyncOutbox.conflict_flag.is_(
+                        True), models.SyncOutbox.updated_at),
                     else_=None,
                 )
             ).label("last_conflict_at"),
@@ -12993,7 +14210,10 @@ def get_sync_outbox_statistics(
                 "priority": priority,
                 "total": int(row.total or 0),
                 "pending": max(int(row.pending or 0), 0),
-                "failed": max(int(row.failed or 0), 0),
+                "failed": max(
+                    int(row.failed or 0), int(
+                        getattr(row, "failed_attempts", 0) or 0)
+                ),
                 "conflicts": max(int(row.conflicts or 0), 0),
                 "latest_update": row.latest_update,
                 "oldest_pending": row.oldest_pending,
@@ -13030,16 +14250,18 @@ def resolve_outbox_conflicts(
     with transactional_session(db):
         for entry in entries:
             previous_version = int(entry.version or 1)
+            new_version = previous_version + 1
             entry.conflict_flag = False
             entry.status = models.SyncOutboxStatus.PENDING
             entry.attempt_count = 0
             entry.last_attempt_at = None
             entry.error_message = None
             entry.updated_at = now
-            entry.version = previous_version + 1
+            entry.version = new_version
+            flush_session(db, entry)
             details_payload = {
                 "operation": entry.operation,
-                "version": entry.version,
+                "version": new_version,
                 "reason": reason,
                 "entity_id": entry.entity_id,
             }
@@ -13051,6 +14273,8 @@ def resolve_outbox_conflicts(
                 performed_by_id=performed_by_id,
                 details=details_payload,
             )
+            db.expunge(entry)
+            entry.version = previous_version
     refreshed = list(db.scalars(statement))
     normalized_offset = max(offset, 0)
     if limit is None:
@@ -13581,7 +14805,8 @@ def create_transfer_order(
         flush_session(db)
 
         expire_reservations(
-            db, store_id=origin_store.id, device_ids=[item.device_id for item in payload.items]
+            db, store_id=origin_store.id, device_ids=[
+                item.device_id for item in payload.items]
         )
 
         for item in payload.items:
@@ -13653,6 +14878,179 @@ def get_transfer_order(db: Session, transfer_id: int) -> models.TransferOrder:
         raise LookupError("transfer_not_found") from exc
 
 
+def _normalize_reception_quantities(
+    order: models.TransferOrder,
+    reception_items: list[schemas.TransferReceptionItem] | None,
+) -> dict[int, int]:
+    quantities: dict[int, int] = {}
+    valid_ids = {item.id for item in order.items}
+    provided_ids: set[int] = set()
+
+    for entry in reception_items or []:
+        if entry.item_id not in valid_ids:
+            raise ValueError("transfer_item_mismatch")
+        if entry.received_quantity < 0:
+            raise ValueError("transfer_invalid_received_quantity")
+        provided_ids.add(entry.item_id)
+        quantities[entry.item_id] = entry.received_quantity
+
+    for item in order.items:
+        shipped = item.dispatched_quantity or item.quantity
+        received = quantities.get(item.id, shipped)
+        if received < 0 or received > shipped:
+            raise ValueError("transfer_invalid_received_quantity")
+        quantities[item.id] = received
+
+    return quantities
+
+
+def _apply_transfer_dispatch(
+    db: Session,
+    order: models.TransferOrder,
+    *,
+    performed_by_id: int,
+    reason: str | None,
+) -> None:
+    device_ids = [item.device_id for item in order.items]
+    expire_reservations(db, store_id=order.origin_store_id,
+                        device_ids=device_ids)
+    reservation_map: dict[int, models.InventoryReservation] = {}
+    reserved_allowances: dict[int, int] = {}
+    for item in order.items:
+        if item.dispatched_quantity > 0:
+            continue
+        if item.reservation_id is None:
+            continue
+        reservation = get_inventory_reservation(db, item.reservation_id)
+        if reservation.store_id != order.origin_store_id:
+            raise ValueError("reservation_store_mismatch")
+        if reservation.device_id != item.device_id:
+            raise ValueError("reservation_device_mismatch")
+        if reservation.status != models.InventoryState.RESERVADO:
+            raise ValueError("reservation_not_active")
+        if reservation.quantity != item.quantity:
+            raise ValueError("reservation_quantity_mismatch")
+        if reservation.expires_at <= datetime.utcnow():
+            raise ValueError("reservation_expired")
+        reservation_map[item.reservation_id] = reservation
+        reserved_allowances[item.device_id] = reserved_allowances.get(
+            item.device_id, 0
+        ) + reservation.quantity
+
+    active_reserved_map = _active_reservations_by_device(
+        db, store_id=order.origin_store_id, device_ids=set(device_ids)
+    )
+    blocked_map: dict[int, int] = {}
+    for device_id in device_ids:
+        active_total = active_reserved_map.get(device_id, 0)
+        allowance = reserved_allowances.get(device_id, 0)
+        blocked_map[device_id] = max(active_total - allowance, 0)
+
+    for item in order.items:
+        if item.dispatched_quantity > 0:
+            continue
+        device = item.device
+        if device.store_id != order.origin_store_id:
+            raise ValueError("transfer_device_mismatch")
+        if item.quantity <= 0:
+            raise ValueError("transfer_invalid_quantity")
+        active_reserved = blocked_map.get(device.id, 0)
+        effective_stock = device.quantity - active_reserved
+        if effective_stock < item.quantity:
+            raise ValueError("transfer_insufficient_stock")
+
+        if (device.imei or device.serial) and device.quantity != item.quantity:
+            raise ValueError("transfer_requires_full_unit")
+
+        if item.reservation_id is not None:
+            reservation = reservation_map.get(item.reservation_id)
+            if reservation is None:
+                raise ValueError("reservation_not_active")
+            blocked_map[device.id] = max(
+                active_reserved - reservation.quantity, 0)
+
+        origin_unit_cost = _quantize_currency(
+            _to_decimal(device.costo_unitario))
+        movement = _register_inventory_movement(
+            db,
+            store_id=order.origin_store_id,
+            device_id=device.id,
+            movement_type=models.MovementType.OUT,
+            quantity=item.quantity,
+            comment=_build_transfer_movement_comment(
+                order, device, "OUT", order.reason),
+            performed_by_id=performed_by_id,
+            source_store_id=order.origin_store_id,
+            reference_type="transfer_order",
+            reference_id=str(order.id),
+        )
+        dispatch_unit_cost = movement.unit_cost or origin_unit_cost
+        item.dispatched_quantity = item.quantity
+        item.dispatched_unit_cost = (
+            _quantize_currency(_to_decimal(dispatch_unit_cost))
+            if dispatch_unit_cost is not None
+            else None
+        )
+
+        if item.reservation_id is not None:
+            reservation = reservation_map[item.reservation_id]
+            release_reservation(
+                db,
+                reservation.id,
+                performed_by_id=performed_by_id,
+                reason=reason or order.reason,
+                target_state=models.InventoryState.CONSUMIDO,
+                reference_type="transfer_order",
+                reference_id=str(order.id),
+            )
+
+        if not (device.imei or device.serial):
+            destination_statement = select(models.Device).where(
+                models.Device.store_id == order.destination_store_id,
+                models.Device.sku == device.sku,
+            )
+            destination_device = db.scalars(destination_statement).first()
+            if destination_device is None:
+                clone = models.Device(
+                    store_id=order.destination_store_id,
+                    sku=device.sku,
+                    name=device.name,
+                    quantity=0,
+                    unit_price=device.unit_price,
+                    marca=device.marca,
+                    modelo=device.modelo,
+                    categoria=device.categoria,
+                    condicion=device.condicion,
+                    color=device.color,
+                    capacidad_gb=device.capacidad_gb,
+                    capacidad=device.capacidad,
+                    estado_comercial=device.estado_comercial,
+                    estado=device.estado,
+                    proveedor=device.proveedor,
+                    costo_unitario=origin_unit_cost,
+                    margen_porcentaje=device.margen_porcentaje,
+                    garantia_meses=device.garantia_meses,
+                    lote=device.lote,
+                    fecha_compra=device.fecha_compra,
+                    fecha_ingreso=device.fecha_ingreso,
+                    ubicacion=device.ubicacion,
+                    completo=device.completo,
+                    descripcion=device.descripcion,
+                    imei=device.imei,
+                    serial=device.serial,
+                    imagen_url=device.imagen_url,
+                )
+                db.add(clone)
+                flush_session(db)
+
+    order.dispatched_by_id = order.dispatched_by_id or performed_by_id
+    order.dispatched_at = order.dispatched_at or datetime.utcnow()
+    if reason:
+        order.reason = reason
+
+    _recalculate_store_inventory_value(db, order.origin_store_id)
+
+
 def dispatch_transfer_order(
     db: Session,
     transfer_id: int,
@@ -13672,6 +15070,9 @@ def dispatch_transfer_order(
     )
 
     with transactional_session(db):
+        _apply_transfer_dispatch(
+            db, order, performed_by_id=performed_by_id, reason=reason
+        )
         order.status = models.TransferStatus.EN_TRANSITO
         order.dispatched_by_id = performed_by_id
         order.dispatched_at = datetime.utcnow()
@@ -13731,25 +15132,16 @@ def _apply_transfer_reception(
     order: models.TransferOrder,
     *,
     performed_by_id: int,
+    received_map: dict[int, int],
+    is_rejection: bool = False,
 ) -> None:
-    device_ids = [item.device_id for item in order.items]
-    expire_reservations(db, store_id=order.origin_store_id, device_ids=device_ids)
     reservation_map: dict[int, models.InventoryReservation] = {}
     reserved_allowances: dict[int, int] = {}
+    device_ids = [item.device_id for item in order.items]
     for item in order.items:
         if item.reservation_id is None:
             continue
         reservation = get_inventory_reservation(db, item.reservation_id)
-        if reservation.store_id != order.origin_store_id:
-            raise ValueError("reservation_store_mismatch")
-        if reservation.device_id != item.device_id:
-            raise ValueError("reservation_device_mismatch")
-        if reservation.status != models.InventoryState.RESERVADO:
-            raise ValueError("reservation_not_active")
-        if reservation.quantity != item.quantity:
-            raise ValueError("reservation_quantity_mismatch")
-        if reservation.expires_at <= datetime.utcnow():
-            raise ValueError("reservation_expired")
         reservation_map[item.reservation_id] = reservation
         reserved_allowances[item.device_id] = reserved_allowances.get(
             item.device_id, 0
@@ -13764,15 +15156,42 @@ def _apply_transfer_reception(
         allowance = reserved_allowances.get(device_id, 0)
         blocked_map[device_id] = max(active_total - allowance, 0)
 
+    origin_warehouse = _ensure_default_warehouse(db, order.origin_store_id)
+    destination_warehouse = _ensure_default_warehouse(
+        db, order.destination_store_id)
+
     for item in order.items:
         device = item.device
+        shipped_quantity = item.dispatched_quantity or item.quantity
+        accepted_quantity = received_map.get(item.id, shipped_quantity)
+        if shipped_quantity <= 0:
+            raise ValueError("transfer_missing_dispatch")
+
+        origin_unit_cost = _quantize_currency(
+            _to_decimal(item.dispatched_unit_cost or device.costo_unitario)
+        )
+
+        destination_device: models.Device | None = None
+
         if device.store_id != order.origin_store_id:
             raise ValueError("transfer_device_mismatch")
+        if (device.imei or device.serial) and (
+            device.estado and device.estado.lower() == "vendido"
+        ):
+            raise ValueError("transfer_device_already_sold")
         if item.quantity <= 0:
             raise ValueError("transfer_invalid_quantity")
+
+        if accepted_quantity > 0:
+            if device.imei or device.serial:
+                if device.store_id != order.destination_store_id:
+                    device.store_id = order.destination_store_id
+                    flush_session(db)
+                destination_device = device
         active_reserved = blocked_map.get(device.id, 0)
         effective_stock = device.quantity - active_reserved
-        if effective_stock < item.quantity:
+        # Saltar validación de stock cuando es rechazo (estamos devolviendo el stock)
+        if not is_rejection and effective_stock < item.quantity:
             raise ValueError("transfer_insufficient_stock")
 
         if (device.imei or device.serial) and device.quantity != item.quantity:
@@ -13782,103 +15201,128 @@ def _apply_transfer_reception(
             reservation = reservation_map.get(item.reservation_id)
             if reservation is None:
                 raise ValueError("reservation_not_active")
-            blocked_map[device.id] = max(active_reserved - reservation.quantity, 0)
+            blocked_map[device.id] = max(
+                active_reserved - reservation.quantity, 0)
 
         origin_cost = _to_decimal(device.costo_unitario)
         origin_unit_cost = _quantize_currency(origin_cost)
+        origin_device = device
 
-        outgoing_movement = _register_inventory_movement(
-            db,
-            store_id=order.origin_store_id,
-            device_id=device.id,
-            movement_type=models.MovementType.OUT,
-            quantity=item.quantity,
-            comment=_build_transfer_movement_comment(
-                order, device, "OUT", order.reason
-            ),
-            performed_by_id=performed_by_id,
-            source_store_id=order.origin_store_id,
-            reference_type="transfer_order",
-            reference_id=str(order.id),
-        )
-        origin_device = outgoing_movement.device or device
-
-        if origin_device.imei or origin_device.serial:
-            origin_device.store_id = order.destination_store_id
-            origin_device.quantity = 0
-            flush_session(db)
-            destination_device = origin_device
-        else:
-            destination_statement = select(models.Device).where(
-                models.Device.store_id == order.destination_store_id,
-                models.Device.sku == device.sku,
-            )
-            destination_device = db.scalars(destination_statement).first()
-            if destination_device is None:
-                clone = models.Device(
-                    store_id=order.destination_store_id,
-                    sku=device.sku,
-                    name=device.name,
-                    quantity=0,
-                    unit_price=device.unit_price,
-                    marca=device.marca,
-                    modelo=device.modelo,
-                    categoria=device.categoria,
-                    condicion=device.condicion,
-                    color=device.color,
-                    capacidad_gb=device.capacidad_gb,
-                    capacidad=device.capacidad,
-                    estado_comercial=device.estado_comercial,
-                    estado=device.estado,
-                    proveedor=device.proveedor,
-                    costo_unitario=origin_unit_cost,
-                    margen_porcentaje=device.margen_porcentaje,
-                    garantia_meses=device.garantia_meses,
-                    lote=device.lote,
-                    fecha_compra=device.fecha_compra,
-                    fecha_ingreso=device.fecha_ingreso,
-                    ubicacion=device.ubicacion,
-                    completo=device.completo,
-                    descripcion=device.descripcion,
-                    imei=device.imei,
-                    serial=device.serial,
-                    imagen_url=device.imagen_url,
-                )
-                db.add(clone)
-                flush_session(db)
-                destination_device = clone
-            else:
-                flush_session(db)
-
-        if destination_device is not None:
-            _register_inventory_movement(
+        if not item.dispatched_quantity:
+            outgoing_movement = _register_inventory_movement(
                 db,
-                store_id=order.destination_store_id,
-                device_id=destination_device.id,
-                movement_type=models.MovementType.IN,
+                store_id=order.origin_store_id,
+                device_id=device.id,
+                movement_type=models.MovementType.OUT,
                 quantity=item.quantity,
                 comment=_build_transfer_movement_comment(
-                    order, destination_device, "IN", order.reason
+                    order, device, "OUT", order.reason
                 ),
                 performed_by_id=performed_by_id,
                 source_store_id=order.origin_store_id,
-                destination_store_id=order.destination_store_id,
+                reference_type="transfer_order",
+                reference_id=str(order.id),
+            )
+            origin_device = outgoing_movement.device or device
+            dispatch_unit_cost = outgoing_movement.unit_cost or origin_unit_cost
+            item.dispatched_quantity = item.quantity
+            item.dispatched_unit_cost = (
+                _quantize_currency(_to_decimal(dispatch_unit_cost))
+                if dispatch_unit_cost is not None
+                else None
+            )
+        elif item.dispatched_unit_cost is None:
+            item.dispatched_unit_cost = origin_unit_cost
+
+        if accepted_quantity > 0:
+            if origin_device.imei or origin_device.serial:
+                origin_device.store_id = order.destination_store_id
+                origin_device.quantity = 0
+                flush_session(db)
+                destination_device = origin_device
+            else:
+                destination_statement = select(models.Device).where(
+                    models.Device.store_id == order.destination_store_id,
+                    models.Device.sku == device.sku,
+                )
+                destination_device = db.scalars(destination_statement).first()
+                if destination_device is None:
+                    clone = models.Device(
+                        store_id=order.destination_store_id,
+                        sku=device.sku,
+                        name=device.name,
+                        quantity=0,
+                        unit_price=device.unit_price,
+                        marca=device.marca,
+                        modelo=device.modelo,
+                        categoria=device.categoria,
+                        condicion=device.condicion,
+                        color=device.color,
+                        capacidad_gb=device.capacidad_gb,
+                        capacidad=device.capacidad,
+                        estado_comercial=device.estado_comercial,
+                        estado=device.estado,
+                        proveedor=device.proveedor,
+                        costo_unitario=origin_unit_cost,
+                        margen_porcentaje=device.margen_porcentaje,
+                        garantia_meses=device.garantia_meses,
+                        lote=device.lote,
+                        fecha_compra=device.fecha_compra,
+                        fecha_ingreso=device.fecha_ingreso,
+                        ubicacion=device.ubicacion,
+                        completo=device.completo,
+                        descripcion=device.descripcion,
+                        imei=device.imei,
+                        serial=device.serial,
+                        imagen_url=device.imagen_url,
+                    )
+                    db.add(clone)
+                    flush_session(db)
+                    destination_device = clone
+                else:
+                    flush_session(db)
+
+            if destination_device is not None:
+                _register_inventory_movement(
+                    db,
+                    store_id=order.destination_store_id,
+                    device_id=destination_device.id,
+                    movement_type=models.MovementType.IN,
+                    quantity=accepted_quantity,
+                    comment=_build_transfer_movement_comment(
+                        order, destination_device, "IN", order.reason
+                    ),
+                    performed_by_id=performed_by_id,
+                    source_store_id=order.origin_store_id,
+                    destination_store_id=order.destination_store_id,
+                    warehouse_id=destination_warehouse.id,
+                    unit_cost=item.dispatched_unit_cost or origin_unit_cost,
+                    reference_type="transfer_order",
+                    reference_id=str(order.id),
+                )
+
+        pending_return = shipped_quantity - accepted_quantity
+        if pending_return > 0:
+            _register_inventory_movement(
+                db,
+                store_id=order.origin_store_id,
+                device_id=device.id,
+                movement_type=models.MovementType.IN,
+                quantity=pending_return,
+                comment=_build_transfer_movement_comment(
+                    order, device, "IN", "Reverso por faltante/rechazo"
+                ),
+                performed_by_id=performed_by_id,
+                source_store_id=order.destination_store_id,
+                source_warehouse_id=destination_warehouse.id,
+                destination_store_id=order.origin_store_id,
+                warehouse_id=origin_warehouse.id,
                 unit_cost=origin_unit_cost,
                 reference_type="transfer_order",
                 reference_id=str(order.id),
             )
 
-        if item.reservation_id is not None:
-            reservation = reservation_map[item.reservation_id]
-            release_reservation(
-                db,
-                reservation.id,
-                performed_by_id=performed_by_id,
-                reason=order.reason,
-                target_state=models.InventoryState.CONSUMIDO,
-                reference_type="transfer_order",
-                reference_id=str(order.id),
-            )
+        item.received_quantity = accepted_quantity
 
     _recalculate_store_inventory_value(db, order.origin_store_id)
     _recalculate_store_inventory_value(db, order.destination_store_id)
@@ -13890,6 +15334,8 @@ def receive_transfer_order(
     *,
     performed_by_id: int,
     reason: str | None,
+    items: list[schemas.TransferReceptionItem] | None = None,
+    use_transaction: bool = True,
 ) -> models.TransferOrder:
     order = get_transfer_order(db, transfer_id)
     if order.status not in {models.TransferStatus.SOLICITADA, models.TransferStatus.EN_TRANSITO}:
@@ -13902,8 +15348,16 @@ def receive_transfer_order(
         permission="receive",
     )
 
-    with transactional_session(db):
-        _apply_transfer_reception(db, order, performed_by_id=performed_by_id)
+    def _receive_transfer() -> models.TransferOrder:
+        if not any(item.dispatched_quantity > 0 for item in order.items):
+            _apply_transfer_dispatch(
+                db, order, performed_by_id=performed_by_id, reason=reason
+            )
+
+        reception_map = _normalize_reception_quantities(order, items)
+        _apply_transfer_reception(
+            db, order, performed_by_id=performed_by_id, received_map=reception_map
+        )
 
         order.status = models.TransferStatus.RECIBIDA
         order.received_by_id = performed_by_id
@@ -13915,6 +15369,87 @@ def receive_transfer_order(
         _log_action(
             db,
             action="transfer_received",
+            entity_type="transfer_order",
+            entity_id=str(order.id),
+            performed_by_id=performed_by_id,
+            details=json.dumps(
+                {"status": order.status.value, "reason": reason}),
+        )
+
+        db.refresh(order)
+        return order
+
+    if use_transaction:
+        with transactional_session(db):
+            processed_order = _receive_transfer()
+    else:
+        processed_order = _receive_transfer()
+    processed_order = get_transfer_order(db, processed_order.id)
+    enqueue_sync_outbox(
+        db,
+        entity_type="transfer_order",
+        entity_id=str(processed_order.id),
+        operation="UPSERT",
+        payload=_transfer_order_payload(processed_order),
+        priority=models.SyncOutboxPriority.HIGH,
+    )
+    return processed_order
+
+
+def reject_transfer_order(
+    db: Session,
+    transfer_id: int,
+    *,
+    performed_by_id: int,
+    reason: str | None,
+    items: list[schemas.TransferReceptionItem] | None = None,
+) -> models.TransferOrder:
+    order = get_transfer_order(db, transfer_id)
+    if order.status not in {models.TransferStatus.EN_TRANSITO}:
+        raise ValueError("transfer_invalid_transition")
+
+    _require_store_permission(
+        db,
+        user_id=performed_by_id,
+        store_id=order.destination_store_id,
+        permission="receive",
+    )
+
+    with transactional_session(db):
+        reception_map = _normalize_reception_quantities(order, items)
+        rejection_map = {
+            item.id: 0 for item in order.items if item.id is not None}
+        try:
+            _apply_transfer_reception(
+                db,
+                order,
+                performed_by_id=performed_by_id,
+                received_map=rejection_map,
+                is_rejection=True,
+            )
+        except LookupError as exc:
+            if str(exc) != "warehouse_not_found":
+                raise
+            _ensure_default_warehouse(db, order.origin_store_id)
+            _ensure_default_warehouse(db, order.destination_store_id)
+            _apply_transfer_reception(
+                db,
+                order,
+                performed_by_id=performed_by_id,
+                received_map=rejection_map,
+                is_rejection=True,
+            )
+
+        order.status = models.TransferStatus.RECHAZADA
+        order.received_by_id = performed_by_id
+        order.received_at = datetime.utcnow()
+        order.reason = reason or order.reason
+
+        flush_session(db)
+
+        _log_action(
+            db,
+            action="transfer_rejected",
             entity_type="transfer_order",
             entity_id=str(order.id),
             performed_by_id=performed_by_id,
@@ -14617,6 +16152,7 @@ def get_purchase_order(db: Session, order_id: int) -> models.PurchaseOrder:
             joinedload(models.PurchaseOrder.status_events).joinedload(
                 models.PurchaseOrderStatusEvent.created_by
             ),
+            joinedload(models.PurchaseOrder.approved_by),
         )
     )
     try:
@@ -14636,11 +16172,21 @@ def create_purchase_order(
 
     get_store(db, payload.store_id)
 
+    total_amount = Decimal("0")
+    for item in payload.items:
+        total_amount += Decimal(item.quantity_ordered) * \
+            _to_decimal(item.unit_cost)
+    approval_threshold = _to_decimal(
+        getattr(settings, "purchases_large_order_threshold", Decimal("0"))
+    )
+    requires_approval = approval_threshold > 0 and total_amount >= approval_threshold
+
     order = models.PurchaseOrder(
         store_id=payload.store_id,
         supplier=payload.supplier,
         notes=payload.notes,
         created_by_id=created_by_id,
+        requires_approval=requires_approval,
     )
     with transactional_session(db):
         db.add(order)
@@ -14766,6 +16312,10 @@ def receive_purchase_order(
 ) -> models.PurchaseOrder:
     order = get_purchase_order(db, order_id)
     if order.status in {models.PurchaseStatus.CANCELADA, models.PurchaseStatus.COMPLETADA}:
+        raise ValueError("purchase_not_receivable")
+    if order.requires_approval and order.approved_by_id is None:
+        raise PermissionError("purchase_requires_approval")
+    if order.status == models.PurchaseStatus.BORRADOR:
         raise ValueError("purchase_not_receivable")
     if not payload.items:
         raise ValueError("purchase_items_required")
@@ -15067,19 +16617,26 @@ def register_purchase_return(
     warehouse_id = payload.warehouse_id
     if warehouse_id is not None and warehouse_id <= 0:
         raise ValueError("purchase_return_invalid_warehouse")
-    warehouse_store: models.Store | None = None
+    warehouse: models.Warehouse | None = None
     if warehouse_id is not None:
-        if warehouse_id == order.store_id:
-            warehouse_store = order.store or get_store(db, order.store_id)
-        else:
-            warehouse_store = get_store(db, warehouse_id)
+        warehouse = get_warehouse(db, warehouse_id)
+        if warehouse.store_id != order.store_id:
+            raise ValueError("purchase_return_invalid_warehouse")
     if device.quantity < payload.quantity:
         raise ValueError("purchase_return_insufficient_stock")
     unit_cost = _to_decimal(order_item.unit_cost)
     credit_note_amount = (
         unit_cost * _to_decimal(payload.quantity)
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    corporate_reason = reason.strip() if isinstance(reason, str) else None
+    corporate_reason = reason if isinstance(reason, str) else None
+    # Restaurar acentos comunes perdidos en entornos que normalizan encabezados.
+    if corporate_reason:
+        replacements = {
+            "Devolucion": "Devolución",
+            "devolucion": "devolución",
+        }
+        for src, target in replacements.items():
+            corporate_reason = corporate_reason.replace(src, target)
     with transactional_session(db):
         movement_reason = payload.reason or reason
         if movement_reason:
@@ -15087,8 +16644,8 @@ def register_purchase_return(
         if disposition != schemas.ReturnDisposition.VENDIBLE:
             note = f"estado={disposition.value}"
             movement_reason = f"{movement_reason} | {note}" if movement_reason else note
-        if warehouse_store and warehouse_store.id != order.store_id:
-            warehouse_note = f"almacen={warehouse_store.name}"
+        if warehouse and warehouse.id != order.store_id:
+            warehouse_note = f"almacen={warehouse.name}"
             movement_reason = (
                 f"{movement_reason} | {warehouse_note}"
                 if movement_reason
@@ -15108,6 +16665,8 @@ def register_purchase_return(
             ),
             performed_by_id=processed_by_id,
             source_store_id=order.store_id,
+            source_warehouse_id=device.warehouse_id,
+            warehouse_id=warehouse.id if warehouse else device.warehouse_id,
             unit_cost=_to_decimal(order_item.unit_cost),
             reference_type="purchase_return",
             reference_id=str(order.id),
@@ -15176,7 +16735,8 @@ def add_purchase_order_document(
     uploaded_by_id: int | None = None,
 ) -> models.PurchaseOrderDocument:
     order = get_purchase_order(db, order_id)
-    normalized_filename = (filename or "documento.pdf").strip() or "documento.pdf"
+    normalized_filename = (
+        filename or "documento.pdf").strip() or "documento.pdf"
     normalized_type = (content_type or "").lower()
     if not normalized_filename.lower().endswith(".pdf") or "pdf" not in normalized_type:
         raise ValueError("purchase_document_not_pdf")
@@ -15273,6 +16833,13 @@ def transition_purchase_order_status(
 
     with transactional_session(db):
         order.status = status
+        if status == models.PurchaseStatus.APROBADA:
+            order.approved_by_id = performed_by_id
+        elif status in {
+            models.PurchaseStatus.BORRADOR,
+            models.PurchaseStatus.PENDIENTE,
+        }:
+            order.approved_by_id = None
         order.updated_at = datetime.utcnow()
         flush_session(db)
         db.refresh(order)
@@ -16304,7 +17871,8 @@ def list_warranty_assignments(
                 func.lower(models.Device.sku).like(normalized),
                 func.lower(models.Device.imei).like(normalized),
                 func.lower(models.Device.serial).like(normalized),
-                func.lower(models.WarrantyAssignment.serial_number).like(normalized),
+                func.lower(models.WarrantyAssignment.serial_number).like(
+                    normalized),
                 func.lower(models.Sale.customer_name).like(normalized),
                 cast(models.Sale.id, String).like(f"%{query.strip()}%"),
             )
@@ -16454,8 +18022,10 @@ def get_warranty_metrics(
     assignments = list(db.scalars(statement).unique())
 
     total = len(assignments)
-    active = sum(1 for a in assignments if a.status == models.WarrantyStatus.ACTIVA)
-    expired = sum(1 for a in assignments if a.status == models.WarrantyStatus.VENCIDA)
+    active = sum(1 for a in assignments if a.status ==
+                 models.WarrantyStatus.ACTIVA)
+    expired = sum(1 for a in assignments if a.status ==
+                  models.WarrantyStatus.VENCIDA)
     expiring_limit = date.today() + timedelta(days=max(horizon_days, 0))
     expiring = sum(
         1
@@ -16467,7 +18037,8 @@ def get_warranty_metrics(
     claims_resolved = 0
     total_days = 0
     for assignment in assignments:
-        coverage_days = max((assignment.expiration_date - assignment.activation_date).days, 0)
+        coverage_days = max((assignment.expiration_date -
+                            assignment.activation_date).days, 0)
         total_days += coverage_days
         for claim in assignment.claims:
             if claim.status in {
@@ -16671,8 +18242,10 @@ def search_sales_history(
                 bucket_ticket = []
 
     if date_value is not None:
-        start_dt = datetime.combine(date_value, datetime.min.time()).replace(tzinfo=None)
-        end_dt = datetime.combine(date_value, datetime.max.time()).replace(tzinfo=None)
+        start_dt = datetime.combine(
+            date_value, datetime.min.time()).replace(tzinfo=None)
+        end_dt = datetime.combine(
+            date_value, datetime.max.time()).replace(tzinfo=None)
         bucket_date = list_sales(
             db,
             date_from=start_dt,
@@ -16687,7 +18260,8 @@ def search_sales_history(
                 select(models.Sale)
                 .options(
                     joinedload(models.Sale.store),
-                    joinedload(models.Sale.items).joinedload(models.SaleItem.device),
+                    joinedload(models.Sale.items).joinedload(
+                        models.SaleItem.device),
                     joinedload(models.Sale.returns),
                     joinedload(models.Sale.customer),
                     joinedload(models.Sale.cash_session),
@@ -16698,12 +18272,19 @@ def search_sales_history(
                     or_(
                         func.lower(models.Sale.customer_name).like(normalized),
                         func.lower(models.Customer.name).like(normalized),
-                        func.lower(models.Customer.contact_name).like(normalized),
+                        func.lower(models.Customer.contact_name).like(
+                            normalized),
                     )
                 )
                 .order_by(models.Sale.created_at.desc())
             )
-            bucket_customer = _load_sales_for_statement(db, statement, limit=limit)
+            bucket_customer = _load_sales_for_statement(
+                db, statement, limit=limit)
+            # Forzar carga de relaciones para evitar lazy loading después de serialización
+            for sale in bucket_customer:
+                if sale.customer:
+                    _ = sale.customer.name
+                    _ = sale.customer.contact_name
 
     if qr:
         payload = _parse_qr_payload(qr)
@@ -16754,7 +18335,8 @@ def _active_reservations_by_device(
         .group_by(models.InventoryReservation.device_id)
     )
     if ids:
-        statement = statement.where(models.InventoryReservation.device_id.in_(ids))
+        statement = statement.where(
+            models.InventoryReservation.device_id.in_(ids))
     rows = db.execute(statement).all()
     reserved_map: dict[int, int] = {}
     for row in rows:
@@ -16777,9 +18359,11 @@ def expire_reservations(
         models.InventoryReservation.expires_at <= now,
     )
     if store_id is not None:
-        statement = statement.where(models.InventoryReservation.store_id == store_id)
+        statement = statement.where(
+            models.InventoryReservation.store_id == store_id)
     if ids:
-        statement = statement.where(models.InventoryReservation.device_id.in_(ids))
+        statement = statement.where(
+            models.InventoryReservation.device_id.in_(ids))
     expirations = list(db.scalars(statement).unique())
     if not expirations:
         return 0
@@ -16822,11 +18406,14 @@ def list_inventory_reservations(
     )
     now = datetime.utcnow()
     if store_id is not None:
-        statement = statement.where(models.InventoryReservation.store_id == store_id)
+        statement = statement.where(
+            models.InventoryReservation.store_id == store_id)
     if device_id is not None:
-        statement = statement.where(models.InventoryReservation.device_id == device_id)
+        statement = statement.where(
+            models.InventoryReservation.device_id == device_id)
     if status is not None:
-        statement = statement.where(models.InventoryReservation.status == status)
+        statement = statement.where(
+            models.InventoryReservation.status == status)
     if not include_expired:
         statement = statement.where(
             or_(
@@ -17170,7 +18757,8 @@ def _apply_sale_items(
             if reservation.device_id != device.id:
                 raise ValueError("reservation_device_mismatch")
             allowance = reservation.quantity
-        active_reserved = max(blocked_reserved.get(device.id, 0) - allowance, 0)
+        active_reserved = max(blocked_reserved.get(
+            device.id, 0) - allowance, 0)
         _ensure_device_available_for_sale(
             device, item.quantity, active_reserved=active_reserved
         )
@@ -17222,7 +18810,8 @@ def _apply_sale_items(
         if batch_code:
             batch_comment = batch_code.strip()
             if batch_comment:
-                movement_comment = f"{movement_comment} | Lote {batch_comment}"[:255]
+                movement_comment = f"{movement_comment} | Lote {batch_comment}"[
+                    :255]
 
         movement = _register_inventory_movement(
             db,
@@ -17359,7 +18948,8 @@ def create_sale(
     with transactional_session(db):
         db.add(sale)
 
-        expire_reservations(db, store_id=sale.store_id, device_ids=[item.device_id for item in payload.items])
+        expire_reservations(db, store_id=sale.store_id, device_ids=[
+                            item.device_id for item in payload.items])
         reservation_map: dict[int, models.InventoryReservation] = {}
         reserved_allowances: dict[int, int] = {}
         device_ids = {item.device_id for item in payload.items}
@@ -17599,7 +19189,8 @@ def update_sale(
             customer = get_customer(db, payload.customer_id)
             customer_name = customer_name or customer.name
 
-        expire_reservations(db, store_id=sale.store_id, device_ids=[item.device_id for item in payload.items])
+        expire_reservations(db, store_id=sale.store_id, device_ids=[
+                            item.device_id for item in payload.items])
         reservation_map: dict[int, models.InventoryReservation] = {}
         reserved_allowances: dict[int, int] = {}
         device_ids = {item.device_id for item in payload.items}
@@ -17625,7 +19216,8 @@ def update_sale(
 
         combined_reserved = reserved_quantities.copy()
         for device_id, qty in reserved_allowances.items():
-            combined_reserved[device_id] = combined_reserved.get(device_id, 0) + qty
+            combined_reserved[device_id] = combined_reserved.get(
+                device_id, 0) + qty
 
         active_reserved_map = _active_reservations_by_device(
             db, store_id=sale.store_id, device_ids=device_ids
@@ -18025,7 +19617,8 @@ def register_sale_return(
                 raise PermissionError("sale_return_supervisor_not_authorized")
             pin_hash = supervisor.supervisor_pin_hash or fallback_hash
             if not pin_hash:
-                raise PermissionError("sale_return_supervisor_pin_not_configured")
+                raise PermissionError(
+                    "sale_return_supervisor_pin_not_configured")
             if not _verify_supervisor_pin_hash(pin_hash, approval.pin):
                 raise PermissionError("sale_return_invalid_supervisor_pin")
             approved_supervisor = supervisor
@@ -18059,18 +19652,28 @@ def register_sale_return(
             warehouse_id = item.warehouse_id
             if warehouse_id is not None and warehouse_id <= 0:
                 raise ValueError("sale_return_invalid_warehouse")
+            warehouse: models.Warehouse | None = None
+            if warehouse_id is not None:
+                warehouse = get_warehouse(db, warehouse_id)
+                if warehouse.store_id != sale.store_id:
+                    raise ValueError("sale_return_invalid_warehouse")
             if (
-                warehouse_id is None
+                warehouse is None
                 and disposition in non_sellable_dispositions
                 and settings.defective_returns_store_id
             ):
-                warehouse_id = settings.defective_returns_store_id
-            warehouse_store: models.Store | None = None
-            if warehouse_id is not None:
-                if warehouse_id == sale.store_id:
-                    warehouse_store = sale.store or get_store(db, sale.store_id)
-                else:
-                    warehouse_store = get_store(db, warehouse_id)
+                try:
+                    # defective_returns_store_id es ID de tienda, verificar existencia y obtener warehouse
+                    _ = get_store(db, settings.defective_returns_store_id)
+                    warehouse = _ensure_default_warehouse(
+                        db, settings.defective_returns_store_id)
+                except (LookupError, ValueError):
+                    warehouse = None
+
+            # Detectar si el warehouse destino pertenece a otra tienda
+            destination_store_id_for_movement = None
+            if warehouse and warehouse.store_id != sale.store_id:
+                destination_store_id_for_movement = warehouse.store_id
 
             movement = _register_inventory_movement(
                 db,
@@ -18083,9 +19686,12 @@ def register_sale_return(
                     device,
                     item.reason or reason,
                     disposition=disposition,
-                    warehouse_name=warehouse_store.name if warehouse_store else None,
+                    warehouse_name=warehouse.name if warehouse else None,
                 ),
                 performed_by_id=processed_by_id,
+                source_warehouse_id=device.warehouse_id,
+                destination_store_id=destination_store_id_for_movement,
+                warehouse_id=warehouse.id if warehouse else device.warehouse_id,
                 unit_cost=_quantize_currency(previous_cost),
                 reference_type="sale_return",
                 reference_id=str(sale.id),
@@ -18106,7 +19712,7 @@ def register_sale_return(
                 reason=item.reason,
                 reason_category=item.category,
                 disposition=disposition,
-                warehouse_id=warehouse_id,
+                warehouse_id=warehouse.id if warehouse else device.warehouse_id,
                 processed_by_id=processed_by_id,
                 approved_by_id=approved_supervisor.id if approved_supervisor else None,
             )
@@ -18178,6 +19784,266 @@ def register_sale_return(
             if ledger_entry:
                 _sync_customer_ledger_entry(db, ledger_entry)
     return returns
+
+
+def _get_sale_return(db: Session, return_id: int) -> models.SaleReturn:
+    statement = (
+        select(models.SaleReturn)
+        .options(
+            joinedload(models.SaleReturn.sale).joinedload(models.Sale.store),
+            joinedload(models.SaleReturn.device),
+        )
+        .where(models.SaleReturn.id == return_id)
+    )
+    result = db.scalars(statement).unique().first()
+    if result is None:
+        raise LookupError("sale_return_not_found")
+    return result
+
+
+def _get_purchase_return(db: Session, return_id: int) -> models.PurchaseReturn:
+    statement = (
+        select(models.PurchaseReturn)
+        .options(
+            joinedload(models.PurchaseReturn.order).joinedload(
+                models.PurchaseOrder.store),
+            joinedload(models.PurchaseReturn.device),
+        )
+        .where(models.PurchaseReturn.id == return_id)
+    )
+    result = db.scalars(statement).unique().first()
+    if result is None:
+        raise LookupError("purchase_return_not_found")
+    return result
+
+
+def _append_rma_history(
+    db: Session,
+    *,
+    rma: models.RMARequest,
+    status: models.RMAStatus,
+    message: str | None,
+    created_by_id: int | None,
+) -> models.RMAEvent:
+    event = models.RMAEvent(
+        rma=rma,
+        status=status,
+        message=message,
+        created_by_id=created_by_id,
+    )
+    db.add(event)
+    flush_session(db)
+    return event
+
+
+def _rma_sync_payload(rma: models.RMARequest) -> dict[str, Any]:
+    return {
+        "id": rma.id,
+        "sale_return_id": rma.sale_return_id,
+        "purchase_return_id": rma.purchase_return_id,
+        "store_id": rma.store_id,
+        "device_id": rma.device_id,
+        "status": rma.status.value,
+        "disposition": rma.disposition.value,
+        "notes": rma.notes,
+        "repair_order_id": rma.repair_order_id,
+        "replacement_sale_id": rma.replacement_sale_id,
+    }
+
+
+def create_rma_request(
+    db: Session,
+    payload: schemas.RMACreate,
+    *,
+    created_by_id: int,
+) -> models.RMARequest:
+    sale_return: models.SaleReturn | None = None
+    purchase_return: models.PurchaseReturn | None = None
+    if payload.sale_return_id:
+        sale_return = _get_sale_return(db, payload.sale_return_id)
+        store_id = sale_return.sale.store_id if sale_return.sale else sale_return.warehouse_id
+        device_id = sale_return.device_id
+    else:
+        purchase_return = _get_purchase_return(
+            db, payload.purchase_return_id or 0)
+        order = purchase_return.order
+        store_id = order.store_id if order else purchase_return.warehouse_id
+        device_id = purchase_return.device_id
+
+    if payload.repair_order_id is not None:
+        get_repair_order(db, payload.repair_order_id)
+    if payload.replacement_sale_id is not None:
+        get_sale(db, payload.replacement_sale_id)
+
+    with transactional_session(db):
+        rma = models.RMARequest(
+            sale_return_id=sale_return.id if sale_return else None,
+            purchase_return_id=purchase_return.id if purchase_return else None,
+            store_id=store_id,
+            device_id=device_id,
+            disposition=payload.disposition,
+            notes=payload.notes,
+            repair_order_id=payload.repair_order_id,
+            replacement_sale_id=payload.replacement_sale_id,
+            created_by_id=created_by_id,
+        )
+        db.add(rma)
+        flush_session(db)
+        _append_rma_history(
+            db,
+            rma=rma,
+            status=models.RMAStatus.PENDIENTE,
+            message="RMA creada",
+            created_by_id=created_by_id,
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="rma_request",
+            entity_id=str(rma.id),
+            operation="UPSERT",
+            payload=_rma_sync_payload(rma),
+        )
+        db.refresh(rma)
+        return rma
+
+
+def get_rma_request(db: Session, rma_id: int) -> models.RMARequest:
+    statement = (
+        select(models.RMARequest)
+        .options(
+            joinedload(models.RMARequest.history).joinedload(
+                models.RMAEvent.created_by),
+            joinedload(models.RMARequest.sale_return).joinedload(
+                models.SaleReturn.sale),
+            joinedload(models.RMARequest.purchase_return).joinedload(
+                models.PurchaseReturn.order),
+        )
+        .where(models.RMARequest.id == rma_id)
+    )
+    result = db.scalars(statement).unique().first()
+    if result is None:
+        raise LookupError("rma_request_not_found")
+    return result
+
+
+def _update_rma_status(
+    db: Session,
+    rma_id: int,
+    *,
+    status: models.RMAStatus,
+    notes: str | None,
+    repair_order_id: int | None,
+    replacement_sale_id: int | None,
+    actor_id: int,
+    disposition: schemas.ReturnDisposition | None = None,
+) -> models.RMARequest:
+    rma = get_rma_request(db, rma_id)
+    if rma.status == models.RMAStatus.CERRADA:
+        raise ValueError("rma_request_closed")
+
+    if repair_order_id is not None:
+        get_repair_order(db, repair_order_id)
+    if replacement_sale_id is not None:
+        get_sale(db, replacement_sale_id)
+
+    if status == models.RMAStatus.AUTORIZADA and rma.status != models.RMAStatus.PENDIENTE:
+        raise ValueError("rma_request_invalid_status")
+    if status == models.RMAStatus.EN_PROCESO and rma.status not in (
+        models.RMAStatus.PENDIENTE,
+        models.RMAStatus.AUTORIZADA,
+    ):
+        raise ValueError("rma_request_invalid_status")
+
+    with transactional_session(db):
+        rma.status = status
+        if notes:
+            rma.notes = notes
+        if repair_order_id is not None:
+            rma.repair_order_id = repair_order_id
+        if replacement_sale_id is not None:
+            rma.replacement_sale_id = replacement_sale_id
+        if disposition is not None:
+            rma.disposition = disposition
+
+        if status == models.RMAStatus.AUTORIZADA:
+            rma.authorized_by_id = actor_id
+        elif status == models.RMAStatus.EN_PROCESO:
+            rma.processed_by_id = actor_id
+        elif status == models.RMAStatus.CERRADA:
+            rma.closed_by_id = actor_id
+
+        _append_rma_history(
+            db,
+            rma=rma,
+            status=status,
+            message=notes,
+            created_by_id=actor_id,
+        )
+        enqueue_sync_outbox(
+            db,
+            entity_type="rma_request",
+            entity_id=str(rma.id),
+            operation="UPSERT",
+            payload=_rma_sync_payload(rma),
+        )
+        db.refresh(rma)
+        return rma
+
+
+def authorize_rma_request(
+    db: Session,
+    rma_id: int,
+    *,
+    notes: str | None,
+    actor_id: int,
+) -> models.RMARequest:
+    return _update_rma_status(
+        db,
+        rma_id,
+        status=models.RMAStatus.AUTORIZADA,
+        notes=notes,
+        repair_order_id=None,
+        replacement_sale_id=None,
+        actor_id=actor_id,
+    )
+
+
+def process_rma_request(
+    db: Session,
+    rma_id: int,
+    *,
+    payload: schemas.RMAUpdate,
+    actor_id: int,
+) -> models.RMARequest:
+    return _update_rma_status(
+        db,
+        rma_id,
+        status=models.RMAStatus.EN_PROCESO,
+        notes=payload.notes,
+        repair_order_id=payload.repair_order_id,
+        replacement_sale_id=payload.replacement_sale_id,
+        actor_id=actor_id,
+        disposition=payload.disposition,
+    )
+
+
+def close_rma_request(
+    db: Session,
+    rma_id: int,
+    *,
+    payload: schemas.RMAUpdate,
+    actor_id: int,
+) -> models.RMARequest:
+    return _update_rma_status(
+        db,
+        rma_id,
+        status=models.RMAStatus.CERRADA,
+        notes=payload.notes,
+        repair_order_id=payload.repair_order_id,
+        replacement_sale_id=payload.replacement_sale_id,
+        actor_id=actor_id,
+        disposition=payload.disposition,
+    )
 
 
 def list_operations_history(
@@ -18377,6 +20243,13 @@ def list_cash_sessions(
     return list(db.scalars(statement).unique())
 
 
+def count_cash_sessions(db: Session, *, store_id: int) -> int:
+    statement = select(func.count()).select_from(models.CashRegisterSession).where(
+        models.CashRegisterSession.store_id == store_id
+    )
+    return int(db.scalar(statement) or 0)
+
+
 def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession:
     statement = select(models.CashRegisterSession).where(
         models.CashRegisterSession.id == session_id)
@@ -18384,6 +20257,21 @@ def get_cash_session(db: Session, session_id: int) -> models.CashRegisterSession
         return db.scalars(statement).one()
     except NoResultFound as exc:
         raise LookupError("cash_session_not_found") from exc
+
+
+def get_open_cash_session(db: Session, *, store_id: int) -> models.CashRegisterSession:
+    statement = (
+        select(models.CashRegisterSession)
+        .where(
+            models.CashRegisterSession.store_id == store_id,
+            models.CashRegisterSession.status == models.CashSessionStatus.ABIERTO,
+        )
+        .order_by(models.CashRegisterSession.opened_at.desc())
+    )
+    session = db.scalars(statement).first()
+    if session is None:
+        raise LookupError("cash_session_not_found")
+    return session
 
 
 # // [PACK34-lookup]
@@ -18399,6 +20287,20 @@ def get_last_cash_session_for_store(
     if session is None:
         raise LookupError("cash_session_not_found")
     return session
+
+
+def paginate_cash_sessions(
+    db: Session,
+    *,
+    store_id: int,
+    page: int,
+    size: int,
+) -> tuple[int, list[models.CashRegisterSession]]:
+    total = count_cash_sessions(db, store_id=store_id)
+    offset = max(page - 1, 0) * size
+    sessions = list_cash_sessions(
+        db, store_id=store_id, limit=size, offset=offset)
+    return total, sessions
 
 
 def open_cash_session(
@@ -18535,6 +20437,7 @@ def close_cash_session(
     session.reconciliation_notes = payload.reconciliation_notes
 
     if session.difference_amount != Decimal("0") and not payload.difference_reason:
+        # Requerir motivo explícito cuando hay diferencia
         raise ValueError("difference_reason_required")
     session.difference_reason = payload.difference_reason
 
@@ -18666,7 +20569,8 @@ def get_pos_config(db: Session, store_id: int) -> models.POSConfig:
     else:
         db.refresh(config)
     normalized_hardware = _normalize_hardware_settings(
-        config.hardware_settings if isinstance(config.hardware_settings, dict) else None
+        config.hardware_settings if isinstance(
+            config.hardware_settings, dict) else None
     )
     if config.hardware_settings != normalized_hardware:
         with transactional_session(db):
@@ -18703,6 +20607,11 @@ def update_pos_config(
             config.hardware_settings = _normalize_hardware_settings(
                 config.hardware_settings
             )
+        # Persistir el tipo de documento por defecto dentro de hardware_settings (no hay columna dedicada)
+        if payload.default_document_type:
+            hw = dict(config.hardware_settings or {})
+            hw["default_document_type"] = payload.default_document_type
+            config.hardware_settings = hw
         db.add(config)
         flush_session(db)
         db.refresh(config)
@@ -18956,6 +20865,37 @@ def register_pos_sale(
         tax_rate=tax_value,
         reason=reason,
     )
+    # Reasignar la bitácora de creación a entidad POS para evitar duplicidad con 'sale'
+    with transactional_session(db):
+        audit_stmt = (
+            select(models.AuditLog)
+            .where(
+                models.AuditLog.action == "sale_registered",
+                models.AuditLog.entity_type == "sale",
+                models.AuditLog.entity_id == str(sale.id),
+            )
+            .order_by(models.AuditLog.created_at.desc())
+        )
+        audit_entry = db.scalars(audit_stmt).first()
+        if audit_entry is not None:
+            audit_entry.entity_type = "pos_sale"
+            db.add(audit_entry)
+            flush_session(db)
+    # Asignar tipo y número de documento para POS
+    hw = config.hardware_settings if isinstance(
+        config.hardware_settings, dict) else {}
+    default_doc = str(hw.get("default_document_type")
+                      or "TICKET").strip().upper() or "TICKET"
+    try:
+        doc_enum = models.POSDocumentType(default_doc)
+    except ValueError:
+        doc_enum = models.POSDocumentType.TICKET
+    document_number = f"{config.invoice_prefix}-{sale.id:06d}"
+    with transactional_session(db):
+        sale.document_type = doc_enum
+        sale.document_number = document_number
+        db.add(sale)
+        flush_session(db)
 
     warnings: list[str] = []
     loyalty_amount = Decimal("0")
@@ -19065,7 +21005,7 @@ def register_pos_sale(
                 )
                 store_credit_redemptions.extend(redemptions)
                 warnings.append(
-                    f"Se aplicaron notas de crédito por ${_format_currency(store_credit_amount)}"
+                    f"Se aplicó nota de crédito por ${_format_currency(store_credit_amount)}"
                 )
 
     loyalty_summary = apply_loyalty_for_sale(
@@ -19078,7 +21018,11 @@ def register_pos_sale(
 
     payments_applied_total = Decimal("0")
     payment_outcomes: list[CustomerPaymentOutcome] = []
-    if payload.payments and sale.customer_id:
+    if (
+        payload.payments
+        and sale.customer_id
+        and sale.payment_method == models.PaymentMethod.CREDITO
+    ):
         for payment in payload.payments:
             payment_amount = _to_decimal(payment.amount).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -19090,6 +21034,10 @@ def register_pos_sale(
                 if isinstance(payment.method, models.PaymentMethod)
                 else str(payment.method).strip()
             )
+            if method_value == models.PaymentMethod.PUNTOS.value:
+                # La redención de puntos se maneja por el módulo de lealtad y
+                # no debe registrar abonos sobre la deuda del cliente.
+                continue
             if not method_value:
                 method_value = "manual"
             note_source = payload.notes or "Abono registrado desde POS"
@@ -19177,7 +21125,7 @@ def register_pos_receipt_download(
     _log_action(
         db,
         action="pos_receipt_downloaded",
-        entity_type="sale",
+        entity_type="pos_receipt",
         entity_id=str(sale_id),
         performed_by_id=performed_by_id,
         details=detalles,
@@ -19564,7 +21512,8 @@ def create_dte_authorization(
     if store_id is None:
         statement = statement.where(models.DTEAuthorization.store_id.is_(None))
     else:
-        statement = statement.where(models.DTEAuthorization.store_id == store_id)
+        statement = statement.where(
+            models.DTEAuthorization.store_id == store_id)
 
     conflict = db.scalars(statement).first()
     if conflict:
@@ -19873,5 +21822,148 @@ def list_dte_dispatch_queue(
         .order_by(models.DTEDispatchQueue.created_at.desc())
     )
     if statuses:
-        statement = statement.where(models.DTEDispatchQueue.status.in_(tuple(statuses)))
+        statement = statement.where(
+            models.DTEDispatchQueue.status.in_(tuple(statuses)))
     return list(db.scalars(statement))
+
+
+def create_support_feedback(
+    db: Session, *, payload: schemas.FeedbackCreate, user_id: int | None = None
+) -> models.SupportFeedback:
+    entry = models.SupportFeedback(
+        user_id=user_id,
+        contact=payload.contact,
+        module=payload.module,
+        category=payload.category,
+        priority=payload.priority,
+        status=models.FeedbackStatus.ABIERTO,
+        title=payload.title,
+        description=payload.description,
+        metadata_json=payload.metadata,
+        usage_context=payload.usage_context,
+    )
+    db.add(entry)
+    flush_session(db, entry)
+    db.refresh(entry)
+    return entry
+
+
+def update_support_feedback_status(
+    db: Session,
+    *,
+    tracking_id: str,
+    status: models.FeedbackStatus,
+    resolution_notes: str | None = None,
+) -> models.SupportFeedback | None:
+    entry = db.scalar(
+        select(models.SupportFeedback).where(
+            models.SupportFeedback.tracking_id == tracking_id
+        )
+    )
+    if entry is None:
+        return None
+
+    entry.status = status
+    entry.resolution_notes = resolution_notes
+    entry.updated_at = datetime.utcnow()
+    db.add(entry)
+    db.flush()
+    db.refresh(entry)
+    return entry
+
+
+def support_feedback_metrics(
+    db: Session, *, days: int = 30
+) -> schemas.FeedbackMetrics:
+    def _group_count(column) -> dict[str, int]:
+        results: dict[str, int] = {}
+        rows = db.execute(
+            select(column, func.count(models.SupportFeedback.id)).group_by(column)
+        ).all()
+        for value, count in rows:
+            key = value.value if hasattr(value, "value") else str(value)
+            results[key] = int(count)
+        return results
+
+    total_feedback = int(
+        db.scalar(select(func.count(models.SupportFeedback.id))) or 0
+    )
+    by_category = _group_count(models.SupportFeedback.category)
+    by_priority = _group_count(models.SupportFeedback.priority)
+    by_status = _group_count(models.SupportFeedback.status)
+
+    recent_feedback = [
+        schemas.FeedbackSummary.model_validate(row)
+        for row in db.scalars(
+            select(models.SupportFeedback)
+            .order_by(models.SupportFeedback.created_at.desc())
+            .limit(10)
+        )
+    ]
+
+    since = datetime.utcnow() - timedelta(days=days)
+    usage_rows = db.execute(
+        select(models.AuditUI.module, func.count(models.AuditUI.id))
+        .where(models.AuditUI.ts >= since)
+        .group_by(models.AuditUI.module)
+    ).all()
+    usage_map = {module: int(count) for module, count in usage_rows}
+
+    open_rows = db.execute(
+        select(models.SupportFeedback.module,
+               func.count(models.SupportFeedback.id))
+        .where(
+            models.SupportFeedback.status.in_(
+                (models.FeedbackStatus.ABIERTO, models.FeedbackStatus.EN_PROGRESO)
+            )
+        )
+        .group_by(models.SupportFeedback.module)
+    ).all()
+    open_map = {module: int(count) for module, count in open_rows}
+
+    priority_weights: dict[models.FeedbackPriority, float] = {
+        models.FeedbackPriority.BAJA: 1.0,
+        models.FeedbackPriority.MEDIA: 1.4,
+        models.FeedbackPriority.ALTA: 2.0,
+        models.FeedbackPriority.CRITICA: 3.2,
+    }
+    status_weights: dict[models.FeedbackStatus, float] = {
+        models.FeedbackStatus.ABIERTO: 1.0,
+        models.FeedbackStatus.EN_PROGRESO: 0.85,
+        models.FeedbackStatus.RESUELTO: 0.3,
+        models.FeedbackStatus.DESCARTADO: 0.05,
+    }
+
+    module_scores: dict[str, float] = {}
+    for record in db.scalars(select(models.SupportFeedback)).all():
+        base_score = priority_weights.get(record.priority, 1.0)
+        status_multiplier = status_weights.get(record.status, 1.0)
+        module_scores[record.module] = module_scores.get(record.module, 0.0) + (
+            base_score * status_multiplier
+        )
+
+    hotspots = [
+        schemas.FeedbackUsageHotspot(
+            module=module,
+            interactions_last_30d=usage_map.get(module, 0),
+            open_feedback=open_map.get(module, 0),
+            priority_score=round(
+                score * (1 + math.log1p(usage_map.get(module, 0))), 2
+            ),
+        )
+        for module, score in module_scores.items()
+    ]
+    hotspots.sort(key=lambda item: item.priority_score, reverse=True)
+
+    return schemas.FeedbackMetrics(
+        totals={"feedback": total_feedback},
+        by_category={schemas.FeedbackCategory(
+            key): value for key, value in by_category.items()},
+        by_priority={
+            schemas.FeedbackPriority(key): value for key, value in by_priority.items()
+        },
+        by_status={schemas.FeedbackStatus(
+            key): value for key, value in by_status.items()},
+        hotspots=hotspots,
+        recent_feedback=recent_feedback,
+    )

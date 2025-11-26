@@ -11,9 +11,7 @@ const registerSaleReturnMock = vi.hoisted(() => vi.fn());
 const listReturnsMock = vi.hoisted(() => vi.fn());
 const searchSalesHistoryMock = vi.hoisted(() => vi.fn());
 
-const apiModuleId = vi.hoisted(
-  () => new URL("../../../../api.ts", import.meta.url).pathname,
-);
+const apiModuleId = vi.hoisted(() => new URL("../../../../api.ts", import.meta.url).pathname);
 
 vi.mock("../../../../api", () => ({
   __esModule: true,
@@ -60,7 +58,7 @@ describe("Returns", () => {
           device_id: 5,
           device_name: "Lectura",
           quantity: 1,
-          reason: "Cliente arrepentido",
+          reason: "Cambio del cliente - color incorrecto",
           reason_category: "cliente",
           disposition: "vendible",
           warehouse_id: null,
@@ -84,7 +82,7 @@ describe("Returns", () => {
           device_id: 9,
           device_name: "Terminal",
           quantity: 2,
-          reason: "Proveedor defectuoso",
+          reason: "Falla de calidad - sin carga",
           reason_category: "defecto",
           disposition: "defectuoso",
           warehouse_id: 4,
@@ -124,9 +122,12 @@ describe("Returns", () => {
       },
     ];
 
-    render(
-      <Returns token="test-token" stores={stores} defaultStoreId={1} />,
-    );
+    render(<Returns token="test-token" stores={stores} defaultStoreId={1} />);
+
+    const [purchaseReasonInput, saleReasonInput] = screen.getAllByLabelText("Motivo corporativo");
+
+    expect(purchaseReasonInput).toHaveValue("Falla de calidad");
+    expect(saleReasonInput).toHaveValue("Cambio del cliente");
 
     await waitFor(() => {
       expect(listReturnsMock).toHaveBeenCalledWith("test-token", {
@@ -135,9 +136,7 @@ describe("Returns", () => {
       });
     });
 
-    expect(
-      await screen.findByText("Historial de devoluciones"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Historial de devoluciones")).toBeInTheDocument();
     expect(screen.getByText("Total: 2")).toBeInTheDocument();
     expect(screen.getByText("Clientes: 1")).toBeInTheDocument();
     expect(screen.getByText("Proveedores: 1")).toBeInTheDocument();
@@ -145,11 +144,12 @@ describe("Returns", () => {
     expect(screen.getByText("EFECTIVO: $120.00")).toBeInTheDocument();
     expect(screen.getByText("Cambio del cliente: 1")).toBeInTheDocument();
     expect(screen.getByText("Falla de calidad: 1")).toBeInTheDocument();
-    expect(screen.getByText("Cliente arrepentido")).toBeInTheDocument();
-    expect(screen.getByText("Proveedor defectuoso")).toBeInTheDocument();
-    expect(screen.getByText("Cambio del cliente")).toBeInTheDocument();
-    expect(screen.getByText("Falla de calidad")).toBeInTheDocument();
-    expect(screen.getByText("Vendible")).toBeInTheDocument();
+    expect(screen.getByText("Cambio del cliente - color incorrecto")).toBeInTheDocument();
+    expect(screen.getByText("Falla de calidad - sin carga")).toBeInTheDocument();
+    // Puede aparecer en selectores y en la tabla; validamos presencia general
+    expect(screen.getAllByText("Cambio del cliente").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Falla de calidad").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Vendible").length).toBeGreaterThan(0);
     expect(screen.getByText("Almacén QA")).toBeInTheDocument();
     expect(screen.getAllByText("Cliente")).not.toHaveLength(0);
   });
@@ -170,9 +170,7 @@ describe("Returns", () => {
       },
     ];
 
-    render(
-      <Returns token="token-refresh" stores={stores} defaultStoreId={3} />,
-    );
+    render(<Returns token="token-refresh" stores={stores} defaultStoreId={3} />);
 
     const refreshButton = await screen.findByRole("button", {
       name: "Actualizar",

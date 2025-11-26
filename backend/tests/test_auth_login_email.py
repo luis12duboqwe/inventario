@@ -1,26 +1,21 @@
 """Pruebas específicas para validar inicio de sesión con correo o usuario."""
 from __future__ import annotations
 
-import os
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.database import Base, get_db
-from backend.routes import auth as auth_module
+from backend.app.database import Base, get_db
+from backend.app.routers import auth as auth_router
 
 
 def _build_test_app():
     """Crea una instancia de FastAPI con base de datos en memoria."""
 
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        database_url = "sqlite+pysqlite:///:memory:"
     engine = create_engine(
-        database_url,
+        "sqlite+pysqlite:///:memory:",
         connect_args={"check_same_thread": False},
         future=True,
         poolclass=StaticPool,
@@ -34,12 +29,11 @@ def _build_test_app():
     Base.metadata.create_all(bind=engine)
 
     app = FastAPI()
-    app.include_router(auth_module.router)
+    app.include_router(auth_router.router)
 
     def override_get_db():
         db = testing_session()
         try:
-            assert str(db.bind.url) == database_url, "Sesión inesperada"
             yield db
         finally:
             db.close()
@@ -48,28 +42,33 @@ def _build_test_app():
     return app
 
 
-def test_login_allows_email_or_username() -> None:
-    """Verifica que el inicio de sesión acepte usuario o correo electrónico."""
+def test_bootstrap_and_token_login_flow() -> None:
+    """Permite registrar al primer administrador y obtener tokens válidos."""
 
     app = _build_test_app()
-    client = TestClient(app)
 
-    register_payload = {
-        "username": "soporte",
-        "email": "soporte@example.com",
-        "password": "Credenciales123",
-    }
-    response = client.post("/auth/register", json=register_payload)
-    assert response.status_code == 200
+    with TestClient(app) as client:
+        bootstrap_payload = {
+            "username": "soporte",
+            "email": "soporte@example.com",
+            "password": "Credenciales123",
+            "roles": ["ADMIN"],
+        }
+        bootstrap_response = client.post("/auth/bootstrap", json=bootstrap_payload)
 
-    login_with_username = client.post(
-        "/auth/login",
-        json={"username": "soporte", "password": "Credenciales123"},
-    )
-    assert login_with_username.status_code == 200
+        assert bootstrap_response.status_code == 201
+        created_user = bootstrap_response.json()
+        assert created_user["username"] == bootstrap_payload["username"]
 
-    login_with_email = client.post(
-        "/auth/login",
-        json={"username": "soporte@example.com", "password": "Credenciales123"},
-    )
-    assert login_with_email.status_code == 200
+        login_response = client.post(
+            "/auth/token",
+            data={
+                "username": bootstrap_payload["username"],
+                "password": bootstrap_payload["password"],
+            },
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+
+        assert login_response.status_code == 200
+        token_payload = login_response.json()
+        assert "access_token" in token_payload

@@ -87,7 +87,7 @@ function Customers({ token }: Props) {
   const invoicesList = Array.isArray(recentInvoices) ? recentInvoices : [];
 
   return (
-    <section className="customers-module">
+    <section className="customers-module" data-testid="customers-list">
       <CustomersToolbar
         error={error}
         message={message}

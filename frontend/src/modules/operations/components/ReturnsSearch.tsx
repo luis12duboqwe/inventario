@@ -12,6 +12,8 @@ type SegmentKey = keyof SaleHistorySearchResponse;
 
 const DEFAULT_LIMIT = 25;
 
+const initialFilters = { ticket: "", date: "", customer: "", qr: "" } as const;
+
 const SEGMENTS: Array<{
   key: SegmentKey;
   title: string;
@@ -53,24 +55,60 @@ function resolveCustomerLabel(sale: Sale): string | null {
 }
 
 function formatCurrency(value: number): string {
-  return value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return value.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function normalizeQrValue(value: string): string {
+  if (!value) return "";
+  const unescaped = value.replace(/\\\{/g, "{").replace(/\\\}/g, "}");
+  return unescaped.replace(/\s+/g, " ").trim();
+}
+
+function normalizeFilters(current: typeof initialFilters) {
+  const ticket = current.ticket.trim();
+  const customer = current.customer.replace(/\s+/g, " ").trim();
+  const qr = normalizeQrValue(current.qr);
+
+  return {
+    ticket,
+    date: current.date,
+    customer,
+    qr,
+  };
 }
 
 export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
-  const [filters, setFilters] = useState({ ticket: "", date: "", customer: "", qr: "" });
+  const [filters, setFilters] = useState(initialFilters);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<SaleHistorySearchResponse | null>(null);
 
+  const normalizedFilters = useMemo(() => normalizeFilters(filters), [filters]);
+
   const hasFilters = useMemo(() => {
-    return Boolean(filters.ticket.trim() || filters.date || filters.customer.trim() || filters.qr.trim());
-  }, [filters]);
+    return Boolean(
+      normalizedFilters.ticket || normalizedFilters.date || normalizedFilters.customer || normalizedFilters.qr,
+    );
+  }, [normalizedFilters]);
 
   const handleChange = (field: keyof typeof filters) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const { value } = event.currentTarget;
       setFilters((current) => ({ ...current, [field]: value }));
     };
+
+  const handleQrChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const { value } = event.currentTarget;
+    const normalizedValue = normalizeQrValue(value);
+    setFilters((current) => ({ ...current, qr: normalizedValue }));
+  };
+
+  const handleQrPaste: React.ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
+    const pasted = event.clipboardData?.getData("text") ?? "";
+    const normalizedValue = normalizeQrValue(pasted);
+    event.preventDefault();
+    setFilters((current) => ({ ...current, qr: normalizedValue }));
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -82,10 +120,10 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
     setLoading(true);
     try {
       const response = await searchSalesHistory(token, {
-        ticket: filters.ticket.trim() || undefined,
-        date: filters.date || undefined,
-        customer: filters.customer.trim() || undefined,
-        qr: filters.qr.trim() || undefined,
+        ticket: normalizedFilters.ticket || undefined,
+        date: normalizedFilters.date || undefined,
+        customer: normalizedFilters.customer || undefined,
+        qr: normalizedFilters.qr || undefined,
         limit,
       });
       setResults(response);
@@ -98,7 +136,7 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
   };
 
   const handleReset = () => {
-    setFilters({ ticket: "", date: "", customer: "", qr: "" });
+    setFilters(initialFilters);
     setResults(null);
     setError(null);
   };
@@ -168,7 +206,8 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
           <textarea
             rows={3}
             value={filters.qr}
-            onChange={handleChange("qr")}
+            onChange={handleQrChange}
+            onPaste={handleQrPaste}
             placeholder="Escanea o pega el código QR impreso en el ticket."
           />
         </label>

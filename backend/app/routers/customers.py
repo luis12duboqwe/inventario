@@ -1,11 +1,12 @@
 """Router de clientes corporativos."""
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
-from ..core.roles import GESTION_ROLES
+from ..core.roles import ADMIN, GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
@@ -13,6 +14,11 @@ from ..services import credit, customer_segments, pos_receipts
 from ..services import credit, customer_reports, pos_receipts
 
 router = APIRouter(prefix="/customers", tags=["customers"])
+
+
+def _is_superadmin(user: Any, confirmation: bool) -> bool:
+    role = str(getattr(user, "rol", "")).upper()
+    return confirmation and role == ADMIN
 
 
 @router.get("/", response_model=list[schemas.CustomerResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -62,17 +68,17 @@ def list_customers_endpoint(
         detail = str(exc)
         if detail == "invalid_customer_status":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Estado de cliente inválido.",
             ) from exc
         if detail == "invalid_customer_type":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de cliente inválido.",
             ) from exc
         if detail == "customer_tax_id_invalid":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El RTN del cliente debe contener 14 dígitos (formato ####-####-######).",
             ) from exc
         raise
@@ -126,12 +132,12 @@ def export_customer_segment_endpoint(
         detail = str(exc)
         if detail == "unknown_segment":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Segmento desconocido.",
             ) from exc
         if detail == "unsupported_format":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Formato de exportación no soportado.",
             ) from exc
         raise
@@ -163,17 +169,17 @@ def create_customer_endpoint(
             ) from exc
         if str(exc) == "invalid_customer_status":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Estado de cliente inválido.",
             ) from exc
         if str(exc) == "invalid_customer_type":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de cliente inválido.",
             ) from exc
         if str(exc) == "customer_tax_id_invalid":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El RTN del cliente debe contener 14 dígitos (formato ####-####-######).",
             ) from exc
         if str(exc) == "customer_tax_id_duplicate":
@@ -183,17 +189,17 @@ def create_customer_endpoint(
             ) from exc
         if str(exc) == "customer_credit_limit_negative":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El límite de crédito debe ser mayor o igual a cero.",
             ) from exc
         if str(exc) == "customer_outstanding_debt_negative":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El saldo pendiente no puede ser negativo.",
             ) from exc
         if str(exc) == "customer_outstanding_exceeds_limit":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El saldo pendiente no puede exceder el límite de crédito configurado.",
             ) from exc
         raise
@@ -233,17 +239,17 @@ def update_customer_endpoint(
         detail = str(exc)
         if detail == "invalid_customer_status":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Estado de cliente inválido.",
             ) from exc
         if detail == "invalid_customer_type":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de cliente inválido.",
             ) from exc
         if detail == "customer_tax_id_invalid":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El RTN del cliente debe contener 14 dígitos (formato ####-####-######).",
             ) from exc
         if detail == "customer_tax_id_duplicate":
@@ -253,17 +259,17 @@ def update_customer_endpoint(
             ) from exc
         if detail == "customer_credit_limit_negative":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El límite de crédito debe ser mayor o igual a cero.",
             ) from exc
         if detail == "customer_outstanding_debt_negative":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El saldo pendiente no puede ser negativo.",
             ) from exc
         if detail == "customer_outstanding_exceeds_limit":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El saldo pendiente no puede exceder el límite de crédito configurado.",
             ) from exc
         raise
@@ -280,12 +286,22 @@ def delete_customer_endpoint(
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
+    hard_delete: bool = Query(
+        default=False,
+        description="Eliminación definitiva solo con confirmación de superadmin",
+    ),
+    superadmin_confirmed: bool = Query(
+        default=False,
+        description="Confirma que un superadministrador aprobó la eliminación",
+    ),
 ):
     try:
         crud.delete_customer(
             db,
             customer_id,
             performed_by_id=current_user.id if current_user else None,
+            allow_hard_delete=hard_delete,
+            is_superadmin=_is_superadmin(current_user, superadmin_confirmed),
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente no encontrado") from exc
@@ -375,12 +391,12 @@ def register_customer_payment_endpoint(
             ) from exc
         if detail == "customer_payment_invalid_amount":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El monto del pago es inválido.",
             ) from exc
         if detail == "customer_payment_sale_mismatch":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="La venta indicada no corresponde al cliente.",
             ) from exc
         raise
@@ -419,7 +435,7 @@ def create_customer_privacy_request_endpoint(
     except ValueError as exc:
         if str(exc) == "privacy_consent_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes proporcionar al menos un consentimiento válido.",
             ) from exc
         raise

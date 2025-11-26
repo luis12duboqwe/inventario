@@ -287,13 +287,13 @@ def synchronize_from_yaml(
     except ValueError as exc:
         if str(exc).startswith("config_sync_yaml_invalid"):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Los archivos YAML contienen errores de sintaxis o estructura.",
             ) from exc
         raise
     except ValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Los archivos YAML contienen datos inválidos.",
         ) from exc
 

@@ -138,7 +138,7 @@ function normalizeNumber(value: string): number | null {
 }
 
 function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value);
+  return new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }).format(value);
 }
 
 function PriceLists(): JSX.Element {

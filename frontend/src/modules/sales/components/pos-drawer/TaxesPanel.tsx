@@ -9,7 +9,7 @@ export type POSTaxesPanelProps = {
   rows?: POSTaxRow[];
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function TaxesPanel({ rows }: POSTaxesPanelProps) {
   const data = Array.isArray(rows) ? rows : [];

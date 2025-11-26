@@ -921,6 +921,11 @@ pytest
 
 Todas las suites deben finalizar en verde para considerar estable una nueva iteración.
 
+### Pruebas de carga POS (Locust/JMeter)
+
+- Los escenarios de carga pico viven en `tools/performance/` e incluyen `locustfile.py` y el plan `jmeter_pos_peak.jmx` con cabeceras `Authorization` y `X-Reason` precargadas para los endpoints `/pos/cash/history/paginated` y `/pos/cash/recover`.
+- El endpoint `POST /pos/cash/register/{session_id}/report/async` permite encolar exportes PDF de cierres de caja (con `run_inline` para entornos de prueba) y consultar su estado en `/pos/cash/report/jobs/{job_id}` sin bloquear los threads de atención.
+
 ### Automatización local de pruebas antes de cada commit
 
 `AGENTS.md` en la raíz exige ejecutar `pytest` y las pruebas de frontend antes de entregar cambios. Para que este proceso ocurra de manera automática en cada commit relevante se añadió un hook de Git en `.githooks/pre-commit` que:

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, beforeEach, expect, it, vi } from "vitest";
 import GlobalMetrics from "../GlobalMetrics";
-import type { InventoryMetrics } from "../../../../api";
+import type { DashboardAuditAlerts, InventoryMetrics } from "../../../../api";
 
 type DashboardStub = {
   enablePriceLists: boolean;
@@ -15,7 +15,7 @@ const dashboardState: DashboardStub = {
   enablePriceLists: false,
   metrics: null,
   formatCurrency: (value: number) =>
-    new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value),
+    new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }).format(value),
   loading: false,
 };
 
@@ -33,6 +33,15 @@ const sampleMetrics: InventoryMetrics = {
     total_stock: 340,
     open_repairs: 3,
     gross_profit: 28000,
+  },
+  accounts_receivable: {
+    total_outstanding_debt: 18000,
+    customers_with_debt: 3,
+    moroso_flagged: 1,
+    top_debtors: [
+      { customer_id: 301, name: "Cliente con mora", outstanding_debt: 12000, available_credit: 5000 },
+      { customer_id: 302, name: "Cliente al día", outstanding_debt: 6000, available_credit: null },
+    ],
   },
   sales_insights: {
     average_ticket: 6944.44,
@@ -103,6 +112,35 @@ const sampleMetrics: InventoryMetrics = {
   },
 };
 
+const auditAlertsMock: DashboardAuditAlerts = {
+  total: 4,
+  critical: 1,
+  warning: 2,
+  info: 1,
+  has_alerts: true,
+  pending_count: 3,
+  acknowledged_count: 1,
+  highlights: [
+    {
+      id: "sync-1",
+      action: "sync_outbox_backlog",
+      created_at: "2025-03-01T09:20:00.000Z",
+      severity: "warning",
+      entity_type: "sync_outbox",
+      entity_id: "101",
+    },
+  ],
+  acknowledged_entities: [
+    {
+      entity_type: "audit_log",
+      entity_id: "9001",
+      acknowledged_at: "2025-03-01T07:00:00.000Z",
+      acknowledged_by_name: "Seguridad", // [PACK36-tests]
+      note: "Revisión preliminar",
+    },
+  ],
+};
+
 describe("GlobalMetrics", () => {
   beforeEach(() => {
     dashboardState.metrics = sampleMetrics;
@@ -122,7 +160,9 @@ describe("GlobalMetrics", () => {
       "href",
       "/dashboard/security"
     );
-    expect(screen.getByText(/\$6,944\.44/)).toBeInTheDocument();
+    expect(screen.getByText(/Cartera por cobrar/i)).toBeInTheDocument();
+    expect(screen.getByText(/Cliente con mora/i)).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("6,944.44"))).toBeInTheDocument();
     expect(screen.getByText(/Cliente Corporativo/i)).toBeInTheDocument();
   });
 
@@ -132,11 +172,16 @@ describe("GlobalMetrics", () => {
     dashboardState.loading = false;
     const { container } = render(
       <MemoryRouter>
-        <GlobalMetrics />
+        <GlobalMetrics auditAlertsMock={auditAlertsMock} />
       </MemoryRouter>
     );
 
     expect(screen.getByText(/Sin métricas disponibles por el momento/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Abrir módulo de Seguridad/i })).toHaveAttribute(
+      "href",
+      "/dashboard/security"
+    );
+    expect(screen.getByText(/Existen 3 alertas pendientes en Seguridad/i)).toBeInTheDocument();
     expect(container.querySelector(".metric-empty")).not.toBeNull();
   });
 

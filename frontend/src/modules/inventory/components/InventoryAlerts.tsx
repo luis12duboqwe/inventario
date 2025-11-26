@@ -47,12 +47,50 @@ function InventoryAlerts({
   formatCurrency,
   isLoading = false,
 }: InventoryAlertsProps) {
+  const safeMetric = (value: number | null | undefined): number =>
+    Number.isFinite(value) ? (value as number) : 0;
+
+  const safeSummary = useMemo(
+    () => ({
+      total: safeMetric(summary?.total),
+      critical: safeMetric(summary?.critical),
+      warning: safeMetric(summary?.warning),
+      notice: safeMetric(summary?.notice),
+    }),
+    [summary],
+  );
+
   const minThreshold = settings.minimum_threshold;
   const maxThreshold = settings.maximum_threshold;
 
+  const normalizedItems = useMemo(
+    () =>
+      items.map((item) => {
+        const projectedDays = Number.isFinite(item.projected_days)
+          ? (item.projected_days as number)
+          : null;
+        const averageDailySales = Number.isFinite(item.average_daily_sales)
+          ? (item.average_daily_sales as number)
+          : null;
+        return {
+          ...item,
+          severity: item.severity ?? "notice",
+          quantity: safeMetric(item.quantity),
+          inventory_value: safeMetric(item.inventory_value),
+          minimum_stock: safeMetric(item.minimum_stock),
+          reorder_point: safeMetric(item.reorder_point),
+          reorder_gap: safeMetric(item.reorder_gap),
+          projected_days: projectedDays,
+          average_daily_sales: averageDailySales,
+          insights: Array.isArray(item.insights) ? item.insights : [],
+        } satisfies InventoryAlertItem;
+      }),
+    [items],
+  );
+
   const sortedItems = useMemo(
     () =>
-      [...items].sort((a, b) => {
+      [...normalizedItems].sort((a, b) => {
         if (a.severity === b.severity) {
           return a.quantity - b.quantity;
         }
@@ -70,7 +108,7 @@ function InventoryAlerts({
         }
         return a.quantity - b.quantity;
       }),
-    [items],
+    [normalizedItems],
   );
 
   const handleChange = (value: number) => {
@@ -96,10 +134,10 @@ function InventoryAlerts({
           </p>
         </div>
         <div className="alert-summary" aria-live="polite">
-          <span className="pill accent">Total: {summary.total}</span>
-          <span className={pillTone.critical}>Críticas: {summary.critical}</span>
-          <span className={pillTone.warning}>Advertencias: {summary.warning}</span>
-          <span className={pillTone.notice}>Seguimiento: {summary.notice}</span>
+          <span className="pill accent">Total: {safeSummary.total}</span>
+          <span className={pillTone.critical}>Críticas: {safeSummary.critical}</span>
+          <span className={pillTone.warning}>Advertencias: {safeSummary.warning}</span>
+          <span className={pillTone.notice}>Seguimiento: {safeSummary.notice}</span>
         </div>
       </header>
 
@@ -183,9 +221,9 @@ function InventoryAlerts({
                   ) : (
                     <span className="stock-tag tag-forecast notice">Sin pronóstico</span>
                   )}
-                  {item.average_daily_sales !== null ? (
+                  {Number.isFinite(item.average_daily_sales) ? (
                     <span className="stock-tag tag-avg">
-                      Venta diaria {item.average_daily_sales.toFixed(1)} uds
+                      Venta diaria {(item.average_daily_sales as number).toFixed(1)} uds
                     </span>
                   ) : null}
                   {item.insights.map((insight, index) => (

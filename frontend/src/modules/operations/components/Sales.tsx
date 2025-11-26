@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Customer, Device, PosConfig, Sale, SaleCreateInput, Store, UserAccount } from "../../../api";
+import type {
+  Customer,
+  Device,
+  PosConfig,
+  Sale,
+  SaleCreateInput,
+  Store,
+  UserAccount,
+} from "../../../api";
 import {
   createSale,
   downloadPosReceipt,
@@ -40,20 +48,18 @@ const paymentLabels: Record<Sale["payment_method"], string> = {
   CREDITO: "Crédito",
 };
 
-const currencyFormatter = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currencyFormatter = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Props) {
-  const [saleForm, setSaleForm] = useState<SaleFormState>(
-    () => ({
-      storeId: defaultStoreId ?? null,
-      paymentMethod: "EFECTIVO",
-      discountPercent: 0,
-      customerId: null,
-      customerName: "",
-      notes: "",
-      reason: "Venta mostrador",
-    })
-  );
+  const [saleForm, setSaleForm] = useState<SaleFormState>(() => ({
+    storeId: defaultStoreId ?? null,
+    paymentMethod: "EFECTIVO",
+    discountPercent: 0,
+    customerId: null,
+    customerName: "",
+    notes: "",
+    reason: "Venta mostrador",
+  }));
   const [saleItems, setSaleItems] = useState<SaleLine[]>([]);
   const [deviceQuery, setDeviceQuery] = useState<string>("");
   const [devices, setDevices] = useState<Device[]>([]);
@@ -86,11 +92,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
 
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.id === saleForm.customerId) ?? null,
-    [customers, saleForm.customerId]
+    [customers, saleForm.customerId],
   );
 
   const saleSummary = useMemo<SaleSummary>(() => {
-    const gross = saleItems.reduce((total, line) => total + line.device.unit_price * line.quantity, 0);
+    const gross = saleItems.reduce(
+      (total, line) => total + line.device.unit_price * line.quantity,
+      0,
+    );
     const discountPercent = Math.min(Math.max(saleForm.discountPercent, 0), 100);
     const discountAmount = gross * (discountPercent / 100);
     const subtotal = Math.max(0, gross - discountAmount);
@@ -120,7 +129,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         acc.daily.set(dayKey, current);
         return acc;
       },
-      { total: 0, subtotal: 0, tax: 0, daily: new Map<string, { total: number; count: number }>() }
+      { total: 0, subtotal: 0, tax: 0, daily: new Map<string, { total: number; count: number }>() },
     );
     const totalSales = sales.length;
     const dailyStats = Array.from(aggregate.daily.entries())
@@ -251,7 +260,15 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
     } finally {
       setIsLoadingSales(false);
     }
-  }, [filters.customerId, filters.dateFrom, filters.dateTo, filters.query, filters.storeId, filters.userId, token]);
+  }, [
+    filters.customerId,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.query,
+    filters.storeId,
+    filters.userId,
+    token,
+  ]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -275,7 +292,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         return current.map((line) =>
           line.device.id === device.id
             ? { ...line, quantity: Math.min(device.quantity, line.quantity + 1) }
-            : line
+            : line,
         );
       }
       return [...current, { device, quantity: 1, batchCode: device.lote ?? "" }];
@@ -287,16 +304,14 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
       current.map((line) =>
         line.device.id === deviceId
           ? { ...line, quantity: Math.max(1, Math.min(line.device.quantity, quantity)) }
-          : line
-      )
+          : line,
+      ),
     );
   };
 
   const handleBatchCodeChange = (deviceId: number, batchCode: string) => {
     setSaleItems((current) =>
-      current.map((line) =>
-        line.device.id === deviceId ? { ...line, batchCode } : line
-      )
+      current.map((line) => (line.device.id === deviceId ? { ...line, batchCode } : line)),
     );
   };
 
@@ -362,11 +377,7 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
     }
     setIsSaving(true);
     try {
-      const sale = await createSale(
-        token,
-        payload,
-        saleForm.reason.trim()
-      );
+      const sale = await createSale(token, payload, saleForm.reason.trim());
       setError(null);
       setMessage("Venta registrada correctamente");
       setLastSaleId(sale.id);
@@ -468,21 +479,21 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
         message={message}
         error={error}
       >
-      <SidePanel
-        stores={stores}
-        customers={customers}
-        saleForm={saleForm}
-        onSaleFormChange={updateSaleForm}
-        deviceQuery={deviceQuery}
-        onDeviceQueryChange={setDeviceQuery}
-        devices={devices}
-        isLoadingDevices={isLoadingDevices}
-        onAddDevice={handleAddDevice}
-        saleItems={saleItems}
-        onQuantityChange={handleQuantityChange}
-        onBatchCodeChange={handleBatchCodeChange}
-        onRemoveLine={handleRemoveLine}
-        saleSummary={saleSummary}
+        <SidePanel
+          stores={stores}
+          customers={customers}
+          saleForm={saleForm}
+          onSaleFormChange={updateSaleForm}
+          deviceQuery={deviceQuery}
+          onDeviceQueryChange={setDeviceQuery}
+          devices={devices}
+          isLoadingDevices={isLoadingDevices}
+          onAddDevice={handleAddDevice}
+          saleItems={saleItems}
+          onQuantityChange={handleQuantityChange}
+          onBatchCodeChange={handleBatchCodeChange}
+          onRemoveLine={handleRemoveLine}
+          saleSummary={saleSummary}
           paymentLabels={paymentLabels}
           isSaving={isSaving}
           isPrinting={isPrinting}
@@ -492,7 +503,10 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
           formatCurrency={(value) => currencyFormatter.format(value)}
           invoiceAvailable={Boolean(lastSaleId)}
         />
-        <SummaryCards dashboard={salesDashboard} formatCurrency={(value) => currencyFormatter.format(value)} />
+        <SummaryCards
+          dashboard={salesDashboard}
+          formatCurrency={(value) => currencyFormatter.format(value)}
+        />
         <FiltersPanel
           stores={stores}
           customers={customers}
@@ -505,13 +519,21 @@ function Sales({ token, stores, defaultStoreId = null, onInventoryRefresh }: Pro
           onExportPdf={() => handleExport("pdf")}
           onExportExcel={() => handleExport("xlsx")}
           onClearFilters={() =>
-            setFilters({ storeId: null, customerId: null, userId: null, dateFrom: "", dateTo: "", query: "" })
+            setFilters({
+              storeId: null,
+              customerId: null,
+              userId: null,
+              dateFrom: "",
+              dateTo: "",
+              query: "",
+            })
           }
         />
         <SalesTable
           sales={sales}
           isLoading={isLoadingSales}
           formatCurrency={(value) => currencyFormatter.format(value)}
+          data-testid="quotes-list"
         />
       </Toolbar>
       <InvoiceModal

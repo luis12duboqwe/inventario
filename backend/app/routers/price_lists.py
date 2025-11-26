@@ -1,20 +1,29 @@
 from datetime import date
 from decimal import Decimal
-from typing import NoReturn
+from typing import Any, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..config import settings
-from ..core.roles import GESTION_ROLES, MOVEMENT_ROLES
+from ..core.roles import ADMIN, GESTION_ROLES, MOVEMENT_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 from ..services import pricing
 
+numeric_errors = {
+    "price_list_item_price_invalid",
+    "price_list_item_discount_invalid",
+}
+
 router = APIRouter(prefix="/price-lists", tags=["listas de precios"])
 pricing_router = APIRouter(prefix="/pricing", tags=["precios", "inventario"])
+
+
+def _is_superadmin(user: Any, confirmation: bool) -> bool:
+    return confirmation and str(getattr(user, "rol", "")).upper() == ADMIN
 
 
 def _ensure_feature_enabled() -> None:
@@ -48,7 +57,6 @@ def _raise_value_error(exc: ValueError) -> NoReturn:
             status_code=status.HTTP_409_CONFLICT,
             detail=detail_map[message],
         ) from exc
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail_map[message]) from exc
     if message in {"price_list_conflict", "price_list_duplicate"}:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -61,12 +69,12 @@ def _raise_value_error(exc: ValueError) -> NoReturn:
         ) from exc
     if message == "price_list_item_invalid_store":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El dispositivo no pertenece a la sucursal configurada.",
         ) from exc
     if message in numeric_errors:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Los valores numéricos proporcionados no son válidos.",
         ) from exc
     raise exc
@@ -204,6 +212,14 @@ def delete_price_list_endpoint(
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
+    hard_delete: bool = Query(
+        default=False,
+        description="Eliminación definitiva solo con validación de superadmin",
+    ),
+    superadmin_confirmed: bool = Query(
+        default=False,
+        description="Confirma aprobación de superadministrador",
+    ),
 ) -> Response:
     _ensure_feature_enabled()
     _ = reason
@@ -212,6 +228,8 @@ def delete_price_list_endpoint(
             db,
             price_list_id,
             performed_by_id=_performed_by_id(current_user),
+            allow_hard_delete=hard_delete,
+            is_superadmin=_is_superadmin(current_user, superadmin_confirmed),
         )
     except LookupError as exc:
         _raise_lookup(exc)
@@ -288,6 +306,14 @@ def delete_price_list_item_endpoint(
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
+    hard_delete: bool = Query(
+        default=False,
+        description="Eliminación definitiva autorizada por superadmin",
+    ),
+    superadmin_confirmed: bool = Query(
+        default=False,
+        description="Confirma aprobación de superadministrador",
+    ),
 ) -> Response:
     _ensure_feature_enabled()
     _ = reason
@@ -296,6 +322,8 @@ def delete_price_list_item_endpoint(
             db,
             item_id,
             performed_by_id=_performed_by_id(current_user),
+            allow_hard_delete=hard_delete,
+            is_superadmin=_is_superadmin(current_user, superadmin_confirmed),
         )
     except LookupError as exc:
         _raise_lookup(exc)
@@ -331,6 +359,7 @@ def evaluate_device_price_endpoint(
         return schemas.PriceEvaluationResponse(
             device_id=device_id,
             price_list_id=None,
+            priority=None,
             scope=None,
             price=None,
             currency=None,
@@ -339,8 +368,9 @@ def evaluate_device_price_endpoint(
     return schemas.PriceEvaluationResponse(
         device_id=resolution.device_id,
         price_list_id=resolution.price_list_id,
+        priority=resolution.priority,
         scope=resolution.scope,
-        price=resolution.price,
+        price=resolution.final_price,
         currency=resolution.currency,
     )
 

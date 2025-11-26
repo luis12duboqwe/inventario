@@ -5,25 +5,20 @@ import type {
   SyncHybridProgress,
   SyncQueueSummary,
 } from "../../../api";
-
-const numberFormatter = new Intl.NumberFormat("es-MX");
-const percentFormatter = new Intl.NumberFormat("es-MX", {
-  maximumFractionDigits: 1,
-  minimumFractionDigits: 0,
-});
+import { formatDateTimeHn, formatNumberHn, formatPercentHn } from "@/utils/locale";
 
 function formatPercent(value: number | null | undefined): string {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return "—";
   }
-  return `${percentFormatter.format(Math.max(0, Math.min(100, value)))} %`;
+  return formatPercentHn(Math.max(0, Math.min(100, value)));
 }
 
 function formatNumber(value: number | null | undefined): string {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return "—";
   }
-  return numberFormatter.format(value);
+  return formatNumberHn(value);
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -31,7 +26,7 @@ function formatDate(value: string | null | undefined): string {
     return "—";
   }
   try {
-    return new Date(value).toLocaleString("es-MX");
+    return formatDateTimeHn(new Date(value));
   } catch {
     return "—";
   }

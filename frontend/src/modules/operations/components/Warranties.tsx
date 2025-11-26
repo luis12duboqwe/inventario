@@ -324,7 +324,7 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
 function formatDate(iso: string | null | undefined) {
   if (!iso) return "-";
   const date = new Date(iso);
-  return date.toLocaleDateString("es-MX");
+  return date.toLocaleDateString("es-HN");
 }
 
 function formatRemaining(days: number, isExpired: boolean) {

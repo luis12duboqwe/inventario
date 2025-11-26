@@ -71,7 +71,7 @@ def update_loyalty_account_endpoint(
     except ValueError as exc:
         if str(exc) == "loyalty_redemption_rate_invalid":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="La tasa de canje debe ser mayor que cero.",
             ) from exc
         raise

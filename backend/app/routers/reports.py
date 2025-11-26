@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from .. import crud, models, schemas
 from ..utils import audit as audit_utils
 from ..config import settings
-from ..core.roles import ADMIN
+from ..core.roles import ADMIN, REPORTE_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason, require_reason_optional
 from ..security import require_roles
@@ -23,10 +23,11 @@ from ..services import audit as audit_service
 from ..services import backups as backup_services
 from ..services import global_reports_data, global_reports_renderers
 from ..services import customer_reports
+from ..services import sync_conflict_reports
 from ..services import inventory_reports as inventory_reports_service
 from ..services import fiscal_books as fiscal_books_service
+from ..services import performance_reports
 from ..services import risk_monitor
-from ..utils import audit as audit_utils
 from backend.schemas.common import Page, PageParams
 
 router = APIRouter(prefix="/reports", tags=["reportes"])
@@ -291,7 +292,7 @@ def get_sales_summary_report(
     normalized_from, normalized_to = _normalize_sales_range(date_from, date_to)
     if normalized_from and normalized_to and normalized_from >= normalized_to:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El rango de fechas es inválido.",
         )
     return crud.build_sales_summary_report(
@@ -320,7 +321,7 @@ def get_sales_by_product_report(
     normalized_from, normalized_to = _normalize_sales_range(date_from, date_to)
     if normalized_from and normalized_to and normalized_from >= normalized_to:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El rango de fechas es inválido.",
         )
     items = crud.build_sales_by_product_report(
@@ -404,7 +405,7 @@ def customer_portfolio_report(
 ):
     if date_from and date_to and date_from > date_to:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El rango de fechas es inválido.",
         )
 
@@ -753,7 +754,7 @@ def analytics_risk(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     discount_threshold: float = Query(default=25.0, ge=0, le=100),
-    cancellation_threshold: int = Query(default=3, ge=1, le=50),
+    cancellation_threshold: int = Query(default=1, ge=1, le=50),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
@@ -792,6 +793,105 @@ def analytics_realtime(
     )
     return schemas.AnalyticsRealtimeResponse(
         items=[schemas.StoreRealtimeWidget(**item) for item in data]
+    )
+
+
+@router.get(
+    "/analytics/store_sales_forecast",
+    response_model=schemas.StoreSalesForecastResponse,
+)
+def analytics_store_sales_forecast(
+    store_ids: list[int] | None = Query(default=None),
+    horizon_days: int = Query(default=14, ge=1, le=60),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    items = crud.calculate_store_sales_forecast(
+        db,
+        store_ids=store_ids,
+        horizon_days=horizon_days,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=limit,
+        offset=offset,
+    )
+    return schemas.StoreSalesForecastResponse(
+        items=[schemas.StoreSalesForecast(**item) for item in items]
+    )
+
+
+@router.get(
+    "/analytics/reorder_suggestions",
+    response_model=schemas.ReorderSuggestionsResponse,
+)
+def analytics_reorder_suggestions(
+    store_ids: list[int] | None = Query(default=None),
+    horizon_days: int = Query(default=7, ge=1, le=60),
+    safety_days: int = Query(default=2, ge=0, le=14),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    items = crud.calculate_reorder_suggestions(
+        db,
+        store_ids=store_ids,
+        horizon_days=horizon_days,
+        safety_days=safety_days,
+        date_from=date_from,
+        date_to=date_to,
+        category=category,
+        supplier=supplier,
+        limit=limit,
+        offset=offset,
+    )
+    return schemas.ReorderSuggestionsResponse(
+        items=[schemas.ReorderSuggestion(**item) for item in items]
+    )
+
+
+@router.get(
+    "/analytics/return_anomalies",
+    response_model=schemas.ReturnAnomaliesResponse,
+)
+def analytics_return_anomalies(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    sigma_threshold: float = Query(default=2.0, ge=0.5, le=4.0),
+    min_returns: int = Query(default=3, ge=1, le=50),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+):
+    _ensure_analytics_enabled()
+    items = crud.detect_return_anomalies(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        sigma_threshold=sigma_threshold,
+        min_returns=min_returns,
+        limit=limit,
+        offset=offset,
+    )
+    return schemas.ReturnAnomaliesResponse(
+        items=[schemas.ReturnAnomaly(**item) for item in items]
     )
 
 
@@ -1028,6 +1128,253 @@ def purchases_report(
     )
 
 
+@router.get("/financial", response_model=schemas.FinancialPerformanceReport)
+def financial_report(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
+    format: Literal["json", "pdf", "xlsx"] = Query(default="json"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    reason: str = Depends(require_reason_optional),
+):
+    _ensure_analytics_enabled()
+    normalized_from, normalized_to = _normalize_sales_range(date_from, date_to)
+    rotation = crud.calculate_rotation_analytics(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+    profit_by_store = crud.calculate_profit_margin(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+    sales_by_store = crud.calculate_sales_by_store(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+    sales_by_category = crud.calculate_sales_by_category(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+    sales_trend = crud.calculate_sales_timeseries(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+
+    total_revenue = sum(item["revenue"] for item in profit_by_store)
+    total_cost = sum(item["cost"] for item in profit_by_store)
+    total_profit = sum(item["profit"] for item in profit_by_store)
+    total_margin = round((total_profit / total_revenue * 100), 2) if total_revenue else 0.0
+
+    filters = schemas.ReportFilterState(
+        date_from=normalized_from,
+        date_to=normalized_to,
+        store_ids=store_ids or [],
+        category=category,
+    )
+    report = schemas.FinancialPerformanceReport(
+        generated_at=datetime.utcnow(),
+        filters=filters,
+        rotation=[
+            schemas.RotationMetric.model_validate(item).model_dump()
+            for item in rotation
+        ],
+        profit_by_store=[
+            schemas.ProfitMarginMetric.model_validate(item).model_dump()
+            for item in profit_by_store
+        ],
+        sales_by_store=[
+            schemas.SalesByStoreMetric.model_validate(item).model_dump()
+            for item in sales_by_store
+        ],
+        sales_by_category=[
+            schemas.SalesByCategoryMetric.model_validate(item).model_dump()
+            for item in sales_by_category
+        ],
+        sales_trend=[
+            schemas.SalesTimeseriesPoint.model_validate(item).model_dump()
+            for item in sales_trend
+        ],
+        totals=schemas.FinancialTotals(
+            revenue=total_revenue,
+            cost=total_cost,
+            profit=total_profit,
+            margin_percent=total_margin,
+        ),
+    )
+
+    if format in {"pdf", "xlsx"} and not reason:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reason header requerido",
+        )
+    if format == "pdf":
+        pdf_bytes = performance_reports.render_financial_report_pdf(report)
+        buffer = BytesIO(pdf_bytes)
+        metadata = schemas.BinaryFileResponse(
+            filename="softmobile_reporte_financiero.pdf",
+            media_type="application/pdf",
+        )
+        return StreamingResponse(
+            buffer,
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
+        )
+    if format == "xlsx":
+        workbook = performance_reports.render_financial_report_xlsx(report)
+        metadata = schemas.BinaryFileResponse(
+            filename="softmobile_reporte_financiero.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        return StreamingResponse(
+            workbook,
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
+        )
+
+    return report
+
+
+@router.get("/inventory", response_model=schemas.InventoryPerformanceReport)
+def inventory_performance_report(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | date | None = Query(default=None),
+    date_to: datetime | date | None = Query(default=None),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    supplier: str | None = Query(default=None, min_length=1, max_length=120),
+    format: Literal["json", "pdf", "xlsx"] = Query(default="json"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
+    reason: str = Depends(require_reason_optional),
+):
+    _ensure_analytics_enabled()
+    normalized_from, normalized_to = _normalize_sales_range(date_from, date_to)
+    rotation = crud.calculate_rotation_analytics(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+    profit_by_store = crud.calculate_profit_margin(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+    sales_by_store = crud.calculate_sales_by_store(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+    sales_by_category = crud.calculate_sales_by_category(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+    sales_trend = crud.calculate_sales_timeseries(
+        db,
+        store_ids=store_ids,
+        date_from=normalized_from,
+        date_to=normalized_to,
+        category=category,
+        supplier=supplier,
+    )
+
+    filters = schemas.ReportFilterState(
+        date_from=normalized_from,
+        date_to=normalized_to,
+        store_ids=store_ids or [],
+        category=category,
+    )
+    report = schemas.InventoryPerformanceReport(
+        generated_at=datetime.utcnow(),
+        filters=filters,
+        rotation=[
+            schemas.RotationMetric.model_validate(item).model_dump()
+            for item in rotation
+        ],
+        profit_by_store=[
+            schemas.ProfitMarginMetric.model_validate(item).model_dump()
+            for item in profit_by_store
+        ],
+        sales_by_store=[
+            schemas.SalesByStoreMetric.model_validate(item).model_dump()
+            for item in sales_by_store
+        ],
+        sales_by_category=[
+            schemas.SalesByCategoryMetric.model_validate(item).model_dump()
+            for item in sales_by_category
+        ],
+        sales_trend=[
+            schemas.SalesTimeseriesPoint.model_validate(item).model_dump()
+            for item in sales_trend
+        ],
+    )
+
+    if format in {"pdf", "xlsx"} and not reason:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reason header requerido",
+        )
+    if format == "pdf":
+        pdf_bytes = performance_reports.render_inventory_report_pdf(report)
+        buffer = BytesIO(pdf_bytes)
+        metadata = schemas.BinaryFileResponse(
+            filename="softmobile_reporte_inventario.pdf",
+            media_type="application/pdf",
+        )
+        return StreamingResponse(
+            buffer,
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
+        )
+    if format == "xlsx":
+        workbook = performance_reports.render_inventory_report_xlsx(report)
+        metadata = schemas.BinaryFileResponse(
+            filename="softmobile_reporte_inventario.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        return StreamingResponse(
+            workbook,
+            media_type=metadata.media_type,
+            headers=metadata.content_disposition(),
+        )
+
+    return report
+
+
 @router.get("/inventory/current", response_model=schemas.InventoryCurrentReport)
 def inventory_current(
     store_ids: list[int] | None = Query(default=None),
@@ -1166,6 +1513,8 @@ def inventory_movements(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
@@ -1175,7 +1524,7 @@ def inventory_movements(
             movement_enum = models.MovementType(movement_type)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de movimiento inválido",
             ) from exc
     return crud.get_inventory_movements_report(
@@ -1184,6 +1533,8 @@ def inventory_movements(
         date_from=date_from,
         date_to=date_to,
         movement_type=movement_enum,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -1211,6 +1562,44 @@ def inventory_sync_discrepancies(
         min_difference=min_difference,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/inventory/sync-discrepancies/xlsx",
+    response_model=schemas.BinaryFileResponse,
+)
+def inventory_sync_discrepancies_excel(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    severity: schemas.SyncBranchHealth | None = Query(default=None),
+    min_difference: int | None = Query(default=None, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+    _reason: str = Depends(require_reason),
+):
+    report = crud.get_sync_discrepancies_report(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+        min_difference=min_difference,
+        limit=limit,
+        offset=offset,
+    )
+    workbook_bytes = sync_conflict_reports.render_conflict_report_excel(report)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_discrepancias_sync.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    return StreamingResponse(
+        iter([workbook_bytes]),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 
@@ -1498,6 +1887,8 @@ def inventory_movements_csv(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -1508,7 +1899,7 @@ def inventory_movements_csv(
             movement_enum = models.MovementType(movement_type)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de movimiento inválido",
             ) from exc
 
@@ -1518,6 +1909,8 @@ def inventory_movements_csv(
         date_from=date_from,
         date_to=date_to,
         movement_type=movement_enum,
+        limit=limit,
+        offset=offset,
     )
 
     buffer = StringIO()
@@ -1616,6 +2009,8 @@ def inventory_movements_pdf(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -1626,7 +2021,7 @@ def inventory_movements_pdf(
             movement_enum = models.MovementType(movement_type)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de movimiento inválido",
             ) from exc
 
@@ -1636,6 +2031,8 @@ def inventory_movements_pdf(
         date_from=date_from,
         date_to=date_to,
         movement_type=movement_enum,
+        limit=limit,
+        offset=offset,
     )
     pdf_bytes = inventory_reports_service.render_inventory_movements_pdf(report)
     buffer = BytesIO(pdf_bytes)
@@ -1656,6 +2053,8 @@ def inventory_movements_excel(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     movement_type: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
@@ -1666,7 +2065,7 @@ def inventory_movements_excel(
             movement_enum = models.MovementType(movement_type)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de movimiento inválido",
             ) from exc
 
@@ -1676,6 +2075,8 @@ def inventory_movements_excel(
         date_from=date_from,
         date_to=date_to,
         movement_type=movement_enum,
+        limit=limit,
+        offset=offset,
     )
     workbook_buffer = inventory_reports_service.build_inventory_movements_excel(report)
     metadata = schemas.BinaryFileResponse(

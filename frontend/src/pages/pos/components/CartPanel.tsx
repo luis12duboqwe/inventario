@@ -22,7 +22,7 @@ type Props = {
 };
 
 function CartPanel({ items, onUpdate, onRemove, totals, hasTaxes, globalDiscount }: Props) {
-  const formatCurrency = (value: number) => value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatCurrency = (value: number) => value.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <section className="card">

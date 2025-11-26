@@ -12,6 +12,7 @@ import {
   type InventoryAvailabilityRecord,
 } from "../../../api";
 import { useInventoryLayout } from "../pages/context/InventoryLayoutContext";
+import { formatCurrencyWithUsd } from "@/utils/locale";
 
 type Props = {
   devices: Device[];
@@ -60,10 +61,6 @@ const buildAvailabilityReference = (device: Device): string => {
 
 function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDevice }: Props) {
   const [pageSize, setPageSize] = useState(50);
-  const currencyFormatter = useMemo(
-    () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
-    []
-  );
 
   const pageSizeOptions = useMemo(() => [25, 50, 100, 250], []);
   const {
@@ -222,6 +219,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
             <th scope="col">Estado</th>
             <th scope="col">Estado inventario</th>
             <th scope="col">Ubicación</th>
+            <th scope="col">Almacén</th>
             <th scope="col">Identificadores</th>
             <th scope="col">Sucursales</th>
             <th scope="col">Cantidad</th>
@@ -249,6 +247,7 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
               </td>
               <td data-label="Estado inventario">{device.estado ?? "—"}</td>
               <td data-label="Ubicación">{device.ubicacion ?? "—"}</td>
+              <td data-label="Almacén">{device.warehouse_name ?? "Default"}</td>
               <td data-label="Identificadores">
                 <div className="identifier-stack">
                   {device.imei ? <span>IMEI catálogo: {device.imei}</span> : null}
@@ -290,17 +289,17 @@ function InventoryTable({ devices, highlightedDeviceIds, emptyMessage, onEditDev
               <td data-label="Cantidad">{device.quantity}</td>
               <td data-label="Costo compra">
                 {device.costo_unitario != null
-                  ? currencyFormatter.format(device.costo_unitario)
+                  ? formatCurrencyWithUsd(device.costo_unitario)
                   : "—"}
               </td>
               <td data-label="Precio de venta">
                 {device.precio_venta != null
-                  ? currencyFormatter.format(device.precio_venta)
+                  ? formatCurrencyWithUsd(device.precio_venta)
                   : device.unit_price != null
-                  ? currencyFormatter.format(device.unit_price)
+                  ? formatCurrencyWithUsd(device.unit_price)
                   : "—"}
               </td>
-              <td data-label="Valor total">{currencyFormatter.format(device.inventory_value)}</td>
+              <td data-label="Valor total">{formatCurrencyWithUsd(device.inventory_value)}</td>
               <td data-label="Acciones">
                 <div className="inventory-actions">
                   <button

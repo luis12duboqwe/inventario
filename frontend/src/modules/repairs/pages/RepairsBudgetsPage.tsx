@@ -136,7 +136,7 @@ function RepairsBudgetsPage() {
           <section className="card metrics-grid">
             <article className="metric">
               <h3>Total estimado</h3>
-              <strong>${summary.totalCost.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>${summary.totalCost.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </article>
             <article className="metric">
               <h3>Órdenes pendientes</h3>
@@ -148,7 +148,7 @@ function RepairsBudgetsPage() {
             </article>
             <article className="metric">
               <h3>Promedio por reparación</h3>
-              <strong>${summary.average.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>${summary.average.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </article>
           </section>
 
@@ -181,8 +181,8 @@ function RepairsBudgetsPage() {
                         <td>{order.technician_name}</td>
                         <td>{order.damage_type}</td>
                         <td>{STATUS_LABELS[order.status]}</td>
-                        <td>${Number(order.total_cost ?? 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td>{new Date(order.updated_at).toLocaleString("es-MX")}</td>
+                        <td>${Number(order.total_cost ?? 0).toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td>{new Date(order.updated_at).toLocaleString("es-HN")}</td>
                       </tr>
                     ))}
                   </tbody>

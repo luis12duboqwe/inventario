@@ -62,12 +62,12 @@ def issue_store_credit_endpoint(
         detail = str(exc)
         if detail == "store_credit_code_in_use":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El código de nota de crédito ya existe.",
             ) from exc
         if detail == "store_credit_invalid_amount":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El monto debe ser mayor a cero.",
             ) from exc
         raise
@@ -103,7 +103,7 @@ def redeem_store_credit_endpoint(
         detail = str(exc)
         if detail == "store_credit_invalid_amount":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El monto debe ser mayor a cero.",
             ) from exc
         if detail == "store_credit_insufficient_balance":

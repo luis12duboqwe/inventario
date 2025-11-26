@@ -12,6 +12,7 @@ from .. import crud, models
 from ..config import settings
 from backend.core.logging import logger as core_logger
 from . import notifications
+from .locale_helpers import format_dual_currency
 
 logger = core_logger.bind(component=__name__)
 
@@ -27,7 +28,7 @@ class ReminderResult:
 
 
 def _format_currency(value: float) -> str:
-    return f"${value:,.2f}"
+    return format_dual_currency(value)
 
 
 def _send_whatsapp_message(*, to_number: str, message: str, reference: str | None = None) -> None:

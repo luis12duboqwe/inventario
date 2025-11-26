@@ -106,6 +106,17 @@ def to_summary(session: models.CashRegisterSession) -> schemas.POSSessionSummary
     return schemas.POSSessionSummary.from_model(session)
 
 
+def recover_open_session(
+    db: Session,
+    *,
+    store_id: int,
+) -> schemas.POSSessionSummary:
+    """Rehidrata la última sesión abierta para recuperación tras reinicios."""
+
+    session = crud.get_open_cash_session(db, store_id=store_id)
+    return to_summary(session)
+
+
 __all__ = [
     "open_session",
     "close_session",

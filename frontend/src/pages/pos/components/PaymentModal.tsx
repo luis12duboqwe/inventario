@@ -130,7 +130,7 @@ function PaymentModal({
   const breakdownDifference = Number((totals.total - breakdownTotal).toFixed(2));
   const breakdownMatches = Math.abs(breakdownDifference) <= 0.5;
 
-  const formatCurrency = (value: number) => value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatCurrency = (value: number) => value.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <section className="card">

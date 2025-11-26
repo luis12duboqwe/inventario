@@ -151,7 +151,7 @@ function RepairsPartsPage() {
                       <td>{summary.deviceLabel}</td>
                       <td>{summary.totalQuantity}</td>
                       <td>{summary.usageCount}</td>
-                      <td>${summary.totalCost.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td>${summary.totalCost.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                   ))}
                 </tbody>

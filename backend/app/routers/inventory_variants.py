@@ -56,17 +56,17 @@ def _raise_value_error(exc: ValueError) -> None:
         ) from exc
     if message == "bundle_items_required":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Un combo debe contener al menos un artículo.",
         ) from exc
     if message == "bundle_device_store_mismatch":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Todos los dispositivos del combo deben pertenecer a la misma sucursal.",
         ) from exc
     if message == "bundle_variant_device_mismatch":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="La variante seleccionada no corresponde al dispositivo indicado.",
         ) from exc
     raise exc

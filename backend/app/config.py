@@ -131,6 +131,26 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    security_login_alert_threshold: Annotated[
+        int,
+        Field(
+            default=4,
+            validation_alias=AliasChoices(
+                "SECURITY_LOGIN_ALERT_THRESHOLD",
+                "SOFTMOBILE_SECURITY_LOGIN_ALERT_THRESHOLD",
+            ),
+        ),
+    ]
+    security_alert_window_minutes: Annotated[
+        int,
+        Field(
+            default=60,
+            validation_alias=AliasChoices(
+                "SECURITY_ALERT_WINDOW_MINUTES",
+                "SOFTMOBILE_SECURITY_ALERT_WINDOW_MINUTES",
+            ),
+        ),
+    ]
     account_lock_minutes: Annotated[
         int,
         Field(
@@ -200,6 +220,16 @@ class Settings(BaseSettings):
             validation_alias=AliasChoices(
                 "CONFIG_SYNC_ENABLED",
                 "SOFTMOBILE_CONFIG_SYNC_ENABLED",
+            ),
+        ),
+    ]
+    demo_mode_enabled: Annotated[
+        bool,
+        Field(
+            default=False,
+            validation_alias=AliasChoices(
+                "DEMO_MODE",
+                "SOFTMOBILE_DEMO_MODE",
             ),
         ),
     ]
@@ -341,6 +371,26 @@ class Settings(BaseSettings):
             validation_alias=AliasChoices(
                 "RISK_ALERT_WEBHOOK_URL",
                 "SOFTMOBILE_RISK_ALERT_WEBHOOK_URL",
+            ),
+        ),
+    ]
+    monitoring_alert_webhook_url: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "MONITORING_ALERT_WEBHOOK_URL",
+                "SOFTMOBILE_MONITORING_ALERT_WEBHOOK_URL",
+            ),
+        ),
+    ]
+    monitoring_alert_token: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "MONITORING_ALERT_TOKEN",
+                "SOFTMOBILE_MONITORING_ALERT_TOKEN",
             ),
         ),
     ]
@@ -584,6 +634,16 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    purchases_large_order_threshold: Annotated[
+        Decimal,
+        Field(
+            default=Decimal("0"),
+            validation_alias=AliasChoices(
+                "PURCHASES_LARGE_ORDER_THRESHOLD",
+                "SOFTMOBILE_PURCHASES_LARGE_ORDER_THRESHOLD",
+            ),
+        ),
+    ]
     purchases_documents_backend: Annotated[
         str,
         Field(
@@ -598,7 +658,8 @@ class Settings(BaseSettings):
         str,
         Field(
             default_factory=lambda: str(
-                (Path(__file__).resolve().parents[2] / "backups" / "purchase_orders")
+                (Path(__file__).resolve(
+                ).parents[2] / "backups" / "purchase_orders")
             ),
             validation_alias=AliasChoices(
                 "PURCHASES_DOCUMENTS_LOCAL_PATH",
@@ -799,13 +860,13 @@ class Settings(BaseSettings):
             ),
         ),
     ]
-    enable_price_lists: Annotated[
-        bool,
+    usd_exchange_rate: Annotated[
+        Decimal,
         Field(
-            default=False,
+            default=Decimal("24.50"),
             validation_alias=AliasChoices(
-                "ENABLE_PRICE_LISTS",
-                "SOFTMOBILE_ENABLE_PRICE_LISTS",
+                "USD_EXCHANGE_RATE",
+                "SOFTMOBILE_USD_EXCHANGE_RATE",
             ),
         ),
     ]
@@ -883,6 +944,16 @@ class Settings(BaseSettings):
             default="./backups",
             validation_alias=AliasChoices(
                 "BACKUP_DIR", "SOFTMOBILE_BACKUP_DIR"),
+        ),
+    ]
+    logs_directory: Annotated[
+        str,
+        Field(
+            default="./logs",
+            validation_alias=AliasChoices(
+                "LOGS_DIRECTORY",
+                "SOFTMOBILE_LOGS_DIRECTORY",
+            ),
         ),
     ]
     require_encrypted_backups: Annotated[
@@ -975,6 +1046,36 @@ class Settings(BaseSettings):
             ),
         ),
     ]
+    lan_discovery_enabled: Annotated[
+        bool,
+        Field(
+            default=True,
+            validation_alias=AliasChoices(
+                "SOFTMOBILE_LAN_DISCOVERY_ENABLED",
+                "LAN_DISCOVERY_ENABLED",
+            ),
+        ),
+    ]
+    lan_advertised_host: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "SOFTMOBILE_LAN_HOST",
+                "LAN_ADVERTISED_HOST",
+            ),
+        ),
+    ]
+    lan_advertised_port: Annotated[
+        int | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "SOFTMOBILE_LAN_PORT",
+                "LAN_ADVERTISED_PORT",
+            ),
+        ),
+    ]
     allowed_origins: Annotated[
         list[str],
         Field(
@@ -1038,7 +1139,8 @@ class Settings(BaseSettings):
             return [Decimal(part) for part in parts]
         if isinstance(value, (list, tuple)):
             return [Decimal(str(part)) for part in value]
-        raise ValueError("POS_TIP_SUGGESTIONS debe ser una lista o CSV de números")
+        raise ValueError(
+            "POS_TIP_SUGGESTIONS debe ser una lista o CSV de números")
 
     @field_validator("pos_tip_suggestions")
     @classmethod
@@ -1049,7 +1151,8 @@ class Settings(BaseSettings):
         for amount in value:
             decimal_value = Decimal(str(amount))
             if decimal_value < Decimal("0"):
-                raise ValueError("Las propinas sugeridas deben ser no negativas")
+                raise ValueError(
+                    "Las propinas sugeridas deben ser no negativas")
             normalized.append(decimal_value.quantize(Decimal("0.01")))
         return normalized
 
@@ -1135,6 +1238,13 @@ class Settings(BaseSettings):
                 f"{info.field_name} debe ser mayor o igual que cero")
         return value
 
+    @field_validator("usd_exchange_rate")
+    @classmethod
+    def _ensure_positive_rate(cls, value: Decimal) -> Decimal:
+        if value <= 0:
+            raise ValueError("usd_exchange_rate debe ser mayor que cero")
+        return value
+
     @field_validator("cost_method", mode="before")
     @classmethod
     def _normalize_cost_method(cls, value: str | None) -> str:
@@ -1207,9 +1317,23 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_purchase_local_path(cls, value: str | Path | None) -> str:
         if value is None or (isinstance(value, str) and not value.strip()):
-            base = Path(__file__).resolve().parents[2] / "backups" / "purchase_orders"
+            base = Path(__file__).resolve(
+            ).parents[2] / "backups" / "purchase_orders"
             return str(base)
         return str(Path(value).expanduser())
+
+    @field_validator("purchases_large_order_threshold", mode="before")
+    @classmethod
+    def _normalize_purchase_threshold(cls, value: object) -> Decimal:
+        if value is None:
+            return Decimal("0")
+        try:
+            threshold = Decimal(str(value))
+        except Exception:
+            return Decimal("0")
+        if threshold < 0:
+            return Decimal("0")
+        return threshold
 
     @field_validator("config_sync_directory", mode="before")
     @classmethod

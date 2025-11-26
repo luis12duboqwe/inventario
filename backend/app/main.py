@@ -10,16 +10,16 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from collections.abc import Callable, Generator, Mapping
+from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from fastapi.routing import APIRoute
 from sqlalchemy.orm import Session
 
 from . import crud, security as security_core
 from .config import settings
-from .core.roles import DEFAULT_ROLES
+from .core.roles import ADMIN, DEFAULT_ROLES
 from .core.transactions import transactional_session
 from .database import SessionLocal, get_db, Base, engine
 from .middleware import (
@@ -38,8 +38,11 @@ from .routers import (
     customers,
     dte,
     health,
+    help_center,
+    discovery,
     import_validation,
     integrations,
+    integration_hooks,
     inventory,
     inventory_export,
     inventory_import,
@@ -52,6 +55,8 @@ from .routers import (
     price_lists,
     payments,
     pos,
+    support,
+    rmas,
     purchases,
     price_lists,
     repairs,
@@ -102,6 +107,8 @@ SENSITIVE_PREFIXES = (
     "/store-credits",
 )
 READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers", "/loyalty")
+OPTIONAL_REASON_PREFIXES = ("/purchases/",)
+OPTIONAL_REASON_SUFFIXES = ("/status", "/send")
 
 
 def _resolve_additional_cors_origins() -> set[str]:
@@ -139,45 +146,32 @@ def _resolve_additional_cors_origins() -> set[str]:
     return {origin for origin in extra_origins if origin}
 
 
-def _resolve_router(target_app: FastAPI | APIRouter) -> APIRouter:
-    """Devuelve el enrutador interno independientemente del tipo recibido."""
-
-    if isinstance(target_app, FastAPI):
-        return target_app.router
-    return target_app
-
-
-def _remove_route(target_app: FastAPI | APIRouter, path: str, method: str) -> None:
-    """Elimina del contenedor de rutas la coincidencia especificada."""
-
-    method_upper = method.upper()
-    router = _resolve_router(target_app)
-    routes = router.routes
-    router.routes[:] = [
-        route
-        for route in routes
-        if not (
-            isinstance(route, APIRoute)
-            and route.path == path
-            and method_upper in (route.methods or {"GET"})
-        )
-    ]
-
-
-def _mount_pos_extensions(target_app: FastAPI | APIRouter) -> None:
-    """Registra los endpoints POS extendidos sobre la app o router recibido."""
-
-    from backend.routes.pos import extended_router
-
-    _remove_route(target_app, "/pos/receipt/{sale_id}", "GET")
-    target_app.include_router(extended_router)
-
-
 ROLE_PROTECTED_PREFIXES: dict[str, set[str]] = {
     "/users": {"ADMIN"},
     "/sync": {"ADMIN", "GERENTE"},
     "/integrations": {"ADMIN"},
 }
+
+
+def _collect_user_roles(user: Any) -> set[str]:
+    roles: set[str] = set()
+    assignments = getattr(user, "roles", None) or []
+    for assignment in assignments:
+        role_obj = getattr(assignment, "role", None)
+        role_name = getattr(role_obj, "name", None)
+        if role_name:
+            roles.add(str(role_name).upper())
+            continue
+        fallback_name = getattr(assignment, "name", None)
+        if fallback_name:
+            roles.add(str(fallback_name).upper())
+
+    direct_role = getattr(user, "rol", None) or getattr(user, "role", None) or getattr(user, "role_name", None)
+    if direct_role:
+        direct_name = getattr(direct_role, "name", None)
+        roles.add(str(direct_name or direct_role).upper())
+
+    return roles
 
 MODULE_PERMISSION_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/users", "usuarios"),
@@ -364,18 +358,33 @@ def _authorize_request_sync(
                 content={"detail": "Usuario inactivo o inexistente."},
             )
 
-        user_roles = {assignment.role.name for assignment in user.roles}
-        if required_roles and user_roles.isdisjoint(required_roles):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "No cuentas con permisos suficientes."},
-            )
+        user_roles = _collect_user_roles(user)
+        is_admin = ADMIN in user_roles
+        if required_roles and not is_admin:
+            if not user_roles:
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": "El usuario autenticado no tiene roles asignados.",
+                    },
+                )
+            if user_roles.isdisjoint(required_roles):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "No cuentas con permisos suficientes."},
+                )
 
-        if module and not crud.user_has_module_permission(db, user, module, _resolve_action(method_upper)):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "No cuentas con permisos para este módulo."},
-            )
+        if module and not is_admin:
+            if not user_roles:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "El usuario autenticado no tiene roles asignados."},
+                )
+            if not crud.user_has_module_permission(db, user, module, _resolve_action(method_upper)):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "No cuentas con permisos para este módulo."},
+                )
 
         if session_token:
             crud.mark_session_used(db, session_token)
@@ -497,6 +506,8 @@ def create_app() -> FastAPI:
         export_tokens=DEFAULT_EXPORT_TOKENS,
         export_prefixes=DEFAULT_EXPORT_PREFIXES,
         read_sensitive_get_prefixes=DEFAULT_SENSITIVE_GET_PREFIXES,
+        optional_reason_prefixes=OPTIONAL_REASON_PREFIXES,
+        optional_reason_suffixes=OPTIONAL_REASON_SUFFIXES,
     )
 
     @app.middleware("http")
@@ -532,6 +543,10 @@ def create_app() -> FastAPI:
             if allow_method:
                 response.headers["Access-Control-Allow-Methods"] = allow_method
             return response
+
+        # Endpoints públicos de webhooks de integraciones (push outbox)
+        if "/integrations/hooks" in request.url.path:
+            return await call_next(request)
         module = _resolve_module(request.url.path)
         required_roles: set[str] = set()
         for prefix, roles in ROLE_PROTECTED_PREFIXES.items():
@@ -559,6 +574,8 @@ def create_app() -> FastAPI:
 
     routers_to_mount: tuple[APIRouter, ...] = (
         health.router,
+        help_center.router,
+        support.router,
         alerts.router,
         auth.router,
         users.router,
@@ -569,13 +586,15 @@ def create_app() -> FastAPI:
         inventory_variants.router,
         inventory_counts.router,
         import_validation.router,
+        discovery.router,
         pos.router,
         purchases.router,
         price_lists.router,
+        price_lists.pricing_router,
         loyalty.router,
         payments.router,
-    customers.router,
-    configuration.router,
+        customers.router,
+        configuration.router,
         store_credits.router,
         suppliers.router,
         repairs.router,
@@ -583,10 +602,11 @@ def create_app() -> FastAPI:
         sales.router,
         dte.router,
         returns.router,
+        rmas.router,
         operations.router,
-        price_lists.router,
         sync.router,
         integrations.router,
+        integration_hooks.router,
         transfers.router,
         updates.router,
         backups.router,
@@ -604,8 +624,6 @@ def create_app() -> FastAPI:
     for module_router in routers_to_mount:
         app.include_router(module_router)
 
-    _mount_pos_extensions(app)
-
     mounted_prefixes: set[str] = set()
 
     def _mount_versioned(prefix: str) -> None:
@@ -621,8 +639,6 @@ def create_app() -> FastAPI:
         versioned_router = APIRouter(prefix=normalized_prefix)
         for module_router in routers_to_mount:
             versioned_router.include_router(module_router)
-
-        _mount_pos_extensions(versioned_router)
         app.include_router(versioned_router)
 
     _mount_versioned(settings.api_v1_prefix)

@@ -185,6 +185,8 @@ export type Device = {
   name: string;
   quantity: number;
   store_id: number;
+  warehouse_id?: number | null;
+  warehouse_name?: string | null;
   unit_price: number;
   inventory_value: number;
   completo: boolean;
@@ -211,6 +213,9 @@ export type Device = {
   descripcion?: string | null;
   imagen_url?: string | null;
   precio_venta?: number;
+  imeis_adicionales?: string[];
+  imagenes?: string[];
+  enlaces?: Array<{ titulo?: string | null; url: string }>;
   identifier?: DeviceIdentifier | null;
   variant_count?: number;
   has_variants?: boolean;
@@ -362,7 +367,11 @@ export type DeviceUpdateInput = {
   descripcion?: string | null;
   imagen_url?: string | null;
   precio_venta?: number | null;
+  imeis_adicionales?: string[];
+  imagenes?: string[];
+  enlaces?: Array<{ titulo?: string | null; url: string }>;
   completo?: boolean;
+  warehouse_id?: number | null;
 };
 
 export type InventoryAvailabilityStore = {
@@ -383,6 +392,24 @@ export type InventoryAvailabilityRecord = {
 export type InventoryAvailabilityResponse = {
   generated_at: string;
   items: InventoryAvailabilityRecord[];
+};
+
+export type Warehouse = {
+  id: number;
+  store_id: number;
+  name: string;
+  code: string;
+  is_default: boolean;
+  created_at: string;
+};
+
+export type WarehouseTransferInput = {
+  store_id: number;
+  device_id: number;
+  quantity: number;
+  source_warehouse_id: number;
+  destination_warehouse_id: number;
+  reason: string;
 };
 
 export type InventoryAvailabilityParams = {
@@ -1250,6 +1277,8 @@ export type PurchaseReturn = {
   processed_by_id: number | null;
   approved_by_id?: number | null;
   approved_by_name?: string | null;
+  receipt_pdf_base64?: string | null;
+  receipt_url?: string | null;
   created_at: string;
 };
 
@@ -2224,6 +2253,33 @@ export type InventoryAlertsResponse = {
   settings: InventoryAlertSettings;
   summary: InventoryAlertSummary;
   items: InventoryAlertItem[];
+};
+
+export type MinimumStockAlert = {
+  store_id: number;
+  store_name: string;
+  device_id: number;
+  sku: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  minimum_stock: number;
+  reorder_point: number;
+  reorder_gap: number;
+  inventory_value: number;
+  below_minimum: boolean;
+  below_reorder_point: boolean;
+};
+
+export type MinimumStockSummary = {
+  total: number;
+  below_minimum: number;
+  below_reorder_point: number;
+};
+
+export type MinimumStockAlertsResponse = {
+  summary: MinimumStockSummary;
+  items: MinimumStockAlert[];
 };
 
 export type InventoryCurrentStoreReport = {
@@ -3801,6 +3857,7 @@ export type DeviceListFilters = {
   estado_inventario?: string;
   ubicacion?: string;
   proveedor?: string;
+  warehouse_id?: number | null;
   fecha_ingreso_desde?: string;
   fecha_ingreso_hasta?: string;
 };
@@ -3827,6 +3884,9 @@ function buildDeviceFilterParams(filters: DeviceListFilters): URLSearchParams {
   }
   if (filters.proveedor) {
     params.append("proveedor", filters.proveedor);
+  }
+  if (typeof filters.warehouse_id === "number") {
+    params.append("warehouse_id", String(filters.warehouse_id));
   }
   if (filters.fecha_ingreso_desde) {
     params.append("fecha_ingreso_desde", filters.fecha_ingreso_desde);
@@ -3979,16 +4039,49 @@ function buildSyncDiscrepancyParams(filters: SyncDiscrepancyFilters = {}): URLSe
   return params;
 }
 
-export function getDevices(
-  token: string,
-  storeId: number,
-  filters: DeviceListFilters = {}
-): Promise<Device[]> {
-  const params = buildDeviceFilterParams(filters);
-  const query = params.toString();
-  const suffix = query ? `?${query}` : "";
-  return requestCollection<Device>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
-}
+  export function getDevices(
+    token: string,
+    storeId: number,
+    filters: DeviceListFilters = {}
+  ): Promise<Device[]> {
+    const params = buildDeviceFilterParams(filters);
+    const query = params.toString();
+    const suffix = query ? `?${query}` : "";
+    return requestCollection<Device>(`/stores/${storeId}/devices${suffix}`, { method: "GET" }, token);
+  }
+
+  export function listWarehouses(token: string, storeId: number): Promise<Warehouse[]> {
+    return requestCollection<Warehouse>(
+      `/inventory/stores/${storeId}/warehouses`,
+      { method: "GET" },
+      token,
+    );
+  }
+
+  export function createWarehouse(
+    token: string,
+    storeId: number,
+    payload: Pick<Warehouse, "name" | "code" | "is_default">,
+    reason: string,
+  ): Promise<Warehouse> {
+    return request<Warehouse>(
+      `/inventory/stores/${storeId}/warehouses`,
+      { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+      token,
+    );
+  }
+
+  export function transferBetweenWarehouses(
+    token: string,
+    payload: WarehouseTransferInput,
+    reason: string,
+  ): Promise<{ movement_out: MovementResponse; movement_in: MovementResponse }> {
+    return request<{ movement_out: MovementResponse; movement_in: MovementResponse }>(
+      "/inventory/warehouses/transfers",
+      { method: "POST", body: JSON.stringify(payload), headers: { "X-Reason": reason } },
+      token,
+    );
+  }
 
 export function getProductVariants(
   token: string,
@@ -4498,39 +4591,99 @@ export function importStoreDevicesCsv(
   );
 }
 
+export type DeviceLabelFormat = "pdf" | "zpl" | "escpos";
+export type DeviceLabelTemplate = "38x25" | "50x30" | "80x50" | "a7";
+
+export type LabelConnectorInput = {
+  type?: "usb" | "network";
+  identifier?: string;
+  path?: string | null;
+  host?: string | null;
+  port?: number | null;
+};
+
 export type DeviceLabelDownload = {
   blob: Blob;
   filename: string;
 };
 
-export async function downloadDeviceLabelPdf(
+export type DeviceLabelCommands = {
+  format: Exclude<DeviceLabelFormat, "pdf">;
+  template: DeviceLabelTemplate;
+  commands: string;
+  filename: string;
+  content_type: string;
+  connector?: LabelConnectorInput | null;
+  message: string;
+};
+
+export async function requestDeviceLabel(
   token: string,
   storeId: number,
   deviceId: number,
   reason: string,
-): Promise<DeviceLabelDownload> {
-  const response = await fetch(
-    `${API_URL}/inventory/stores/${storeId}/devices/${deviceId}/label/pdf`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/pdf",
-        "X-Reason": reason,
-      },
-    },
+  options: {
+    format?: DeviceLabelFormat;
+    template?: DeviceLabelTemplate;
+    printerName?: string | null;
+  } = {},
+): Promise<DeviceLabelDownload | DeviceLabelCommands> {
+  const format = options.format ?? "pdf";
+  const template = options.template ?? "38x25";
+  const url = new URL(
+    `${API_URL}/inventory/stores/${storeId}/devices/${deviceId}/label/${format}`,
   );
+  url.searchParams.set("template", template);
+  if (options.printerName) {
+    url.searchParams.set("printer_name", options.printerName);
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "X-Reason": reason,
+  };
+  headers.Accept = format === "pdf" ? "application/pdf" : "application/json";
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers,
+  });
 
   if (!response.ok) {
     throw new Error("No fue posible generar la etiqueta del dispositivo.");
   }
 
-  const blob = await response.blob();
-  const disposition = response.headers.get("content-disposition");
-  const fallback = `etiqueta_${storeId}_${deviceId}.pdf`;
-  const filename = parseFilenameFromDisposition(disposition, fallback);
+  if (format === "pdf") {
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition");
+    const fallback = `etiqueta_${storeId}_${deviceId}.pdf`;
+    const filename = parseFilenameFromDisposition(disposition, fallback);
+    return { blob, filename };
+  }
 
-  return { blob, filename };
+  const payload = (await response.json()) as DeviceLabelCommands;
+  return payload;
+}
+
+export async function triggerDeviceLabelPrint(
+  token: string,
+  storeId: number,
+  deviceId: number,
+  reason: string,
+  payload: { format: DeviceLabelFormat; template: DeviceLabelTemplate; connector?: LabelConnectorInput | null },
+): Promise<POSHardwareActionResponse> {
+  return request<POSHardwareActionResponse>(
+    `/inventory/stores/${storeId}/devices/${deviceId}/label/print`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Reason": reason,
+      },
+    },
+    token,
+  );
 }
 
 export function smartInventoryImport(
@@ -6811,6 +6964,19 @@ export function getInventoryAlerts(
   const query = searchParams.toString();
   const suffix = query ? `?${query}` : "";
   return request<InventoryAlertsResponse>(`/alerts/inventory${suffix}`, { method: "GET" }, token);
+}
+
+export function getMinimumStockAlerts(
+  token: string,
+  params: { storeId?: number } = {},
+): Promise<MinimumStockAlertsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.storeId) {
+    searchParams.set("store_id", String(params.storeId));
+  }
+  const query = searchParams.toString();
+  const suffix = query ? `?${query}` : "";
+  return request<MinimumStockAlertsResponse>(`/alerts/inventory/minimum${suffix}`, { method: "GET" }, token);
 }
 
 export function getRotationAnalytics(

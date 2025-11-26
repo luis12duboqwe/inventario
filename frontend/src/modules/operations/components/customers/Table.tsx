@@ -61,7 +61,7 @@ const CustomersTable = ({
         <tbody>
           {customers.map((customer) => {
             const lastInteraction = customer.last_interaction_at
-              ? new Date(customer.last_interaction_at).toLocaleString("es-MX")
+              ? new Date(customer.last_interaction_at).toLocaleString("es-HN")
               : "—";
             const creditLimit = Number(customer.credit_limit ?? 0);
             const debt = Number(customer.outstanding_debt ?? 0);
@@ -83,7 +83,7 @@ const CustomersTable = ({
                   <strong>{customer.name}</strong>
                   <div className="muted-text small">
                     Registrado el {" "}
-                    {new Date(customer.created_at).toLocaleDateString("es-MX")}
+                    {new Date(customer.created_at).toLocaleDateString("es-HN")}
                   </div>
                 </td>
                 <td>{customer.customer_type ?? "—"}</td>

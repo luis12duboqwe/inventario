@@ -144,7 +144,7 @@ type DashboardContextValue = {
   refreshStores: () => Promise<void>;
 };
 
-const DashboardContext = createContext<DashboardContextValue | undefined>(undefined);
+export const DashboardContext = createContext<DashboardContextValue | undefined>(undefined);
 
 type ProviderProps = {
   token: string;
@@ -218,7 +218,7 @@ export function DashboardProvider({ token, children }: ProviderProps) {
   const [lowStockThresholds, setLowStockThresholds] = useState<Record<number, number>>({});
 
   const currencyFormatter = useMemo(
-    () => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }),
+    () => new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" }),
     []
   );
 
@@ -423,6 +423,23 @@ export function DashboardProvider({ token, children }: ProviderProps) {
 
     loadDevices();
   }, [friendlyErrorMessage, pushToast, selectedStoreId, token]);
+
+  const refreshObservability = useCallback(async () => {
+    setObservabilityLoading(true);
+    try {
+      const snapshot = await getObservabilitySnapshot(token);
+      setObservability(snapshot);
+      setObservabilityError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No se pudo consultar el estado de observabilidad";
+      setObservabilityError(friendlyErrorMessage(message));
+    } finally {
+      setObservabilityLoading(false);
+    }
+  }, [friendlyErrorMessage, token]);
 
   useEffect(() => {
     void refreshObservability();
@@ -833,23 +850,6 @@ export function DashboardProvider({ token, children }: ProviderProps) {
       const message =
         err instanceof Error ? err.message : "No se pudo actualizar el historial de sincronización";
       setSyncHistoryError(friendlyErrorMessage(message));
-    }
-  }, [friendlyErrorMessage, token]);
-
-  const refreshObservability = useCallback(async () => {
-    setObservabilityLoading(true);
-    try {
-      const snapshot = await getObservabilitySnapshot(token);
-      setObservability(snapshot);
-      setObservabilityError(null);
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "No se pudo consultar el estado de observabilidad";
-      setObservabilityError(friendlyErrorMessage(message));
-    } finally {
-      setObservabilityLoading(false);
     }
   }, [friendlyErrorMessage, token]);
 

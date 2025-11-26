@@ -98,7 +98,7 @@ const formatDateTime = (value: string | null): string => {
   if (Number.isNaN(date.getTime())) {
     return "Sin registro";
   }
-  return date.toLocaleString("es-MX", {
+  return date.toLocaleString("es-HN", {
     dateStyle: "short",
     timeStyle: "short",
   });
@@ -679,7 +679,7 @@ function InventoryReportsPanel({
           {currentReport ? (
             <div className="card-content">
               <p className="report-highlight">
-                {currentTotals.total_units.toLocaleString("es-MX")}
+                {currentTotals.total_units.toLocaleString("es-HN")}
                 <small>unidades</small>
               </p>
               <p className="muted-text">
@@ -693,7 +693,7 @@ function InventoryReportsPanel({
                     <li key={store.store_id}>
                       <strong>{store.store_name}</strong>
                       <span>
-                        {totalUnits.toLocaleString("es-MX")}
+                        {totalUnits.toLocaleString("es-HN")}
                         <small> unidades</small>
                       </span>
                       <span className="muted-text">{formatCurrency(totalValue)}</span>
@@ -777,11 +777,11 @@ function InventoryReportsPanel({
             {movementsReport ? (
               <div className="card-content">
                 <p className="report-highlight">
-                  {movementSummary.total_movimientos.toLocaleString("es-MX")}
+                  {movementSummary.total_movimientos.toLocaleString("es-HN")}
                   <small>registros</small>
                 </p>
                 <p className="muted-text">
-                  Unidades movilizadas: {movementSummary.total_unidades.toLocaleString("es-MX")}
+                  Unidades movilizadas: {movementSummary.total_unidades.toLocaleString("es-HN")}
                 </p>
                 <ul className="report-list">
                   {movementByType.map((entry) => {
@@ -790,7 +790,7 @@ function InventoryReportsPanel({
                     return (
                       <li key={entry.tipo_movimiento}>
                         <strong>{entry.tipo_movimiento.toUpperCase()}</strong>
-                        <span>{totalQuantity.toLocaleString("es-MX")}</span>
+                        <span>{totalQuantity.toLocaleString("es-HN")}</span>
                         <span className="muted-text">{formatCurrency(totalValue)}</span>
                       </li>
                     );
@@ -826,7 +826,7 @@ function InventoryReportsPanel({
             {hasTopProducts ? (
               <div className="card-content">
                 <p className="report-highlight">
-                  {topProductsTotals.total_unidades.toLocaleString("es-MX")}
+                  {topProductsTotals.total_unidades.toLocaleString("es-HN")}
                   <small>unidades</small>
                 </p>
                 <p className="muted-text">
@@ -838,7 +838,7 @@ function InventoryReportsPanel({
                     return (
                       <li key={`${item.store_id}-${item.device_id}`}>
                         <strong>{item.nombre}</strong>
-                        <span>{soldUnits.toLocaleString("es-MX")} unidades</span>
+                        <span>{soldUnits.toLocaleString("es-HN")} unidades</span>
                         <span className="muted-text">{item.store_name}</span>
                       </li>
                     );
@@ -863,17 +863,17 @@ function InventoryReportsPanel({
             {hasInactiveProducts ? (
               <div className="card-content">
                 <p className="report-highlight">
-                  {inactiveTotals.total_products.toLocaleString("es-MX")}
+                  {inactiveTotals.total_products.toLocaleString("es-HN")}
                   <small>productos</small>
                 </p>
                 <p className="muted-text">
-                  Unidades detenidas: {inactiveTotals.total_units.toLocaleString("es-MX")} · Valor inmovilizado: {formatCurrency(inactiveTotals.total_value)}
+                  Unidades detenidas: {inactiveTotals.total_units.toLocaleString("es-HN")} · Valor inmovilizado: {formatCurrency(inactiveTotals.total_value)}
                 </p>
                 {inactiveTotals.average_days !== null ? (
                   <p className="muted-text">
-                    Promedio inactivo: {inactiveTotals.average_days.toLocaleString("es-MX")} días
+                    Promedio inactivo: {inactiveTotals.average_days.toLocaleString("es-HN")} días
                     {inactiveTotals.max_days !== null
-                      ? ` · Máximo: ${inactiveTotals.max_days.toLocaleString("es-MX")} días`
+                      ? ` · Máximo: ${inactiveTotals.max_days.toLocaleString("es-HN")} días`
                       : null}
                   </p>
                 ) : (
@@ -883,7 +883,7 @@ function InventoryReportsPanel({
                   {inactiveItems.slice(0, 5).map((item) => {
                     const inactivityLabel =
                       item.dias_sin_movimiento !== null
-                        ? `${item.dias_sin_movimiento.toLocaleString("es-MX")} días`
+                        ? `${item.dias_sin_movimiento.toLocaleString("es-HN")} días`
                         : "Sin datos";
                     const lastActivity = formatDateTime(
                       item.ultimo_movimiento
@@ -920,11 +920,11 @@ function InventoryReportsPanel({
             {hasSyncConflicts ? (
               <div className="card-content">
                 <p className="report-highlight">
-                  {syncTotals.total_conflicts.toLocaleString("es-MX")}
+                  {syncTotals.total_conflicts.toLocaleString("es-HN")}
                   <small>conflictos</small>
                 </p>
                 <p className="muted-text">
-                  SKUs afectados: {syncTotals.affected_skus.toLocaleString("es-MX")} · Máxima diferencia: {syncTotals.max_difference !== null ? syncTotals.max_difference.toLocaleString("es-MX") : "s/d"}
+                  SKUs afectados: {syncTotals.affected_skus.toLocaleString("es-HN")} · Máxima diferencia: {syncTotals.max_difference !== null ? syncTotals.max_difference.toLocaleString("es-HN") : "s/d"}
                 </p>
                 <ul className="report-list">
                   {syncItems.slice(0, 5).map((conflict) => {
@@ -938,7 +938,7 @@ function InventoryReportsPanel({
                     return (
                       <li key={conflict.id}>
                         <strong>{conflict.product_name ?? conflict.sku}</strong>
-                        <span>{conflict.difference.toLocaleString("es-MX")} unidades</span>
+                        <span>{conflict.difference.toLocaleString("es-HN")} unidades</span>
                         <span className="muted-text">
                           {severityLabels[conflict.severity]} · {formatDateTime(conflict.detected_at)}
                         </span>

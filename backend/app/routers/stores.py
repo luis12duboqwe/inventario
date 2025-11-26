@@ -1,7 +1,7 @@
 """Rutas relacionadas con sucursales y dispositivos."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.orm import Session
 
 from datetime import date
@@ -13,6 +13,7 @@ from ..config import settings
 from ..core.roles import ADMIN, GESTION_ROLES
 from ..database import get_db
 from ..models import CommercialState
+from ..routers.dependencies import require_reason
 from ..security import require_roles
 
 router = APIRouter(prefix="/stores", tags=["stores"])
@@ -154,6 +155,32 @@ def update_store(
         raise
 
 
+@router.delete(
+    "/{store_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def delete_store(
+    store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+    reason: str = Depends(require_reason),
+) -> Response:
+    try:
+        crud.soft_delete_store(
+            db,
+            store_id,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "store_not_found", "message": "La sucursal solicitada no existe."},
+        ) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/{store_id}/devices",
     response_model=schemas.DeviceResponse,
@@ -181,6 +208,22 @@ def create_device(
                     "message": "La sucursal solicitada no existe."},
         ) from exc
     except ValueError as exc:
+        if str(exc) == "device_invalid_quantity":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "device_invalid_quantity",
+                    "message": "La cantidad debe ser mayor que cero.",
+                },
+            ) from exc
+        if str(exc) == "device_invalid_cost":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "device_invalid_cost",
+                    "message": "El costo_unitario debe ser mayor que cero.",
+                },
+            ) from exc
         if str(exc) == "device_already_exists":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -213,6 +256,7 @@ def list_devices(
     estado_inventario: str | None = Query(default=None, max_length=40),
     ubicacion: str | None = Query(default=None, max_length=120),
     proveedor: str | None = Query(default=None, max_length=120),
+    warehouse_id: int | None = Query(default=None, ge=1),
     fecha_ingreso_desde: date | None = Query(default=None),
     fecha_ingreso_hasta: date | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -239,7 +283,7 @@ def list_devices(
                     estado_enum = CommercialState(normalized.upper())
                 except ValueError as exc:
                     raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                         detail={
                             "code": "invalid_estado_comercial",
                             "message": "Estado comercial inválido. Usa nuevo, A, B o C.",
@@ -259,6 +303,7 @@ def list_devices(
             estado_inventario=estado_inventario,
             ubicacion=ubicacion,
             proveedor=proveedor,
+            warehouse_id=warehouse_id,
             fecha_ingreso_desde=fecha_ingreso_desde,
             fecha_ingreso_hasta=fecha_ingreso_hasta,
         )
@@ -272,6 +317,7 @@ def list_devices(
             estado_inventario=estado_inventario,
             ubicacion=ubicacion,
             proveedor=proveedor,
+            warehouse_id=warehouse_id,
             fecha_ingreso_desde=fecha_ingreso_desde,
             fecha_ingreso_hasta=fecha_ingreso_hasta,
             limit=page_size,
@@ -331,7 +377,7 @@ def upsert_membership(
 ):
     if payload.store_id != store_id or payload.user_id != user_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Los identificadores del cuerpo deben coincidir con la ruta.",
         )
     try:

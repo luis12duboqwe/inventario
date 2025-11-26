@@ -14,6 +14,7 @@ export default function OperationsLayout() {
       { to: "devoluciones", label: "Devoluciones" },
       { to: "garantias", label: "Garantías" },
       { to: "transferencias", label: "Transferencias" },
+      { to: "diagnosticos", label: "Diagnósticos" },
     ];
 
     if (enableBundles) {

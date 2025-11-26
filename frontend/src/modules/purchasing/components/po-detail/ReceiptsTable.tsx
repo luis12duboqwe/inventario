@@ -45,7 +45,7 @@ export default function ReceiptsTable({ items }: Props) {
     if (Number.isNaN(parsed.getTime())) {
       return value;
     }
-    return parsed.toLocaleString("es-MX");
+    return parsed.toLocaleString("es-HN");
   };
 
   if (data.length === 0) {

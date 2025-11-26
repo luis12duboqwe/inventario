@@ -22,7 +22,7 @@ def _sanitize_reason(value: str | None, required: bool) -> str | None:
     if value is None:
         if required:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Proporciona el encabezado X-Reason con al menos 5 caracteres.",
             )
         return None
@@ -56,7 +56,7 @@ def _normalize_idempotency(value: str | None, *, required: bool) -> IdempotencyK
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     if key is None and required:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Define X-Idempotency-Key para evitar operaciones duplicadas.",
         )
     return key

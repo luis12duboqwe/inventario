@@ -225,7 +225,7 @@ const PurchasesSidePanel = ({
                   <td>{vendor.compras_registradas}</td>
                   <td>
                     {vendor.ultima_compra
-                      ? new Date(vendor.ultima_compra).toLocaleString("es-MX")
+                      ? new Date(vendor.ultima_compra).toLocaleString("es-HN")
                       : "—"}
                   </td>
                   <td>
@@ -349,7 +349,7 @@ const PurchasesSidePanel = ({
                 {vendorHistory.compras.map((purchase) => (
                   <tr key={purchase.id_compra}>
                     <td>#{purchase.id_compra}</td>
-                    <td>{new Date(purchase.fecha).toLocaleString("es-MX")}</td>
+                    <td>{new Date(purchase.fecha).toLocaleString("es-HN")}</td>
                     <td>{currencyFormatter.format(purchase.total)}</td>
                     <td>{currencyFormatter.format(purchase.impuesto)}</td>
                     <td>{purchase.usuario_nombre || "—"}</td>

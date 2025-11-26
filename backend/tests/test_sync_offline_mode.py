@@ -114,3 +114,97 @@ def test_hybrid_retry_queue_and_history(client, db_session: Session) -> None:
     finally:
         settings.enable_hybrid_prep = original_hybrid
         settings.enable_purchases_sales = original_sales
+
+
+def test_prolonged_disconnection_preserves_outbox(client, db_session: Session) -> None:
+    original_hybrid = settings.enable_hybrid_prep
+    original_sales = settings.enable_purchases_sales
+    original_retry_interval = settings.sync_retry_interval_seconds
+    settings.enable_hybrid_prep = True
+    settings.enable_purchases_sales = True
+    settings.sync_retry_interval_seconds = 1
+    headers = _auth_headers(client)
+
+    try:
+        store_response = client.post(
+            "/stores",
+            json={
+                "name": "Sucursal Estrés",
+                "location": "CDMX",
+                "timezone": "America/Mexico_City",
+            },
+            headers=headers,
+        )
+        assert store_response.status_code == 201
+        store_id = store_response.json()["id"]
+
+        device_response = client.post(
+            f"/stores/{store_id}/devices",
+            json={
+                "sku": "STRESS-01",
+                "name": "Router Offline",
+                "quantity": 60,
+                "unit_price": 7500.0,
+                "costo_unitario": 5200.0,
+            },
+            headers=headers,
+        )
+        assert device_response.status_code == 201
+        device_id = device_response.json()["id"]
+
+        for index in range(15):
+            sale_payload = {
+                "store_id": store_id,
+                "payment_method": "EFECTIVO",
+                "items": [{"device_id": device_id, "quantity": 1}],
+                "notes": f"Venta offline {index}",
+            }
+            sale_response = client.post("/sales", json=sale_payload, headers=headers)
+            assert sale_response.status_code == 201
+
+        queued_entries = db_session.query(models.SyncOutbox).all()
+        assert len(queued_entries) >= 15
+
+        retry_ids: list[int] = []
+        for entry in queued_entries:
+            entry.status = SyncOutboxStatus.FAILED
+            entry.attempt_count = 1
+            entry.error_message = "offline"
+            entry.last_attempt_at = datetime.utcnow() - timedelta(seconds=5)
+            retry_ids.append(entry.id)
+        db_session.commit()
+
+        requeued = requeue_failed_outbox_entries(db_session)
+        assert {entry.id for entry in requeued} == set(retry_ids)
+
+        refreshed = (
+            db_session.query(models.SyncOutbox)
+            .filter(models.SyncOutbox.id.in_(retry_ids))
+            .all()
+        )
+        for item in refreshed:
+            assert item.status == SyncOutboxStatus.PENDING
+            assert item.attempt_count == 0
+            assert item.error_message is None
+            assert item.last_attempt_at is None
+
+        second_pass = requeue_failed_outbox_entries(db_session)
+        assert second_pass == []
+
+        sync_response = client.post(
+            "/sync/run",
+            json={"store_id": store_id},
+            headers={k: v for k, v in headers.items() if k != "X-Reason"},
+        )
+        assert sync_response.status_code == 200
+
+        pending_count = (
+            db_session.query(models.SyncOutbox)
+            .filter(models.SyncOutbox.status == SyncOutboxStatus.PENDING)
+            .count()
+        )
+        assert pending_count == 0
+    finally:
+        settings.enable_hybrid_prep = original_hybrid
+        settings.enable_purchases_sales = original_sales
+        settings.sync_retry_interval_seconds = original_retry_interval

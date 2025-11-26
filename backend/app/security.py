@@ -207,7 +207,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 
-_PASSWORD_POLICY = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,128}$")
+_PASSWORD_POLICY = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,128}$")
 
 
 def enforce_password_policy(password: str, *, username: str | None = None) -> None:
@@ -215,15 +215,15 @@ def enforce_password_policy(password: str, *, username: str | None = None) -> No
 
     if not _PASSWORD_POLICY.match(password):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
-                "La contraseña debe tener al menos 10 caracteres e incluir mayúsculas, "
+                "La contraseña debe tener al menos 8 caracteres e incluir mayúsculas, "
                 "minúsculas y números. Se recomienda agregar un símbolo."
             ),
         )
     if username and username.lower() in password.lower():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="La contraseña no puede contener el usuario o correo asociado.",
         )
 
@@ -438,7 +438,11 @@ def _collect_user_roles(user: Any) -> set[str]:
         if fallback_name:
             collected.add(str(fallback_name).upper())
 
-    direct_role = getattr(user, "rol", None) or getattr(user, "role", None)
+    direct_role = (
+        getattr(user, "rol", None)
+        or getattr(user, "role", None)
+        or getattr(user, "role_name", None)
+    )
     if direct_role:
         direct_name = getattr(direct_role, "name", None)
         if direct_name:
@@ -562,11 +566,17 @@ def require_roles(
             return current_user
 
         required_roles = {role.upper() for role in roles if isinstance(role, str)}
-        if required_roles and user_roles.isdisjoint(required_roles):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No cuenta con permisos para realizar esta acción.",
-            )
+        if required_roles:
+            if not user_roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="El usuario autenticado no tiene roles asignados.",
+                )
+            if user_roles.isdisjoint(required_roles):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No cuentas con permisos suficientes.",
+                )
 
         if enforce_store_scope:
             store_scope = _extract_store_scope(request)
@@ -581,11 +591,16 @@ def require_roles(
         module_key = module or (request.headers.get("x-permission-module") if request else None)
         normalized_action = _normalize_action(action, request.method if request else None)
         if module_key:
+            if not user_roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="El usuario autenticado no tiene roles asignados.",
+                )
             permissions = _collect_role_permissions(current_user, db, user_roles)
             if not _has_sensitive_permission(permissions, module_key, normalized_action):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="La acción solicitada es sensible y no está permitida.",
+                    detail="No cuentas con permisos para este módulo.",
                 )
 
         return current_user

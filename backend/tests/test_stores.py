@@ -202,7 +202,7 @@ def test_device_filters_by_search_and_state(client) -> None:
         headers=headers,
         params={"estado": "Z"},
     )
-    assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_requires_authentication(client) -> None:
@@ -265,7 +265,7 @@ def test_inventory_movement_requires_comment_length(client) -> None:
         json=movement_payload,
         headers={**headers, "X-Reason": "Operacion de prueba"},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     detail = response.json()["detail"]
     assert any(
         "El comentario debe tener al menos 5 caracteres." in error.get("msg", "")
@@ -298,7 +298,7 @@ def test_inventory_movement_requires_comment_matching_reason(client) -> None:
         json=movement_payload,
         headers=headers,
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     detail = response.json()["detail"]
     assert detail["code"] == "reason_comment_mismatch"
     assert "coincidir" in detail["message"]

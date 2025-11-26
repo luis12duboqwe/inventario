@@ -3,7 +3,7 @@ import Modal from "../../../shared/components/ui/Modal";
 import type { SaleSummary, SaleLine } from "./types";
 
 const formatListCurrency = (value: number) =>
-  value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  value.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 type Props = {
   open: boolean;

@@ -12,7 +12,7 @@ export type POSQuickGridProps = {
   onPick?: (id: string) => void;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function QuickGrid({ items, onPick }: POSQuickGridProps) {
   const data = Array.isArray(items) ? items : [];

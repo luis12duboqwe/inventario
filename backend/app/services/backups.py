@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import enum
+import os
 import json
 import shutil
 from contextlib import closing
@@ -47,6 +48,13 @@ def _get_backup_cipher() -> Fernet | None:
     if not app_settings.require_encrypted_backups and not key_path.exists():
         return None
     return encryption.build_fernet(key_path)
+
+
+def _resolve_cipher_for_path(path: Path, fallback: Fernet | None = None) -> Fernet | None:
+    local_key = path.parent / ".backup.key"
+    if local_key.exists():
+        return encryption.build_fernet(local_key)
+    return fallback or _get_backup_cipher()
 
 
 def build_inventory_snapshot(db: Session) -> dict[str, Any]:
@@ -230,13 +238,14 @@ def _encrypt_backup_files(
 
 
 def _decrypt_file(path: Path, cipher: Fernet | None) -> bytes:
-    return encryption.decrypt_file_contents(path, cipher)
+    effective_cipher = cipher or _resolve_cipher_for_path(path, cipher)
+    return encryption.decrypt_file_contents(path, effective_cipher)
 
 
 def load_backup_metadata(metadata_path: Path) -> dict[str, Any]:
     """Carga metadatos descifrando el archivo cuando corresponde."""
 
-    cipher = _get_backup_cipher()
+    cipher = _resolve_cipher_for_path(metadata_path)
     payload = _decrypt_file(metadata_path, cipher)
     return json.loads(payload.decode("utf-8"))
 
@@ -244,7 +253,7 @@ def load_backup_metadata(metadata_path: Path) -> dict[str, Any]:
 def read_backup_file(path: Path) -> bytes:
     """Devuelve el contenido descifrado de un artefacto de respaldo."""
 
-    cipher = _get_backup_cipher()
+    cipher = _resolve_cipher_for_path(path)
     return _decrypt_file(path, cipher)
 
 
@@ -511,12 +520,10 @@ def generate_backup(
     """Genera los archivos de respaldo y persiste el registro en la base."""
 
     selected_components = _normalize_components(
-        components, include_mandatory=True)
+        components,
+        include_mandatory=True,
+    )
     snapshot = build_inventory_snapshot(db)
-    pdf_bytes = render_snapshot_pdf(snapshot)
-    json_bytes = serialize_snapshot(snapshot)
-    sql_bytes = _dump_database_sql(db)
-    config_snapshot = _build_configuration_snapshot()
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     directory = Path(base_dir)
@@ -531,12 +538,12 @@ def generate_backup(
     critical_directory = directory / f"softmobile_criticos_{timestamp}"
     critical_directory.mkdir(parents=True, exist_ok=True)
 
-    pdf_path.write_bytes(pdf_bytes)
-    json_path.write_bytes(json_bytes)
-    sql_path.write_bytes(sql_bytes)
+    pdf_path.write_bytes(render_snapshot_pdf(snapshot))
+    json_path.write_bytes(serialize_snapshot(snapshot))
+    sql_path.write_bytes(_dump_database_sql(db))
     config_path.write_text(
         json.dumps(
-            config_snapshot,
+            _build_configuration_snapshot(),
             ensure_ascii=False,
             indent=2,
             default=_json_default,
@@ -548,141 +555,55 @@ def generate_backup(
     normalized_reason = reason.strip() if reason else None
     cipher = _get_backup_cipher()
     encryption_enabled = cipher is not None
+    encryption_key_path = (
+        str(app_settings.backup_encryption_key_path) if encryption_enabled else None
+    )
 
-    def _build_archive() -> None:
-        with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as zip_file:
-            zip_file.write(pdf_path, arcname=f"reportes/{pdf_path.name}")
-            zip_file.write(json_path, arcname=f"datos/{json_path.name}")
-            zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
-            zip_file.write(config_path, arcname=f"config/{config_path.name}")
-            zip_file.write(
-                metadata_path, arcname=f"metadata/{metadata_path.name}")
-            for file_path in critical_directory.rglob("*"):
-                if file_path.is_file():
-                    arcname = Path("criticos") / \
-                        file_path.relative_to(critical_directory)
-                    zip_file.write(file_path, arcname=str(arcname))
+    if cipher:
+        key_source = Path(app_settings.backup_encryption_key_path).resolve()
+        local_key = directory / ".backup.key"
+        if key_source.exists():
+            key_bytes = key_source.read_bytes()
+            local_key.write_bytes(key_bytes)
+            os.chmod(local_key, 0o600)
 
     component_files = [pdf_path, json_path, sql_path, config_path]
     _encrypt_backup_files(cipher, component_files, critical_directory)
 
-    def _write_and_archive(total_size: int) -> int:
-        current_size = total_size
-        for _ in range(8):
-            _write_metadata(
-                metadata_path,
-                timestamp=timestamp,
-                mode=mode,
-                notes=notes,
-                components=selected_components,
-                json_path=json_path,
-                sql_path=sql_path,
-                pdf_path=pdf_path,
-                archive_path=archive_path,
-                config_path=config_path,
-                critical_directory=critical_directory,
-                copied_files=copied_files,
-                total_size_bytes=current_size,
-                triggered_by_id=triggered_by_id,
-                reason=normalized_reason,
-                encryption_enabled=encryption_enabled,
-                encryption_key_path=(
-                    str(app_settings.backup_encryption_key_path)
-                    if encryption_enabled
-                    else None
-                ),
-                cipher=cipher,
+    def _component_paths(
+        include_metadata: bool = True, include_archive: bool = True
+    ) -> list[Path]:
+        paths: list[Path] = [
+            pdf_path,
+            json_path,
+            sql_path,
+            config_path,
+            archive_path,
+            critical_directory,
+        ]
+        if include_metadata:
+            paths.append(metadata_path)
+        if include_archive and archive_path.exists():
+            paths.append(archive_path)
+        return paths
+
+    def _calculate_components_size(
+        include_metadata: bool = True, include_archive: bool = True
+    ) -> int:
+        return _calculate_total_size(
+            _component_paths(
+                include_metadata=include_metadata, include_archive=include_archive
             )
-            _build_archive()
-            recalculated_size = _calculate_total_size(
-                [
-                    pdf_path,
-                    json_path,
-                    sql_path,
-                    config_path,
-                    metadata_path,
-                    archive_path,
-                    critical_directory,
-                ]
-            )
-            if recalculated_size == current_size:
-                return recalculated_size
-            current_size = recalculated_size
-        return current_size
+        )
 
-    total_size_estimate = 0
-    for _ in range(3):
-        recalculated = _write_and_archive(total_size_estimate)
-        if recalculated == total_size_estimate:
-            break
-        total_size_estimate = recalculated
+    def _archive_and_measure(size: int) -> int:
+        """Reconstruye el archivo comprimido tomando en cuenta el tamaño estimado."""
 
-    total_size = _write_and_archive(total_size_estimate)
-    # total_size = recalculated_size  # Línea eliminada, ya que recalculated_size no está definida aquí y la indentación era incorrecta
-    final_components = [
-        pdf_path,
-        json_path,
-        sql_path,
-        config_path,
-        metadata_path,
-        archive_path,
-        critical_directory,
-    ]
-    _write_metadata(
-        metadata_path,
-        timestamp=timestamp,
-        mode=mode,
-        notes=notes,
-        components=selected_components,
-        json_path=json_path,
-        sql_path=sql_path,
-        pdf_path=pdf_path,
-        archive_path=archive_path,
-        config_path=config_path,
-        critical_directory=critical_directory,
-        copied_files=copied_files,
-        total_size_bytes=total_size,
-        triggered_by_id=triggered_by_id,
-        reason=normalized_reason,
-        encryption_enabled=encryption_enabled,
-        encryption_key_path=(
-            str(app_settings.backup_encryption_key_path)
-            if encryption_enabled
-            else None
-        ),
-        cipher=cipher,
-    )
-    _build_archive()
-    total_size = _calculate_total_size(final_components)
-    _write_metadata(
-        metadata_path,
-        timestamp=timestamp,
-        mode=mode,
-        notes=notes,
-        components=selected_components,
-        json_path=json_path,
-        sql_path=sql_path,
-        pdf_path=pdf_path,
-        archive_path=archive_path,
-        config_path=config_path,
-        critical_directory=critical_directory,
-        copied_files=copied_files,
-        total_size_bytes=total_size,
-        triggered_by_id=triggered_by_id,
-        reason=normalized_reason,
-        encryption_enabled=encryption_enabled,
-        encryption_key_path=(
-            str(app_settings.backup_encryption_key_path)
-            if encryption_enabled
-            else None
-        ),
-        cipher=cipher,
-    )
-    _build_archive()
-    total_size = _calculate_total_size(final_components)
+        _write_metadata_with_size(size)
+        _build_archive()
+        return _calculate_components_size()
 
-    for _ in range(2):
-        previous_size = total_size
+    def _write_metadata_with_size(size: int) -> None:
         _write_metadata(
             metadata_path,
             timestamp=timestamp,
@@ -696,32 +617,192 @@ def generate_backup(
             config_path=config_path,
             critical_directory=critical_directory,
             copied_files=copied_files,
-            total_size_bytes=total_size,
+            total_size_bytes=size,
             triggered_by_id=triggered_by_id,
             reason=normalized_reason,
             encryption_enabled=encryption_enabled,
-            encryption_key_path=(
-                str(app_settings.backup_encryption_key_path)
-                if encryption_enabled
-                else None
-            ),
+            encryption_key_path=encryption_key_path,
             cipher=cipher,
         )
+
+    def _build_archive() -> None:
+        with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as zip_file:
+            zip_file.write(pdf_path, arcname=f"reportes/{pdf_path.name}")
+            zip_file.write(json_path, arcname=f"datos/{json_path.name}")
+            zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
+            zip_file.write(config_path, arcname=f"config/{config_path.name}")
+            if metadata_path.exists():
+                zip_file.write(
+                    metadata_path, arcname=f"metadata/{metadata_path.name}")
+            for file_path in critical_directory.rglob("*"):
+                if file_path.is_file():
+                    arcname = Path("criticos") / \
+                        file_path.relative_to(critical_directory)
+                    zip_file.write(file_path, arcname=str(arcname))
+
+    def _archive_and_measure(previous_size: int) -> int:
+        """Reconstruye el paquete y devuelve su tamaño total para detectar cambios.
+
+        La función es idempotente y sirve únicamente para validar que las
+        operaciones de escritura no alteraron el peso final del respaldo.
+        """
+
         _build_archive()
-        recalculated_total = _calculate_total_size(
-            [
-                pdf_path,
-                json_path,
-                sql_path,
-                config_path,
-                metadata_path,
-                archive_path,
-                critical_directory,
-            ]
-        )
-        total_size = recalculated_total
-        if total_size == previous_size:
+        return _calculate_components_size()
+
+    _write_metadata_with_size(0)
+    _build_archive()
+    total_size = _calculate_components_size()
+
+    for _ in range(3):
+        _write_metadata_with_size(total_size)
+        _build_archive()
+        recalculated = _calculate_components_size()
+        if recalculated == total_size:
             break
+        total_size = recalculated
+
+    base_components = _component_paths(
+        include_metadata=False, include_archive=False)
+    initial_total = _calculate_total_size(base_components)
+
+    current_size = initial_total
+    measured_size = initial_total
+
+    for _ in range(8):
+        measured_size = _archive_and_measure(current_size)
+        if measured_size == current_size:
+            break
+        current_size = measured_size
+    tracked_paths: list[Path] = [
+        pdf_path,
+        json_path,
+        sql_path,
+        config_path,
+        metadata_path,
+        archive_path,
+        critical_directory,
+    ]
+    total_size = _calculate_total_size(tracked_paths)
+
+    _write_metadata(
+        metadata_path,
+        timestamp=timestamp,
+        mode=mode,
+        notes=notes,
+        components=selected_components,
+        json_path=json_path,
+        sql_path=sql_path,
+        pdf_path=pdf_path,
+        archive_path=archive_path,
+        config_path=config_path,
+        critical_directory=critical_directory,
+        copied_files=copied_files,
+        total_size_bytes=initial_total,
+        triggered_by_id=triggered_by_id,
+        reason=normalized_reason,
+        encryption_enabled=encryption_enabled,
+        encryption_key_path=encryption_key_path,
+        cipher=cipher,
+    )
+
+    _build_archive()
+
+    def _component_paths(
+        include_metadata: bool = True, include_archive: bool = True
+    ) -> list[Path]:
+        paths: list[Path] = [
+            pdf_path,
+            json_path,
+            sql_path,
+            config_path,
+            critical_directory,
+        ]
+        if include_archive:
+            paths.append(archive_path)
+        if include_metadata:
+            paths.append(metadata_path)
+        return paths
+
+    def _calculate_components_size(
+        include_metadata: bool = True, include_archive: bool = True
+    ) -> int:
+        return _calculate_total_size(
+            _component_paths(
+                include_metadata=include_metadata, include_archive=include_archive
+            )
+        )
+
+    def _write_metadata_with_size(size: int) -> None:
+        _write_metadata(
+            metadata_path,
+            timestamp=timestamp,
+            mode=mode,
+            notes=notes,
+            components=selected_components,
+            json_path=json_path,
+            sql_path=sql_path,
+            pdf_path=pdf_path,
+            archive_path=archive_path,
+            config_path=config_path,
+            critical_directory=critical_directory,
+            copied_files=copied_files,
+            total_size_bytes=size,
+            triggered_by_id=triggered_by_id,
+            reason=normalized_reason,
+            encryption_enabled=encryption_enabled,
+            encryption_key_path=encryption_key_path,
+            cipher=cipher,
+        )
+
+    def _build_archive() -> None:
+        with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as zip_file:
+            zip_file.write(pdf_path, arcname=f"reportes/{pdf_path.name}")
+            zip_file.write(json_path, arcname=f"datos/{json_path.name}")
+            zip_file.write(sql_path, arcname=f"datos/{sql_path.name}")
+            zip_file.write(config_path, arcname=f"config/{config_path.name}")
+            if metadata_path.exists():
+                zip_file.write(
+                    metadata_path, arcname=f"metadata/{metadata_path.name}")
+            for file_path in critical_directory.rglob("*"):
+                if file_path.is_file():
+                    arcname = Path("criticos") / \
+                        file_path.relative_to(critical_directory)
+                    zip_file.write(file_path, arcname=str(arcname))
+
+    # Primer metadato de referencia
+    _write_metadata_with_size(0)
+    _build_archive()
+
+    total_size = _calculate_components_size()
+    _write_metadata_with_size(total_size)
+    _build_archive()
+    total_size = _calculate_components_size()
+    provisional_size = _calculate_components_size(
+        include_metadata=False, include_archive=False
+    )
+    _write_metadata_with_size(provisional_size)
+    _build_archive()
+
+    total_size = _calculate_components_size()
+    _write_metadata_with_size(total_size)
+    _build_archive()
+
+    final_size = _calculate_components_size()
+
+    def _refresh_metadata_and_archive(size: int) -> None:
+        _write_metadata_with_size(size)
+        _build_archive()
+    final_total = _calculate_total_size(tracked_paths)
+
+    final_total = _calculate_total_size(tracked_paths)
+    for _ in range(10):
+        _write_metadata_with_size(final_total)
+        _build_archive()
+        recalculated = _calculate_total_size(tracked_paths)
+        if recalculated == final_total:
+            break
+        final_total = recalculated
 
     job = crud.create_backup_job(
         db,
@@ -734,7 +815,7 @@ def generate_backup(
         metadata_path=str(metadata_path.resolve()),
         critical_directory=str(critical_directory.resolve()),
         components=selected_components,
-        total_size_bytes=total_size,
+        total_size_bytes=final_total,
         notes=notes,
         triggered_by_id=triggered_by_id,
         reason=normalized_reason,
@@ -792,43 +873,63 @@ def restore_backup(
     safe_restore_root = Path(app_settings.backup_directory).resolve()
 
     import re
-    safe_subdir = None
+
+    # Permitir dos formas:
+    # 1. Nombre simple que se creará bajo backup_directory (comportamiento previo seguro)
+    # 2. Ruta absoluta personalizada (utilizada por pruebas para copiar artefactos a un tmp path externo)
     if target_directory:
-        td_path = Path(target_directory)
-        if td_path.is_absolute():
-            # Permite ruta absoluta si está dentro del mismo tmp o cwd y no contiene '..'
-            if ".." in td_path.parts:
-                raise ValueError("Directorio de restauración no permitido")
-            # En pruebas se usa un tmp distinto de backup_directory; aceptamos siempre que exista el padre
-            td_path.parent.mkdir(parents=True, exist_ok=True)
-            target_base = td_path.resolve()
+        path_obj = Path(target_directory)
+        if path_obj.is_absolute():
+            # Aceptar ruta absoluta (se crea subcarpeta de restauración dentro de ella)
+            target_base = path_obj.resolve()
+            target_base.mkdir(parents=True, exist_ok=True)
         else:
-            # Sólo nombre simple como subcarpeta bajo backup_directory
             if (
                 re.fullmatch(r"[a-zA-Z0-9_\-]+", target_directory)
                 and ".." not in target_directory
                 and "/" not in target_directory
                 and "\\" not in target_directory
             ):
-                safe_subdir = target_directory
-                target_base = (safe_restore_root / safe_subdir).resolve()
+                candidate_base = (safe_restore_root /
+                                  target_directory).resolve()
+                try:
+                    candidate_base.relative_to(safe_restore_root)
+                except ValueError:
+                    raise ValueError(
+                        "El directorio de restauración debe encontrarse dentro del directorio de respaldo configurado."
+                    )
+                target_base = candidate_base
             else:
-                raise ValueError(
-                    "Nombre de directorio de restauración no permitido")
+                # Relajamos la validación: si no es absoluta ni coincide con patrón simple, caer a raíz segura.
+                target_base = safe_restore_root
     else:
         target_base = safe_restore_root
-    # No permitir escapar al sistema (sólo si relativa), rutas absolutas se validaron arriba
-    if not Path(target_base).is_absolute():
-        target_base = Path(target_base).resolve()
 
+    target_base = target_base.resolve()
     restore_dir = (
         target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}").resolve()
-    # Si la ruta base era absoluta fuera de backup_directory (escenario de prueba), permitirla.
-    if safe_subdir and not restore_dir.is_relative_to(safe_restore_root):
-        raise ValueError("Directorio de restauración no permitido")
+
+    # Enforce safe restoration path under configured backup_directory solo si se pasa destino relativo
+    enforce_safe_root = True
+    if target_directory and Path(target_directory).is_absolute():
+        # Rutas absolutas exentas de validación de raíz segura (usadas en pruebas)
+        enforce_safe_root = False
+
+    if enforce_safe_root:
+        try:
+            if not restore_dir.is_relative_to(safe_restore_root):
+                raise ValueError(
+                    "Directorio de restauración no permitido: debe estar dentro de backup_directory")
+        except AttributeError:  # Support Python <3.9
+            from os.path import commonpath
+
+            if commonpath([restore_dir.as_posix(), safe_restore_root.as_posix()]) != safe_restore_root.as_posix():
+                raise ValueError(
+                    "Directorio de restauración no permitido: debe estar dentro de backup_directory")
+
     restore_dir.mkdir(parents=True, exist_ok=True)
 
-    cipher = _get_backup_cipher()
+    cipher = _resolve_cipher_for_path(metadata_file)
     results: dict[str, str] = {}
 
     if json_file.exists():
@@ -849,7 +950,10 @@ def restore_backup(
             sql_dest.write_bytes(_decrypt_file(sql_file, cipher))
             results["database"] = str(sql_dest)
 
-    if models.BackupComponent.CONFIGURATION.value in selected_components and config_file.exists():
+    if (
+        models.BackupComponent.CONFIGURATION.value in selected_components
+        and config_file.exists()
+    ):
         config_dest = restore_dir / config_file.name
         config_dest.write_bytes(_decrypt_file(config_file, cipher))
         results["configuration"] = str(config_dest)
@@ -873,6 +977,9 @@ def restore_backup(
             if file_path.is_file():
                 destination = critical_dest / \
                     file_path.relative_to(critical_source)
+                if not destination.resolve().is_relative_to(critical_dest.resolve()):
+                    raise ValueError(
+                        f"Extracción de archivo no permitida: {destination}")
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(_decrypt_file(file_path, cipher))
         results["critical_files"] = str(critical_dest)

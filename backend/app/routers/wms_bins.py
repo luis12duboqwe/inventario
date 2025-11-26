@@ -76,7 +76,7 @@ def create_bin(
             ) from exc
         if message == "wms_bin_code_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={"code": "wms_bin_code_required",
                         "message": "El código del bin es obligatorio."},
             ) from exc
@@ -116,7 +116,7 @@ def update_bin(
             ) from exc
         if message == "wms_bin_code_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={"code": "wms_bin_code_required",
                         "message": "El código del bin es obligatorio."},
             ) from exc

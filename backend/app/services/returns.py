@@ -182,7 +182,8 @@ def _count_purchase_returns(db: Session, filters: _ReturnFilters) -> int:
         .where(models.PurchaseReturn.created_at.between(filters.start, filters.end))
     )
     if filters.store_id is not None:
-        statement = statement.where(models.PurchaseOrder.store_id == filters.store_id)
+        statement = statement.where(
+            models.PurchaseOrder.store_id == filters.store_id)
     return int(db.scalar(statement) or 0)
 
 
@@ -200,7 +201,8 @@ def _list_sale_returns(
         select(models.SaleReturn)
         .options(
             joinedload(models.SaleReturn.sale).joinedload(models.Sale.store),
-            joinedload(models.SaleReturn.sale).joinedload(models.Sale.customer),
+            joinedload(models.SaleReturn.sale).joinedload(
+                models.Sale.customer),
             joinedload(models.SaleReturn.sale).joinedload(models.Sale.items),
             joinedload(models.SaleReturn.device),
             joinedload(models.SaleReturn.processed_by),
@@ -246,7 +248,8 @@ def _list_purchase_returns(
     statement = (
         select(models.PurchaseReturn)
         .options(
-            joinedload(models.PurchaseReturn.order).joinedload(models.PurchaseOrder.store),
+            joinedload(models.PurchaseReturn.order).joinedload(
+                models.PurchaseOrder.store),
             joinedload(models.PurchaseReturn.device),
             joinedload(models.PurchaseReturn.processed_by),
             joinedload(models.PurchaseReturn.approved_by),
@@ -295,7 +298,8 @@ def list_returns(
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     start, end = _normalize_range(date_from, date_to)
-    filters = _ReturnFilters(start=start, end=end, store_id=store_id, kind=kind)
+    filters = _ReturnFilters(start=start, end=end,
+                             store_id=store_id, kind=kind)
 
     sale_count = _count_sale_returns(db, filters)
     purchase_count = _count_purchase_returns(db, filters)
@@ -311,7 +315,7 @@ def list_returns(
     category_counts: dict[str, int] = defaultdict(int)
     for record in combined:
         category_counts[record.reason_category.value] += 1
-    paginated = combined[offset : offset + limit]
+    paginated = combined[offset: offset + limit]
 
     totals = schemas.ReturnsTotals(
         total=sale_count + purchase_count,

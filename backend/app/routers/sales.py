@@ -23,7 +23,8 @@ router = APIRouter(prefix="/sales", tags=["ventas"])
 
 def _ensure_feature_enabled() -> None:
     if not settings.enable_purchases_sales:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Funcionalidad no disponible")
 
 
 def _prepare_sales_report(
@@ -119,6 +120,8 @@ def search_sales_history_endpoint(
     current_user=Depends(require_roles(*MOVEMENT_ROLES)),
 ):
     _ensure_feature_enabled()
+    # Deshabilitar expire_on_commit para evitar DetachedInstanceError al serializar
+    db.expire_on_commit = False
     return crud.search_sales_history(
         db,
         ticket=ticket,
@@ -247,12 +250,12 @@ def create_sale_endpoint(
         detail = str(exc)
         if detail == "sale_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes agregar artículos a la venta.",
             ) from exc
         if detail == "sale_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la venta.",
             ) from exc
         if detail == "sale_insufficient_stock":
@@ -267,7 +270,7 @@ def create_sale_endpoint(
             ) from exc
         if detail == "supplier_batch_code_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes indicar un lote válido para cada artículo.",
             ) from exc
         if detail == "supplier_batch_insufficient_stock":
@@ -277,7 +280,7 @@ def create_sale_endpoint(
             ) from exc
         if detail == "sale_requires_single_unit":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Los dispositivos con IMEI o serie se venden por unidad.",
             ) from exc
         if detail == "customer_credit_limit_exceeded":
@@ -318,7 +321,7 @@ def register_sale_return_endpoint(
         detail = str(exc)
         if detail == "sale_return_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes indicar artículos a devolver.",
             ) from exc
         if detail == "sale_return_invalid_quantity":
@@ -328,7 +331,7 @@ def register_sale_return_endpoint(
             ) from exc
         if detail == "sale_return_invalid_warehouse":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Selecciona un almacén válido para la devolución.",
             ) from exc
         raise
@@ -359,7 +362,8 @@ def register_sale_return_endpoint(
             code,
             "[sale_return_supervisor_error] No fue posible validar la autorización del supervisor.",
         )
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message) from exc
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=message) from exc
 
 
 @router.put(
@@ -394,12 +398,12 @@ def update_sale_endpoint(
         detail = str(exc)
         if detail == "sale_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes agregar artículos a la venta.",
             ) from exc
         if detail == "sale_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la venta.",
             ) from exc
         if detail == "sale_insufficient_stock":
@@ -414,7 +418,7 @@ def update_sale_endpoint(
             ) from exc
         if detail == "sale_requires_single_unit":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Los dispositivos con IMEI o serie se venden por unidad.",
             ) from exc
         if detail == "sale_has_returns":
@@ -469,7 +473,7 @@ def cancel_sale_endpoint(
             ) from exc
         if str(exc) == "sale_reported_requires_customer":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="La venta requiere un cliente asociado para emitir la nota de crédito.",
             ) from exc
         raise
