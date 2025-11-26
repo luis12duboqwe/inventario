@@ -31,12 +31,18 @@ def _auth_headers(client) -> dict[str, str]:
     }
     bootstrap_response = client.post("/auth/bootstrap", json=payload)
     assert bootstrap_response.status_code == status.HTTP_201_CREATED
-"""Pruebas de integración para el módulo de listas de precios."""
 
-from fastapi import status
-
-from backend.app.config import settings
-from backend.app.core.roles import ADMIN
+    token_response = client.post(
+        "/auth/token",
+        data={"username": payload["username"], "password": payload["password"]},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert token_response.status_code == status.HTTP_200_OK
+    token = token_response.json()["access_token"]
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-Reason": "Gestion listas de precios",
+    }
 
 
 def _bootstrap_admin(client) -> str:
@@ -56,10 +62,7 @@ def _bootstrap_admin(client) -> str:
     )
     assert token_response.status_code == status.HTTP_200_OK
     token = token_response.json()["access_token"]
-    return {
-        "Authorization": f"Bearer {token}",
-        "X-Reason": "Gestion listas de precios",
-    }
+    return token
 
 
 def _create_store(db_session) -> int:
@@ -283,8 +286,6 @@ def test_price_resolution_prioritizes_specific_scope(
     assert resolution["scope"] == "store_customer"
     assert pytest.approx(resolution["final_price"], rel=1e-3) == 153.0
     assert resolution["source"] == "price_list"
-
-    return token_response.json()["access_token"]
 
 
 def test_price_lists_priority_resolution(client):

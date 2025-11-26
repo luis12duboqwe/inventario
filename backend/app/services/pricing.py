@@ -8,6 +8,13 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from datetime import date, datetime
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Iterable
+
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
 from .. import crud, schemas
 from ..models import Device, PriceList, PriceListItem
 
@@ -376,6 +383,7 @@ def resolve_device_price(
             device_id=device_id,
             price_list_id=None,
             price_list_name=None,
+            priority=None,
             scope="fallback",
             source="fallback",
             currency=currency,
@@ -404,6 +412,7 @@ def resolve_device_price(
         device_id=device_id,
         price_list_id=price_list.id,
         price_list_name=price_list.name,
+        priority=price_list.priority,
         scope=scope,
         source="price_list",
         currency=price_list.currency,
@@ -413,24 +422,6 @@ def resolve_device_price(
         valid_from=price_list.valid_from,
         valid_until=price_list.valid_until,
     )
-
-
-def resolve_prices_for_devices(
-    db: Session,
-    devices: Iterable[Device],
-    *,
-    store_id: int | None = None,
-    customer_id: int | None = None,
-) -> dict[int, tuple[PriceList, PriceListItem]]:
-    mapping: dict[int, tuple[PriceList, PriceListItem]] = {}
-    for device in devices:
-        resolved = resolve_price_for_device(
-            db, device, store_id=store_id, customer_id=customer_id
-        )
-        if resolved:
-            mapping[device.id] = resolved
-    return mapping
-
 
 def compute_effective_price(
     db: Session,
@@ -464,7 +455,5 @@ __all__ = [
     "resolve_price_for_device",
     "resolve_device_price",
     "resolve_prices_for_devices",
-    "resolve_prices_for_devices",
-    "resolve_device_price",
     "compute_effective_price",
 ]

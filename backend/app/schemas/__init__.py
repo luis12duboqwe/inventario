@@ -1079,6 +1079,9 @@ class PriceResolution(BaseModel):
     device_id: int = Field(..., ge=1)
     price_list_id: int | None = Field(default=None, ge=1)
     price_list_name: str | None = Field(default=None, max_length=120)
+    priority: int | None = Field(
+        default=None, description="Prioridad aplicada al determinar el precio."
+    )
     scope: Literal[
         "store_customer",
         "customer",
@@ -1124,6 +1127,7 @@ class PriceEvaluationRequest(BaseModel):
 class PriceEvaluationResponse(BaseModel):
     device_id: int
     price_list_id: int | None = None
+    priority: int | None = None
     scope: str | None = None
     price: float | None = None
     currency: str | None = None

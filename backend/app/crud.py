@@ -9144,21 +9144,29 @@ def resolve_price_for_device(
         return 99
 
     best_match: tuple[models.PriceList, models.PriceListItem] | None = None
-    best_priority = 99
+    best_scope_rank = 99
+    best_priority_value = 10000
     for item, price_list in results:
         priority = _priority(price_list)
         if priority >= 99:
             continue
-        if (
-            best_match is None
-            or priority < best_priority
-            or (
-                priority == best_priority
-                and price_list.updated_at > best_match[0].updated_at
-            )
-        ):
+        if priority < best_scope_rank:
             best_match = (price_list, item)
-            best_priority = priority
+            best_scope_rank = priority
+            best_priority_value = price_list.priority or 0
+            continue
+
+        is_same_scope = priority == best_scope_rank
+        has_better_priority = is_same_scope and price_list.priority < best_priority_value
+        is_newer = (
+            is_same_scope
+            and price_list.priority == best_priority_value
+            and price_list.updated_at > (best_match[0].updated_at if best_match else datetime.min)
+        )
+
+        if has_better_priority or is_newer:
+            best_match = (price_list, item)
+            best_priority_value = price_list.priority or 0
 
     return best_match
 
