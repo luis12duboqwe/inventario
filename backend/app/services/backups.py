@@ -847,9 +847,12 @@ def restore_backup(
                 "Nombre de directorio de restauración no permitido. Debe ser un nombre de carpeta simple bajo el directorio de respaldo configurado.")
     else:
         target_base = safe_restore_root
-    # No permitir escapar al sistema (sólo si relativa), rutas absolutas se validaron arriba
-    if not Path(target_base).is_absolute():
-        target_base = Path(target_base).resolve()
+    # Normalizar y asegurar que target_base es absoluta y bajo safe_restore_root
+    target_base = Path(target_base).resolve()
+    try:
+        target_base.relative_to(safe_restore_root)
+    except ValueError:
+        raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
 
     restore_dir = target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
     restore_dir = restore_dir.resolve()
