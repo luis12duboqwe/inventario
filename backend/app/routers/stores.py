@@ -1,7 +1,7 @@
 """Rutas relacionadas con sucursales y dispositivos."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.orm import Session
 
 from datetime import date
@@ -13,6 +13,7 @@ from ..config import settings
 from ..core.roles import ADMIN, GESTION_ROLES
 from ..database import get_db
 from ..models import CommercialState
+from ..routers.dependencies import require_reason
 from ..security import require_roles
 
 router = APIRouter(prefix="/stores", tags=["stores"])
@@ -152,6 +153,32 @@ def update_store(
                 },
             ) from exc
         raise
+
+
+@router.delete(
+    "/{store_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def delete_store(
+    store_id: int = Path(..., ge=1, description="Identificador de la sucursal"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+    reason: str = Depends(require_reason),
+) -> Response:
+    try:
+        crud.soft_delete_store(
+            db,
+            store_id,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "store_not_found", "message": "La sucursal solicitada no existe."},
+        ) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
