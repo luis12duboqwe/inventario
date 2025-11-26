@@ -60,7 +60,7 @@ describe("Returns", () => {
           device_id: 5,
           device_name: "Lectura",
           quantity: 1,
-          reason: "Cliente arrepentido",
+          reason: "Cambio del cliente - color incorrecto",
           reason_category: "cliente",
           disposition: "vendible",
           warehouse_id: null,
@@ -84,7 +84,7 @@ describe("Returns", () => {
           device_id: 9,
           device_name: "Terminal",
           quantity: 2,
-          reason: "Proveedor defectuoso",
+          reason: "Falla de calidad - sin carga",
           reason_category: "defecto",
           disposition: "defectuoso",
           warehouse_id: 4,
@@ -128,6 +128,12 @@ describe("Returns", () => {
       <Returns token="test-token" stores={stores} defaultStoreId={1} />,
     );
 
+    const [purchaseReasonInput, saleReasonInput] =
+      screen.getAllByLabelText("Motivo corporativo");
+
+    expect(purchaseReasonInput).toHaveValue("Falla de calidad");
+    expect(saleReasonInput).toHaveValue("Cambio del cliente");
+
     await waitFor(() => {
       expect(listReturnsMock).toHaveBeenCalledWith("test-token", {
         limit: 25,
@@ -145,8 +151,8 @@ describe("Returns", () => {
     expect(screen.getByText("EFECTIVO: $120.00")).toBeInTheDocument();
     expect(screen.getByText("Cambio del cliente: 1")).toBeInTheDocument();
     expect(screen.getByText("Falla de calidad: 1")).toBeInTheDocument();
-    expect(screen.getByText("Cliente arrepentido")).toBeInTheDocument();
-    expect(screen.getByText("Proveedor defectuoso")).toBeInTheDocument();
+    expect(screen.getByText("Cambio del cliente - color incorrecto")).toBeInTheDocument();
+    expect(screen.getByText("Falla de calidad - sin carga")).toBeInTheDocument();
     expect(screen.getByText("Cambio del cliente")).toBeInTheDocument();
     expect(screen.getByText("Falla de calidad")).toBeInTheDocument();
     expect(screen.getByText("Vendible")).toBeInTheDocument();
