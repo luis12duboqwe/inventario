@@ -2,7 +2,7 @@
 Optimiza índices para movimientos y búsquedas por SKU.
 
 Revision ID: 202511080003
-Revises: 202511080002
+Revises: 202511080002a
 Create Date: 2025-11-08 01:10:00 UTC
 
 Nota: Compatible con v2.2.0 sin alterar etiquetas de versión del producto.
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "202511080003"
-down_revision = "202511080002"
+down_revision = "202511080002a"
 branch_labels = None
 depends_on = None
 
