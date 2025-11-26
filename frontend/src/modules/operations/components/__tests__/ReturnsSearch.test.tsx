@@ -97,7 +97,7 @@ describe("ReturnsSearch", () => {
     await user.type(ticketInput, " SM-000101 ");
     await user.type(dateInput, "2025-02-01");
     await user.type(customerInput, "  Ana   ");
-    await user.type(qrInput, "{\"sale_id\":101}");
+    await user.paste(qrInput, "  {\\\"sale_id\\\":101}  \n");
     await user.click(screen.getByRole("button", { name: "Buscar historial" }));
 
     await waitFor(() => {
