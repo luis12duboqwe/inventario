@@ -753,7 +753,7 @@ def analytics_risk(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     discount_threshold: float = Query(default=25.0, ge=0, le=100),
-    cancellation_threshold: int = Query(default=3, ge=1, le=50),
+    cancellation_threshold: int = Query(default=1, ge=1, le=50),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
