@@ -23,10 +23,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
     func,
 )
 from sqlalchemy.sql import column, false
-from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
+from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship, synonym
 
 from ..database import Base
 
@@ -281,6 +282,7 @@ class ConfigParameter(Base):
 
 class Store(Base):
     __tablename__ = "sucursales"
+    __table_args__ = (Index("ix_sucursales_is_deleted", "is_deleted"),)
 
     id: Mapped[int] = mapped_column(
         "id_sucursal", Integer, primary_key=True, index=True
@@ -308,38 +310,67 @@ class Store(Base):
     inventory_value: Mapped[Decimal] = mapped_column(
         Numeric(14, 2), nullable=False, default=Decimal("0")
     )
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     devices: Mapped[list["Device"]] = relationship(
-        "Device", back_populates="store", cascade="all, delete-orphan"
+        "Device",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     movements: Mapped[list["InventoryMovement"]] = relationship(
         "InventoryMovement",
         back_populates="store",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         foreign_keys="InventoryMovement.store_id",
     )
     sync_sessions: Mapped[list["SyncSession"]] = relationship(
-        "SyncSession", back_populates="store", cascade="all, delete-orphan"
+        "SyncSession",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     supplier_batches: Mapped[list["SupplierBatch"]] = relationship(
-        "SupplierBatch", back_populates="store", cascade="all, delete-orphan"
+        "SupplierBatch",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
-    users: Mapped[list["User"]] = relationship("User", back_populates="store")
+    users: Mapped[list["User"]] = relationship(
+        "User",
+        back_populates="store",
+        passive_deletes=True,
+        primaryjoin="and_(Store.id==User.store_id, User.is_deleted.is_(False))",
+    )
     reservations: Mapped[list["InventoryReservation"]] = relationship(
-        "InventoryReservation", back_populates="store", cascade="all, delete-orphan"
+        "InventoryReservation",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     price_lists: Mapped[list["PriceList"]] = relationship(
         "PriceList",
         back_populates="store",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     warehouses: Mapped[list["Warehouse"]] = relationship(
-        "Warehouse", back_populates="store", cascade="all, delete-orphan"
+        "Warehouse",
+        back_populates="store",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     bundles: Mapped[list["ProductBundle"]] = relationship(
         "ProductBundle",
         back_populates="store",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -1018,6 +1049,7 @@ class Permission(Base):
 
 class User(Base):
     __tablename__ = "usuarios"
+    __table_args__ = (Index("ix_usuarios_is_deleted", "is_deleted"),)
 
     id: Mapped[int] = mapped_column(
         "id_usuario", Integer, primary_key=True, index=True)
@@ -1053,52 +1085,75 @@ class User(Base):
         nullable=True,
         index=True,
     )
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     correo = synonym("username")
     nombre = synonym("full_name")
 
     roles: Mapped[list["UserRole"]] = relationship(
-        "UserRole", back_populates="user", cascade="all, delete-orphan"
+        "UserRole",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     movements: Mapped[list["InventoryMovement"]] = relationship(
-        "InventoryMovement", back_populates="performed_by")
+        "InventoryMovement", back_populates="performed_by", passive_deletes=True
+    )
     sync_sessions: Mapped[list["SyncSession"]] = relationship(
-        "SyncSession", back_populates="triggered_by")
+        "SyncSession", back_populates="triggered_by", passive_deletes=True
+    )
     logs: Mapped[list["AuditLog"]] = relationship(
-        "AuditLog", back_populates="performed_by")
+        "AuditLog", back_populates="performed_by", passive_deletes=True
+    )
     backup_jobs: Mapped[list["BackupJob"]] = relationship(
-        "BackupJob", back_populates="triggered_by")
+        "BackupJob", back_populates="triggered_by", passive_deletes=True
+    )
+    store: Mapped[Store | None] = relationship(
+        "Store",
+        back_populates="users",
+        passive_deletes=True,
+        primaryjoin="and_(foreign(User.store_id)==Store.id, Store.is_deleted.is_(False))",
+    )
     totp_secret: Mapped[UserTOTPSecret | None] = relationship(
         "UserTOTPSecret", back_populates="user", uselist=False
     )
-    store: Mapped[Store | None] = relationship("Store", back_populates="users")
     active_sessions: Mapped[list["ActiveSession"]] = relationship(
         "ActiveSession",
         back_populates="user",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         foreign_keys="ActiveSession.user_id",
     )
     audit_acknowledgements: Mapped[list["AuditAlertAcknowledgement"]] = relationship(
         "AuditAlertAcknowledgement",
         back_populates="acknowledged_by",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     inventory_reservations: Mapped[list["InventoryReservation"]] = relationship(
         "InventoryReservation",
         back_populates="reserved_by",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         foreign_keys="InventoryReservation.reserved_by_id",
     )
     resolved_reservations: Mapped[list["InventoryReservation"]] = relationship(
         "InventoryReservation",
         back_populates="resolved_by",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         foreign_keys="InventoryReservation.resolved_by_id",
     )
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
         "PasswordResetToken",
         back_populates="user",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 

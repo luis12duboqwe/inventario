@@ -3949,7 +3949,10 @@ def get_user_by_username(db: Session, username: str) -> models.User | None:
             joinedload(models.User.roles).joinedload(models.UserRole.role),
             joinedload(models.User.store),
         )
-        .where(models.User.username == username)
+        .where(
+            models.User.username == username,
+            models.User.is_deleted.is_(False),
+        )
     )
     return db.scalars(statement).first()
 
@@ -3961,7 +3964,10 @@ def get_user(db: Session, user_id: int) -> models.User:
             joinedload(models.User.roles).joinedload(models.UserRole.role),
             joinedload(models.User.store),
         )
-        .where(models.User.id == user_id)
+        .where(
+            models.User.id == user_id,
+            models.User.is_deleted.is_(False),
+        )
     )
     try:
         return db.scalars(statement).unique().one()
@@ -4098,6 +4104,7 @@ def list_users(
             joinedload(models.User.roles).joinedload(models.UserRole.role),
             joinedload(models.User.store),
         )
+        .where(models.User.is_deleted.is_(False))
         .order_by(models.User.username.asc())
     )
 
@@ -4150,11 +4157,51 @@ def count_users(
     *,
     include_inactive: bool = True,
 ) -> int:
-    statement = select(func.count()).select_from(models.User)
+    statement = select(func.count()).select_from(models.User).where(
+        models.User.is_deleted.is_(False)
+    )
     if not include_inactive:
         statement = statement.where(models.User.is_active.is_(True))
     total = db.scalar(statement)
     return int(total or 0)
+
+
+def soft_delete_user(
+    db: Session,
+    user_id: int,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.User:
+    user = get_user(db, user_id)
+    if user.is_deleted:
+        return user
+
+    with transactional_session(db):
+        user.is_deleted = True
+        user.is_active = False
+        user.estado = "DESACTIVADO"
+        user.locked_until = None
+        db.add(user)
+
+        details = {
+            "description": f"Usuario desactivado: {user.username}",
+            "metadata": {"user_id": user.id},
+        }
+        if reason:
+            details["metadata"]["reason"] = reason.strip()
+
+        _log_action(
+            db,
+            action="user_soft_deleted",
+            entity_type="user",
+            entity_id=str(user.id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
+        flush_session(db)
+        db.refresh(user)
+    return user
 
 
 def set_user_roles(
@@ -5233,7 +5280,11 @@ def list_stores(
     limit: int | None = 50,
     offset: int = 0,
 ) -> list[models.Store]:
-    statement = select(models.Store).order_by(models.Store.name.asc())
+    statement = (
+        select(models.Store)
+        .where(models.Store.is_deleted.is_(False))
+        .order_by(models.Store.name.asc())
+    )
     if offset:
         statement = statement.offset(offset)
     if limit is not None:
@@ -5242,7 +5293,9 @@ def list_stores(
 
 
 def count_stores(db: Session) -> int:
-    statement = select(func.count()).select_from(models.Store)
+    statement = select(func.count()).select_from(models.Store).where(
+        models.Store.is_deleted.is_(False)
+    )
     return int(db.scalar(statement) or 0)
 
 
@@ -8138,7 +8191,9 @@ def get_suppliers_accounts_payable(
 
 
 def get_store(db: Session, store_id: int) -> models.Store:
-    statement = select(models.Store).where(models.Store.id == store_id)
+    statement = select(models.Store).where(
+        models.Store.id == store_id, models.Store.is_deleted.is_(False)
+    )
     try:
         return db.scalars(statement).one()
     except NoResultFound as exc:
@@ -8149,10 +8204,50 @@ def get_store_by_name(db: Session, name: str) -> models.Store | None:
     normalized = (name or "").strip()
     if not normalized:
         return None
-    statement = select(models.Store).where(
-        func.lower(models.Store.name) == normalized.lower()
+    statement = (
+        select(models.Store)
+        .where(
+            func.lower(models.Store.name) == normalized.lower(),
+            models.Store.is_deleted.is_(False),
+        )
     )
     return db.scalars(statement).first()
+
+
+def soft_delete_store(
+    db: Session,
+    store_id: int,
+    *,
+    performed_by_id: int | None = None,
+    reason: str | None = None,
+) -> models.Store:
+    store = get_store(db, store_id)
+    if store.is_deleted:
+        return store
+
+    with transactional_session(db):
+        store.is_deleted = True
+        store.deleted_at = datetime.utcnow()
+        db.add(store)
+
+        details = {
+            "description": f"Sucursal desactivada: {store.name}",
+            "metadata": {"store_id": store.id},
+        }
+        if reason:
+            details["metadata"]["reason"] = reason.strip()
+
+        _log_action(
+            db,
+            action="store_soft_deleted",
+            entity_type="store",
+            entity_id=str(store.id),
+            performed_by_id=performed_by_id,
+            details=details,
+        )
+        flush_session(db)
+        db.refresh(store)
+    return store
 
 
 def ensure_store_by_name(
