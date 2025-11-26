@@ -224,10 +224,12 @@ def bootstrap_admin(
             )
     enforce_password_policy(payload.password, username=payload.username)
     try:
-        role_names = normalize_roles(payload.roles) | {ADMIN}
+        role_names = normalize_roles(payload.roles)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if not role_names and total_users == 0:
+        role_names = {ADMIN}
     user = crud.create_user(
         db,
         payload,
