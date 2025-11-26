@@ -747,19 +747,17 @@ def restore_backup(
 
     import re
 
-    enforce_safe_root = True
+    # Only allow restoration to a safe subdirectory under the backup root directory.
     if target_directory:
-        target_candidate = Path(target_directory)
-        if target_candidate.is_absolute():
-            target_base = target_candidate.resolve()
-            enforce_safe_root = False
-        elif (
+        # Only allow "simple" folder names and sanitize user input.
+        if (
             re.fullmatch(r"[a-zA-Z0-9_\-]+", target_directory)
             and ".." not in target_directory
             and "/" not in target_directory
             and "\\" not in target_directory
         ):
-            candidate_base = (safe_restore_root / target_candidate).resolve()
+            # Always resolve relative to restore root, even if input is absolute.
+            candidate_base = (safe_restore_root / target_directory).resolve()
             try:
                 candidate_base.relative_to(safe_restore_root)
             except ValueError:
