@@ -63,9 +63,34 @@ function InventoryAlerts({
   const minThreshold = settings.minimum_threshold;
   const maxThreshold = settings.maximum_threshold;
 
+  const normalizedItems = useMemo(
+    () =>
+      items.map((item) => {
+        const projectedDays = Number.isFinite(item.projected_days)
+          ? (item.projected_days as number)
+          : null;
+        const averageDailySales = Number.isFinite(item.average_daily_sales)
+          ? (item.average_daily_sales as number)
+          : null;
+        return {
+          ...item,
+          severity: item.severity ?? "notice",
+          quantity: safeMetric(item.quantity),
+          inventory_value: safeMetric(item.inventory_value),
+          minimum_stock: safeMetric(item.minimum_stock),
+          reorder_point: safeMetric(item.reorder_point),
+          reorder_gap: safeMetric(item.reorder_gap),
+          projected_days: projectedDays,
+          average_daily_sales: averageDailySales,
+          insights: Array.isArray(item.insights) ? item.insights : [],
+        } satisfies InventoryAlertItem;
+      }),
+    [items],
+  );
+
   const sortedItems = useMemo(
     () =>
-      [...items].sort((a, b) => {
+      [...normalizedItems].sort((a, b) => {
         if (a.severity === b.severity) {
           return a.quantity - b.quantity;
         }
@@ -83,7 +108,7 @@ function InventoryAlerts({
         }
         return a.quantity - b.quantity;
       }),
-    [items],
+    [normalizedItems],
   );
 
   const handleChange = (value: number) => {

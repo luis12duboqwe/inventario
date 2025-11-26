@@ -31,10 +31,15 @@ export default function LabelPrinter({
   fallbackDeviceName,
   fallbackSku,
 }: LabelPrinterProps) {
-  const normalizedStoreId = storeId ?? fallbackStoreId ?? null;
+  const normalizeId = (value: string | number | null | undefined) => {
+    if (value === undefined || value === null) return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const normalizedStoreId = normalizeId(storeId ?? fallbackStoreId);
   const normalizedStoreName = storeName ?? fallbackStoreName ?? null;
-  const normalizedDeviceId =
-    deviceId !== undefined && deviceId !== null ? deviceId : fallbackDeviceId ?? null;
+  const normalizedDeviceId = normalizeId(deviceId ?? fallbackDeviceId);
   const normalizedDeviceName = deviceName ?? fallbackDeviceName ?? null;
   const normalizedSku = sku ?? fallbackSku ?? null;
 

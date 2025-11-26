@@ -103,6 +103,13 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
     setFilters((current) => ({ ...current, qr: normalizedValue }));
   };
 
+  const handleQrPaste: React.ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
+    const pasted = event.clipboardData?.getData("text") ?? "";
+    const normalizedValue = normalizeQrValue(pasted);
+    event.preventDefault();
+    setFilters((current) => ({ ...current, qr: normalizedValue }));
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!hasFilters) {
@@ -200,6 +207,7 @@ export default function ReturnsSearch({ token, limit = DEFAULT_LIMIT }: Props) {
             rows={3}
             value={filters.qr}
             onChange={handleQrChange}
+            onPaste={handleQrPaste}
             placeholder="Escanea o pega el código QR impreso en el ticket."
           />
         </label>
