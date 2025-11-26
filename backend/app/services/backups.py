@@ -837,25 +837,30 @@ def restore_backup(
             and "\\" not in target_directory
         ):
             safe_subdir = target_directory
-            candidate_base = (safe_restore_root / safe_subdir).resolve()
+            candidate_base = (safe_restore_root / safe_subdir)
+            # Use fully normalized absolute path for validation
+            resolved_candidate_base = candidate_base.resolve()
             # Ensure the restored directory is a DIRECT child of the restore root
-            if candidate_base.parent != safe_restore_root:
+            if resolved_candidate_base.parent != safe_restore_root:
                 raise ValueError("El directorio de restauración debe ser una subcarpeta directa de backup_directory.")
-            target_base = candidate_base
+            target_base = resolved_candidate_base
         else:
             raise ValueError(
                 "Nombre de directorio de restauración no permitido. Debe ser un nombre de carpeta simple bajo el directorio de respaldo configurado.")
     else:
         target_base = safe_restore_root
-    # No permitir escapar al sistema (sólo si relativa), rutas absolutas se validaron arriba
-    if not Path(target_base).is_absolute():
-        target_base = Path(target_base).resolve()
+    # Always ensure target_base is absolute, normalized
+    target_base = target_base.resolve()
 
-    restore_dir = target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-    restore_dir = restore_dir.resolve()
-    # Prevención estricta: la restauración debe quedar SIEMPRE dentro de backup_directory
-    if not restore_dir.is_relative_to(safe_restore_root):
-        raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
+    restore_dir = (target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}").resolve()
+    # Prevención estricta: la restauración debe quedar SIEMPRE dentro de backup_directory (no solo is_relative_to, also check commonpath!)
+    try:
+        if not restore_dir.is_relative_to(safe_restore_root):
+            raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
+    except AttributeError:  # Support Python <3.9
+        from os.path import commonpath
+        if commonpath([restore_dir.as_posix(), safe_restore_root.as_posix()]) != safe_restore_root.as_posix():
+            raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
     restore_dir.mkdir(parents=True, exist_ok=True)
 
     cipher = _get_backup_cipher()
