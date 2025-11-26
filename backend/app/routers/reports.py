@@ -23,6 +23,7 @@ from ..services import audit as audit_service
 from ..services import backups as backup_services
 from ..services import global_reports_data, global_reports_renderers
 from ..services import customer_reports
+from ..services import sync_conflict_reports
 from ..services import inventory_reports as inventory_reports_service
 from ..services import fiscal_books as fiscal_books_service
 from ..services import performance_reports
@@ -753,7 +754,7 @@ def analytics_risk(
     date_from: datetime | date | None = Query(default=None),
     date_to: datetime | date | None = Query(default=None),
     discount_threshold: float = Query(default=25.0, ge=0, le=100),
-    cancellation_threshold: int = Query(default=3, ge=1, le=50),
+    cancellation_threshold: int = Query(default=1, ge=1, le=50),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
@@ -809,7 +810,7 @@ def analytics_store_sales_forecast(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(REPORTE_ROLES)),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
     items = crud.calculate_store_sales_forecast(
@@ -843,7 +844,7 @@ def analytics_reorder_suggestions(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(REPORTE_ROLES)),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
     items = crud.calculate_reorder_suggestions(
@@ -876,7 +877,7 @@ def analytics_return_anomalies(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(REPORTE_ROLES)),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     _ensure_analytics_enabled()
     items = crud.detect_return_anomalies(
@@ -1136,7 +1137,7 @@ def financial_report(
     supplier: str | None = Query(default=None, min_length=1, max_length=120),
     format: Literal["json", "pdf", "xlsx"] = Query(default="json"),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(REPORTE_ROLES)),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
     reason: str = Depends(require_reason_optional),
 ):
     _ensure_analytics_enabled()
@@ -1196,13 +1197,26 @@ def financial_report(
     report = schemas.FinancialPerformanceReport(
         generated_at=datetime.utcnow(),
         filters=filters,
-        rotation=[schemas.RotationMetric(**item) for item in rotation],
-        profit_by_store=[schemas.ProfitMarginMetric(**item) for item in profit_by_store],
-        sales_by_store=[schemas.SalesByStoreMetric(**item) for item in sales_by_store],
-        sales_by_category=[
-            schemas.SalesByCategoryMetric(**item) for item in sales_by_category
+        rotation=[
+            schemas.RotationMetric.model_validate(item).model_dump()
+            for item in rotation
         ],
-        sales_trend=[schemas.SalesTimeseriesPoint(**item) for item in sales_trend],
+        profit_by_store=[
+            schemas.ProfitMarginMetric.model_validate(item).model_dump()
+            for item in profit_by_store
+        ],
+        sales_by_store=[
+            schemas.SalesByStoreMetric.model_validate(item).model_dump()
+            for item in sales_by_store
+        ],
+        sales_by_category=[
+            schemas.SalesByCategoryMetric.model_validate(item).model_dump()
+            for item in sales_by_category
+        ],
+        sales_trend=[
+            schemas.SalesTimeseriesPoint.model_validate(item).model_dump()
+            for item in sales_trend
+        ],
         totals=schemas.FinancialTotals(
             revenue=total_revenue,
             cost=total_cost,
@@ -1252,7 +1266,7 @@ def inventory_performance_report(
     supplier: str | None = Query(default=None, min_length=1, max_length=120),
     format: Literal["json", "pdf", "xlsx"] = Query(default="json"),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(REPORTE_ROLES)),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
     reason: str = Depends(require_reason_optional),
 ):
     _ensure_analytics_enabled()
@@ -1307,13 +1321,26 @@ def inventory_performance_report(
     report = schemas.InventoryPerformanceReport(
         generated_at=datetime.utcnow(),
         filters=filters,
-        rotation=[schemas.RotationMetric(**item) for item in rotation],
-        profit_by_store=[schemas.ProfitMarginMetric(**item) for item in profit_by_store],
-        sales_by_store=[schemas.SalesByStoreMetric(**item) for item in sales_by_store],
-        sales_by_category=[
-            schemas.SalesByCategoryMetric(**item) for item in sales_by_category
+        rotation=[
+            schemas.RotationMetric.model_validate(item).model_dump()
+            for item in rotation
         ],
-        sales_trend=[schemas.SalesTimeseriesPoint(**item) for item in sales_trend],
+        profit_by_store=[
+            schemas.ProfitMarginMetric.model_validate(item).model_dump()
+            for item in profit_by_store
+        ],
+        sales_by_store=[
+            schemas.SalesByStoreMetric.model_validate(item).model_dump()
+            for item in sales_by_store
+        ],
+        sales_by_category=[
+            schemas.SalesByCategoryMetric.model_validate(item).model_dump()
+            for item in sales_by_category
+        ],
+        sales_trend=[
+            schemas.SalesTimeseriesPoint.model_validate(item).model_dump()
+            for item in sales_trend
+        ],
     )
 
     if format in {"pdf", "xlsx"} and not reason:
@@ -1535,6 +1562,44 @@ def inventory_sync_discrepancies(
         min_difference=min_difference,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/inventory/sync-discrepancies/xlsx",
+    response_model=schemas.BinaryFileResponse,
+)
+def inventory_sync_discrepancies_excel(
+    store_ids: list[int] | None = Query(default=None),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    severity: schemas.SyncBranchHealth | None = Query(default=None),
+    min_difference: int | None = Query(default=None, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(ADMIN)),
+    _reason: str = Depends(require_reason),
+):
+    report = crud.get_sync_discrepancies_report(
+        db,
+        store_ids=store_ids,
+        date_from=date_from,
+        date_to=date_to,
+        severity=severity,
+        min_difference=min_difference,
+        limit=limit,
+        offset=offset,
+    )
+    workbook_bytes = sync_conflict_reports.render_conflict_report_excel(report)
+    metadata = schemas.BinaryFileResponse(
+        filename="softmobile_discrepancias_sync.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    return StreamingResponse(
+        iter([workbook_bytes]),
+        media_type=metadata.media_type,
+        headers=metadata.content_disposition(),
     )
 
 

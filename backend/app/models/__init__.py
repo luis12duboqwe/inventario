@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import enum
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import secrets
 from uuid import uuid4
 from decimal import Decimal
@@ -437,6 +437,7 @@ class PurchaseStatus(str, enum.Enum):
     APROBADA = "APROBADA"
     ENVIADA = "ENVIADA"
     PARCIAL = "PARCIAL"
+    RECIBIDA = "RECIBIDA"
     COMPLETADA = "COMPLETADA"
     CANCELADA = "CANCELADA"
 
@@ -1232,7 +1233,14 @@ class InventoryMovement(Base):
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        "fecha", DateTime(timezone=True), default=datetime.utcnow
+        "fecha",
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     store: Mapped[Store] = relationship(
@@ -1499,10 +1507,16 @@ class SupportFeedback(Base):
     usage_context: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
 
@@ -1679,9 +1693,11 @@ class BackupJob(Base):
     total_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
     triggered_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True, index=True
@@ -2903,7 +2919,14 @@ class Sale(Base):
         String(32), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        "fecha", DateTime(timezone=True), default=datetime.utcnow
+        "fecha",
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
     dte_status: Mapped[DTEStatus] = mapped_column(
         DTE_STATUS_ENUM.copy(), nullable=False, default=DTEStatus.PENDIENTE

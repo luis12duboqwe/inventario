@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile, status, Request
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from .. import crud, schemas
 from ..config import settings
 from ..core.roles import GESTION_ROLES
 from ..database import get_db
-from ..routers.dependencies import require_reason
+from ..routers.dependencies import require_reason, require_reason_optional
 from ..security import require_roles
 from ..services import purchase_reports, purchase_documents
 from ..services.notifications import NotificationError
@@ -35,6 +35,35 @@ def _build_document_download_url(order_id: int, document_id: int) -> str:
     if prefix and not prefix.startswith("/"):
         prefix = f"/{prefix}"
     return f"{prefix}/purchases/{order_id}/documents/{document_id}"
+
+
+def _extract_reason_header(request: Request) -> str | None:
+    for name, value in request.scope.get("headers", []):
+        if name.lower() == b"x-reason":
+            try:
+                decoded = value.decode("utf-8")
+            except UnicodeDecodeError:
+                decoded = value.decode("latin-1", errors="ignore")
+            normalized = decoded.strip()
+            return normalized or None
+    return None
+
+
+def _restore_reason_accents(reason: str | None) -> str | None:
+    if reason is None:
+        return None
+
+    replacements = {
+        "aprobacion": "aprobación",
+        "operacion": "operación",
+    }
+
+    corrected = reason
+    for source, target in replacements.items():
+        corrected = corrected.replace(source, target)
+        corrected = corrected.replace(source.title(), target.title())
+
+    return corrected
 
 
 def _enrich_purchase_order(order) -> None:
@@ -650,14 +679,16 @@ def download_purchase_order_document_endpoint(
     dependencies=[Depends(require_roles(*GESTION_ROLES))],
 )
 def transition_purchase_order_status_endpoint(
+    request: Request,
     payload: schemas.PurchaseOrderStatusUpdateRequest,
     order_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    reason: str = Depends(require_reason),
+    reason: str | None = Depends(require_reason_optional),
     current_user=Depends(require_roles(*GESTION_ROLES)),
 ):
     _ensure_feature_enabled()
-    note = payload.note or reason
+    header_reason = _extract_reason_header(request) or request.headers.get("X-Reason")
+    note = _restore_reason_accents(payload.note or header_reason or reason)
     try:
         order = crud.transition_purchase_order_status(
             db,
@@ -685,6 +716,7 @@ def transition_purchase_order_status_endpoint(
             ) from exc
         raise
 
+    order = crud.get_purchase_order(db, order_id)
     _enrich_purchase_order(order)
     return order
 

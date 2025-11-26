@@ -75,6 +75,16 @@ def _normalize_optional_rtn_value(value: str | None) -> str | None:
 from ..utils import audit as audit_utils
 
 
+def _ensure_aware(dt: datetime | None) -> datetime | None:
+    """Normaliza fechas naive a UTC para evitar desajustes de zona horaria."""
+
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 class BackupExportFormat(str, enum.Enum):
     """Formatos disponibles para exportar archivos de respaldo."""
 
@@ -1079,6 +1089,9 @@ class PriceResolution(BaseModel):
     device_id: int = Field(..., ge=1)
     price_list_id: int | None = Field(default=None, ge=1)
     price_list_name: str | None = Field(default=None, max_length=120)
+    priority: int | None = Field(
+        default=None, description="Prioridad aplicada al determinar el precio."
+    )
     scope: Literal[
         "store_customer",
         "customer",
@@ -1124,6 +1137,7 @@ class PriceEvaluationRequest(BaseModel):
 class PriceEvaluationResponse(BaseModel):
     device_id: int
     price_list_id: int | None = None
+    priority: int | None = None
     scope: str | None = None
     price: float | None = None
     currency: str | None = None
@@ -4093,13 +4107,19 @@ class AuditUIListResponse(BaseModel):
 
 
 class FeedbackBase(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     module: str = Field(min_length=2, max_length=80)
     category: FeedbackCategory
     priority: FeedbackPriority = FeedbackPriority.MEDIA
     title: str = Field(min_length=4, max_length=180)
     description: str = Field(min_length=10, max_length=4000)
     contact: str | None = Field(default=None, max_length=180)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        alias="metadata_json",
+        validation_alias=AliasChoices("metadata", "metadata_json"),
+    )
     usage_context: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -4113,7 +4133,7 @@ class FeedbackStatusUpdate(BaseModel):
 
 
 class FeedbackResponse(FeedbackBase):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int
     tracking_id: str
@@ -4121,6 +4141,28 @@ class FeedbackResponse(FeedbackBase):
     created_at: datetime
     updated_at: datetime
     resolution_notes: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_feedback(cls, value: object) -> object:
+        if hasattr(value, "metadata_json"):
+            return {
+                "id": getattr(value, "id", None),
+                "tracking_id": getattr(value, "tracking_id", None),
+                "module": getattr(value, "module", None),
+                "category": getattr(value, "category", None),
+                "priority": getattr(value, "priority", None),
+                "status": getattr(value, "status", FeedbackStatus.ABIERTO),
+                "title": getattr(value, "title", None),
+                "description": getattr(value, "description", None),
+                "contact": getattr(value, "contact", None),
+                "metadata_json": getattr(value, "metadata_json", {}) or {},
+                "usage_context": getattr(value, "usage_context", {}) or {},
+                "created_at": getattr(value, "created_at", None),
+                "updated_at": getattr(value, "updated_at", None),
+                "resolution_notes": getattr(value, "resolution_notes", None),
+            }
+        return value
 
 
 class FeedbackSummary(BaseModel):
@@ -4317,6 +4359,8 @@ class FinancialTotals(BaseModel):
 
 
 class FinancialPerformanceReport(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     generated_at: datetime
     filters: ReportFilterState
     rotation: list[RotationMetric]
@@ -4328,6 +4372,8 @@ class FinancialPerformanceReport(BaseModel):
 
 
 class InventoryPerformanceReport(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     generated_at: datetime
     filters: ReportFilterState
     rotation: list[RotationMetric]
@@ -4435,8 +4481,8 @@ class SyncOutboxEntryResponse(BaseModel):
     @model_validator(mode="after")
     def _compute_latencies(self) -> "SyncOutboxEntryResponse":  # pragma: no cover - cálculo derivado
         now = datetime.now(timezone.utc)
-        created_at = self.created_at
-        last_attempt = self.last_attempt_at or self.updated_at
+        created_at = _ensure_aware(self.created_at)
+        last_attempt = _ensure_aware(self.last_attempt_at or self.updated_at)
 
         latency: int | None = None
         processing_latency: int | None = None
@@ -5460,9 +5506,11 @@ class PurchaseOrderResponse(BaseModel):
     closed_at: datetime | None
     items: list[PurchaseOrderItemResponse]
     pending_items: int = 0
-    returns: list[PurchaseReturnResponse] = []
-    documents: list["PurchaseOrderDocumentResponse"] = []
-    status_history: list["PurchaseOrderStatusEventResponse"] = []
+    returns: list[PurchaseReturnResponse] = Field(default_factory=list)
+    documents: list["PurchaseOrderDocumentResponse"] = Field(default_factory=list)
+    status_history: list["PurchaseOrderStatusEventResponse"] = Field(
+        default_factory=list, validation_alias="status_events"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

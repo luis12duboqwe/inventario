@@ -224,10 +224,12 @@ def bootstrap_admin(
             )
     enforce_password_policy(payload.password, username=payload.username)
     try:
-        role_names = normalize_roles(payload.roles) | {ADMIN}
+        role_names = normalize_roles(payload.roles)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if not role_names and total_users == 0:
+        role_names = {ADMIN}
     user = crud.create_user(
         db,
         payload,
@@ -314,7 +316,10 @@ class OAuth2PasswordRequestFormWithOTP(OAuth2PasswordRequestForm):
     description="Autenticación estándar para pruebas y clientes OAuth2. No requiere autenticación previa.",
     # No requiere Depends(get_current_user)
 )
-def login_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login_token(
+    form_data: OAuth2PasswordRequestFormWithOTP = Depends(),
+    db: Session = Depends(get_db),
+):
     user = _authenticate_user(
         db,
         username=form_data.username,
@@ -463,7 +468,6 @@ def refresh_access_token(
 @router.post(
     "/verify",
     response_model=schemas.TokenVerificationResponse,
-    dependencies=[Depends(get_current_user)],
 )
 def verify_access_token(
     payload: schemas.TokenVerificationRequest, db: Session = Depends(get_db)

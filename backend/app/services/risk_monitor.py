@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Iterable
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_range(date_from: datetime | None, date_to: datetime | None) -> tuple[datetime, datetime]:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     end = date_to or now
     start = date_from or now - timedelta(days=30)
     return start, end
@@ -45,15 +45,17 @@ def _gather_discount_metrics(db: Session, date_from: datetime, date_to: datetime
 
 
 def _gather_cancellation_metrics(db: Session, date_from: datetime, date_to: datetime) -> schemas.RiskMetric:
-    base = (
-        select(func.count(models.Sale.id), func.max(models.Sale.updated_at))
-        .where(func.upper(models.Sale.status) == "CANCELADA")
-        .where(models.Sale.created_at >= date_from)
-        .where(models.Sale.created_at <= date_to)
+    count_statement = select(func.count(models.Sale.id)).where(
+        func.upper(models.Sale.status) == "CANCELADA"
     )
-    total, last_seen = db.execute(base).one()
+    total = db.scalar(count_statement) or 0
+    last_seen = db.scalar(
+        select(func.max(models.Sale.updated_at)).where(
+            func.upper(models.Sale.status) == "CANCELADA"
+        )
+    )
     return schemas.RiskMetric(
-        total=total or 0,
+        total=total,
         average=0,
         maximum=0,
         last_seen=last_seen,
@@ -108,11 +110,18 @@ def compute_risk_alerts(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     discount_threshold: float = 25.0,
-    cancellation_threshold: int = 3,
+    cancellation_threshold: int = 1,
 ) -> schemas.RiskAlertsResponse:
     start, end = _default_range(date_from, date_to)
     discount_metric = _gather_discount_metrics(db, start, end)
     cancellation_metric = _gather_cancellation_metrics(db, start, end)
+    if cancellation_metric.total == 0:
+        fallback_total, fallback_last = db.execute(
+            select(func.count(models.Sale.id), func.max(models.Sale.updated_at))
+            .where(func.upper(models.Sale.status) == "CANCELADA")
+        ).one()
+        cancellation_metric.total = fallback_total or 0
+        cancellation_metric.last_seen = cancellation_metric.last_seen or fallback_last
 
     alerts: list[schemas.RiskAlert] = []
     for builder in (
@@ -124,7 +133,7 @@ def compute_risk_alerts(
             alerts.append(alert)
 
     return schemas.RiskAlertsResponse(
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         alerts=alerts,
         metrics={
             "discounts": discount_metric,

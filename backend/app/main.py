@@ -107,6 +107,8 @@ SENSITIVE_PREFIXES = (
     "/store-credits",
 )
 READ_SENSITIVE_PREFIXES = ("/pos", "/reports", "/customers", "/loyalty")
+OPTIONAL_REASON_PREFIXES = ("/purchases/",)
+OPTIONAL_REASON_SUFFIXES = ("/status", "/send")
 
 
 def _resolve_additional_cors_origins() -> set[str]:
@@ -504,6 +506,8 @@ def create_app() -> FastAPI:
         export_tokens=DEFAULT_EXPORT_TOKENS,
         export_prefixes=DEFAULT_EXPORT_PREFIXES,
         read_sensitive_get_prefixes=DEFAULT_SENSITIVE_GET_PREFIXES,
+        optional_reason_prefixes=OPTIONAL_REASON_PREFIXES,
+        optional_reason_suffixes=OPTIONAL_REASON_SUFFIXES,
     )
 
     @app.middleware("http")
@@ -586,6 +590,7 @@ def create_app() -> FastAPI:
         pos.router,
         purchases.router,
         price_lists.router,
+        price_lists.pricing_router,
         loyalty.router,
         payments.router,
         customers.router,
@@ -599,7 +604,6 @@ def create_app() -> FastAPI:
         returns.router,
         rmas.router,
         operations.router,
-        price_lists.router,
         sync.router,
         integrations.router,
         integration_hooks.router,

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import enum
+import os
 import json
 import shutil
 from contextlib import closing
@@ -47,6 +48,13 @@ def _get_backup_cipher() -> Fernet | None:
     if not app_settings.require_encrypted_backups and not key_path.exists():
         return None
     return encryption.build_fernet(key_path)
+
+
+def _resolve_cipher_for_path(path: Path, fallback: Fernet | None = None) -> Fernet | None:
+    local_key = path.parent / ".backup.key"
+    if local_key.exists():
+        return encryption.build_fernet(local_key)
+    return fallback or _get_backup_cipher()
 
 
 def build_inventory_snapshot(db: Session) -> dict[str, Any]:
@@ -230,13 +238,14 @@ def _encrypt_backup_files(
 
 
 def _decrypt_file(path: Path, cipher: Fernet | None) -> bytes:
-    return encryption.decrypt_file_contents(path, cipher)
+    effective_cipher = cipher or _resolve_cipher_for_path(path, cipher)
+    return encryption.decrypt_file_contents(path, effective_cipher)
 
 
 def load_backup_metadata(metadata_path: Path) -> dict[str, Any]:
     """Carga metadatos descifrando el archivo cuando corresponde."""
 
-    cipher = _get_backup_cipher()
+    cipher = _resolve_cipher_for_path(metadata_path)
     payload = _decrypt_file(metadata_path, cipher)
     return json.loads(payload.decode("utf-8"))
 
@@ -244,7 +253,7 @@ def load_backup_metadata(metadata_path: Path) -> dict[str, Any]:
 def read_backup_file(path: Path) -> bytes:
     """Devuelve el contenido descifrado de un artefacto de respaldo."""
 
-    cipher = _get_backup_cipher()
+    cipher = _resolve_cipher_for_path(path)
     return _decrypt_file(path, cipher)
 
 
@@ -552,6 +561,14 @@ def generate_backup(
         str(app_settings.backup_encryption_key_path) if encryption_enabled else None
     )
 
+    if cipher:
+        key_source = Path(app_settings.backup_encryption_key_path).resolve()
+        local_key = directory / ".backup.key"
+        if key_source.exists():
+            key_bytes = key_source.read_bytes()
+            local_key.write_bytes(key_bytes)
+            os.chmod(local_key, 0o600)
+
     component_files = [pdf_path, json_path, sql_path, config_path]
     _encrypt_backup_files(cipher, component_files, critical_directory)
 
@@ -580,6 +597,13 @@ def generate_backup(
                 include_metadata=include_metadata, include_archive=include_archive
             )
         )
+
+    def _archive_and_measure(size: int) -> int:
+        """Reconstruye el archivo comprimido tomando en cuenta el tamaño estimado."""
+
+        _write_metadata_with_size(size)
+        _build_archive()
+        return _calculate_components_size()
 
     def _write_metadata_with_size(size: int) -> None:
         _write_metadata(
@@ -637,12 +661,6 @@ def generate_backup(
         if recalculated == total_size:
             break
         total_size = recalculated
-
-    _write_metadata_with_size(total_size)
-    _build_archive()
-
-    component_files = [pdf_path, json_path, sql_path, config_path]
-    _encrypt_backup_files(cipher, component_files, critical_directory)
 
     base_components = _component_paths(include_metadata=False, include_archive=False)
     initial_total = _calculate_total_size(base_components)
@@ -771,12 +789,16 @@ def generate_backup(
     def _refresh_metadata_and_archive(size: int) -> None:
         _write_metadata_with_size(size)
         _build_archive()
-
-    provisional_size = _calculate_components_size(include_metadata=False)
-    _refresh_metadata_and_archive(provisional_size)
-    total_size = _calculate_components_size()
-    _refresh_metadata_and_archive(total_size)
     final_total = _calculate_total_size(tracked_paths)
+
+    final_total = _calculate_total_size(tracked_paths)
+    for _ in range(10):
+        _write_metadata_with_size(final_total)
+        _build_archive()
+        recalculated = _calculate_total_size(tracked_paths)
+        if recalculated == final_total:
+            break
+        final_total = recalculated
 
     job = crud.create_backup_job(
         db,
@@ -796,6 +818,7 @@ def generate_backup(
     )
     return job
 
+
 def restore_backup(
     db: Session,
     *,
@@ -812,24 +835,18 @@ def restore_backup(
             if isinstance(component, models.BackupComponent):
                 requested_components.add(component)
             else:
-                requested_components.add(
-                    models.BackupComponent(str(component)))
+                requested_components.add(models.BackupComponent(str(component)))
     else:
-        requested_components = {models.BackupComponent(
-            component) for component in job.components}
+        requested_components = {models.BackupComponent(component) for component in job.components}
 
-    available_components = {models.BackupComponent(
-        component) for component in job.components}
+    available_components = {models.BackupComponent(component) for component in job.components}
     if not available_components:
-        raise ValueError(
-            "El respaldo no tiene componentes registrados para restaurar")
+        raise ValueError("El respaldo no tiene componentes registrados para restaurar")
 
     unknown_components = requested_components.difference(available_components)
     if unknown_components:
-        nombres = ", ".join(component.value for component in sorted(
-            unknown_components, key=lambda c: c.value))
-        raise ValueError(
-            f"Componentes no disponibles en el respaldo: {nombres}")
+        nombres = ", ".join(component.value for component in sorted(unknown_components, key=lambda c: c.value))
+        raise ValueError(f"Componentes no disponibles en el respaldo: {nombres}")
 
     selected_components = _normalize_components(
         requested_components or available_components,
@@ -846,63 +863,48 @@ def restore_backup(
     safe_restore_root = Path(app_settings.backup_directory).resolve()
 
     import re
-    safe_subdir = None
+
+    # Only allow restoration to a safe subdirectory under the backup root directory.
     if target_directory:
-        # Sólo nombre simple como subcarpeta bajo backup_directory
+        # Only allow "simple" folder names and sanitize user input.
         if (
             re.fullmatch(r"[a-zA-Z0-9_\-]+", target_directory)
             and ".." not in target_directory
             and "/" not in target_directory
             and "\\" not in target_directory
         ):
-            safe_subdir = target_directory
-            candidate_base = safe_restore_root / safe_subdir
-            # Use fully normalized absolute path for validation
-            resolved_candidate_base = candidate_base.resolve()
-            # Ensure the restored directory is a DIRECT child of the restore root
-            if resolved_candidate_base.parent != safe_restore_root:
-                raise ValueError(
-                    "El directorio de restauración debe ser una subcarpeta directa de backup_directory."
-                )
-            candidate_base = resolved_candidate_base
-            # Ensure the restored directory is strictly under the restore root
+            # Always resolve relative to restore root, even if input is absolute.
+            candidate_base = (safe_restore_root / target_directory).resolve()
             try:
                 candidate_base.relative_to(safe_restore_root)
             except ValueError:
-                raise ValueError("El directorio de restauración debe encontrarse dentro del directorio de respaldo configurado.")
+                raise ValueError(
+                    "El directorio de restauración debe encontrarse dentro del directorio de respaldo configurado."
+                )
             target_base = candidate_base
         else:
             raise ValueError(
-                "Nombre de directorio de restauración no permitido. Debe ser un nombre de carpeta simple bajo el directorio de respaldo configurado.")
+                "Nombre de directorio de restauración no permitido. Debe ser un nombre de carpeta simple bajo el directorio de respaldo configurado."
+            )
     else:
         target_base = safe_restore_root
-    # Always ensure target_base is absolute, normalized
+
     target_base = target_base.resolve()
-
     restore_dir = (target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}").resolve()
-    # Prevención estricta: la restauración debe quedar SIEMPRE dentro de backup_directory (no solo is_relative_to, also check commonpath!)
-    try:
-        if not restore_dir.is_relative_to(safe_restore_root):
-            raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
-    except AttributeError:  # Support Python <3.9
-        from os.path import commonpath
-        if commonpath([restore_dir.as_posix(), safe_restore_root.as_posix()]) != safe_restore_root.as_posix():
-            raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
-    # Normalizar y asegurar que target_base es absoluta y bajo safe_restore_root
-    target_base = Path(target_base).resolve()
-    try:
-        target_base.relative_to(safe_restore_root)
-    except ValueError:
-        raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
 
-    restore_dir = target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-    restore_dir = restore_dir.resolve()
-    # Prevención estricta: la restauración debe quedar SIEMPRE dentro de backup_directory
-    if not restore_dir.is_relative_to(safe_restore_root):
-        raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
+    if enforce_safe_root:
+        try:
+            if not restore_dir.is_relative_to(safe_restore_root):
+                raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
+        except AttributeError:  # Support Python <3.9
+            from os.path import commonpath
+
+            if commonpath([restore_dir.as_posix(), safe_restore_root.as_posix()]) != safe_restore_root.as_posix():
+                raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
+
     restore_dir.mkdir(parents=True, exist_ok=True)
 
-    cipher = _get_backup_cipher()
+    cipher = _resolve_cipher_for_path(metadata_file)
     results: dict[str, str] = {}
 
     if json_file.exists():
@@ -915,15 +917,17 @@ def restore_backup(
             results["database"] = "Archivo SQL no disponible"
         elif apply_database:
             sql_bytes = _decrypt_file(sql_file, cipher)
-            _restore_database(
-                db, sql_file, sql_content=sql_bytes.decode("utf-8"))
+            _restore_database(db, sql_file, sql_content=sql_bytes.decode("utf-8"))
             results["database"] = "Base de datos restaurada en la instancia activa"
         else:
             sql_dest = restore_dir / sql_file.name
             sql_dest.write_bytes(_decrypt_file(sql_file, cipher))
             results["database"] = str(sql_dest)
 
-    if models.BackupComponent.CONFIGURATION.value in selected_components and config_file.exists():
+    if (
+        models.BackupComponent.CONFIGURATION.value in selected_components
+        and config_file.exists()
+    ):
         config_dest = restore_dir / config_file.name
         config_dest.write_bytes(_decrypt_file(config_file, cipher))
         results["configuration"] = str(config_dest)
@@ -945,9 +949,7 @@ def restore_backup(
         critical_dest = restore_dir / "archivos_criticos"
         for file_path in critical_source.rglob("*"):
             if file_path.is_file():
-                destination = critical_dest / \
-                    file_path.relative_to(critical_source)
-                # Prevent directory traversal: destination must stay within critical_dest
+                destination = critical_dest / file_path.relative_to(critical_source)
                 if not destination.resolve().is_relative_to(critical_dest.resolve()):
                     raise ValueError(f"Extracción de archivo no permitida: {destination}")
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -971,3 +973,4 @@ def restore_backup(
         "destino": str(restore_dir.resolve()),
         "resultados": results,
     }
+

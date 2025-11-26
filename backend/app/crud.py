@@ -499,7 +499,8 @@ _SYSTEM_MODULE_MAP: dict[str, str] = {
 def _resolve_outbox_priority(entity_type: str, priority: models.SyncOutboxPriority | None) -> models.SyncOutboxPriority:
     if priority is not None:
         return priority
-    return _OUTBOX_PRIORITY_MAP.get(entity_type, models.SyncOutboxPriority.NORMAL)
+    normalized = (entity_type or "").lower()
+    return _OUTBOX_PRIORITY_MAP.get(normalized, models.SyncOutboxPriority.NORMAL)
 
 
 def _priority_weight(priority: models.SyncOutboxPriority | None) -> int:
@@ -9144,21 +9145,29 @@ def resolve_price_for_device(
         return 99
 
     best_match: tuple[models.PriceList, models.PriceListItem] | None = None
-    best_priority = 99
+    best_scope_rank = 99
+    best_priority_value = 10000
     for item, price_list in results:
         priority = _priority(price_list)
         if priority >= 99:
             continue
-        if (
-            best_match is None
-            or priority < best_priority
-            or (
-                priority == best_priority
-                and price_list.updated_at > best_match[0].updated_at
-            )
-        ):
+        if priority < best_scope_rank:
             best_match = (price_list, item)
-            best_priority = priority
+            best_scope_rank = priority
+            best_priority_value = price_list.priority or 0
+            continue
+
+        is_same_scope = priority == best_scope_rank
+        has_better_priority = is_same_scope and price_list.priority < best_priority_value
+        is_newer = (
+            is_same_scope
+            and price_list.priority == best_priority_value
+            and price_list.updated_at > (best_match[0].updated_at if best_match else datetime.min)
+        )
+
+        if has_better_priority or is_newer:
+            best_match = (price_list, item)
+            best_priority_value = price_list.priority or 0
 
     return best_match
 
@@ -13871,8 +13880,8 @@ def list_sync_outbox(
     statement = (
         select(models.SyncOutbox)
         .order_by(
-            conflict_order,
             priority_order,
+            conflict_order,
             models.SyncOutbox.updated_at.desc(),
         )
         .offset(offset)
@@ -14132,16 +14141,18 @@ def resolve_outbox_conflicts(
     with transactional_session(db):
         for entry in entries:
             previous_version = int(entry.version or 1)
+            new_version = previous_version + 1
             entry.conflict_flag = False
             entry.status = models.SyncOutboxStatus.PENDING
             entry.attempt_count = 0
             entry.last_attempt_at = None
             entry.error_message = None
             entry.updated_at = now
-            entry.version = previous_version + 1
+            entry.version = new_version
+            flush_session(db, entry)
             details_payload = {
                 "operation": entry.operation,
-                "version": entry.version,
+                "version": new_version,
                 "reason": reason,
                 "entity_id": entry.entity_id,
             }
@@ -14153,6 +14164,8 @@ def resolve_outbox_conflicts(
                 performed_by_id=performed_by_id,
                 details=details_payload,
             )
+            db.expunge(entry)
+            entry.version = previous_version
     refreshed = list(db.scalars(statement))
     normalized_offset = max(offset, 0)
     if limit is None:
@@ -21618,7 +21631,9 @@ def create_support_feedback(
         metadata_json=payload.metadata,
         usage_context=payload.usage_context,
     )
+    db.add(entry)
     flush_session(db, entry)
+    db.refresh(entry)
     return entry
 
 

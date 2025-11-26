@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
+
+from backend.app.db.valor_inventario_view import (
+    create_valor_inventario_view,
+    drop_valor_inventario_view,
+)
 
 # revision identifiers, used by Alembic.
 revision = "202511080002"
@@ -11,6 +16,8 @@ depends_on: tuple[str, ...] | None = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    drop_valor_inventario_view(bind)
     with op.batch_alter_table("purchase_orders", schema=None) as batch_op:
         batch_op.add_column(
             sa.Column(
@@ -43,8 +50,12 @@ def upgrade() -> None:
     with op.batch_alter_table("purchase_orders", schema=None) as batch_op:
         batch_op.alter_column("requires_approval", server_default=None)
 
+    create_valor_inventario_view(bind)
+
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    drop_valor_inventario_view(bind)
     with op.batch_alter_table("purchase_orders", schema=None) as batch_op:
         batch_op.drop_constraint(
             "purchase_orders_approved_by_id_fkey", type_="foreignkey"
@@ -52,3 +63,5 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f("ix_purchase_orders_approved_by_id"))
         batch_op.drop_column("approved_by_id")
         batch_op.drop_column("requires_approval")
+
+    create_valor_inventario_view(bind)
