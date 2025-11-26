@@ -17,18 +17,18 @@ vi.mock("../../../auth/useAuth", () => ({
   useAuth: () => useAuthMock(),
 }));
 
-import LabelGenerator from "../LabelGenerator";
+import LabelPrinter from "../LabelPrinter";
 
-describe("LabelGenerator", () => {
+describe("LabelPrinter", () => {
   const renderComponent = () =>
     render(
-      <LabelGenerator
+      <LabelPrinter
         open
-        storeId={5}
-        storeName="Sucursal Centro"
-        deviceId="101"
-        deviceName="Equipo demo"
-        sku="SKU-101"
+        fallbackStoreId={5}
+        fallbackStoreName="Sucursal Centro"
+        fallbackDeviceId="101"
+        fallbackDeviceName="Equipo demo"
+        fallbackSku="SKU-101"
         onClose={vi.fn()}
       />,
     );
@@ -126,5 +126,21 @@ describe("LabelGenerator", () => {
         { format: "zpl", template: "38x25", connector: { identifier: "zebra" } },
       );
     });
+  });
+
+  it("no solicita etiqueta cuando el motivo es inválido en comandos directos", async () => {
+    renderComponent();
+
+    const formatSelect = screen.getByLabelText(/Formato de etiqueta/i);
+    const reasonInput = screen.getByLabelText(/Motivo corporativo/i);
+    const user = userEvent.setup();
+    await user.selectOptions(formatSelect, "zpl");
+    await user.clear(reasonInput);
+    await user.type(reasonInput, "1234");
+
+    await user.click(screen.getByRole("button", { name: /Generar etiqueta/i }));
+
+    expect(await screen.findByText(/al menos 5 caracteres/i)).toBeInTheDocument();
+    expect(requestDeviceLabelMock).not.toHaveBeenCalled();
   });
 });
