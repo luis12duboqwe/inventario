@@ -30,6 +30,8 @@ def build_reason_header_middleware(
     export_tokens: Iterable[str] = DEFAULT_EXPORT_TOKENS,
     export_prefixes: Iterable[str] = DEFAULT_EXPORT_PREFIXES,
     read_sensitive_get_prefixes: Iterable[str] = DEFAULT_SENSITIVE_GET_PREFIXES,
+    optional_reason_prefixes: Iterable[str] | None = None,
+    optional_reason_suffixes: Iterable[str] | None = None,
 ) -> Callable[[Request, CallNext], Awaitable[Response]]:
     """Crea un middleware que exige ``X-Reason`` cuando aplica."""
 
@@ -38,6 +40,18 @@ def build_reason_header_middleware(
     export_tokens_tuple = _normalize_collection(export_tokens)
     export_prefixes_tuple = _normalize_collection(export_prefixes)
     read_sensitive_prefixes_tuple = _normalize_collection(read_sensitive_get_prefixes)
+    optional_reason_prefixes_tuple = _normalize_collection(optional_reason_prefixes or [])
+    optional_reason_suffixes_tuple = _normalize_collection(optional_reason_suffixes or [])
+
+    def _is_optional_reason(path: str) -> bool:
+        if not optional_reason_prefixes_tuple or not optional_reason_suffixes_tuple:
+            return False
+
+        return any(
+            path.startswith(prefix) and path.endswith(suffix)
+            for prefix in optional_reason_prefixes_tuple
+            for suffix in optional_reason_suffixes_tuple
+        )
 
     def _requires_reason_get(path: str) -> bool:
         if any(token in path for token in export_tokens_tuple) and any(
@@ -57,9 +71,11 @@ def build_reason_header_middleware(
             and any(path.startswith(prefix) for prefix in sensitive_prefixes_tuple)
         ) or (method_upper == "GET" and _requires_reason_get(path))
 
+        optional_reason_allowed = requires_reason and _is_optional_reason(path)
+
         # Starlette provee cabeceras case-insensitive, por lo que un solo get es suficiente.
         reason = request.headers.get("X-Reason")
-        if requires_reason:
+        if requires_reason and not optional_reason_allowed:
             if not reason or len(reason.strip()) < 5:
                 return JSONResponse(
                     status_code=400,

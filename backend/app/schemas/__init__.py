@@ -5460,9 +5460,11 @@ class PurchaseOrderResponse(BaseModel):
     closed_at: datetime | None
     items: list[PurchaseOrderItemResponse]
     pending_items: int = 0
-    returns: list[PurchaseReturnResponse] = []
-    documents: list["PurchaseOrderDocumentResponse"] = []
-    status_history: list["PurchaseOrderStatusEventResponse"] = []
+    returns: list[PurchaseReturnResponse] = Field(default_factory=list)
+    documents: list["PurchaseOrderDocumentResponse"] = Field(default_factory=list)
+    status_history: list["PurchaseOrderStatusEventResponse"] = Field(
+        default_factory=list, validation_alias="status_events"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
