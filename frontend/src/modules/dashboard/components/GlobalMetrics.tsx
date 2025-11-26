@@ -19,6 +19,7 @@ import { useDashboard } from "../context/DashboardContext";
 import { colors } from "../../../theme/designTokens";
 import { Skeleton } from "@/ui/Skeleton"; // [PACK36-metrics]
 import { safeArray, safeNumber, safeString } from "@/utils/safeValues"; // [PACK36-metrics]
+import type { DashboardAuditAlerts } from "@/api";
 
 const PIE_COLORS = [colors.chartCyan, colors.accentBright, colors.accent, colors.chartSky, colors.chartTeal];
 
@@ -29,6 +30,14 @@ function resolveStatusTone(value: number, threshold: number, inverse = false): "
   return value >= threshold ? "good" : "alert";
 }
 
+type GlobalMetricsProps = {
+  /**
+   * Permite inyectar alertas de auditoría predeterminadas cuando las métricas
+   * aún no están disponibles. Útil para pruebas y pantallas de contingencia.
+   */
+  auditAlertsMock?: DashboardAuditAlerts;
+};
+
 /**
  * Tablero global con tarjetas, gráficos y resúmenes auditables del backend.
  *
@@ -37,7 +46,7 @@ function resolveStatusTone(value: number, threshold: number, inverse = false): "
  * `GlobalMetrics.test.tsx`, asegurando que los escenarios descritos en la nueva
  * documentación respondan de forma consistente ante datos incompletos.
  */
-function GlobalMetrics() {
+function GlobalMetrics({ auditAlertsMock }: GlobalMetricsProps) {
   const { metrics, formatCurrency, loading } = useDashboard();
 
   const performance = metrics?.global_performance ?? {
@@ -63,7 +72,7 @@ function GlobalMetrics() {
   const receivableTotal = safeNumber(receivables.total_outstanding_debt);
   const receivableCustomers = safeNumber(receivables.customers_with_debt);
   const receivableMorosos = safeNumber(receivables.moroso_flagged);
-  const auditAlerts = metrics?.audit_alerts ?? {
+  const auditAlerts = metrics?.audit_alerts ?? auditAlertsMock ?? {
     // [PACK36-metrics]
     total: 0,
     critical: 0,
@@ -237,6 +246,16 @@ function GlobalMetrics() {
         <div className="metric-empty" role="status">
           <p className="muted-text">Sin métricas disponibles por el momento.</p>
           <p className="muted-text">Actualiza la vista cuando los servicios vuelvan a responder.</p>
+          <div className="metric-empty__actions">
+            <p className="muted-text">
+              {auditAlerts.has_alerts
+                ? `Existen ${pendingCount} alertas pendientes en Seguridad.`
+                : "Puedes abrir Seguridad para revisar historial corporativo."}
+            </p>
+            <Link to="/dashboard/security" className="btn btn--link audit-shortcut">
+              Abrir módulo de Seguridad
+            </Link>
+          </div>
         </div>
       ) : null}
 
