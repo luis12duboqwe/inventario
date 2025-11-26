@@ -1,7 +1,19 @@
+import type { ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../dashboard/context/DashboardContext", () => {
+  const useDashboardMock = vi.fn().mockReturnValue({
+    enablePriceLists: true,
+  });
+  const DashboardProvider = ({ children }: { children: ReactNode }) => (
+    <div data-testid="dashboard-provider-mock">{children}</div>
+  );
+
+  return { useDashboard: useDashboardMock, DashboardProvider };
+});
 
 vi.mock("../useInventoryLayoutState", () => ({
   useInventoryLayoutState: vi.fn(),
@@ -366,6 +378,39 @@ describe("InventoryPage", () => {
 
     expect(screen.getByText(/Sincronizando inventario/i)).toBeInTheDocument();
     expect(await screen.findByTestId("inventory-edit-dialog")).toBeInTheDocument();
+  });
+
+  it("renderiza la pestaña de listas de precios con el proveedor de dashboard", () => {
+    const contextValue = createContextValue();
+    useInventoryLayoutStateMock.mockReturnValue({
+      contextValue,
+      tabOptions: [
+        { id: "productos", label: "Productos", icon: null },
+        { id: "listas", label: "Listas de precios", icon: null },
+      ],
+      activeTab: "listas",
+      handleTabChange,
+      moduleStatus: "ok",
+      moduleStatusLabel: "Inventario saludable",
+      loading: false,
+      editingDevice: null,
+      isEditDialogOpen: false,
+      closeEditDialog,
+      handleSubmitDeviceUpdates,
+    });
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/inventario/listas" }]}>
+        <Routes>
+          <Route path="/inventario" element={<InventoryPage />}>
+            <Route path="listas" element={<InventoryPriceListsPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("dashboard-provider-mock")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Listas de precios/i })).toBeInTheDocument();
   });
 });
 
