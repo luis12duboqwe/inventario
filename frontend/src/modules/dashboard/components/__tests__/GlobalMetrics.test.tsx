@@ -34,6 +34,15 @@ const sampleMetrics: InventoryMetrics = {
     open_repairs: 3,
     gross_profit: 28000,
   },
+  accounts_receivable: {
+    total_outstanding_debt: 18000,
+    customers_with_debt: 3,
+    moroso_flagged: 1,
+    top_debtors: [
+      { customer_id: 301, name: "Cliente con mora", outstanding_debt: 12000, available_credit: 5000 },
+      { customer_id: 302, name: "Cliente al día", outstanding_debt: 6000, available_credit: null },
+    ],
+  },
   sales_insights: {
     average_ticket: 6944.44,
     top_products: [
@@ -151,7 +160,9 @@ describe("GlobalMetrics", () => {
       "href",
       "/dashboard/security"
     );
-    expect(screen.getByText(/\$6,944\.44/)).toBeInTheDocument();
+    expect(screen.getByText(/Cartera por cobrar/i)).toBeInTheDocument();
+    expect(screen.getByText(/Cliente con mora/i)).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("6,944.44"))).toBeInTheDocument();
     expect(screen.getByText(/Cliente Corporativo/i)).toBeInTheDocument();
   });
 
