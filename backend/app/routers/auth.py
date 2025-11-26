@@ -316,7 +316,10 @@ class OAuth2PasswordRequestFormWithOTP(OAuth2PasswordRequestForm):
     description="Autenticación estándar para pruebas y clientes OAuth2. No requiere autenticación previa.",
     # No requiere Depends(get_current_user)
 )
-def login_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login_token(
+    form_data: OAuth2PasswordRequestFormWithOTP = Depends(),
+    db: Session = Depends(get_db),
+):
     user = _authenticate_user(
         db,
         username=form_data.username,
@@ -465,7 +468,6 @@ def refresh_access_token(
 @router.post(
     "/verify",
     response_model=schemas.TokenVerificationResponse,
-    dependencies=[Depends(get_current_user)],
 )
 def verify_access_token(
     payload: schemas.TokenVerificationRequest, db: Session = Depends(get_db)

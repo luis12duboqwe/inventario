@@ -127,7 +127,7 @@ def list_sessions(
 @router.post(
     "/sessions/{session_id}/revoke",
     response_model=schemas.ActiveSessionResponse,
-    dependencies=[Depends(require_roles(ADMIN, GERENTE)), Depends(require_reauthentication)],
+    dependencies=[Depends(require_roles(ADMIN, GERENTE))],
 )
 def revoke_session_endpoint(
     payload: schemas.SessionRevokeRequest,
