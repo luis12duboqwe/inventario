@@ -47,6 +47,19 @@ function InventoryAlerts({
   formatCurrency,
   isLoading = false,
 }: InventoryAlertsProps) {
+  const safeMetric = (value: number | null | undefined): number =>
+    Number.isFinite(value) ? (value as number) : 0;
+
+  const safeSummary = useMemo(
+    () => ({
+      total: safeMetric(summary?.total),
+      critical: safeMetric(summary?.critical),
+      warning: safeMetric(summary?.warning),
+      notice: safeMetric(summary?.notice),
+    }),
+    [summary],
+  );
+
   const minThreshold = settings.minimum_threshold;
   const maxThreshold = settings.maximum_threshold;
 
@@ -96,10 +109,10 @@ function InventoryAlerts({
           </p>
         </div>
         <div className="alert-summary" aria-live="polite">
-          <span className="pill accent">Total: {summary.total}</span>
-          <span className={pillTone.critical}>Críticas: {summary.critical}</span>
-          <span className={pillTone.warning}>Advertencias: {summary.warning}</span>
-          <span className={pillTone.notice}>Seguimiento: {summary.notice}</span>
+          <span className="pill accent">Total: {safeSummary.total}</span>
+          <span className={pillTone.critical}>Críticas: {safeSummary.critical}</span>
+          <span className={pillTone.warning}>Advertencias: {safeSummary.warning}</span>
+          <span className={pillTone.notice}>Seguimiento: {safeSummary.notice}</span>
         </div>
       </header>
 
@@ -183,9 +196,9 @@ function InventoryAlerts({
                   ) : (
                     <span className="stock-tag tag-forecast notice">Sin pronóstico</span>
                   )}
-                  {item.average_daily_sales !== null ? (
+                  {Number.isFinite(item.average_daily_sales) ? (
                     <span className="stock-tag tag-avg">
-                      Venta diaria {item.average_daily_sales.toFixed(1)} uds
+                      Venta diaria {(item.average_daily_sales as number).toFixed(1)} uds
                     </span>
                   ) : null}
                   {item.insights.map((insight, index) => (
