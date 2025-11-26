@@ -4317,6 +4317,8 @@ class FinancialTotals(BaseModel):
 
 
 class FinancialPerformanceReport(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     generated_at: datetime
     filters: ReportFilterState
     rotation: list[RotationMetric]
@@ -4328,6 +4330,8 @@ class FinancialPerformanceReport(BaseModel):
 
 
 class InventoryPerformanceReport(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     generated_at: datetime
     filters: ReportFilterState
     rotation: list[RotationMetric]

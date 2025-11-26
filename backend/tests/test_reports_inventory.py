@@ -335,6 +335,10 @@ def test_inventory_sync_discrepancies_report(client, db_session) -> None:
     data = response.json()
     assert data["totals"]["total_conflicts"] >= 1
     assert any(item["sku"] == "SYNC-001" for item in data["items"])
+    xlsx_response = client.get(
+        "/reports/inventory/sync-discrepancies/xlsx",
+        headers={**headers, "X-Reason": "Revisión inconsistencias"},
+    )
     assert xlsx_response.headers["content-type"].startswith(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )

@@ -437,6 +437,7 @@ class PurchaseStatus(str, enum.Enum):
     APROBADA = "APROBADA"
     ENVIADA = "ENVIADA"
     PARCIAL = "PARCIAL"
+    RECIBIDA = "RECIBIDA"
     COMPLETADA = "COMPLETADA"
     CANCELADA = "CANCELADA"
 
