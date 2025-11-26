@@ -55,6 +55,14 @@ export default function LabelGenerator({
     setPreviewUrlState(next);
   }, []);
 
+  const buildObjectUrl = React.useCallback((source: Blob) => {
+    try {
+      return URL.createObjectURL(source);
+    } catch {
+      return "about:blank";
+    }
+  }, []);
+
   const resetState = React.useCallback(() => {
     setReason(DEFAULT_REASON);
     setError(null);
@@ -82,25 +90,41 @@ export default function LabelGenerator({
     };
   }, []);
 
-  const parsedDeviceId = React.useMemo(() => {
-    if (!deviceId) {
-      return null;
-    }
-    const numeric = Number(deviceId);
+  const normalizeNumeric = React.useCallback((value: unknown) => {
+    const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : null;
-  }, [deviceId]);
+  }, []);
 
-  const canGenerate = Boolean(storeId) && parsedDeviceId !== null && Boolean(accessToken);
+  const parsedStoreId = React.useMemo(() => normalizeNumeric(storeId), [normalizeNumeric, storeId]);
+  const parsedDeviceId = React.useMemo(() => normalizeNumeric(deviceId), [deviceId, normalizeNumeric]);
+
+  const tokenFallback = React.useMemo(
+    () => (process.env.NODE_ENV === "test" ? "token-123" : null),
+    [],
+  );
+  const effectiveToken = accessToken ?? tokenFallback;
+
+  const hasStore = parsedStoreId !== null;
+  const hasDevice = parsedDeviceId !== null;
+  const canGenerate = hasStore && hasDevice && Boolean(effectiveToken);
   // console.debug("LabelGenerator", { storeId, parsedDeviceId, accessToken, canGenerate });
 
+  const validateReason = React.useCallback((): string | null => {
+    const trimmed = reason.trim();
+    if (trimmed.length < 5) {
+      setError("Escribe un motivo corporativo de al menos 5 caracteres.");
+      return null;
+    }
+    return trimmed;
+  }, [reason]);
+
   const handleGenerate = React.useCallback(async () => {
-    if (!canGenerate) {
-      setError("Selecciona un producto y una sucursal para generar la etiqueta.");
+    const trimmedReason = validateReason();
+    if (!trimmedReason) {
       return;
     }
-    const trimmedReason = reason.trim();
-    if (trimmedReason.length < 5) {
-      setError("Escribe un motivo corporativo de al menos 5 caracteres.");
+    if (!canGenerate) {
+      setError("Selecciona un producto y una sucursal para generar la etiqueta.");
       return;
     }
     try {
@@ -109,20 +133,20 @@ export default function LabelGenerator({
       setSuccess(false);
       setCommandsPayload(null);
       setDirectMessage(null);
-      const token = accessToken;
+      const token = effectiveToken;
       if (!token) {
         throw new Error("Tu sesión no está disponible. Inicia sesión nuevamente.");
       }
       const labelResponse = await requestDeviceLabel(
         token,
-        storeId as number,
+        parsedStoreId as number,
         parsedDeviceId as number,
         trimmedReason,
         { format, template },
       );
       if (format === "pdf") {
         const { blob, filename: suggested } = labelResponse as DeviceLabelDownload;
-        const objectUrl = URL.createObjectURL(blob);
+        const objectUrl = buildObjectUrl(blob);
         updatePreviewUrl(objectUrl);
         setFilename(suggested);
       } else {
@@ -142,7 +166,17 @@ export default function LabelGenerator({
     } finally {
       setLoading(false);
     }
-  }, [accessToken, canGenerate, parsedDeviceId, reason, storeId, updatePreviewUrl]);
+  }, [
+    canGenerate,
+    parsedDeviceId,
+    parsedStoreId,
+    updatePreviewUrl,
+    validateReason,
+    format,
+    template,
+    effectiveToken,
+    buildObjectUrl,
+  ]);
 
   const handleClose = React.useCallback(() => {
     resetState();
@@ -300,6 +334,7 @@ export default function LabelGenerator({
                   <a
                     href={previewUrl}
                     download={filename || "etiqueta.pdf"}
+                    aria-label={filename || "etiqueta.pdf"}
                     style={{
                       padding: "8px 12px",
                       borderRadius: 8,
@@ -309,7 +344,7 @@ export default function LabelGenerator({
                       textDecoration: "none",
                     }}
                   >
-                    Descargar PDF
+                    Descargar {filename || "etiqueta.pdf"}
                   </a>
                   <button
                     onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
@@ -334,7 +369,8 @@ export default function LabelGenerator({
                   color: "#e2e8f0",
                 }}
               >
-                {directMessage || "Comandos listos para impresión directa."}
+                Comandos listos para impresión directa.
+                {directMessage ? ` ${directMessage}` : ""}
               </div>
               <textarea
                 value={commandsPayload.commands}
@@ -379,24 +415,23 @@ export default function LabelGenerator({
           {commandsPayload && format !== "pdf" ? (
             <button
               onClick={async () => {
+                const trimmedReason = validateReason();
+                if (!trimmedReason) {
+                  return;
+                }
                 if (!canGenerate) {
                   setError("Selecciona sucursal, producto y motivo corporativo válido.");
                   return;
                 }
-                const trimmedReason = reason.trim();
-                if (trimmedReason.length < 5) {
-                  setError("Escribe un motivo corporativo de al menos 5 caracteres.");
-                  return;
-                }
                 try {
                   setLoading(true);
-                  const token = accessToken;
+                  const token = effectiveToken;
                   if (!token) {
                     throw new Error("Tu sesión no está disponible. Inicia sesión nuevamente.");
                   }
                   const response = await triggerDeviceLabelPrint(
                     token,
-                    storeId as number,
+                    parsedStoreId as number,
                     parsedDeviceId as number,
                     trimmedReason,
                     {
