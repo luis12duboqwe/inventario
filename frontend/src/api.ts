@@ -1271,6 +1271,8 @@ export type PurchaseReturn = {
   processed_by_id: number | null;
   approved_by_id?: number | null;
   approved_by_name?: string | null;
+  receipt_pdf_base64?: string | null;
+  receipt_url?: string | null;
   created_at: string;
 };
 

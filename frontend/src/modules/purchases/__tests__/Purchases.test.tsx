@@ -137,6 +137,7 @@ describe("Purchases", () => {
       processed_by_id: 5,
       approved_by_id: null,
       approved_by_name: null,
+      receipt_pdf_base64: "cGRmLWRhdGE=",
       created_at: new Date().toISOString(),
     });
 
@@ -182,11 +183,13 @@ describe("Purchases", () => {
     );
 
     expect(promptCorporateReasonMock).toHaveBeenCalled();
-    expect(
-      screen.getByText(/Nota de crédito por \$180\.00/),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("link", { name: /Descargar comprobante generado/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Nota de crédito por .*180\.00/)).toBeInTheDocument();
+    const receiptLink = await screen.findByRole("link", {
+      name: /Descargar comprobante generado/i,
+    });
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(receiptLink).toBeInTheDocument();
+    expect(receiptLink).toHaveAttribute("download", "devolucion-77-900.pdf");
+    expect(receiptLink).toHaveAttribute("href", "blob:url");
   });
 });

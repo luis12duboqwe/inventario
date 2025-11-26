@@ -444,28 +444,44 @@ function Purchases() {
         `Devolución registrada para ${supplierLabel}. Nota de crédito por ${currency.format(creditAmount)}.`,
       );
 
-      const documentLines = [
-        "Softmobile 2025 v2.2.0 — Devolución a proveedor",
-        `Fecha: ${new Date(response.created_at ?? Date.now()).toLocaleString("es-HN")}`,
-        `Sucursal: ${selectedStore?.name ?? storeId}`,
-        `Orden de compra: #${orderId}`,
-        `Proveedor: ${supplierLabel}`,
-        `Dispositivo ID: ${deviceId}`,
-        `Cantidad devuelta: ${normalizedQuantity}`,
-        `Nota de crédito: ${currency.format(creditAmount)}`,
-        `Motivo técnico: ${trimmedReason}`,
-        `Motivo corporativo: ${normalizedCorporate}`,
-      ];
-      const blob = new Blob([documentLines.join("\n")], {
-        type: "text/plain;charset=utf-8",
-      });
       if (returnDocument) {
         URL.revokeObjectURL(returnDocument.url);
       }
-      setReturnDocument({
-        url: URL.createObjectURL(blob),
-        filename: `devolucion-${orderId}-${response.id}.txt`,
-      });
+      const documentFilenameBase = `devolucion-${orderId}-${response.id}`;
+      if (response.receipt_url) {
+        setReturnDocument({
+          url: response.receipt_url,
+          filename: `${documentFilenameBase}.pdf`,
+        });
+      } else if (response.receipt_pdf_base64) {
+        const byteCharacters = atob(response.receipt_pdf_base64);
+        const byteArray = Uint8Array.from(byteCharacters, (char) => char.charCodeAt(0));
+        const blob = new Blob([byteArray], { type: "application/pdf" });
+        setReturnDocument({
+          url: URL.createObjectURL(blob),
+          filename: `${documentFilenameBase}.pdf`,
+        });
+      } else {
+        const documentLines = [
+          "Softmobile 2025 v2.2.0 — Devolución a proveedor",
+          `Fecha: ${new Date(response.created_at ?? Date.now()).toLocaleString("es-HN")}`,
+          `Sucursal: ${selectedStore?.name ?? storeId}`,
+          `Orden de compra: #${orderId}`,
+          `Proveedor: ${supplierLabel}`,
+          `Dispositivo ID: ${deviceId}`,
+          `Cantidad devuelta: ${normalizedQuantity}`,
+          `Nota de crédito: ${currency.format(creditAmount)}`,
+          `Motivo técnico: ${trimmedReason}`,
+          `Motivo corporativo: ${normalizedCorporate}`,
+        ];
+        const blob = new Blob([documentLines.join("\n")], {
+          type: "text/plain;charset=utf-8",
+        });
+        setReturnDocument({
+          url: URL.createObjectURL(blob),
+          filename: `${documentFilenameBase}.txt`,
+        });
+      }
 
       const remaining = Math.max(0, available - normalizedQuantity);
       await fetchOrders(storeId);
