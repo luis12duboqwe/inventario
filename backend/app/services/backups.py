@@ -842,6 +842,14 @@ def restore_backup(
             resolved_candidate_base = candidate_base.resolve()
             # Ensure the restored directory is a DIRECT child of the restore root
             if resolved_candidate_base.parent != safe_restore_root:
+            candidate_base = (safe_restore_root / safe_subdir).resolve()
+            # Ensure the restored directory is strictly under the restore root
+            try:
+                candidate_base.relative_to(safe_restore_root)
+            except ValueError:
+                raise ValueError("El directorio de restauración debe encontrarse dentro del directorio de respaldo configurado.")
+            # Ensure direct child (not nested deeper)
+            if candidate_base.parent != safe_restore_root:
                 raise ValueError("El directorio de restauración debe ser una subcarpeta directa de backup_directory.")
             target_base = resolved_candidate_base
         else:
@@ -861,6 +869,18 @@ def restore_backup(
         from os.path import commonpath
         if commonpath([restore_dir.as_posix(), safe_restore_root.as_posix()]) != safe_restore_root.as_posix():
             raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
+    # Normalizar y asegurar que target_base es absoluta y bajo safe_restore_root
+    target_base = Path(target_base).resolve()
+    try:
+        target_base.relative_to(safe_restore_root)
+    except ValueError:
+        raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
+
+    restore_dir = target_base / f"restauracion_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    restore_dir = restore_dir.resolve()
+    # Prevención estricta: la restauración debe quedar SIEMPRE dentro de backup_directory
+    if not restore_dir.is_relative_to(safe_restore_root):
+        raise ValueError("Directorio de restauración no permitido: debe estar dentro de backup_directory")
     restore_dir.mkdir(parents=True, exist_ok=True)
 
     cipher = _get_backup_cipher()
