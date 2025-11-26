@@ -84,9 +84,11 @@ vi.mock("../../modules/inventory/pages/InventoryAlertsPage", () => ({
   default: createLazyStub("Inventario: Alertas"),
 }));
 
+vi.mock("../../modules/dashboard/context/DashboardContext");
+
 const mockInventoryState = {
   contextValue: {
-    module: {},
+    module: { token: "test-token" },
     smartImport: {
       smartImportFile: null,
       setSmartImportFile: vi.fn(),

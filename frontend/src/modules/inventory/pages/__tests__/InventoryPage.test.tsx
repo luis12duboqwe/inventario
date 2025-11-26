@@ -4,16 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../dashboard/context/DashboardContext", () => {
-  const useDashboardMock = vi.fn().mockReturnValue({
-    enablePriceLists: true,
-  });
-  const DashboardProvider = ({ children }: { children: ReactNode }) => (
-    <div data-testid="dashboard-provider-mock">{children}</div>
-  );
-
-  return { useDashboard: useDashboardMock, DashboardProvider };
-});
+vi.mock("../../../dashboard/context/DashboardContext");
 
 vi.mock("../useInventoryLayoutState", () => ({
   useInventoryLayoutState: vi.fn(),
