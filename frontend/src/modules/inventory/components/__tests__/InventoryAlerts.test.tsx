@@ -109,6 +109,50 @@ describe("InventoryAlerts", () => {
     expect(screen.getByText("No hay alertas con el umbral configurado.")).toBeInTheDocument();
   });
 
+  it("usa valores predeterminados cuando faltan métricas y protege cálculos", () => {
+    render(
+      <InventoryAlerts
+        items={[
+          {
+            device_id: 3,
+            store_id: 2,
+            store_name: "Norte",
+            sku: "AL-003",
+            name: "Teléfono C",
+            quantity: 2,
+            unit_price: 100,
+            inventory_value: 200,
+            severity: "notice",
+            average_daily_sales: undefined as unknown as number,
+            projected_days: null,
+            minimum_stock: 1,
+            reorder_point: 2,
+            reorder_gap: 0,
+            insights: [],
+          },
+        ]}
+        summary={{
+          total: undefined as unknown as number,
+          critical: null as unknown as number,
+          warning: undefined as unknown as number,
+          notice: undefined as unknown as number,
+        }}
+        settings={baseSettings}
+        thresholdDraft={5}
+        onThresholdChange={vi.fn()}
+        onSaveThreshold={vi.fn()}
+        isSaving={false}
+        formatCurrency={formatCurrency}
+      />,
+    );
+
+    expect(screen.getByText("Total: 0")).toBeInTheDocument();
+    expect(screen.getByText("Críticas: 0")).toBeInTheDocument();
+    expect(screen.getByText("Advertencias: 0")).toBeInTheDocument();
+    expect(screen.getByText("Seguimiento: 0")).toBeInTheDocument();
+    expect(screen.queryByText(/Venta diaria/)).not.toBeInTheDocument();
+  });
+
   it("indica cuando está cargando las alertas", () => {
     render(
       <InventoryAlerts
