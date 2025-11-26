@@ -283,7 +283,7 @@ def list_devices(
                     estado_enum = CommercialState(normalized.upper())
                 except ValueError as exc:
                     raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                         detail={
                             "code": "invalid_estado_comercial",
                             "message": "Estado comercial inválido. Usa nuevo, A, B o C.",
@@ -377,7 +377,7 @@ def upsert_membership(
 ):
     if payload.store_id != store_id or payload.user_id != user_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Los identificadores del cuerpo deben coincidir con la ruta.",
         )
     try:

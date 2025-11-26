@@ -9,7 +9,8 @@ from backend.app.db.valor_inventario_view import (
 )
 
 # revision identifiers, used by Alembic.
-revision = "202511080002"
+# Renumerado para evitar colisión con 202511080002 (warehouses)
+revision = "202511080001a"
 down_revision = "202511080001"
 branch_labels: tuple[str, ...] | None = None
 depends_on: tuple[str, ...] | None = None

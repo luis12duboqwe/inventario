@@ -193,12 +193,12 @@ def create_order_from_suggestion_endpoint(
         detail = str(exc)
         if detail == "purchase_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes incluir artículos en la orden.",
             ) from exc
         if detail == "purchase_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la orden.",
             ) from exc
         raise
@@ -416,17 +416,17 @@ def create_purchase_record_endpoint(
         detail = str(exc)
         if detail == "purchase_record_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes agregar productos a la compra.",
             ) from exc
         if detail == "purchase_record_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la compra.",
             ) from exc
         if detail == "purchase_record_invalid_cost":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Costo unitario inválido.",
             ) from exc
         raise
@@ -580,12 +580,12 @@ def create_purchase_order_endpoint(
         detail = str(exc)
         if detail == "purchase_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes incluir artículos en la orden.",
             ) from exc
         if detail == "purchase_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida en la orden.",
             ) from exc
         raise
@@ -609,13 +609,13 @@ async def upload_purchase_order_document_endpoint(
     _ensure_feature_enabled()
     if not file.filename:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El archivo adjunto es obligatorio.",
         )
     content = await file.read()
     if not content:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El archivo adjunto está vacío.",
         )
     try:
@@ -630,7 +630,7 @@ async def upload_purchase_order_document_endpoint(
     except ValueError as exc:
         if str(exc) == "purchase_document_not_pdf":
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Solo se admiten documentos PDF.",
             ) from exc
         raise
@@ -701,7 +701,7 @@ def transition_purchase_order_status_endpoint(
         detail = str(exc)
         if detail == "purchase_status_not_allowed":
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Estado de orden inválido.",
             ) from exc
         if detail == "purchase_status_locked":
@@ -745,7 +745,7 @@ def send_purchase_order_email_endpoint(
     except ValueError as exc:
         if str(exc) == "purchase_email_recipients_required":
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes indicar al menos un destinatario.",
             ) from exc
         raise
@@ -791,7 +791,7 @@ async def import_purchase_orders_endpoint(
         )
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
 
@@ -845,7 +845,7 @@ def receive_purchase_order_endpoint(
             ) from exc
         if detail == "purchase_items_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Debes indicar artículos a recibir.",
             ) from exc
         if detail == "purchase_invalid_quantity":
@@ -855,7 +855,7 @@ def receive_purchase_order_endpoint(
             ) from exc
         if detail == "supplier_batch_code_required":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Indica un código de lote válido para la recepción.",
             ) from exc
         raise
@@ -920,7 +920,7 @@ def register_purchase_return_endpoint(
         detail = str(exc)
         if detail == "purchase_invalid_quantity":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cantidad inválida.",
             ) from exc
         if detail == "purchase_return_exceeds_received":
@@ -935,7 +935,7 @@ def register_purchase_return_endpoint(
             ) from exc
         if detail == "purchase_return_invalid_warehouse":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Selecciona un almacén válido para la devolución.",
             ) from exc
         raise

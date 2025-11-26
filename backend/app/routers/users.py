@@ -327,7 +327,7 @@ def update_user(
             ) from exc
         if message == "invalid_store_id":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El identificador de sucursal es inválido",
             ) from exc
         raise

@@ -8999,6 +8999,8 @@ ol {
 }
 
 .price-lists__title p {
+}
+
 .inventory-price-lists-disabled {
   margin-top: var(--space-6);
   display: flex;
@@ -9210,6 +9212,8 @@ ol {
   margin: 0;
   font-size: 1.1rem;
   color: var(--color-text-primary);
+}
+
 .panel-header__actions {
   display: flex;
   gap: var(--space-3);
@@ -9335,6 +9339,7 @@ ol {
 
 .price-lists__card-body {
   padding: var(--space-4);
+}
 .price-list-detail .detail-card {
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border-subtle);
@@ -9451,6 +9456,11 @@ ol {
 
 .price-lists__items-table th,
 .price-lists__items-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-align: left;
+}
+
 .detail-card__header {
   display: flex;
   justify-content: space-between;
@@ -9513,7 +9523,6 @@ ol {
 }
 
 .price-lists__actions {
-.price-items-table .actions {
   display: flex;
   gap: var(--space-2);
 }

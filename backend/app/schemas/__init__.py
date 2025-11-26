@@ -1,5 +1,6 @@
 """Esquemas Pydantic centralizados para la API de Softmobile Central."""
 from __future__ import annotations
+from ..utils import audit as audit_utils
 
 import enum
 import re
@@ -61,7 +62,8 @@ _RTN_TEMPLATE = "{0}-{1}-{2}"
 def _normalize_rtn_value(value: str | None) -> str:
     digits = re.sub(r"[^0-9]", "", value or "")
     if len(digits) != 14:
-        raise ValueError("El RTN debe contener 14 dígitos (formato ####-####-######).")
+        raise ValueError(
+            "El RTN debe contener 14 dígitos (formato ####-####-######).")
     return _RTN_TEMPLATE.format(digits[:4], digits[4:8], digits[8:])
 
 
@@ -72,7 +74,6 @@ def _normalize_optional_rtn_value(value: str | None) -> str | None:
     if not cleaned:
         return None
     return _normalize_rtn_value(cleaned)
-from ..utils import audit as audit_utils
 
 
 def _ensure_aware(dt: datetime | None) -> datetime | None:
@@ -179,8 +180,10 @@ class LanDatabaseSummary(BaseModel):
 
 
 class LanDiscoveryResponse(BaseModel):
-    enabled: bool = Field(..., description="Estado de la función de descubrimiento")
-    host: str = Field(..., description="Host o IP anunciada en la LAN", min_length=3)
+    enabled: bool = Field(...,
+                          description="Estado de la función de descubrimiento")
+    host: str = Field(...,
+                      description="Host o IP anunciada en la LAN", min_length=3)
     port: int = Field(
         ...,
         description="Puerto en el que escucha la API",
@@ -781,8 +784,6 @@ class ProductBundleResponse(ProductBundleBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-
-
 class PriceListBase(BaseModel):
     """Información común de una lista de precios corporativa."""
 
@@ -879,7 +880,8 @@ class PriceListBase(BaseModel):
             and self.ends_at is not None
             and self.ends_at <= self.starts_at
         ):
-            raise ValueError("La fecha de término debe ser posterior al inicio.")
+            raise ValueError(
+                "La fecha de término debe ser posterior al inicio.")
         return self
 
 
@@ -956,7 +958,8 @@ class PriceListUpdate(BaseModel):
             and self.ends_at is not None
             and self.ends_at <= self.starts_at
         ):
-            raise ValueError("La fecha de término debe ser posterior al inicio.")
+            raise ValueError(
+                "La fecha de término debe ser posterior al inicio.")
         return self
 
 
@@ -1083,6 +1086,7 @@ class PriceListResponse(PriceListBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class PriceResolution(BaseModel):
     """Resultado de resolver un precio con base en listas disponibles."""
 
@@ -1128,6 +1132,7 @@ class PriceResolution(BaseModel):
     def _serialize_final_price(cls, value: Decimal) -> float:
         return float(value)
 
+
 class PriceEvaluationRequest(BaseModel):
     device_id: int = Field(..., ge=1)
     store_id: int | None = Field(default=None, ge=1)
@@ -1141,6 +1146,7 @@ class PriceEvaluationResponse(BaseModel):
     scope: str | None = None
     price: float | None = None
     currency: str | None = None
+
 
 class SmartImportColumnMatch(BaseModel):
     campo: str
@@ -1880,7 +1886,8 @@ class CustomerLedgerEntryResponse(BaseModel):
             candidate = getattr(value, attr, None)
             if isinstance(candidate, str) and candidate.strip():
                 return candidate.strip()
-        identifier = getattr(value, "id_usuario", None) or getattr(value, "id", None)
+        identifier = getattr(value, "id_usuario",
+                             None) or getattr(value, "id", None)
         if identifier is not None:
             return str(identifier)
         return str(value)
@@ -2141,7 +2148,8 @@ class CustomerAccountsReceivableResponse(BaseModel):
     aging: list[AccountsReceivableBucket] = Field(default_factory=list)
     open_entries: list[AccountsReceivableEntry] = Field(default_factory=list)
     credit_schedule: list[CreditScheduleEntry] = Field(default_factory=list)
-    recent_activity: list[CustomerLedgerEntryResponse] = Field(default_factory=list)
+    recent_activity: list[CustomerLedgerEntryResponse] = Field(
+        default_factory=list)
     generated_at: datetime
 
     @field_serializer("generated_at")
@@ -2223,7 +2231,8 @@ class CustomerSummaryResponse(BaseModel):
     payments: list[CustomerLedgerEntryResponse]
     ledger: list[CustomerLedgerEntryResponse]
     store_credits: list[StoreCreditResponse]
-    privacy_requests: list["CustomerPrivacyRequestResponse"] = Field(default_factory=list)
+    privacy_requests: list["CustomerPrivacyRequestResponse"] = Field(
+        default_factory=list)
 
 
 class CustomerPrivacyRequestResponse(BaseModel):
@@ -2492,7 +2501,8 @@ class SupplierBase(BaseModel):
         if isinstance(value, (str, bytes)):
             candidates = [value]
         else:
-            candidates = list(value) if isinstance(value, Iterable) else [value]
+            candidates = list(value) if isinstance(
+                value, Iterable) else [value]
         normalized: list[str] = []
         for candidate in candidates:
             if candidate is None:
@@ -2567,7 +2577,8 @@ class SupplierUpdate(BaseModel):
         if isinstance(value, (str, bytes)):
             candidates = [value]
         else:
-            candidates = list(value) if isinstance(value, Iterable) else [value]
+            candidates = list(value) if isinstance(
+                value, Iterable) else [value]
         normalized: list[str] = []
         for candidate in candidates:
             if candidate is None:
@@ -3275,7 +3286,8 @@ class POSReturnItemRequest(BaseModel):
         Field(
             default=None,
             ge=1,
-            validation_alias=AliasChoices("warehouse_id", "warehouseId", "almacen_id"),
+            validation_alias=AliasChoices(
+                "warehouse_id", "warehouseId", "almacen_id"),
         ),
     ]
 
@@ -3286,6 +3298,7 @@ class POSReturnItemRequest(BaseModel):
                 "Debes proporcionar sale_item_id, product_id o imei para la devolución."
             )
         return self
+
 
 class MovementBase(BaseModel):
     """Base para registrar movimientos de inventario (entradas/salidas/ajustes).
@@ -4260,8 +4273,10 @@ class DashboardSalesEntityMetric(BaseModel):
 
 class DashboardSalesInsights(BaseModel):
     average_ticket: float
-    top_products: list[DashboardSalesEntityMetric] = Field(default_factory=list)
-    top_customers: list[DashboardSalesEntityMetric] = Field(default_factory=list)
+    top_products: list[DashboardSalesEntityMetric] = Field(
+        default_factory=list)
+    top_customers: list[DashboardSalesEntityMetric] = Field(
+        default_factory=list)
     payment_mix: list[DashboardSalesEntityMetric] = Field(default_factory=list)
 
 
@@ -4276,7 +4291,8 @@ class DashboardReceivableMetrics(BaseModel):
     total_outstanding_debt: float
     customers_with_debt: int
     moroso_flagged: int
-    top_debtors: list[DashboardReceivableCustomer] = Field(default_factory=list)
+    top_debtors: list[DashboardReceivableCustomer] = Field(
+        default_factory=list)
 
 
 class DashboardChartPoint(BaseModel):
@@ -4490,7 +4506,8 @@ class SyncOutboxEntryResponse(BaseModel):
         if created_at:
             latency = int((now - created_at).total_seconds() * 1000)
         if created_at and last_attempt:
-            processing_latency = int((last_attempt - created_at).total_seconds() * 1000)
+            processing_latency = int(
+                (last_attempt - created_at).total_seconds() * 1000)
 
         detail = "pendiente"
         if self.status == SyncOutboxStatus.FAILED:
@@ -5421,12 +5438,14 @@ class PurchaseOrderItemResponse(BaseModel):
         if isinstance(value, dict):
             quantity_ordered = int(value.get("quantity_ordered", 0) or 0)
             quantity_received = int(value.get("quantity_received", 0) or 0)
-            value.setdefault("quantity_pending", max(quantity_ordered - quantity_received, 0))
+            value.setdefault("quantity_pending", max(
+                quantity_ordered - quantity_received, 0))
             return value
 
         quantity_ordered = getattr(value, "quantity_ordered", 0) or 0
         quantity_received = getattr(value, "quantity_received", 0) or 0
-        setattr(value, "quantity_pending", max(quantity_ordered - quantity_received, 0))
+        setattr(value, "quantity_pending", max(
+            quantity_ordered - quantity_received, 0))
         return value
 
 
@@ -5507,7 +5526,8 @@ class PurchaseOrderResponse(BaseModel):
     items: list[PurchaseOrderItemResponse]
     pending_items: int = 0
     returns: list[PurchaseReturnResponse] = Field(default_factory=list)
-    documents: list["PurchaseOrderDocumentResponse"] = Field(default_factory=list)
+    documents: list["PurchaseOrderDocumentResponse"] = Field(
+        default_factory=list)
     status_history: list["PurchaseOrderStatusEventResponse"] = Field(
         default_factory=list, validation_alias="status_events"
     )
@@ -5518,12 +5538,16 @@ class PurchaseOrderResponse(BaseModel):
     @classmethod
     def _compute_pending_items(cls, value: Any) -> Any:
         data = dict(value) if isinstance(value, dict) else value
-        items = data.get("items") if isinstance(data, dict) else getattr(data, "items", [])
+        items = data.get("items") if isinstance(
+            data, dict) else getattr(data, "items", [])
         pending_total = 0
         for item in items or []:
-            quantity_ordered = item.get("quantity_ordered") if isinstance(item, dict) else getattr(item, "quantity_ordered", 0)
-            quantity_received = item.get("quantity_received") if isinstance(item, dict) else getattr(item, "quantity_received", 0)
-            pending_total += max(int(quantity_ordered or 0) - int(quantity_received or 0), 0)
+            quantity_ordered = item.get("quantity_ordered") if isinstance(
+                item, dict) else getattr(item, "quantity_ordered", 0)
+            quantity_received = item.get("quantity_received") if isinstance(
+                item, dict) else getattr(item, "quantity_received", 0)
+            pending_total += max(int(quantity_ordered or 0) -
+                                 int(quantity_received or 0), 0)
 
         if isinstance(data, dict):
             data.setdefault("pending_items", pending_total)
@@ -6649,6 +6673,8 @@ class SaleResponse(BaseModel):
     store_id: int
     customer_id: int | None
     customer_name: str | None
+    document_type: str | None = None
+    document_number: str | None = None
     payment_method: PaymentMethod
     discount_percent: Decimal
     subtotal_amount: Decimal
@@ -6793,7 +6819,8 @@ class DTESignerCredentials(BaseModel):
     def _normalize_key(cls, value: str) -> str:
         normalized = value.strip()
         if len(normalized) < 8:
-            raise ValueError("La llave privada debe tener al menos 8 caracteres.")
+            raise ValueError(
+                "La llave privada debe tener al menos 8 caracteres.")
         return normalized
 
 
@@ -6978,6 +7005,7 @@ class DTEAckRegistration(BaseModel):
         normalized = value.strip()
         return normalized or None
 
+
 class SalesReportFilters(BaseModel):
     store_id: int | None = None
     customer_id: int | None = None
@@ -7110,8 +7138,10 @@ class POSSalePaymentInput(BaseModel):
     method: PaymentMethod
     amount: Decimal = Field(..., ge=Decimal("0"))
     reference: str | None = Field(default=None, max_length=64)
-    terminal_id: str | None = Field(default=None, max_length=40, alias="terminalId")
-    tip_amount: Decimal | None = Field(default=None, ge=Decimal("0"), alias="tipAmount")
+    terminal_id: str | None = Field(
+        default=None, max_length=40, alias="terminalId")
+    tip_amount: Decimal | None = Field(
+        default=None, ge=Decimal("0"), alias="tipAmount")
     token: str | None = Field(default=None, max_length=128)
     metadata: dict[str, str] = Field(default_factory=dict)
 
@@ -7302,8 +7332,12 @@ class POSSaleResponse(BaseModel):
     payment_receipts: list[CustomerPaymentReceiptResponse] = Field(
         default_factory=list
     )
-    electronic_payments: list["POSElectronicPaymentResult"] = Field(default_factory=list)
+    electronic_payments: list["POSElectronicPaymentResult"] = Field(
+        default_factory=list)
     loyalty_summary: POSLoyaltySaleSummary | None = None
+    # Campos superiores esperados por pruebas POS
+    document_type: str | None = None
+    document_number: str | None = None
 
     @field_serializer("payment_breakdown")
     @classmethod
@@ -7322,6 +7356,8 @@ class POSSaleResponse(BaseModel):
 class POSReceiptDeliveryChannel(str, enum.Enum):
     EMAIL = "email"
     WHATSAPP = "whatsapp"
+
+
 class POSElectronicPaymentResult(BaseModel):
     terminal_id: str
     method: PaymentMethod
@@ -7339,8 +7375,21 @@ class POSElectronicPaymentResult(BaseModel):
         return float(value)
 
 
-class POSReturnItemRequest(BaseModel):
-    """Item devuelto desde el POS identificable por producto o IMEI."""
+# Eliminamos redefinición vacía de POSReturnItemRequest que sobreescribía la versión completa.
+class POSReturnItemRequest(BaseModel):  # pragma: no cover
+    sale_item_id: int | None = Field(default=None, ge=1)
+    product_id: int | None = Field(default=None, ge=1)
+    imei: str | None = Field(default=None, max_length=18)
+    qty: int = Field(..., ge=1)
+    disposition: ReturnDisposition = Field(default=ReturnDisposition.VENDIBLE)
+    warehouse_id: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "POSReturnItemRequest":
+        if not (self.sale_item_id or self.product_id or self.imei):
+            raise ValueError(
+                "Debes proporcionar sale_item_id, product_id o imei para la devolución.")
+        return self
 
 
 class POSReceiptDeliveryRequest(BaseModel):
@@ -7599,6 +7648,7 @@ class POSSessionClosePayload(BaseModel):
     closing_amount: Decimal = Field(..., ge=Decimal("0"))
     notes: str | None = Field(default=None, max_length=255)
     payments: dict[str, Decimal] = Field(default_factory=dict)
+    difference_reason: str | None = Field(default=None, max_length=255)
 
     @field_validator("notes")
     @classmethod
@@ -7677,7 +7727,8 @@ class POSSessionSummary(BaseModel):
                 str(key): int(count)
                 for key, count in (session.denomination_breakdown or {}).items()
             },
-            reconciliation_notes=getattr(session, "reconciliation_notes", None),
+            reconciliation_notes=getattr(
+                session, "reconciliation_notes", None),
             difference_reason=getattr(session, "difference_reason", None),
         )
 
@@ -7820,7 +7871,8 @@ class POSConnectorSettings(BaseModel):
     def _validate_target(self) -> "POSConnectorSettings":
         if self.type is POSConnectorType.NETWORK:
             if not self.host:
-                raise ValueError("Los conectores de red requieren host configurado.")
+                raise ValueError(
+                    "Los conectores de red requieren host configurado.")
         return self
 
 
@@ -7829,7 +7881,8 @@ class POSPrinterSettings(BaseModel):
 
     name: str = Field(..., max_length=120)
     mode: POSPrinterMode = Field(default=POSPrinterMode.THERMAL)
-    connector: POSConnectorSettings = Field(default_factory=POSConnectorSettings)
+    connector: POSConnectorSettings = Field(
+        default_factory=POSConnectorSettings)
     paper_width_mm: int | None = Field(default=None, ge=40, le=120)
     is_default: bool = Field(default=False)
     vendor: str | None = Field(default=None, max_length=80)
@@ -7869,10 +7922,19 @@ class POSHardwareSettings(BaseModel):
     """Agrupa la configuración de hardware POS por sucursal."""
 
     printers: list[POSPrinterSettings] = Field(default_factory=list)
-    cash_drawer: POSCashDrawerSettings = Field(default_factory=POSCashDrawerSettings)
+    cash_drawer: POSCashDrawerSettings = Field(
+        default_factory=POSCashDrawerSettings)
     customer_display: POSCustomerDisplaySettings = Field(
         default_factory=POSCustomerDisplaySettings
     )
+
+
+class POSPaymentToken(BaseModel):
+    """Token de pago electrónico (bancario) para POS."""
+
+    token: str = Field(..., min_length=1, max_length=128)
+
+
 class POSTerminalConfig(BaseModel):
     id: str
     label: str
@@ -7901,6 +7963,8 @@ class POSConfigResponse(BaseModel):
     updated_at: datetime
     terminals: list[POSTerminalConfig] = Field(default_factory=list)
     tip_suggestions: list[float] = Field(default_factory=list)
+    default_document_type: str = Field(default="TICKET")
+    document_catalog: list[dict[str, str]] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -7923,11 +7987,39 @@ class POSConfigResponse(BaseModel):
             POSTerminalConfig(
                 id=terminal_id,
                 label=str(data.get("label") or terminal_id),
-                adapter=str(data.get("adapter") or "").strip() or "banco_atlantida",
+                adapter=str(data.get("adapter")
+                            or "").strip() or "banco_atlantida",
                 currency=str(data.get("currency") or "HNL"),
             )
             for terminal_id, data in terminals.items()
         ]
+        hw = config.hardware_settings if isinstance(
+            config.hardware_settings, dict) else {}
+        default_doc = str(hw.get("default_document_type")
+                          or "TICKET").strip().upper() or "TICKET"
+        catalog = [
+            {"type": "TICKET", "name": "Ticket POS",
+                "description": "Documento no fiscal"},
+            {"type": "FACTURA", "name": "Factura",
+                "description": "Documento fiscal"},
+            {"type": "NOTA_CREDITO", "name": "Nota de crédito",
+                "description": "Documento fiscal"},
+            {"type": "NOTA_DEBITO", "name": "Nota de débito",
+                "description": "Documento fiscal"},
+        ]
+        # Normaliza hardware_settings al esquema público
+        try:
+            normalized_hw = POSHardwareSettings(
+                printers=[POSPrinterSettings(**p)
+                          for p in (hw.get("printers") or [])],
+                cash_drawer=POSCashDrawerSettings(
+                    **(hw.get("cash_drawer") or {})),
+                customer_display=POSCustomerDisplaySettings(
+                    **(hw.get("customer_display") or {})),
+            )
+        except Exception:
+            # Si el JSON almacenado no coincide exactamente, cae a defaults seguros
+            normalized_hw = POSHardwareSettings()
         return cls(
             store_id=config.store_id,
             tax_rate=config.tax_rate,
@@ -7935,9 +8027,13 @@ class POSConfigResponse(BaseModel):
             printer_name=config.printer_name,
             printer_profile=config.printer_profile,
             quick_product_ids=list(config.quick_product_ids or []),
+            hardware_settings=normalized_hw,
             updated_at=config.updated_at,
             terminals=terminals_payload,
-            tip_suggestions=[float(Decimal(str(value))) for value in tip_suggestions],
+            tip_suggestions=[float(Decimal(str(value)))
+                             for value in tip_suggestions],
+            default_document_type=default_doc,
+            document_catalog=catalog,
         )
 
 
@@ -7994,7 +8090,8 @@ class POSCouponPromotion(BaseModel):
 
 
 class POSPromotionsConfig(BaseModel):
-    feature_flags: POSPromotionFeatureFlags = Field(default_factory=POSPromotionFeatureFlags)
+    feature_flags: POSPromotionFeatureFlags = Field(
+        default_factory=POSPromotionFeatureFlags)
     volume_promotions: list[POSVolumePromotion] = Field(default_factory=list)
     combo_promotions: list[POSComboPromotion] = Field(default_factory=list)
     coupons: list[POSCouponPromotion] = Field(default_factory=list)
@@ -8015,7 +8112,8 @@ class POSAppliedPromotion(BaseModel):
     id: str
     promotion_type: Literal["volume", "combo", "coupon"]
     description: str
-    discount_percent: Decimal = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("100"))
+    discount_percent: Decimal = Field(default=Decimal(
+        "0"), ge=Decimal("0"), le=Decimal("100"))
     discount_amount: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     affected_items: list[int] = Field(default_factory=list)
     coupon_code: str | None = Field(default=None, max_length=60)
@@ -8034,6 +8132,7 @@ class POSConfigUpdate(BaseModel):
     printer_profile: str | None = Field(default=None, max_length=255)
     quick_product_ids: list[int] = Field(default_factory=list)
     hardware_settings: POSHardwareSettings | None = Field(default=None)
+    default_document_type: str | None = Field(default=None)
 
     @field_validator("quick_product_ids")
     @classmethod
@@ -8046,6 +8145,17 @@ class POSConfigUpdate(BaseModel):
             normalized.append(int(item))
         return normalized
 
+    @field_validator("default_document_type")
+    @classmethod
+    def _normalize_default_doc(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        allowed = {"FACTURA", "TICKET", "NOTA_CREDITO", "NOTA_DEBITO"}
+        if normalized and normalized not in allowed:
+            raise ValueError("Tipo de documento por defecto inválido")
+        return normalized or None
+
 
 class POSHardwarePrintTestRequest(BaseModel):
     """Solicitud de impresión de prueba."""
@@ -8053,7 +8163,8 @@ class POSHardwarePrintTestRequest(BaseModel):
     store_id: int = Field(..., ge=1)
     printer_name: str | None = Field(default=None, max_length=120)
     mode: POSPrinterMode = Field(default=POSPrinterMode.THERMAL)
-    sample: str = Field(default="*** PRUEBA DE IMPRESIÓN POS ***", max_length=512)
+    sample: str = Field(
+        default="*** PRUEBA DE IMPRESIÓN POS ***", max_length=512)
 
 
 class LabelFormat(str, enum.Enum):
@@ -8541,7 +8652,8 @@ class ConfigurationParameterBase(BaseModel):
 
 
 class ConfigurationParameterCreate(ConfigurationParameterBase):
-    value_type: ConfigurationParameterType = Field(default=ConfigurationParameterType.STRING)
+    value_type: ConfigurationParameterType = Field(
+        default=ConfigurationParameterType.STRING)
     value: Any = Field(...)
     is_sensitive: bool = Field(default=False)
 

@@ -3,7 +3,7 @@ import { fileURLToPath, URL } from "node:url"; // [PACK37-frontend]
 import react from "@vitejs/plugin-react";
 
 const DEFAULT_DEV_HOST = "0.0.0.0";
-const DEFAULT_DEV_PORT = 5173;
+const DEFAULT_DEV_PORT = 4173;
 const DEFAULT_BACKEND_TARGET = "http://127.0.0.1:8000";
 
 export default defineConfig(({ mode }) => {

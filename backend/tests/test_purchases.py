@@ -542,7 +542,7 @@ def test_purchase_status_transition_rejects_invalid_status(client, db_session):
             json={"status": "CANCELADA"},
             headers={"Authorization": f"Bearer {token}", "X-Reason": "Cancelación manual"},
         )
-        assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert invalid_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         assert invalid_response.json()["detail"] == "Estado de orden inválido."
     finally:
         settings.enable_purchases_sales = previous_flag

@@ -236,7 +236,7 @@ def test_backup_restore_database_and_files(client, tmp_path) -> None:
         json={"componentes": ["unknown_component"]},
         headers=_with_reason(headers, "Intento restauracion invalido"),
     )
-    assert invalid_restore.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert invalid_restore.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     error_detail = invalid_restore.json()["detail"][0]["msg"]
     assert "Input should be" in error_detail and "critical_files" in error_detail
 

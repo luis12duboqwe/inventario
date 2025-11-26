@@ -292,7 +292,7 @@ def get_sales_summary_report(
     normalized_from, normalized_to = _normalize_sales_range(date_from, date_to)
     if normalized_from and normalized_to and normalized_from >= normalized_to:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El rango de fechas es inválido.",
         )
     return crud.build_sales_summary_report(
@@ -321,7 +321,7 @@ def get_sales_by_product_report(
     normalized_from, normalized_to = _normalize_sales_range(date_from, date_to)
     if normalized_from and normalized_to and normalized_from >= normalized_to:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El rango de fechas es inválido.",
         )
     items = crud.build_sales_by_product_report(
@@ -405,7 +405,7 @@ def customer_portfolio_report(
 ):
     if date_from and date_to and date_from > date_to:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El rango de fechas es inválido.",
         )
 
@@ -1524,7 +1524,7 @@ def inventory_movements(
             movement_enum = models.MovementType(movement_type)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de movimiento inválido",
             ) from exc
     return crud.get_inventory_movements_report(
@@ -1899,7 +1899,7 @@ def inventory_movements_csv(
             movement_enum = models.MovementType(movement_type)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de movimiento inválido",
             ) from exc
 
@@ -2021,7 +2021,7 @@ def inventory_movements_pdf(
             movement_enum = models.MovementType(movement_type)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de movimiento inválido",
             ) from exc
 
@@ -2065,7 +2065,7 @@ def inventory_movements_excel(
             movement_enum = models.MovementType(movement_type)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Tipo de movimiento inválido",
             ) from exc
 

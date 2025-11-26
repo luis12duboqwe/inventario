@@ -34,7 +34,8 @@ class AsyncJob:
     status: Literal["queued", "running", "completed", "failed"] = "queued"
     output_path: str | None = None
     error: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc))
     finished_at: datetime | None = None
 
     def mark_running(self) -> None:
@@ -102,13 +103,14 @@ _JOBS: dict[str, AsyncJob] = _load_jobs()
 
 
 def enqueue_cash_report(session_id: int) -> AsyncJob:
-    job = AsyncJob(id=str(uuid4()), session_id=session_id, job_type="cash_report")
+    job = AsyncJob(id=str(uuid4()), session_id=session_id,
+                   job_type="cash_report")
     _JOBS[job.id] = job
     _persist_jobs()
     return job
 
 
-def run_cash_report_job(job_id: str) -> AsyncJob:
+def run_cash_report_job(job_id: str, db_session=None) -> AsyncJob:
     job = _JOBS.get(job_id)
     if job is None:
         raise LookupError("job_not_found")
@@ -118,16 +120,34 @@ def run_cash_report_job(job_id: str) -> AsyncJob:
     output_directory.mkdir(parents=True, exist_ok=True)
 
     try:
-        with SessionLocal() as session:
-            cash_session = crud.get_cash_session(session, job.session_id)
-            entries = crud.list_cash_entries(session, session_id=cash_session.id)
-            pdf_bytes = cash_reports.render_cash_close_pdf(cash_session, entries)
+        if db_session is not None:
+            # Modo inline: usar sesión existente
+            cash_session = crud.get_cash_session(db_session, job.session_id)
+            entries = crud.list_cash_entries(
+                db_session, session_id=cash_session.id)
+            pdf_bytes = cash_reports.render_cash_close_pdf(
+                cash_session, entries)
+        else:
+            # Modo async: crear nueva sesión
+            with SessionLocal() as session:
+                cash_session = crud.get_cash_session(session, job.session_id)
+                entries = crud.list_cash_entries(
+                    session, session_id=cash_session.id)
+                pdf_bytes = cash_reports.render_cash_close_pdf(
+                    cash_session, entries)
 
-        output_path = output_directory / f"cierre_{job.session_id}_{job.id}.pdf"
+        output_path = output_directory / \
+            f"cierre_{job.session_id}_{job.id}.pdf"
         output_path.write_bytes(pdf_bytes)
         job.mark_completed(output_path)
     except Exception as exc:  # pragma: no cover - ruta de error
-        job.mark_failed(str(exc))
+        import traceback
+        import sys
+        error_detail = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+        print(f"[ASYNC_JOB_ERROR] {error_detail}", file=sys.stderr, flush=True)
+        job.mark_failed(error_detail)
+
+    _persist_jobs()
     return job
 
 

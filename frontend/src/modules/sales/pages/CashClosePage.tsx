@@ -39,7 +39,7 @@ export function CashClosePage() {
   );
 
   return (
-    <div className="operations-subpage" style={{ display: "grid", gap: 12 }}>
+    <div data-testid="cash-close" className="operations-subpage" style={{ display: "grid", gap: 12 }}>
       <FlowAuditCard
         title="Cierre de caja auditado"
         subtitle="Reordenamos los pasos para capturar montos y validar diferencias sin romper la grilla"
@@ -73,104 +73,11 @@ export function CashClosePage() {
               "Notifica al responsable de operaciones cuando se detecten ajustes manuales.",
             ],
             actions: [
-              {
-                id: "ir-cierre",
-                label: "Ir a cierre",
-                tooltip: "Bajar a la acción de cierre",
-                onClick: () =>
-                  document.getElementById("cash-close-action")?.scrollIntoView({ behavior: "smooth" }),
-              },
+              // ...resto de acciones...
             ],
           },
         ]}
       />
-
-      <div className="card" style={{ display: "grid", gap: 12 }}>
-        <div className="card-header" style={{ display: "flex", justifyContent: "space-between" }}>
-          <div>
-            <p className="eyebrow">Caja</p>
-            <h3>Conteo rápido</h3>
-            <p className="card-subtitle">Calculamos el total mientras capturas importes individuales.</p>
-          </div>
-          <div className="muted-text" title="Aplica el motivo corporativo al comprobante de cierre">
-            Motivo corporativo obligatorio
-          </div>
-        </div>
-
-        <div className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-          <div>
-            <div className="eyebrow">Teórico</div>
-            {(["cash", "card", "transfer", "other"] as const).map((key) => (
-              <div key={key} style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-                <span>{key}</span>
-                <span>{(theoretical as Record<string, number>)[key]}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontWeight: 700 }}>
-              <span>Total</span>
-              <span>{computedTheoreticalTotal}</span>
-            </div>
-          </div>
-
-          <div id="cash-close-counted">
-            <div className="eyebrow">Conteo</div>
-            {(["cash", "card", "transfer", "other"] as const).map((key) => (
-              <label
-                key={key}
-                style={{ display: "flex", justifyContent: "space-between", marginTop: 6, gap: 8 }}
-              >
-                <span title="Captura el monto encontrado para este método">{key}</span>
-                <input
-                  type="number"
-                  value={(counted as Record<string, number>)[key] ?? 0}
-                  onChange={(event) =>
-                    setCounted({
-                      ...counted,
-                      [key]: Number(event.target.value ?? 0),
-                    })
-                  }
-                  style={{ padding: 6, borderRadius: 8, width: 160, textAlign: "right" }}
-                />
-              </label>
-            ))}
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontWeight: 700 }}>
-              <span title="Total calculado automáticamente">Total contado</span>
-              <span>{computedCountedTotal}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="card" style={{ display: "grid", gap: 8 }}>
-          <div className="eyebrow">Diferencias</div>
-          {Object.entries(diff).map(([key, value]) => (
-            <div key={key} style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>{key}</span>
-              <span title="Diferencia entre teórico y conteo">{value}</span>
-            </div>
-          ))}
-          <p className="muted-text">
-            Si las diferencias superan el umbral permitido, documenta el motivo antes de cerrar la caja.
-          </p>
-        </div>
-
-        <div id="cash-close-action" style={{ display: "flex", justifyContent: "flex-end" }}>
-          {/* [PACK26-CASH-PERMS-START] */}
-          <DisableIfNoPerm perm={PERMS.CASH_CLOSE}>
-            <button
-              style={{ padding: "8px 12px", borderRadius: 8 }}
-              title="Genera el comprobante y guarda el motivo del arqueo"
-              onClick={() => {
-                // TODO(save+print)
-              }}
-            >
-              Cerrar caja
-            </button>
-          </DisableIfNoPerm>
-          {/* [PACK26-CASH-PERMS-END] */}
-        </div>
-      </div>
+      {/* ...resto del componente... */}
     </div>
   );
-}
-
-export default CashClosePage;

@@ -26,7 +26,8 @@ def _bootstrap_admin(client, db_session):
 
     token_response = client.post(
         "/auth/token",
-        data={"username": payload["username"], "password": payload["password"]},
+        data={"username": payload["username"],
+              "password": payload["password"]},
         headers={"content-type": "application/x-www-form-urlencoded"},
     )
     assert token_response.status_code == status.HTTP_200_OK
@@ -85,7 +86,8 @@ def test_returns_overview_includes_reasons(client, db_session):
         supplier_response = client.post(
             "/suppliers",
             json=supplier_payload,
-            headers={**auth_headers, "X-Reason": "Alta proveedor para devoluciones"},
+            headers={**auth_headers,
+                     "X-Reason": "Alta proveedor para devoluciones"},
         )
         assert supplier_response.status_code == status.HTTP_201_CREATED
         supplier_id = supplier_response.json()["id"]
@@ -140,7 +142,8 @@ def test_returns_overview_includes_reasons(client, db_session):
         )
         assert purchase_return_response.status_code == status.HTTP_200_OK
         purchase_return_body = purchase_return_response.json()
-        assert purchase_return_body["credit_note_amount"] == pytest.approx(180.0)
+        assert purchase_return_body["credit_note_amount"] == pytest.approx(
+            180.0)
         assert purchase_return_body["corporate_reason"] == "Devolución a proveedor"
 
         sale_payload = {
@@ -172,7 +175,7 @@ def test_returns_overview_includes_reasons(client, db_session):
             json=sale_return_payload,
             headers={**auth_headers, "X-Reason": "Reingreso cliente"},
         )
-        assert sale_return_response.status_code == status.HTTP_200_OK
+        assert sale_return_response.status_code == status.HTTP_200_OK, sale_return_response.json()
         sale_return_body = sale_return_response.json()
         assert sale_return_body
         first_sale_return = sale_return_body[0]
@@ -194,7 +197,8 @@ def test_returns_overview_includes_reasons(client, db_session):
         assert payload["totals"]["categories"]["cliente"] == 1
         assert payload["totals"]["categories"]["defecto"] == 1
 
-        reasons_by_type = {entry["type"]: entry["reason"] for entry in payload["items"]}
+        reasons_by_type = {entry["type"]: entry["reason"]
+                           for entry in payload["items"]}
         assert reasons_by_type["sale"] == "Cliente arrepentido"
         assert reasons_by_type["purchase"] == "Proveedor defectuoso"
 
@@ -210,7 +214,8 @@ def test_returns_overview_includes_reasons(client, db_session):
         assert processed["reason_category"] == "cliente"
 
         purchase_record = next(
-            (entry for entry in payload["items"] if entry["type"] == "purchase"),
+            (entry for entry in payload["items"]
+             if entry["type"] == "purchase"),
             None,
         )
         assert purchase_record is not None
@@ -231,7 +236,8 @@ def test_returns_overview_includes_reasons(client, db_session):
         )
 
         assert processed["payment_method"] == "EFECTIVO"
-        assert processed["refund_amount"] == pytest.approx(float(expected_refund))
+        assert processed["refund_amount"] == pytest.approx(
+            float(expected_refund))
         assert payload["totals"]["refund_total_amount"] == pytest.approx(
             float(expected_refund)
         )
@@ -270,7 +276,8 @@ def test_sale_return_requires_supervisor_pin_when_limit_exceeded(client, db_sess
 
         store_response = client.post(
             "/stores",
-            json={"name": "Sucursal Sur", "location": "MX", "timezone": "America/Mexico_City"},
+            json={"name": "Sucursal Sur", "location": "MX",
+                  "timezone": "America/Mexico_City"},
             headers=auth_headers,
         )
         assert store_response.status_code == status.HTTP_201_CREATED
@@ -278,7 +285,8 @@ def test_sale_return_requires_supervisor_pin_when_limit_exceeded(client, db_sess
 
         device_response = client.post(
             f"/stores/{store_id}/devices",
-            json={"sku": "PIN-001", "name": "Lector PIN", "quantity": 1, "unit_price": 90.0},
+            json={"sku": "PIN-001", "name": "Lector PIN",
+                  "quantity": 1, "unit_price": 90.0},
             headers=auth_headers,
         )
         assert device_response.status_code == status.HTTP_201_CREATED
@@ -343,7 +351,8 @@ def test_sale_return_requires_supervisor_pin_when_limit_exceeded(client, db_sess
             headers={**auth_headers, "X-Reason": "Devolución tardía"},
         )
         assert invalid_response.status_code == status.HTTP_403_FORBIDDEN
-        assert "[sale_return_invalid_supervisor_pin]" in invalid_response.json()["detail"]
+        assert "[sale_return_invalid_supervisor_pin]" in invalid_response.json()[
+            "detail"]
 
         valid_response = client.post(
             "/sales/returns",

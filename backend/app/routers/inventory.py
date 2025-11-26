@@ -87,7 +87,7 @@ def create_store_warehouse(
             ) from exc
         if message in {"warehouse_name_required", "warehouse_code_required"}:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=message,
             ) from exc
         raise
@@ -123,7 +123,7 @@ def transfer_between_warehouses_endpoint(
             "warehouse_transfer_full_quantity_required",
         }:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=message,
             ) from exc
         if message in {"insufficient_stock", "warehouse_transfer_mismatch"}:
@@ -242,7 +242,7 @@ def create_inventory_reservation_endpoint(
         message = str(exc)
         if message in {"reservation_invalid_quantity", "reservation_invalid_expiration", "reservation_reason_required", "reservation_requires_single_unit"}:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=message,
             ) from exc
         if message in {"reservation_insufficient_stock", "reservation_device_unavailable"}:
@@ -284,7 +284,7 @@ def renew_inventory_reservation_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT
                 if message == "reservation_not_active"
-                else status.HTTP_422_UNPROCESSABLE_ENTITY,
+                else status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=message,
             ) from exc
         raise
@@ -366,7 +366,7 @@ def register_movement(
 ):
     if payload.comentario != reason:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "reason_comment_mismatch",
                 "message": "El comentario debe coincidir con el motivo corporativo enviado en la cabecera X-Reason.",
@@ -406,7 +406,7 @@ def register_movement(
             ) from exc
         if str(exc) == "invalid_destination_store":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "code": "invalid_destination_store",
                     "message": "La sucursal destino del movimiento debe coincidir con la seleccionada.",
@@ -598,7 +598,7 @@ def advanced_device_search(
                 serialized_errors.append({**error, "ctx": serialized_context})
             else:
                 serialized_errors.append(error)
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=serialized_errors) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=serialized_errors) from exc
     if not any(
         [
             filters.imei,
@@ -618,7 +618,7 @@ def advanced_device_search(
         ]
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "catalog_filters_required",
                 "message": "Proporciona al menos un criterio para buscar en el catálogo.",

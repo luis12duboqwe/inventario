@@ -104,7 +104,7 @@ def register_inventory_receiving(
             )
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
             ) from exc
 
@@ -122,7 +122,7 @@ def register_inventory_receiving(
             for allocation in line.distributions:
                 if allocation.store_id == payload.store_id:
                     raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                         detail="La distribución automática no puede usar la misma sucursal de origen.",
                     )
                 distribution_plan[allocation.store_id][device.id] += allocation.quantity
@@ -163,7 +163,7 @@ def register_inventory_receiving(
                 ) from exc
             except ValueError as exc:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=str(exc),
                 ) from exc
 
@@ -261,7 +261,7 @@ def register_cycle_count(
             ) from exc
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
             ) from exc
 

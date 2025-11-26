@@ -2,7 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, ConfigDict
 from pydantic_settings import BaseSettings
 from sqlalchemy.engine import URL
 
@@ -10,17 +10,22 @@ from sqlalchemy.engine import URL
 class Settings(BaseSettings):
     """Global configuration values loaded from environment variables."""
 
+    model_config = ConfigDict(env_prefix="softmobile_", case_sensitive=False)
+
     project_name: str = "Softmobile Inventory API"
     api_v1_str: str = "/api/v1"
-    sqlite_db_file: Path = Field(default=Path("softmobile.db"), description="Archivo SQLite local")
+    sqlite_db_file: Path = Field(default=Path(
+        "softmobile.db"), description="Archivo SQLite local")
     enable_variants: bool = Field(
         default=False,
-        validation_alias=AliasChoices("ENABLE_VARIANTS", "SOFTMOBILE_ENABLE_VARIANTS"),
+        validation_alias=AliasChoices(
+            "ENABLE_VARIANTS", "SOFTMOBILE_ENABLE_VARIANTS"),
         description="Habilita el catálogo de variantes por dispositivo.",
     )
     enable_bundles: bool = Field(
         default=False,
-        validation_alias=AliasChoices("ENABLE_BUNDLES", "SOFTMOBILE_ENABLE_BUNDLES"),
+        validation_alias=AliasChoices(
+            "ENABLE_BUNDLES", "SOFTMOBILE_ENABLE_BUNDLES"),
         description="Activa el manejo de paquetes y combos vinculados al inventario.",
     )
     enable_dte: bool = Field(
@@ -52,10 +57,6 @@ class Settings(BaseSettings):
         return URL.create("sqlite", database=str(sqlite_path)).render_as_string(
             hide_password=False
         )
-
-    class Config:
-        env_prefix = "softmobile_"
-        case_sensitive = False
 
 
 @lru_cache()

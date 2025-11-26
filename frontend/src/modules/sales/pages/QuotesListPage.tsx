@@ -78,33 +78,37 @@ export function QuotesListPage() {
   const [flushMessage, setFlushMessage] = useState<string | null>(null);
 
   // [PACK23-QUOTES-LIST-FETCH-START]
-  const fetchQuotes = useCallback(async (extra?: Partial<QuoteListParams>) => {
-    if (!canList) {
-      setItems([]);
-      setTotal(0);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const baseParams: QuoteListParams = {
-        page,
-        pageSize,
-        q,
-      };
-      if (status) {
-        baseParams.status = status;
+  const fetchQuotes = useCallback(
+    async (extra?: Partial<QuoteListParams>) => {
+      if (!canList) {
+        setItems([]);
+        setLoading(false);
+        return;
       }
-      const mergedParams = { ...baseParams, ...extra };
-      const res = await SalesQuotes.listQuotes(mergedParams);
-      setItems(res.items || []);
-      setTotal(res.total || 0);
-    } finally {
-      setLoading(false);
-    }
-  }, [canList, page, pageSize, q, status]);
+      setLoading(true);
+      try {
+        const baseParams: QuoteListParams = {
+          page,
+          pageSize,
+          q,
+        };
+        if (status) {
+          baseParams.status = status;
+        }
+        const mergedParams = { ...baseParams, ...extra };
+        const res = await SalesQuotes.listQuotes(mergedParams);
+        setItems(res.items || []);
+        setTotal(res.total || 0);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [canList, page, pageSize, q, status],
+  );
 
-  useEffect(() => { void fetchQuotes(); }, [fetchQuotes]);
+  useEffect(() => {
+    void fetchQuotes();
+  }, [fetchQuotes]);
   // [PACK23-QUOTES-LIST-FETCH-END]
 
   useEffect(() => {
@@ -118,7 +122,11 @@ export function QuotesListPage() {
   }, [items]);
 
   // [PACK23-QUOTES-LIST-UI-START]
-  function onSearch(e: React.FormEvent) { e.preventDefault(); setPage(1); fetchQuotes({ page: 1 }); }
+  function onSearch(e: React.FormEvent) {
+    e.preventDefault();
+    setPage(1);
+    fetchQuotes({ page: 1 });
+  }
   function onStatusChange(s: Quote["status"] | undefined) {
     setStatus(s);
     setPage(1);
@@ -140,7 +148,11 @@ export function QuotesListPage() {
         items: quote.lines?.length ?? 0,
         total: formatCurrency(quote.totals?.grand),
         status: statusLabels[quote.status] ?? quote.status,
-        actions: <Link to={`/sales/quotes/${quote.id}`} style={{ color: "#38bdf8" }}>Ver</Link>,
+        actions: (
+          <Link to={`/sales/quotes/${quote.id}`} style={{ color: "#38bdf8" }}>
+            Ver
+          </Link>
+        ),
       })),
     [items],
   );
@@ -170,12 +182,18 @@ export function QuotesListPage() {
   // [PACK26-QUOTES-GUARD-END]
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div data-testid="quotes-list" style={{ display: "grid", gap: 12 }}>
       <SummaryCards
         items={[
           { label: "Cotizaciones", value: loading ? "Cargando…" : total.toString() },
-          { label: "Abiertas", value: items.filter((item) => item.status === "OPEN").length.toString() },
-          { label: "Convertidas", value: items.filter((item) => item.status === "CONVERTED").length.toString() },
+          {
+            label: "Abiertas",
+            value: items.filter((item) => item.status === "OPEN").length.toString(),
+          },
+          {
+            label: "Convertidas",
+            value: items.filter((item) => item.status === "CONVERTED").length.toString(),
+          },
         ]}
       />
       <div
@@ -197,7 +215,11 @@ export function QuotesListPage() {
             />
             <select
               value={status ?? ""}
-              onChange={(event) => onStatusChange(event.target.value ? (event.target.value as Quote["status"]) : undefined)}
+              onChange={(event) =>
+                onStatusChange(
+                  event.target.value ? (event.target.value as Quote["status"]) : undefined,
+                )
+              }
               style={{ padding: 8, borderRadius: 8 }}
             >
               {statusOptions.map((option) => (
@@ -208,7 +230,13 @@ export function QuotesListPage() {
             </select>
             <button
               type="submit"
-              style={{ padding: "8px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none" }}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                background: "#38bdf8",
+                color: "#0f172a",
+                border: "none",
+              }}
               disabled={loading}
             >
               Buscar
@@ -236,7 +264,11 @@ export function QuotesListPage() {
           />
           <select
             value={status ?? ""}
-            onChange={(event) => onStatusChange(event.target.value ? (event.target.value as Quote["status"]) : undefined)}
+            onChange={(event) =>
+              onStatusChange(
+                event.target.value ? (event.target.value as Quote["status"]) : undefined,
+              )
+            }
             style={{ padding: 8, borderRadius: 8 }}
           >
             {statusOptions.map((option) => (
@@ -247,7 +279,13 @@ export function QuotesListPage() {
           </select>
           <button
             type="submit"
-            style={{ padding: "8px 16px", borderRadius: 8, background: "#38bdf8", color: "#0f172a", border: "none" }}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              background: "#38bdf8",
+              color: "#0f172a",
+              border: "none",
+            }}
             disabled={loading}
           >
             Buscar
@@ -272,7 +310,13 @@ export function QuotesListPage() {
               }
             }}
             disabled={flushing}
-            style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "rgba(56,189,248,0.16)", color: "#e0f2fe" }}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              border: "none",
+              background: "rgba(56,189,248,0.16)",
+              color: "#e0f2fe",
+            }}
           >
             {flushing ? "Reintentando…" : "Reintentar pendientes"}
           </button>
@@ -282,11 +326,7 @@ export function QuotesListPage() {
       {loading ? (
         <Skeleton lines={10} />
       ) : (
-        <Table
-          cols={columns}
-          rows={rows}
-          onRowClick={handleRowSelect}
-        />
+        <Table cols={columns} rows={rows} onRowClick={handleRowSelect} />
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ color: "#9ca3af" }}>
@@ -297,7 +337,13 @@ export function QuotesListPage() {
             type="button"
             onClick={() => setPage((current) => Math.max(1, current - 1))}
             disabled={loading || page <= 1}
-            style={{ padding: "6px 12px", borderRadius: 8, background: "rgba(56,189,248,0.12)", color: "#e0f2fe", border: "none" }}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              background: "rgba(56,189,248,0.12)",
+              color: "#e0f2fe",
+              border: "none",
+            }}
           >
             Anterior
           </button>
@@ -305,7 +351,13 @@ export function QuotesListPage() {
             type="button"
             onClick={() => setPage((current) => (current < pages ? current + 1 : current))}
             disabled={loading || page >= pages}
-            style={{ padding: "6px 12px", borderRadius: 8, background: "rgba(56,189,248,0.12)", color: "#e0f2fe", border: "none" }}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              background: "rgba(56,189,248,0.12)",
+              color: "#e0f2fe",
+              border: "none",
+            }}
           >
             Siguiente
           </button>

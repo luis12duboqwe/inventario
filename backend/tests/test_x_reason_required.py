@@ -108,7 +108,7 @@ def test_x_reason_missing_rejected(client: TestClient, method: str, url: str, re
     headers = {**auth_headers} if requires_auth else {}
     resp = client.request(method, url, headers=headers)
     assert resp.status_code in {status.HTTP_400_BAD_REQUEST,
-                                status.HTTP_422_UNPROCESSABLE_ENTITY, status.HTTP_403_FORBIDDEN}, resp.text
+                                status.HTTP_422_UNPROCESSABLE_CONTENT, status.HTTP_403_FORBIDDEN}, resp.text
 
 
 @pytest.mark.parametrize("method,url,requires_auth", CRITICAL_ENDPOINTS)
@@ -117,7 +117,7 @@ def test_x_reason_too_short_rejected(client: TestClient, method: str, url: str, 
                "X-Reason": "abc"} if requires_auth else {"X-Reason": "abc"}
     resp = client.request(method, url, headers=headers)
     assert resp.status_code in {status.HTTP_400_BAD_REQUEST,
-                                status.HTTP_422_UNPROCESSABLE_ENTITY, status.HTTP_403_FORBIDDEN}, resp.text
+                                status.HTTP_422_UNPROCESSABLE_CONTENT, status.HTTP_403_FORBIDDEN}, resp.text
 
 
 @pytest.mark.parametrize("method,url,requires_auth", CRITICAL_ENDPOINTS)
@@ -138,4 +138,4 @@ def test_x_reason_valid_allows(client: TestClient, method: str, url: str, requir
     resp = client.request(method, url, headers=headers, json=json_payload)
     # Se permite 2xx o 404 (si endpoint secundario requiere más params), pero no errores de validación X-Reason
     assert resp.status_code not in {
-        status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY}, resp.text
+        status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_CONTENT}, resp.text

@@ -64,7 +64,7 @@ def create_supplier_endpoint(
     except ValueError as exc:
         if str(exc) == "supplier_rtn_invalid":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El RTN del proveedor debe contener 14 dígitos (formato ####-####-######).",
             ) from exc
         if str(exc) == "supplier_already_exists":
@@ -89,7 +89,7 @@ def get_supplier_endpoint(
     except ValueError as exc:
         if str(exc) == "supplier_rtn_invalid":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El RTN del proveedor debe contener 14 dígitos (formato ####-####-######).",
             ) from exc
         raise
@@ -195,7 +195,7 @@ def create_supplier_batch_endpoint(
     except ValueError as exc:
         if str(exc) == "supplier_batch_store_mismatch":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El dispositivo no pertenece a la sucursal indicada.",
             ) from exc
         raise

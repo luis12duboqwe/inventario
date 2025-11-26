@@ -11,9 +11,7 @@ const registerSaleReturnMock = vi.hoisted(() => vi.fn());
 const listReturnsMock = vi.hoisted(() => vi.fn());
 const searchSalesHistoryMock = vi.hoisted(() => vi.fn());
 
-const apiModuleId = vi.hoisted(
-  () => new URL("../../../../api.ts", import.meta.url).pathname,
-);
+const apiModuleId = vi.hoisted(() => new URL("../../../../api.ts", import.meta.url).pathname);
 
 vi.mock("../../../../api", () => ({
   __esModule: true,
@@ -124,12 +122,9 @@ describe("Returns", () => {
       },
     ];
 
-    render(
-      <Returns token="test-token" stores={stores} defaultStoreId={1} />,
-    );
+    render(<Returns token="test-token" stores={stores} defaultStoreId={1} />);
 
-    const [purchaseReasonInput, saleReasonInput] =
-      screen.getAllByLabelText("Motivo corporativo");
+    const [purchaseReasonInput, saleReasonInput] = screen.getAllByLabelText("Motivo corporativo");
 
     expect(purchaseReasonInput).toHaveValue("Falla de calidad");
     expect(saleReasonInput).toHaveValue("Cambio del cliente");
@@ -141,9 +136,7 @@ describe("Returns", () => {
       });
     });
 
-    expect(
-      await screen.findByText("Historial de devoluciones"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Historial de devoluciones")).toBeInTheDocument();
     expect(screen.getByText("Total: 2")).toBeInTheDocument();
     expect(screen.getByText("Clientes: 1")).toBeInTheDocument();
     expect(screen.getByText("Proveedores: 1")).toBeInTheDocument();
@@ -153,9 +146,10 @@ describe("Returns", () => {
     expect(screen.getByText("Falla de calidad: 1")).toBeInTheDocument();
     expect(screen.getByText("Cambio del cliente - color incorrecto")).toBeInTheDocument();
     expect(screen.getByText("Falla de calidad - sin carga")).toBeInTheDocument();
-    expect(screen.getByText("Cambio del cliente")).toBeInTheDocument();
-    expect(screen.getByText("Falla de calidad")).toBeInTheDocument();
-    expect(screen.getByText("Vendible")).toBeInTheDocument();
+    // Puede aparecer en selectores y en la tabla; validamos presencia general
+    expect(screen.getAllByText("Cambio del cliente").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Falla de calidad").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Vendible").length).toBeGreaterThan(0);
     expect(screen.getByText("Almacén QA")).toBeInTheDocument();
     expect(screen.getAllByText("Cliente")).not.toHaveLength(0);
   });
@@ -176,9 +170,7 @@ describe("Returns", () => {
       },
     ];
 
-    render(
-      <Returns token="token-refresh" stores={stores} defaultStoreId={3} />,
-    );
+    render(<Returns token="token-refresh" stores={stores} defaultStoreId={3} />);
 
     const refreshButton = await screen.findByRole("button", {
       name: "Actualizar",

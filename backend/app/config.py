@@ -658,7 +658,8 @@ class Settings(BaseSettings):
         str,
         Field(
             default_factory=lambda: str(
-                (Path(__file__).resolve().parents[2] / "backups" / "purchase_orders")
+                (Path(__file__).resolve(
+                ).parents[2] / "backups" / "purchase_orders")
             ),
             validation_alias=AliasChoices(
                 "PURCHASES_DOCUMENTS_LOCAL_PATH",
@@ -945,6 +946,16 @@ class Settings(BaseSettings):
                 "BACKUP_DIR", "SOFTMOBILE_BACKUP_DIR"),
         ),
     ]
+    logs_directory: Annotated[
+        str,
+        Field(
+            default="./logs",
+            validation_alias=AliasChoices(
+                "LOGS_DIRECTORY",
+                "SOFTMOBILE_LOGS_DIRECTORY",
+            ),
+        ),
+    ]
     require_encrypted_backups: Annotated[
         bool,
         Field(
@@ -1128,7 +1139,8 @@ class Settings(BaseSettings):
             return [Decimal(part) for part in parts]
         if isinstance(value, (list, tuple)):
             return [Decimal(str(part)) for part in value]
-        raise ValueError("POS_TIP_SUGGESTIONS debe ser una lista o CSV de números")
+        raise ValueError(
+            "POS_TIP_SUGGESTIONS debe ser una lista o CSV de números")
 
     @field_validator("pos_tip_suggestions")
     @classmethod
@@ -1139,7 +1151,8 @@ class Settings(BaseSettings):
         for amount in value:
             decimal_value = Decimal(str(amount))
             if decimal_value < Decimal("0"):
-                raise ValueError("Las propinas sugeridas deben ser no negativas")
+                raise ValueError(
+                    "Las propinas sugeridas deben ser no negativas")
             normalized.append(decimal_value.quantize(Decimal("0.01")))
         return normalized
 
@@ -1304,7 +1317,8 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_purchase_local_path(cls, value: str | Path | None) -> str:
         if value is None or (isinstance(value, str) and not value.strip()):
-            base = Path(__file__).resolve().parents[2] / "backups" / "purchase_orders"
+            base = Path(__file__).resolve(
+            ).parents[2] / "backups" / "purchase_orders"
             return str(base)
         return str(Path(value).expanduser())
 

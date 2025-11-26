@@ -215,7 +215,7 @@ def enforce_password_policy(password: str, *, username: str | None = None) -> No
 
     if not _PASSWORD_POLICY.match(password):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 "La contraseña debe tener al menos 8 caracteres e incluir mayúsculas, "
                 "minúsculas y números. Se recomienda agregar un símbolo."
@@ -223,7 +223,7 @@ def enforce_password_policy(password: str, *, username: str | None = None) -> No
         )
     if username and username.lower() in password.lower():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="La contraseña no puede contener el usuario o correo asociado.",
         )
 

@@ -267,11 +267,11 @@ def create_transfer(
     except ValueError as exc:
         detail = str(exc)
         if detail == "transfer_same_store":
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="La sucursal de origen y destino deben ser distintas.") from exc
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="La sucursal de origen y destino deben ser distintas.") from exc
         if detail == "transfer_items_required":
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Debes agregar al menos un dispositivo a la transferencia.") from exc
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Debes agregar al menos un dispositivo a la transferencia.") from exc
         if detail == "transfer_invalid_quantity":
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="La cantidad debe ser mayor a cero.") from exc
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="La cantidad debe ser mayor a cero.") from exc
         raise
 
 
@@ -317,7 +317,7 @@ def dispatch_transfer(
             "reservation_expired",
         }:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="La reserva asociada no es válida para esta transferencia.",
             ) from exc
         raise
@@ -365,7 +365,7 @@ def receive_transfer(
             ) from exc
         if detail in {"transfer_invalid_received_quantity", "transfer_item_mismatch"}:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Las cantidades recibidas no son válidas para la transferencia.",
             ) from exc
         raise
@@ -405,7 +405,7 @@ def reject_transfer(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La transferencia no puede rechazarse en su estado actual.") from exc
         if detail in {"transfer_invalid_received_quantity", "transfer_item_mismatch", "transfer_missing_dispatch"}:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Las cantidades indicadas no son válidas para el rechazo de la transferencia.",
             ) from exc
         if detail == "transfer_device_already_sold":

@@ -36,7 +36,7 @@ def list_warranties_endpoint(
             status_enum = models.WarrantyStatus(status_filter.upper())
         except ValueError as exc:  # pragma: no cover - FastAPI transforma la excepción
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Estado de garantía inválido",
             ) from exc
     return crud.list_warranty_assignments(

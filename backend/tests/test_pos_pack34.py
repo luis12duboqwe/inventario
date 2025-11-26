@@ -25,7 +25,8 @@ def test_pack34_pos_end_to_end(client, db_session):
 
     store_response = client.post(
         "/stores",
-        json={"name": "Sucursal POS", "location": "GDL", "timezone": "America/Mexico_City"},
+        json={"name": "Sucursal POS", "location": "GDL",
+              "timezone": "America/Mexico_City"},
         headers=headers,
     )
     assert store_response.status_code == status.HTTP_201_CREATED
@@ -139,6 +140,7 @@ def test_pack34_pos_end_to_end(client, db_session):
             "session_id": session_id,
             "closing_amount": 700.0,
             "payments": {"EFECTIVO": 199.99},
+            "difference_reason": "Diferencia por fondo de cambio inicial no registrado",
         },
         headers={**headers, **_reason_header("Cerrar caja POS")},
     )
@@ -168,14 +170,15 @@ def test_pack34_pos_end_to_end(client, db_session):
     assert return_response.status_code == status.HTTP_201_CREATED
     return_data = return_response.json()
     assert return_data["sale_id"] == sale_id
-    assert isinstance(return_data["return_ids"], list) and return_data["return_ids"]
+    assert isinstance(return_data["return_ids"],
+                      list) and return_data["return_ids"]
 
     # // [PACK34-test]
     remaining_detail = client.get(
         f"/pos/sale/{sale_id}",
-        headers={**headers, **_reason_header("Consultar venta POS tras devolucion")},
+        headers={**headers, **
+                 _reason_header("Consultar venta POS tras devolucion")},
     )
     assert remaining_detail.status_code == status.HTTP_200_OK
     remaining_items = remaining_detail.json()["sale"].get("items", [])
     assert len(remaining_items) >= 1
-

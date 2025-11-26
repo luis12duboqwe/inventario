@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,9 +6,7 @@ import type { SaleHistorySearchResponse } from "../../../../api";
 
 const searchSalesHistoryMock = vi.hoisted(() => vi.fn());
 
-const apiModuleId = vi.hoisted(
-  () => new URL("../../../../api.ts", import.meta.url).pathname,
-);
+const apiModuleId = vi.hoisted(() => new URL("../../../../api.ts", import.meta.url).pathname);
 
 vi.mock("../../../../api", () => ({
   __esModule: true,
@@ -83,7 +81,6 @@ describe("ReturnsSearch", () => {
           customer_name: "Ana López",
         },
       ],
-      by_customer: [],
     } satisfies SaleHistorySearchResponse);
 
     render(<ReturnsSearch token="token-busqueda" />);
@@ -97,7 +94,7 @@ describe("ReturnsSearch", () => {
     await user.type(ticketInput, " SM-000101 ");
     await user.type(dateInput, "2025-02-01");
     await user.type(customerInput, "  Ana   ");
-    await user.paste(qrInput, "  {\\\"sale_id\\\":101}  \n");
+    fireEvent.change(qrInput, { target: { value: '  {"sale_id":101}  \n' } });
     await user.click(screen.getByRole("button", { name: "Buscar historial" }));
 
     await waitFor(() => {
@@ -105,7 +102,7 @@ describe("ReturnsSearch", () => {
         ticket: "SM-000101",
         date: "2025-02-01",
         customer: "Ana",
-        qr: "{\"sale_id\":101}",
+        qr: '{"sale_id":101}',
         limit: 25,
       });
     });

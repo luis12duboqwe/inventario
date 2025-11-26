@@ -69,12 +69,12 @@ def _raise_value_error(exc: ValueError) -> NoReturn:
         ) from exc
     if message == "price_list_item_invalid_store":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="El dispositivo no pertenece a la sucursal configurada.",
         ) from exc
     if message in numeric_errors:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Los valores numéricos proporcionados no son válidos.",
         ) from exc
     raise exc
