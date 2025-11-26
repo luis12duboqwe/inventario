@@ -838,7 +838,12 @@ def restore_backup(
         ):
             safe_subdir = target_directory
             candidate_base = (safe_restore_root / safe_subdir).resolve()
-            # Ensure the restored directory is a DIRECT child of the restore root
+            # Ensure the restored directory is strictly under the restore root
+            try:
+                candidate_base.relative_to(safe_restore_root)
+            except ValueError:
+                raise ValueError("El directorio de restauración debe encontrarse dentro del directorio de respaldo configurado.")
+            # Ensure direct child (not nested deeper)
             if candidate_base.parent != safe_restore_root:
                 raise ValueError("El directorio de restauración debe ser una subcarpeta directa de backup_directory.")
             target_base = candidate_base
