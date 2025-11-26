@@ -65,7 +65,8 @@ def _normalize_sales_range(
     normalized_from = _coerce_datetime(date_from)
     normalized_to = _coerce_datetime(date_to)
     if isinstance(date_to, date) and not isinstance(date_to, datetime):
-        normalized_to = normalized_to + timedelta(days=1) if normalized_to else None
+        normalized_to = normalized_to + \
+            timedelta(days=1) if normalized_to else None
     elif isinstance(date_to, datetime) and normalized_to is not None:
         normalized_to = normalized_to + timedelta(microseconds=1)
     return normalized_from, normalized_to
@@ -155,7 +156,8 @@ def export_global_report(
     dashboard = dataset.dashboard
 
     if format == "pdf":
-        pdf_bytes = global_reports_renderers.render_global_report_pdf(overview, dashboard)
+        pdf_bytes = global_reports_renderers.render_global_report_pdf(
+            overview, dashboard)
         buffer = BytesIO(pdf_bytes)
         metadata = schemas.BinaryFileResponse(
             filename="softmobile_reporte_global.pdf",
@@ -167,7 +169,8 @@ def export_global_report(
             headers=metadata.content_disposition(),
         )
     if format == "xlsx":
-        workbook = global_reports_renderers.render_global_report_xlsx(overview, dashboard)
+        workbook = global_reports_renderers.render_global_report_xlsx(
+            overview, dashboard)
         metadata = schemas.BinaryFileResponse(
             filename="softmobile_reporte_global.xlsx",
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -178,7 +181,8 @@ def export_global_report(
             headers=metadata.content_disposition(),
         )
     if format == "csv":
-        csv_buffer = global_reports_renderers.render_global_report_csv(overview, dashboard)
+        csv_buffer = global_reports_renderers.render_global_report_csv(
+            overview, dashboard)
         metadata = schemas.BinaryFileResponse(
             filename="softmobile_reporte_global.csv",
             media_type="text/csv",
@@ -196,10 +200,12 @@ def export_global_report(
 
 @router.get("/fiscal/books", response_model=schemas.FiscalBookReport)
 def get_fiscal_book_report(
-    book_type: schemas.FiscalBookType = Query(default=schemas.FiscalBookType.SALES),
+    book_type: schemas.FiscalBookType = Query(
+        default=schemas.FiscalBookType.SALES),
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),
-    export_format: Literal["json", "pdf", "xlsx", "xml"] = Query(default="json", alias="format"),
+    export_format: Literal["json", "pdf", "xlsx", "xml"] = Query(
+        default="json", alias="format"),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
     reason: str | None = Depends(require_reason_optional),
@@ -208,13 +214,15 @@ def get_fiscal_book_report(
     try:
         start_date = date(year, month, 1)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fecha inválida") from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Fecha inválida") from exc
     last_day = calendar.monthrange(year, month)[1]
     end_date = date(year, month, last_day)
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(end_date, datetime.max.time())
 
-    filters = schemas.FiscalBookFilters(year=year, month=month, book_type=book_type)
+    filters = schemas.FiscalBookFilters(
+        year=year, month=month, book_type=book_type)
     if book_type is schemas.FiscalBookType.SALES:
         sales = crud.list_sales(
             db,
@@ -229,10 +237,12 @@ def get_fiscal_book_report(
             date_from=start_dt,
             date_to=end_dt,
         )
-        report = fiscal_books_service.build_purchases_fiscal_book(purchases, filters)
+        report = fiscal_books_service.build_purchases_fiscal_book(
+            purchases, filters)
 
     if export_format != "json" and not reason:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reason header requerido")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Reason header requerido")
 
     if export_format == "json":
         return report
@@ -272,8 +282,8 @@ def get_fiscal_book_report(
             headers=metadata.content_disposition(),
         )
 
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de exportación no soportado")
-
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Formato de exportación no soportado")
 
 
 # // [PACK29-*] Reporte resumen de ventas con filtros de fecha y sucursal
@@ -334,7 +344,8 @@ def get_sales_by_product_report(
     if format == "csv":
         buffer = StringIO()
         writer = csv.writer(buffer)
-        writer.writerow(["SKU", "Producto", "Cantidad", "Ventas brutas", "Ventas netas"])
+        writer.writerow(["SKU", "Producto", "Cantidad",
+                        "Ventas brutas", "Ventas netas"])
         for item in items:
             writer.writerow([
                 item.sku,
@@ -461,7 +472,8 @@ def audit_logs(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.AuditLogResponse]:
-    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_offset = pagination.offset if (
+        pagination.page > 1 and offset == 0) else offset
     page_size = min(pagination.size, limit)
     total = crud.count_audit_logs(
         db,
@@ -486,7 +498,8 @@ def audit_logs(
         date_to=date_to,
     )
     page_number = (
-        pagination.page if offset == 0 else max(1, (page_offset // page_size) + 1)
+        pagination.page if offset == 0 else max(
+            1, (page_offset // page_size) + 1)
     )
     return Page.from_items(logs, page=page_number, size=page_size, total=total)
 
@@ -534,7 +547,8 @@ def audit_logs_pdf(
         filters["Desde"] = str(date_from)
     if date_to:
         filters["Hasta"] = str(date_to)
-    pdf_bytes = audit_service.render_audit_pdf(logs, filters=filters, alerts=summary)
+    pdf_bytes = audit_service.render_audit_pdf(
+        logs, filters=filters, alerts=summary)
     buffer = BytesIO(pdf_bytes)
     metadata = schemas.BinaryFileResponse(
         filename="auditoria_softmobile.pdf",
@@ -1186,7 +1200,8 @@ def financial_report(
     total_revenue = sum(item["revenue"] for item in profit_by_store)
     total_cost = sum(item["cost"] for item in profit_by_store)
     total_profit = sum(item["profit"] for item in profit_by_store)
-    total_margin = round((total_profit / total_revenue * 100), 2) if total_revenue else 0.0
+    total_margin = round((total_profit / total_revenue *
+                         100), 2) if total_revenue else 0.0
 
     filters = schemas.ReportFilterState(
         date_from=normalized_from,
@@ -1399,9 +1414,11 @@ def inventory_current_csv(
     writer.writerow(["Sucursales consideradas", report.totals.stores])
     writer.writerow(["Dispositivos catalogados", report.totals.devices])
     writer.writerow(["Unidades totales", report.totals.total_units])
-    writer.writerow(["Valor consolidado (MXN)", f"{report.totals.total_value:.2f}"])
+    writer.writerow(["Valor consolidado (MXN)",
+                    f"{report.totals.total_value:.2f}"])
     writer.writerow([])
-    writer.writerow(["Sucursal", "Dispositivos", "Unidades", "Valor total (MXN)"])
+    writer.writerow(["Sucursal", "Dispositivos",
+                    "Unidades", "Valor total (MXN)"])
     for store in report.stores:
         writer.writerow(
             [
@@ -1453,7 +1470,8 @@ def inventory_current_excel(
     _reason: str = Depends(require_reason),
 ):
     report = crud.get_inventory_current_report(db, store_ids=store_ids)
-    workbook_buffer = inventory_reports_service.build_inventory_current_excel(report)
+    workbook_buffer = inventory_reports_service.build_inventory_current_excel(
+        report)
     metadata = schemas.BinaryFileResponse(
         filename="softmobile_existencias.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1472,7 +1490,8 @@ def inventory_value(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
-    normalized_categories = [category for category in categories or [] if category]
+    normalized_categories = [
+        category for category in categories or [] if category]
     return crud.get_inventory_value_report(
         db,
         store_ids=store_ids,
@@ -1493,7 +1512,8 @@ def inventory_inactive_products(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ):
-    normalized_categories = [category for category in categories or [] if category]
+    normalized_categories = [
+        category for category in categories or [] if category]
     return crud.get_inactive_products_report(
         db,
         store_ids=store_ids,
@@ -1663,7 +1683,8 @@ def inventory_csv(
 
     for store in snapshot.get("stores", []):
         writer.writerow([])
-        writer.writerow([f"Sucursal: {store['name']}", store.get("location", "-"), store.get("timezone", "UTC")])
+        writer.writerow([f"Sucursal: {store['name']}", store.get(
+            "location", "-"), store.get("timezone", "UTC")])
         writer.writerow(
             [
                 "SKU",
@@ -1728,7 +1749,8 @@ def inventory_csv(
                     device.get("modelo") or "-",
                     device.get("proveedor") or "-",
                     device.get("color") or "-",
-                    device.get("capacidad_gb") if device.get("capacidad_gb") is not None else "-",
+                    device.get("capacidad_gb") if device.get(
+                        "capacidad_gb") is not None else "-",
                     device.get("estado_comercial", "-"),
                     device.get("lote") or "-",
                     device.get("fecha_compra") or "-",
@@ -1740,13 +1762,16 @@ def inventory_csv(
 
         registered_value_raw = store.get("inventory_value")
         try:
-            registered_value = float(registered_value_raw) if registered_value_raw is not None else store_total
+            registered_value = float(
+                registered_value_raw) if registered_value_raw is not None else store_total
         except (TypeError, ValueError):
             registered_value = store_total
 
         totals_padding = [""] * 13
-        writer.writerow(["TOTAL SUCURSAL", "", "", "", f"{store_total:.2f}", *totals_padding])
-        writer.writerow(["VALOR CONTABLE", "", "", "", f"{registered_value:.2f}", *totals_padding])
+        writer.writerow(["TOTAL SUCURSAL", "", "", "",
+                        f"{store_total:.2f}", *totals_padding])
+        writer.writerow(["VALOR CONTABLE", "", "", "",
+                        f"{registered_value:.2f}", *totals_padding])
 
         consolidated_total += store_total
 
@@ -1754,16 +1779,21 @@ def inventory_csv(
     if summary:
         writer.writerow([])
         writer.writerow(["Resumen corporativo"])
-        writer.writerow(["Sucursales auditadas", summary.get("store_count", 0)])
-        writer.writerow(["Dispositivos catalogados", summary.get("device_records", 0)])
+        writer.writerow(
+            ["Sucursales auditadas", summary.get("store_count", 0)])
+        writer.writerow(["Dispositivos catalogados",
+                        summary.get("device_records", 0)])
         writer.writerow(["Unidades totales", summary.get("total_units", 0)])
         summary_value_raw = summary.get("inventory_value")
         try:
-            summary_value = float(summary_value_raw) if summary_value_raw is not None else 0.0
+            summary_value = float(
+                summary_value_raw) if summary_value_raw is not None else 0.0
         except (TypeError, ValueError):
             summary_value = 0.0
-        writer.writerow(["Inventario consolidado registrado (MXN)", f"{summary_value:.2f}"])
-        writer.writerow(["Inventario consolidado calculado (MXN)", f"{consolidated_total:.2f}"])
+        writer.writerow(
+            ["Inventario consolidado registrado (MXN)", f"{summary_value:.2f}"])
+        writer.writerow(
+            ["Inventario consolidado calculado (MXN)", f"{consolidated_total:.2f}"])
 
     buffer.seek(0)
     metadata = schemas.BinaryFileResponse(
@@ -1785,7 +1815,8 @@ def inventory_value_csv(
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
-    normalized_categories = [category for category in categories or [] if category]
+    normalized_categories = [
+        category for category in categories or [] if category]
     report = crud.get_inventory_value_report(
         db,
         store_ids=store_ids,
@@ -1797,7 +1828,8 @@ def inventory_value_csv(
     writer.writerow(["Valoración de inventario"])
     writer.writerow(["Sucursales consideradas", len(report.stores)])
     writer.writerow([])
-    writer.writerow(["Sucursal", "Valor total (MXN)", "Valor costo (MXN)", "Margen estimado (MXN)"])
+    writer.writerow(["Sucursal", "Valor total (MXN)",
+                    "Valor costo (MXN)", "Margen estimado (MXN)"])
     for store in report.stores:
         writer.writerow(
             [
@@ -1836,7 +1868,8 @@ def inventory_value_pdf(
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
-    normalized_categories = [category for category in categories or [] if category]
+    normalized_categories = [
+        category for category in categories or [] if category]
     report = crud.get_inventory_value_report(
         db,
         store_ids=store_ids,
@@ -1863,13 +1896,15 @@ def inventory_value_excel(
     current_user=Depends(require_roles(ADMIN)),
     _reason: str = Depends(require_reason),
 ):
-    normalized_categories = [category for category in categories or [] if category]
+    normalized_categories = [
+        category for category in categories or [] if category]
     report = crud.get_inventory_value_report(
         db,
         store_ids=store_ids,
         categories=normalized_categories if normalized_categories else None,
     )
-    workbook_buffer = inventory_reports_service.build_inventory_value_excel(report)
+    workbook_buffer = inventory_reports_service.build_inventory_value_excel(
+        report)
     metadata = schemas.BinaryFileResponse(
         filename="softmobile_valor_inventario.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1972,7 +2007,8 @@ def inventory_movements_csv(
             reference_value = "-"
         last_action = "-"
         if movement.ultima_accion:
-            timestamp = movement.ultima_accion.timestamp.strftime("%d/%m/%Y %H:%M")
+            timestamp = movement.ultima_accion.timestamp.strftime(
+                "%d/%m/%Y %H:%M")
             actor = movement.ultima_accion.usuario or "-"
             last_action = f"{movement.ultima_accion.accion} · {actor} · {timestamp}"
         writer.writerow(
@@ -2034,7 +2070,8 @@ def inventory_movements_pdf(
         limit=limit,
         offset=offset,
     )
-    pdf_bytes = inventory_reports_service.render_inventory_movements_pdf(report)
+    pdf_bytes = inventory_reports_service.render_inventory_movements_pdf(
+        report)
     buffer = BytesIO(pdf_bytes)
     metadata = schemas.BinaryFileResponse(
         filename="softmobile_movimientos.pdf",
@@ -2078,7 +2115,8 @@ def inventory_movements_excel(
         limit=limit,
         offset=offset,
     )
-    workbook_buffer = inventory_reports_service.build_inventory_movements_excel(report)
+    workbook_buffer = inventory_reports_service.build_inventory_movements_excel(
+        report)
     metadata = schemas.BinaryFileResponse(
         filename="softmobile_movimientos.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -2141,7 +2179,8 @@ def inventory_top_products_excel(
         limit=limit,
         offset=offset,
     )
-    workbook_buffer = inventory_reports_service.build_top_products_excel(report)
+    workbook_buffer = inventory_reports_service.build_top_products_excel(
+        report)
     metadata = schemas.BinaryFileResponse(
         filename="softmobile_top_productos.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -2225,7 +2264,8 @@ def inventory_supplier_batches(
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.SupplierBatchOverviewItem]:
-    page_offset = pagination.offset if (pagination.page > 1 and offset == 0) else offset
+    page_offset = pagination.offset if (
+        pagination.page > 1 and offset == 0) else offset
     page_size = min(pagination.size, limit)
     total = crud.count_supplier_batch_overview(db, store_id=store_id)
     overview = crud.get_supplier_batch_overview(
@@ -2246,6 +2286,6 @@ def inventory_supplier_batches(
 def inventory_metrics(
     low_stock_threshold: int = Query(default=5, ge=0, le=100),
     db: Session = Depends(get_db),
-    current_user=Depends(require_roles(ADMIN)),
+    current_user=Depends(require_roles(*REPORTE_ROLES)),
 ):
     return crud.compute_inventory_metrics(db, low_stock_threshold=low_stock_threshold)

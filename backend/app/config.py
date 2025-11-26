@@ -1174,6 +1174,17 @@ class Settings(BaseSettings):
     def _ensure_testing_flag(self) -> "Settings":
         if bool(os.getenv("PYTEST_CURRENT_TEST")):
             self.testing_mode = True
+        # Ampliar orígenes de desarrollo si sólo uno de los puertos estándar aparece.
+        try:
+            augmented = set(self.allowed_origins)
+            for origin in list(self.allowed_origins):
+                if ":5173" in origin:
+                    augmented.add(origin.replace(":5173", ":4173"))
+                if ":4173" in origin:
+                    augmented.add(origin.replace(":4173", ":5173"))
+            self.allowed_origins = list(augmented)
+        except Exception:  # pragma: no cover - defensivo
+            pass
         return self
 
     @field_validator(

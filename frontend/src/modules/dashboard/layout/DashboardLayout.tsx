@@ -33,9 +33,7 @@ import type { ToastMessage } from "../context/DashboardContext";
 import { getRiskAlerts, type RiskAlert } from "../../../api";
 import Button from "../../../shared/components/ui/Button";
 import PageHeader from "../../../shared/components/ui/PageHeader";
-import AdminControlPanel, {
-  type AdminControlPanelModule,
-} from "../components/AdminControlPanel";
+import AdminControlPanel, { type AdminControlPanelModule } from "../components/AdminControlPanel";
 import ActionIndicatorBar from "../components/ActionIndicatorBar";
 import type { NotificationCenterItem } from "../components/NotificationCenter";
 
@@ -173,9 +171,24 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     setIsSidebarOpen(false);
   };
 
-  const isAdmin = currentUser?.roles.some((role) => role.name === "ADMIN") ?? false;
-  const isManager = currentUser?.roles.some((role) => role.name === "GERENTE") ?? false;
-  const isOperator = currentUser?.roles.some((role) => role.name === "OPERADOR") ?? false;
+  // Debug de usuario (solo en desarrollo) y normalización de roles
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.log("[DEBUG] currentUser:", currentUser);
+      // eslint-disable-next-line no-console
+      console.log("[DEBUG] currentUser?.roles:", currentUser?.roles);
+    }
+  }, [currentUser]);
+
+  const roleNames = Array.isArray(currentUser?.roles)
+    ? currentUser!.roles.map((role) => role?.name ?? String(role))
+    : [];
+  const singleRole = (currentUser as any)?.rol ?? (currentUser as any)?.role ?? null;
+  const allRoleNames = singleRole ? [...roleNames, String(singleRole)] : roleNames;
+  const isAdmin = allRoleNames.includes("ADMIN");
+  const isManager = allRoleNames.includes("GERENTE");
+  const isOperator = allRoleNames.includes("OPERADOR");
   const hasBasicAccess = isAdmin || isManager || isOperator;
 
   const observabilityNotifications = observability?.notifications ?? [];
@@ -189,8 +202,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         severity === "critical" || severity === "error"
           ? "error"
           : severity === "warning"
-            ? "warning"
-            : "info";
+          ? "warning"
+          : "info";
       const occurredLabel = notification.occurred_at
         ? new Date(notification.occurred_at).toLocaleString("es-HN", {
             dateStyle: "short",
@@ -360,7 +373,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     availableNavItems.find((item) => location.pathname.startsWith(item.to)) ?? availableNavItems[0];
   const moduleTitle = activeNav?.label ?? "Centro de control";
   const moduleDescription =
-    activeNav?.description ?? "Supervisa Softmobile 2025 v2.2.0 y mantén la operación sin interrupciones.";
+    activeNav?.description ??
+    "Supervisa Softmobile 2025 v2.2.0 y mantén la operación sin interrupciones.";
 
   const handleQuickHelp = () => {
     navigate("/dashboard/help", { state: { from: location.pathname } });
@@ -402,8 +416,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     notificationCount === 0
       ? "No hay notificaciones activas en este momento."
       : notificationCount === 1
-        ? "Tienes 1 notificación activa en el panel."
-        : `Tienes ${notificationCount} notificaciones activas en el panel.`;
+      ? "Tienes 1 notificación activa en el panel."
+      : `Tienes ${notificationCount} notificaciones activas en el panel.`;
 
   const panelNotificationItems = useMemo<NotificationCenterItem[]>(() => {
     const items: NotificationCenterItem[] = [];
@@ -502,8 +516,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
           toast.variant === "success"
             ? "Notificación positiva"
             : toast.variant === "error"
-              ? "Notificación de error"
-              : "Notificación informativa",
+            ? "Notificación de error"
+            : "Notificación informativa",
         description: toast.message,
         variant: toast.variant,
       });
@@ -537,7 +551,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
       }
 
       const syncNeedsAttention =
-        item.label === "Sincronización" && (networkAlert || outboxError || (syncStatus ?? "").toLowerCase().includes("error"));
+        item.label === "Sincronización" &&
+        (networkAlert || outboxError || (syncStatus ?? "").toLowerCase().includes("error"));
       const operationsNeedsAttention =
         item.label === "Operaciones" && Boolean(error || outboxError);
       const reportsHasMessage = item.label === "Reportes" && Boolean(message);
@@ -564,7 +579,11 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         to: item.to,
         label: item.label,
         description: item.description,
-        icon: isValidElement(item.icon) ? item.icon : <HelpCircle className="icon" aria-hidden="true" />,
+        icon: isValidElement(item.icon) ? (
+          item.icon
+        ) : (
+          <HelpCircle className="icon" aria-hidden="true" />
+        ),
         badgeVariant,
         isActive,
       };
@@ -581,15 +600,7 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
 
       return module;
     });
-  }, [
-    availableNavItems,
-    error,
-    message,
-    moduleTitle,
-    networkAlert,
-    outboxError,
-    syncStatus,
-  ]);
+  }, [availableNavItems, error, message, moduleTitle, networkAlert, outboxError, syncStatus]);
 
   return (
     <div
@@ -650,7 +661,9 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
               </motion.div>
             ))}
           </AnimatePresence>
-          <span className="sr-only" aria-live="polite">{notificationSummary}</span>
+          <span className="sr-only" aria-live="polite">
+            {notificationSummary}
+          </span>
         </div>
 
         <AnimatePresence>

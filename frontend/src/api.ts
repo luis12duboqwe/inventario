@@ -20,6 +20,7 @@ export type AuthProfile = {
   name: string;
   email?: string | null;
   role: string;
+  roles: Role[];
 };
 
 export type BootstrapStatus = {

@@ -19,12 +19,12 @@ export function CashClosePage() {
 
   const computedTheoreticalTotal = useMemo(
     () => theoretical.cash + theoretical.card + theoretical.transfer + theoretical.other,
-    [theoretical]
+    [theoretical],
   );
 
   const computedCountedTotal = useMemo(
     () => counted.cash + counted.card + counted.transfer + counted.other,
-    [counted]
+    [counted],
   );
 
   const diff = useMemo(
@@ -35,11 +35,15 @@ export function CashClosePage() {
       other: counted.other - theoretical.other,
       total: computedCountedTotal - computedTheoreticalTotal,
     }),
-    [counted, computedCountedTotal, computedTheoreticalTotal, theoretical]
+    [counted, computedCountedTotal, computedTheoreticalTotal, theoretical],
   );
 
   return (
-    <div data-testid="cash-close" className="operations-subpage" style={{ display: "grid", gap: 12 }}>
+    <div
+      data-testid="cash-close"
+      className="operations-subpage"
+      style={{ display: "grid", gap: 12 }}
+    >
       <FlowAuditCard
         title="Cierre de caja auditado"
         subtitle="Reordenamos los pasos para capturar montos y validar diferencias sin romper la grilla"
@@ -47,7 +51,8 @@ export function CashClosePage() {
           {
             id: "conteo",
             title: "Conteo y conciliación",
-            summary: "Llena importes por método, verifica el total automático y documenta diferencias.",
+            summary:
+              "Llena importes por método, verifica el total automático y documenta diferencias.",
             steps: [
               "Confirma que el efectivo inicial esté registrado en el teórico.",
               "Captura montos contados por método; el total se calcula en automático.",
@@ -59,14 +64,17 @@ export function CashClosePage() {
                 label: "Ir al conteo",
                 tooltip: "Desplázate al bloque de captura",
                 onClick: () =>
-                  document.getElementById("cash-close-counted")?.scrollIntoView({ behavior: "smooth" }),
+                  document
+                    .getElementById("cash-close-counted")
+                    ?.scrollIntoView({ behavior: "smooth" }),
               },
             ],
           },
           {
             id: "arqueo",
             title: "Entrega y comprobante",
-            summary: "Valida diferencias y cierra la caja con un solo botón protegido por permisos.",
+            summary:
+              "Valida diferencias y cierra la caja con un solo botón protegido por permisos.",
             steps: [
               "Confirma que las diferencias estén en 0 o documenta el motivo en el recibo.",
               "Descarga el comprobante de cierre y adjúntalo al arqueo diario.",
@@ -78,6 +86,20 @@ export function CashClosePage() {
           },
         ]}
       />
-      {/* ...resto del componente... */}
+      {/* Bloque placeholder mientras se integran formularios */}
+      <div id="cash-close-counted" style={{ display: "grid", gap: 8 }}>
+        <h3 style={{ margin: 0 }}>Conteo rápido</h3>
+        <p style={{ fontSize: 12, color: "#94a3b8" }}>
+          Placeholder temporal para levantar la aplicación. Integraremos inputs detallados en
+          iteración posterior.
+        </p>
+        <div style={{ fontSize: 12, color: "#38bdf8" }}>
+          Teórico: {computedTheoreticalTotal} | Contado: {computedCountedTotal} | Diferencia:{" "}
+          {diff.total}
+        </div>
+      </div>
     </div>
   );
+}
+
+export default CashClosePage;

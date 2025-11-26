@@ -77,7 +77,8 @@ def list_audit_ui(
     dependencies=[Depends(require_roles(ADMIN))],
 )
 def export_audit_ui(
-    format: schemas.AuditUIExportFormat = Query(default=schemas.AuditUIExportFormat.JSON),
+    format: schemas.AuditUIExportFormat = Query(
+        default=schemas.AuditUIExportFormat.JSON),
     date_from: datetime | date | None = Query(default=None, alias="from"),
     date_to: datetime | date | None = Query(default=None, alias="to"),
     user_id: str | None = Query(default=None, alias="userId", max_length=120),

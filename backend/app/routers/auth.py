@@ -28,6 +28,7 @@ from ..security import (
     verify_password,
     verify_totp,
 )
+from .dependencies import get_current_user_optional
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -200,7 +201,7 @@ def get_bootstrap_status(db: Session = Depends(get_db)):
 def bootstrap_admin(
     payload: schemas.UserCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(get_current_user_optional),
 ):
     total_users = crud.count_users(db)
     if total_users > 0:
