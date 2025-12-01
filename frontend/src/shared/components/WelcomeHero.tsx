@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { motion } from "framer-motion";
 
-import Button from "./ui/Button";
+import Button from "@components/ui/Button";
 import { colors } from "../../theme/designTokens";
 
 type Props = {
@@ -50,8 +50,8 @@ function WelcomeHero({ themeLabel, onToggleTheme, activeTheme }: Props) {
       <motion.div variants={cardVariants} className="welcome-copy">
         <h1>Softmobile Inventario</h1>
         <p>
-          Plataforma corporativa para sincronizar existencias, capturar movimientos y obtener reportes en tiempo real con
-          tema {themeLabel}.
+          Plataforma corporativa para sincronizar existencias, capturar movimientos y obtener
+          reportes en tiempo real con tema {themeLabel}.
         </p>
         <div className="welcome-actions">
           <Button type="button" variant="ghost" size="sm" onClick={onToggleTheme}>

@@ -1,14 +1,13 @@
-// [PACK26-AUDIT-SVC-START]
-import { http, httpGet, httpPost } from "./http";
-import { apiMap } from "./sales"; // reutiliza base/API ya definida
+import { httpClient, getAuthToken } from "@api/http";
+import { apiMap } from "./sales";
 
 type AuditEvent = {
-  ts: number | string;     // timestamp ms o ISO8601
-  userId?: string | null;  // opcional
-  module: "POS" | "QUOTES" | "RETURNS" | "CUSTOMERS" | "CASH" | "OTHER";
-  action: string;          // ej: "checkout", "discount.apply"
-  entityId?: string;       // ej: saleId, quoteId
-  meta?: Record<string, any>;
+  ts: number | string;
+  userId?: string | null;
+  module: "POS" | "QUOTES" | "RETURNS" | "CUSTOMERS" | "CASH" | "OTHER" | "MONITORING";
+  action: string;
+  entityId?: string;
+  meta?: Record<string, unknown>;
 };
 
 const KEY = "sm_ui_audit_queue";
@@ -37,25 +36,29 @@ export async function logUI(evt: AuditEvent){
   const q = readQ();
   q.push(evt);
   writeQ(q);
-  try { await flushAudit(); } catch {}
+  try {
+    await flushAudit();
+  } catch (error) {
+    console.error("Failed to flush audit log:", error);
+  }
 }
 
 export async function flushAudit(){
   const q = readQ();
   if (!q.length) return { flushed:0, pending:0 };
-  // Evita intento de envío sin token para no provocar 401 en login
-  const token = localStorage.getItem("access_token");
+
+  const token = getAuthToken();
   if (!token) return { flushed: 0, pending: q.length };
+
   const payload = {
     items: q.map((item) => ({
       ...item,
-      // // [PACK32-33-FE] Normaliza timestamps a ISO para FastAPI
       ts: typeof item.ts === "number" ? new Date(item.ts).toISOString() : item.ts,
     })),
   };
   const url = apiMap.audit?.bulk ?? "/api/audit/ui/bulk";
   try {
-    await httpPost(url, payload, { timeoutMs: 4500, withAuth: true });
+    await httpClient.post(url, payload, { timeout: 4500 });
     writeQ([]);
     return { flushed: q.length, pending: 0 };
   } catch {
@@ -63,16 +66,16 @@ export async function flushAudit(){
   }
 }
 
-// // [PACK32-33-FE] Consulta eventos desde el backend real.
 export async function fetchAuditEvents(filters: AuditListFilters = {}): Promise<AuditListResponse>{
   const url = apiMap.audit?.list ?? "/api/audit/ui";
-  const response = await httpGet<AuditListResponse>(url, { query: filters, timeoutMs: 6000 });
-  const items = (response.items || []).map((item: any) => ({
+  const response = await httpClient.get<AuditListResponse>(url, { params: filters, timeout: 6000 });
+  const data = response.data;
+  const items = (data.items || []).map((item: Record<string, unknown>) => ({
     ...item,
     userId: item.userId ?? item.user_id ?? item.usuario ?? item.user,
     entityId: item.entityId ?? item.entity_id,
-  }));
-  return { ...response, items };
+  })) as unknown as AuditEvent[];
+  return { ...data, items };
 }
 
 export async function downloadAuditExport(
@@ -80,20 +83,26 @@ export async function downloadAuditExport(
   filters: AuditListFilters = {},
 ): Promise<{ filename: string; blob: Blob }>{
   const url = apiMap.audit?.export ?? "/api/audit/ui/export";
-  const query = { ...filters, format };
+  const params = { ...filters, format };
   const accept = format === "csv" ? "text/csv" : "application/json";
-  const payload = await http(url, { method: "GET", query, headers: { Accept: accept }, timeoutMs: 10000 });
-  if (format === "csv"){
-    const textPayload = String(payload ?? "");
-    return {
-      filename: `audit-ui.${format}`,
-      blob: new Blob([textPayload], { type: "text/csv;charset=utf-8" }),
-    };
+
+  const response = await httpClient.get(url, {
+      params,
+      headers: { Accept: accept },
+      timeout: 10000,
+      responseType: format === "csv" ? 'blob' : 'json'
+  });
+
+  let blob: Blob;
+  if (format === "csv") {
+      blob = response.data as Blob;
+  } else {
+      const jsonPayload = JSON.stringify(response.data, null, 2);
+      blob = new Blob([jsonPayload], { type: "application/json;charset=utf-8" });
   }
-  const jsonPayload = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+
   return {
     filename: `audit-ui.${format}`,
-    blob: new Blob([jsonPayload], { type: "application/json;charset=utf-8" }),
+    blob: blob,
   };
 }
-// [PACK26-AUDIT-SVC-END]

@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AnalyticsAging,
-  AnalyticsComparative,
-  AnalyticsFilters,
-  AnalyticsForecast,
-  AnalyticsProfitMargin,
-  AnalyticsRotation,
-  AnalyticsSalesProjection,
-  AnalyticsAlerts,
-  AnalyticsRealtime,
-  PurchaseAnalytics,
+  type AnalyticsAging,
+  type AnalyticsComparative,
+  type AnalyticsFilters,
+  type AnalyticsForecast,
+  type AnalyticsProfitMargin,
+  type AnalyticsRotation,
+  type AnalyticsSalesProjection,
+  type AnalyticsAlerts,
+  type AnalyticsRealtime,
+  type PurchaseAnalytics,
   downloadAnalyticsCsv,
   downloadAnalyticsPdf,
   getAgingAnalytics,
@@ -22,15 +22,15 @@ import {
   getProfitMarginAnalytics,
   getRotationAnalytics,
   getSalesProjectionAnalytics,
-  listPurchaseVendors,
-} from "../../../api";
+} from "@api/analytics";
+import { listPurchaseVendors } from "@api/purchases";
 import { promptCorporateReason } from "../../../utils/corporateReason";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import LoadingOverlay from "../../../shared/components/LoadingOverlay";
 import ScrollableTable from "../../../shared/components/ScrollableTable";
 import AnalyticsGrid, {
   type AnalyticsGridItem,
-} from "../../../shared/components/ui/AnalyticsGrid/AnalyticsGrid";
+} from "@components/ui/AnalyticsGrid/AnalyticsGrid";
 
 type Props = {
   token: string;
@@ -57,7 +57,10 @@ function AnalyticsBoard({ token }: Props) {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
 
-  const storeIds = useMemo(() => (selectedStore === "all" ? undefined : [selectedStore]), [selectedStore]);
+  const storeIds = useMemo(
+    () => (selectedStore === "all" ? undefined : [selectedStore]),
+    [selectedStore],
+  );
   const analyticsFilters = useMemo<AnalyticsFilters>(() => {
     const filters: AnalyticsFilters = {};
     if (storeIds && storeIds.length > 0) {
@@ -142,7 +145,7 @@ function AnalyticsBoard({ token }: Props) {
         }
       }
     },
-    [analyticsFilters, pushToast, token]
+    [analyticsFilters, pushToast, token],
   );
 
   useEffect(() => {
@@ -171,7 +174,11 @@ function AnalyticsBoard({ token }: Props) {
   }, [pushToast, token]);
 
   useEffect(() => {
-    if (selectedCategory !== "all" && categories.length > 0 && !categories.includes(selectedCategory)) {
+    if (
+      selectedCategory !== "all" &&
+      categories.length > 0 &&
+      !categories.includes(selectedCategory)
+    ) {
       setSelectedCategory("all");
     }
   }, [categories, selectedCategory]);
@@ -200,7 +207,11 @@ function AnalyticsBoard({ token }: Props) {
   }, [pushToast, token]);
 
   useEffect(() => {
-    if (selectedSupplier !== "all" && suppliers.length > 0 && !suppliers.includes(selectedSupplier)) {
+    if (
+      selectedSupplier !== "all" &&
+      suppliers.length > 0 &&
+      !suppliers.includes(selectedSupplier)
+    ) {
       setSelectedSupplier("all");
     }
   }, [selectedSupplier, suppliers]);
@@ -262,10 +273,7 @@ function AnalyticsBoard({ token }: Props) {
     }
   };
 
-  const formatNumber = useCallback(
-    (value: number) => formatCurrency(value),
-    [formatCurrency]
-  );
+  const formatNumber = useCallback((value: number) => formatCurrency(value), [formatCurrency]);
 
   const formatDateTime = useCallback((value: string | null) => {
     if (!value) {
@@ -303,7 +311,6 @@ function AnalyticsBoard({ token }: Props) {
           <th scope="col">SKU</th>
           <th scope="col">Sucursal</th>
           <th scope="col">Vendidos</th>
-          <th scope="col">Recibidos</th>
           <th scope="col">Rotación</th>
         </>
       )}
@@ -312,8 +319,7 @@ function AnalyticsBoard({ token }: Props) {
           <td data-label="SKU">{item.sku}</td>
           <td data-label="Sucursal">{item.store_name}</td>
           <td data-label="Vendidos">{item.sold_units}</td>
-          <td data-label="Recibidos">{item.received_units}</td>
-          <td data-label="Rotación">{item.rotation_rate.toFixed(2)}</td>
+          <td data-label="Rotación">{item.turnover_rate.toFixed(2)}</td>
         </tr>
       )}
     />
@@ -466,7 +472,8 @@ function AnalyticsBoard({ token }: Props) {
           </>
         )}
         renderRow={(item) => {
-          const normalizedMargin = marginMax > 0 ? Math.max((item.margin_percent / marginMax) * 100, 0) : 0;
+          const normalizedMargin =
+            marginMax > 0 ? Math.max((item.margin_percent / marginMax) * 100, 0) : 0;
           const width = Math.min(normalizedMargin, 100);
           return (
             <tr>
@@ -515,10 +522,18 @@ function AnalyticsBoard({ token }: Props) {
               <td data-label="Ingresos proyectados">{formatNumber(item.projected_revenue)}</td>
               <td data-label="Visual">
                 <div className="micro-chart" aria-hidden="true">
-                  <div className="micro-chart__bar micro-chart__bar--primary" style={{ width: `${averageWidth}%` }} />
-                  <div className="micro-chart__bar micro-chart__bar--secondary" style={{ width: `${projectedWidth}%` }} />
+                  <div
+                    className="micro-chart__bar micro-chart__bar--primary"
+                    style={{ width: `${averageWidth}%` }}
+                  />
+                  <div
+                    className="micro-chart__bar micro-chart__bar--secondary"
+                    style={{ width: `${projectedWidth}%` }}
+                  />
                 </div>
-                <span className="sr-only">{item.projected_units.toFixed(2)} unidades proyectadas</span>
+                <span className="sr-only">
+                  {item.projected_units.toFixed(2)} unidades proyectadas
+                </span>
               </td>
             </tr>
           );
@@ -537,7 +552,9 @@ function AnalyticsBoard({ token }: Props) {
             alert.level === "critical" ? "Crítico" : alert.level === "warning" ? "Alerta" : "Info";
           return (
             <li
-              key={`${alert.type}-${alert.store_id ?? "global"}-${alert.device_id ?? "general"}-${index}`}
+              key={`${alert.type}-${alert.store_id ?? "global"}-${
+                alert.device_id ?? "general"
+              }-${index}`}
               className={`analytics-alert analytics-alert--${level}`}
             >
               <div className="analytics-alert__header">
@@ -563,16 +580,22 @@ function AnalyticsBoard({ token }: Props) {
             <article key={widget.store_id} className="analytics-realtime-card">
               <header className="analytics-realtime-card__header">
                 <h3>{widget.store_name}</h3>
-                <span className={`analytics-tag analytics-tag--${widget.trend}`}>{widget.trend}</span>
+                <span className={`analytics-tag analytics-tag--${widget.trend}`}>
+                  {widget.trend}
+                </span>
               </header>
               <div className="analytics-realtime-card__metrics">
                 <div className="analytics-realtime-card__metrics-item">
                   <span className="analytics-realtime-card__label">Inventario</span>
-                  <span className="analytics-realtime-card__value">{formatNumber(widget.inventory_value)}</span>
+                  <span className="analytics-realtime-card__value">
+                    {formatNumber(widget.inventory_value)}
+                  </span>
                 </div>
                 <div className="analytics-realtime-card__metrics-item">
                   <span className="analytics-realtime-card__label">Ventas hoy</span>
-                  <span className="analytics-realtime-card__value">{formatNumber(widget.sales_today)}</span>
+                  <span className="analytics-realtime-card__value">
+                    {formatNumber(widget.sales_today)}
+                  </span>
                 </div>
                 <div className="analytics-realtime-card__metrics-item">
                   <span className="analytics-realtime-card__label">Última venta</span>

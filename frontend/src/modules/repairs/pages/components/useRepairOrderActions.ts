@@ -5,7 +5,7 @@ import type {
   RepairOrderClosePayload,
   RepairOrderPartsPayload,
   RepairOrderPayload,
-} from "../../../../api"; // [PACK37-frontend]
+} from "@api/repairs";
 import {
   appendRepairOrderParts,
   closeRepairOrder,
@@ -14,7 +14,7 @@ import {
   downloadRepairOrderPdf,
   removeRepairOrderPart,
   updateRepairOrder,
-} from "../../../../api";
+} from "@api/repairs";
 
 import { initialRepairForm } from "./repairOrdersBoardConstants";
 import type { RepairForm } from "../../../../types/repairs";
@@ -137,10 +137,13 @@ const useRepairOrderActions = ({
         store_id: form.storeId,
         technician_name: form.technicianName.trim(),
         damage_type: form.damageType.trim(),
+        device_description: form.deviceDescription.trim(),
+        problem_description: form.problemDescription.trim(),
+        estimated_cost: form.estimatedCost,
+        deposit_amount: form.depositAmount,
         parts: partsPayload,
+        customer_id: form.customerId ?? null,
       };
-
-      payload.customer_id = form.customerId ?? null;
 
       const trimmedCustomerName = form.customerName.trim();
       if (trimmedCustomerName) {
@@ -165,11 +168,6 @@ const useRepairOrderActions = ({
       const trimmedImei = form.imei.trim();
       if (trimmedImei) {
         payload.imei = trimmedImei;
-      }
-
-      const trimmedDescription = form.deviceDescription.trim();
-      if (trimmedDescription) {
-        payload.device_description = trimmedDescription;
       }
 
       const trimmedNotes = form.notes.trim();

@@ -7,7 +7,7 @@ import type {
   InventoryCycleCountRequest,
   InventoryCycleCountResult,
   InventoryCountLineInput,
-} from "../../../api";
+} from "@api/inventory";
 
 import normalizeIdentifier from "./utils/normalizeIdentifier";
 
@@ -18,7 +18,8 @@ type Props = {
 };
 
 function CountingPanel({ title = "Conteo cíclico" }: Props) {
-  const { token, selectedStoreId, pushToast, setError, refreshInventoryAfterTransfer } = useDashboard();
+  const { token, selectedStoreId, pushToast, setError, refreshInventoryAfterTransfer } =
+    useDashboard();
   const [note, setNote] = useState("Conteo cíclico inventario");
   const [responsible, setResponsible] = useState("");
   const [reference, setReference] = useState("");
@@ -33,28 +34,23 @@ function CountingPanel({ title = "Conteo cíclico" }: Props) {
     [entries],
   );
 
-  const handleScan = useCallback(
-    async (raw: string) => {
-      const trimmed = raw.trim();
-      if (!trimmed) {
-        return "Lectura vacía";
+  const handleScan = useCallback(async (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return "Lectura vacía";
+    }
+    setEntries((prev) => {
+      const existing = prev.find((entry) => entry.identifier === trimmed);
+      if (existing) {
+        return prev.map((entry) =>
+          entry.identifier === trimmed ? { ...entry, counted: (entry.counted ?? 0) + 1 } : entry,
+        );
       }
-      setEntries((prev) => {
-        const existing = prev.find((entry) => entry.identifier === trimmed);
-        if (existing) {
-          return prev.map((entry) =>
-            entry.identifier === trimmed
-              ? { ...entry, counted: (entry.counted ?? 0) + 1 }
-              : entry,
-          );
-        }
-        const base = normalizeIdentifier(trimmed);
-        return [...prev, { ...base, identifier: trimmed, counted: 1 }];
-      });
-      return { label: trimmed };
-    },
-    [],
-  );
+      const base = normalizeIdentifier(trimmed);
+      return [...prev, { ...base, identifier: trimmed, counted: 1 }];
+    });
+    return { label: trimmed };
+  }, []);
 
   const handleAddManual = useCallback(() => {
     const trimmed = manualIdentifier.trim();
@@ -65,9 +61,7 @@ function CountingPanel({ title = "Conteo cíclico" }: Props) {
       const base = normalizeIdentifier(trimmed);
       if (prev.some((entry) => entry.identifier === trimmed)) {
         return prev.map((entry) =>
-          entry.identifier === trimmed
-            ? { ...entry, counted: Math.max(0, manualCount) }
-            : entry,
+          entry.identifier === trimmed ? { ...entry, counted: Math.max(0, manualCount) } : entry,
         );
       }
       return [...prev, { ...base, identifier: trimmed, counted: Math.max(0, manualCount) }];
@@ -79,9 +73,7 @@ function CountingPanel({ title = "Conteo cíclico" }: Props) {
   const handleUpdateCount = useCallback((identifier: string, value: number) => {
     setEntries((prev) =>
       prev.map((entry) =>
-        entry.identifier === identifier
-          ? { ...entry, counted: Math.max(0, value) }
-          : entry,
+        entry.identifier === identifier ? { ...entry, counted: Math.max(0, value) } : entry,
       ),
     );
   }, []);
@@ -94,7 +86,10 @@ function CountingPanel({ title = "Conteo cíclico" }: Props) {
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (!selectedStoreId) {
-        pushToast({ message: "Selecciona una sucursal para conciliar el conteo.", variant: "error" });
+        pushToast({
+          message: "Selecciona una sucursal para conciliar el conteo.",
+          variant: "error",
+        });
         return;
       }
       if (entries.length === 0) {
@@ -109,12 +104,12 @@ function CountingPanel({ title = "Conteo cíclico" }: Props) {
       const request: InventoryCycleCountRequest = {
         store_id: selectedStoreId,
         note: trimmedNote,
-        responsible: responsible.trim() || undefined,
-        reference: reference.trim() || undefined,
         lines: entries.map((entry) => ({
           ...normalizeIdentifier(entry.identifier),
           counted: Math.max(0, entry.counted ?? 0),
         })),
+        ...(responsible.trim() ? { responsible: responsible.trim() } : {}),
+        ...(reference.trim() ? { reference: reference.trim() } : {}),
       };
       try {
         setLoading(true);
@@ -294,7 +289,8 @@ function CountingPanel({ title = "Conteo cíclico" }: Props) {
         <section className="card-section" aria-live="polite">
           <h3>Resultados</h3>
           <p className="muted-text">
-            {result.totals.adjusted} ajustes · {result.totals.matched} coincidencias · Variación total {result.totals.total_variance} unidades.
+            {result.totals.adjusted} ajustes · {result.totals.matched} coincidencias · Variación
+            total {result.totals.total_variance} unidades.
           </p>
           {result.adjustments.length === 0 ? (
             <p className="muted-text">Sin discrepancias pendientes.</p>
@@ -312,7 +308,9 @@ function CountingPanel({ title = "Conteo cíclico" }: Props) {
                 <tbody>
                   {result.adjustments.map((adjustment) => (
                     <tr key={`${adjustment.identifier ?? adjustment.device_id}`}>
-                      <td>{adjustment.identifier ?? adjustment.sku ?? `ID ${adjustment.device_id}`}</td>
+                      <td>
+                        {adjustment.identifier ?? adjustment.sku ?? `ID ${adjustment.device_id}`}
+                      </td>
                       <td>{adjustment.expected}</td>
                       <td>{adjustment.counted}</td>
                       <td>{adjustment.delta}</td>

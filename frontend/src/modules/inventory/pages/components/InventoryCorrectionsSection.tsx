@@ -1,4 +1,4 @@
-import Button from "../../../../shared/components/ui/Button";
+import Button from "@components/ui/Button";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 function InventoryCorrectionsSection() {

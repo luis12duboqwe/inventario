@@ -4,21 +4,22 @@ import type {
   Role,
   RoleModulePermission,
   RolePermissionMatrix,
-  Store,
   UserAccount,
   UserDashboardMetrics,
   UserQueryFilters,
   UserCreateInput,
   UserUpdateInput,
-} from "../../../api";
-import { getStores, listRoles } from "../../../api";
-import FiltersPanel from "../../../pages/usuarios/components/FiltersPanel";
-import RoleModal from "../../../pages/usuarios/components/RoleModal";
-import SidePanel from "../../../pages/usuarios/components/SidePanel";
-import SummaryCards from "../../../pages/usuarios/components/SummaryCards";
-import UsersTable from "../../../pages/usuarios/components/Table";
-import Toolbar from "../../../pages/usuarios/components/Toolbar";
-import type { UserFormState } from "../../../pages/usuarios/components/types";
+} from "@api/users";
+import type { Store } from "@api/stores";
+import { listRoles } from "@api/users";
+import { getStores } from "@api/stores";
+import FiltersPanel from "./management/FiltersPanel";
+import RoleModal from "./management/RoleModal";
+import SidePanel from "./management/SidePanel";
+import SummaryCards from "./management/SummaryCards";
+import UsersTable from "./management/Table";
+import Toolbar from "./management/Toolbar";
+import type { UserFormState } from "./management/types";
 import { useUsersModule } from "../hooks/useUsersModule";
 import { usersService } from "../services/usersService";
 
@@ -52,7 +53,9 @@ function UserManagement({ token }: Props) {
   const [stores, setStores] = useState<Store[]>([]);
   const [dashboard, setDashboard] = useState<UserDashboardMetrics | null>(null);
   const [permissionsMatrix, setPermissionsMatrix] = useState<RolePermissionMatrix[]>([]);
-  const [permissionDraft, setPermissionDraft] = useState<Record<string, RoleModulePermission[]>>({});
+  const [permissionDraft, setPermissionDraft] = useState<Record<string, RoleModulePermission[]>>(
+    {},
+  );
   const [selectedRole, setSelectedRole] = useState<string>("OPERADOR");
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [formState, setFormState] = useState<UserFormState>(DEFAULT_FORM_STATE);
@@ -112,9 +115,7 @@ function UserManagement({ token }: Props) {
       setDashboard(data);
     } catch (error_) {
       const message =
-        error_ instanceof Error
-          ? error_.message
-          : "No fue posible cargar el panel de seguridad.";
+        error_ instanceof Error ? error_.message : "No fue posible cargar el panel de seguridad.";
       pushToast({ message, variant: "error" });
     } finally {
       setLoadingDashboard(false);
@@ -144,7 +145,9 @@ function UserManagement({ token }: Props) {
       });
     } catch (error_) {
       const message =
-        error_ instanceof Error ? error_.message : "No fue posible cargar los permisos corporativos.";
+        error_ instanceof Error
+          ? error_.message
+          : "No fue posible cargar los permisos corporativos.";
       pushToast({ message, variant: "error" });
     } finally {
       setLoadingPermissions(false);
@@ -163,7 +166,9 @@ function UserManagement({ token }: Props) {
         setStores(storesData);
       } catch (error_) {
         const message =
-          error_ instanceof Error ? error_.message : "No fue posible cargar los catálogos de seguridad.";
+          error_ instanceof Error
+            ? error_.message
+            : "No fue posible cargar los catálogos de seguridad.";
         if (active) {
           pushToast({ message, variant: "error" });
         }
@@ -218,7 +223,9 @@ function UserManagement({ token }: Props) {
       setError(null);
     } catch (error_) {
       const message =
-        error_ instanceof Error ? error_.message : "No fue posible actualizar la lista de usuarios.";
+        error_ instanceof Error
+          ? error_.message
+          : "No fue posible actualizar la lista de usuarios.";
       pushToast({ message, variant: "error" });
     } finally {
       setLoadingUsers(false);
@@ -241,7 +248,9 @@ function UserManagement({ token }: Props) {
       void loadDashboard();
     } catch (error_) {
       const message =
-        error_ instanceof Error ? error_.message : "No fue posible actualizar los roles del usuario.";
+        error_ instanceof Error
+          ? error_.message
+          : "No fue posible actualizar los roles del usuario.";
       pushToast({ message, variant: "error" });
     }
   };
@@ -259,7 +268,9 @@ function UserManagement({ token }: Props) {
       void loadDashboard();
     } catch (error_) {
       const message =
-        error_ instanceof Error ? error_.message : "No fue posible actualizar el estado del usuario.";
+        error_ instanceof Error
+          ? error_.message
+          : "No fue posible actualizar el estado del usuario.";
       pushToast({ message, variant: "error" });
     }
   };
@@ -298,13 +309,20 @@ function UserManagement({ token }: Props) {
       try {
         setSavingUser(true);
         const updated = await usersService.updateUser(token, selectedUser.id, updates, reason);
-        setUsers((current) => current.map((item) => (item.id === selectedUser.id ? updated : item)));
-        pushToast({ message: `Usuario ${updated.username} actualizado correctamente`, variant: "success" });
+        setUsers((current) =>
+          current.map((item) => (item.id === selectedUser.id ? updated : item)),
+        );
+        pushToast({
+          message: `Usuario ${updated.username} actualizado correctamente`,
+          variant: "success",
+        });
         setSelectedUserId(updated.id);
         void loadDashboard();
       } catch (error_) {
         const message =
-          error_ instanceof Error ? error_.message : "No fue posible actualizar la cuenta corporativa.";
+          error_ instanceof Error
+            ? error_.message
+            : "No fue posible actualizar la cuenta corporativa.";
         pushToast({ message, variant: "error" });
       } finally {
         setSavingUser(false);
@@ -350,7 +368,10 @@ function UserManagement({ token }: Props) {
     try {
       setSavingUser(true);
       const created = await usersService.createUser(token, payload);
-      pushToast({ message: `Usuario ${created.username} creado correctamente`, variant: "success" });
+      pushToast({
+        message: `Usuario ${created.username} creado correctamente`,
+        variant: "success",
+      });
       setFormState(DEFAULT_FORM_STATE);
       setSelectedUserId(created.id);
       await reloadUsers();
@@ -382,7 +403,10 @@ function UserManagement({ token }: Props) {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      pushToast({ message: `Reporte ${format.toUpperCase()} generado correctamente`, variant: "success" });
+      pushToast({
+        message: `Reporte ${format.toUpperCase()} generado correctamente`,
+        variant: "success",
+      });
     } catch (error_) {
       const message =
         error_ instanceof Error ? error_.message : "No fue posible exportar la lista de usuarios.";
@@ -397,7 +421,9 @@ function UserManagement({ token }: Props) {
   }, [permissionsMatrix, selectedRole]);
 
   const currentPermissions = useMemo(() => {
-    return permissionDraft[selectedRole] ?? baselinePermissions.map((permission) => ({ ...permission }));
+    return (
+      permissionDraft[selectedRole] ?? baselinePermissions.map((permission) => ({ ...permission }))
+    );
   }, [permissionDraft, selectedRole, baselinePermissions]);
 
   const sensitivePermissions = useMemo(() => {
@@ -426,11 +452,10 @@ function UserManagement({ token }: Props) {
 
   const handlePermissionToggle = (module: string, field: keyof RoleModulePermission) => {
     setPermissionDraft((current) => {
-      const permissions = current[selectedRole] ?? baselinePermissions.map((permission) => ({ ...permission }));
+      const permissions =
+        current[selectedRole] ?? baselinePermissions.map((permission) => ({ ...permission }));
       const updated = permissions.map((permission) =>
-        permission.module === module
-          ? { ...permission, [field]: !permission[field] }
-          : permission,
+        permission.module === module ? { ...permission, [field]: !permission[field] } : permission,
       );
       return { ...current, [selectedRole]: updated };
     });
@@ -455,7 +480,12 @@ function UserManagement({ token }: Props) {
     }
     try {
       setSavingPermissions(true);
-      const updated = await usersService.updateRolePermissions(token, selectedRole, currentPermissions, reason);
+      const updated = await usersService.updateRolePermissions(
+        token,
+        selectedRole,
+        currentPermissions,
+        reason,
+      );
       setPermissionsMatrix((current) => {
         const filtered = current.filter((item) => item.role !== updated.role);
         return [...filtered, updated].sort((a, b) => a.role.localeCompare(b.role));
@@ -468,7 +498,9 @@ function UserManagement({ token }: Props) {
       setIsRoleModalOpen(false);
     } catch (error_) {
       const message =
-        error_ instanceof Error ? error_.message : "No fue posible actualizar los permisos del rol.";
+        error_ instanceof Error
+          ? error_.message
+          : "No fue posible actualizar los permisos del rol.";
       pushToast({ message, variant: "error" });
     } finally {
       setSavingPermissions(false);
@@ -552,7 +584,8 @@ function UserManagement({ token }: Props) {
               <div>
                 <h3>Acciones sensibles por sucursal</h3>
                 <p className="card-subtitle">
-                  Activa o desactiva la eliminación por módulo; se limitará a la sucursal asignada del usuario.
+                  Activa o desactiva la eliminación por módulo; se limitará a la sucursal asignada
+                  del usuario.
                 </p>
               </div>
             </header>
@@ -564,13 +597,16 @@ function UserManagement({ token }: Props) {
                   <li key={permission.module} className="sensitive-permissions__item">
                     <div>
                       <p className="permissions-table__module">{permission.module}</p>
-                      <small className="muted-text">Requiere rol activo en la sucursal objetivo.</small>
+                      <small className="muted-text">
+                        Requiere rol activo en la sucursal objetivo.
+                      </small>
                     </div>
                     <label className="checkbox-control">
                       <input
                         type="checkbox"
                         checked={permission.can_delete}
                         onChange={() => handleSensitiveToggle(permission.module)}
+                        aria-label={`Permitir eliminar en módulo ${permission.module}`}
                       />
                       <span />
                     </label>

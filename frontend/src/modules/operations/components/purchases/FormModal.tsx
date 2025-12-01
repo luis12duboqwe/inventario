@@ -1,13 +1,8 @@
 import type { FormEvent } from "react";
-import type {
-  Device,
-  PurchaseVendor,
-  Store,
-} from "../../../../api";
-import type {
-  PurchaseRecordDraftItem,
-  PurchaseRecordForm,
-} from "../../../../types/purchases";
+import type { Device } from "@api/inventory";
+import type { PurchaseVendor } from "@api/purchases";
+import type { Store } from "@api/stores";
+import type { PurchaseRecordDraftItem, PurchaseRecordForm } from "../../../../types/purchases";
 
 type PurchasesFormModalProps = {
   vendors: PurchaseVendor[];
@@ -23,10 +18,7 @@ type PurchasesFormModalProps = {
   currencyFormatter: Intl.NumberFormat;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onUpdateRecordForm: (updates: Partial<PurchaseRecordForm>) => void;
-  onUpdateRecordItem: (
-    index: number,
-    updates: Partial<PurchaseRecordDraftItem>,
-  ) => void;
+  onUpdateRecordItem: (index: number, updates: Partial<PurchaseRecordDraftItem>) => void;
   onAddRecordItem: () => void;
   onRemoveRecordItem: (index: number) => void;
 };
@@ -53,7 +45,8 @@ const PurchasesFormModal = ({
     <section className="card">
       <h2>Registro directo de compras</h2>
       <p className="card-subtitle">
-        Captura compras inmediatas con impuestos calculados automáticamente y vínculos al inventario seleccionado.
+        Captura compras inmediatas con impuestos calculados automáticamente y vínculos al inventario
+        seleccionado.
       </p>
       <form className="form-grid" onSubmit={onSubmit}>
         <label>
@@ -134,9 +127,7 @@ const PurchasesFormModal = ({
             max={1}
             step="0.01"
             value={recordForm.taxRate}
-            onChange={(event) =>
-              onUpdateRecordForm({ taxRate: Number(event.target.value) })
-            }
+            onChange={(event) => onUpdateRecordForm({ taxRate: Number(event.target.value) })}
           />
         </label>
 
@@ -153,15 +144,13 @@ const PurchasesFormModal = ({
             </thead>
             <tbody>
               {recordItems.map((item, index) => (
-                <tr key={`record-item-${index}`}>
+                <tr key={item.tempId}>
                   <td>
                     <select
                       value={item.productId ?? ""}
                       onChange={(event) =>
                         onUpdateRecordItem(index, {
-                          productId: event.target.value
-                            ? Number(event.target.value)
-                            : null,
+                          productId: event.target.value ? Number(event.target.value) : null,
                         })
                       }
                     >

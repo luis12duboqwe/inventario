@@ -1,15 +1,15 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
-  ActiveSession,
-  TOTPSetup,
-  TOTPStatus,
+  type ActiveSession,
+  type TOTPSetup,
+  type TOTPStatus,
   activateTotp,
   disableTotp,
   getTotpStatus,
   listActiveSessions,
   revokeSession,
   setupTotp,
-} from "../../../api";
+} from "@api/security";
 
 type Props = {
   token: string;
@@ -85,7 +85,7 @@ function TwoFactorSetup({ token }: Props) {
       setError(null);
       const response = await setupTotp(token, validReason, {
         password: reauthPassword,
-        otp: reauthOtp || undefined,
+        ...(reauthOtp ? { otp: reauthOtp } : {}),
       });
       setSetup(response);
       await loadStatus();
@@ -119,7 +119,7 @@ function TwoFactorSetup({ token }: Props) {
       setError(null);
       const response = await activateTotp(token, code, validReason, {
         password: reauthPassword,
-        otp: reauthOtp || undefined,
+        ...(reauthOtp ? { otp: reauthOtp } : {}),
       });
       setStatus(response);
       setSetup(null);
@@ -149,7 +149,7 @@ function TwoFactorSetup({ token }: Props) {
       setError(null);
       await disableTotp(token, validReason, {
         password: reauthPassword,
-        otp: reauthOtp || undefined,
+        ...(reauthOtp ? { otp: reauthOtp } : {}),
       });
       await loadStatus();
       setSetup(null);
@@ -178,7 +178,7 @@ function TwoFactorSetup({ token }: Props) {
       setError(null);
       await revokeSession(token, sessionId, `${validReason} — revocación de sesión`, {
         password: reauthPassword,
-        otp: reauthOtp || undefined,
+        ...(reauthOtp ? { otp: reauthOtp } : {}),
       });
       await loadSessions();
     } catch (err) {
@@ -195,12 +195,14 @@ function TwoFactorSetup({ token }: Props) {
       <header className="card-header">
         <h2 className="accent-title">Seguridad y doble factor</h2>
         <p className="card-subtitle">
-          Habilita la verificación TOTP para cuentas administrativas y controla las sesiones activas en minutos.
+          Habilita la verificación TOTP para cuentas administrativas y controla las sesiones activas
+          en minutos.
         </p>
       </header>
       {!isFeatureEnabled && (
         <p className="muted-text" role="status">
-          La verificación en dos pasos está deshabilitada por configuración corporativa (flag SOFTMOBILE_ENABLE_2FA).
+          La verificación en dos pasos está deshabilitada por configuración corporativa (flag
+          SOFTMOBILE_ENABLE_2FA).
         </p>
       )}
       {error && <p className="error-text">{error}</p>}
@@ -209,8 +211,12 @@ function TwoFactorSetup({ token }: Props) {
           <p>
             Estado actual: <strong>{status?.is_active ? "Activo" : "Pendiente"}</strong>
           </p>
-          {status?.activated_at && <p>Activado el: {new Date(status.activated_at).toLocaleString()}</p>}
-          {status?.last_verified_at && <p>Última verificación: {new Date(status.last_verified_at).toLocaleString()}</p>}
+          {status?.activated_at && (
+            <p>Activado el: {new Date(status.activated_at).toLocaleString()}</p>
+          )}
+          {status?.last_verified_at && (
+            <p>Última verificación: {new Date(status.last_verified_at).toLocaleString()}</p>
+          )}
         </div>
         <div className="reason-field">
           <label>
@@ -230,7 +236,9 @@ function TwoFactorSetup({ token }: Props) {
               required
             />
           </label>
-          <p className="muted-text">Se reutilizará para activar, desactivar o revocar sesiones. Mínimo 5 caracteres.</p>
+          <p className="muted-text">
+            Se reutilizará para activar, desactivar o revocar sesiones. Mínimo 5 caracteres.
+          </p>
         </div>
         <div className="reauth-grid">
           <label>
@@ -259,13 +267,19 @@ function TwoFactorSetup({ token }: Props) {
               disabled={actionsDisabled}
             />
           </label>
-          <p className="muted-text">Requerimos una reautenticación rápida para cambios sensibles o revocación de sesiones.</p>
+          <p className="muted-text">
+            Requerimos una reautenticación rápida para cambios sensibles o revocación de sesiones.
+          </p>
         </div>
         <div className="security-actions">
           <button className="btn btn--primary" onClick={handleSetup} disabled={actionsDisabled}>
             Generar secreto TOTP
           </button>
-          <button className="btn btn--ghost" onClick={handleDisable} disabled={actionsDisabled || !status?.is_active}>
+          <button
+            className="btn btn--ghost"
+            onClick={handleDisable}
+            disabled={actionsDisabled || !status?.is_active}
+          >
             Desactivar 2FA
           </button>
         </div>
@@ -305,14 +319,22 @@ function TwoFactorSetup({ token }: Props) {
               <li key={session.id} className="session-item">
                 <div>
                   <p>
-                    <strong>{session.session_token.slice(0, 12)}</strong> — creada el {" "}
+                    <strong>{session.session_token.slice(0, 12)}</strong> — creada el{" "}
                     {new Date(session.created_at).toLocaleString()}
                   </p>
-                  {session.last_used_at && <p>Último uso: {new Date(session.last_used_at).toLocaleString()}</p>}
-                  {session.revoked_at && <p>Revocada el: {new Date(session.revoked_at).toLocaleString()}</p>}
+                  {session.last_used_at && (
+                    <p>Último uso: {new Date(session.last_used_at).toLocaleString()}</p>
+                  )}
+                  {session.revoked_at && (
+                    <p>Revocada el: {new Date(session.revoked_at).toLocaleString()}</p>
+                  )}
                 </div>
                 {!session.revoked_at && (
-                  <button className="btn btn--ghost" onClick={() => handleRevoke(session.id)} disabled={actionsDisabled}>
+                  <button
+                    className="btn btn--ghost"
+                    onClick={() => handleRevoke(session.id)}
+                    disabled={actionsDisabled}
+                  >
                     Revocar
                   </button>
                 )}

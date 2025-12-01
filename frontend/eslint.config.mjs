@@ -61,11 +61,12 @@ export default [
         jsx: true,
       },
     },
-    plugins: ['@typescript-eslint', 'react', 'react-hooks'],
+    plugins: ['@typescript-eslint', 'react', 'react-hooks', 'jsx-a11y'],
     extends: [
       'plugin:@typescript-eslint/recommended',
       'plugin:react/recommended',
       'plugin:react-hooks/recommended',
+      'plugin:jsx-a11y/recommended',
     ],
     settings: {
       react: {

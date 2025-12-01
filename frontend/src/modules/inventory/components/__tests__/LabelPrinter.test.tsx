@@ -6,7 +6,7 @@ const requestDeviceLabelMock = vi.hoisted(() => vi.fn());
 const triggerDeviceLabelPrintMock = vi.hoisted(() => vi.fn());
 const useAuthMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../../../../api", () => ({
+vi.mock("@api/inventory", () => ({
   __esModule: true,
   requestDeviceLabel: requestDeviceLabelMock,
   triggerDeviceLabelPrint: triggerDeviceLabelPrintMock,
@@ -53,7 +53,10 @@ describe("LabelPrinter", () => {
     await user.click(screen.getByRole("button", { name: /Generar etiqueta/i }));
 
     await waitFor(() => {
-      expect(requestDeviceLabelMock).toHaveBeenCalledWith("token-123", 5, 101, "Motivo válido", { format: "pdf", template: "38x25" });
+      expect(requestDeviceLabelMock).toHaveBeenCalledWith("token-123", 5, 101, "Motivo válido", {
+        format: "pdf",
+        template: "38x25",
+      });
     });
 
     expect(await screen.findByRole("link", { name: /etiqueta-demo.pdf/i })).toBeInTheDocument();

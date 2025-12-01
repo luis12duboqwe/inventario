@@ -1,11 +1,7 @@
 import { useEffect } from "react";
-import {
-  isRouteErrorResponse,
-  useNavigate,
-  useRouteError,
-} from "react-router-dom";
-import AppErrorBoundary from "../shared/components/AppErrorBoundary";
-import Button from "../shared/components/ui/Button";
+import { isRouteErrorResponse, useNavigate, useRouteError } from "react-router-dom";
+import AppErrorBoundary from "@components/ui/AppErrorBoundary";
+import Button from "@components/ui/Button";
 import { logUI } from "../services/audit";
 import { safeString } from "../utils/safeValues";
 
@@ -33,7 +29,12 @@ const RouteErrorElement = ({ scope }: RouteErrorElementProps) => {
   const message = normalizeErrorMessage(error);
 
   useEffect(() => {
-    const details = error instanceof Error ? error.stack : safeString((error as any)?.stack, "");
+    const details =
+      error instanceof Error
+        ? error.stack
+        : typeof error === "object" && error !== null && "stack" in error
+        ? safeString((error as { stack: unknown }).stack, "")
+        : "";
     void logUI({
       ts: Date.now(),
       module: "OTHER",

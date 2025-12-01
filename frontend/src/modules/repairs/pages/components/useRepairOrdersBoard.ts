@@ -8,8 +8,12 @@ import {
   type ReactNode,
 } from "react";
 
-import type { Customer, Device, RepairOrder, RepairOrderPartsPayload, RepairOrderClosePayload } from "../../../../api";
-import { getDevices, listCustomers, listRepairOrders } from "../../../../api";
+import type { Customer } from "@api/customers";
+import type { Device } from "@api/inventory";
+import type { RepairOrder, RepairOrderPartsPayload, RepairOrderClosePayload } from "@api/repairs";
+import { listCustomers } from "@api/customers";
+import { getDevices } from "@api/inventory";
+import { listRepairOrders } from "@api/repairs";
 import { useDashboard } from "../../../dashboard/context/DashboardContext";
 import type { ModuleStatus } from "../../../../shared/components/ModuleHeader";
 

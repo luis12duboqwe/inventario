@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo } from "react";
 
-import { downloadInventoryCsv, retrySyncOutbox } from "../../../api";
-import SyncSummary from "../../../pages/sync/components/SyncSummary";
+import { downloadInventoryCsv } from "@api/inventory";
+import { retrySyncOutbox } from "@api/sync";
+import SyncSummary from "../components/SyncSummary";
 import SyncPanel from "../components/SyncPanel";
 import { HybridQueuePanel } from "../components/HybridQueuePanel";
 import { useSyncModule } from "../hooks/useSyncModule";
@@ -104,10 +105,16 @@ export default function SyncPage() {
     const input = ensureReason(
       typeof window === "undefined"
         ? "Respaldo manual desde sincronización"
-        : window.prompt("Motivo corporativo para el respaldo", "Respaldo manual desde sincronización"),
+        : window.prompt(
+            "Motivo corporativo para el respaldo",
+            "Respaldo manual desde sincronización",
+          ),
     );
     if (!input) {
-      pushToast({ message: "Se requiere un motivo corporativo de al menos 5 caracteres.", variant: "warning" });
+      pushToast({
+        message: "Se requiere un motivo corporativo de al menos 5 caracteres.",
+        variant: "warning",
+      });
       return;
     }
     await handleBackup(input);
@@ -120,7 +127,10 @@ export default function SyncPage() {
         : window.prompt("Motivo para descargar el PDF", "Reporte inventario sincronización"),
     );
     if (!input) {
-      pushToast({ message: "No se generó el PDF porque falta el motivo corporativo.", variant: "warning" });
+      pushToast({
+        message: "No se generó el PDF porque falta el motivo corporativo.",
+        variant: "warning",
+      });
       return;
     }
     try {
@@ -143,7 +153,10 @@ export default function SyncPage() {
         : window.prompt("Motivo para exportar el CSV", "Exportación inventario sincronización"),
     );
     if (!input) {
-      pushToast({ message: "Exportación cancelada: indica un motivo corporativo válido.", variant: "warning" });
+      pushToast({
+        message: "Exportación cancelada: indica un motivo corporativo válido.",
+        variant: "warning",
+      });
       return;
     }
     try {
@@ -187,7 +200,10 @@ export default function SyncPage() {
           : window.prompt("Motivo para ajustar la prioridad", "Ajuste de prioridad desde panel"),
       );
       if (!reason) {
-        pushToast({ message: "Ingresa un motivo válido para priorizar el evento.", variant: "warning" });
+        pushToast({
+          message: "Ingresa un motivo válido para priorizar el evento.",
+          variant: "warning",
+        });
         return;
       }
       await reprioritizeOutbox(entryId, priority, reason);
@@ -204,7 +220,10 @@ export default function SyncPage() {
         : window.prompt("Motivo para exportar historial", "Exportación historial sincronización"),
     );
     if (!reason) {
-      pushToast({ message: "Debes indicar un motivo corporativo para exportar.", variant: "warning" });
+      pushToast({
+        message: "Debes indicar un motivo corporativo para exportar.",
+        variant: "warning",
+      });
       return;
     }
     await exportSyncHistory(reason);
@@ -256,7 +275,8 @@ export default function SyncPage() {
         <div>
           <h1>Sincronización corporativa</h1>
           <p>
-            Gestiona las sincronizaciones híbridas, monitorea la cola local y revisa los eventos del servidor.
+            Gestiona las sincronizaciones híbridas, monitorea la cola local y revisa los eventos del
+            servidor.
           </p>
           {syncStatus ? <span className="pill accent">{syncStatus}</span> : null}
         </div>
@@ -298,10 +318,18 @@ export default function SyncPage() {
         <div className="sync-dashboard__header">
           <h2>Historial de sincronización</h2>
           <div className="hybrid-queue__actions">
-            <button type="button" className="btn btn-ghost" onClick={() => void refreshSyncHistory()}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => void refreshSyncHistory()}
+            >
               Actualizar historial
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void handleExportHistory()}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void handleExportHistory()}
+            >
               Exportar CSV
             </button>
           </div>
@@ -319,9 +347,13 @@ export default function SyncPage() {
                     <li key={session.id} className="sync-history-line">
                       <span className="pill neutral">{session.status}</span>
                       <span className="sync-history-mode">{session.mode}</span>
-                      <span className="sync-log__time">Inicio: {new Date(session.started_at).toLocaleString("es-HN")}</span>
+                      <span className="sync-log__time">
+                        Inicio: {new Date(session.started_at).toLocaleString("es-HN")}
+                      </span>
                       {session.finished_at ? (
-                        <span className="sync-log__time">Fin: {new Date(session.finished_at).toLocaleString("es-HN")}</span>
+                        <span className="sync-log__time">
+                          Fin: {new Date(session.finished_at).toLocaleString("es-HN")}
+                        </span>
                       ) : (
                         <span className="sync-log__time">En progreso</span>
                       )}
@@ -341,11 +373,7 @@ export default function SyncPage() {
         <div className="sync-dashboard__header">
           <h2>Outbox corporativa</h2>
           <div className="hybrid-queue__actions">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => void refreshOutbox()}
-            >
+            <button type="button" className="btn btn-ghost" onClick={() => void refreshOutbox()}>
               Refrescar outbox
             </button>
             <button
@@ -392,7 +420,11 @@ export default function SyncPage() {
                     <td>{entry.pending}</td>
                     <td>{entry.failed}</td>
                     <td>{entry.conflicts}</td>
-                    <td>{entry.latest_update ? new Date(entry.latest_update).toLocaleString("es-HN") : "—"}</td>
+                    <td>
+                      {entry.latest_update
+                        ? new Date(entry.latest_update).toLocaleString("es-HN")
+                        : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>

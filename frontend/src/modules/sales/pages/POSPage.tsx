@@ -16,7 +16,13 @@ import {
 } from "../components/pos";
 // [PACK22-POS-PAGE-IMPORTS-START]
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Product, ProductSearchParams, PaymentInput } from "../../../services/sales";
+import type {
+  Product,
+  ProductSearchParams,
+  PaymentInput,
+  CheckoutResponse,
+  CheckoutRequest,
+} from "../../../services/sales";
 import { SalesProducts } from "../../../services/sales";
 import { usePOS } from "../hooks/usePOS";
 // [PACK22-POS-PAGE-IMPORTS-END]
@@ -28,6 +34,7 @@ import { logUI } from "../../../services/audit";
 // [PACK27-PRINT-POS-IMPORT-START]
 import { openPrintable } from "@/lib/print";
 // [PACK27-PRINT-POS-IMPORT-END]
+import { Skeleton } from "@components/ui/Skeleton";
 
 type HoldSale = {
   id: string;
@@ -101,6 +108,37 @@ export default function POSPage() {
   }, [lines, payments]);
   // [PACK22-POS-HOOK-USE-END]
 
+  // [PACK22-POS-SHORTCUTS-START]
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F2") {
+        e.preventDefault();
+        document.getElementById("pos-product-search")?.focus();
+      } else if (e.key === "F9") {
+        e.preventDefault();
+        if (lines.length > 0) setPaymentsOpen(true);
+      } else if (e.key === "Escape") {
+        if (paymentsOpen) setPaymentsOpen(false);
+        else if (discountTarget) setDiscountTarget(null);
+        else if (priceTarget) setPriceTarget(null);
+        else if (fastCustomerOpen) setFastCustomerOpen(false);
+        else if (holdDrawerOpen) setHoldDrawerOpen(false);
+        else if (offlineDrawerOpen) setOfflineDrawerOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    lines.length,
+    paymentsOpen,
+    discountTarget,
+    priceTarget,
+    fastCustomerOpen,
+    holdDrawerOpen,
+    offlineDrawerOpen,
+  ]);
+  // [PACK22-POS-SHORTCUTS-END]
+
   useEffect(() => {
     setCustomerId(customer?.id ?? null);
   }, [customer, setCustomerId]);
@@ -132,7 +170,7 @@ export default function POSPage() {
   );
 
   const offlineQueue = useMemo<OfflineSale[]>(() => {
-    return (pendingOffline as Array<{ ts: number; dto: any }>).map((item) => {
+    return (pendingOffline as Array<{ ts: number; dto: CheckoutRequest }>).map((item) => {
       const totalsDraft = calcTotalsLocal(item.dto?.lines ?? []);
       return {
         id: String(item.ts),
@@ -172,7 +210,7 @@ export default function POSPage() {
     : 0;
 
   // [PACK26-POS-AUDIT-START]
-  async function onAfterCheckout(result: any) {
+  async function onAfterCheckout(result: CheckoutResponse) {
     const auditEvent: Parameters<typeof logUI>[0] = {
       ts: Date.now(),
       userId: user?.id ?? null,
@@ -223,30 +261,34 @@ export default function POSPage() {
   }
   // [PACK26-POS-AUDIT-END]
 
-  const doSearch = useCallback(async (extra?: Partial<ProductSearchParams>) => {
-    setLoadingSearch(true);
-    try {
-      const params: ProductSearchParams = {
-        q,
-        page,
-        pageSize,
-        onlyInStock: true,
-        ...extra,
-      } as ProductSearchParams;
-      if (extra?.q !== undefined) {
-        params.q = extra.q;
+  const doSearch = useCallback(
+    async (extra?: Partial<ProductSearchParams>) => {
+      setLoadingSearch(true);
+      try {
+        const params: ProductSearchParams = {
+          q,
+          page,
+          pageSize,
+          onlyInStock: true,
+          ...extra,
+        } as ProductSearchParams;
+        if (extra?.q !== undefined) {
+          params.q = extra.q;
+        }
+        if (extra?.page !== undefined) {
+          params.page = extra.page;
+        }
+        const res = await SalesProducts.searchProducts(params);
+        setProducts(res.items ?? []);
+      } catch (error) {
+        console.error("Error searching products:", error);
+        // TODO(wire): manejar error de búsqueda visualmente si es necesario
+      } finally {
+        setLoadingSearch(false);
       }
-      if (extra?.page !== undefined) {
-        params.page = extra.page;
-      }
-      const res = await SalesProducts.searchProducts(params);
-      setProducts(res.items ?? []);
-    } catch {
-      // TODO(wire): manejar error de búsqueda
-    } finally {
-      setLoadingSearch(false);
-    }
-  }, [page, pageSize, q]);
+    },
+    [page, pageSize, q],
+  );
 
   function handleSearch(value: string) {
     setQ(value);
@@ -254,9 +296,12 @@ export default function POSPage() {
     doSearch({ q: value, page: 1 });
   }
 
-  function onAddToCart(product: Product) {
-    addProduct(product, 1);
-  }
+  const onAddToCart = useCallback(
+    (product: Product) => {
+      addProduct(product, 1);
+    },
+    [addProduct],
+  );
 
   const handleQuickScan = useCallback(
     async (code: string) => {
@@ -316,9 +361,10 @@ export default function POSPage() {
   const handleDiscountSubmit = (payload: { type: "PERCENT" | "AMOUNT"; value: number }) => {
     if (!discountTarget) return;
     if (!can(PERMS.POS_DISCOUNT)) return;
-    const normalized = payload.type === "PERCENT"
-      ? Math.min(Math.max(payload.value, 0), 100)
-      : Math.max(payload.value, 0);
+    const normalized =
+      payload.type === "PERCENT"
+        ? Math.min(Math.max(payload.value, 0), 100)
+        : Math.max(payload.value, 0);
     setDiscount(discountTarget, payload.type, normalized);
     void onApplyDiscount(discountTarget, normalized, payload.type);
     setDiscountTarget(null);
@@ -337,10 +383,10 @@ export default function POSPage() {
 
   const handlePaymentsSubmit = async (paymentDrafts: PaymentDraft[]) => {
     if (!can(PERMS.POS_CHECKOUT)) return;
-    const payload: PaymentInput[] = paymentDrafts.map(({ type, amount, ref }) => {
+    const payload: PaymentInput[] = paymentDrafts.map(({ type, amount, reference }) => {
       const payment: PaymentInput = { type, amount };
-      if (ref !== undefined) {
-        payment.ref = ref;
+      if (reference !== undefined) {
+        payment.reference = reference;
       }
       return payment;
     });
@@ -430,35 +476,38 @@ export default function POSPage() {
 
   // [PACK26-POS-GUARD-START]
   if (!can(PERMS.POS_VIEW)) {
-    return <div>No autorizado</div>;
+    return (
+      <div className="pos-permission-denied">
+        <div className="toast error pos-permission-toast">
+          <div className="toast-message">No tienes permisos para acceder al punto de venta.</div>
+        </div>
+      </div>
+    );
   }
   // [PACK26-POS-GUARD-END]
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div className="pos-page-container">
       {/* [PACK22-POS-BANNER-START] */}
       {banner && (
         <div
-          style={{
-            borderRadius: 12,
-            padding: 12,
-            border: "1px solid rgba(255,255,255,0.08)",
-            background:
-              banner.type === "error"
-                ? "rgba(248,113,113,0.12)"
-                : banner.type === "warn"
-                ? "rgba(250,204,21,0.12)"
-                : banner.type === "success"
-                ? "rgba(34,197,94,0.12)"
-                : "rgba(59,130,246,0.12)",
-          }}
+          className={`toast pos-banner ${
+            banner.type === "error" ? "error" : banner.type === "success" ? "success" : "info"
+          }`}
         >
-          <div>{banner.msg}</div>
-          {pendingOffline.length > 0 && (
-            <button onClick={handleOfflineRetry} style={{ marginTop: 8, padding: "6px 10px", borderRadius: 8 }}>
-              Reintentar ventas offline ({pendingOffline.length})
-            </button>
-          )}
+          <div className="toast-message">
+            {banner.msg}
+            {pendingOffline.length > 0 && (
+              <div className="pos-banner-actions">
+                <button
+                  onClick={handleOfflineRetry}
+                  className="ui-button ui-button--sm ui-button--secondary"
+                >
+                  Reintentar ventas offline ({pendingOffline.length})
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
       {/* [PACK22-POS-BANNER-END] */}
@@ -471,8 +520,11 @@ export default function POSPage() {
       />
       {/* [PACK26-POS-HOLD-BUTTON-START] */}
       {hasAny([PERMS.POS_HOLD, PERMS.POS_RESUME]) ? (
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setHoldDrawerOpen(true)} style={{ padding: "6px 10px", borderRadius: 8 }}>
+        <div className="pos-hold-actions">
+          <button
+            onClick={() => setHoldDrawerOpen(true)}
+            className="ui-button ui-button--secondary ui-button--sm"
+          >
             Ventas en espera
           </button>
         </div>
@@ -481,23 +533,40 @@ export default function POSPage() {
       <POSLayout
         left={
           <>
-            <div style={{ display: "grid", gap: 10 }}>
+            <div className="pos-search-container">
               <POSQuickScan onSubmit={handleQuickScan} />
               <ProductSearchBar value={q} onChange={setQ} onSearch={handleSearch} />
             </div>
-            {loadingSearch && (
-              <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8" }}>Buscando productos…</div>
-            )}
-            <div style={{ marginTop: 10 }}>
-              <ProductGrid
-                items={productCards}
-                onPick={(card) => {
-                  const original = products.find((item) => String(item.id) === card.id);
-                  if (original) {
-                    onAddToCart(original);
-                  }
-                }}
-              />
+            <div className="pos-grid-container">
+              {loadingSearch ? (
+                Array.from({ length: 12 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="pos-product-card"
+                    style={{
+                      pointerEvents: "none",
+                      border: "none",
+                      boxShadow: "none",
+                      background: "transparent",
+                    }}
+                  >
+                    <Skeleton height={120} style={{ marginBottom: 8, borderRadius: 8 }} />
+                    <Skeleton height={20} width="90%" variant="text" />
+                    <Skeleton height={16} width="60%" variant="text" />
+                    <Skeleton height={24} width="40%" style={{ marginTop: "auto" }} />
+                  </div>
+                ))
+              ) : (
+                <ProductGrid
+                  items={productCards}
+                  onPick={(card) => {
+                    const original = products.find((item) => String(item.id) === card.id);
+                    if (original) {
+                      onAddToCart(original);
+                    }
+                  }}
+                />
+              )}
             </div>
           </>
         }
@@ -511,7 +580,7 @@ export default function POSPage() {
               onDiscount={(id) => setDiscountTarget(id)}
               onOverridePrice={(id) => setPriceTarget(id)}
             />
-            <div style={{ marginTop: 10 }}>
+            <div className="pos-actions-container">
               <POSActionsBar
                 onHold={() => {
                   void onHold();

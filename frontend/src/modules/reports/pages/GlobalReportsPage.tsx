@@ -2,17 +2,20 @@ import { Suspense, lazy, memo } from "react";
 import { BellRing } from "lucide-react";
 
 import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
+import { Skeleton } from "@components/ui/Skeleton";
 
 const GlobalReportsDashboard = lazy(() => import("../components/GlobalReportsDashboard"));
 
 const ReportsLoader = memo(function ReportsLoader() {
   return (
-    <section className="card" role="status" aria-live="polite">
-      <div className="loading-overlay compact">
-        <span className="spinner" aria-hidden="true" />
-        <span>Cargando reportes corporativos…</span>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-32 w-full rounded-xl" />
       </div>
-    </section>
+      <Skeleton className="h-96 w-full rounded-xl" />
+    </div>
   );
 });
 

@@ -16,26 +16,16 @@ export default function SearchBar({
   inputRef,
 }: Props) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div className="pos-search-bar">
       <input
         ref={inputRef}
-        autoFocus
         value={query || ""}
         onChange={(e) => onQueryChange(e.target.value)}
         onKeyDown={(e) => (e.key === "Enter" ? onSubmit() : null)}
         placeholder={placeholder}
-        style={{ flex: 1, padding: 10, borderRadius: 10 }}
+        className="pos-search-input"
       />
-      <button
-        onClick={onSubmit}
-        style={{
-          padding: "10px 14px",
-          borderRadius: 10,
-          background: "#2563eb",
-          color: "#fff",
-          border: 0,
-        }}
-      >
+      <button onClick={onSubmit} className="pos-search-btn">
         Buscar
       </button>
     </div>

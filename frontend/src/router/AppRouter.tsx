@@ -9,9 +9,9 @@ export { SalesRoutes as __Pack20SalesRoutesKeep };
 // [PACK29-*] Ruta dedicada a reportes operativos
 import { ReportsRoutes } from "../modules/reports";
 export { ReportsRoutes as __Pack29ReportsRoutesKeep };
-import Loader from "../shared/components/Loader";
-import Button from "../shared/components/ui/Button";
-import AppErrorBoundary from "../shared/components/AppErrorBoundary"; // [PACK36-router]
+import { Loader } from "@components/ui/Loader";
+import Button from "@components/ui/Button";
+import AppErrorBoundary from "@components/ui/AppErrorBoundary"; // [PACK36-router]
 import { lazyWithRetry } from "../shared/utils/lazyWithRetry";
 // [PACK28-router-guards]
 import RequireAuth from "./guards/RequireAuth";
@@ -24,8 +24,9 @@ import {
   type BootstrapRequest,
   type BootstrapStatus,
   type Credentials,
-} from "../services/api/auth";
+} from "@api/auth";
 import type { BootstrapFormValues } from "../shared/components/BootstrapForm";
+import { useAppContext } from "../app/AppContext";
 
 const Dashboard = lazyWithRetry(() => import("../shared/components/Dashboard"));
 const WelcomeHero = lazyWithRetry(() => import("../shared/components/WelcomeHero"));
@@ -57,16 +58,10 @@ const AuthFallback = memo(function AuthFallback() {
   return <Loader message="Preparando acceso seguro…" />;
 });
 
-const AppRouter = memo(function AppRouter({
-  token,
-  loading,
-  error,
-  theme,
-  themeLabel,
-  onToggleTheme,
-  onLogin,
-  onLogout,
-}: AppRouterProps) {
+const AppRouter = memo(function AppRouter() {
+  const { token, loading, error, theme, themeLabel, onToggleTheme, onLogin, onLogout } =
+    useAppContext();
+
   const location = useLocation();
 
   const routes = useMemo(() => {
@@ -128,51 +123,6 @@ const AppRouter = memo(function AppRouter({
         ),
         errorElement: <RouteErrorElement scope="/dashboard" />,
       },
-      // [PACK20-SALES-MOUNT-START]
-      {
-        path: "/sales/*",
-        element: (
-          <RequireAuth>
-            <RequireRole roles={["ADMIN", "GERENTE"]}>
-              <AppErrorBoundary
-                // [PACK36-router]
-                variant="inline"
-                title="Ventas no disponibles"
-                description="Revisa la conexión y vuelve a intentar abrir el módulo de ventas."
-              >
-                <DashboardScene
-                  token={token}
-                  theme={theme}
-                  onToggleTheme={onToggleTheme}
-                  onLogout={onLogout}
-                />
-              </AppErrorBoundary>
-            </RequireRole>
-          </RequireAuth>
-        ),
-        errorElement: <RouteErrorElement scope="/sales" />,
-      },
-      // [PACK20-SALES-MOUNT-END]
-      // [PACK29-*] Montaje de la ruta de reportes de ventas
-      {
-        path: "/reports/*",
-        element: (
-          <AppErrorBoundary
-            // [PACK36-router]
-            variant="inline"
-            title="Reportes en mantenimiento"
-            description="Intenta refrescar la vista; si se mantiene, contacta a soporte corporativo."
-          >
-            <DashboardScene
-              token={token}
-              theme={theme}
-              onToggleTheme={onToggleTheme}
-              onLogout={onLogout}
-            />
-          </AppErrorBoundary>
-        ),
-        errorElement: <RouteErrorElement scope="/reports" />,
-      },
       {
         path: "*",
         element: <Navigate to="/dashboard/inventory" replace />,
@@ -185,7 +135,12 @@ const AppRouter = memo(function AppRouter({
   return (
     <Suspense fallback={<RouterFallback />}>
       <AnimatePresence mode="wait">
-        <motion.div key={location.pathname} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
           {element}
         </motion.div>
       </AnimatePresence>
@@ -309,7 +264,9 @@ const LoginScene = memo(function LoginScene({
         transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
       >
         <div className="login-card__header">
-          <h2 className="accent-title">{effectiveTab === "bootstrap" ? "Registro inicial" : "Ingreso seguro"}</h2>
+          <h2 className="accent-title">
+            {effectiveTab === "bootstrap" ? "Registro inicial" : "Ingreso seguro"}
+          </h2>
           {canDisplayBootstrap ? (
             <div className="login-card__switcher" role="tablist" aria-label="Modos de acceso">
               <Button
@@ -385,7 +342,12 @@ const DashboardScene = memo(function DashboardScene({
         transition={{ duration: 0.35, ease: "easeOut" }}
       >
         <Suspense fallback={<ModuleFallback />}>
-          <Dashboard token={token} theme={theme} onToggleTheme={onToggleTheme} onLogout={onLogout} />
+          <Dashboard
+            token={token}
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            onLogout={onLogout}
+          />
         </Suspense>
       </motion.div>
     </motion.div>
@@ -394,11 +356,11 @@ const DashboardScene = memo(function DashboardScene({
 
 DashboardScene.displayName = "DashboardScene";
 
-export function createAppRouter(props: AppRouterProps) {
+export function createAppRouter() {
   return createBrowserRouter([
     {
       path: "*",
-      element: <AppRouter {...props} />,
+      element: <AppRouter />,
       errorElement: <RouteErrorElement scope="router" />, // [PACK36-router]
     },
   ]);

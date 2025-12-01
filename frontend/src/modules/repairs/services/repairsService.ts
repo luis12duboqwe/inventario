@@ -3,20 +3,20 @@ import {
   closeRepairOrder,
   createRepairOrder,
   removeRepairOrderPart,
-} from "../../../api"; // [PACK37-frontend]
+} from "@api/repairs";
 import type {
   RepairOrderClosePayload,
-  RepairOrderInput,
+  RepairOrderPayload,
   RepairOrderPartsPayload,
-} from "../../../api"; // [PACK37-frontend]
+} from "@api/repairs";
 
 export const repairsService = {
-  createRepairOrder: (token: string, payload: RepairOrderInput, reason: string) =>
-    createRepairOrder(token, payload, reason), // [PACK37-frontend]
+  createRepairOrder: (token: string, payload: RepairOrderPayload, reason: string) =>
+    createRepairOrder(token, payload, reason),
   appendParts: (token: string, repairId: number, payload: RepairOrderPartsPayload, reason: string) =>
-    appendRepairOrderParts(token, repairId, payload, reason), // [PACK37-frontend]
+    appendRepairOrderParts(token, repairId, payload, reason),
   removePart: (token: string, repairId: number, partId: number, reason: string) =>
-    removeRepairOrderPart(token, repairId, partId, reason), // [PACK37-frontend]
+    removeRepairOrderPart(token, repairId, partId, reason),
   closeRepair: (token: string, repairId: number, payload: RepairOrderClosePayload | undefined, reason: string) =>
-    closeRepairOrder(token, repairId, payload, reason), // [PACK37-frontend]
+    closeRepairOrder(token, repairId, payload, reason),
 };

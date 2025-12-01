@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
-import Button from "../../../../shared/components/ui/Button";
-import Loader from "../../../../components/common/Loader";
+import Button from "@components/ui/Button";
+import { Loader } from "@components/ui/Loader";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 function InventorySmartImportSection() {

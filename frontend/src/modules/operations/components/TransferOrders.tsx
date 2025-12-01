@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Store, TransferOrder } from "../../../api";
+import type { Store } from "@api/stores";
+import type { TransferOrder } from "@api/transfers";
 import {
   cancelTransferOrder,
   createTransferOrder,
   dispatchTransferOrder,
   listTransfers,
   receiveTransferOrder,
-} from "../../../api";
-import Button from "../../../shared/components/ui/Button";
-import Modal from "../../../shared/components/ui/Modal";
+} from "@api/transfers";
+import Button from "@components/ui/Button";
+import Modal from "@components/ui/Modal";
 
 const statusLabels: Record<TransferOrder["status"], string> = {
   SOLICITADA: "Solicitada",
@@ -43,7 +44,10 @@ const initialForm: TransferForm = {
 function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInventory }: Props) {
   const [transfers, setTransfers] = useState<TransferOrder[]>([]);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState<TransferForm>({ ...initialForm, originStoreId: defaultOriginId });
+  const [form, setForm] = useState<TransferForm>({
+    ...initialForm,
+    originStoreId: defaultOriginId,
+  });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [transitionDialog, setTransitionDialog] = useState<{
@@ -67,7 +71,9 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
   };
 
   const sortedTransfers = useMemo(() => {
-    return [...transfers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return [...transfers].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
   }, [transfers]);
 
   const refreshTransfers = async (storeId?: number | null) => {
@@ -120,7 +126,7 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
           reason: trimmedReason,
           items: [{ device_id: form.deviceId, quantity: form.quantity }],
         },
-        trimmedReason
+        trimmedReason,
       );
       setMessage("Transferencia registrada correctamente");
       setForm({ ...initialForm, originStoreId: form.originStoreId });
@@ -131,10 +137,7 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
     }
   };
 
-  const handleTransition = (
-    action: "dispatch" | "receive" | "cancel",
-    transfer: TransferOrder
-  ) => {
+  const handleTransition = (action: "dispatch" | "receive" | "cancel", transfer: TransferOrder) => {
     setTransitionDialog({ action, transfer });
     setTransitionReason("");
     setTransitionError(null);
@@ -167,11 +170,26 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
 
       const { action, transfer } = transitionDialog;
       if (action === "dispatch") {
-        await dispatchTransferOrder(token, transfer.id, { reason: normalizedReason }, normalizedReason);
+        await dispatchTransferOrder(
+          token,
+          transfer.id,
+          { reason: normalizedReason },
+          normalizedReason,
+        );
       } else if (action === "receive") {
-        await receiveTransferOrder(token, transfer.id, { reason: normalizedReason }, normalizedReason);
+        await receiveTransferOrder(
+          token,
+          transfer.id,
+          { reason: normalizedReason },
+          normalizedReason,
+        );
       } else {
-        await cancelTransferOrder(token, transfer.id, { reason: normalizedReason }, normalizedReason);
+        await cancelTransferOrder(
+          token,
+          transfer.id,
+          { reason: normalizedReason },
+          normalizedReason,
+        );
       }
 
       await refreshTransfers(form.originStoreId);
@@ -204,7 +222,9 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
               Origen
               <select
                 value={form.originStoreId ?? ""}
-                onChange={(event) => updateForm({ originStoreId: Number(event.target.value) || null })}
+                onChange={(event) =>
+                  updateForm({ originStoreId: Number(event.target.value) || null })
+                }
               >
                 <option value="">Selecciona una sucursal</option>
                 {stores.map((store) => (
@@ -218,7 +238,9 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
               Destino
               <select
                 value={form.destinationStoreId ?? ""}
-                onChange={(event) => updateForm({ destinationStoreId: Number(event.target.value) || null })}
+                onChange={(event) =>
+                  updateForm({ destinationStoreId: Number(event.target.value) || null })
+                }
               >
                 <option value="">Selecciona una sucursal</option>
                 {stores
@@ -312,7 +334,7 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
                           </button>
                         )}
                         {(["SOLICITADA", "EN_TRANSITO"] as TransferOrder["status"][]).includes(
-                          transfer.status
+                          transfer.status,
                         ) ? (
                           <button
                             type="button"
@@ -334,12 +356,17 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
       <Modal
         open={transitionDialog != null}
         title={transitionDialog ? transitionTitles[transitionDialog.action] : "Motivo corporativo"}
-        description="Describe el motivo corporativo que sustenta la operación." 
+        description="Describe el motivo corporativo que sustenta la operación."
         onClose={closeTransitionDialog}
         dismissDisabled={transitionSubmitting}
         footer={
           <>
-            <Button type="button" variant="ghost" onClick={closeTransitionDialog} disabled={transitionSubmitting}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={closeTransitionDialog}
+              disabled={transitionSubmitting}
+            >
               Cancelar
             </Button>
             <Button type="submit" form="transfer-transition-form" disabled={transitionSubmitting}>
@@ -351,7 +378,8 @@ function TransferOrders({ token, stores, defaultOriginId = null, onRefreshInvent
         <form id="transfer-transition-form" className="form-grid" onSubmit={submitTransition}>
           {transitionDialog ? (
             <p className="form-span muted-text">
-              Transferencia #{transitionDialog.transfer.id} · {statusLabels[transitionDialog.transfer.status]}
+              Transferencia #{transitionDialog.transfer.id} ·{" "}
+              {statusLabels[transitionDialog.transfer.status]}
             </p>
           ) : null}
           <label className="form-span">

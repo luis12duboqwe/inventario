@@ -26,11 +26,25 @@ export default function Grid({ items, onClick }: Props) {
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 12 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))",
+        gap: 12,
+      }}
+    >
       {data.map((product) => (
         <div
           key={product.id}
+          role="button"
+          tabIndex={0}
           onClick={() => onClick?.(product.id)}
+          onKeyDown={(e) => {
+            if (onClick && (e.key === "Enter" || e.key === " ")) {
+              e.preventDefault();
+              onClick(product.id);
+            }
+          }}
           style={{
             cursor: onClick ? "pointer" : "default",
             borderRadius: 12,

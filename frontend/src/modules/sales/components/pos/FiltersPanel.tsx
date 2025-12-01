@@ -17,13 +17,7 @@ type Props = {
 export default function FiltersPanel({ value, onChange }: Props) {
   const v = value || {};
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, minmax(160px,1fr))",
-        gap: 8,
-      }}
-    >
+    <div className="pos-filters-panel">
       <input
         placeholder="Sucursal ID"
         value={v.storeId || ""}
@@ -37,7 +31,7 @@ export default function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="pos-filters-input"
       />
       <input
         placeholder="Categoría"
@@ -52,7 +46,7 @@ export default function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="pos-filters-input"
       />
       <input
         placeholder="Marca"
@@ -67,7 +61,7 @@ export default function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="pos-filters-input"
       />
       <select
         value={v.availability || "ALL"}
@@ -81,7 +75,7 @@ export default function FiltersPanel({ value, onChange }: Props) {
           }
           onChange(next);
         }}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="pos-filters-select"
       >
         <option value="ALL">Disponibilidad (todas)</option>
         <option value="IN_STOCK">En stock</option>

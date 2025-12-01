@@ -35,20 +35,12 @@ export default function Table({ cols, rows, onRowClick }: Props) {
   const mappedRows = useMemo(
     () =>
       data.map((row, index) => ({
-        key:
-          typeof row.id === "string"
-            ? row.id
-            : typeof row.id === "number"
-              ? row.id
-              : index,
+        key: typeof row.id === "string" ? row.id : typeof row.id === "number" ? row.id : index,
         row,
         cells: cols.map((column) => (
           <span
             key={column.key}
-            style={{
-              display: "block",
-              textAlign: column.align ?? "left",
-            }}
+            className={`sales-table-cell sales-table-cell--${column.align ?? "left"}`}
           >
             {renderCellValue(row[column.key])}
           </span>
@@ -65,15 +57,9 @@ export default function Table({ cols, rows, onRowClick }: Props) {
   );
 
   return (
-    <div
-      style={{
-        overflow: "hidden",
-        borderRadius: 12,
-        border: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
-      <div role="table" style={{ width: "100%", fontSize: 14 }}>
-        <div role="row" style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+    <div className="sales-table-container">
+      <div role="table" className="sales-table">
+        <div role="row" className="sales-table-header">
           <Row cells={headerCells} />
         </div>
         <div>
@@ -82,14 +68,21 @@ export default function Table({ cols, rows, onRowClick }: Props) {
               <div
                 key={key}
                 role="row"
+                tabIndex={onRowClick ? 0 : undefined}
                 onClick={() => handleClick(row)}
-                style={{ cursor: onRowClick ? "pointer" : "default", borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                onKeyDown={(e) => {
+                  if (onRowClick && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    handleClick(row);
+                  }
+                }}
+                className={onRowClick ? "sales-table-row-clickable" : "sales-table-row"}
               >
                 <Row cells={cells} />
               </div>
             ))
           ) : (
-            <div style={{ padding: 12, color: "#9ca3af" }}>Sin resultados</div>
+            <div className="sales-table-empty">Sin resultados</div>
           )}
         </div>
       </div>

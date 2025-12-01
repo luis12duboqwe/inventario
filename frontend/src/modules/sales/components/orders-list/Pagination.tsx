@@ -11,14 +11,14 @@ function Pagination({ page, pages, onPage }: OrdersPaginationProps) {
   const handleNext = () => onPage(Math.min(pages, page + 1));
 
   return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
-      <button onClick={handlePrev} disabled={page <= 1} style={{ padding: "6px 10px", borderRadius: 8 }}>
+    <div className="orders-list-pagination">
+      <button onClick={handlePrev} disabled={page <= 1} className="orders-list-pagination-btn">
         Anterior
       </button>
-      <span style={{ fontSize: 12, color: "#94a3b8" }}>
+      <span className="orders-list-pagination-info">
         Página {page} de {pages}
       </span>
-      <button onClick={handleNext} disabled={page >= pages} style={{ padding: "6px 10px", borderRadius: 8 }}>
+      <button onClick={handleNext} disabled={page >= pages} className="orders-list-pagination-btn">
         Siguiente
       </button>
     </div>

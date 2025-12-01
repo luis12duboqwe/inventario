@@ -13,34 +13,36 @@ export type OrderHeaderProps = {
   onMarkPaid?: () => void;
 };
 
-function Header({ number, status, paymentStatus, onPrint, onExportPDF, onCancel, onMarkPaid }: OrderHeaderProps) {
+function Header({
+  number,
+  status,
+  paymentStatus,
+  onPrint,
+  onExportPDF,
+  onCancel,
+  onMarkPaid,
+}: OrderHeaderProps) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div style={{ display: "grid", gap: 6 }}>
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>Pedido</div>
-        <h2 style={{ margin: 0 }}>{number ?? "—"}</h2>
-        <div style={{ display: "flex", gap: 8 }}>
+    <div className="order-detail-header-container">
+      <div className="order-detail-header-info">
+        <div className="order-detail-header-label">Pedido</div>
+        <h2 className="order-detail-header-title">{number ?? "—"}</h2>
+        <div className="order-detail-header-badges">
           <OrdersPaymentStatusBadge value={paymentStatus} />
           <OrdersStatusBadge value={status} />
         </div>
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          onClick={onMarkPaid}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#22c55e", color: "#0b1220", border: 0 }}
-        >
+      <div className="order-detail-header-actions">
+        <button onClick={onMarkPaid} className="order-detail-button-paid">
           Marcar pagado
         </button>
-        <button
-          onClick={onCancel}
-          style={{ padding: "8px 12px", borderRadius: 8, background: "#b91c1c", color: "#fff", border: 0 }}
-        >
+        <button onClick={onCancel} className="order-detail-button-cancel">
           Cancelar
         </button>
-        <button onClick={onPrint} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <button onClick={onPrint} className="order-detail-button-default">
           Imprimir
         </button>
-        <button onClick={onExportPDF} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <button onClick={onExportPDF} className="order-detail-button-default">
           PDF
         </button>
       </div>

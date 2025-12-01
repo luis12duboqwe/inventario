@@ -30,17 +30,17 @@ function PaymentsFiltersBar({ value, onChange, onNewPayment }: PaymentsFiltersBa
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "2fr repeat(4, 1fr) auto", gap: 8 }}>
+    <div className="payments-filters-bar">
       <input
         placeholder="Cliente o #pedido"
-  value={filters.query ?? ""}
-  onChange={(event) => handleChange("query", event.target.value)}
-        style={{ padding: 8, borderRadius: 8, background: "rgba(15, 23, 42, 0.8)", border: "1px solid rgba(148, 163, 184, 0.25)", color: "#f8fafc" }}
+        value={filters.query ?? ""}
+        onChange={(event) => handleChange("query", event.target.value)}
+        className="payments-filters-input"
       />
       <select
         value={filters.type ?? "ALL"}
         onChange={(event) => handleChange("type", event.target.value as PaymentFilters["type"])}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="payments-filters-select"
       >
         <option value="ALL">Tipo</option>
         <option value="PAYMENT">Cobro</option>
@@ -50,7 +50,7 @@ function PaymentsFiltersBar({ value, onChange, onNewPayment }: PaymentsFiltersBa
       <select
         value={filters.method ?? "ALL"}
         onChange={(event) => handleChange("method", event.target.value as PaymentFilters["method"])}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="payments-filters-select"
       >
         <option value="ALL">Método</option>
         <option value="CASH">Efectivo</option>
@@ -60,17 +60,17 @@ function PaymentsFiltersBar({ value, onChange, onNewPayment }: PaymentsFiltersBa
       </select>
       <input
         type="date"
-  value={filters.dateFrom ?? ""}
-  onChange={(event) => handleChange("dateFrom", event.target.value)}
-        style={{ padding: 8, borderRadius: 8 }}
+        value={filters.dateFrom ?? ""}
+        onChange={(event) => handleChange("dateFrom", event.target.value)}
+        className="payments-filters-date"
       />
       <input
         type="date"
-  value={filters.dateTo ?? ""}
-  onChange={(event) => handleChange("dateTo", event.target.value)}
-        style={{ padding: 8, borderRadius: 8 }}
+        value={filters.dateTo ?? ""}
+        onChange={(event) => handleChange("dateTo", event.target.value)}
+        className="payments-filters-date"
       />
-      <button onClick={onNewPayment} style={{ padding: "8px 12px", borderRadius: 8, background: "#38bdf8", color: "#0b1220", border: 0 }}>
+      <button onClick={onNewPayment} className="payments-filters-btn">
         Nuevo cobro
       </button>
     </div>

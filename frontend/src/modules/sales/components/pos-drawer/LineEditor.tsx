@@ -18,33 +18,33 @@ function LineEditor({ line, onPatch }: POSLineEditorProps) {
   }
 
   return (
-    <div style={{ display: "grid", gap: 8, border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: 8, padding: 8 }}>
-      <span style={{ fontSize: 12, color: "#94a3b8" }}>Editar línea</span>
-      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div className="pos-line-editor">
+      <span className="pos-line-editor-title">Editar línea</span>
+      <label className="pos-line-editor-field">
         <span>Cantidad</span>
         <input
           type="number"
           min={0}
           value={line.qty}
           onChange={(event) => onPatch({ qty: Number(event.target.value || 0) })}
-          style={{ width: 100, padding: 6, borderRadius: 8 }}
+          className="pos-line-editor-input"
         />
       </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <label className="pos-line-editor-field">
         <span>Desc. %</span>
         <input
           type="number"
           min={0}
           value={line.discountPct ?? 0}
           onChange={(event) => onPatch({ discountPct: Number(event.target.value || 0) })}
-          style={{ width: 100, padding: 6, borderRadius: 8 }}
+          className="pos-line-editor-input"
         />
       </label>
       <textarea
         placeholder="Nota"
         value={line.note ?? ""}
         onChange={(event) => onPatch({ note: event.target.value })}
-        style={{ padding: 8, borderRadius: 8, minHeight: 72 }}
+        className="pos-line-editor-textarea"
       />
     </div>
   );

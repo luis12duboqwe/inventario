@@ -24,57 +24,33 @@ const formatter = new Intl.NumberFormat("es-HN", {
 export default function HoldOrdersDrawer({ open, items, onClose, onResume, onDelete }: Props) {
   const data = Array.isArray(items) ? items : [];
   return (
-    <aside
-      style={{
-        position: "fixed",
-        top: 0,
-        bottom: 0,
-        right: 0,
-        width: open ? 420 : 0,
-        overflow: "hidden",
-        transition: "width .2s ease",
-        background: "#0b1220",
-        borderLeft: "1px solid rgba(255,255,255,0.08)",
-        zIndex: 40,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 12 }}>
+    <aside className={`pos-drawer ${open ? "pos-drawer-open" : "pos-drawer-closed"}`}>
+      <div className="pos-drawer-header">
         <strong>Ventas en espera</strong>
-        <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 8 }}>
+        <button onClick={onClose} className="pos-drawer-close-btn">
           Cerrar
         </button>
       </div>
-      <div style={{ display: "grid", gap: 8, padding: 12, overflow: "auto", height: "calc(100% - 48px)" }}>
+      <div className="pos-drawer-content">
         {data.length === 0 ? (
-          <div style={{ color: "#94a3b8" }}>Sin ventas en espera</div>
+          <div className="pos-drawer-empty">Sin ventas en espera</div>
         ) : (
           data.map((o) => (
-            <div
-              key={o.id}
-              style={{
-                padding: 10,
-                borderRadius: 12,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div key={o.id} className="pos-drawer-item">
+              <div className="pos-drawer-item-header">
                 <div>
-                  <div style={{ fontWeight: 600 }}>{o.customerName || "Sin cliente"}</div>
-                  <div style={{ color: "#94a3b8", fontSize: 12 }}>
+                  <div className="pos-drawer-item-title">{o.customerName || "Sin cliente"}</div>
+                  <div className="pos-drawer-item-meta">
                     {new Date(o.createdAt).toLocaleString()}
                   </div>
                 </div>
-                <div style={{ fontWeight: 700 }}>{formatter.format(o.total)}</div>
+                <div className="pos-drawer-item-total">{formatter.format(o.total)}</div>
               </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-                <button
-                  onClick={() => onResume?.(o.id)}
-                  style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "#fff", border: 0 }}
-                >
+              <div className="pos-drawer-item-actions">
+                <button onClick={() => onResume?.(o.id)} className="pos-drawer-resume-btn">
                   Reanudar
                 </button>
-                <button onClick={() => onDelete?.(o.id)} style={{ padding: "8px 12px", borderRadius: 8 }}>
+                <button onClick={() => onDelete?.(o.id)} className="pos-drawer-delete-btn">
                   Eliminar
                 </button>
               </div>

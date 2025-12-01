@@ -17,19 +17,19 @@ type Props = {
 export default function DetailCard({ value }: Props) {
   const current = value ?? ({} as Customer);
   return (
-    <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12 }}>
-      <div style={{ fontWeight: 700, fontSize: 18 }}>{current.name ?? "—"}</div>
-      <div style={{ color: "#94a3b8", fontSize: 12 }}>
+    <div className="customer-detail-card">
+      <div className="customer-detail-name">{current.name ?? "—"}</div>
+      <div className="customer-detail-contact">
         {current.email ?? "—"} · {current.phone ?? "—"}
       </div>
-      <div style={{ marginTop: 8 }}>
+      <div className="customer-detail-row">
         <b>Tier:</b> {current.tier ?? "—"}
       </div>
-      <div style={{ marginTop: 8 }}>
+      <div className="customer-detail-row">
         <b>Etiquetas:</b> {(current.tags ?? []).join(", ") || "—"}
       </div>
       {!!current.notes && (
-        <div style={{ marginTop: 8 }}>
+        <div className="customer-detail-row">
           <b>Notas:</b> {current.notes}
         </div>
       )}

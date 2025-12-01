@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import NotificationCenter, {
-  type NotificationCenterItem,
-} from "./NotificationCenter";
+import NotificationCenter, { type NotificationCenterItem } from "./NotificationCenter";
 import type { RiskAlert } from "../../../api";
 
 export type AdminControlPanelModule = {
@@ -54,16 +52,18 @@ function AdminControlPanel({
   }, [hasNotifications]);
 
   const moduleCards = useMemo<
-    (AdminControlPanelModule & { descriptionId: string; ariaLabel: string; state: "active" | "inactive" })[]
+    (AdminControlPanelModule & {
+      descriptionId: string;
+      ariaLabel: string;
+      state: "active" | "inactive";
+    })[]
   >(
     () =>
       modules.map((module) => {
         const sanitizedId = module.to.replace(/[^a-zA-Z0-9]/g, "-");
         const descriptionId = `${sanitizedId}-description`;
         const state = module.isActive ? "active" : "inactive";
-        const ariaLabel = module.srHint
-          ? `${module.label}. ${module.srHint}`
-          : module.label;
+        const ariaLabel = module.srHint ? `${module.label}. ${module.srHint}` : module.label;
         return {
           ...module,
           descriptionId,
@@ -82,8 +82,8 @@ function AdminControlPanel({
         <div>
           <h2>Centro de control Softmobile</h2>
           <p>
-            Accede rápidamente a los módulos clave y supervisa el estado general de la
-            operación sin abandonar el panel principal.
+            Accede rápidamente a los módulos clave y supervisa el estado general de la operación sin
+            abandonar el panel principal.
           </p>
         </div>
         <NotificationCenter
@@ -94,7 +94,10 @@ function AdminControlPanel({
           items={notificationItems}
         />
       </header>
-      <section className="admin-control-panel__risk" aria-label="Panel de riesgos y alertas automáticas">
+      <section
+        className="admin-control-panel__risk"
+        aria-label="Panel de riesgos y alertas automáticas"
+      >
         <div className="admin-control-panel__risk-header">
           <div>
             <h3>Riesgos operativos</h3>
@@ -107,7 +110,7 @@ function AdminControlPanel({
           </span>
         </div>
         {visibleRiskAlerts.length > 0 ? (
-          <ul className="admin-control-panel__risk-list" role="list">
+          <ul className="admin-control-panel__risk-list">
             {visibleRiskAlerts.map((alert) => (
               <li
                 key={alert.code}
@@ -115,7 +118,10 @@ function AdminControlPanel({
               >
                 <div className="admin-control-panel__risk-item-header">
                   <span className="admin-control-panel__risk-label">{alert.title}</span>
-                  <span className="admin-control-panel__risk-severity" aria-label={`Severidad ${alert.severity}`}>
+                  <span
+                    className="admin-control-panel__risk-severity"
+                    aria-label={`Severidad ${alert.severity}`}
+                  >
                     {alert.severity.toUpperCase()}
                   </span>
                 </div>
@@ -130,10 +136,12 @@ function AdminControlPanel({
             ))}
           </ul>
         ) : (
-          <p className="admin-control-panel__risk-empty">Sin alertas de riesgo en el periodo supervisado.</p>
+          <p className="admin-control-panel__risk-empty">
+            Sin alertas de riesgo en el periodo supervisado.
+          </p>
         )}
       </section>
-      <ul className="admin-control-panel__grid" role="list">
+      <ul className="admin-control-panel__grid">
         {moduleCards.map((module) => (
           <li key={module.to} className="admin-control-panel__grid-item">
             <Link
@@ -152,7 +160,9 @@ function AdminControlPanel({
                 <p id={module.descriptionId}>{module.description}</p>
                 {module.badge ? (
                   <span
-                    className={`admin-control-panel__badge admin-control-panel__badge--${module.badgeVariant ?? "default"}`}
+                    className={`admin-control-panel__badge admin-control-panel__badge--${
+                      module.badgeVariant ?? "default"
+                    }`}
                     aria-label={module.badge}
                   >
                     {module.badge}

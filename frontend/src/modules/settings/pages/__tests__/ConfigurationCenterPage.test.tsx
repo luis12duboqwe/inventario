@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import * as configurationApi from "../../../../services/api/configuration";
-import * as discoveryApi from "../../../../services/api/discovery";
+import * as configurationApi from "@api/configuration";
+import * as discoveryApi from "@api/discovery";
 import ConfigurationCenterPage from "../ConfigurationCenterPage";
 
 vi.mock("../../../dashboard/context/DashboardContext", () => ({
@@ -54,7 +54,7 @@ const overviewMock = {
       name: "Endpoint SAR",
       category: null,
       description: null,
-      value_type: "string",
+      value_type: "string" as const,
       value: "https://sar.example.com",
       is_sensitive: false,
       metadata: {},

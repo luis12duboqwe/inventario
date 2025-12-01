@@ -1,32 +1,44 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, beforeAll, beforeEach, afterEach, expect, it, vi } from "vitest";
-import type { AuditLogEntry, AuditReminderEntry, AuditReminderSummary } from "../../../../api";
+import type {
+  AuditLogEntry,
+  AuditReminderEntry,
+  AuditReminderSummary,
+} from "@api/audit";
 
 const pushToastMock = vi.fn();
 const getAuditLogsMock = vi.fn<(token: string, filters?: unknown) => Promise<AuditLogEntry[]>>();
 const getAuditRemindersMock = vi.fn<(token: string) => Promise<AuditReminderSummary>>();
-const exportAuditLogsCsvMock = vi.fn<(token: string, filters: unknown, reason: string) => Promise<Blob>>();
-const downloadAuditPdfMock = vi.fn<(token: string, filters: unknown, reason: string) => Promise<Blob>>();
-const acknowledgeAuditAlertMock = vi.fn<
-  (token: string, payload: { entity_type: string; entity_id: string; note?: string }, reason: string) => Promise<unknown>
->();
+const exportAuditLogsCsvMock =
+  vi.fn<(token: string, filters: unknown, reason: string) => Promise<Blob>>();
+const downloadAuditPdfMock =
+  vi.fn<(token: string, filters: unknown, reason: string) => Promise<Blob>>();
+const acknowledgeAuditAlertMock =
+  vi.fn<
+    (
+      token: string,
+      payload: { entity_type: string; entity_id: string; note?: string },
+      reason: string,
+    ) => Promise<unknown>
+  >();
 const promptMock = vi.fn();
 
 vi.stubGlobal("prompt", promptMock);
 
-const dashboardContextModuleId = vi.hoisted(() =>
-  new URL("../../../dashboard/context/DashboardContext.tsx", import.meta.url).pathname
+const dashboardContextModuleId = vi.hoisted(
+  () => new URL("../../../dashboard/context/DashboardContext.tsx", import.meta.url).pathname,
 );
 
-const mockDashboardModule = vi.hoisted(() =>
-  () => ({
-    __esModule: true,
-    useDashboard: () => ({
+const mockDashboardModule = vi.hoisted(() => () => ({
+  __esModule: true,
+  useDashboard: () =>
+    ({
       pushToast: pushToastMock,
-    }) as unknown as ReturnType<typeof import("../../../dashboard/context/DashboardContext").useDashboard>,
-  })
-);
+    } as unknown as ReturnType<
+      typeof import("../../../dashboard/context/DashboardContext").useDashboard
+    >),
+}));
 
 vi.mock("../../dashboard/context/DashboardContext", mockDashboardModule);
 vi.mock("../../../dashboard/context/DashboardContext", mockDashboardModule);
@@ -34,8 +46,8 @@ vi.mock("../../dashboard/context/DashboardContext.tsx", mockDashboardModule);
 vi.mock("../../../dashboard/context/DashboardContext.tsx", mockDashboardModule);
 vi.mock(dashboardContextModuleId, mockDashboardModule);
 
-vi.mock("../../../../api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../api")>();
+vi.mock("@api/audit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@api/audit")>();
   return {
     ...actual,
     getAuditLogs: getAuditLogsMock,
@@ -74,7 +86,10 @@ const defaultReminder = (overrides: Partial<AuditReminderEntry> = {}): AuditRemi
   ...overrides,
 });
 
-const buildReminderSummary = (entries: AuditReminderEntry[], overrides: Partial<AuditReminderSummary> = {}): AuditReminderSummary => ({
+const buildReminderSummary = (
+  entries: AuditReminderEntry[],
+  overrides: Partial<AuditReminderSummary> = {},
+): AuditReminderSummary => ({
   threshold_minutes: 15,
   min_occurrences: 2,
   total: entries.length,
@@ -167,11 +182,14 @@ describe("AuditLog", () => {
       expect(exportAuditLogsCsvMock).toHaveBeenCalledWith(
         "token-xyz",
         expect.objectContaining({ limit: 50 }),
-        "Revisión auditoría"
+        "Revisión auditoría",
       );
     });
     expect(pushToastMock).toHaveBeenCalledWith(
-      expect.objectContaining({ message: expect.stringContaining("Descarga generada"), variant: "success" })
+      expect.objectContaining({
+        message: expect.stringContaining("Descarga generada"),
+        variant: "success",
+      }),
     );
   });
 
@@ -197,7 +215,7 @@ describe("AuditLog", () => {
             acknowledged_note: "Se ajustó POS",
           },
           acknowledged,
-        ])
+        ]),
       );
     acknowledgeAuditAlertMock.mockResolvedValue({});
 
@@ -227,15 +245,17 @@ describe("AuditLog", () => {
           entity_id: pending.entity_id,
           note: "Se notificó al gerente",
         },
-        "Revisión manual en sitio"
+        "Revisión manual en sitio",
       );
     });
 
     expect(pushToastMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: expect.stringContaining(`Acuse registrado para ${pending.entity_type} #${pending.entity_id}`),
+        message: expect.stringContaining(
+          `Acuse registrado para ${pending.entity_type} #${pending.entity_id}`,
+        ),
         variant: "success",
-      })
+      }),
     );
     expect(getAuditRemindersMock).toHaveBeenCalledTimes(2);
   });

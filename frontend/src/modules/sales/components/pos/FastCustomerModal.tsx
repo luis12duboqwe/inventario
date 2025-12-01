@@ -26,51 +26,43 @@ export default function FastCustomerModal({ open, onClose, onSubmit }: Props) {
   const valid = name.trim().length > 0;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center" }}>
-      <div
-        style={{
-          width: 520,
-          background: "#0b1220",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.08)",
-          padding: 16,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Cliente rápido</h3>
-        <div style={{ display: "grid", gap: 8 }}>
+    <div className="pos-fast-customer-modal-overlay">
+      <div className="pos-fast-customer-modal-content">
+        <h3 className="pos-fast-customer-modal-title">Cliente rápido</h3>
+        <div className="pos-fast-customer-modal-form">
           <input
             placeholder="Nombre *"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            style={{ padding: 8, borderRadius: 8 }}
+            className="pos-fast-customer-modal-input"
           />
           <input
             placeholder="Teléfono"
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
-            style={{ padding: 8, borderRadius: 8 }}
+            className="pos-fast-customer-modal-input"
           />
           <input
             placeholder="Email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            style={{ padding: 8, borderRadius: 8 }}
+            className="pos-fast-customer-modal-input"
           />
           <input
             placeholder="DNI/RTN"
             value={docId}
             onChange={(event) => setDocId(event.target.value)}
-            style={{ padding: 8, borderRadius: 8 }}
+            className="pos-fast-customer-modal-input"
           />
         </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>
+        <div className="pos-fast-customer-modal-actions">
+          <button onClick={onClose} className="pos-fast-customer-modal-cancel-btn">
             Cancelar
           </button>
           <button
             disabled={!valid}
             onClick={() => onSubmit?.({ name, phone, email, docId })}
-            style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "#fff", border: 0 }}
+            className="pos-fast-customer-modal-create-btn"
           >
             Crear
           </button>

@@ -6,11 +6,12 @@ import type {
   InventorySmartImportPreview,
   InventorySmartImportResponse,
   InventorySmartImportResult,
-  Store,
-} from "../../../../api";
+} from "@api/inventory";
+import type { Store } from "@api/types";
 import type { ToastMessage } from "../../../dashboard/context/DashboardContext";
 import { promptCorporateReason } from "../../../../utils/corporateReason";
 import megasupplierTemplateXlsxBase64 from "../../../../assets/importacion/plantilla_megasupplier.xlsx.b64?raw";
+import { buildSmartSummaryPdf } from "../../../../utils/pdf";
 
 export type SmartImportManagerDeps = {
   smartImportInventory: (
@@ -305,6 +306,59 @@ export function useSmartImportManager({
     setSmartPreviewDirty(false);
   }, []);
 
+  const downloadSmartResultCsv = useCallback(() => {
+    if (!smartImportResult) {
+      return;
+    }
+    const result = smartImportResult;
+    const lines = [
+      "Campo,Valor",
+      `Total procesados,${result.total_procesados}`,
+      `Nuevos,${result.nuevos}`,
+      `Actualizados,${result.actualizados}`,
+      `Registros incompletos,${result.registros_incompletos}`,
+      `Tiendas nuevas,${result.tiendas_nuevas.join(" | ") || "Ninguna"}`,
+    ];
+    if (result.columnas_faltantes.length > 0) {
+      lines.push(
+        `Columnas faltantes,"${result.columnas_faltantes.join(" | ").replace(/"/g, '""')}"`,
+      );
+    } else {
+      lines.push("Columnas faltantes,N/A");
+    }
+    if (result.advertencias.length > 0) {
+      result.advertencias.forEach((warning, index) => {
+        lines.push(`Advertencia ${index + 1},"${warning.replace(/"/g, '""')}"`);
+      });
+    } else {
+      lines.push("Advertencias,Ninguna");
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "importacion_inteligente_resumen.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [smartImportResult]);
+
+  const downloadSmartResultPdf = useCallback(() => {
+    if (!smartImportResult) {
+      return;
+    }
+    const blob = buildSmartSummaryPdf(smartImportResult.resumen);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "importacion_inteligente_resumen.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [smartImportResult]);
+
   return {
     smartImportFile,
     setSmartImportFile,
@@ -329,5 +383,7 @@ export function useSmartImportManager({
     vendorTemplates,
     applyVendorTemplate,
     smartImportGuideUrl: SMART_IMPORT_GUIDE_URL,
+    downloadSmartResultCsv,
+    downloadSmartResultPdf,
   };
 }

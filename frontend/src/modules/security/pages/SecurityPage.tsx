@@ -2,7 +2,7 @@ import React, { Suspense } from "react";
 
 import { ShieldCheck } from "lucide-react";
 
-import Loader from "../../../shared/components/Loader";
+import { Loader } from "@components/ui/Loader";
 import ModuleHeader, { type ModuleStatus } from "../../../shared/components/ModuleHeader";
 import { useSecurityModule } from "../hooks/useSecurityModule";
 

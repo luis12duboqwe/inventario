@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { Boxes, Layers, Wrench } from "lucide-react";
+import Tabs, { type TabOption } from "@components/ui/Tabs/Tabs";
 import PageHeader from "../../../components/layout/PageHeader";
 import PageToolbar from "../../../components/layout/PageToolbar";
 import { useInventoryLayout } from "./context/InventoryLayoutContext";
@@ -14,6 +17,45 @@ function InventoryProductsPage() {
   const {
     downloads: { triggerDownloadReport, triggerDownloadCsv, triggerRefreshSummary },
   } = useInventoryLayout();
+
+  const [activeTab, setActiveTab] = useState("catalog");
+
+  const tabs: TabOption<string>[] = [
+    {
+      id: "catalog",
+      label: "Catálogo",
+      icon: <Boxes size={16} />,
+      content: (
+        <>
+          <InventoryStatusSection />
+          <InventoryProductsTableSection />
+        </>
+      ),
+    },
+    {
+      id: "variants",
+      label: "Variantes y Kits",
+      icon: <Layers size={16} />,
+      content: (
+        <>
+          <InventoryVariantsSection />
+          <InventoryBundlesSection />
+        </>
+      ),
+    },
+    {
+      id: "tools",
+      label: "Herramientas",
+      icon: <Wrench size={16} />,
+      content: (
+        <>
+          <InventoryCatalogToolsSection />
+          <InventorySmartImportSection />
+          <InventoryCorrectionsSection />
+        </>
+      ),
+    },
+  ];
 
   return (
     <div className="inventory-products-page">
@@ -45,19 +87,7 @@ function InventoryProductsPage() {
         <InventoryProductsFilters />
       </PageToolbar>
 
-      <InventoryStatusSection />
-
-      <InventoryProductsTableSection />
-
-      <InventoryVariantsSection />
-
-      <InventoryBundlesSection />
-
-      <InventoryCatalogToolsSection />
-
-      <InventorySmartImportSection />
-
-      <InventoryCorrectionsSection />
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
 }

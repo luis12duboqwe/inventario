@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 
-import type { PosSaleItemRequest } from "../../../../services/api/pos";
+import type { PosSaleItemRequest } from "@api/pos";
 
 export type CartLine = PosSaleItemRequest & {
   id: string;

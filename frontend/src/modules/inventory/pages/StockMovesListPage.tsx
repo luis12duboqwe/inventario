@@ -92,25 +92,25 @@ export default function StockMovesListPage() {
   }, [selectedIds, selectedRow]);
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="stock-moves-list-container">
+      <header className="stock-moves-list-header">
         <div>
-          <h2 style={{ margin: 0 }}>Movimientos</h2>
-          <p style={{ margin: 0, color: "#9ca3af" }}>
+          <h2 className="stock-moves-list-title">Movimientos</h2>
+          <p className="stock-moves-list-subtitle">
             Entradas, salidas, ajustes y transferencias entre tiendas.
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="stock-moves-list-actions">
           <button
             onClick={() => setOpenImport(true)}
-            style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(255,255,255,0.08)", color: "#e5e7eb", border: 0 }}
+            className="stock-moves-list-button-secondary"
             type="button"
           >
             Importar
           </button>
           <button
             onClick={() => setOpenExport(true)}
-            style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "#fff", border: 0 }}
+            className="stock-moves-list-button-primary"
             type="button"
           >
             Exportar
@@ -139,7 +139,7 @@ export default function StockMovesListPage() {
         onRowClick={handleRowClick}
       />
 
-  <MoveSidePanel row={selectedRow} onClose={() => setSelectedRow(null)} />
+      <MoveSidePanel row={selectedRow} onClose={() => setSelectedRow(null)} />
 
       <MoveImportModal open={openImport} onClose={() => setOpenImport(false)} />
       <MoveExportModal open={openExport} onClose={() => setOpenExport(false)} />

@@ -18,54 +18,23 @@ function QuickGrid({ items, onPick }: POSQuickGridProps) {
   const data = Array.isArray(items) ? items : [];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+    <div className="pos-quick-grid">
       {data.map((product) => (
         <button
           key={product.id}
           onClick={() => onPick?.(product.id)}
-          style={{
-            textAlign: "left",
-            borderRadius: 12,
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            overflow: "hidden",
-            background: "rgba(255, 255, 255, 0.03)",
-            display: "grid",
-            padding: 0,
-          }}
+          className="pos-quick-grid-item"
         >
-          <div
-            style={{
-              width: "100%",
-              aspectRatio: "1 / 1",
-              background: "#0f172a",
-              display: "grid",
-              placeItems: "center",
-              overflow: "hidden",
-            }}
-          >
+          <div className="pos-quick-grid-image-container">
             {product.imageUrl ? (
-              <img
-                src={product.imageUrl}
-                alt={product.name}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
+              <img src={product.imageUrl} alt={product.name} className="pos-quick-grid-image" />
             ) : (
-              <span style={{ color: "#64748b" }}>Sin imagen</span>
+              <span className="pos-quick-grid-no-image">Sin imagen</span>
             )}
           </div>
-          <div style={{ padding: 8, display: "grid", gap: 4 }}>
-            <span
-              style={{
-                fontWeight: 700,
-                fontSize: 13,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {product.name}
-            </span>
-            <span style={{ fontSize: 12 }}>{currency.format(product.price)}</span>
+          <div className="pos-quick-grid-info">
+            <span className="pos-quick-grid-name">{product.name}</span>
+            <span className="pos-quick-grid-price">{currency.format(product.price)}</span>
           </div>
         </button>
       ))}

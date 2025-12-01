@@ -27,7 +27,6 @@ import {
   getInventoryCurrentReport,
   getInventoryMovementsReport,
   getInventoryValueReport,
-  getSupplierBatchOverview,
   getTopProductsReport,
   getInactiveProductsReport,
   getSyncDiscrepancyReport,
@@ -48,9 +47,10 @@ import {
   registerInventoryCycleCount,
   smartInventoryImport,
   getSmartImportHistory,
-} from "../../../api";
+  updateDevice,
+} from "@api/inventory";
+import { getSupplierBatchOverview, SupplierBatchOverviewItem } from "@api/suppliers";
 import type {
-  DeviceImportSummary,
   InventoryCurrentFilters,
   InventoryImportHistoryEntry,
   InventoryCurrentReport,
@@ -69,7 +69,6 @@ import type {
   InventoryReservationRenewInput,
   MovementInput,
   PaginatedResponse,
-  SupplierBatchOverviewItem,
   ProductVariant,
   ProductVariantCreateInput,
   ProductVariantUpdateInput,
@@ -84,10 +83,19 @@ import type {
   InventoryAuditFilters,
   Warehouse,
   WarehouseTransferInput,
-} from "../../../api";
+  DeviceUpdateInput,
+  Device,
+} from "@api/inventory";
 
 export const inventoryService = {
   fetchDevices: getDevices,
+  updateDevice: (
+    token: string,
+    storeId: number,
+    deviceId: number,
+    payload: DeviceUpdateInput,
+    reason: string,
+  ): Promise<Device> => updateDevice(token, storeId, deviceId, payload, reason),
   fetchWarehouses: (token: string, storeId: number): Promise<Warehouse[]> =>
     listWarehouses(token, storeId),
   createWarehouse: (
@@ -165,7 +173,7 @@ export const inventoryService = {
   exportCatalogCsv: (
     token: string,
     storeId: number,
-    filters: Parameters<typeof getDevices>[2],
+    filters: Parameters<typeof getDevices>[2] = {},
     reason: string,
   ) => exportStoreDevicesCsv(token, storeId, filters, reason),
   importCatalogCsv: (
@@ -173,7 +181,7 @@ export const inventoryService = {
     storeId: number,
     file: File,
     reason: string,
-  ): Promise<DeviceImportSummary> => importStoreDevicesCsv(token, storeId, file, reason),
+  ): Promise<InventorySmartImportResponse> => importStoreDevicesCsv(token, storeId, file, reason),
   smartImportInventory: (
     token: string,
     file: File,
@@ -248,22 +256,22 @@ export const inventoryService = {
     token: string,
     reason: string,
     filters: InventoryCurrentFilters = {},
-  ) => downloadInventoryCurrentCsv(token, reason, filters),
+  ) => downloadInventoryCurrentCsv(token, filters, reason),
   downloadInventoryCurrentPdf: (
     token: string,
     reason: string,
     filters: InventoryCurrentFilters = {},
-  ) => downloadInventoryCurrentPdf(token, reason, filters),
+  ) => downloadInventoryCurrentPdf(token, filters, reason),
   downloadInventoryCurrentXlsx: (
     token: string,
     reason: string,
     filters: InventoryCurrentFilters = {},
-  ) => downloadInventoryCurrentXlsx(token, reason, filters),
+  ) => downloadInventoryCurrentXlsx(token, filters, reason),
   downloadInventoryValueCsv: (
     token: string,
     reason: string,
     filters: InventoryValueFilters = {},
-  ) => downloadInventoryValueCsv(token, reason, filters),
+  ) => downloadInventoryValueCsv(token, filters, reason),
   downloadInventoryValuePdf: (
     token: string,
     reason: string,

@@ -70,6 +70,14 @@ vi.mock("../../components/layout/PageToolbar", () => ({
   default: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock("../../shared/components/ui/Skeleton", () => ({
+  Skeleton: () => <div data-testid="loading-skeleton">Cargando...</div>,
+}));
+
+vi.mock("../../ui/Skeleton", () => ({
+  Skeleton: () => <div data-testid="loading-skeleton">Cargando...</div>,
+}));
+
 const loaderMock = vi.fn(({ message }: { message?: string }) => (
   <div data-testid={`loader:${message ?? "Cargando"}`}>{message ?? "Cargando"}</div>
 ));
@@ -124,9 +132,9 @@ vi.mock("../../modules/repairs/hooks/useRepairsModule", () => ({
 }));
 
 vi.mock("../../modules/repairs/pages/RepairsPage", async () => {
-  const actual = await vi.importActual<
-    typeof import("../../modules/repairs/pages/RepairsPage")
-  >("../../modules/repairs/pages/RepairsPage");
+  const actual = await vi.importActual<typeof import("../../modules/repairs/pages/RepairsPage")>(
+    "../../modules/repairs/pages/RepairsPage",
+  );
 
   let resolvedForRun = 0;
   let pending: Promise<void> | null = null;
@@ -156,8 +164,8 @@ vi.mock("../../modules/repairs/pages/RepairsPage", async () => {
 
 beforeAll(async () => {
   const actual = await vi.importActual<
-    typeof import("../../pages/reparaciones/ReparacionesLayout")
-  >("../../pages/reparaciones/ReparacionesLayout");
+    typeof import("../../modules/repairs/pages/ReparacionesLayout")
+  >("../../modules/repairs/pages/ReparacionesLayout");
 
   ReparacionesLayout = actual.default;
 });
@@ -170,9 +178,7 @@ const renderDashboardRoute = (initialPath: string) =>
       <Routes>
         <Route
           path="/dashboard/*"
-          element={
-            <DashboardRoutes theme="dark" onToggleTheme={() => {}} onLogout={() => {}} />
-          }
+          element={<DashboardRoutes theme="dark" onToggleTheme={() => {}} onLogout={() => {}} />}
         />
       </Routes>
     </MemoryRouter>,
@@ -254,7 +260,7 @@ describe("Rutas de reparaciones", () => {
     renderDashboardRoute("/dashboard/repairs/pendientes");
 
     await waitFor(() => expect(repairsModuleResolvers.has("repairs")).toBe(true));
-    expect(screen.getByText("Cargando panel…")).toBeInTheDocument();
+    expect(screen.getAllByTestId("loading-skeleton")[0]).toBeInTheDocument();
 
     await act(async () => {
       repairsModuleResolvers.get("repairs")?.();
@@ -271,9 +277,7 @@ describe("Rutas de reparaciones", () => {
   it("usa Suspense en el layout de reparaciones", async () => {
     renderRepairsLayout("/listas");
 
-    await expect(
-      screen.findByText("Cargando módulo de reparaciones…"),
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByTestId("loading-skeleton")[0]).toBeInTheDocument());
 
     await waitFor(() => expect(repairsResolvers.has("Reparaciones: Listas")).toBe(true));
 

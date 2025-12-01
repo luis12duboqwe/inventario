@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { SyncClientFlushSummary } from "../services/syncClient";
 import type { LocalSyncQueueItem } from "../services/syncClient";
+import { Skeleton } from "@components/ui/Skeleton";
 
 type Props = {
   pending: LocalSyncQueueItem[];
@@ -153,9 +154,7 @@ export function HybridQueuePanel({
     }
     return [...modules]
       .filter((module) => module.total > 0)
-      .sort(
-        (a, b) => b.pending + b.failed - (a.pending + a.failed) || b.percent - a.percent,
-      )
+      .sort((a, b) => b.pending + b.failed - (a.pending + a.failed) || b.percent - a.percent)
       .slice(0, 5);
   }, [modules]);
 
@@ -201,18 +200,31 @@ export function HybridQueuePanel({
             {progress.sent} de {progress.total || progress.sent || 0} evento(s) enviados
           </span>
           {progress.failed > 0 ? (
-            <span className="hybrid-queue__progress-alert">{progress.failed} evento(s) con error en espera de nuevo intento</span>
+            <span className="hybrid-queue__progress-alert">
+              {progress.failed} evento(s) con error en espera de nuevo intento
+            </span>
           ) : null}
         </div>
-        <div className="hybrid-queue__progress-bar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent} role="progressbar">
-          <div className="hybrid-queue__progress-bar-fill" style={{ width: `${progress.percent}%` }} />
+        <div
+          className="hybrid-queue__progress-bar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress.percent}
+          role="progressbar"
+        >
+          <div
+            className="hybrid-queue__progress-bar-fill"
+            style={{ width: `${progress.percent}%` }}
+          />
         </div>
       </div>
       <div className="hybrid-queue__insights">
         <div className="hybrid-queue__insight">
           <span className="hybrid-queue__insight-label">Ritmo actual</span>
           <strong>{forecast.eventsPerMinute.toFixed(2)} ev/min</strong>
-          <small>Últimos {forecast.lookbackMinutes || 0} minutos · {forecast.processedRecent} evento(s)</small>
+          <small>
+            Últimos {forecast.lookbackMinutes || 0} minutos · {forecast.processedRecent} evento(s)
+          </small>
         </div>
         <div className="hybrid-queue__insight">
           <span className="hybrid-queue__insight-label">Tasa de éxito</span>
@@ -251,20 +263,27 @@ export function HybridQueuePanel({
                     aria-valuemax={100}
                     aria-valuenow={module.percent}
                   >
-                    <div className="hybrid-queue__module-bar-fill" style={{ width: `${module.percent}%` }} />
+                    <div
+                      className="hybrid-queue__module-bar-fill"
+                      style={{ width: `${module.percent}%` }}
+                    />
                   </div>
                   <div className="hybrid-queue__module-meta">
-                    <span>{module.processed}/{module.total} enviados</span>
+                    <span>
+                      {module.processed}/{module.total} enviados
+                    </span>
                     <span>Pendientes {module.pending}</span>
                     {module.failed > 0 ? (
-                      <span className="hybrid-queue__module-failed">
-                        Fallidos {module.failed}
-                      </span>
+                      <span className="hybrid-queue__module-failed">Fallidos {module.failed}</span>
                     ) : null}
                   </div>
                   <div className="hybrid-queue__module-sources">
-                    <span>Servidor {module.queue.processed}/{module.queue.total}</span>
-                    <span>Outbox {module.outbox.processed}/{module.outbox.total}</span>
+                    <span>
+                      Servidor {module.queue.processed}/{module.queue.total}
+                    </span>
+                    <span>
+                      Outbox {module.outbox.processed}/{module.outbox.total}
+                    </span>
                     {backlog > 0 ? (
                       <span className="hybrid-queue__module-backlog">Backlog {backlog}</span>
                     ) : null}
@@ -280,15 +299,23 @@ export function HybridQueuePanel({
         <div className="queue-column">
           <h3>Pendientes</h3>
           {loading ? (
-            <p className="hybrid-queue__hint">Cargando cola local…</p>
+            <div className="space-y-3">
+              <Skeleton className="h-20 w-full rounded-lg" />
+              <Skeleton className="h-20 w-full rounded-lg" />
+              <Skeleton className="h-20 w-full rounded-lg" />
+            </div>
           ) : pending.length === 0 ? (
-            <p className="hybrid-queue__hint">No hay eventos pendientes. Genera un evento demo para probar.</p>
+            <p className="hybrid-queue__hint">
+              No hay eventos pendientes. Genera un evento demo para probar.
+            </p>
           ) : (
             <ul className="queue-list">
               {pending.map((item) => (
                 <li key={item.id} className="queue-item">
                   <div className="queue-item__header">
-                    <span className={statusClass(item.status)}>{statusLabel[item.status] ?? item.status}</span>
+                    <span className={statusClass(item.status)}>
+                      {statusLabel[item.status] ?? item.status}
+                    </span>
                     <span className="queue-item__type">{item.eventType}</span>
                   </div>
                   <p className="queue-item__meta">
@@ -318,7 +345,9 @@ export function HybridQueuePanel({
                   <tr key={`history-${item.id}`}>
                     <td>{item.eventType}</td>
                     <td>
-                      <span className={statusClass(item.status)}>{statusLabel[item.status] ?? item.status}</span>
+                      <span className={statusClass(item.status)}>
+                        {statusLabel[item.status] ?? item.status}
+                      </span>
                     </td>
                     <td>{formatTimestamp(item.updatedAt)}</td>
                   </tr>

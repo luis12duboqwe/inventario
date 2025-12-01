@@ -1,8 +1,8 @@
 import { Search } from "lucide-react";
 
-import TextField from "../../../../shared/components/ui/TextField";
+import TextField from "@components/ui/TextField";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
-import type { Device } from "../../../../api";
+import type { Device } from "@api/inventory";
 
 function InventoryProductsFilters() {
   const {
@@ -12,7 +12,8 @@ function InventoryProductsFilters() {
 
   return (
     <div className="inventory-toolbar">
-      <label className="select-inline">{/* [PACK30-31-FRONTEND] */}
+      <label className="select-inline">
+        {/* [PACK30-31-FRONTEND] */}
         <span>Sucursal</span>
         <select
           value={selectedStoreId ?? ""}
@@ -48,7 +49,9 @@ function InventoryProductsFilters() {
         <span>Estado comercial</span>
         <select
           value={estadoFilter}
-          onChange={(event) => setEstadoFilter(event.target.value as Device["estado_comercial"] | "TODOS")}
+          onChange={(event) =>
+            setEstadoFilter(event.target.value as Device["estado_comercial"] | "TODOS")
+          }
         >
           <option value="TODOS">Todos</option>
           <option value="nuevo">Nuevo</option>

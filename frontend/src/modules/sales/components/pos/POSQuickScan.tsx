@@ -1,11 +1,4 @@
-import {
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type QuickScanStatus = "idle" | "processing" | "success" | "error" | "disabled";
 
@@ -28,12 +21,8 @@ export default function POSQuickScan({
   onEnabledChange,
 }: POSQuickScanProps) {
   const [manualValue, setManualValue] = useState("");
-  const [status, setStatus] = useState<QuickScanStatus>(
-    initialEnabled ? "idle" : "disabled",
-  );
-  const [message, setMessage] = useState(
-    initialEnabled ? BASE_MESSAGE : DISABLED_MESSAGE,
-  );
+  const [status, setStatus] = useState<QuickScanStatus>(initialEnabled ? "idle" : "disabled");
+  const [message, setMessage] = useState(initialEnabled ? BASE_MESSAGE : DISABLED_MESSAGE);
   const [lastCode, setLastCode] = useState<string | null>(null);
   const [lastLabel, setLastLabel] = useState<string | null>(null);
   const [listening, setListening] = useState(initialEnabled);
@@ -61,16 +50,19 @@ export default function POSQuickScan({
     }
   }, [listening]);
 
-  useEffect(() => () => {
-    if (statusTimerRef.current) {
-      clearTimeout(statusTimerRef.current);
-      statusTimerRef.current = null;
-    }
-    if (bufferResetRef.current) {
-      clearTimeout(bufferResetRef.current);
-      bufferResetRef.current = null;
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      if (statusTimerRef.current) {
+        clearTimeout(statusTimerRef.current);
+        statusTimerRef.current = null;
+      }
+      if (bufferResetRef.current) {
+        clearTimeout(bufferResetRef.current);
+        bufferResetRef.current = null;
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (listening && inputRef.current) {
@@ -180,9 +172,7 @@ export default function POSQuickScan({
       const target = event.target as HTMLElement | null;
       if (
         target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
       ) {
         return;
       }
@@ -197,12 +187,7 @@ export default function POSQuickScan({
         return;
       }
 
-      if (
-        event.key.length === 1 &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey
-      ) {
+      if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
         const now = Date.now();
         if (now - lastKeyRef.current > effectiveTimeout * 2) {
           bufferRef.current = "";
@@ -248,35 +233,25 @@ export default function POSQuickScan({
     [flushBuffer, manualValue],
   );
 
-  const messageColor =
+  const statusClass =
     status === "error"
-      ? "#f87171"
+      ? "pos-quick-scan__status--error"
       : status === "success"
-      ? "#34d399"
+      ? "pos-quick-scan__status--success"
       : status === "processing"
-      ? "#38bdf8"
-      : "#94a3b8";
+      ? "pos-quick-scan__status--processing"
+      : "pos-quick-scan__status--idle";
 
   return (
-    <section
-      data-testid="pos-quick-scan"
-      style={{
-        borderRadius: 12,
-        border: "1px solid rgba(148,163,184,0.25)",
-        background: "rgba(15,23,42,0.35)",
-        padding: 12,
-        display: "grid",
-        gap: 8,
-      }}
-    >
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <section data-testid="pos-quick-scan" className="pos-quick-scan">
+      <header className="pos-quick-scan__header">
         <div>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Entrada rápida (lector)</div>
-          <div style={{ fontSize: 12, color: "#94a3b8" }}>
+          <div className="pos-quick-scan__title">Entrada rápida (lector)</div>
+          <div className="pos-quick-scan__subtitle">
             Detecta ráfagas de teclas &lt; 80&nbsp;ms provenientes de lectores de código.
           </div>
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+        <label className="pos-quick-scan__toggle">
           <input
             type="checkbox"
             checked={listening}
@@ -286,34 +261,26 @@ export default function POSQuickScan({
           Escucha global
         </label>
       </header>
-      <form onSubmit={handleSubmit} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+      <form onSubmit={handleSubmit} className="pos-quick-scan__form">
         <input
           ref={inputRef}
           value={manualValue}
           onChange={(event) => setManualValue(event.target.value)}
           placeholder="Capturar código manual"
-          style={{ padding: 10, borderRadius: 10 }}
+          className="pos-quick-scan__input"
           aria-label="Código manual"
         />
-        <button type="submit" style={{ padding: "10px 14px", borderRadius: 10 }}>
+        <button type="submit" className="pos-quick-scan__button">
           Aplicar
         </button>
       </form>
-      <div
-        role="status"
-        aria-live="polite"
-        style={{ fontSize: 12, color: messageColor, minHeight: 18 }}
-      >
+      <div role="status" aria-live="polite" className={`pos-quick-scan__status ${statusClass}`}>
         {message}
         {lastLabel && status !== "error" ? (
-          <span style={{ display: "block", color: "#cbd5f5", marginTop: 2 }}>
-            Último producto: {lastLabel}
-          </span>
+          <span className="pos-quick-scan__last-item">Último producto: {lastLabel}</span>
         ) : null}
         {!lastLabel && lastCode && status !== "error" ? (
-          <span style={{ display: "block", color: "#cbd5f5", marginTop: 2 }}>
-            Último código: {lastCode}
-          </span>
+          <span className="pos-quick-scan__last-item">Último código: {lastCode}</span>
         ) : null}
       </div>
     </section>

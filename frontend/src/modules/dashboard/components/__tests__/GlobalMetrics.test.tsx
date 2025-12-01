@@ -39,7 +39,12 @@ const sampleMetrics: InventoryMetrics = {
     customers_with_debt: 3,
     moroso_flagged: 1,
     top_debtors: [
-      { customer_id: 301, name: "Cliente con mora", outstanding_debt: 12000, available_credit: 5000 },
+      {
+        customer_id: 301,
+        name: "Cliente con mora",
+        outstanding_debt: 12000,
+        available_credit: 5000,
+      },
       { customer_id: 302, name: "Cliente al día", outstanding_debt: 6000, available_credit: null },
     ],
   },
@@ -122,12 +127,13 @@ const auditAlertsMock: DashboardAuditAlerts = {
   acknowledged_count: 1,
   highlights: [
     {
-      id: "sync-1",
+      id: 1,
       action: "sync_outbox_backlog",
       created_at: "2025-03-01T09:20:00.000Z",
       severity: "warning",
       entity_type: "sync_outbox",
       entity_id: "101",
+      status: "pending",
     },
   ],
   acknowledged_entities: [
@@ -151,14 +157,14 @@ describe("GlobalMetrics", () => {
     render(
       <MemoryRouter>
         <GlobalMetrics />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(screen.getByText(/2 pendientes · 1 atendidas/i)).toBeInTheDocument();
     expect(screen.getByText(/Último acuse:/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Abrir módulo de Seguridad/i })).toHaveAttribute(
       "href",
-      "/dashboard/security"
+      "/dashboard/security",
     );
     expect(screen.getByText(/Cartera por cobrar/i)).toBeInTheDocument();
     expect(screen.getByText(/Cliente con mora/i)).toBeInTheDocument();
@@ -173,13 +179,13 @@ describe("GlobalMetrics", () => {
     const { container } = render(
       <MemoryRouter>
         <GlobalMetrics auditAlertsMock={auditAlertsMock} />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(screen.getByText(/Sin métricas disponibles por el momento/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Abrir módulo de Seguridad/i })).toHaveAttribute(
       "href",
-      "/dashboard/security"
+      "/dashboard/security",
     );
     expect(screen.getByText(/Existen 3 alertas pendientes en Seguridad/i)).toBeInTheDocument();
     expect(container.querySelector(".metric-empty")).not.toBeNull();
@@ -192,7 +198,7 @@ describe("GlobalMetrics", () => {
     const { container } = render(
       <MemoryRouter>
         <GlobalMetrics />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     const busyElements = container.querySelectorAll("[aria-busy='true']");

@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react";
 
-import Loader from "../../../../components/common/Loader";
+import { Loader } from "@components/ui/Loader";
 import PageHeader from "../../../../components/layout/PageHeader";
 import PageToolbar from "../../../../components/layout/PageToolbar";
 import { useOperationsModule } from "../../hooks/useOperationsModule";

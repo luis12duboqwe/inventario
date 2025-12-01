@@ -1,10 +1,11 @@
 // [PACK27-EXPORT-DROPDOWN-START]
 import { useState } from "react";
 import { exportCsvFromItems, exportCsvAll, exportXlsxIfAvailable } from "@/services/exports";
+import type { ExportItem } from "@/services/exports";
 
 type Props = {
   entity: "customers" | "quotes" | "returns";
-  currentItems: any[];
+  currentItems: ExportItem[];
 };
 
 export default function ExportDropdown({ entity, currentItems }: Props) {

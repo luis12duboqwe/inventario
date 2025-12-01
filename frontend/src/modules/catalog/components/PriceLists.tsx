@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DollarSign, ListChecks, PlusCircle, RefreshCcw, Save, Trash2 } from "lucide-react";
 
-import { listCustomers, type Customer, type Device } from "../../../api";
+import { listCustomers, type Customer } from "@api/customers";
+import { type Device } from "@api/inventory";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 import { useInventoryLayout } from "../../inventory/pages/context/InventoryLayoutContext";
 import { promptCorporateReason } from "../../../utils/corporateReason";
@@ -11,6 +12,7 @@ import {
   type PriceListItem,
   type PriceListListParams,
   type PriceResolution,
+  type PriceResolutionParams,
 } from "../services/priceListsService";
 
 type FormState = {
@@ -62,10 +64,7 @@ function createEmptyItem(): NewItemState {
   };
 }
 
-function normalizeReason(
-  defaultReason: string,
-  onError: (message: string) => void,
-): string | null {
+function normalizeReason(defaultReason: string, onError: (message: string) => void): string | null {
   const value = promptCorporateReason(defaultReason);
   if (value === null) {
     return null;
@@ -199,6 +198,7 @@ function PriceLists(): JSX.Element {
   }, [dashboard]);
 
   const loadPriceLists = useCallback(async () => {
+    if (!dashboard.token) return;
     setLoading(true);
     try {
       const params: PriceListListParams = { includeItems: true };
@@ -222,7 +222,7 @@ function PriceLists(): JSX.Element {
         if (current && lists.some((list) => list.id === current)) {
           return current;
         }
-        return lists[0].id;
+        return lists[0]?.id ?? null;
       });
     } catch (error) {
       const message =
@@ -234,7 +234,13 @@ function PriceLists(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [dashboard, filters.customerId, filters.status, filters.storeId, inventory.module.selectedStoreId]);
+  }, [
+    dashboard,
+    filters.customerId,
+    filters.status,
+    filters.storeId,
+    inventory.module.selectedStoreId,
+  ]);
 
   useEffect(() => {
     void loadCustomers();
@@ -274,10 +280,7 @@ function PriceLists(): JSX.Element {
     setFilters((current) => ({ ...current, ...patch }));
   };
 
-  const handleFormChange = (
-    field: keyof FormState,
-    value: string | number | boolean | null,
-  ) => {
+  const handleFormChange = (field: keyof FormState, value: string | number | boolean | null) => {
     setFormState((current) => ({
       ...current,
       [field]: value as FormState[typeof field],
@@ -338,9 +341,7 @@ function PriceLists(): JSX.Element {
       await loadPriceLists();
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "No fue posible guardar la lista de precios.";
+        error instanceof Error ? error.message : "No fue posible guardar la lista de precios.";
       dashboard.pushToast({ message, variant: "error" });
       dashboard.setError(message);
     } finally {
@@ -355,9 +356,8 @@ function PriceLists(): JSX.Element {
     if (!window.confirm(`¿Eliminar la lista "${selectedList.name}"?`)) {
       return;
     }
-    const reason = normalizeReason(
-      `Eliminar lista de precios ${selectedList.name}`,
-      (message) => dashboard.pushToast({ message, variant: "error" }),
+    const reason = normalizeReason(`Eliminar lista de precios ${selectedList.name}`, (message) =>
+      dashboard.pushToast({ message, variant: "error" }),
     );
     if (!reason) {
       return;
@@ -370,9 +370,7 @@ function PriceLists(): JSX.Element {
       await loadPriceLists();
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "No fue posible eliminar la lista de precios.";
+        error instanceof Error ? error.message : "No fue posible eliminar la lista de precios.";
       dashboard.pushToast({ message, variant: "error" });
       dashboard.setError(message);
     } finally {
@@ -398,7 +396,10 @@ function PriceLists(): JSX.Element {
 
   const handleAddItem = async () => {
     if (!selectedList) {
-      dashboard.pushToast({ message: "Selecciona una lista para agregar productos.", variant: "error" });
+      dashboard.pushToast({
+        message: "Selecciona una lista para agregar productos.",
+        variant: "error",
+      });
       return;
     }
     if (!newItemState.deviceId) {
@@ -415,9 +416,8 @@ function PriceLists(): JSX.Element {
       dashboard.pushToast({ message: "El descuento debe estar entre 0 y 100%", variant: "error" });
       return;
     }
-    const reason = normalizeReason(
-      `Agregar producto a ${selectedList.name}`,
-      (message) => dashboard.pushToast({ message, variant: "error" }),
+    const reason = normalizeReason(`Agregar producto a ${selectedList.name}`, (message) =>
+      dashboard.pushToast({ message, variant: "error" }),
     );
     if (!reason) {
       return;
@@ -442,9 +442,7 @@ function PriceLists(): JSX.Element {
       setSelectedListId(selectedList.id);
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "No fue posible agregar el producto a la lista.";
+        error instanceof Error ? error.message : "No fue posible agregar el producto a la lista.";
       dashboard.pushToast({ message, variant: "error" });
       dashboard.setError(message);
     } finally {
@@ -482,9 +480,8 @@ function PriceLists(): JSX.Element {
       dashboard.pushToast({ message: "El descuento debe estar entre 0 y 100%", variant: "error" });
       return;
     }
-    const reason = normalizeReason(
-      `Actualizar precio de ${item.device_id}`,
-      (message) => dashboard.pushToast({ message, variant: "error" }),
+    const reason = normalizeReason(`Actualizar precio de ${item.device_id}`, (message) =>
+      dashboard.pushToast({ message, variant: "error" }),
     );
     if (!reason) {
       return;
@@ -521,9 +518,8 @@ function PriceLists(): JSX.Element {
     if (!window.confirm("¿Eliminar este producto de la lista de precios?")) {
       return;
     }
-    const reason = normalizeReason(
-      `Eliminar precio de ${item.device_id}`,
-      (message) => dashboard.pushToast({ message, variant: "error" }),
+    const reason = normalizeReason(`Eliminar precio de ${item.device_id}`, (message) =>
+      dashboard.pushToast({ message, variant: "error" }),
     );
     if (!reason) {
       return;
@@ -536,9 +532,7 @@ function PriceLists(): JSX.Element {
       setSelectedListId((current) => current ?? selectedList?.id ?? null);
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "No fue posible eliminar el producto de la lista.";
+        error instanceof Error ? error.message : "No fue posible eliminar el producto de la lista.";
       dashboard.pushToast({ message, variant: "error" });
       dashboard.setError(message);
     } finally {
@@ -548,19 +542,29 @@ function PriceLists(): JSX.Element {
 
   const handleResolvePrice = async () => {
     if (!resolutionInput.deviceId) {
-      dashboard.pushToast({ message: "Selecciona un dispositivo para simular el precio.", variant: "error" });
+      dashboard.pushToast({
+        message: "Selecciona un dispositivo para simular el precio.",
+        variant: "error",
+      });
       return;
     }
+    if (!dashboard.token) return;
+
     setResolutionLoading(true);
     try {
+      const params: PriceResolutionParams = {
+        deviceId: Number(resolutionInput.deviceId),
+        storeId: resolutionInput.storeId ? Number(resolutionInput.storeId) : null,
+        customerId: resolutionInput.customerId ? Number(resolutionInput.customerId) : null,
+      };
+      const defaultPrice = normalizeNumber(resolutionInput.defaultPrice);
+      if (defaultPrice !== null) {
+        params.defaultPrice = defaultPrice;
+      }
+
       const result = await priceListsService.resolve(
         dashboard.token,
-        {
-          deviceId: Number(resolutionInput.deviceId),
-          storeId: resolutionInput.storeId ? Number(resolutionInput.storeId) : undefined,
-          customerId: resolutionInput.customerId ? Number(resolutionInput.customerId) : undefined,
-          defaultPrice: normalizeNumber(resolutionInput.defaultPrice) ?? undefined,
-        },
+        params,
         DEFAULT_RESOLUTION_REASON,
       );
       setResolutionResult(result);
@@ -589,8 +593,8 @@ function PriceLists(): JSX.Element {
           <div>
             <h2>Listas de precios corporativas</h2>
             <p>
-              Administra reglas de precios por sucursal y cliente para priorizar tarifas corporativas sin
-              afectar el catálogo base.
+              Administra reglas de precios por sucursal y cliente para priorizar tarifas
+              corporativas sin afectar el catálogo base.
             </p>
           </div>
         </div>
@@ -614,7 +618,9 @@ function PriceLists(): JSX.Element {
           >
             <option value="">Todas</option>
             {inventory.module.stores.map((store) => (
-              <option key={store.id} value={store.id}>{store.name}</option>
+              <option key={store.id} value={store.id}>
+                {store.name}
+              </option>
             ))}
           </select>
         </div>
@@ -627,7 +633,9 @@ function PriceLists(): JSX.Element {
           >
             <option value="">Todos</option>
             {customers.map((customer) => (
-              <option key={customer.id} value={customer.id}>{customer.nombre}</option>
+              <option key={customer.id} value={customer.id}>
+                {customer.name}
+              </option>
             ))}
           </select>
         </div>
@@ -645,11 +653,7 @@ function PriceLists(): JSX.Element {
             <option value="inactive">Inactivas</option>
           </select>
         </div>
-        <button
-          type="button"
-          className="price-lists__new"
-          onClick={handleNewList}
-        >
+        <button type="button" className="price-lists__new" onClick={handleNewList}>
           <PlusCircle aria-hidden="true" /> Nueva lista
         </button>
       </section>
@@ -660,7 +664,8 @@ function PriceLists(): JSX.Element {
             <p className="price-lists__empty">Cargando listas de precios…</p>
           ) : priceLists.length === 0 ? (
             <p className="price-lists__empty">
-              No hay listas configuradas todavía. Crea una nueva para comenzar a personalizar precios.
+              No hay listas configuradas todavía. Crea una nueva para comenzar a personalizar
+              precios.
             </p>
           ) : (
             <ul className="price-lists__list">
@@ -734,7 +739,9 @@ function PriceLists(): JSX.Element {
                     >
                       <option value="">Global</option>
                       {inventory.module.stores.map((store) => (
-                        <option key={store.id} value={store.id}>{store.name}</option>
+                        <option key={store.id} value={store.id}>
+                          {store.name}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -752,7 +759,9 @@ function PriceLists(): JSX.Element {
                     >
                       <option value="">Sin cliente</option>
                       {customers.map((customer) => (
-                        <option key={customer.id} value={customer.id}>{customer.nombre}</option>
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -913,7 +922,9 @@ function PriceLists(): JSX.Element {
                               {isEditing ? (
                                 <input
                                   value={editingItemState.price}
-                                  onChange={(event) => handleEditItemChange("price", event.target.value)}
+                                  onChange={(event) =>
+                                    handleEditItemChange("price", event.target.value)
+                                  }
                                 />
                               ) : (
                                 formatCurrency(item.price)
@@ -937,7 +948,9 @@ function PriceLists(): JSX.Element {
                               {isEditing ? (
                                 <input
                                   value={editingItemState.notes}
-                                  onChange={(event) => handleEditItemChange("notes", event.target.value)}
+                                  onChange={(event) =>
+                                    handleEditItemChange("notes", event.target.value)
+                                  }
                                 />
                               ) : item.notes ? (
                                 item.notes
@@ -989,8 +1002,8 @@ function PriceLists(): JSX.Element {
               <div>
                 <h3>Simulador de resolución de precios</h3>
                 <p>
-                  Compara el precio final resultante de las listas activas considerando sucursal, cliente y
-                  descuentos vigentes.
+                  Compara el precio final resultante de las listas activas considerando sucursal,
+                  cliente y descuentos vigentes.
                 </p>
               </div>
             </header>
@@ -1002,7 +1015,10 @@ function PriceLists(): JSX.Element {
                     id="price-lists-resolve-device"
                     value={resolutionInput.deviceId}
                     onChange={(event) =>
-                      setResolutionInput((current) => ({ ...current, deviceId: event.target.value }))
+                      setResolutionInput((current) => ({
+                        ...current,
+                        deviceId: event.target.value,
+                      }))
                     }
                   >
                     <option value="">Selecciona un producto</option>
@@ -1024,7 +1040,9 @@ function PriceLists(): JSX.Element {
                   >
                     <option value="">Automático</option>
                     {inventory.module.stores.map((store) => (
-                      <option key={store.id} value={store.id}>{store.name}</option>
+                      <option key={store.id} value={store.id}>
+                        {store.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -1034,12 +1052,17 @@ function PriceLists(): JSX.Element {
                     id="price-lists-resolve-customer"
                     value={resolutionInput.customerId}
                     onChange={(event) =>
-                      setResolutionInput((current) => ({ ...current, customerId: event.target.value }))
+                      setResolutionInput((current) => ({
+                        ...current,
+                        customerId: event.target.value,
+                      }))
                     }
                   >
                     <option value="">Automático</option>
                     {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>{customer.nombre}</option>
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -1049,7 +1072,10 @@ function PriceLists(): JSX.Element {
                     id="price-lists-resolve-default"
                     value={resolutionInput.defaultPrice}
                     onChange={(event) =>
-                      setResolutionInput((current) => ({ ...current, defaultPrice: event.target.value }))
+                      setResolutionInput((current) => ({
+                        ...current,
+                        defaultPrice: event.target.value,
+                      }))
                     }
                     placeholder="0.00"
                   />
@@ -1068,13 +1094,18 @@ function PriceLists(): JSX.Element {
                   <h4>Resultado</h4>
                   <ul>
                     <li>
-                      Lista aplicada: {resolutionResult.price_list_name ?? "Predeterminada"} ({
-                        resolutionResult.scope
-                      })
+                      Lista aplicada: {resolutionResult.price_list_name ?? "Predeterminada"} (
+                      {resolutionResult.scope})
                     </li>
-                    <li>Precio base: {formatCurrency(resolutionResult.base_price)}</li>
                     <li>
-                      Descuento: {resolutionResult.discount_percentage != null
+                      Precio base:{" "}
+                      {resolutionResult.base_price !== undefined
+                        ? formatCurrency(resolutionResult.base_price)
+                        : "—"}
+                    </li>
+                    <li>
+                      Descuento:{" "}
+                      {resolutionResult.discount_percentage != null
                         ? `${resolutionResult.discount_percentage}%`
                         : "—"}
                     </li>

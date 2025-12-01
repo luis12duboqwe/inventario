@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react";
 
-import Loader from "../../../../components/common/Loader";
+import { Skeleton } from "@components/ui/Skeleton";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 const InventoryTable = lazy(() => import("../../components/InventoryTable"));
@@ -18,14 +18,18 @@ function InventoryProductsTableSection() {
       <header className="card-header">
         <div>
           <h2>Inventario actual</h2>
-          <p className="card-subtitle">Consulta existencias y administra los productos catalogados.</p>
+          <p className="card-subtitle">
+            Consulta existencias y administra los productos catalogados.
+          </p>
         </div>
         <div className="inventory-meta">
-          <span className="muted-text">Mostrando {filteredDevices.length} de {devices.length} dispositivos</span>
+          <span className="muted-text">
+            Mostrando {filteredDevices.length} de {devices.length} dispositivos
+          </span>
           <span className="inventory-last-update">Última actualización: {lastRefreshDisplay}</span>
         </div>
       </header>
-  <Suspense fallback={<Loader message="Cargando tabla de inventario…" variant="overlay" />}>
+      <Suspense fallback={<Skeleton lines={10} />}>
         <InventoryTable
           devices={filteredDevices}
           highlightedDeviceIds={highlightedDeviceIds}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Store } from "../../../api";
+import type { Store } from "@api/inventory";
 
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
@@ -50,7 +50,10 @@ function InternalMovementsPanel({ stores, defaultStoreId = null }: Props) {
   const handleSubmit: React.FormEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
     if (!draft.reason.trim()) {
-      pushToast({ message: "Indica un motivo corporativo para el movimiento interno.", variant: "warning" });
+      pushToast({
+        message: "Indica un motivo corporativo para el movimiento interno.",
+        variant: "warning",
+      });
       return;
     }
     const id = crypto.randomUUID();
@@ -157,9 +160,13 @@ function InternalMovementsPanel({ stores, defaultStoreId = null }: Props) {
                   <tr key={record.id}>
                     <td data-label="Fecha">{record.createdAt.toLocaleString("es-HN")}</td>
                     <td data-label="Sucursal">
-                      {record.storeId === "general" ? "Todas" : storeLookup.get(record.storeId) ?? "Desconocida"}
+                      {record.storeId === "general"
+                        ? "Todas"
+                        : storeLookup.get(record.storeId) ?? "Desconocida"}
                     </td>
-                    <td data-label="Tipo">{MOVEMENT_TYPES.find((option) => option.id === record.movementType)?.label}</td>
+                    <td data-label="Tipo">
+                      {MOVEMENT_TYPES.find((option) => option.id === record.movementType)?.label}
+                    </td>
                     <td data-label="Referencia">{record.reference || "—"}</td>
                     <td data-label="Motivo">{record.reason}</td>
                   </tr>

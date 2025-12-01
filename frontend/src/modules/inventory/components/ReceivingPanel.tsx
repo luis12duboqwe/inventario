@@ -8,8 +8,8 @@ import type {
   InventoryReceivingLineInput,
   InventoryReceivingRequest,
   InventoryReceivingResult,
-  TransferOrder,
-} from "../../../api";
+} from "@api/inventory";
+import type { TransferOrder } from "@api/transfers";
 import normalizeIdentifier from "./utils/normalizeIdentifier";
 
 type DraftEntry = InventoryReceivingLineInput & {
@@ -27,14 +27,8 @@ type Props = {
 };
 
 function ReceivingPanel({ title = "Recepción rápida" }: Props) {
-  const {
-    token,
-    selectedStoreId,
-    pushToast,
-    setError,
-    refreshInventoryAfterTransfer,
-    stores,
-  } = useDashboard();
+  const { token, selectedStoreId, pushToast, setError, refreshInventoryAfterTransfer, stores } =
+    useDashboard();
   const [note, setNote] = useState("Recepción inventario");
   const [responsible, setResponsible] = useState("");
   const [reference, setReference] = useState("");
@@ -44,7 +38,9 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
   const [manualCost, setManualCost] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<InventoryReceivingResult | null>(null);
-  const [distributionDrafts, setDistributionDrafts] = useState<Record<string, DistributionDraft>>({});
+  const [distributionDrafts, setDistributionDrafts] = useState<Record<string, DistributionDraft>>(
+    {},
+  );
 
   const totalQuantity = useMemo(
     () => entries.reduce((sum, entry) => sum + (entry.quantity ?? 0), 0),
@@ -85,34 +81,28 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
     });
   }, [selectedStoreId]);
 
-  const handleScan = useCallback(
-    async (raw: string) => {
-      const trimmed = raw.trim();
-      if (!trimmed) {
-        return "Lectura vacía";
+  const handleScan = useCallback(async (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return "Lectura vacía";
+    }
+    let added = false;
+    setEntries((prev) => {
+      if (prev.some((item) => item.identifier === trimmed)) {
+        return prev;
       }
-      let added = false;
-      setEntries((prev) => {
-        if (prev.some((item) => item.identifier === trimmed)) {
-          return prev;
-        }
-        const base = normalizeIdentifier(trimmed);
-        added = true;
-        return [
-          ...prev,
-          { ...base, identifier: trimmed, quantity: 1, distributions: [] },
-        ];
-      });
-      if (added) {
-        setDistributionDrafts((current) => ({
-          ...current,
-          [trimmed]: current[trimmed] ?? { storeId: "", quantity: 1 },
-        }));
-      }
-      return { label: trimmed };
-    },
-    [],
-  );
+      const base = normalizeIdentifier(trimmed);
+      added = true;
+      return [...prev, { ...base, identifier: trimmed, quantity: 1, distributions: [] }];
+    });
+    if (added) {
+      setDistributionDrafts((current) => ({
+        ...current,
+        [trimmed]: current[trimmed] ?? { storeId: "", quantity: 1 },
+      }));
+    }
+    return { label: trimmed };
+  }, []);
 
   const handleAddManual = useCallback(() => {
     const trimmed = manualIdentifier.trim();
@@ -132,7 +122,7 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
           ...base,
           identifier: trimmed,
           quantity: Math.max(1, manualQuantity),
-          unit_cost: manualCost ? Number.parseFloat(manualCost) : undefined,
+          ...(manualCost ? { unit_cost: Number.parseFloat(manualCost) } : {}),
           distributions: [],
         },
       ];
@@ -180,17 +170,21 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
 
   const handleUpdateCost = useCallback((identifier: string, value: string) => {
     setEntries((prev) =>
-      prev.map((entry) =>
-        entry.identifier === identifier
-          ? {
-              ...entry,
-              unit_cost:
-                value.trim().length === 0 || Number.isNaN(Number.parseFloat(value))
-                  ? undefined
-                  : Number.parseFloat(value),
-            }
-          : entry,
-      ),
+      prev.map((entry) => {
+        if (entry.identifier !== identifier) {
+          return entry;
+        }
+        const cost =
+          value.trim().length === 0 || Number.isNaN(Number.parseFloat(value))
+            ? undefined
+            : Number.parseFloat(value);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { unit_cost, ...rest } = entry;
+        return {
+          ...rest,
+          ...(cost !== undefined ? { unit_cost: cost } : {}),
+        };
+      }),
     );
   }, []);
 
@@ -232,11 +226,17 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
       const storeId = draft.storeId;
       const quantity = Math.max(1, draft.quantity);
       if (storeId === "") {
-        pushToast({ message: "Selecciona una sucursal destino para distribuir.", variant: "warning" });
+        pushToast({
+          message: "Selecciona una sucursal destino para distribuir.",
+          variant: "warning",
+        });
         return;
       }
       if (selectedStoreId && storeId === selectedStoreId) {
-        pushToast({ message: "Selecciona una sucursal distinta a la de recepción.", variant: "warning" });
+        pushToast({
+          message: "Selecciona una sucursal distinta a la de recepción.",
+          variant: "warning",
+        });
         return;
       }
       let errorMessage: string | null = null;
@@ -251,10 +251,7 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
             errorMessage = "Ya asignaste esta sucursal para el identificador.";
             return entry;
           }
-          const assigned = existing.reduce(
-            (sum, allocation) => sum + allocation.quantity,
-            0,
-          );
+          const assigned = existing.reduce((sum, allocation) => sum + allocation.quantity, 0);
           const available = Math.max(0, (entry.quantity ?? 1) - assigned);
           if (quantity > available) {
             errorMessage = "La cantidad asignada supera lo disponible para transferir.";
@@ -276,7 +273,10 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
           ...current,
           [identifier]: { storeId: "", quantity: 1 },
         }));
-        pushToast({ message: "Distribución registrada para la transferencia automática.", variant: "success" });
+        pushToast({
+          message: "Distribución registrada para la transferencia automática.",
+          variant: "success",
+        });
       }
     },
     [distributionDrafts, pushToast, selectedStoreId],
@@ -301,11 +301,17 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (!selectedStoreId) {
-        pushToast({ message: "Selecciona una sucursal para registrar la recepción.", variant: "error" });
+        pushToast({
+          message: "Selecciona una sucursal para registrar la recepción.",
+          variant: "error",
+        });
         return;
       }
       if (entries.length === 0) {
-        pushToast({ message: "Agrega al menos un identificador antes de continuar.", variant: "warning" });
+        pushToast({
+          message: "Agrega al menos un identificador antes de continuar.",
+          variant: "warning",
+        });
         return;
       }
       const trimmedNote = note.trim();
@@ -316,20 +322,18 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
       const request: InventoryReceivingRequest = {
         store_id: selectedStoreId,
         note: trimmedNote,
-        responsible: responsible.trim() || undefined,
-        reference: reference.trim() || undefined,
+        ...(responsible.trim() ? { responsible: responsible.trim() } : {}),
+        ...(reference.trim() ? { reference: reference.trim() } : {}),
         lines: entries.map((entry) => {
           const base = normalizeIdentifier(entry.identifier);
           const normalizedQuantity = Math.max(1, entry.quantity ?? 1);
           const distributions =
-            entry.distributions && entry.distributions.length > 0
-              ? entry.distributions
-              : undefined;
+            entry.distributions && entry.distributions.length > 0 ? entry.distributions : undefined;
           return {
             ...base,
             quantity: normalizedQuantity,
-            unit_cost: entry.unit_cost,
-            distributions,
+            ...(entry.unit_cost !== undefined ? { unit_cost: entry.unit_cost } : {}),
+            ...(distributions ? { distributions } : {}),
           } satisfies InventoryReceivingLineInput;
         }),
       };
@@ -516,13 +520,22 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
                               {entry.distributions.map((allocation) => (
                                 <li key={`${entry.identifier}-${allocation.store_id}`}>
                                   <span className="tag">
-                                    {storeLookup.get(allocation.store_id) ?? `Sucursal #${allocation.store_id}`} · {allocation.quantity}
+                                    {storeLookup.get(allocation.store_id) ??
+                                      `Sucursal #${allocation.store_id}`}{" "}
+                                    · {allocation.quantity}
                                   </span>
                                   <button
                                     type="button"
                                     className="ghost"
-                                    onClick={() => handleRemoveDistribution(entry.identifier, allocation.store_id)}
-                                    aria-label={`Quitar distribución a ${storeLookup.get(allocation.store_id) ?? allocation.store_id}`}
+                                    onClick={() =>
+                                      handleRemoveDistribution(
+                                        entry.identifier,
+                                        allocation.store_id,
+                                      )
+                                    }
+                                    aria-label={`Quitar distribución a ${
+                                      storeLookup.get(allocation.store_id) ?? allocation.store_id
+                                    }`}
                                   >
                                     Quitar
                                   </button>
@@ -547,7 +560,9 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
                                 handleDistributionDraftChange(
                                   entry.identifier,
                                   "storeId",
-                                  event.target.value === "" ? "" : Number.parseInt(event.target.value, 10),
+                                  event.target.value === ""
+                                    ? ""
+                                    : Number.parseInt(event.target.value, 10),
                                 )
                               }
                             >
@@ -562,7 +577,9 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
                               type="number"
                               min={1}
                               step={1}
-                              value={(distributionDrafts[entry.identifier]?.quantity ?? 1).toString()}
+                              value={(
+                                distributionDrafts[entry.identifier]?.quantity ?? 1
+                              ).toString()}
                               onChange={(event) =>
                                 handleDistributionDraftChange(
                                   entry.identifier,
@@ -581,7 +598,9 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
                             </button>
                           </div>
                         ) : (
-                          <p className="muted-text">Registra más sucursales para distribuir inventario.</p>
+                          <p className="muted-text">
+                            Registra más sucursales para distribuir inventario.
+                          </p>
                         )}
                       </div>
                     </td>
@@ -616,12 +635,14 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
         <section className="card-section" aria-live="polite">
           <h3>Última recepción</h3>
           <p className="muted-text">
-            {result.processed.length} elementos registrados · {result.totals.total_quantity} unidades.
+            {result.processed.length} elementos registrados · {result.totals.total_quantity}{" "}
+            unidades.
           </p>
           <ul className="receipt-list">
             {result.processed.map((item) => (
               <li key={`${item.identifier}-${item.device_id}`}>
-                <strong>{item.identifier}</strong> — movimiento #{item.movement.id} en {item.movement.sucursal_destino ?? "sucursal"}
+                <strong>{item.identifier}</strong> — movimiento #{item.movement.id} en{" "}
+                {item.movement.sucursal_destino ?? "sucursal"}
               </li>
             ))}
           </ul>
@@ -631,7 +652,10 @@ function ReceivingPanel({ title = "Recepción rápida" }: Props) {
               <ul>
                 {result.auto_transfers.map((transfer: TransferOrder) => (
                   <li key={transfer.id}>
-                    Transferencia #{transfer.id} → {storeLookup.get(transfer.destination_store_id) ?? `Sucursal #${transfer.destination_store_id}`} · Estado: {transfer.status}
+                    Transferencia #{transfer.id} →{" "}
+                    {storeLookup.get(transfer.destination_store_id) ??
+                      `Sucursal #${transfer.destination_store_id}`}{" "}
+                    · Estado: {transfer.status}
                   </li>
                 ))}
               </ul>

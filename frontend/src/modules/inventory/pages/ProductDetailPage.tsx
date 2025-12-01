@@ -52,7 +52,7 @@ export default function ProductDetailPage() {
   }, []);
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div className="product-detail-container">
       <ProductHeader
         name={product?.name ?? ""}
         sku={product?.sku ?? ""}
@@ -60,16 +60,20 @@ export default function ProductDetailPage() {
         onPrint={handlePrint}
         onExportPDF={handleExportPDF}
       />
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
-        <div style={{ display: "grid", gap: 12 }}>
+      <div className="product-detail-grid">
+        <div className="product-detail-column">
           <ProductMediaGallery images={product?.images ?? []} />
           <ProductVariantsTable items={product?.variants ?? []} />
           <ProductActivityTimeline items={product?.events ?? []} />
           <ProductNotes value={product?.note ?? ""} />
         </div>
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="product-detail-column">
           <ProductAttributes items={product?.attributes ?? []} />
-          <ProductPricingCard base={product?.price ?? 0} cost={product?.cost ?? 0} margin={product?.margin ?? 0} />
+          <ProductPricingCard
+            base={product?.price ?? 0}
+            cost={product?.cost ?? 0}
+            margin={product?.margin ?? 0}
+          />
           <ProductStockPerStore items={product?.stockByStore ?? []} />
           <ProductRelatedProducts items={product?.related ?? []} onOpen={handleOpenRelated} />
         </div>

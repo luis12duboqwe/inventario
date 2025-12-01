@@ -2,18 +2,11 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SaleHistorySearchResponse } from "../../../../api";
+import type { SaleHistorySearchResponse } from "@api/sales";
 
 const searchSalesHistoryMock = vi.hoisted(() => vi.fn());
 
-const apiModuleId = vi.hoisted(() => new URL("../../../../api.ts", import.meta.url).pathname);
-
-vi.mock("../../../../api", () => ({
-  __esModule: true,
-  searchSalesHistory: searchSalesHistoryMock,
-}));
-
-vi.mock(apiModuleId, () => ({
+vi.mock("@api/sales", () => ({
   __esModule: true,
   searchSalesHistory: searchSalesHistoryMock,
 }));

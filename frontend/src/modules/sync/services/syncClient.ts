@@ -1,5 +1,5 @@
 // [PACK35-frontend]
-import { enqueueSyncQueueEvents, type SyncQueueEventInput } from "../../../api";
+import { enqueueSyncQueueEvents, type SyncQueueEventInput } from "@api/sync";
 
 export type LocalSyncQueueStatus = "pending" | "sending" | "sent" | "failed";
 

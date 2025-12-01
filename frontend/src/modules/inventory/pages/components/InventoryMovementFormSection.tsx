@@ -2,8 +2,8 @@ import { Suspense, lazy } from "react";
 
 import { FileSpreadsheet } from "lucide-react";
 
-import Button from "../../../../shared/components/ui/Button";
-import Loader from "../../../../components/common/Loader";
+import Button from "@components/ui/Button";
+import { Loader } from "@components/ui/Loader";
 import { useInventoryLayout } from "../context/InventoryLayoutContext";
 
 const MovementForm = lazy(() => import("../../components/MovementForm"));

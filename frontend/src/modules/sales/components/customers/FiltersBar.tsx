@@ -14,24 +14,24 @@ type Props = {
 export default function FiltersBar({ value, onChange }: Props) {
   const current = value ?? {};
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8 }}>
+    <div className="customer-filters-bar">
       <input
         placeholder="Nombre/Telefono/Email"
         value={current.query ?? ""}
         onChange={(event) => onChange({ ...current, query: event.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="customer-filters-input"
       />
       <input
         placeholder="Etiqueta"
         value={current.tag ?? ""}
         onChange={(event) => onChange({ ...current, tag: event.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="customer-filters-input"
       />
       <input
         placeholder="Tier"
         value={current.tier ?? ""}
         onChange={(event) => onChange({ ...current, tier: event.target.value })}
-        style={{ padding: 8, borderRadius: 8 }}
+        className="customer-filters-input"
       />
     </div>
   );

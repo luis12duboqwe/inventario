@@ -178,7 +178,7 @@ function OrderDetailPage() {
   };
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div className="order-detail-container">
       <OrderHeader
         number={order.number}
         status={order.status}
@@ -189,28 +189,16 @@ function OrderDetailPage() {
         onMarkPaid={() => setPaymentOpen(true)}
       />
 
-      {message ? (
-        <div
-          style={{
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(34, 197, 94, 0.4)",
-            background: "rgba(34, 197, 94, 0.08)",
-            color: "#bbf7d0",
-          }}
-        >
-          {message}
-        </div>
-      ) : null}
+      {message ? <div className="order-detail-message">{message}</div> : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
-        <div style={{ display: "grid", gap: 12 }}>
+      <div className="order-detail-grid">
+        <div className="order-detail-main-column">
           <OrderItemsTable items={order.items} />
           <OrderNotes value={order.note} />
           <TransactionsTimeline items={order.transactions} />
         </div>
 
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="order-detail-side-column">
           <OrderCustomerCard customer={order.customer} />
           <CustomerDebtCard totalDebt={120000} creditLimit={250000} />
           <SettlementCard total={totals.total} paid={totals.paid} />
@@ -226,10 +214,7 @@ function OrderDetailPage() {
           <OrderShipmentCard shipment={order.shipment} />
           <OrderTimeline items={order.events} />
           <OrderAttachments items={order.attachments} />
-          <button
-            onClick={() => setReturnOpen(true)}
-            style={{ padding: "8px 12px", borderRadius: 8, background: "#f59e0b", color: "#0b1220", border: 0 }}
-          >
+          <button onClick={() => setReturnOpen(true)} className="order-detail-return-btn">
             Procesar devolución
           </button>
         </div>
@@ -244,12 +229,39 @@ function OrderDetailPage() {
       />
 
       <OrdersEmailInvoiceModal open={emailOpen} onClose={() => setEmailOpen(false)} />
-      <OrdersCancelModal open={cancelOpen} onClose={() => setCancelOpen(false)} onConfirm={handleCancel} />
-      <OrdersPaymentCaptureModal open={captureOpen} onClose={() => setCaptureOpen(false)} onSubmit={handleCapturePayment} />
-      <OrdersReturnModal open={returnOpen} onClose={() => setReturnOpen(false)} onSubmit={handleRegisterReturn} />
-      <PaymentModal open={paymentOpen} orderId={order.id} onClose={() => setPaymentOpen(false)} onSubmit={handleSubmitPayment} />
-      <RefundModal open={refundOpen} orderId={order.id} onClose={() => setRefundOpen(false)} onSubmit={handleSubmitRefund} />
-      <CreditNoteModal open={creditNoteOpen} orderId={order.id} onClose={() => setCreditNoteOpen(false)} onSubmit={handleSubmitCreditNote} />
+      <OrdersCancelModal
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        onConfirm={handleCancel}
+      />
+      <OrdersPaymentCaptureModal
+        open={captureOpen}
+        onClose={() => setCaptureOpen(false)}
+        onSubmit={handleCapturePayment}
+      />
+      <OrdersReturnModal
+        open={returnOpen}
+        onClose={() => setReturnOpen(false)}
+        onSubmit={handleRegisterReturn}
+      />
+      <PaymentModal
+        open={paymentOpen}
+        orderId={order.id}
+        onClose={() => setPaymentOpen(false)}
+        onSubmit={handleSubmitPayment}
+      />
+      <RefundModal
+        open={refundOpen}
+        orderId={order.id}
+        onClose={() => setRefundOpen(false)}
+        onSubmit={handleSubmitRefund}
+      />
+      <CreditNoteModal
+        open={creditNoteOpen}
+        orderId={order.id}
+        onClose={() => setCreditNoteOpen(false)}
+        onSubmit={handleSubmitCreditNote}
+      />
     </div>
   );
 }

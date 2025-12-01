@@ -1,15 +1,15 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AuditLogEntry,
-  AuditLogFilters,
-  AuditReminderEntry,
-  AuditReminderSummary,
+  type AuditLogEntry,
+  type AuditLogFilters,
+  type AuditReminderEntry,
+  type AuditReminderSummary,
   acknowledgeAuditAlert,
   downloadAuditPdf,
   exportAuditLogsCsv,
   getAuditLogs,
   getAuditReminders,
-} from "../../../api";
+} from "@api/audit";
 import { useDashboard } from "../../dashboard/context/DashboardContext";
 
 type Props = {
@@ -72,7 +72,7 @@ function AuditLog({ token }: Props) {
       { value: "respaldos", label: "Respaldos" },
       { value: "general", label: "General" },
     ],
-    []
+    [],
   );
 
   const clearReminderInterval = useCallback(() => {
@@ -96,15 +96,18 @@ function AuditLog({ token }: Props) {
       if (typeof limitValue === "number" && !Number.isNaN(limitValue)) {
         filters.limit = limitValue;
       }
-      const normalizedAction = overrides.action ?? (actionFilter.trim() ? actionFilter.trim() : undefined);
+      const normalizedAction =
+        overrides.action ?? (actionFilter.trim() ? actionFilter.trim() : undefined);
       if (normalizedAction) {
         filters.action = normalizedAction;
       }
-      const normalizedEntity = overrides.entity_type ?? (entityFilter.trim() ? entityFilter.trim() : undefined);
+      const normalizedEntity =
+        overrides.entity_type ?? (entityFilter.trim() ? entityFilter.trim() : undefined);
       if (normalizedEntity) {
         filters.entity_type = normalizedEntity;
       }
-      const normalizedModule = overrides.module ?? (moduleFilter.trim() ? moduleFilter.trim() : undefined);
+      const normalizedModule =
+        overrides.module ?? (moduleFilter.trim() ? moduleFilter.trim() : undefined);
       if (normalizedModule) {
         filters.module = normalizedModule;
       }
@@ -119,7 +122,11 @@ function AuditLog({ token }: Props) {
           }
         }
       }
-      if (typeof effectiveUser === "number" && Number.isFinite(effectiveUser) && effectiveUser > 0) {
+      if (
+        typeof effectiveUser === "number" &&
+        Number.isFinite(effectiveUser) &&
+        effectiveUser > 0
+      ) {
         filters.performed_by_id = effectiveUser;
       }
       const normalizedSeverity = overrides.severity ?? (severityFilter || undefined);
@@ -136,7 +143,7 @@ function AuditLog({ token }: Props) {
       }
       return filters;
     },
-    [actionFilter, dateFrom, dateTo, entityFilter, limit, moduleFilter, severityFilter, userFilter]
+    [actionFilter, dateFrom, dateTo, entityFilter, limit, moduleFilter, severityFilter, userFilter],
   );
 
   const loadLogs = useCallback(
@@ -173,7 +180,7 @@ function AuditLog({ token }: Props) {
         }
       }
     },
-    [buildCurrentFilters, pushToast, token]
+    [buildCurrentFilters, pushToast, token],
   );
 
   const loadReminders = useCallback(
@@ -199,7 +206,7 @@ function AuditLog({ token }: Props) {
             const previousPending = new Map(
               previous.persistent
                 .filter((entry) => entry.status === "pending")
-                .map((entry) => [`${entry.entity_type}:${entry.entity_id}`, entry.last_seen])
+                .map((entry) => [`${entry.entity_type}:${entry.entity_id}`, entry.last_seen]),
             );
             hasNewPending = data.persistent.some((entry) => {
               if (entry.status !== "pending") {
@@ -217,7 +224,7 @@ function AuditLog({ token }: Props) {
               .sort((a, b) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime())[0];
             const message = mostRecent
               ? `Alerta pendiente: ${mostRecent.entity_type} #${mostRecent.entity_id} (${new Date(
-                  mostRecent.last_seen
+                  mostRecent.last_seen,
                 ).toLocaleTimeString("es-HN")})`
               : `Tienes ${data.pending_count} alertas críticas pendientes`;
             pushToast({ message, variant: "warning" });
@@ -236,7 +243,7 @@ function AuditLog({ token }: Props) {
         }
       }
     },
-    [pushToast, token]
+    [pushToast, token],
   );
 
   const startReminderInterval = useCallback(() => {
@@ -250,19 +257,28 @@ function AuditLog({ token }: Props) {
 
   const requestReason = useCallback(
     (defaultReason: string): string | null => {
-      const value = window.prompt("Ingresa el motivo corporativo (X-Reason ≥ 5 caracteres)", defaultReason);
+      const value = window.prompt(
+        "Ingresa el motivo corporativo (X-Reason ≥ 5 caracteres)",
+        defaultReason,
+      );
       if (!value) {
-        pushToast({ message: "Acción cancelada: se requiere motivo corporativo.", variant: "info" });
+        pushToast({
+          message: "Acción cancelada: se requiere motivo corporativo.",
+          variant: "info",
+        });
         return null;
       }
       const trimmed = value.trim();
       if (trimmed.length < 5) {
-        pushToast({ message: "El motivo corporativo debe tener al menos 5 caracteres.", variant: "error" });
+        pushToast({
+          message: "El motivo corporativo debe tener al menos 5 caracteres.",
+          variant: "error",
+        });
         return null;
       }
       return trimmed;
     },
-    [pushToast]
+    [pushToast],
   );
 
   const handleSnooze = useCallback(() => {
@@ -299,7 +315,7 @@ function AuditLog({ token }: Props) {
       event.preventDefault();
       void loadLogs({ notify: false });
     },
-    [loadLogs]
+    [loadLogs],
   );
 
   const handleDownload = useCallback(
@@ -333,7 +349,7 @@ function AuditLog({ token }: Props) {
         setDownloading(false);
       }
     },
-    [buildCurrentFilters, pushToast, requestReason, token]
+    [buildCurrentFilters, pushToast, requestReason, token],
   );
 
   const handleSelectReminder = useCallback((entry: AuditReminderEntry) => {
@@ -392,7 +408,7 @@ function AuditLog({ token }: Props) {
         setAcknowledging(false);
       }
     },
-    [ackNote, ackReason, loadLogs, loadReminders, pushToast, selectedReminder, token]
+    [ackNote, ackReason, loadLogs, loadReminders, pushToast, selectedReminder, token],
   );
 
   const severitySummary = useMemo(() => {
@@ -405,13 +421,13 @@ function AuditLog({ token }: Props) {
         }
         return acc;
       },
-      { critical: 0, warning: 0 }
+      { critical: 0, warning: 0 },
     );
   }, [logs]);
 
   const highlightedLogs = useMemo(
     () => logs.filter((log) => log.severity !== "info").slice(0, 3),
-    [logs]
+    [logs],
   );
 
   const pendingReminders = useMemo(() => {
@@ -507,7 +523,9 @@ function AuditLog({ token }: Props) {
     <section className="card audit-card fade-in">
       <header className="card-header">
         <h2 className="accent-title">Bitácora de auditoría</h2>
-        <p className="card-subtitle">Revisión en tiempo real de acciones sensibles registradas por el backend.</p>
+        <p className="card-subtitle">
+          Revisión en tiempo real de acciones sensibles registradas por el backend.
+        </p>
       </header>
       <form className="audit-filters" onSubmit={handleFilter}>
         <label>
@@ -550,7 +568,12 @@ function AuditLog({ token }: Props) {
         </label>
         <label>
           <span>Severidad</span>
-          <select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as AuditLogEntry["severity"] | "")}> 
+          <select
+            value={severityFilter}
+            onChange={(event) =>
+              setSeverityFilter(event.target.value as AuditLogEntry["severity"] | "")
+            }
+          >
             <option value="">Todas</option>
             <option value="critical">Crítica</option>
             <option value="warning">Preventiva</option>
@@ -568,7 +591,11 @@ function AuditLog({ token }: Props) {
         </label>
         <label>
           <span>Desde</span>
-          <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => setDateFrom(event.target.value)}
+          />
         </label>
         <label>
           <span>Hasta</span>
@@ -603,7 +630,7 @@ function AuditLog({ token }: Props) {
         <div className="audit-log-table">
           {severitySummary.critical > 0 ? (
             <div className="alert error">
-              🔐 Se detectaron {severitySummary.critical} eventos críticos. {" "}
+              🔐 Se detectaron {severitySummary.critical} eventos críticos.{" "}
               {highlightedLogs.length > 0
                 ? highlightedLogs
                     .map((log) => `${log.action} (${new Date(log.created_at).toLocaleString()})`)
@@ -612,10 +639,13 @@ function AuditLog({ token }: Props) {
             </div>
           ) : severitySummary.warning > 0 ? (
             <div className="alert warning">
-              ⚠️ {severitySummary.warning} acciones preventivas registradas en este rango. Supervisa los accesos sensibles.
+              ⚠️ {severitySummary.warning} acciones preventivas registradas en este rango. Supervisa
+              los accesos sensibles.
             </div>
           ) : (
-            <span className="pill success">Sin alertas de seguridad en la ventana seleccionada</span>
+            <span className="pill success">
+              Sin alertas de seguridad en la ventana seleccionada
+            </span>
           )}
           <table>
             <thead>
@@ -643,12 +673,14 @@ function AuditLog({ token }: Props) {
                 >
                   <td>{new Date(log.created_at).toLocaleString()}</td>
                   <td>
-                    <span aria-hidden="true" role="img" style={{ marginRight: "0.5rem" }}>
+                    <span aria-hidden="true" role="img" className="audit-log-icon">
                       {resolveActionIcon(log.action)}
                     </span>
                     <span>{log.action}</span>
                   </td>
-                  <td>{log.entity_type} #{log.entity_id}</td>
+                  <td>
+                    {log.entity_type} #{log.entity_id}
+                  </td>
                   <td>{log.module ?? "general"}</td>
                   <td>{log.performed_by_id ?? "-"}</td>
                   <td>{log.details ?? "-"}</td>
@@ -668,7 +700,8 @@ function AuditLog({ token }: Props) {
         <header className="reminder-header">
           <h3>Recordatorios de alertas críticas</h3>
           <p className="muted-text">
-            Umbral corporativo: {reminders?.threshold_minutes ?? 0} minutos · Mínimo de repeticiones: {reminders?.min_occurrences ?? 0}
+            Umbral corporativo: {reminders?.threshold_minutes ?? 0} minutos · Mínimo de
+            repeticiones: {reminders?.min_occurrences ?? 0}
           </p>
         </header>
         <div className="reminder-actions">
@@ -686,7 +719,12 @@ function AuditLog({ token }: Props) {
         </div>
         {snoozedUntil ? (
           <p className="muted-text">
-            Recordatorios pausados hasta {new Date(snoozedUntil).toLocaleTimeString("es-HN", { hour: "2-digit", minute: "2-digit" })}.
+            Recordatorios pausados hasta{" "}
+            {new Date(snoozedUntil).toLocaleTimeString("es-HN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+            .
           </p>
         ) : null}
         {reminderError && <p className="error-text">{reminderError}</p>}
@@ -734,7 +772,11 @@ function AuditLog({ token }: Props) {
             <ul>
               {acknowledgedReminders.slice(0, 5).map((reminder) => (
                 <li key={`ack-${reminder.entity_type}-${reminder.entity_id}`}>
-                  {reminder.entity_type} #{reminder.entity_id} · {reminder.acknowledged_by_name ?? "Usuario corporativo"} · {reminder.acknowledged_at ? formatRelativeFromNow(reminder.acknowledged_at) : "sin fecha"}
+                  {reminder.entity_type} #{reminder.entity_id} ·{" "}
+                  {reminder.acknowledged_by_name ?? "Usuario corporativo"} ·{" "}
+                  {reminder.acknowledged_at
+                    ? formatRelativeFromNow(reminder.acknowledged_at)
+                    : "sin fecha"}
                   {reminder.acknowledged_note ? ` — ${reminder.acknowledged_note}` : ""}
                 </li>
               ))}

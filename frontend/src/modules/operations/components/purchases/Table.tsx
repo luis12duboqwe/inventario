@@ -1,4 +1,4 @@
-import type { PurchaseRecord } from "../../../../api";
+import type { PurchaseRecord } from "@api/purchases";
 
 type PurchasesTableProps = {
   records: PurchaseRecord[];

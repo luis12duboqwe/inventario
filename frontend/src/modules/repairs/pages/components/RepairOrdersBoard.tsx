@@ -1,15 +1,16 @@
 import { useMemo, useState, type ReactNode } from "react";
 
-import type { RepairOrder, Store } from "../../../../api";
+import type { RepairOrder } from "@api/repairs";
+import type { Store } from "@api/stores";
 import type { ModuleStatus } from "../../../../shared/components/ModuleHeader";
 import type { PageHeaderAction } from "../../../../components/layout/PageHeader";
 
-import BudgetModal from "../../../../pages/reparaciones/components/BudgetModal";
-import FiltersPanel from "../../../../pages/reparaciones/components/FiltersPanel";
-import PartsModal from "../../../../pages/reparaciones/components/PartsModal";
-import RepairTable from "../../../../pages/reparaciones/components/RepairTable";
-import SidePanel from "../../../../pages/reparaciones/components/SidePanel";
-import Toolbar from "../../../../pages/reparaciones/components/Toolbar";
+import BudgetModal from "../../components/BudgetModal";
+import FiltersPanel from "../../components/FiltersPanel";
+import PartsModal from "../../components/PartsModal";
+import RepairTable from "../../components/RepairTable";
+import SidePanel from "../../components/SidePanel";
+import Toolbar from "../../components/Toolbar";
 import useRepairOrdersBoard from "./useRepairOrdersBoard";
 
 type RepairOrdersBoardProps = {
@@ -113,7 +114,8 @@ function RepairOrdersBoard({
     return mapping;
   }, [devices]);
 
-  const resolveDeviceLabel = (deviceId: number) => deviceLabelById.get(deviceId) ?? `Dispositivo #${deviceId}`;
+  const resolveDeviceLabel = (deviceId: number) =>
+    deviceLabelById.get(deviceId) ?? `Dispositivo #${deviceId}`;
 
   const filtersSection = (
     <FiltersPanel
@@ -122,7 +124,7 @@ function RepairOrdersBoard({
       onStatusFilterChange={handleStatusFilterChange}
       search={search}
       onSearchChange={handleSearchChange}
-  searchPlaceholder={searchPlaceholder ?? "Buscar reparaciones"}
+      searchPlaceholder={searchPlaceholder ?? "Buscar reparaciones"}
       totalOrders={orders.length}
       getStatusLabel={getStatusLabel}
       dateFrom={dateFrom}
@@ -150,7 +152,8 @@ function RepairOrdersBoard({
     <section className="card wide">
       <h2>Órdenes de reparación</h2>
       <p className="card-subtitle">
-        Gestiona reparaciones con control de piezas, técnicos, estados y descarga inmediata de órdenes en PDF.
+        Gestiona reparaciones con control de piezas, técnicos, estados y descarga inmediata de
+        órdenes en PDF.
       </p>
       {message ? <div className="alert success">{message}</div> : null}
       {error ? <div className="alert error">{error}</div> : null}
@@ -174,7 +177,7 @@ function RepairOrdersBoard({
         />
       ) : null}
 
-  {toolbar}
+      {toolbar}
 
       <RepairTable
         loading={loading}

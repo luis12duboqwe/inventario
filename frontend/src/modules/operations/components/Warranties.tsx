@@ -1,28 +1,28 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
 
 import type {
-  Store,
   WarrantyAssignment,
   WarrantyMetrics,
   WarrantyStatus,
   WarrantyClaim,
   WarrantyClaimType,
-  Customer,
-  Device,
   WarrantyClaimPayload,
-} from "../../../api";
+} from "@api/sales";
+import type { Customer } from "@api/customers";
+import type { Store } from "@api/stores";
+import type { Device } from "@api/inventory";
 import {
   createWarrantyClaim,
   getWarranty,
   getWarrantyMetrics,
-  listCustomers,
   listWarranties,
   updateWarrantyClaimStatus,
-  getDevices,
-} from "../../../api";
-import Button from "../../../shared/components/ui/Button";
-import Modal from "../../../shared/components/ui/Modal";
-import SidePanel from "../../../pages/reparaciones/components/SidePanel";
+} from "@api/sales";
+import { listCustomers } from "@api/customers";
+import { getDevices } from "@api/inventory";
+import Button from "@components/ui/Button";
+import Modal from "@components/ui/Modal";
+import SidePanel from "../../repairs/components/SidePanel";
 import type { RepairForm, RepairPartForm } from "../../../types/repairs";
 
 const warrantyStatusLabels: Record<WarrantyStatus, string> = {
@@ -40,7 +40,7 @@ const claimTypeLabels: Record<WarrantyClaimType, string> = {
 
 const claimStatusLabels = {
   ABIERTO: "Abierto",
-  "EN_PROCESO": "En proceso",
+  EN_PROCESO: "En proceso",
   RESUELTO: "Resuelto",
   CANCELADO: "Cancelado",
 } as const;
@@ -76,12 +76,22 @@ const initialRepairForm: RepairForm = {
   deviceModel: "",
   imei: "",
   deviceDescription: "",
+  problemDescription: "",
   notes: "",
+  estimatedCost: 0,
+  depositAmount: 0,
   laborCost: 0,
   parts: [],
 };
 
-function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegistered }: WarrantyClaimDialogProps) {
+function WarrantyClaimDialog({
+  token,
+  stores,
+  open,
+  assignment,
+  onClose,
+  onRegistered,
+}: WarrantyClaimDialogProps) {
   const [claimType, setClaimType] = useState<WarrantyClaimType>("REPARACION");
   const [notes, setNotes] = useState("");
   const [reason, setReason] = useState("Reclamo garantía");
@@ -93,7 +103,7 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const applyAssignmentDefaults = () => {
+  const applyAssignmentDefaults = useCallback(() => {
     if (!assignment) {
       setForm(initialRepairForm);
       return;
@@ -108,7 +118,7 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
       imei: assignment.device?.imei ?? assignment.serial_number ?? "",
       deviceDescription: assignment.device?.sku ?? "",
     });
-  };
+  }, [assignment]);
 
   useEffect(() => {
     if (!open || !assignment) {
@@ -122,15 +132,16 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
     setCustomers([]);
     setDevices([]);
     setCustomerSearch("");
-  }, [open, assignment]);
+  }, [open, assignment, applyAssignmentDefaults]);
 
   useEffect(() => {
     if (!open || !assignment) {
       return;
     }
-    const options = customerSearch.trim().length >= 2
-      ? { limit: 50, query: customerSearch.trim() }
-      : { limit: 50 };
+    const options =
+      customerSearch.trim().length >= 2
+        ? { limit: 50, query: customerSearch.trim() }
+        : { limit: 50 };
     listCustomers(token, options)
       .then(setCustomers)
       .catch(() => setCustomers([]));
@@ -159,7 +170,10 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
   const handleAddPart = () => {
     setForm((prev) => ({
       ...prev,
-      parts: [...prev.parts, { deviceId: null, quantity: 1, unitCost: 0, source: "STOCK", partName: "" }],
+      parts: [
+        ...prev.parts,
+        { deviceId: null, quantity: 1, unitCost: 0, source: "STOCK", partName: "" },
+      ],
     }));
   };
 
@@ -182,8 +196,7 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
     }
     const payload: WarrantyClaimPayload = {
       claim_type: claimType,
-      notes: notes.trim() || undefined,
-      repair_order: undefined,
+      notes: notes.trim() || null,
     };
     if (withRepairOrder) {
       const storeId = form.storeId ?? assignment.sale?.store_id ?? null;
@@ -197,20 +210,25 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
       }
       payload.repair_order = {
         store_id: storeId,
-        customer_id: form.customerId ?? undefined,
-        customer_name: form.customerName?.trim() || undefined,
-        customer_contact: form.customerContact?.trim() || undefined,
+        customer_id: form.customerId ?? null,
+        customer_name: form.customerName?.trim() || null,
+        customer_contact: form.customerContact?.trim() || null,
         technician_name: form.technicianName.trim(),
         damage_type: form.damageType.trim(),
-        diagnosis: form.diagnosis?.trim() || undefined,
-        device_model: form.deviceModel?.trim() || undefined,
-        imei: form.imei?.trim() || undefined,
-        device_description: form.deviceDescription?.trim() || undefined,
-        notes: form.notes?.trim() || undefined,
+        diagnosis: form.diagnosis?.trim() || "",
+        problem_description: form.problemDescription?.trim() || "",
+        estimated_cost: form.estimatedCost ?? 0,
+        deposit_amount: form.depositAmount ?? 0,
+        ...(form.deviceModel?.trim() ? { device_model: form.deviceModel.trim() } : {}),
+        ...(form.imei?.trim() ? { imei: form.imei.trim() } : {}),
+        ...(form.deviceDescription?.trim()
+          ? { device_description: form.deviceDescription.trim() }
+          : {}),
+        ...(form.notes?.trim() ? { notes: form.notes.trim() } : {}),
         labor_cost: form.laborCost ?? 0,
         parts: form.parts.map((part) => ({
-          device_id: part.deviceId ?? undefined,
-          part_name: part.partName?.trim() || undefined,
+          ...(part.deviceId ? { device_id: part.deviceId } : {}),
+          ...(part.partName?.trim() ? { part_name: part.partName.trim() } : {}),
           source: part.source,
           quantity: part.quantity,
           unit_cost: part.unitCost ?? 0,
@@ -232,10 +250,12 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
     }
   };
 
-  const hasOpenClaim = assignment?.claims.some((claim) => claim.status === "ABIERTO" || claim.status === "EN_PROCESO");
+  const hasOpenClaim = assignment?.claims.some(
+    (claim) => claim.status === "ABIERTO" || claim.status === "EN_PROCESO",
+  );
 
   return (
-    <Modal open={open} onClose={loading ? undefined : onClose} title="Registrar reclamo de garantía">
+    <Modal open={open} onClose={loading ? () => {} : onClose} title="Registrar reclamo de garantía">
       {assignment ? (
         <form onSubmit={submitClaim} className="warranty-claim-form">
           <div className="warranty-claim-grid">
@@ -243,12 +263,16 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
               <header className="warranty-claim-header">
                 <h3>Detalle de la garantía</h3>
                 <p className="muted-text">
-                  Venta #{assignment.sale?.id ?? "-"} · {assignment.device?.name ?? "Dispositivo"} · Serie {assignment.serial_number ?? "N/D"}
+                  Venta #{assignment.sale?.id ?? "-"} · {assignment.device?.name ?? "Dispositivo"} ·
+                  Serie {assignment.serial_number ?? "N/D"}
                 </p>
               </header>
               <label className="form-field">
                 Tipo de reclamo
-                <select value={claimType} onChange={(event) => setClaimType(event.target.value as WarrantyClaimType)}>
+                <select
+                  value={claimType}
+                  onChange={(event) => setClaimType(event.target.value as WarrantyClaimType)}
+                >
                   {(Object.keys(claimTypeLabels) as WarrantyClaimType[]).map((option) => (
                     <option key={option} value={option}>
                       {claimTypeLabels[option]}
@@ -267,7 +291,11 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
               </label>
               <label className="form-field">
                 Motivo corporativo
-                <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Motivo registrado en auditoría" />
+                <input
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Motivo registrado en auditoría"
+                />
                 <span className="muted-text">Se enviará como cabecera X-Reason.</span>
               </label>
               <label className="form-checkbox">
@@ -280,7 +308,9 @@ function WarrantyClaimDialog({ token, stores, open, assignment, onClose, onRegis
                 <span>Generar orden de reparación usando el formulario de reparaciones</span>
               </label>
               {hasOpenClaim ? (
-                <p className="alert info">Existe un reclamo abierto. Completa su resolución antes de crear otro.</p>
+                <p className="alert info">
+                  Existe un reclamo abierto. Completa su resolución antes de crear otro.
+                </p>
               ) : null}
               {error ? <p className="alert error">{error}</p> : null}
               <div className="dialog-actions">
@@ -347,13 +377,16 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
   const [claimAssignment, setClaimAssignment] = useState<WarrantyAssignment | null>(null);
   const [claimDialogOpen, setClaimDialogOpen] = useState(false);
 
-  const statusOptions = useMemo(() => ["TODAS", "ACTIVA", "VENCIDA", "RECLAMO", "RESUELTA"] as const, []);
+  const statusOptions = useMemo(
+    () => ["TODAS", "ACTIVA", "VENCIDA", "RECLAMO", "RESUELTA"] as const,
+    [],
+  );
 
   const refreshMetrics = async (storeId: number | null) => {
     try {
-      const data = await getWarrantyMetrics(token, { store_id: storeId ?? undefined });
+      const data = await getWarrantyMetrics(token, { ...(storeId ? { store_id: storeId } : {}) });
       setMetrics(data);
-    } catch (err) {
+    } catch {
       setMetrics(null);
     }
   };
@@ -363,9 +396,9 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
       setLoading(true);
       setError(null);
       const response = await listWarranties(token, {
-        store_id: selectedStoreId ?? undefined,
-        status: filters.status && filters.status !== "TODAS" ? filters.status : undefined,
-        q: filters.search ? filters.search.trim() : undefined,
+        ...(selectedStoreId ? { store_id: selectedStoreId } : {}),
+        ...(filters.status && filters.status !== "TODAS" ? { status: filters.status } : {}),
+        ...(filters.search ? { q: filters.search.trim() } : {}),
       });
       setAssignments(response);
       await refreshMetrics(selectedStoreId);
@@ -403,7 +436,7 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
         token,
         claimId,
         { status: "RESUELTO" },
-        "Resolver reclamo"
+        "Resolver reclamo",
       );
       handleAssignmentUpdated(updated);
     } catch (err) {
@@ -416,7 +449,10 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
     if (!claims.length) {
       return "Sin reclamos";
     }
-    const latest = [...claims].sort((a, b) => new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime())[0];
+    const latest = [...claims].sort(
+      (a, b) => new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime(),
+    )[0];
+    if (!latest) return "Sin reclamos";
     return `${claimStatusLabels[latest.status]} · ${formatDate(latest.opened_at)}`;
   };
 
@@ -425,14 +461,20 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
       <header className="panel__header">
         <h2>Garantías vinculadas a ventas</h2>
         <p className="panel__subtitle">
-          Controla los periodos de cobertura, registra reclamos y documenta las resoluciones desde un único panel.
+          Controla los periodos de cobertura, registra reclamos y documenta las resoluciones desde
+          un único panel.
         </p>
       </header>
       <div className="panel__body">
         <div className="warranty-toolbar">
           <label className="form-field">
             Sucursal
-            <select value={selectedStoreId ?? ""} onChange={(event) => setSelectedStoreId(event.target.value ? Number(event.target.value) : null)}>
+            <select
+              value={selectedStoreId ?? ""}
+              onChange={(event) =>
+                setSelectedStoreId(event.target.value ? Number(event.target.value) : null)
+              }
+            >
               <option value="">Todas</option>
               {stores.map((store) => (
                 <option key={store.id} value={store.id}>
@@ -443,7 +485,15 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
           </label>
           <label className="form-field">
             Estado
-            <select value={filters.status ?? "TODAS"} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value as WarrantyFilters["status"] }))}>
+            <select
+              value={filters.status ?? "TODAS"}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  status: event.target.value as WarrantyStatus | "TODAS",
+                }))
+              }
+            >
               {statusOptions.map((option) => (
                 <option key={option} value={option}>
                   {option === "TODAS" ? "Todas" : warrantyStatusLabels[option]}
@@ -451,7 +501,7 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
               ))}
             </select>
           </label>
-          <label className="form-field" style={{ flexGrow: 1 }}>
+          <label className="form-field warranty-toolbar__search">
             Buscar
             <input
               value={filters.search}
@@ -484,7 +534,9 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
             <article className="metric-card">
               <h3>Resueltas</h3>
               <p>{metrics.claims_resolved}</p>
-              <span className="muted-text">Cobertura promedio {Math.round(metrics.average_coverage_days)} días</span>
+              <span className="muted-text">
+                Cobertura promedio {Math.round(metrics.average_coverage_days)} días
+              </span>
             </article>
           </div>
         ) : null}
@@ -507,7 +559,7 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
             <tbody>
               {assignments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: "center" }}>
+                  <td colSpan={6} className="warranty-table__empty">
                     No se encontraron garantías con los filtros actuales.
                   </td>
                 </tr>
@@ -524,7 +576,9 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
                     </td>
                     <td>
                       <div>{assignment.coverage_months} meses</div>
-                      <div className="muted-text">{formatRemaining(assignment.remaining_days, assignment.is_expired)}</div>
+                      <div className="muted-text">
+                        {formatRemaining(assignment.remaining_days, assignment.is_expired)}
+                      </div>
                     </td>
                     <td>
                       <strong>{warrantyStatusLabels[assignment.status]}</strong>
@@ -536,7 +590,7 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
                       <div className="warranty-actions">
                         {(() => {
                           const hasPendingClaim = assignment.claims.some(
-                            (claim) => claim.status === "ABIERTO" || claim.status === "EN_PROCESO"
+                            (claim) => claim.status === "ABIERTO" || claim.status === "EN_PROCESO",
                           );
                           return (
                             <Button
@@ -552,7 +606,10 @@ export default function Warranties({ token, stores, defaultStoreId = null }: War
                           ? assignment.claims.map((claim) => (
                               <Fragment key={claim.id}>
                                 {claim.status !== "RESUELTO" && claim.status !== "CANCELADO" ? (
-                                  <Button variant="ghost" onClick={() => void resolveClaim(claim.id)}>
+                                  <Button
+                                    variant="ghost"
+                                    onClick={() => void resolveClaim(claim.id)}
+                                  >
                                     Marcar resuelto
                                   </Button>
                                 ) : null}
