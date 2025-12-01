@@ -63,16 +63,21 @@ _database_module = _import_module_with_fallback(
     "backend.database", CURRENT_DIR / "database" / "__init__.py"
 )
 
-# Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``users``.
-db_utils = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
+# Utilizamos las utilidades de base de datos centralizadas para asegurar la tabla ``usuarios``.
+db_module = _import_module_with_fallback("backend.db", CURRENT_DIR / "db.py")
 core_main_module = _import_module_with_fallback(
     "backend.app.main", CURRENT_DIR / "app" / "main.py"
 )
-from backend import db as db_utils
-from backend.app.main import create_app as create_core_app
 
-init_db = getattr(db_utils, "init_db")
-create_core_app = getattr(core_main_module, "create_app")
+try:
+    run_migrations = getattr(db_module, "run_migrations")
+except AttributeError as exc:  # pragma: no cover - protección ante refactors futuros
+    raise RuntimeError("backend.db debe exponer la función run_migrations") from exc
+
+try:
+    create_core_app = getattr(core_main_module, "create_app")
+except AttributeError as exc:  # pragma: no cover - protección ante refactors futuros
+    raise RuntimeError("backend.app.main debe exponer la función create_app") from exc
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger("softmobile.bootstrap")
@@ -278,11 +283,17 @@ def _collect_existing_signatures(target_app: FastAPI) -> set[tuple[str, str]]:
 
 
 def _include_routers(target_app: FastAPI) -> None:
-    """Importa dinámicamente los routers definidos en ``backend.routes``."""
+    """Importa dinámicamente los routers legacy definidos en ``backend.routes``.
+
+    El paquete fue archivado en favor de ``backend.app.routers``; se mantiene un
+    no-op para inicializaciones heredadas sin emitir fallos ruidosos.
+    """
 
     routes_dir = BASE_DIR / "routes"
     if not routes_dir.exists():
-        LOGGER.warning("El directorio de rutas %s no existe", routes_dir)
+        LOGGER.info(
+            "El paquete legacy backend.routes fue archivado; se omite su carga.",
+        )
         return
 
     imported = 0
@@ -469,8 +480,8 @@ def _prepare_environment(target_app: FastAPI) -> None:
     if not _ENVIRONMENT_READY:
         _ensure_database_file(DATABASE_FILE)
         _validate_database_connection(DATABASE_FILE)
-        init_db()
-        LOGGER.info("Tablas de autenticación verificadas/creadas en %s", DATABASE_FILE)
+        run_migrations()
+        LOGGER.info("Migraciones aplicadas correctamente en %s", DATABASE_FILE)
 
         for directory_name in ("models", "routes"):
             directory_path = BASE_DIR / directory_name

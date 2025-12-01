@@ -2,9 +2,11 @@ import React from "react";
 
 type StoreOption = { id: number; name: string }; // [PACK30-31-FRONTEND]
 
+type ProductStatus = "ACTIVE" | "INACTIVE" | "ALL";
+
 export type ProductFilters = {
   query?: string;
-  status?: "ACTIVE" | "INACTIVE" | "ALL";
+  status?: ProductStatus;
   categoryId?: string;
   lowStock?: boolean;
   priceMin?: number;
@@ -37,9 +39,12 @@ export default function FiltersBar({ value, onChange, stores = [] }: Props) {
       />
       <select
         value={v.status || "ALL"}
-        onChange={(event) =>
-          onChange({ ...v, status: event.target.value as ProductFilters["status"] })
-        }
+        onChange={(event) => {
+          const selected = event.target.value as ProductStatus;
+          const next: ProductFilters = { ...v };
+          next.status = selected;
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       >
         <option value="ALL">Todos</option>
@@ -81,24 +86,32 @@ export default function FiltersBar({ value, onChange, stores = [] }: Props) {
         type="number"
         placeholder="Precio min"
         value={v.priceMin ?? ""}
-        onChange={(event) =>
-          onChange({
-            ...v,
-            priceMin: event.target.value ? Number(event.target.value) : undefined,
-          })
-        }
+        onChange={(event) => {
+          const raw = event.target.value;
+          const next: ProductFilters = { ...v };
+          if (raw) {
+            next.priceMin = Number(raw);
+          } else {
+            delete next.priceMin;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         type="number"
         placeholder="Precio max"
         value={v.priceMax ?? ""}
-        onChange={(event) =>
-          onChange({
-            ...v,
-            priceMax: event.target.value ? Number(event.target.value) : undefined,
-          })
-        }
+        onChange={(event) => {
+          const raw = event.target.value;
+          const next: ProductFilters = { ...v };
+          if (raw) {
+            next.priceMax = Number(raw);
+          } else {
+            delete next.priceMax;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
     </div>

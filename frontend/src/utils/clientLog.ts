@@ -18,7 +18,7 @@ function normalizeError(error: unknown): ClientLogDetail["error"] {
     return {
       name: error.name,
       message: error.message,
-      stack: error.stack,
+      ...(error.stack ? { stack: error.stack } : {}),
     };
   }
 

@@ -20,8 +20,11 @@ import {
 } from "../components/orders";
 import {
   CreditNoteModal,
+  type CreditNotePayload,
   PaymentModal,
+  type PaymentModalPayload,
   RefundModal,
+  type RefundModalPayload,
   SettlementCard,
   TransactionsTimeline,
   CustomerDebtCard,
@@ -109,7 +112,7 @@ const ORDER_SAMPLE = {
   paid: 30000,
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function OrderDetailPage() {
   const order = ORDER_SAMPLE;
@@ -156,19 +159,19 @@ function OrderDetailPage() {
     setReturnOpen(false);
   };
 
-  const handleSubmitPayment = (payload: { amount: number }) => {
+  const handleSubmitPayment = (payload: PaymentModalPayload) => {
     setMessage(`Pago registrado por ${currency.format(payload.amount)}.`);
     setPaymentOpen(false);
     // TODO(wire): delegar al servicio/store correspondiente
   };
 
-  const handleSubmitRefund = (payload: { amount: number }) => {
+  const handleSubmitRefund = (payload: RefundModalPayload) => {
     setMessage(`Se procesó un reembolso por ${currency.format(payload.amount)}.`);
     setRefundOpen(false);
     // TODO(wire): delegar al servicio/store correspondiente
   };
 
-  const handleSubmitCreditNote = (payload: { total: number }) => {
+  const handleSubmitCreditNote = (payload: CreditNotePayload) => {
     setMessage(`Nota de crédito emitida por ${currency.format(payload.total)}.`);
     setCreditNoteOpen(false);
     // TODO(wire): delegar al servicio/store correspondiente

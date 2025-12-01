@@ -1,0 +1,51 @@
+{
+  "stores": [],
+  "users": [
+    {
+      "id": 1,
+      "username": "xreason_admin_af5e4ba3",
+      "full_name": "Admin XReason",
+      "is_active": true,
+      "roles": [
+        "ADMIN"
+      ],
+      "created_at": "2025-11-11T20:03:28.217889"
+    }
+  ],
+  "movements": [],
+  "sync_sessions": [],
+  "audit_logs": [
+    {
+      "id": 2,
+      "action": "auth_login_success",
+      "entity_type": "user",
+      "entity_id": "1",
+      "details": "{\"session_hint\": \"1c51eb\"}",
+      "performed_by_id": 1,
+      "created_at": "2025-11-11T20:03:28.247505"
+    },
+    {
+      "id": 1,
+      "action": "user_created",
+      "entity_type": "user",
+      "entity_id": "1",
+      "details": "{\"description\": \"Usuario creado: xreason_admin_af5e4ba3\", \"metadata\": {\"roles\": [\"ADMIN\"]}}",
+      "performed_by_id": null,
+      "created_at": "2025-11-11T20:03:28.224678"
+    }
+  ],
+  "summary": {
+    "store_count": 0,
+    "device_records": 0,
+    "total_units": 0,
+    "inventory_value": 0.0
+  },
+  "integrity_report": {
+    "resumen": {
+      "dispositivos_evaluados": 0,
+      "dispositivos_inconsistentes": 0,
+      "discrepancias_totales": 0
+    },
+    "dispositivos": []
+  }
+}

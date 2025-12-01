@@ -3,31 +3,41 @@ import type { FormEvent } from "react";
 import type {
   ContactHistoryEntry,
   Customer,
+  CustomerAccountsReceivable,
   CustomerDashboardMetrics,
   CustomerLedgerEntry,
+  CustomerPaymentPayload,
+  CustomerPayload,
   CustomerPortfolioReport,
   CustomerSummary,
 } from "../../../api";
 import {
   appendCustomerNote,
   createCustomer,
+  createCustomerPrivacyRequest,
   deleteCustomer,
   exportCustomerPortfolioExcel,
   exportCustomerPortfolioPdf,
   exportCustomersCsv,
+  exportCustomerSegment,
   getCustomerDashboardMetrics,
   getCustomerPortfolio,
+  getCustomerAccountsReceivable,
   getCustomerSummary,
   listCustomers,
   registerCustomerPayment,
+  downloadCustomerStatement,
   updateCustomer,
 } from "../../../api";
+import { normalizeRtn, RTN_ERROR_MESSAGE } from "../utils/rtn";
+
 import type {
   CustomerFilters,
   CustomerFormState,
   DashboardFilters,
   LedgerEntryWithDetails,
   PortfolioFilters,
+  CustomerSegmentDefinition,
 } from "../../../types/customers";
 
 export const CUSTOMER_TYPES: { value: string; label: string }[] = [
@@ -58,6 +68,27 @@ export const LEDGER_LABELS: Record<CustomerLedgerEntry["entry_type"], string> = 
   note: "Nota",
 };
 
+export const CUSTOMER_SEGMENT_EXPORTS: CustomerSegmentDefinition[] = [
+  {
+    key: "alto_valor",
+    label: "Clientes de alto valor",
+    description: "Clientes con compras anuales superiores al umbral corporativo.",
+    channel: "Mailchimp",
+  },
+  {
+    key: "recuperacion",
+    label: "Campaña de recuperación",
+    description: "Clientes sin compras recientes que se envían a seguimiento SMS.",
+    channel: "SMS",
+  },
+  {
+    key: "valor_medio",
+    label: "Valor medio",
+    description: "Listado general para campañas manuales o CRM externo.",
+    channel: "Archivo",
+  },
+];
+
 const initialFormState: CustomerFormState = {
   name: "",
   contactName: "",
@@ -66,6 +97,9 @@ const initialFormState: CustomerFormState = {
   address: "",
   customerType: "minorista",
   status: "activo",
+  taxId: "",
+  segmentCategory: "",
+  tags: "",
   creditLimit: 0,
   outstandingDebt: 0,
   notes: "",
@@ -89,6 +123,8 @@ const initialCustomerFilters: CustomerFilters = {
   status: "todos",
   customerType: "todos",
   debt: "todos",
+  segmentCategory: "",
+  tags: "",
 };
 
 const useReasonPrompt = (setError: (message: string | null) => void) => {
@@ -116,7 +152,7 @@ const useBlobDownloader = () => {
 };
 
 const formatCurrencyValue = (value: number): string => {
-  return value.toLocaleString("es-MX", {
+  return value.toLocaleString("es-HN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -127,17 +163,20 @@ const resolveLedgerDetails = (entry: CustomerLedgerEntry): LedgerEntryWithDetail
     return entry;
   }
   const detailEntries = Object.entries(entry.details);
-  if (detailEntries.length === 0) {
+  const firstEntry = detailEntries[0];
+  if (!firstEntry) {
     return entry;
   }
-  const [label, raw] = detailEntries[0];
-  let value: string | undefined;
+  const [label, raw] = firstEntry;
+  let value: string | null = null;
   if (typeof raw === "string") {
     value = raw;
   } else if (typeof raw === "number") {
     value = raw.toString();
   }
-  return { ...entry, detailsLabel: label, detailsValue: value };
+  return value !== null
+    ? { ...entry, detailsLabel: label, detailsValue: value }
+    : { ...entry, detailsLabel: label };
 };
 
 export type CustomersControllerParams = {
@@ -154,6 +193,8 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [privacyProcessing, setPrivacyProcessing] = useState(false);
+
   const [formState, setFormState] = useState<CustomerFormState>({
     ...initialFormState,
   });
@@ -163,6 +204,12 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   const [customerSummary, setCustomerSummary] = useState<CustomerSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  const [accountsReceivable, setAccountsReceivable] = useState<CustomerAccountsReceivable | null>(
+    null,
+  );
+  const [receivableLoading, setReceivableLoading] = useState(false);
+  const [receivableError, setReceivableError] = useState<string | null>(null);
 
   const [portfolioFilters, setPortfolioFilters] = useState<PortfolioFilters>({
     ...initialPortfolioFilters,
@@ -178,6 +225,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   const [dashboardFilters, setDashboardFilters] = useState<DashboardFilters>({
     ...initialDashboardFilters,
   });
+  const [exportingSegment, setExportingSegment] = useState<string | null>(null);
 
   const askReason = useReasonPrompt(setError);
   const downloadBlob = useBlobDownloader();
@@ -200,27 +248,61 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     setCustomerFilters((current) => ({ ...current, [key]: value }));
   };
 
+  const buildCustomerListOptions = useCallback(
+    (queryOverride?: string) => {
+      const options: Parameters<typeof listCustomers>[1] = { limit: 200 };
+      const sourceQuery = queryOverride ?? customerFilters.search;
+      const normalizedQuery = sourceQuery.trim();
+      const effectiveQuery = normalizedQuery.length >= 2 ? normalizedQuery : "";
+      if (effectiveQuery) {
+        options.query = effectiveQuery;
+      }
+      const statusFilter = customerFilters.status !== "todos" ? customerFilters.status : "";
+      if (statusFilter) {
+        options.status = statusFilter;
+        options.statusFilter = statusFilter;
+      }
+      const typeFilter =
+        customerFilters.customerType !== "todos" ? customerFilters.customerType : "";
+      if (typeFilter) {
+        options.customerType = typeFilter;
+        options.customerTypeFilter = typeFilter;
+      }
+      if (customerFilters.debt === "con_deuda") {
+        options.hasDebt = true;
+      } else if (customerFilters.debt === "sin_deuda") {
+        options.hasDebt = false;
+      }
+      const categoryFilter = customerFilters.segmentCategory.trim().toLowerCase();
+      if (categoryFilter) {
+        options.segmentCategory = categoryFilter;
+      }
+      const tagsFilter = customerFilters.tags
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+      if (tagsFilter.length > 0) {
+        options.tags = tagsFilter;
+      }
+      return options;
+    },
+    [
+      customerFilters.customerType,
+      customerFilters.debt,
+      customerFilters.segmentCategory,
+      customerFilters.search,
+      customerFilters.status,
+      customerFilters.tags,
+    ]
+  );
+
   const refreshCustomers = useCallback(
     async (queryOverride?: string) => {
       try {
         setLoadingCustomers(true);
         setError(null);
-        const data = await listCustomers(token, {
-          query: queryOverride,
-          limit: 200,
-          status: customerFilters.status !== "todos" ? customerFilters.status : undefined,
-          customerType:
-            customerFilters.customerType !== "todos" ? customerFilters.customerType : undefined,
-          hasDebt:
-            customerFilters.debt === "con_deuda"
-              ? true
-              : customerFilters.debt === "sin_deuda"
-              ? false
-              : undefined,
-          statusFilter: customerFilters.status !== "todos" ? customerFilters.status : undefined,
-          customerTypeFilter:
-            customerFilters.customerType !== "todos" ? customerFilters.customerType : undefined,
-        });
+        const listOptions = buildCustomerListOptions(queryOverride);
+        const data = await listCustomers(token, listOptions);
         setCustomers(data);
         if (selectedCustomerId) {
           const exists = data.some((customer) => customer.id === selectedCustomerId);
@@ -237,19 +319,40 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         setLoadingCustomers(false);
       }
     },
-    [
-      token,
-      customerFilters.customerType,
-      customerFilters.debt,
-      customerFilters.status,
-      selectedCustomerId,
-    ],
+    [buildCustomerListOptions, token, selectedCustomerId],
+  );
+
+  const refreshReceivable = useCallback(
+    async (customerId?: number | null) => {
+      if (!customerId) {
+        setAccountsReceivable(null);
+        setReceivableError(null);
+        return;
+      }
+      try {
+        setReceivableLoading(true);
+        setReceivableError(null);
+        const data = await getCustomerAccountsReceivable(token, customerId);
+        setAccountsReceivable(data);
+      } catch (err) {
+        setReceivableError(
+          err instanceof Error
+            ? err.message
+            : "No fue posible obtener las cuentas por cobrar del cliente.",
+        );
+      } finally {
+        setReceivableLoading(false);
+      }
+    },
+    [token],
   );
 
   const refreshSummary = useCallback(
     async (customerId?: number | null) => {
       if (!customerId) {
         setCustomerSummary(null);
+        setSummaryError(null);
+        void refreshReceivable(null);
         return;
       }
       try {
@@ -257,6 +360,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         setSummaryError(null);
         const data = await getCustomerSummary(token, customerId);
         setCustomerSummary(data);
+        void refreshReceivable(customerId);
       } catch (err) {
         setSummaryError(
           err instanceof Error ? err.message : "No fue posible cargar el resumen del cliente.",
@@ -265,19 +369,24 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
         setSummaryLoading(false);
       }
     },
-    [token],
+    [token, refreshReceivable],
   );
 
   const refreshPortfolio = useCallback(async () => {
     try {
       setPortfolioLoading(true);
       setPortfolioError(null);
-      const data = await getCustomerPortfolio(token, {
+      const filtersPayload: Parameters<typeof getCustomerPortfolio>[1] = {
         category: portfolioFilters.category,
         limit: portfolioFilters.limit,
-        dateFrom: portfolioFilters.dateFrom || undefined,
-        dateTo: portfolioFilters.dateTo || undefined,
-      });
+      };
+      if (portfolioFilters.dateFrom.trim()) {
+        filtersPayload.dateFrom = portfolioFilters.dateFrom.trim();
+      }
+      if (portfolioFilters.dateTo.trim()) {
+        filtersPayload.dateTo = portfolioFilters.dateTo.trim();
+      }
+      const data = await getCustomerPortfolio(token, filtersPayload);
       setPortfolio(data);
     } catch (err) {
       setPortfolioError(
@@ -316,6 +425,17 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
   }, [customerFilters.search, refreshCustomers]);
 
   useEffect(() => {
+    void refreshCustomers();
+  }, [
+    customerFilters.status,
+    customerFilters.customerType,
+    customerFilters.debt,
+    customerFilters.segmentCategory,
+    customerFilters.tags,
+    refreshCustomers,
+  ]);
+
+  useEffect(() => {
     void refreshPortfolio();
   }, [refreshPortfolio]);
 
@@ -350,6 +470,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       address: customer.address ?? "",
       customerType: customer.customer_type ?? "minorista",
       status: customer.status ?? "activo",
+      taxId: customer.tax_id ?? "",
+      segmentCategory: customer.segment_category ?? "",
+      tags: (customer.tags ?? []).join(", "),
       creditLimit: Number(customer.credit_limit ?? 0),
       outstandingDebt: Number(customer.outstanding_debt ?? 0),
       notes: customer.notes ?? "",
@@ -442,6 +565,151 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     }
   };
 
+  const handleDownloadStatement = async (customer: Customer) => {
+    const reason = askReason("Motivo corporativo para descargar el estado de cuenta");
+    if (!reason) {
+      return;
+    }
+    try {
+      const blob = await downloadCustomerStatement(token, customer.id, reason);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadBlob(blob, `estado_cuenta_${customer.id}_${timestamp}.pdf`);
+      setMessage("Estado de cuenta descargado correctamente.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible descargar el estado de cuenta del cliente.",
+      );
+    }
+  };
+
+  const handleRegisterPrivacyConsent = async (customer: Customer) => {
+    if (privacyProcessing) {
+      return;
+    }
+    const consentRaw = window.prompt(
+      "Consentimientos a actualizar (ej. marketing:si,sms:no)",
+      "marketing:si,sms:no"
+    );
+    if (consentRaw === null) {
+      return;
+    }
+    const consentEntries: Record<string, boolean> = {};
+    consentRaw
+      .split(/[\n;,]/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+      .forEach((entry) => {
+        const [rawKey, rawValue] = entry.split(":");
+        const key = (rawKey ?? "").trim().toLowerCase();
+        const value = (rawValue ?? "").trim().toLowerCase();
+        if (!key) {
+          return;
+        }
+        if (["si", "sí", "true", "1", "on", "acepta"].includes(value)) {
+          consentEntries[key] = true;
+        } else if (["no", "false", "0", "off", "rechaza"].includes(value)) {
+          consentEntries[key] = false;
+        }
+      });
+    if (Object.keys(consentEntries).length === 0) {
+      setError("Debes indicar al menos un consentimiento válido (ejemplo: marketing:si).");
+      return;
+    }
+    const detailsInput = window.prompt(
+      "Detalle de la solicitud (opcional)",
+      "Consentimientos actualizados en mostrador"
+    );
+    const details = detailsInput ? detailsInput.trim() : "";
+    const reason = askReason("Motivo corporativo para registrar la solicitud de privacidad");
+    if (!reason) {
+      return;
+    }
+    try {
+      setPrivacyProcessing(true);
+      setError(null);
+      await createCustomerPrivacyRequest(
+        token,
+        customer.id,
+        {
+          request_type: "consent",
+          details: details || undefined,
+          consent: consentEntries,
+        },
+        reason
+      );
+      setMessage("Consentimientos actualizados correctamente.");
+      const trimmed = customerFilters.search.trim();
+      await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
+      if (customer.id === selectedCustomerId) {
+        void refreshSummary(customer.id);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible registrar la solicitud de privacidad."
+      );
+    } finally {
+      setPrivacyProcessing(false);
+    }
+  };
+
+  const handleRegisterPrivacyAnonymization = async (customer: Customer) => {
+    if (privacyProcessing) {
+      return;
+    }
+    const fieldsRaw = window.prompt(
+      "Campos a anonimizar (ej. email,phone,address)",
+      "email,phone"
+    );
+    if (fieldsRaw === null) {
+      return;
+    }
+    const maskFields = fieldsRaw
+      .split(/[\n;,]/)
+      .map((field) => field.trim().toLowerCase())
+      .filter((field) => field.length > 0);
+    const detailsInput = window.prompt(
+      "Detalle de la solicitud (opcional)",
+      "Anonimización parcial aprobada"
+    );
+    const details = detailsInput ? detailsInput.trim() : "";
+    const reason = askReason("Motivo corporativo para aplicar anonimización");
+    if (!reason) {
+      return;
+    }
+    try {
+      setPrivacyProcessing(true);
+      setError(null);
+      await createCustomerPrivacyRequest(
+        token,
+        customer.id,
+        {
+          request_type: "anonymization",
+          details: details || undefined,
+          mask_fields: maskFields,
+        },
+        reason
+      );
+      setMessage("Anonimización aplicada correctamente.");
+      const trimmed = customerFilters.search.trim();
+      await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
+      if (customer.id === selectedCustomerId) {
+        void refreshSummary(customer.id);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible aplicar la anonimización solicitada."
+      );
+    } finally {
+      setPrivacyProcessing(false);
+    }
+  };
+
   const handleRegisterPayment = async (customer: Customer) => {
     const amountRaw = window.prompt("Monto del pago", "0.00");
     if (amountRaw === null) {
@@ -468,18 +736,23 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       return;
     }
     try {
-      await registerCustomerPayment(
-        token,
-        customer.id,
-        {
-          amount: Number(amount.toFixed(2)),
-          method,
-          reference,
-          note,
-          sale_id: saleId,
-        },
-        reason,
-      );
+      const paymentPayload: CustomerPaymentPayload = {
+        amount: Number(amount.toFixed(2)),
+      };
+      const normalizedMethod = method.trim();
+      if (normalizedMethod) {
+        paymentPayload.method = normalizedMethod;
+      }
+      if (reference && reference.trim()) {
+        paymentPayload.reference = reference.trim();
+      }
+      if (note && note.trim()) {
+        paymentPayload.note = note.trim();
+      }
+      if (typeof saleId === "number") {
+        paymentPayload.sale_id = saleId;
+      }
+      await registerCustomerPayment(token, customer.id, paymentPayload, reason);
       setMessage("Pago registrado correctamente.");
       const trimmed = customerFilters.search.trim();
       await refreshCustomers(trimmed.length >= 2 ? trimmed : undefined);
@@ -503,24 +776,67 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       setError("Indica un teléfono de contacto.");
       return;
     }
+    const normalizedTaxId = normalizeRtn(formState.taxId);
+    if (!normalizedTaxId) {
+      setError(RTN_ERROR_MESSAGE);
+      return;
+    }
     const reason = askReason(
       editingId ? "Motivo corporativo para actualizar al cliente" : "Motivo corporativo para crear al cliente",
     );
     if (!reason) {
       return;
     }
-    const payload = {
+    const payload: CustomerPayload = {
       name: formState.name.trim(),
-      contact_name: formState.contactName.trim() || undefined,
-      email: formState.email.trim() || undefined,
       phone: formState.phone.trim(),
-      address: formState.address.trim() || undefined,
       customer_type: formState.customerType,
       status: formState.status,
+      tax_id: normalizedTaxId,
       credit_limit: Number(formState.creditLimit ?? 0),
       outstanding_debt: Number(formState.outstandingDebt ?? 0),
-      notes: formState.notes.trim() || undefined,
     };
+    const contactName = formState.contactName.trim();
+    if (contactName) {
+      payload.contact_name = contactName;
+    }
+    const email = formState.email.trim();
+    if (email) {
+      payload.email = email;
+    }
+    const address = formState.address.trim();
+    if (address) {
+      payload.address = address;
+    }
+    const segmentCategory = formState.segmentCategory.trim().toLowerCase();
+    if (segmentCategory) {
+      payload.segment_category = segmentCategory;
+    } else if (editingId) {
+      payload.segment_category = "";
+    }
+    const tagsList = formState.tags
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+    payload.tags = tagsList;
+    const notes = formState.notes.trim();
+    if (notes) {
+      payload.notes = notes;
+    }
+    const historyNote = formState.historyNote.trim();
+    if (historyNote) {
+      const entry = { timestamp: new Date().toISOString(), note: historyNote } satisfies ContactHistoryEntry;
+      if (editingId) {
+        const existing = customers.find((item) => item.id === editingId);
+        if (existing) {
+          payload.history = [...existing.history, entry];
+        } else {
+          payload.history = [entry];
+        }
+      } else {
+        payload.history = [entry];
+      }
+    }
     try {
       setSavingCustomer(true);
       setError(null);
@@ -551,7 +867,8 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
       return;
     }
     try {
-      const blob = await exportCustomersCsv(token, customerFilters, reason);
+      const exportOptions = buildCustomerListOptions();
+      const blob = await exportCustomersCsv(token, exportOptions, reason);
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       downloadBlob(blob, `clientes_${timestamp}.csv`);
       setMessage("Exportación generada correctamente.");
@@ -585,12 +902,16 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     }
     try {
       setExportingPortfolio(format);
-      const filters = {
+      const filters: Parameters<typeof exportCustomerPortfolioPdf>[1] = {
         category: portfolioFilters.category,
         limit: portfolioFilters.limit,
-        dateFrom: portfolioFilters.dateFrom || undefined,
-        dateTo: portfolioFilters.dateTo || undefined,
       };
+      if (portfolioFilters.dateFrom.trim()) {
+        filters.dateFrom = portfolioFilters.dateFrom.trim();
+      }
+      if (portfolioFilters.dateTo.trim()) {
+        filters.dateTo = portfolioFilters.dateTo.trim();
+      }
       const blob =
         format === "pdf"
           ? await exportCustomerPortfolioPdf(token, filters, reason)
@@ -609,15 +930,48 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     }
   };
 
+  const handleExportSegment = async (segment: CustomerSegmentDefinition) => {
+    const reason = askReason(
+      `Motivo corporativo para exportar el segmento "${segment.label}"`,
+    );
+    if (!reason) {
+      return;
+    }
+    try {
+      setExportingSegment(segment.key);
+      const blob = await exportCustomerSegment(token, segment.key, reason);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `segmento_${segment.key}_${timestamp}.csv`;
+      downloadBlob(blob, filename);
+      setMessage(`Segmento ${segment.label} exportado correctamente.`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No fue posible exportar el segmento seleccionado.",
+      );
+    } finally {
+      setExportingSegment(null);
+    }
+  };
+
   const totalDebt = useMemo(() => {
     return customers.reduce((acc, customer) => acc + Number(customer.outstanding_debt ?? 0), 0);
   }, [customers]);
 
-  const delinquentRatio = useMemo(() => {
-    if (!dashboardMetrics || dashboardMetrics.total_customers === 0) {
-      return 0;
+  const delinquentRatio = useMemo((): { percentage: number; total: number } => {
+    if (!dashboardMetrics) {
+      return { percentage: 0, total: 0 };
     }
-    return dashboardMetrics.delinquent_customers / dashboardMetrics.total_customers;
+    const { customers_with_debt, moroso_flagged, total_outstanding_debt } =
+      dashboardMetrics.delinquent_summary;
+    const ratio =
+      customers_with_debt > 0 ? moroso_flagged / customers_with_debt : 0;
+    const percentage = Math.min(100, Math.max(0, Math.round(ratio * 100)));
+    return {
+      percentage,
+      total: total_outstanding_debt,
+    };
   }, [dashboardMetrics]);
 
   const customerNotes = useMemo(() => {
@@ -634,12 +988,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     if (!customerSummary?.customer?.history) {
       return [] as ContactHistoryEntry[];
     }
-    return [...customerSummary.customer.history]
-      .sort(
-        (left, right) =>
-          new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
-      )
-      .slice(0, 6);
+    return [...customerSummary.customer.history].sort(
+      (left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
+    );
   }, [customerSummary]);
 
   const recentInvoices = useMemo(() => {
@@ -661,6 +1012,7 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     savingCustomer,
     error,
     message,
+    privacyProcessing,
     formState,
     editingId,
     selectedCustomer,
@@ -668,6 +1020,9 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     customerSummary,
     summaryLoading,
     summaryError,
+    accountsReceivable,
+    receivableLoading,
+    receivableError,
     portfolio,
     portfolioFilters,
     portfolioLoading,
@@ -692,14 +1047,20 @@ export const useCustomersController = ({ token }: CustomersControllerParams) => 
     handleSelectCustomer,
     handleEdit,
     handleAddNote,
+    handleRegisterPrivacyConsent,
+    handleRegisterPrivacyAnonymization,
     handleRegisterPayment,
     handleAdjustDebt,
+    handleDownloadStatement,
     handleDelete,
     handlePortfolioFiltersChange,
     refreshPortfolio,
     handleExportPortfolio,
     handleDashboardFiltersChange,
     refreshDashboard,
+    handleExportSegment,
+    exportingSegment,
+    customerSegmentExports: CUSTOMER_SEGMENT_EXPORTS,
   } as const;
 };
 

@@ -1,8 +1,10 @@
 import React from "react";
 
+type MovementType = "IN" | "OUT" | "TRANSFER";
+
 export type MovementFilters = {
   query?: string;
-  type?: "IN" | "OUT" | "TRANSFER" | "ALL";
+  type?: MovementType;
   storeId?: string;
   fromStoreId?: string;
   toStoreId?: string;
@@ -27,7 +29,16 @@ export default function FiltersPanel({ value, onChange }: Props) {
       />
       <select
         value={v.type || "ALL"}
-        onChange={(e) => onChange({ ...v, type: e.target.value as MovementFilters["type"] })}
+        onChange={(e) => {
+          const selected = e.target.value as MovementType | "ALL";
+          const next: MovementFilters = { ...v };
+          if (selected === "ALL") {
+            delete next.type;
+          } else {
+            next.type = selected;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       >
         <option value="ALL">Todos</option>
@@ -38,31 +49,76 @@ export default function FiltersPanel({ value, onChange }: Props) {
       <input
         placeholder="Sucursal (storeId)"
         value={v.storeId || ""}
-        onChange={(e) => onChange({ ...v, storeId: e.target.value })}
+        onChange={(e) => {
+          const next: MovementFilters = { ...v };
+          const value = e.target.value.trim();
+          if (value) {
+            next.storeId = value;
+          } else {
+            delete next.storeId;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         placeholder="De (fromStoreId)"
         value={v.fromStoreId || ""}
-        onChange={(e) => onChange({ ...v, fromStoreId: e.target.value })}
+        onChange={(e) => {
+          const next: MovementFilters = { ...v };
+          const value = e.target.value.trim();
+          if (value) {
+            next.fromStoreId = value;
+          } else {
+            delete next.fromStoreId;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         placeholder="A (toStoreId)"
         value={v.toStoreId || ""}
-        onChange={(e) => onChange({ ...v, toStoreId: e.target.value })}
+        onChange={(e) => {
+          const next: MovementFilters = { ...v };
+          const value = e.target.value.trim();
+          if (value) {
+            next.toStoreId = value;
+          } else {
+            delete next.toStoreId;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         type="date"
         value={v.dateFrom || ""}
-        onChange={(e) => onChange({ ...v, dateFrom: e.target.value })}
+        onChange={(e) => {
+          const next: MovementFilters = { ...v };
+          const value = e.target.value;
+          if (value) {
+            next.dateFrom = value;
+          } else {
+            delete next.dateFrom;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         type="date"
         value={v.dateTo || ""}
-        onChange={(e) => onChange({ ...v, dateTo: e.target.value })}
+        onChange={(e) => {
+          const next: MovementFilters = { ...v };
+          const value = e.target.value;
+          if (value) {
+            next.dateTo = value;
+          } else {
+            delete next.dateTo;
+          }
+          onChange(next);
+        }}
         style={{ padding: 8, borderRadius: 8 }}
       />
     </div>

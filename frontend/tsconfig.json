@@ -11,8 +11,22 @@
     "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "noEmit": true,
-    "types": []
+  "noEmit": true,
+  "types": ["vite/client", "vitest/globals", "node"],
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["src/*"],
+      "@api/*": ["src/services/api/*"],
+      "@components/*": ["src/components/*"],
+      "@modules/*": ["src/modules/*"],
+      "@pages/*": ["src/pages/*"],
+      "@services/*": ["src/services/*"],
+      "@shared/*": ["src/shared/*"],
+      "@ui/*": ["src/ui/*"],
+      "@utils/*": ["src/utils/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@lib/*": ["src/lib/*"]
+    }
   },
   "include": ["src", "vite.config.*", "env.d.ts"],
   "exclude": ["dist", "build", "node_modules"]

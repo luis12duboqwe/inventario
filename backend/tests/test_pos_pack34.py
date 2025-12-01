@@ -25,7 +25,8 @@ def test_pack34_pos_end_to_end(client, db_session):
 
     store_response = client.post(
         "/stores",
-        json={"name": "Sucursal POS", "location": "GDL", "timezone": "America/Mexico_City"},
+        json={"name": "Sucursal POS", "location": "GDL",
+              "timezone": "America/Mexico_City"},
         headers=headers,
     )
     assert store_response.status_code == status.HTTP_201_CREATED
@@ -112,6 +113,8 @@ def test_pack34_pos_end_to_end(client, db_session):
     sale_data = sale_response.json()
     assert sale_data["status"] == "registered"
     assert sale_data["receipt_pdf_base64"]
+    assert sale_data.get("debt_summary") is None
+    assert sale_data.get("payment_receipts") == []
     sale_id = sale_data["sale"]["id"]
 
     detail_response = client.get(
@@ -122,6 +125,7 @@ def test_pack34_pos_end_to_end(client, db_session):
     detail_data = detail_response.json()
     assert detail_data["sale"]["id"] == sale_id
     assert detail_data["receipt_pdf_base64"]
+    assert detail_data.get("debt_summary") is None
 
     taxes_response = client.get(
         "/pos/taxes",
@@ -136,6 +140,7 @@ def test_pack34_pos_end_to_end(client, db_session):
             "session_id": session_id,
             "closing_amount": 700.0,
             "payments": {"EFECTIVO": 199.99},
+            "difference_reason": "Diferencia por fondo de cambio inicial no registrado",
         },
         headers={**headers, **_reason_header("Cerrar caja POS")},
     )
@@ -165,14 +170,15 @@ def test_pack34_pos_end_to_end(client, db_session):
     assert return_response.status_code == status.HTTP_201_CREATED
     return_data = return_response.json()
     assert return_data["sale_id"] == sale_id
-    assert isinstance(return_data["return_ids"], list) and return_data["return_ids"]
+    assert isinstance(return_data["return_ids"],
+                      list) and return_data["return_ids"]
 
     # // [PACK34-test]
     remaining_detail = client.get(
         f"/pos/sale/{sale_id}",
-        headers={**headers, **_reason_header("Consultar venta POS tras devolucion")},
+        headers={**headers, **
+                 _reason_header("Consultar venta POS tras devolucion")},
     )
     assert remaining_detail.status_code == status.HTTP_200_OK
     remaining_items = remaining_detail.json()["sale"].get("items", [])
     assert len(remaining_items) >= 1
-

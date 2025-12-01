@@ -73,16 +73,25 @@ function Sidebar({ items, currentPath, mobileOpen = false, onNavigate }: Sidebar
 
   const menuItems: SidebarMenuItem[] = useMemo(
     () =>
-      items.map((item) => ({
-        to: item.to,
-        label: item.label,
-        icon: item.icon,
-        onMouseEnter: item.onMouseEnter ?? (item.label === "Ventas" ? onHoverSales : undefined),
-        children: item.children?.map((child) => ({
-          to: child.to,
-          label: child.label,
-        })),
-      })),
+      items.map((item) => {
+        const resolvedOnMouseEnter = item.onMouseEnter ?? (item.label === "Ventas" ? onHoverSales : undefined);
+
+        const base: SidebarMenuItem = {
+          to: item.to,
+          label: item.label,
+          icon: item.icon,
+          ...(resolvedOnMouseEnter ? { onMouseEnter: resolvedOnMouseEnter } : {}),
+        };
+
+        if (item.children && item.children.length > 0) {
+          return {
+            ...base,
+            children: item.children.map((child) => ({ to: child.to, label: child.label })),
+          } satisfies SidebarMenuItem;
+        }
+
+        return base;
+      }),
     [items, onHoverSales],
   );
 

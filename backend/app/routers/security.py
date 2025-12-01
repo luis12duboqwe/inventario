@@ -10,7 +10,7 @@ from ..config import settings
 from ..core.roles import ADMIN, GERENTE
 from ..database import get_db
 from ..routers.dependencies import require_reason
-from ..security import require_roles, verify_totp
+from ..security import require_reauthentication, require_roles, verify_totp
 
 router = APIRouter(prefix="/security", tags=["seguridad"])
 
@@ -33,7 +33,12 @@ def totp_status(current_user=Depends(require_roles(ADMIN, GERENTE)), db: Session
     )
 
 
-@router.post("/2fa/setup", response_model=schemas.TOTPSetupResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(ADMIN, GERENTE))])
+@router.post(
+    "/2fa/setup",
+    response_model=schemas.TOTPSetupResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(ADMIN, GERENTE)), Depends(require_reauthentication)],
+)
 def totp_setup(
     current_user=Depends(require_roles(ADMIN, GERENTE)),
     db: Session = Depends(get_db),
@@ -53,7 +58,11 @@ def totp_setup(
     return schemas.TOTPSetupResponse(secret=record.secret, otpauth_url=otpauth)
 
 
-@router.post("/2fa/activate", response_model=schemas.TOTPStatusResponse, dependencies=[Depends(require_roles(ADMIN, GERENTE))])
+@router.post(
+    "/2fa/activate",
+    response_model=schemas.TOTPStatusResponse,
+    dependencies=[Depends(require_roles(ADMIN, GERENTE)), Depends(require_reauthentication)],
+)
 def totp_activate(
     payload: schemas.TOTPActivateRequest,
     current_user=Depends(require_roles(ADMIN, GERENTE)),
@@ -83,7 +92,7 @@ def totp_activate(
     "/2fa/disable",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
-    dependencies=[Depends(require_roles(ADMIN, GERENTE))],
+    dependencies=[Depends(require_roles(ADMIN, GERENTE)), Depends(require_reauthentication)],
 )
 def totp_disable(
     current_user=Depends(require_roles(ADMIN, GERENTE)),
@@ -115,7 +124,11 @@ def list_sessions(
     return sessions
 
 
-@router.post("/sessions/{session_id}/revoke", response_model=schemas.ActiveSessionResponse, dependencies=[Depends(require_roles(ADMIN, GERENTE))])
+@router.post(
+    "/sessions/{session_id}/revoke",
+    response_model=schemas.ActiveSessionResponse,
+    dependencies=[Depends(require_roles(ADMIN, GERENTE))],
+)
 def revoke_session_endpoint(
     payload: schemas.SessionRevokeRequest,
     session_id: int = Path(..., ge=1),

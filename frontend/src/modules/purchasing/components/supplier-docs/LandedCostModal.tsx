@@ -86,7 +86,18 @@ export default function LandedCostModal({ open, poId, onClose, onSubmit }: Props
           </button>
           <button
             type="button"
-            onClick={() => onSubmit?.({ poId, freight, insurance, customs })}
+            onClick={() => {
+              const payload = { freight, insurance, customs } as {
+                freight: number;
+                insurance: number;
+                customs: number;
+                poId?: string;
+              };
+              if (poId) {
+                payload.poId = poId;
+              }
+              onSubmit?.(payload);
+            }}
             style={{ ...buttonStyle, background: "#2563eb", color: "#fff", border: "0" }}
           >
             Aplicar

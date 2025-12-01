@@ -40,10 +40,10 @@ function RepairsPendingPage() {
         stores={stores}
         selectedStoreId={selectedStoreId}
         onSelectedStoreChange={setSelectedStoreId}
-        onInventoryRefresh={onInventoryRefresh}
+        {...(onInventoryRefresh ? { onInventoryRefresh } : {})}
         onModuleStatusChange={setModuleStatus}
         initialStatusFilter="PENDIENTE"
-        renderToolbar={({ filters, actions }) => <PageToolbar actions={actions}>{filters}</PageToolbar>}
+        renderToolbar={({ filters, actions }) => <PageToolbar actions={actions} filters={filters} disableSearch />}
         showCreateForm
       />
     </div>

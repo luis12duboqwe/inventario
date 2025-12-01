@@ -7,7 +7,7 @@ const AdvancedSearch = lazy(() => import("../../components/AdvancedSearch"));
 
 function InventoryCatalogToolsSection() {
   const {
-    module: { enableCatalogPro, token, selectedStore },
+    module: { enableCatalogPro, token },
     catalog: { catalogFile, setCatalogFile, importingCatalog, exportingCatalog, lastImportSummary, fileInputRef },
     downloads: { triggerExportCatalog, triggerImportCatalog },
   } = useInventoryLayout();
@@ -90,7 +90,7 @@ function InventoryCatalogToolsSection() {
       {enableCatalogPro ? (
         <div className="section-grid">
           <Suspense fallback={<div className="card catalog-card"><p className="muted-text">Cargando búsqueda avanzada…</p></div>}>
-            <AdvancedSearch token={token} storeName={selectedStore?.name ?? undefined} />
+            <AdvancedSearch token={token} />
           </Suspense>
         </div>
       ) : null}

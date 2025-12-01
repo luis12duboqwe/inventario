@@ -1,0 +1,28 @@
+{
+  "sales": {
+    "totals": {
+      "base_15": 1000.0,
+      "impuesto_15": 150.0,
+      "total_15": 1150.0,
+      "base_18": 200.0,
+      "impuesto_18": 36.0,
+      "total_18": 236.0,
+      "base_exenta": 500.0,
+      "total_exento": 500.0,
+      "total_general": 1886.0
+    }
+  },
+  "purchases": {
+    "totals": {
+      "base_15": 300.0,
+      "impuesto_15": 45.0,
+      "total_15": 345.0,
+      "base_18": 200.0,
+      "impuesto_18": 36.0,
+      "total_18": 236.0,
+      "base_exenta": 480.0,
+      "total_exento": 480.0,
+      "total_general": 1061.0
+    }
+  }
+}

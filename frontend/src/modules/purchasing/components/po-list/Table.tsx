@@ -1,6 +1,13 @@
 import React from "react";
 
-type PurchaseStatus = "DRAFT" | "SENT" | "PARTIAL" | "RECEIVED" | "CANCELLED";
+type PurchaseStatus =
+  | "BORRADOR"
+  | "PENDIENTE"
+  | "APROBADA"
+  | "ENVIADA"
+  | "PARCIAL"
+  | "COMPLETADA"
+  | "CANCELADA";
 
 type Row = {
   id: string;
@@ -11,6 +18,7 @@ type Row = {
   total: number;
   received: number;
   status: PurchaseStatus;
+  statusLabel: string;
 };
 
 type Props = {
@@ -42,6 +50,11 @@ const bodyCellStyle: React.CSSProperties = {
   padding: 10,
   borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
 };
+
+const currencyFormatter = new Intl.NumberFormat("es-HN", {
+  style: "currency",
+  currency: "MXN",
+});
 
 export default function Table({ rows, loading, onRowClick }: Props) {
   const data = Array.isArray(rows) ? rows : [];
@@ -80,12 +93,12 @@ export default function Table({ rows, loading, onRowClick }: Props) {
               <td style={bodyCellStyle}>{row.supplier || "—"}</td>
               <td style={{ ...bodyCellStyle, textAlign: "center" }}>{row.itemsCount}</td>
               <td style={{ ...bodyCellStyle, textAlign: "right" }}>
-                {Intl.NumberFormat().format(row.total)}
+                {currencyFormatter.format(row.total)}
               </td>
               <td style={{ ...bodyCellStyle, textAlign: "right" }}>
-                {Intl.NumberFormat().format(row.received)}
+                {currencyFormatter.format(row.received)}
               </td>
-              <td style={bodyCellStyle}>{row.status}</td>
+              <td style={bodyCellStyle}>{row.statusLabel}</td>
             </tr>
           ))}
         </tbody>
@@ -93,3 +106,5 @@ export default function Table({ rows, loading, onRowClick }: Props) {
     </div>
   );
 }
+
+export type { Row as PurchaseOrderListRow };

@@ -205,7 +205,7 @@ const PurchasesOrdersPanel = ({
                     <td>{getTemplateSupplier(template)}</td>
                     <td>
                       {template.last_used_at
-                        ? new Date(template.last_used_at).toLocaleString("es-MX")
+                        ? new Date(template.last_used_at).toLocaleString("es-HN")
                         : "Nunca"}
                     </td>
                     <td>
@@ -262,7 +262,7 @@ const PurchasesOrdersPanel = ({
                       {statusLabels[order.status]}
                     </span>
                   </td>
-                  <td>{new Date(order.created_at).toLocaleString("es-MX")}</td>
+                  <td>{new Date(order.created_at).toLocaleString("es-HN")}</td>
                   <td>
                     <ul className="compact-list">
                       {order.items.map((item) => (

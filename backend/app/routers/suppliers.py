@@ -1,14 +1,20 @@
 """Router de proveedores estratégicos."""
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
-from ..core.roles import GESTION_ROLES
+from ..core.roles import ADMIN, GESTION_ROLES
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
 
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])
+
+
+def _is_superadmin(user: Any, confirmation: bool) -> bool:
+    return confirmation and str(getattr(user, "rol", "")).upper() == ADMIN
 
 
 @router.get("/", response_model=list[schemas.SupplierResponse], dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -31,6 +37,17 @@ def list_suppliers_endpoint(
     return suppliers
 
 
+@router.get(
+    "/accounts-payable",
+    response_model=schemas.SupplierAccountsPayableResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def get_suppliers_accounts_payable_endpoint(
+    db: Session = Depends(get_db),
+):
+    return crud.get_suppliers_accounts_payable(db)
+
+
 @router.post("/", response_model=schemas.SupplierResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles(*GESTION_ROLES))])
 def create_supplier_endpoint(
     payload: schemas.SupplierCreate,
@@ -45,6 +62,11 @@ def create_supplier_endpoint(
             performed_by_id=current_user.id if current_user else None,
         )
     except ValueError as exc:
+        if str(exc) == "supplier_rtn_invalid":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="El RTN del proveedor debe contener 14 dígitos (formato ####-####-######).",
+            ) from exc
         if str(exc) == "supplier_already_exists":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -64,6 +86,13 @@ def get_supplier_endpoint(
         return crud.get_supplier(db, supplier_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
+    except ValueError as exc:
+        if str(exc) == "supplier_rtn_invalid":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="El RTN del proveedor debe contener 14 dígitos (formato ####-####-######).",
+            ) from exc
+        raise
 
 
 @router.put("/{supplier_id}", response_model=schemas.SupplierResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -96,12 +125,22 @@ def delete_supplier_endpoint(
     db: Session = Depends(get_db),
     reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*GESTION_ROLES)),
+    hard_delete: bool = Query(
+        default=False,
+        description="Eliminación definitiva solo para superadministradores",
+    ),
+    superadmin_confirmed: bool = Query(
+        default=False,
+        description="Confirma que un superadministrador autorizó la eliminación",
+    ),
 ):
     try:
         crud.delete_supplier(
             db,
             supplier_id,
             performed_by_id=current_user.id if current_user else None,
+            allow_hard_delete=hard_delete,
+            is_superadmin=_is_superadmin(current_user, superadmin_confirmed),
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado") from exc
@@ -156,7 +195,7 @@ def create_supplier_batch_endpoint(
     except ValueError as exc:
         if str(exc) == "supplier_batch_store_mismatch":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="El dispositivo no pertenece a la sucursal indicada.",
             ) from exc
         raise

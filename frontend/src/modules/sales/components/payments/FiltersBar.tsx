@@ -18,15 +18,23 @@ function PaymentsFiltersBar({ value, onChange, onNewPayment }: PaymentsFiltersBa
   const filters = value ?? {};
 
   const handleChange = <K extends keyof PaymentFilters>(key: K, val: PaymentFilters[K]) => {
-    onChange({ ...filters, [key]: val });
+    const next = { ...filters } as PaymentFilters;
+    const isEmptyString = typeof val === "string" && val.trim() === "";
+    const isAllOption = (key === "type" || key === "method") && val === "ALL";
+    if (val === undefined || val === null || isEmptyString || isAllOption) {
+      delete next[key];
+    } else {
+      next[key] = val;
+    }
+    onChange(next);
   };
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "2fr repeat(4, 1fr) auto", gap: 8 }}>
       <input
         placeholder="Cliente o #pedido"
-        value={filters.query ?? ""}
-        onChange={(event) => handleChange("query", event.target.value)}
+  value={filters.query ?? ""}
+  onChange={(event) => handleChange("query", event.target.value)}
         style={{ padding: 8, borderRadius: 8, background: "rgba(15, 23, 42, 0.8)", border: "1px solid rgba(148, 163, 184, 0.25)", color: "#f8fafc" }}
       />
       <select
@@ -52,14 +60,14 @@ function PaymentsFiltersBar({ value, onChange, onNewPayment }: PaymentsFiltersBa
       </select>
       <input
         type="date"
-        value={filters.dateFrom ?? ""}
-        onChange={(event) => handleChange("dateFrom", event.target.value)}
+  value={filters.dateFrom ?? ""}
+  onChange={(event) => handleChange("dateFrom", event.target.value)}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <input
         type="date"
-        value={filters.dateTo ?? ""}
-        onChange={(event) => handleChange("dateTo", event.target.value)}
+  value={filters.dateTo ?? ""}
+  onChange={(event) => handleChange("dateTo", event.target.value)}
         style={{ padding: 8, borderRadius: 8 }}
       />
       <button onClick={onNewPayment} style={{ padding: "8px 12px", borderRadius: 8, background: "#38bdf8", color: "#0b1220", border: 0 }}>

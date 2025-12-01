@@ -26,6 +26,8 @@ type Props = {
   token: string;
 };
 
+type UserStatusFilter = "all" | "active" | "inactive" | "locked";
+
 const DEFAULT_FORM_STATE: UserFormState = {
   username: "",
   fullName: "",
@@ -56,7 +58,7 @@ function UserManagement({ token }: Props) {
   const [formState, setFormState] = useState<UserFormState>(DEFAULT_FORM_STATE);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("TODOS");
-  const [statusFilter, setStatusFilter] = useState<UserQueryFilters["status"]>("all");
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
   const [storeFilter, setStoreFilter] = useState<number | "ALL">("ALL");
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
@@ -124,15 +126,22 @@ function UserManagement({ token }: Props) {
       setLoadingPermissions(true);
       const data = await usersService.listRolePermissions(token);
       setPermissionsMatrix(data);
-      if (data.length > 0) {
-        const defaultRole = data.find((item) => item.role === selectedRole)?.role ?? data[0].role;
-        setSelectedRole(defaultRole);
-        const mapping: Record<string, RoleModulePermission[]> = {};
-        data.forEach((item) => {
-          mapping[item.role] = item.permissions.map((permission) => ({ ...permission }));
-        });
-        setPermissionDraft(mapping);
+      if (data.length === 0) {
+        setPermissionDraft({});
+        setSelectedRole("");
+        return;
       }
+      const mapping: Record<string, RoleModulePermission[]> = {};
+      data.forEach((item) => {
+        mapping[item.role] = item.permissions.map((permission) => ({ ...permission }));
+      });
+      setPermissionDraft(mapping);
+      setSelectedRole((current) => {
+        if (current && data.some((item) => item.role === current)) {
+          return current;
+        }
+        return data[0]!.role;
+      });
     } catch (error_) {
       const message =
         error_ instanceof Error ? error_.message : "No fue posible cargar los permisos corporativos.";
@@ -140,7 +149,7 @@ function UserManagement({ token }: Props) {
     } finally {
       setLoadingPermissions(false);
     }
-  }, [token, pushToast, selectedRole]);
+  }, [token, pushToast]);
 
   useEffect(() => {
     let active = true;
@@ -321,11 +330,22 @@ function UserManagement({ token }: Props) {
     const payload: UserCreateInput = {
       username: trimmedUsername,
       password: formState.password,
-      full_name: formState.fullName.trim() || undefined,
-      telefono: formState.telefono.trim() || undefined,
       roles: formState.roles,
-      store_id: formState.storeId === "none" ? undefined : formState.storeId,
     };
+
+    const trimmedFullName = formState.fullName.trim();
+    if (trimmedFullName) {
+      payload.full_name = trimmedFullName;
+    }
+
+    const trimmedPhone = formState.telefono.trim();
+    if (trimmedPhone) {
+      payload.telefono = trimmedPhone;
+    }
+
+    if (formState.storeId !== "none") {
+      payload.store_id = formState.storeId;
+    }
 
     try {
       setSavingUser(true);
@@ -380,6 +400,10 @@ function UserManagement({ token }: Props) {
     return permissionDraft[selectedRole] ?? baselinePermissions.map((permission) => ({ ...permission }));
   }, [permissionDraft, selectedRole, baselinePermissions]);
 
+  const sensitivePermissions = useMemo(() => {
+    return currentPermissions.filter((permission) => permission.can_delete || permission.can_edit);
+  }, [currentPermissions]);
+
   const hasPermissionChanges = useMemo(() => {
     if (baselinePermissions.length !== currentPermissions.length) {
       return true;
@@ -410,6 +434,10 @@ function UserManagement({ token }: Props) {
       );
       return { ...current, [selectedRole]: updated };
     });
+  };
+
+  const handleSensitiveToggle = (module: string) => {
+    handlePermissionToggle(module, "can_delete");
   };
 
   const handlePermissionReset = () => {
@@ -477,7 +505,7 @@ function UserManagement({ token }: Props) {
             roleFilter={roleFilter}
             onRoleFilterChange={setRoleFilter}
             statusFilter={statusFilter}
-            onStatusFilterChange={(value) => setStatusFilter(value)}
+            onStatusFilterChange={(value) => setStatusFilter(value ?? "all")}
             storeFilter={storeFilter}
             onStoreFilterChange={(value) => setStoreFilter(value)}
             roleOptions={roleNames}
@@ -494,30 +522,64 @@ function UserManagement({ token }: Props) {
             loading={loadingUsers}
           />
         </div>
-        <SidePanel
-          mode={selectedUser ? "edit" : "create"}
-          formValues={formState}
-          onFormChange={(patch) => setFormState((current) => ({ ...current, ...patch }))}
-          onFormSubmit={handleFormSubmit}
-          onFormReset={() => {
-            setSelectedUserId(null);
-            setFormState(DEFAULT_FORM_STATE);
-          }}
-          roles={sortedRoles}
-          stores={stores}
-          savingUser={savingUser}
-          permissionsMatrix={sortedPermissionsMatrix}
-          selectedRole={selectedRole}
-          permissions={currentPermissions}
-          onSelectRole={setSelectedRole}
-          onTogglePermission={handlePermissionToggle}
-          onResetPermissions={handlePermissionReset}
-          onSavePermissions={handlePermissionSave}
-          savingPermissions={savingPermissions}
-          loadingPermissions={loadingPermissions}
-          hasPermissionChanges={hasPermissionChanges}
-          onOpenRoleModal={() => setIsRoleModalOpen(true)}
-        />
+        <div className="user-management__side">
+          <SidePanel
+            mode={selectedUser ? "edit" : "create"}
+            formValues={formState}
+            onFormChange={(patch) => setFormState((current) => ({ ...current, ...patch }))}
+            onFormSubmit={handleFormSubmit}
+            onFormReset={() => {
+              setSelectedUserId(null);
+              setFormState(DEFAULT_FORM_STATE);
+            }}
+            roles={sortedRoles}
+            stores={stores}
+            savingUser={savingUser}
+            permissionsMatrix={sortedPermissionsMatrix}
+            selectedRole={selectedRole}
+            permissions={currentPermissions}
+            onSelectRole={setSelectedRole}
+            onTogglePermission={handlePermissionToggle}
+            onResetPermissions={handlePermissionReset}
+            onSavePermissions={handlePermissionSave}
+            savingPermissions={savingPermissions}
+            loadingPermissions={loadingPermissions}
+            hasPermissionChanges={hasPermissionChanges}
+            onOpenRoleModal={() => setIsRoleModalOpen(true)}
+          />
+          <section className="card card-section sensitive-permissions">
+            <header className="permissions-panel__header">
+              <div>
+                <h3>Acciones sensibles por sucursal</h3>
+                <p className="card-subtitle">
+                  Activa o desactiva la eliminación por módulo; se limitará a la sucursal asignada del usuario.
+                </p>
+              </div>
+            </header>
+            {sensitivePermissions.length === 0 ? (
+              <p className="muted-text">No hay módulos marcados como sensibles para este rol.</p>
+            ) : (
+              <ul className="sensitive-permissions__list">
+                {sensitivePermissions.map((permission) => (
+                  <li key={permission.module} className="sensitive-permissions__item">
+                    <div>
+                      <p className="permissions-table__module">{permission.module}</p>
+                      <small className="muted-text">Requiere rol activo en la sucursal objetivo.</small>
+                    </div>
+                    <label className="checkbox-control">
+                      <input
+                        type="checkbox"
+                        checked={permission.can_delete}
+                        onChange={() => handleSensitiveToggle(permission.module)}
+                      />
+                      <span />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
       <RoleModal
         open={isRoleModalOpen}

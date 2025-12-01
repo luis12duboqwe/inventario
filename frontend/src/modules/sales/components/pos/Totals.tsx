@@ -1,6 +1,6 @@
 import React from "react";
 
-const formatter = new Intl.NumberFormat("es-MX", {
+const formatter = new Intl.NumberFormat("es-HN", {
   style: "currency",
   currency: "MXN",
   maximumFractionDigits: 2,
@@ -16,13 +16,16 @@ type Props = {
   onClear?: () => void;
 };
 
-export default function Totals({ subtotal, discountTotal, taxTotal, grandTotal, onCharge, onHold, onClear }: Props) {
-  const Item = ({ label, value, strong }: { label: string; value: number; strong?: boolean }) => (
+function Item({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+  return (
     <div style={{ display: "flex", justifyContent: "space-between", fontWeight: strong ? 700 : 400 }}>
       <span style={{ color: strong ? "#e5e7eb" : "#94a3b8" }}>{label}</span>
       <span>{formatter.format(value || 0)}</span>
     </div>
   );
+}
+
+export default function Totals({ subtotal, discountTotal, taxTotal, grandTotal, onCharge, onHold, onClear }: Props) {
   return (
     <div
       style={{

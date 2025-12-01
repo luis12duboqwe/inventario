@@ -1,5 +1,5 @@
 // [PACK35-frontend]
-import { enqueueSyncQueueEvents } from "../../../api";
+import { enqueueSyncQueueEvents, type SyncQueueEventInput } from "../../../api";
 
 export type LocalSyncQueueStatus = "pending" | "sending" | "sent" | "failed";
 
@@ -144,8 +144,24 @@ const memoryDriver: StorageDriver = {
     if (index === -1) {
       return null;
     }
-    memoryStore[index] = { ...memoryStore[index], ...updates };
-    return memoryStore[index];
+    const current = memoryStore[index]!;
+    const next: LocalSyncQueueItem = {
+      ...current,
+      ...updates,
+      id: current.id,
+      eventType: updates.eventType ?? current.eventType,
+      payload: updates.payload ?? current.payload,
+      status: updates.status ?? current.status,
+      attempts: updates.attempts ?? current.attempts,
+      lastError: updates.lastError ?? current.lastError,
+      idempotencyKey: updates.idempotencyKey ?? current.idempotencyKey ?? null,
+      remoteId: updates.remoteId ?? current.remoteId ?? null,
+      createdAt: updates.createdAt ?? current.createdAt,
+      updatedAt: updates.updatedAt ?? current.updatedAt,
+      nextAttemptAt: updates.nextAttemptAt ?? current.nextAttemptAt,
+    };
+    memoryStore[index] = next;
+    return next;
   },
   async all() {
     return [...memoryStore];
@@ -208,11 +224,16 @@ async function flushInternal(): Promise<FlushSummary> {
     )
   );
 
-  const events = ready.map((item) => ({
-    event_type: item.eventType,
-    payload: item.payload,
-    idempotency_key: item.idempotencyKey ?? undefined,
-  }));
+  const events = ready.map((item) => {
+    const event: SyncQueueEventInput = {
+      event_type: item.eventType,
+      payload: item.payload,
+    };
+    if (item.idempotencyKey) {
+      event.idempotency_key = item.idempotencyKey;
+    }
+    return event;
+  });
 
   try {
     const response = await enqueueSyncQueueEvents(authToken, events);

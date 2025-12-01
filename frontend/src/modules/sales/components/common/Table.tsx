@@ -2,13 +2,27 @@ import React, { useCallback, useMemo } from "react";
 import { Row } from "../Row";
 
 type Column = { key: string; label: string; align?: "left" | "right" | "center" };
-type Row = Record<string, unknown>;
+type DataRowValue = React.ReactNode | string | number | boolean | null | undefined;
+type DataRow = Record<string, DataRowValue>;
 
 type Props = {
   cols: Column[];
-  rows: Row[];
-  onRowClick?: (row: Row) => void;
+  rows: DataRow[];
+  onRowClick?: (row: DataRow) => void;
 };
+
+function renderCellValue(value: DataRowValue): React.ReactNode {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+  if (typeof value === "boolean") {
+    return value ? "Sí" : "No";
+  }
+  if (React.isValidElement(value)) {
+    return value;
+  }
+  return String(value);
+}
 
 export default function Table({ cols, rows, onRowClick }: Props) {
   const data = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
@@ -21,7 +35,12 @@ export default function Table({ cols, rows, onRowClick }: Props) {
   const mappedRows = useMemo(
     () =>
       data.map((row, index) => ({
-        key: (row?.id as string | number | undefined) ?? index,
+        key:
+          typeof row.id === "string"
+            ? row.id
+            : typeof row.id === "number"
+              ? row.id
+              : index,
         row,
         cells: cols.map((column) => (
           <span
@@ -31,7 +50,7 @@ export default function Table({ cols, rows, onRowClick }: Props) {
               textAlign: column.align ?? "left",
             }}
           >
-            {row[column.key] ?? "—"}
+            {renderCellValue(row[column.key])}
           </span>
         )),
       })),
@@ -39,7 +58,7 @@ export default function Table({ cols, rows, onRowClick }: Props) {
   );
 
   const handleClick = useCallback(
-    (row: Row) => {
+    (row: DataRow) => {
       onRowClick?.(row);
     },
     [onRowClick],

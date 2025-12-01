@@ -1,10 +1,25 @@
-const API_URL = import.meta.env.VITE_API_URL?.trim();
 const DEFAULT_API_PORT = "8000";
-const DEFAULT_HOSTNAME = "127.0.0.1";
 const DEFAULT_PROTOCOL = "https";
+const RELATIVE_API_BASE = "/api";
 const CODESPACES_DOMAIN_REGEX = /-(\d+)\.(app\.github\.dev|githubpreview\.dev)$/;
+const API_OVERRIDE_STORAGE_KEY = "softmobile_api_base_override";
+const PRIVATE_IPV4_REGEX = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
 
 type RuntimeEnvironment = "codespaces" | "local" | "custom";
+
+function normalizeBaseUrl(raw: string | null | undefined): string | null {
+  if (!raw) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  return withProtocol.replace(/\/+$/, "");
+}
+
+const ENV_API_URL = normalizeBaseUrl(import.meta.env.VITE_API_URL?.trim());
 
 function normalizeProtocol(protocol: string | undefined): string {
   if (!protocol) {
@@ -69,8 +84,46 @@ function detectCodespacesUrlFromProcess(): string | undefined {
   return `${DEFAULT_PROTOCOL}://${name}-${DEFAULT_API_PORT}.${domain}`;
 }
 
+export function getStoredApiBaseUrlOverride(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const stored = window.localStorage.getItem(API_OVERRIDE_STORAGE_KEY);
+    return normalizeBaseUrl(stored);
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("No fue posible leer la URL de API almacenada", error);
+    }
+    return null;
+  }
+}
+
+export function setApiBaseUrlOverride(baseUrl: string | null): string | null {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (typeof window === "undefined") {
+    return normalized;
+  }
+  try {
+    if (normalized) {
+      window.localStorage.setItem(API_OVERRIDE_STORAGE_KEY, normalized);
+    } else {
+      window.localStorage.removeItem(API_OVERRIDE_STORAGE_KEY);
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("No fue posible persistir la URL base de la API", error);
+    }
+  }
+  return normalized;
+}
+
+export function clearApiBaseUrlOverride(): void {
+  setApiBaseUrlOverride(null);
+}
+
 export function detectRuntimeEnvironment(): RuntimeEnvironment {
-  const configuredUrl = API_URL;
+  const configuredUrl = getStoredApiBaseUrlOverride() ?? ENV_API_URL;
   if (configuredUrl) {
     if (configuredUrl.includes("github.dev") || configuredUrl.includes("githubpreview.dev")) {
       return "codespaces";
@@ -107,8 +160,13 @@ function buildLocalFallbackUrl(): string | undefined {
 }
 
 export function getApiBaseUrl(): string {
-  if (API_URL) {
-    return API_URL;
+  const storedOverride = getStoredApiBaseUrlOverride();
+  if (storedOverride) {
+    return storedOverride;
+  }
+
+  if (ENV_API_URL) {
+    return ENV_API_URL;
   }
 
   const codespacesUrl = detectCodespacesUrlFromWindow() ?? detectCodespacesUrlFromProcess();
@@ -116,12 +174,46 @@ export function getApiBaseUrl(): string {
     return codespacesUrl;
   }
 
+  if (typeof window !== "undefined" && window.location) {
+    const { hostname, port, protocol } = window.location;
+    if (!hostname) {
+      return RELATIVE_API_BASE;
+    }
+    const normalizedProtocol = normalizeProtocol(protocol);
+    const isLocalHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      hostname === "::1";
+    const isLanHost = PRIVATE_IPV4_REGEX.test(hostname);
+
+    if (isLocalHost && (!port || port === DEFAULT_API_PORT)) {
+      return RELATIVE_API_BASE;
+    }
+
+    if (isLanHost) {
+      const targetPort = !port || port === "5173" || port === "4173" ? DEFAULT_API_PORT : port;
+      return `${normalizedProtocol}://${hostname}:${targetPort}`;
+    }
+
+    if (port === "5173" || port === "4173") {
+      return `${normalizedProtocol}://${hostname}:${DEFAULT_API_PORT}`;
+    }
+
+    if (port === DEFAULT_API_PORT && !isLocalHost) {
+      return `${normalizedProtocol}://${hostname}:${DEFAULT_API_PORT}`;
+    }
+    if (!hostname) {
+      return RELATIVE_API_BASE;
+    }
+  }
+
   const localFallback = buildLocalFallbackUrl();
   if (localFallback) {
     return localFallback;
   }
 
-  return `${DEFAULT_PROTOCOL}://${DEFAULT_HOSTNAME}:${DEFAULT_API_PORT}`;
+  return RELATIVE_API_BASE;
 }
 
 export const apiConfig = {

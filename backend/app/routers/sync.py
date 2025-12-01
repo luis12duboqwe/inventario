@@ -1,8 +1,9 @@
 """Sincronización automática y bajo demanda."""
 from __future__ import annotations
 
+import csv
 from datetime import datetime
-from io import BytesIO
+from io import BytesIO, StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -28,7 +29,8 @@ router = APIRouter(prefix="/sync", tags=["sincronizacion"])
 
 def _ensure_hybrid_enabled() -> None:
     if not settings.enable_hybrid_prep:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Funcionalidad no disponible")
 
 
 @router.post("/run", response_model=schemas.SyncSessionResponse, dependencies=[Depends(require_roles(*GESTION_ROLES))])
@@ -43,7 +45,8 @@ def trigger_sync(
         try:
             crud.get_store(db, store_id)
         except LookupError as exc:
-            raise HTTPException(status_code=404, detail="Sucursal no encontrada") from exc
+            raise HTTPException(
+                status_code=404, detail="Sucursal no encontrada") from exc
 
     status = models.SyncStatus.SUCCESS
     error_message: str | None = None
@@ -84,7 +87,8 @@ def trigger_sync(
         differences_detected=differences_count,
     )
     if status is models.SyncStatus.FAILED:
-        raise HTTPException(status_code=500, detail="No fue posible completar la sincronización")
+        raise HTTPException(
+            status_code=500, detail="No fue posible completar la sincronización")
     return session
 
 
@@ -103,8 +107,10 @@ def enqueue_queue_events(
     _ensure_hybrid_enabled()
     queued, reused = crud.enqueue_sync_queue_events(db, payload.events)
     return schemas.SyncQueueEnqueueResponse(
-        queued=[schemas.SyncQueueEntryResponse.model_validate(item) for item in queued],
-        reused=[schemas.SyncQueueEntryResponse.model_validate(item) for item in reused],
+        queued=[schemas.SyncQueueEntryResponse.model_validate(
+            item) for item in queued],
+        reused=[schemas.SyncQueueEntryResponse.model_validate(
+            item) for item in reused],
     )
 
 
@@ -232,7 +238,8 @@ def resolve_queue_entry(
     try:
         return sync_queue.mark_entry_resolved(db, queue_id)
     except LookupError as exc:  # pragma: no cover - protección extra
-        raise HTTPException(status_code=404, detail="Evento no encontrado") from exc
+        raise HTTPException(
+            status_code=404, detail="Evento no encontrado") from exc
 
 
 @router.get("/sessions", response_model=list[schemas.SyncSessionResponse], dependencies=[Depends(require_roles(ADMIN))])
@@ -375,7 +382,8 @@ def list_outbox_entries(
 ):
     _ensure_hybrid_enabled()
     statuses = [status_filter] if status_filter else None
-    entries = crud.list_sync_outbox(db, statuses=statuses, limit=limit, offset=offset)
+    entries = crud.list_sync_outbox(
+        db, statuses=statuses, limit=limit, offset=offset)
     return entries
 
 
@@ -402,7 +410,73 @@ def retry_outbox_entries(
         offset=offset,
     )
     if not entries:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entradas no encontradas")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Entradas no encontradas")
+    return entries
+
+
+@router.patch(
+    "/outbox/{entry_id}/priority",
+    response_model=schemas.SyncOutboxEntryResponse,
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def reprioritize_outbox_entry(
+    entry_id: int,
+    payload: schemas.SyncOutboxPriorityUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+    reason: str = Depends(require_reason),
+):
+    _ensure_hybrid_enabled()
+    entry = crud.update_outbox_priority(
+        db,
+        entry_id,
+        priority=payload.priority,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+    )
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Entrada no encontrada")
+    return entry
+
+
+@router.post(
+    "/outbox/resolve",
+    response_model=list[schemas.SyncOutboxEntryResponse],
+    dependencies=[Depends(require_roles(*GESTION_ROLES))],
+)
+def resolve_outbox_conflicts(
+    payload: schemas.SyncOutboxReplayRequest,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles(*GESTION_ROLES)),
+    reason: str = Depends(require_reason),
+):
+    _ensure_hybrid_enabled()
+    entry = crud.update_outbox_priority(
+        db,
+        entry_id,
+        priority=payload.priority,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+    )
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Entrada no encontrada")
+    return entry
+    entries = crud.resolve_outbox_conflicts(
+        db,
+        payload.ids,
+        performed_by_id=current_user.id if current_user else None,
+        reason=reason,
+        limit=limit,
+        offset=offset,
+    )
+    if not entries:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Entradas no encontradas")
     return entries
 
 
@@ -452,3 +526,66 @@ def list_sync_history(
             )
         )
     return results
+
+
+@router.get(
+    "/history/export",
+    dependencies=[Depends(require_roles(ADMIN))],
+)
+def export_sync_history_csv(
+    limit_per_store: int = Query(default=5, ge=1, le=50),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+):
+    history = crud.list_sync_history_by_store(
+        db, limit_per_store=limit_per_store, limit=limit, offset=offset
+    )
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "store_id",
+            "store_name",
+            "session_id",
+            "modo",
+            "estado",
+            "inicio",
+            "fin",
+            "error",
+            "latencia_segundos",
+        ]
+    )
+    now = datetime.utcnow()
+    for item in history:
+        store_id = item.get("store_id")
+        store_name = item.get("store_name")
+        for session in item.get("sessions", []):
+            started_at = session.get("started_at")
+            finished_at = session.get("finished_at")
+            elapsed = None
+            if started_at:
+                end_time = finished_at or now
+                elapsed = (end_time - started_at).total_seconds()
+            writer.writerow(
+                [
+                    store_id,
+                    store_name,
+                    session.get("id"),
+                    session.get("mode"),
+                    session.get("status"),
+                    started_at.isoformat() if started_at else "",
+                    finished_at.isoformat() if finished_at else "",
+                    session.get("error_message") or "",
+                    f"{elapsed:.2f}" if elapsed is not None else "",
+                ]
+            )
+
+    csv_bytes = buffer.getvalue().encode("utf-8")
+    filename = f"historial_sync_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        BytesIO(csv_bytes),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

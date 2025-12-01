@@ -23,7 +23,19 @@ frontend/.env.production
 frontend/.env.codespace
 backend/.env
 
+# Database files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+backend/database/*.db
+backend/database/*.db-journal
+database/*.db
+database/*.db-journal
+
 # Misc
 .DS_Store
 .idea/
 .vscode/
+.tmp/

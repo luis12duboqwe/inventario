@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import PaymentMethodSelector, { PaymentMethod } from "./PaymentMethodSelector";
 
@@ -9,6 +9,7 @@ type PaymentModalPayload = {
   cashAmount?: number;
   cardAmount?: number;
   reference?: string;
+  reason: string;
 };
 
 type PaymentModalProps = {
@@ -18,7 +19,7 @@ type PaymentModalProps = {
   onSubmit?: (payload: PaymentModalPayload) => void;
 };
 
-const formatCurrency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const formatCurrency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
   const [method, setMethod] = useState<PaymentMethod>("CASH");
@@ -26,24 +27,17 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
   const [cashAmount, setCashAmount] = useState<number>(0);
   const [cardAmount, setCardAmount] = useState<number>(0);
   const [reference, setReference] = useState<string>("");
+  const [reason, setReason] = useState<string>("");
 
-  useEffect(() => {
-    if (!open) {
-      setMethod("CASH");
-      setAmount(0);
-      setCashAmount(0);
-      setCardAmount(0);
-      setReference("");
-    }
-  }, [open]);
+  // Sin setState en efectos: limpiamos al cancelar o tras confirmar.
 
   const isValid = useMemo(() => {
     if (method === "MIXED") {
       const totalMixed = (cashAmount ?? 0) + (cardAmount ?? 0);
-      return totalMixed > 0;
+      return totalMixed > 0 && reason.trim().length >= 5;
     }
-    return amount > 0;
-  }, [amount, cardAmount, cashAmount, method]);
+    return amount > 0 && reason.trim().length >= 5;
+  }, [amount, cardAmount, cashAmount, method, reason]);
 
   const totalDisplayed = method === "MIXED" ? cashAmount + cardAmount : amount;
 
@@ -51,15 +45,34 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
     if (!isValid) {
       return;
     }
+    const totalAmount = method === "MIXED" ? cashAmount + cardAmount : amount;
     const payload: PaymentModalPayload = {
-      orderId,
       method,
-      amount: method === "MIXED" ? cashAmount + cardAmount : amount,
-      cashAmount: method === "MIXED" ? cashAmount : undefined,
-      cardAmount: method === "MIXED" ? cardAmount : undefined,
-      reference: reference.trim() || undefined,
+      amount: totalAmount,
+      reason: reason.trim(),
     };
+    if (method === "MIXED" && cashAmount > 0) {
+      payload.cashAmount = cashAmount;
+    }
+    if (method === "MIXED" && cardAmount > 0) {
+      payload.cardAmount = cardAmount;
+    }
+    const trimmedReference = reference.trim();
+    if (trimmedReference) {
+      payload.reference = trimmedReference;
+    }
+    if (orderId) {
+      payload.orderId = orderId;
+    }
     onSubmit?.(payload);
+    // restablecer campos para el próximo uso
+    setMethod("CASH");
+    setAmount(0);
+    setCashAmount(0);
+    setCardAmount(0);
+    setReference("");
+    setReason("");
+    onClose?.();
   };
 
   const handleAmountChange = (setter: (value: number) => void) => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,12 +136,34 @@ function PaymentModal({ open, orderId, onClose, onSubmit }: PaymentModalProps) {
               style={{ width: "100%", padding: 8, borderRadius: 8 }}
             />
           </label>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span>Motivo corporativo (mín. 5 caracteres)</span>
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              style={{ width: "100%", padding: 8, borderRadius: 8, minHeight: 72 }}
+              placeholder="Describe el motivo corporativo"
+            />
+          </label>
           <div style={{ textAlign: "right", fontSize: 14, color: "#38bdf8" }}>
             Total a registrar: {formatCurrency.format(Math.max(0, totalDisplayed))}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} style={{ padding: "8px 12px", borderRadius: 8 }}>Cancelar</button>
+          <button
+            onClick={() => {
+              setMethod("CASH");
+              setAmount(0);
+              setCashAmount(0);
+              setCardAmount(0);
+              setReference("");
+              setReason("");
+              onClose?.();
+            }}
+            style={{ padding: "8px 12px", borderRadius: 8 }}
+          >
+            Cancelar
+          </button>
           <button
             type="button"
             disabled={!isValid}

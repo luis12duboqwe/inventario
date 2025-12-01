@@ -43,6 +43,9 @@ export async function logUI(evt: AuditEvent){
 export async function flushAudit(){
   const q = readQ();
   if (!q.length) return { flushed:0, pending:0 };
+  // Evita intento de envío sin token para no provocar 401 en login
+  const token = localStorage.getItem("access_token");
+  if (!token) return { flushed: 0, pending: q.length };
   const payload = {
     items: q.map((item) => ({
       ...item,
@@ -52,7 +55,7 @@ export async function flushAudit(){
   };
   const url = apiMap.audit?.bulk ?? "/api/audit/ui/bulk";
   try {
-    await httpPost(url, payload, { timeoutMs: 4500 });
+    await httpPost(url, payload, { timeoutMs: 4500, withAuth: true });
     writeQ([]);
     return { flushed: q.length, pending: 0 };
   } catch {

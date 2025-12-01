@@ -4,11 +4,12 @@ from datetime import date, datetime
 from io import StringIO
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from ..acl import require_roles
 from ..audit_logger import audit_event
+from ..config import settings
 
 # Nota: evitamos depender de detalles de modelos específicos.
 # Si existen helpers en crud, podemos usarlos; de lo contrario devolvemos forma vacía válida.
@@ -30,6 +31,14 @@ def _parse_date(d: Optional[str]) -> date:
         raise HTTPException(status_code=400, detail="Formato de fecha inválido, use YYYY-MM-DD")
 
 
+def _ensure_sales_feature_enabled() -> None:
+    if not settings.enable_purchases_sales:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Funcionalidad no disponible",
+        )
+
+
 @router.get("/daily")
 def get_daily_sales(
     date_str: Optional[str] = Query(default=None, alias="date"),
@@ -39,6 +48,7 @@ def get_daily_sales(
     """Resumen por día/sucursal.
     Entrega forma estable aunque no hayan datos (evita romper UI).
     """
+    _ensure_sales_feature_enabled()
     target_date = _parse_date(date_str)
 
     # Estructura canónica que espera el frontend
@@ -88,6 +98,7 @@ def export_daily_sales_csv(
     store_id: Optional[int] = Query(default=None),
     payment_method: Optional[str] = Query(default=None),
 ):
+    _ensure_sales_feature_enabled()
     target_date = _parse_date(date_str)
 
     # Cabecera CSV estándar

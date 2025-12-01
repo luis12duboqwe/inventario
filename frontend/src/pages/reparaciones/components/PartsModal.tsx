@@ -41,18 +41,21 @@ function PartsModal({
   onAppendParts,
   onRemovePart,
 }: PartsModalProps) {
-  if (!order) {
-    return null;
-  }
 
   const [form, setForm] = useState<ManagePartForm>(initialPartForm);
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setForm(initialPartForm);
-    setSearchTerm("");
-    setError(null);
+    // Difere el reseteo del formulario para evitar setState sincrónico dentro del efecto
+    // y solo cuando el modal está abierto o cambia la orden activa.
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
+      setForm(initialPartForm);
+      setSearchTerm("");
+      setError(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [order?.id, open]);
 
   const filteredDevices = useMemo(() => {
@@ -121,6 +124,10 @@ function PartsModal({
     }
   };
 
+  if (!order) {
+    return null;
+  }
+
   return (
     <Modal
       open={open}
@@ -163,13 +170,13 @@ function PartsModal({
                         <td>{part.quantity}</td>
                         <td>
                           $
-                          {Number(part.unit_cost ?? 0).toLocaleString("es-MX", {
+                          {Number(part.unit_cost ?? 0).toLocaleString("es-HN", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
                         </td>
                         <td>
-                          ${total.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ${total.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td>
                           {typeof part.id === "number" ? (

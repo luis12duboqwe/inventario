@@ -3,6 +3,8 @@ import React from "react";
 type Props = {
   open?: boolean;
   onClose?: () => void;
+  onSubmit?: (file: File) => void;
+  loading?: boolean;
 };
 
 const overlayStyle: React.CSSProperties = {
@@ -31,10 +33,24 @@ const buttonStyle: React.CSSProperties = {
   color: "#bfdbfe",
 };
 
-export default function ImportModal({ open, onClose }: Props) {
+export default function ImportModal({ open, onClose, onSubmit, loading = false }: Props) {
+  const [file, setFile] = React.useState<File | null>(null);
+
   if (!open) {
     return null;
   }
+
+  const handleSubmit = () => {
+    if (!file || loading) {
+      return;
+    }
+    onSubmit?.(file);
+  };
+
+  const handleClose = () => {
+    setFile(null);
+    onClose?.();
+  };
 
   return (
     <div style={overlayStyle}>
@@ -43,17 +59,26 @@ export default function ImportModal({ open, onClose }: Props) {
         <input
           type="file"
           accept=".csv,.xlsx"
+          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
           style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid rgba(148, 163, 184, 0.3)" }}
         />
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button type="button" onClick={onClose} style={buttonStyle}>
+          <button type="button" onClick={handleClose} style={buttonStyle}>
             Cerrar
           </button>
           <button
             type="button"
-            style={{ ...buttonStyle, background: "#2563eb", color: "#fff", border: "0" }}
+            disabled={!file || loading}
+            onClick={handleSubmit}
+            style={{
+              ...buttonStyle,
+              background: !file || loading ? "rgba(37, 99, 235, 0.2)" : "#2563eb",
+              color: "#fff",
+              border: !file || loading ? buttonStyle.border : "0",
+              cursor: !file || loading ? "not-allowed" : "pointer",
+            }}
           >
-            Subir
+            {loading ? "Importando…" : "Subir"}
           </button>
         </div>
       </div>

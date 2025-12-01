@@ -1,0 +1,4 @@
+Video (80s) — Seguridad
+1. Inicio de sesión, refresco automático y bloqueo tras intentos fallidos.
+2. Activación 2FA opcional y verificación de sesiones activas.
+3. Registro de motivos (X-Reason) y exporte de auditoría en PDF oscuro.

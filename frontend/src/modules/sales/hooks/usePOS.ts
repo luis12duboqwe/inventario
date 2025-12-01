@@ -26,14 +26,28 @@ export function usePOS() {
   }, [lines]);
 
   const addProduct = useCallback((p: Product, qty = 1) => {
-    setLines(curr => {
-      const i = curr.findIndex(l => l.productId === p.id && !l.imei);
-      if (i >= 0) {
+    setLines((curr) => {
+      const index = curr.findIndex((line) => line.productId === p.id && !line.imei);
+      if (index >= 0) {
         const copy = curr.slice();
-        copy[i] = { ...copy[i], qty: copy[i].qty + qty };
+        const existing = copy[index];
+        if (!existing) {
+          return curr;
+        }
+        copy[index] = { ...existing, qty: existing.qty + qty };
         return copy;
       }
-      return [...curr, { productId: p.id, name: p.name, sku: p.sku, qty, price: p.price, discount: null }];
+      const nextLine: CartLineInput = {
+        productId: p.id,
+        name: p.name,
+        qty,
+        price: p.price,
+        discount: null,
+      };
+      if (p.sku) {
+        nextLine.sku = p.sku;
+      }
+      return [...curr, nextLine];
     });
   }, []);
 
@@ -67,8 +81,7 @@ export function usePOS() {
       setTotals(t);
     } catch (e: any) {
       // Silencioso: el cálculo local mantiene la UI operativa
-      // eslint-disable-next-line no-console
-      console.warn("priceDraft fallback local", e);
+  console.warn("priceDraft fallback local", e);
       setBanner({ type: "warn", msg: "No fue posible sincronizar totales con el servidor (usando cálculo local)." });
     } finally {
       setLoading(false);
@@ -133,8 +146,8 @@ export function usePOS() {
   const retryOffline = useCallback(async () => {
     const raw = localStorage.getItem("sm_offline_sales");
     if (!raw) return 0;
-    const queue = JSON.parse(raw) as OfflineItem[];
-    let ok = 0, left: OfflineItem[] = [];
+  const queue = JSON.parse(raw) as OfflineItem[];
+  let ok = 0; const left: OfflineItem[] = [];
     for (const item of queue) {
       try { await SalesPOS.checkout(item.dto); ok++; }
       catch { left.push(item); }

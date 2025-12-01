@@ -10,12 +10,25 @@ type BudgetModalProps = {
   onConfirmClose?: (() => Promise<void> | void) | undefined; // [PACK37-frontend]
 };
 
+type PartLike = RepairOrder["parts"][number] | RepairPartForm;
+
+function resolveUnitCost(part: PartLike): number {
+  if ("unit_cost" in part) {
+    return Number(part.unit_cost ?? 0);
+  }
+  return Number(part.unitCost ?? 0);
+}
+
+function resolveQuantity(part: PartLike): number {
+  return Number(part.quantity ?? 0);
+}
+
 function getPartsTotal(parts: RepairOrder["parts"], fallbackParts: RepairPartForm[] = []) {
   if (parts.length === 0 && fallbackParts.length === 0) {
     return 0;
   }
-  const activeParts = parts.length > 0 ? parts : fallbackParts;
-  return activeParts.reduce((acc, part) => acc + Number(part.unit_cost ?? part.unitCost ?? 0) * Number(part.quantity ?? 0), 0);
+  const activeParts: PartLike[] = parts.length > 0 ? parts : fallbackParts;
+  return activeParts.reduce((acc, part) => acc + resolveUnitCost(part) * resolveQuantity(part), 0);
 }
 
 function BudgetModal({ order, open, onClose, onConfirmClose }: BudgetModalProps) {
@@ -75,15 +88,15 @@ function BudgetModal({ order, open, onClose, onConfirmClose }: BudgetModalProps)
           <div className="budget-modal__totals">
             <div>
               <span className="muted-text">Mano de obra</span>
-              <strong>${labor.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>${labor.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </div>
             <div>
               <span className="muted-text">Repuestos</span>
-              <strong>${partsTotal.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>${partsTotal.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </div>
             <div>
               <span className="muted-text">Total</span>
-              <strong>${total.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong>${total.toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </div>
           </div>
         </section>

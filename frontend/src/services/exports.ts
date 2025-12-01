@@ -2,6 +2,7 @@
 import { downloadText } from "@/lib/download";
 import { toCsv } from "@/lib/csv";
 import { SalesCustomers, SalesQuotes, SalesReturns } from "@/services/sales";
+import { formatCurrencyWithUsd, formatDateHn } from "@/utils/locale";
 
 const quoteStatusLabels: Record<string, string> = {
   OPEN: "Abierta",
@@ -21,12 +22,12 @@ function formatDate(value?: string | null): string {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString();
+  return formatDateHn(date);
 }
 
 function formatCurrency(value?: number | null): string {
   if (typeof value !== "number") return "";
-  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value);
+  return formatCurrencyWithUsd(value);
 }
 
 // Descarga CSV de la página actual (recibe items ya renderizados)
@@ -90,7 +91,6 @@ export async function exportCsvAll(entity: "customers" | "quotes" | "returns") {
 
 // XLSX (opcional) si ya existe SheetJS
 export async function exportXlsxIfAvailable(entity: "customers" | "quotes" | "returns", items: any[]) {
-  // @ts-ignore
   const XLSX = (window as any).XLSX ?? undefined;
   if (!XLSX) return false;
   const ws = XLSX.utils.json_to_sheet(items);

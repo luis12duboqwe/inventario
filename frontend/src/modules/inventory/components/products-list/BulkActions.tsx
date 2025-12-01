@@ -8,6 +8,8 @@ type Props = {
   onImport?: () => void;
   onMoveCategory?: () => void;
   onTag?: () => void;
+  onLabel?: () => void;
+  canGenerateLabel?: boolean;
 };
 
 export default function BulkActions({
@@ -18,6 +20,8 @@ export default function BulkActions({
   onImport,
   onMoveCategory,
   onTag,
+  onLabel,
+  canGenerateLabel = false,
 }: Props) {
   if (selectedCount <= 0) {
     return null;
@@ -39,6 +43,28 @@ export default function BulkActions({
         >
           Desactivar
         </button>
+        {onLabel ? (
+          <button
+            onClick={onLabel}
+            disabled={!canGenerateLabel}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: canGenerateLabel ? "#38bdf8" : "rgba(148, 163, 184, 0.25)",
+              color: canGenerateLabel ? "#0f172a" : "#cbd5f5",
+              border: 0,
+              cursor: canGenerateLabel ? "pointer" : "not-allowed",
+              opacity: canGenerateLabel ? 1 : 0.7,
+            }}
+            title={
+              canGenerateLabel
+                ? "Generar etiqueta PDF"
+                : "Selecciona un solo producto y una sucursal para generar la etiqueta"
+            }
+          >
+            Etiqueta PDF
+          </button>
+        ) : null}
         <button onClick={onTag} style={{ padding: "8px 12px", borderRadius: 8 }}>
           Etiquetar
         </button>

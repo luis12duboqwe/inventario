@@ -6,13 +6,18 @@ type Props = {
   total: number;
 };
 
-export default function TotalsCard({ subtotal, adjustments, total }: Props) {
-  const Row = ({ label, value, strong }: { label: string; value: number; strong?: boolean }) => (
+function Row({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+  return (
     <div style={{ display: "flex", justifyContent: "space-between", fontWeight: strong ? 700 : 400 }}>
       <span style={{ color: strong ? "#e5e7eb" : "#94a3b8" }}>{label}</span>
       <span>{Intl.NumberFormat().format(value || 0)}</span>
     </div>
   );
+}
+
+Row.displayName = "MoveTotalsRow";
+
+export default function TotalsCard({ subtotal, adjustments, total }: Props) {
 
   return (
     <div

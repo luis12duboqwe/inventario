@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState, isValidElement, type ChangeEvent } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
@@ -13,22 +13,27 @@ import {
   Search,
   ShieldCheck,
   ShoppingBag,
+  LifeBuoy,
   SunMoon,
   UserCog,
   Wrench,
+  MapPin,
+  Smartphone,
 } from "lucide-react";
 
 import BackToTopButton from "../../../shared/components/BackToTopButton";
 import CompactModeToggle from "../../../shared/components/CompactModeToggle";
 import GlobalMetrics from "../components/GlobalMetrics";
+import MinimumStockWidget from "../components/MinimumStockWidget";
+import StockAlertsWidget from "../components/StockAlertsWidget";
+import TechMonitor from "../components/TechMonitor";
 import Sidebar, { type SidebarNavItem } from "../components/Sidebar";
 import { useDashboard } from "../context/DashboardContext";
 import type { ToastMessage } from "../context/DashboardContext";
+import { getRiskAlerts, type RiskAlert } from "../../../api";
 import Button from "../../../shared/components/ui/Button";
 import PageHeader from "../../../shared/components/ui/PageHeader";
-import AdminControlPanel, {
-  type AdminControlPanelModule,
-} from "../components/AdminControlPanel";
+import AdminControlPanel, { type AdminControlPanelModule } from "../components/AdminControlPanel";
 import ActionIndicatorBar from "../components/ActionIndicatorBar";
 import type { NotificationCenterItem } from "../components/NotificationCenter";
 
@@ -75,6 +80,14 @@ const toastIcons: Record<ToastMessage["variant"], JSX.Element> = {
       />
     </svg>
   ),
+  warning: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M10.29 3.86 1.82 18.14A2 2 0 0 0 3.53 21h16.94a2 2 0 0 0 1.71-2.86L13.71 3.86a2 2 0 0 0-3.42 0ZM12 9a1 1 0 0 1 1 1v3.5a1 1 0 0 1-2 0V10a1 1 0 0 1 1-1Zm0 8a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 17Z"
+      />
+    </svg>
+  ),
 };
 
 function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
@@ -82,12 +95,15 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     enableAnalyticsAdv,
     enablePurchasesSales,
     enableTransfers,
+    stores,
+    selectedStore,
+    selectedStoreId,
+    setSelectedStoreId,
     currentUser,
     message,
     error,
     setMessage,
     setError,
-    pushToast,
     toasts,
     dismissToast,
     networkAlert,
@@ -99,16 +115,31 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     syncStatus,
     lastInventoryRefresh,
     outboxError,
+    outboxConflicts,
+    lastOutboxConflict,
+    observability,
+    observabilityError,
+    refreshObservability,
+    token,
   } = useDashboard();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [riskAlerts, setRiskAlerts] = useState<RiskAlert[]>([]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("softmobile_last_module", location.pathname);
     }
-    setIsSidebarOpen(false);
-  }, [location.pathname]);
+    // Deferimos el cierre al siguiente tick para evitar setState sincrónico dentro del efecto.
+    if (!isSidebarOpen) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setIsSidebarOpen(false);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [location.pathname, isSidebarOpen]);
 
   useEffect(() => {
     if (!isSidebarOpen) {
@@ -123,6 +154,15 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSidebarOpen]);
 
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    getRiskAlerts(token)
+      .then((response) => setRiskAlerts(response.alerts))
+      .catch(() => setRiskAlerts([]));
+  }, [token]);
+
   const toggleSidebar = () => {
     setIsSidebarOpen((current) => !current);
   };
@@ -131,9 +171,56 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     setIsSidebarOpen(false);
   };
 
-  const isAdmin = currentUser?.roles.some((role) => role.name === "ADMIN") ?? false;
-  const isManager = currentUser?.roles.some((role) => role.name === "GERENTE") ?? false;
-  const isOperator = currentUser?.roles.some((role) => role.name === "OPERADOR") ?? false;
+  // Debug de usuario (solo en desarrollo) y normalización de roles
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.log("[DEBUG] currentUser:", currentUser);
+      // eslint-disable-next-line no-console
+      console.log("[DEBUG] currentUser?.roles:", currentUser?.roles);
+    }
+  }, [currentUser]);
+
+  const roleNames = Array.isArray(currentUser?.roles)
+    ? currentUser!.roles.map((role) => role?.name ?? String(role))
+    : [];
+  const singleRole = (currentUser as any)?.rol ?? (currentUser as any)?.role ?? null;
+  const allRoleNames = singleRole ? [...roleNames, String(singleRole)] : roleNames;
+  const isAdmin = allRoleNames.includes("ADMIN");
+  const isManager = allRoleNames.includes("GERENTE");
+  const isOperator = allRoleNames.includes("OPERADOR");
+  const hasBasicAccess = isAdmin || isManager || isOperator;
+
+  const observabilityNotifications = observability?.notifications ?? [];
+  const techNotificationItems = useMemo<NotificationCenterItem[]>(() => {
+    if (observabilityNotifications.length === 0) {
+      return [];
+    }
+    return observabilityNotifications.map((notification) => {
+      const severity = (notification.severity ?? "info").toLowerCase();
+      const variant: NotificationCenterItem["variant"] =
+        severity === "critical" || severity === "error"
+          ? "error"
+          : severity === "warning"
+          ? "warning"
+          : "info";
+      const occurredLabel = notification.occurred_at
+        ? new Date(notification.occurred_at).toLocaleString("es-HN", {
+            dateStyle: "short",
+            timeStyle: "short",
+          })
+        : null;
+      const description = occurredLabel
+        ? `${notification.message} · ${occurredLabel}`
+        : notification.message;
+      return {
+        id: `tech-${notification.id}`,
+        title: notification.title,
+        description,
+        variant,
+      } satisfies NotificationCenterItem;
+    });
+  }, [observabilityNotifications]);
 
   const roleVisual = useMemo(() => {
     if (isAdmin) {
@@ -175,21 +262,28 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         label: "Inventario",
         description: "Inventario corporativo, auditorías y respaldos en vivo.",
         icon: <Boxes className="icon" aria-hidden="true" />,
-        isEnabled: true,
+        isEnabled: hasBasicAccess,
       },
       {
         to: "/dashboard/operations",
         label: "Operaciones",
         description: "Compras, ventas, devoluciones y transferencias sincronizadas.",
         icon: <Cog className="icon" aria-hidden="true" />,
-        isEnabled: enablePurchasesSales || enableTransfers,
+        isEnabled: (enablePurchasesSales || enableTransfers) && hasBasicAccess,
+      },
+      {
+        to: "/dashboard/mobile",
+        label: "Móvil",
+        description: "Conteos, recepciones y consulta rápida en dispositivos móviles.",
+        icon: <Smartphone className="icon" aria-hidden="true" />,
+        isEnabled: hasBasicAccess,
       },
       {
         to: "/sales",
         label: "Ventas",
         description: "POS, cotizaciones, devoluciones y clientes corporativos.",
         icon: <ShoppingBag className="icon" aria-hidden="true" />,
-        isEnabled: enablePurchasesSales,
+        isEnabled: enablePurchasesSales && hasBasicAccess,
         children: [
           { to: "/sales", label: "Resumen" },
           { to: "/sales/pos", label: "POS" },
@@ -204,28 +298,49 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         label: "Analítica",
         description: "Indicadores avanzados de rotación, aging y proyecciones.",
         icon: <BarChart3 className="icon" aria-hidden="true" />,
-        isEnabled: enableAnalyticsAdv,
+        isEnabled: enableAnalyticsAdv && (isAdmin || isManager),
       },
       {
         to: "/dashboard/reports",
         label: "Reportes",
         description: "Alertas críticas, bitácora global y exportaciones corporativas.",
         icon: <BellRing className="icon" aria-hidden="true" />,
-        isEnabled: true,
+        isEnabled: hasBasicAccess,
       },
       {
         to: "/dashboard/security",
         label: "Seguridad",
         description: "Autenticación, auditoría y políticas de acceso corporativo.",
         icon: <ShieldCheck className="icon" aria-hidden="true" />,
+        isEnabled: isAdmin || isManager,
+      },
+      {
+        to: "/dashboard/help",
+        label: "Ayuda",
+        description: "Guías contextuales, manuales y modo demostración.",
+        icon: <HelpCircle className="icon" aria-hidden="true" />,
         isEnabled: true,
+      },
+      {
+        to: "/dashboard/support",
+        label: "Soporte",
+        description: "Feedback clasificado y métricas de priorización por uso.",
+        icon: <LifeBuoy className="icon" aria-hidden="true" />,
+        isEnabled: hasBasicAccess,
       },
       {
         to: "/dashboard/sync",
         label: "Sincronización",
         description: "Cola híbrida, historial y reintentos locales supervisados.",
         icon: <Repeat className="icon" aria-hidden="true" />,
-        isEnabled: true,
+        isEnabled: hasBasicAccess,
+      },
+      {
+        to: "/dashboard/stores",
+        label: "Sucursales",
+        description: "Alta y administración de sucursales corporativas.",
+        icon: <MapPin className="icon" aria-hidden="true" />,
+        isEnabled: isAdmin || isManager,
       },
       {
         to: "/dashboard/users",
@@ -242,39 +357,67 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         isEnabled: enablePurchasesSales,
       },
     ],
-    [enableAnalyticsAdv, enablePurchasesSales, enableTransfers, isAdmin],
+    [enableAnalyticsAdv, enablePurchasesSales, enableTransfers, hasBasicAccess, isAdmin, isManager],
   );
 
   const availableNavItems = navItems.filter((item) => item.isEnabled);
-  const sidebarItems: SidebarNavItem[] = availableNavItems.map(({ to, label, icon, children }) => ({
-    to,
-    label,
-    icon,
-    children,
-  }));
+  const sidebarItems: SidebarNavItem[] = availableNavItems.map(({ to, label, icon, children }) => {
+    const base: SidebarNavItem = { to, label, icon };
+    if (children && children.length > 0) {
+      return { ...base, children };
+    }
+    return base;
+  });
 
   const activeNav =
     availableNavItems.find((item) => location.pathname.startsWith(item.to)) ?? availableNavItems[0];
   const moduleTitle = activeNav?.label ?? "Centro de control";
   const moduleDescription =
-    activeNav?.description ?? "Supervisa Softmobile 2025 v2.2.0 y mantén la operación sin interrupciones.";
+    activeNav?.description ??
+    "Supervisa Softmobile 2025 v2.2.0 y mantén la operación sin interrupciones.";
 
   const handleQuickHelp = () => {
-    setMessage("Consulta docs/logs/softmobile_v2.2_mejoras_ui_navegacion.md para la guía de navegación actualizada.");
-    pushToast({
-      message: "Guía rápida disponible en docs/logs/softmobile_v2.2_mejoras_ui_navegacion.md",
-      variant: "info",
-    });
+    navigate("/dashboard/help", { state: { from: location.pathname } });
   };
 
+  const handleStoreChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const { value } = event.target;
+    if (value === "") {
+      setSelectedStoreId(null);
+      return;
+    }
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      setSelectedStoreId(parsed);
+    }
+  };
+
+  const userRoleLabel = useMemo(() => {
+    if (currentUser?.roles?.length) {
+      return currentUser.roles.map((role) => role.name).join(", ");
+    }
+    if (currentUser?.rol) {
+      return currentUser.rol;
+    }
+    return "Sin rol";
+  }, [currentUser]);
+
   const notificationCount =
-    toasts.length + (message ? 1 : 0) + (error ? 1 : 0) + (networkAlert ? 1 : 0) + (syncStatus ? 1 : 0);
+    toasts.length +
+    (message ? 1 : 0) +
+    (error ? 1 : 0) +
+    (networkAlert ? 1 : 0) +
+    (syncStatus ? 1 : 0) +
+    (outboxConflicts > 0 ? 1 : 0) +
+    (observabilityError ? 1 : 0) +
+    techNotificationItems.length +
+    riskAlerts.length;
   const notificationSummary =
     notificationCount === 0
       ? "No hay notificaciones activas en este momento."
       : notificationCount === 1
-        ? "Tienes 1 notificación activa en el panel."
-        : `Tienes ${notificationCount} notificaciones activas en el panel.`;
+      ? "Tienes 1 notificación activa en el panel."
+      : `Tienes ${notificationCount} notificaciones activas en el panel.`;
 
   const panelNotificationItems = useMemo<NotificationCenterItem[]>(() => {
     const items: NotificationCenterItem[] = [];
@@ -297,12 +440,33 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
       });
     }
 
+    riskAlerts.forEach((alert) => {
+      items.push({
+        id: `risk-${alert.code}`,
+        title: alert.title,
+        description: alert.description,
+        variant: alert.severity === "critica" || alert.severity === "alta" ? "error" : "warning",
+      });
+    });
+
     if (outboxError) {
       items.push({
         id: "panel-outbox-error",
         title: "Error de sincronización",
         description: outboxError,
         variant: "error",
+      });
+    }
+
+    if (outboxConflicts > 0) {
+      items.push({
+        id: "panel-outbox-conflicts",
+        title: "Conflictos en sync_outbox",
+        description:
+          lastOutboxConflict != null
+            ? `Último conflicto: ${lastOutboxConflict.toLocaleString("es-HN")}`
+            : "Se detectaron conflictos con prioridad last-write-wins.",
+        variant: "warning",
       });
     }
 
@@ -332,6 +496,19 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
       });
     }
 
+    if (observabilityError) {
+      items.push({
+        id: "panel-observability-error",
+        title: "Observabilidad sin respuesta",
+        description: observabilityError,
+        variant: "warning",
+      });
+    }
+
+    techNotificationItems.forEach((item) => {
+      items.push(item);
+    });
+
     toasts.forEach((toast) => {
       items.push({
         id: `panel-toast-${toast.id}`,
@@ -339,8 +516,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
           toast.variant === "success"
             ? "Notificación positiva"
             : toast.variant === "error"
-              ? "Notificación de error"
-              : "Notificación informativa",
+            ? "Notificación de error"
+            : "Notificación informativa",
         description: toast.message,
         variant: toast.variant,
       });
@@ -349,9 +526,13 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
     return items;
   }, [
     error,
+    observabilityError,
     lastInventoryRefresh,
     message,
     networkAlert,
+    outboxConflicts,
+    lastOutboxConflict,
+    techNotificationItems,
     outboxError,
     syncStatus,
     toasts,
@@ -370,7 +551,8 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
       }
 
       const syncNeedsAttention =
-        item.label === "Sincronización" && (networkAlert || outboxError || (syncStatus ?? "").toLowerCase().includes("error"));
+        item.label === "Sincronización" &&
+        (networkAlert || outboxError || (syncStatus ?? "").toLowerCase().includes("error"));
       const operationsNeedsAttention =
         item.label === "Operaciones" && Boolean(error || outboxError);
       const reportsHasMessage = item.label === "Reportes" && Boolean(message);
@@ -393,26 +575,32 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         srNotices.push("Existe un aviso nuevo asociado a reportes.");
       }
 
-      return {
+      const module: AdminControlPanelModule = {
         to: item.to,
         label: item.label,
         description: item.description,
-        icon: item.icon,
-        badge: badges.length > 0 ? badges.join(" · ") : undefined,
+        icon: isValidElement(item.icon) ? (
+          item.icon
+        ) : (
+          <HelpCircle className="icon" aria-hidden="true" />
+        ),
         badgeVariant,
         isActive,
-        srHint: srNotices.length > 0 ? srNotices.join(" ") : undefined,
       };
+
+      const badgeText = badges.length > 0 ? badges.join(" · ") : null;
+      if (badgeText) {
+        module.badge = badgeText;
+      }
+
+      const srHint = srNotices.length > 0 ? srNotices.join(" ") : null;
+      if (srHint) {
+        module.srHint = srHint;
+      }
+
+      return module;
     });
-  }, [
-    availableNavItems,
-    error,
-    message,
-    moduleTitle,
-    networkAlert,
-    outboxError,
-    syncStatus,
-  ]);
+  }, [availableNavItems, error, message, moduleTitle, networkAlert, outboxError, syncStatus]);
 
   return (
     <div
@@ -473,7 +661,9 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
               </motion.div>
             ))}
           </AnimatePresence>
-          <span className="sr-only" aria-live="polite">{notificationSummary}</span>
+          <span className="sr-only" aria-live="polite">
+            {notificationSummary}
+          </span>
         </div>
 
         <AnimatePresence>
@@ -504,58 +694,102 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
         <PageHeader
           title={moduleTitle}
           description={moduleDescription}
+          meta={
+            <div className="page-header__meta">
+              <span aria-label="Rol actual" className="page-header__meta-item">
+                <strong>Rol:</strong> {userRoleLabel}
+              </span>
+              <span aria-label="Sucursal activa" className="page-header__meta-item">
+                <strong>Sucursal:</strong> {selectedStore?.name ?? "Todas"}
+              </span>
+            </div>
+          }
           actions={
-            <div className="page-header__actions-row">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="page-header__action--menu"
-                onClick={toggleSidebar}
-                aria-expanded={isSidebarOpen}
-                aria-controls="dashboard-navigation"
-                leadingIcon={<Menu size={16} aria-hidden="true" />}
-              >
-                {isSidebarOpen ? "Cerrar menú" : "Menú"}
-              </Button>
-              <label className="app-search" aria-label="Buscador global">
-                <Search size={16} aria-hidden="true" />
-                <input
-                  type="search"
-                  value={globalSearchTerm}
-                  onChange={(event) => setGlobalSearchTerm(event.target.value)}
-                  placeholder="Buscar en Softmobile"
-                />
-              </label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleQuickHelp}
-                leadingIcon={<HelpCircle size={16} aria-hidden="true" />}
-              >
-                Ayuda rápida
-              </Button>
-              <CompactModeToggle />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onToggleTheme}
-                aria-pressed={theme === "light"}
-                leadingIcon={<SunMoon size={16} aria-hidden="true" />}
-              >
-                Tema {theme === "dark" ? "oscuro" : "claro"}
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={onLogout}
-                leadingIcon={<LogOut size={16} aria-hidden="true" />}
-              >
-                Cerrar sesión
-              </Button>
+            <div className="page-header__actions-column">
+              <div className="page-header__context-row" aria-label="Contexto de sesión">
+                <div
+                  className={`role-chip role-chip--${roleVisual.variant}`}
+                  aria-label={`Rol actual: ${userRoleLabel}`}
+                >
+                  <span className="role-chip__title">{roleVisual.label}</span>
+                  <span className="role-chip__description">{roleVisual.description}</span>
+                </div>
+                <div className="branch-selector">
+                  <label htmlFor="branch-selector">Sucursal activa</label>
+                  <div className="branch-selector__control">
+                    <MapPin size={16} aria-hidden="true" />
+                    <select
+                      id="branch-selector"
+                      value={selectedStoreId ?? ""}
+                      onChange={handleStoreChange}
+                      disabled={stores.length === 0}
+                    >
+                      <option value="">Todas las sucursales</option>
+                      {stores.map((store) => (
+                        <option key={store.id} value={store.id}>
+                          {store.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="branch-selector__hint">
+                    Usa este selector para filtrar inventario y métricas por sucursal.
+                  </p>
+                </div>
+              </div>
+
+              <div className="page-header__actions-row">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="page-header__action--menu"
+                  onClick={toggleSidebar}
+                  aria-expanded={isSidebarOpen}
+                  aria-controls="dashboard-navigation"
+                  leadingIcon={<Menu size={16} aria-hidden="true" />}
+                >
+                  {isSidebarOpen ? "Cerrar menú" : "Menú"}
+                </Button>
+                <label className="app-search" aria-label="Buscador global">
+                  <Search size={16} aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={globalSearchTerm}
+                    onChange={(event) => setGlobalSearchTerm(event.target.value)}
+                    placeholder="Buscar en Softmobile"
+                  />
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleQuickHelp}
+                  leadingIcon={<HelpCircle size={16} aria-hidden="true" />}
+                >
+                  Ayuda rápida
+                </Button>
+                <CompactModeToggle />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onToggleTheme}
+                  aria-pressed={theme === "light"}
+                  leadingIcon={<SunMoon size={16} aria-hidden="true" />}
+                >
+                  Tema {theme === "dark" ? "oscuro" : "claro"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={onLogout}
+                  leadingIcon={<LogOut size={16} aria-hidden="true" />}
+                >
+                  Cerrar sesión
+                </Button>
+              </div>
             </div>
           }
         />
@@ -576,9 +810,13 @@ function DashboardLayout({ theme, onToggleTheme, onLogout }: Props) {
             roleVariant={roleVisual.variant}
             notifications={notificationCount}
             notificationItems={panelNotificationItems}
+            riskAlerts={riskAlerts}
           />
 
+          <TechMonitor />
           <GlobalMetrics />
+          <MinimumStockWidget />
+          <StockAlertsWidget />
 
           <AnimatePresence>
             {message ? (

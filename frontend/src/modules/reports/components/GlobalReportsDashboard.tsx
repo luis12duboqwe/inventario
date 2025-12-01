@@ -55,20 +55,20 @@ function formatDateTime(value: string | undefined | null): string {
   }
   try {
     const date = new Date(value);
-    return new Intl.DateTimeFormat("es-MX", {
+    return new Intl.DateTimeFormat("es-HN", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
-  } catch (error) {
+  } catch {
     return value;
   }
 }
 
 function formatNumber(value: number): string {
-  return new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat("es-HN", { maximumFractionDigits: 0 }).format(value);
 }
 
 const severityOptions: { value: SystemLogLevel | "all"; label: string }[] = [

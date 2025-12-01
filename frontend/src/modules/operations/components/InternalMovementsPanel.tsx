@@ -155,7 +155,7 @@ function InternalMovementsPanel({ stores, defaultStoreId = null }: Props) {
               <tbody>
                 {records.map((record) => (
                   <tr key={record.id}>
-                    <td data-label="Fecha">{record.createdAt.toLocaleString("es-MX")}</td>
+                    <td data-label="Fecha">{record.createdAt.toLocaleString("es-HN")}</td>
                     <td data-label="Sucursal">
                       {record.storeId === "general" ? "Todas" : storeLookup.get(record.storeId) ?? "Desconocida"}
                     </td>

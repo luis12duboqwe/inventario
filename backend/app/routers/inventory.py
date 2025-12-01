@@ -1,23 +1,14 @@
 """Operaciones sobre inventario, movimientos y reportes puntuales."""
 from __future__ import annotations
 
-import json
 from datetime import date
 from decimal import Decimal
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    Form,
-    HTTPException,
-    Path,
-    Query,
-    Response,
-    UploadFile,
-    status,
-)
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
+
+from backend.schemas.common import Page, PageParams
 
 from .. import crud, models, schemas
 from ..config import settings
@@ -26,91 +17,312 @@ from ..core.transactions import transactional_session
 from ..database import get_db
 from ..routers.dependencies import require_reason
 from ..security import require_roles
-from ..services import inventory_import, inventory_smart_import
+from ..services import (
+    inventory_availability,
+    inventory_catalog_export,
+    inventory_import,
+    inventory_labels,
+    inventory_search,
+    inventory_smart_import,
+)
 from backend.schemas.common import Page, PageParams
 
 router = APIRouter(prefix="/inventory", tags=["inventario"])
 
 
-@router.post(
-    "/import/smart",
-    response_model=schemas.InventorySmartImportResponse,
-    status_code=status.HTTP_200_OK,
+@router.get(
+    "/stores/{store_id}/warehouses",
+    response_model=list[schemas.WarehouseResponse],
     dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
-async def smart_import_inventory(
-    file: UploadFile = File(...),
-    commit: bool = Form(default=False),
-    overrides: str | None = Form(default=None),
+def list_store_warehouses(
+    store_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    reason: str = Depends(require_reason),
+    _user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> list[schemas.WarehouseResponse]:
+    try:
+        warehouses = crud.list_warehouses(db, store_id)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La sucursal solicitada no existe.",
+        ) from exc
+    return [
+        schemas.WarehouseResponse.model_validate(warehouse, from_attributes=True)
+        for warehouse in warehouses
+    ]
+
+
+@router.post(
+    "/stores/{store_id}/warehouses",
+    response_model=schemas.WarehouseResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def create_store_warehouse(
+    payload: schemas.WarehouseCreate,
+    store_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
     current_user=Depends(require_roles(*MOVEMENT_ROLES)),
-):
+) -> schemas.WarehouseResponse:
     try:
-        parsed_overrides = json.loads(overrides) if overrides else {}
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="overrides_invalid",
-        ) from exc
-    if not isinstance(parsed_overrides, dict):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="overrides_invalid",
-        )
-    overrides_cast = {
-        str(key): str(value) for key, value in parsed_overrides.items()
-    }
-    contents = await file.read()
-    if not contents:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="archivo_vacio",
-        )
-    try:
-        response = inventory_smart_import.process_smart_import(
+        warehouse = crud.create_warehouse(
             db,
-            file_bytes=contents,
-            filename=file.filename or "importacion.xlsx",
-            commit=commit,
-            overrides=overrides_cast,
-            performed_by_id=current_user.id if current_user else None,
-            username=getattr(current_user, "username", None),
-            reason=reason,
+            store_id,
+            payload,
+            performed_by_id=getattr(current_user, "id", None),
         )
-    except ValueError as exc:
+    except LookupError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La sucursal solicitada no existe.",
         ) from exc
-    return response
+    except ValueError as exc:
+        message = str(exc)
+        if message in {"warehouse_code_duplicate", "warehouse_name_duplicate"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=message,
+            ) from exc
+        if message in {"warehouse_name_required", "warehouse_code_required"}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.WarehouseResponse.model_validate(warehouse, from_attributes=True)
+
+
+@router.post(
+    "/warehouses/transfers",
+    response_model=schemas.WarehouseTransferResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def transfer_between_warehouses_endpoint(
+    payload: schemas.WarehouseTransferCreate,
+    db: Session = Depends(get_db),
+    _reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.WarehouseTransferResponse:
+    try:
+        movement_out, movement_in = crud.transfer_between_warehouses(
+            db, payload, performed_by_id=getattr(current_user, "id", None)
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Almacén no encontrado",
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message in {
+            "warehouse_transfer_same_destination",
+            "warehouse_transfer_invalid_quantity",
+            "warehouse_transfer_full_quantity_required",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=message,
+            ) from exc
+        if message in {"insufficient_stock", "warehouse_transfer_mismatch"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.WarehouseTransferResponse(
+        movement_out=schemas.MovementResponse.model_validate(
+            movement_out, from_attributes=True
+        ),
+        movement_in=schemas.MovementResponse.model_validate(
+            movement_in, from_attributes=True
+        ),
+    )
 
 
 @router.get(
-    "/import/smart/history",
-    response_model=Page[schemas.InventoryImportHistoryEntry],
+    "/availability",
+    response_model=schemas.InventoryAvailabilityResponse,
     dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
 )
-def list_import_history(
+def get_inventory_availability(
+    db: Session = Depends(get_db),
+    query: str | None = Query(default=None, min_length=2, max_length=120),
+    limit: int = Query(default=50, ge=1, le=250),
+    sku: list[str] = Query(default_factory=list),
+    device_id: list[int] = Query(default_factory=list),
+) -> schemas.InventoryAvailabilityResponse:
+    normalized_query = query.strip() if query else None
+    normalized_skus = [value.strip() for value in sku if value and value.strip()]
+    normalized_ids = sorted({int(value) for value in device_id if value > 0})
+    payload = inventory_availability.get_inventory_availability(
+        db,
+        skus=normalized_skus or None,
+        device_ids=normalized_ids or None,
+        search=normalized_query,
+        limit=limit,
+    )
+    return schemas.InventoryAvailabilityResponse.model_validate(payload)
+
+
+@router.get(
+    "/reservations",
+    response_model=Page[schemas.InventoryReservationResponse],
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def list_inventory_reservations_endpoint(
+    store_id: int | None = Query(default=None, ge=1),
+    device_id: int | None = Query(default=None, ge=1),
+    status_filter: models.InventoryState | None = Query(default=None),
+    include_expired: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     pagination: PageParams = Depends(),
     db: Session = Depends(get_db),
     current_user=Depends(require_roles(*MOVEMENT_ROLES)),
-) -> Page[schemas.InventoryImportHistoryEntry]:
+) -> Page[schemas.InventoryReservationResponse]:
+    crud.expire_reservations(
+        db,
+        store_id=store_id,
+        device_ids=[device_id] if device_id is not None else None,
+    )
+    reservations = crud.list_inventory_reservations(
+        db,
+        store_id=store_id,
+        device_id=device_id,
+        status=status_filter,
+        include_expired=include_expired,
+    )
     page_offset = (
         pagination.offset if (pagination.page > 1 and offset == 0) else offset
     )
     page_size = min(pagination.size, limit)
-    total = crud.count_inventory_import_history(db)
-    records = crud.list_inventory_import_history(
-        db, limit=page_size, offset=page_offset
-    )
+    sliced = reservations[page_offset : page_offset + page_size]
     items = [
-        schemas.InventoryImportHistoryEntry.model_validate(record)
-        for record in records
+        schemas.InventoryReservationResponse.model_validate(record)
+        for record in sliced
     ]
-    return Page.from_items(items, page=pagination.page, size=page_size, total=total)
+    return Page.from_items(
+        items,
+        page=pagination.page,
+        size=page_size,
+        total=len(reservations),
+    )
+
+
+@router.post(
+    "/reservations",
+    response_model=schemas.InventoryReservationResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def create_inventory_reservation_endpoint(
+    payload: schemas.InventoryReservationCreate,
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.InventoryReservationResponse:
+    try:
+        reservation = crud.create_reservation(
+            db,
+            store_id=payload.store_id,
+            device_id=payload.device_id,
+            quantity=payload.quantity,
+            expires_at=payload.expires_at,
+            reserved_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado"
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message in {"reservation_invalid_quantity", "reservation_invalid_expiration", "reservation_reason_required", "reservation_requires_single_unit"}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=message,
+            ) from exc
+        if message in {"reservation_insufficient_stock", "reservation_device_unavailable"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.InventoryReservationResponse.model_validate(reservation)
+
+
+@router.put(
+    "/reservations/{reservation_id}/renew",
+    response_model=schemas.InventoryReservationResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def renew_inventory_reservation_endpoint(
+    payload: schemas.InventoryReservationRenew,
+    reservation_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.InventoryReservationResponse:
+    try:
+        reservation = crud.renew_reservation(
+            db,
+            reservation_id,
+            expires_at=payload.expires_at,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Reserva no encontrada"
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message in {"reservation_not_active", "reservation_invalid_expiration", "reservation_reason_required"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT
+                if message == "reservation_not_active"
+                else status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.InventoryReservationResponse.model_validate(reservation)
+
+
+@router.post(
+    "/reservations/{reservation_id}/cancel",
+    response_model=schemas.InventoryReservationResponse,
+    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
+)
+def cancel_inventory_reservation_endpoint(
+    reservation_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    reason: str = Depends(require_reason),
+    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
+) -> schemas.InventoryReservationResponse:
+    try:
+        reservation = crud.release_reservation(
+            db,
+            reservation_id,
+            performed_by_id=current_user.id if current_user else None,
+            reason=reason,
+            target_state=models.InventoryState.CANCELADO,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Reserva no encontrada"
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message in {"reservation_not_active", "reservation_invalid_transition"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=message,
+            ) from exc
+        raise
+    return schemas.InventoryReservationResponse.model_validate(reservation)
 
 
 @router.get(
@@ -134,7 +346,8 @@ def list_incomplete_inventory_devices(
     devices = crud.list_incomplete_devices(
         db, store_id=store_id, limit=page_size, offset=page_offset
     )
-    items = [schemas.DeviceResponse.model_validate(device) for device in devices]
+    items = [schemas.DeviceResponse.model_validate(
+        device) for device in devices]
     return Page.from_items(items, page=pagination.page, size=page_size, total=total)
 
 
@@ -153,7 +366,7 @@ def register_movement(
 ):
     if payload.comentario != reason:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "reason_comment_mismatch",
                 "message": "El comentario debe coincidir con el motivo corporativo enviado en la cabecera X-Reason.",
@@ -168,7 +381,8 @@ def register_movement(
                 performed_by_id=current_user.id if current_user else None,
             )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurso no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Recurso no encontrado") from exc
     except PermissionError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -180,9 +394,19 @@ def register_movement(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Stock insuficiente para registrar la salida.",
             ) from exc
+        if str(exc) == "adjustment_insufficient_stock":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Stock insuficiente para registrar el ajuste solicitado.",
+            ) from exc
+        if str(exc) == "adjustment_device_already_sold":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El dispositivo ya fue vendido y no admite ajustes negativos.",
+            ) from exc
         if str(exc) == "invalid_destination_store":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "code": "invalid_destination_store",
                     "message": "La sucursal destino del movimiento debe coincidir con la seleccionada.",
@@ -215,8 +439,25 @@ def update_device(
                 performed_by_id=current_user.id if current_user else None,
             )
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispositivo no encontrado") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Dispositivo no encontrado") from exc
     except ValueError as exc:
+        if str(exc) == "device_invalid_quantity":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "device_invalid_quantity",
+                    "message": "La cantidad debe ser mayor que cero.",
+                },
+            ) from exc
+        if str(exc) == "device_invalid_cost":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "device_invalid_cost",
+                    "message": "El costo_unitario debe ser mayor que cero.",
+                },
+            ) from exc
         if str(exc) == "device_identifier_conflict":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -247,7 +488,8 @@ def retrieve_device_identifier(
         if message == "device_not_found":
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "device_not_found", "message": "Dispositivo no encontrado"},
+                detail={"code": "device_not_found",
+                        "message": "Dispositivo no encontrado"},
             ) from exc
         if message == "device_identifier_not_found":
             raise HTTPException(
@@ -313,6 +555,7 @@ def advanced_device_search(
     modelo: str | None = Query(default=None, max_length=120),
     categoria: str | None = Query(default=None, max_length=80),
     condicion: str | None = Query(default=None, max_length=60),
+    estado_comercial: str | None = Query(default=None, max_length=10),
     estado: str | None = Query(default=None, max_length=40),
     ubicacion: str | None = Query(default=None, max_length=120),
     proveedor: str | None = Query(default=None, max_length=120),
@@ -325,22 +568,37 @@ def advanced_device_search(
     current_user=Depends(require_roles(ADMIN)),
 ) -> Page[schemas.CatalogProDeviceResponse]:
     if not settings.enable_catalog_pro:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Funcionalidad no disponible")
-    filters = schemas.DeviceSearchFilters(
-        imei=imei,
-        serial=serial,
-        capacidad_gb=capacidad_gb,
-        color=color,
-        marca=marca,
-        modelo=modelo,
-        categoria=categoria,
-        condicion=condicion,
-        estado=estado,
-        ubicacion=ubicacion,
-        proveedor=proveedor,
-        fecha_ingreso_desde=fecha_ingreso_desde,
-        fecha_ingreso_hasta=fecha_ingreso_hasta,
-    )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Funcionalidad no disponible")
+    try:
+        filters = schemas.DeviceSearchFilters(
+            imei=imei,
+            serial=serial,
+            capacidad_gb=capacidad_gb,
+            color=color,
+            marca=marca,
+            modelo=modelo,
+            categoria=categoria,
+            condicion=condicion,
+            estado_comercial=estado_comercial,
+            estado=estado,
+            ubicacion=ubicacion,
+            proveedor=proveedor,
+            fecha_ingreso_desde=fecha_ingreso_desde,
+            fecha_ingreso_hasta=fecha_ingreso_hasta,
+        )
+    except ValidationError as exc:
+        serialized_errors: list[dict[str, object]] = []
+        for error in exc.errors():
+            context = error.get("ctx")
+            if isinstance(context, dict) and "error" in context:
+                serialized_context = dict(context)
+                if isinstance(serialized_context["error"], ValueError):
+                    serialized_context["error"] = str(serialized_context["error"])
+                serialized_errors.append({**error, "ctx": serialized_context})
+            else:
+                serialized_errors.append(error)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=serialized_errors) from exc
     if not any(
         [
             filters.imei,
@@ -350,6 +608,7 @@ def advanced_device_search(
             filters.modelo,
             filters.categoria,
             filters.condicion,
+            filters.estado_comercial is not None,
             filters.estado,
             filters.ubicacion,
             filters.proveedor,
@@ -359,7 +618,7 @@ def advanced_device_search(
         ]
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "catalog_filters_required",
                 "message": "Proporciona al menos un criterio para buscar en el catálogo.",
@@ -369,19 +628,13 @@ def advanced_device_search(
         pagination.offset if (pagination.page > 1 and offset == 0) else offset
     )
     page_size = min(pagination.size, limit)
-    total = crud.count_devices_matching_filters(db, filters)
-    devices = crud.search_devices(
-        db, filters, limit=page_size, offset=page_offset
+    results, total = inventory_search.advanced_catalog_search(
+        db,
+        filters=filters,
+        limit=page_size,
+        offset=page_offset,
+        requested_by=current_user,
     )
-    results: list[schemas.CatalogProDeviceResponse] = []
-    for device in devices:
-        base = schemas.DeviceResponse.model_validate(device, from_attributes=True)
-        results.append(
-            schemas.CatalogProDeviceResponse(
-                **base.model_dump(),
-                store_name=device.store.name if device.store else "",
-            )
-        )
     return Page.from_items(results, page=pagination.page, size=page_size, total=total)
 
 
@@ -398,7 +651,8 @@ def inventory_summary(
     )
     page_size = min(pagination.size, limit)
     total = crud.count_stores(db)
-    stores = crud.list_inventory_summary(db, limit=page_size, offset=page_offset)
+    stores = crud.list_inventory_summary(
+        db, limit=page_size, offset=page_offset)
     summaries: list[schemas.InventorySummary] = []
     for store in stores:
         devices = [
@@ -422,109 +676,3 @@ def inventory_summary(
     return Page.from_items(summaries, page=pagination.page, size=page_size, total=total)
 
 
-@router.get(
-    "/stores/{store_id}/devices/export",
-    response_class=Response,
-    response_model=schemas.BinaryFileResponse,
-    dependencies=[Depends(require_roles(ADMIN))],
-)
-def export_devices(
-    store_id: int = Path(..., ge=1),
-    search: str | None = Query(default=None),
-    estado: str | None = Query(default=None),
-    categoria: str | None = Query(default=None),
-    condicion: str | None = Query(default=None),
-    estado_inventario: str | None = Query(default=None),
-    ubicacion: str | None = Query(default=None),
-    proveedor: str | None = Query(default=None),
-    fecha_ingreso_desde: date | None = Query(default=None),
-    fecha_ingreso_hasta: date | None = Query(default=None),
-    db: Session = Depends(get_db),
-    reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(ADMIN)),
-):
-    estado_enum: models.CommercialState | None = None
-    if estado:
-        normalized = estado.strip()
-        try:
-            estado_enum = models.CommercialState(normalized)
-        except ValueError:
-            try:
-                estado_enum = models.CommercialState(normalized.lower())
-            except ValueError:
-                try:
-                    estado_enum = models.CommercialState(normalized.upper())
-                except ValueError:
-                    estado_enum = None
-    csv_data = inventory_import.export_devices_csv(
-        db,
-        store_id,
-        search=search,
-        estado=estado_enum,
-        categoria=categoria,
-        condicion=condicion,
-        estado_inventario=estado_inventario,
-        ubicacion=ubicacion,
-        proveedor=proveedor,
-        fecha_ingreso_desde=fecha_ingreso_desde,
-        fecha_ingreso_hasta=fecha_ingreso_hasta,
-    )
-    metadata = schemas.BinaryFileResponse(
-        filename=f"softmobile_catalogo_{store_id}.csv",
-        media_type="text/csv",
-    )
-    return Response(
-        content=csv_data,
-        media_type=metadata.media_type,
-        headers=metadata.content_disposition(),
-    )
-
-
-@router.post(
-    "/stores/{store_id}/devices/import",
-    status_code=status.HTTP_201_CREATED,
-    response_model=schemas.InventoryImportSummary,
-    dependencies=[Depends(require_roles(*MOVEMENT_ROLES))],
-)
-async def import_devices(
-    store_id: int = Path(..., ge=1),
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    reason: str = Depends(require_reason),
-    current_user=Depends(require_roles(*MOVEMENT_ROLES)),
-):
-    if file.content_type not in {"text/csv", "application/vnd.ms-excel", "application/octet-stream", None}:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Formato no soportado. Carga un archivo CSV.",
-        )
-    content = await file.read()
-    try:
-        summary = inventory_import.import_devices_from_csv(
-            db,
-            store_id,
-            content,
-            performed_by_id=current_user.id if current_user else None,
-        )
-    except ValueError as exc:
-        message = str(exc)
-        if message.startswith("csv_missing_columns"):
-            missing = message.split(":", maxsplit=1)[1]
-            detail = {
-                "code": "csv_missing_columns",
-                "message": f"El archivo debe incluir las columnas requeridas: {missing}",
-            }
-        elif message == "csv_missing_header":
-            detail = {"code": "csv_missing_header", "message": "No se encontró encabezado en el archivo."}
-        elif message == "csv_encoding_error":
-            detail = {
-                "code": "csv_encoding_error",
-                "message": "No fue posible leer el archivo. Usa codificación UTF-8.",
-            }
-        else:
-            detail = {
-                "code": "csv_import_error",
-                "message": "El archivo contiene datos inválidos.",
-            }
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
-    return schemas.InventoryImportSummary(**summary)

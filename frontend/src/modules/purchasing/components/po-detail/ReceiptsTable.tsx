@@ -40,6 +40,14 @@ const bodyCellStyle: React.CSSProperties = {
 export default function ReceiptsTable({ items }: Props) {
   const data = Array.isArray(items) ? items : [];
 
+  const formatDate = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleString("es-HN");
+  };
+
   if (data.length === 0) {
     return <div style={{ padding: 12, color: "#9ca3af" }}>Sin recepciones</div>;
   }
@@ -59,7 +67,7 @@ export default function ReceiptsTable({ items }: Props) {
         <tbody>
           {data.map((receipt) => (
             <tr key={receipt.id}>
-              <td style={bodyCellStyle}>{new Date(receipt.date).toLocaleString()}</td>
+              <td style={bodyCellStyle}>{formatDate(receipt.date)}</td>
               <td style={bodyCellStyle}>{receipt.user || "—"}</td>
               <td style={{ ...bodyCellStyle, textAlign: "center" }}>{receipt.lines}</td>
               <td style={{ ...bodyCellStyle, textAlign: "center" }}>{receipt.qty}</td>

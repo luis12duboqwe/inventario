@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 from typing import Callable
 
 from backend.core.logging import logger as core_logger
 
 from .. import crud, models
 from ..config import settings
-from ..database import SessionLocal
+from ..core.session_provider import SessionProvider
 from ..core.transactions import transactional_session
-from . import sync as sync_service
+from ..database import SessionLocal
+from . import accounts_receivable as receivable_service
+from . import customer_segments, sync as sync_service
 from .backups import generate_backup
 
 logger = core_logger.bind(component=__name__)
@@ -58,8 +61,9 @@ class _PeriodicJob:
 class BackgroundScheduler:
     """Coordina los jobs periódicos configurados por el sistema."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, session_provider: SessionProvider | None = None) -> None:
         self._jobs: list[_PeriodicJob] = []
+        self._session_provider: SessionProvider = session_provider or SessionLocal
 
         sync_interval = settings.sync_interval_seconds
         if sync_interval > 0:
@@ -67,7 +71,7 @@ class BackgroundScheduler:
                 _PeriodicJob(
                     name="sincronizacion",
                     interval_seconds=sync_interval,
-                    callback=_sync_job,
+                    callback=partial(_sync_job, self._session_provider),
                 )
             )
 
@@ -80,6 +84,41 @@ class BackgroundScheduler:
                 )
             )
 
+        reservations_interval = settings.reservations_expiration_interval_seconds
+        if reservations_interval > 0:
+            self._jobs.append(
+                _PeriodicJob(
+                    name="reservas_inventario",
+                    interval_seconds=reservations_interval,
+                    callback=_reservation_cleanup_job,
+                )
+            )
+
+        segments_interval = settings.customer_segmentation_interval_seconds
+        if segments_interval > 0:
+            self._jobs.append(
+                _PeriodicJob(
+                    name="segmentos_clientes",
+                    interval_seconds=segments_interval,
+                    callback=partial(
+                        _customer_segments_job, self._session_provider
+                    ),
+                )
+            )
+
+        reminders_interval = settings.accounts_receivable_reminder_interval_seconds
+        if (
+            settings.accounts_receivable_reminders_enabled
+            and reminders_interval > 0
+        ):
+            self._jobs.append(
+                _PeriodicJob(
+                    name="recordatorios_cxc",
+                    interval_seconds=reminders_interval,
+                    callback=partial(_accounts_receivable_job, self._session_provider),
+                )
+            )
+
     async def start(self) -> None:
         for job in self._jobs:
             await job.start()
@@ -89,8 +128,9 @@ class BackgroundScheduler:
             await job.stop()
 
 
-def _sync_job() -> None:
-    with SessionLocal() as session:
+def _sync_job(session_provider: SessionProvider | None = None) -> None:
+    provider = session_provider or SessionLocal
+    with provider() as session:
         status = models.SyncStatus.SUCCESS
         processed_events = 0
         differences_count = 0
@@ -136,4 +176,48 @@ def _backup_job() -> None:
                 mode=models.BackupMode.AUTOMATIC,
                 triggered_by_id=None,
                 notes="Respaldo automático programado",
+            )
+
+
+def _reservation_cleanup_job() -> None:
+    with SessionLocal() as session:
+        with transactional_session(session):
+            expired = crud.expire_reservations(session)
+            if expired:
+                logger.info(
+                    "Reservas vencidas liberadas automáticamente",
+                    extra={"reservations_expired": expired},
+                )
+
+
+def _customer_segments_job(session_provider: SessionProvider | None = None) -> None:
+    provider = session_provider or SessionLocal
+    with provider() as session:
+        try:
+            result = customer_segments.refresh_customer_segments(session)
+            logger.info(
+                "Segmentos de clientes actualizados",
+                extra={
+                    "customers_processed": result.updated_customers,
+                    "segments": {
+                        key: len(value)
+                        for key, value in result.segments.items()
+                    },
+                },
+            )
+        except Exception as exc:  # pragma: no cover - ruta de error
+            logger.exception(
+                "Fallo durante el job automático de segmentos de clientes",
+                extra={"error": str(exc)},
+            )
+
+
+def _accounts_receivable_job(session_provider: SessionProvider | None = None) -> None:
+    provider = session_provider or SessionLocal
+    with provider() as session:
+        results = receivable_service.send_upcoming_due_reminders(session)
+        if results:
+            logger.info(
+                "Recordatorios automáticos de cuentas por cobrar generados",
+                extra={"reminders_sent": len(results)},
             )

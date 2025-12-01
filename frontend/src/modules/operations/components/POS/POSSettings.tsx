@@ -1,37 +1,97 @@
-import { useEffect, useState } from "react";
-import type { Device, PosConfig, PosConfigUpdateInput } from "../../../../api";
+import { useCallback, useEffect, useState } from "react";
+import type {
+  Device,
+  PosConfig,
+  PosConfigUpdateInput,
+  PosHardwareSettings,
+  PosPrinterMode,
+} from "../../../../api";
+import PosHardware from "../../../settings/PosHardware";
 
 type Props = {
   config: PosConfig | null;
   devices: Device[];
   onSave: (payload: PosConfigUpdateInput) => Promise<void>;
+  onTestPrinter: (storeId: number, printerName: string | undefined, mode: PosPrinterMode) => Promise<void>;
+  onOpenDrawer: (storeId: number) => Promise<void>;
+  onDisplayPreview: (storeId: number, payload: { headline: string; message: string; total?: number | null }) => Promise<void>;
   loading: boolean;
 };
 
-function POSSettings({ config, devices, onSave, loading }: Props) {
-  const [taxRate, setTaxRate] = useState(0);
-  const [invoicePrefix, setInvoicePrefix] = useState("");
-  const [printerName, setPrinterName] = useState("");
-  const [printerProfile, setPrinterProfile] = useState("");
-  const [quickProducts, setQuickProducts] = useState<number[]>([]);
+function POSSettings({ config, devices, onSave, onTestPrinter, onOpenDrawer, onDisplayPreview, loading }: Props) {
+  // Evitar setState en efectos: remonte del formulario cuando cambia la sucursal (config.store_id)
+  if (!config) {
+    return (
+      <section className="card">
+        <h3>Configuración POS</h3>
+        <p className="muted-text">Selecciona una sucursal para personalizar impuestos y accesos rápidos.</p>
+      </section>
+    );
+  }
+
+  return (
+    <POSSettingsForm
+      key={config.store_id}
+      config={config as PosConfig}
+      devices={devices}
+      onSave={onSave}
+      onTestPrinter={onTestPrinter}
+      onOpenDrawer={onOpenDrawer}
+      onDisplayPreview={onDisplayPreview}
+      loading={loading}
+    />
+  );
+}
+
+type POSSettingsFormProps = {
+  config: PosConfig;
+  devices: Device[];
+  onSave: (payload: PosConfigUpdateInput) => Promise<void>;
+  onTestPrinter: (storeId: number, printerName: string | undefined, mode: PosPrinterMode) => Promise<void>;
+  onOpenDrawer: (storeId: number) => Promise<void>;
+  onDisplayPreview: (storeId: number, payload: { headline: string; message: string; total?: number | null }) => Promise<void>;
+  loading: boolean;
+};
+
+const cloneHardware = (settings: PosHardwareSettings): PosHardwareSettings => ({
+  printers: settings.printers.map((printer) => ({
+    ...printer,
+    connector: { ...printer.connector },
+  })),
+  cash_drawer: {
+    ...settings.cash_drawer,
+    connector: settings.cash_drawer.connector
+      ? { ...settings.cash_drawer.connector }
+      : undefined,
+  },
+  customer_display: { ...settings.customer_display },
+});
+
+function POSSettingsForm({
+  config,
+  devices,
+  onSave,
+  onTestPrinter,
+  onOpenDrawer,
+  onDisplayPreview,
+  loading,
+}: POSSettingsFormProps) {
+  const [taxRate, setTaxRate] = useState<number>(() => config.tax_rate);
+  const [invoicePrefix, setInvoicePrefix] = useState<string>(() => config.invoice_prefix);
+  const [printerName, setPrinterName] = useState<string>(() => config.printer_name ?? "");
+  const [printerProfile, setPrinterProfile] = useState<string>(() => config.printer_profile ?? "");
+  const [quickProducts, setQuickProducts] = useState<number[]>(() => config.quick_product_ids);
+  const [hardware, setHardware] = useState<PosHardwareSettings>(() => cloneHardware(config.hardware_settings));
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const handleHardwareChange = useCallback((next: PosHardwareSettings) => {
+    setHardware(cloneHardware(next));
+  }, []);
+
   useEffect(() => {
-    if (!config) {
-      setTaxRate(0);
-      setInvoicePrefix("");
-      setPrinterName("");
-      setPrinterProfile("");
-      setQuickProducts([]);
-      return;
-    }
-    setTaxRate(config.tax_rate);
-    setInvoicePrefix(config.invoice_prefix);
-    setPrinterName(config.printer_name ?? "");
-    setPrinterProfile(config.printer_profile ?? "");
-    setQuickProducts(config.quick_product_ids);
-  }, [config]);
+    setHardware(cloneHardware(config.hardware_settings));
+  }, [config.hardware_settings]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -45,24 +105,16 @@ function POSSettings({ config, devices, onSave, loading }: Props) {
         store_id: config.store_id,
         tax_rate: Math.min(100, Math.max(0, taxRate)),
         invoice_prefix: invoicePrefix.trim().toUpperCase() || "POS",
-        printer_name: printerName.trim() || undefined,
-        printer_profile: printerProfile.trim() || undefined,
+        printer_name: printerName.trim() || null,
+        printer_profile: printerProfile.trim() || null,
         quick_product_ids: quickProducts,
+        hardware_settings: hardware,
       });
       setMessage("Configuración guardada correctamente.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible actualizar la configuración POS.");
     }
   };
-
-  if (!config) {
-    return (
-      <section className="card">
-        <h3>Configuración POS</h3>
-        <p className="muted-text">Selecciona una sucursal para personalizar impuestos y accesos rápidos.</p>
-      </section>
-    );
-  }
 
   return (
     <section className="card">
@@ -117,7 +169,17 @@ function POSSettings({ config, devices, onSave, loading }: Props) {
           </button>
         </div>
       </form>
-      <p className="muted-text">Última actualización: {new Date(config.updated_at).toLocaleString("es-MX")}</p>
+      <p className="muted-text">Última actualización: {new Date(config.updated_at).toLocaleString("es-HN")}</p>
+      <PosHardware
+        storeId={config.store_id}
+        hardware={hardware}
+        onChange={handleHardwareChange}
+        onTestPrinter={(name, mode) => onTestPrinter(config.store_id, name, mode)}
+        onOpenDrawer={() => onOpenDrawer(config.store_id)}
+        onDisplayPreview={(payload) => onDisplayPreview(config.store_id, payload)}
+        disabled={loading}
+        busy={loading}
+      />
     </section>
   );
 }

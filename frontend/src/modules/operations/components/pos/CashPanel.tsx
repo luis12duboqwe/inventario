@@ -31,8 +31,16 @@ export default function CashPanel({
   onRefresh,
   error,
 }: CashPanelProps) {
-  const [openForm, setOpenForm] = useState({ amount: 0, notes: "", reason: "Apertura de caja POS" });
-  const [closeForm, setCloseForm] = useState({ amount: 0, notes: "", reason: "Cierre de caja POS" });
+  const [openForm, setOpenForm] = useState({
+    amount: 0,
+    notes: "",
+    reason: "Apertura de caja POS",
+  });
+  const [closeForm, setCloseForm] = useState({
+    amount: 0,
+    notes: "",
+    reason: "Cierre de caja POS",
+  });
   const [loadingAction, setLoadingAction] = useState<"open" | "close" | null>(null);
 
   const handleOpen = async (event: FormEvent<HTMLFormElement>) => {
@@ -60,7 +68,7 @@ export default function CashPanel({
   };
 
   return (
-    <section className="card">
+    <section className="card" data-testid="cash-close">
       <header className="card__header pos-cash-header">
         <div>
           <h3 className="card__title">Caja</h3>
@@ -83,7 +91,12 @@ export default function CashPanel({
               ))}
             </select>
           </label>
-          <button type="button" className="btn btn--ghost" onClick={onRefresh} disabled={refreshing}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onRefresh}
+            disabled={refreshing}
+          >
             {refreshing ? "Actualizando…" : "Actualizar"}
           </button>
         </div>
@@ -98,15 +111,21 @@ export default function CashPanel({
         </div>
         <div>
           <span className="muted-text">Apertura</span>
-          <strong>{session?.opening_amount != null ? `$${session.opening_amount.toFixed(2)}` : "—"}</strong>
+          <strong>
+            {session?.opening_amount != null ? `$${session.opening_amount.toFixed(2)}` : "—"}
+          </strong>
         </div>
         <div>
           <span className="muted-text">Esperado</span>
-          <strong>{session?.expected_amount != null ? `$${session.expected_amount.toFixed(2)}` : "—"}</strong>
+          <strong>
+            {session?.expected_amount != null ? `$${session.expected_amount.toFixed(2)}` : "—"}
+          </strong>
         </div>
         <div>
           <span className="muted-text">Diferencia</span>
-          <strong>{session?.difference_amount != null ? `$${session.difference_amount.toFixed(2)}` : "—"}</strong>
+          <strong>
+            {session?.difference_amount != null ? `$${session.difference_amount.toFixed(2)}` : "—"}
+          </strong>
         </div>
       </div>
 
@@ -120,7 +139,9 @@ export default function CashPanel({
               min={0}
               step="0.01"
               value={openForm.amount}
-              onChange={(event) => setOpenForm((prev) => ({ ...prev, amount: Number(event.target.value) }))}
+              onChange={(event) =>
+                setOpenForm((prev) => ({ ...prev, amount: Number(event.target.value) }))
+              }
               required
             />
           </label>
@@ -157,7 +178,9 @@ export default function CashPanel({
               min={0}
               step="0.01"
               value={closeForm.amount}
-              onChange={(event) => setCloseForm((prev) => ({ ...prev, amount: Number(event.target.value) }))}
+              onChange={(event) =>
+                setCloseForm((prev) => ({ ...prev, amount: Number(event.target.value) }))
+              }
               required
             />
           </label>
@@ -176,7 +199,9 @@ export default function CashPanel({
               type="text"
               minLength={5}
               value={closeForm.reason}
-              onChange={(event) => setCloseForm((prev) => ({ ...prev, reason: event.target.value }))}
+              onChange={(event) =>
+                setCloseForm((prev) => ({ ...prev, reason: event.target.value }))
+              }
               required
             />
           </label>
@@ -188,4 +213,3 @@ export default function CashPanel({
     </section>
   );
 }
-

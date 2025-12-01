@@ -71,7 +71,10 @@ export function useSyncQueue(token: string | null): UseSyncQueueResult {
     const unsubscribe = syncClient.subscribe(() => {
       void refresh();
     });
-    void refresh();
+    // Evitar setState sincrónico en el cuerpo del efecto
+    Promise.resolve().then(() => {
+      void refresh();
+    });
     return unsubscribe;
   }, [refresh]);
 

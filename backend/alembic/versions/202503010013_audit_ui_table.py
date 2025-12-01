@@ -6,8 +6,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "202503010013"
-down_revision = "202503010012"
+revision = "202503010013_audit_ui"
+down_revision = "202503010013"
 branch_labels = None
 depends_on = None
 
@@ -25,10 +25,12 @@ def upgrade() -> None:
         sa.Column("meta", sa.JSON(), nullable=True),
     )
     op.create_index("ix_audit_ui_ts", "audit_ui", ["ts"], unique=False)
-    op.create_index("ix_audit_ui_user_id", "audit_ui", ["user_id"], unique=False)
+    op.create_index("ix_audit_ui_user_id", "audit_ui",
+                    ["user_id"], unique=False)
     op.create_index("ix_audit_ui_module", "audit_ui", ["module"], unique=False)
     op.create_index("ix_audit_ui_action", "audit_ui", ["action"], unique=False)
-    op.create_index("ix_audit_ui_entity_id", "audit_ui", ["entity_id"], unique=False)
+    op.create_index("ix_audit_ui_entity_id", "audit_ui",
+                    ["entity_id"], unique=False)
 
 
 def downgrade() -> None:

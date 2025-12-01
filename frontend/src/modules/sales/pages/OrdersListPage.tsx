@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import {
   OrdersCancelModal,
@@ -117,7 +117,7 @@ const ORDERS_DATA: OrderRecord[] = [
   },
 ];
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
 
 function OrdersListPage() {
   const [filters, setFilters] = useState<OrderFilters>({ status: "ALL", payment: "ALL", channel: "ALL" });
@@ -181,29 +181,34 @@ function OrdersListPage() {
 
   const rows: OrderRow[] = useMemo(
     () =>
-      filteredRows.map(({ id, number, date, customer, itemsCount, total, paid, status, paymentStatus, channel }) => ({
-        id,
-        number,
-        date,
-        customer,
-        itemsCount,
-        total,
-        paid,
-        status,
-        paymentStatus,
-        channel,
-      })),
+      filteredRows.map(({ id, number, date, customer, itemsCount, total, paid, status, paymentStatus, channel }) => {
+        const row: OrderRow = {
+          id,
+          date,
+          itemsCount,
+          total,
+          paid,
+          status,
+          paymentStatus,
+          channel,
+        };
+
+        if (number) {
+          row.number = number;
+        }
+
+        if (customer) {
+          row.customer = customer;
+        }
+
+        return row;
+      }),
     [filteredRows],
   );
 
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const paginatedRows = rows.slice((page - 1) * pageSize, page * pageSize);
-
-  useEffect(() => {
-    if (page > pages) {
-      setPage(pages);
-    }
-  }, [page, pages]);
+  const safePage = Math.min(Math.max(1, page), pages);
+  const paginatedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((current) =>

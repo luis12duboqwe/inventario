@@ -8,6 +8,9 @@ from typing import Final
 import secrets
 
 from fastapi import Depends, HTTPException, Request, status
+import types
+
+import bcrypt
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -40,7 +43,13 @@ ALGORITHM: Final[str] = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES: Final[int] = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS: Final[int] = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+if not hasattr(bcrypt, "__about__"):
+    bcrypt.__about__ = types.SimpleNamespace(__version__=bcrypt.__version__)
+
+_pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256", "bcrypt_sha256", "bcrypt"],
+    deprecated="auto",
+)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
 _ANONYMOUS_PATHS = frozenset(

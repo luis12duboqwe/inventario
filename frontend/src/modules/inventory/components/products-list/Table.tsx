@@ -11,6 +11,9 @@ export type ProductRow = {
   status: "ACTIVE" | "INACTIVE";
   stock: number;
   category?: string;
+  brand?: string;
+  store?: string;
+  storeId?: number;
 };
 
 type Props = {

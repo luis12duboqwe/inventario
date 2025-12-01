@@ -26,8 +26,8 @@ type PrintCreditNoteProps = {
   creditNote?: CreditNotePrintable;
 };
 
-const currency = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
-const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" });
+const currency = new Intl.NumberFormat("es-HN", { style: "currency", currency: "MXN" });
+const dateFormatter = new Intl.DateTimeFormat("es-HN", { dateStyle: "medium", timeStyle: "short" });
 
 function PrintCreditNote({ business, creditNote }: PrintCreditNoteProps) {
   const items = Array.isArray(creditNote?.items) ? creditNote?.items ?? [] : [];

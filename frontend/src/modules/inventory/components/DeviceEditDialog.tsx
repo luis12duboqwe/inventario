@@ -36,6 +36,9 @@ type FormState = {
   serial: string;
   descripcion: string;
   imagenUrl: string;
+  imeisAdicionales: string;
+  imagenes: string;
+  enlaces: string;
 };
 
 const estadoOptions: Array<{ value: Device["estado_comercial"] | ""; label: string }> = [
@@ -72,6 +75,9 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     serial: "",
     descripcion: "",
     imagenUrl: "",
+    imeisAdicionales: "",
+    imagenes: "",
+    enlaces: "",
   }));
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +87,16 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     if (!device || !open) {
       return;
     }
+    const toTextareaList = (items?: string[] | null) =>
+      items && items.length > 0 ? items.join("\n") : "";
+    const toLinkTextareaList = (
+      links?: Array<{ titulo?: string | null; url: string }> | null,
+    ) =>
+      links && links.length > 0
+        ? links
+            .map((link) => `${(link.titulo ?? "Recurso").trim()}|${link.url.trim()}`)
+            .join("\n")
+        : "";
     setForm({
       name: device.name,
       modelo: device.modelo ?? "",
@@ -116,6 +132,9 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
       serial: device.serial ?? "",
       descripcion: device.descripcion ?? "",
       imagenUrl: device.imagen_url ?? "",
+      imeisAdicionales: toTextareaList(device.imeis_adicionales),
+      imagenes: toTextareaList(device.imagenes),
+      enlaces: toLinkTextareaList(device.enlaces),
     });
     setReason("");
     setError(null);
@@ -169,6 +188,36 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
         return null;
       }
       return parsed;
+    };
+
+    const parseListField = (value: string) =>
+      value
+        .split(/\r?\n/)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
+    const normalizeUrl = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return null;
+      }
+      try {
+        return new URL(trimmed).toString();
+      } catch (error) {
+        try {
+          return new URL(`https://${trimmed}`).toString();
+        } catch (retryError) {
+          return null;
+        }
+      }
+    };
+
+    const listHasChanged = (incoming: string[], current?: string[] | null) => {
+      const currentList = current ?? [];
+      if (incoming.length === 0 && currentList.length === 0) {
+        return false;
+      }
+      return incoming.join("||") !== currentList.map((item) => item.trim()).join("||");
     };
 
     const updates: DeviceUpdateInput = {};
@@ -299,6 +348,47 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
     const normalizedImagen = toNullableString(form.imagenUrl);
     if (normalizedImagen !== (device.imagen_url ?? null)) {
       updates.imagen_url = normalizedImagen;
+    }
+
+    const normalizedImeisAdicionales = parseListField(form.imeisAdicionales);
+    if (listHasChanged(normalizedImeisAdicionales, device.imeis_adicionales)) {
+      updates.imeis_adicionales = normalizedImeisAdicionales;
+    }
+
+    const normalizedImagenes = parseListField(form.imagenes)
+      .map(normalizeUrl)
+      .filter((url): url is string => Boolean(url));
+    if (listHasChanged(normalizedImagenes, device.imagenes)) {
+      updates.imagenes = normalizedImagenes;
+    }
+
+    const normalizedEnlaces = parseListField(form.enlaces)
+      .map((entry) => {
+        const [rawTitle, rawUrl] = entry.includes("|")
+          ? entry.split("|", 2)
+          : ["", entry];
+        const normalizedLinkUrl = normalizeUrl(rawUrl ?? "");
+        if (!normalizedLinkUrl) {
+          return null;
+        }
+        const normalizedTitle = rawTitle.trim() || "Recurso";
+        return { titulo: normalizedTitle, url: normalizedLinkUrl };
+      })
+      .filter((link): link is { titulo: string; url: string } => Boolean(link));
+
+    const currentLinks = (device.enlaces ?? []).map(
+      (link) => `${(link.titulo ?? "Recurso").trim()}|${link.url.trim()}`,
+    );
+    const normalizedLinkKeys = normalizedEnlaces.map(
+      (link) => `${link.titulo.trim()}|${link.url.trim()}`,
+    );
+
+    const enlacesChanged =
+      (normalizedEnlaces.length > 0 || currentLinks.length > 0) &&
+      normalizedLinkKeys.join("||") !== currentLinks.join("||");
+
+    if (enlacesChanged) {
+      updates.enlaces = normalizedEnlaces;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -503,6 +593,18 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
                   />
                 </label>
                 <label>
+                  <span>IMEIs adicionales</span>
+                  <textarea
+                    value={form.imeisAdicionales}
+                    onChange={(event) => handleChange("imeisAdicionales", event.target.value)}
+                    placeholder="Ingresa un IMEI por línea"
+                    rows={3}
+                  />
+                  <small className="device-edit-dialog__hint muted-text">
+                    Limpia espacios extra y usa una línea por IMEI para evitar duplicados o registros sucios.
+                  </small>
+                </label>
+                <label>
                   <span>Serie</span>
                   <input
                     value={form.serial}
@@ -559,6 +661,30 @@ function DeviceEditDialog({ device, open, onClose, onSubmit }: Props) {
                     onChange={(event) => handleChange("imagenUrl", event.target.value)}
                     maxLength={255}
                   />
+                </label>
+                <label>
+                  <span>Imágenes adicionales</span>
+                  <textarea
+                    value={form.imagenes}
+                    onChange={(event) => handleChange("imagenes", event.target.value)}
+                    placeholder="https://cdn.softmobile.test/foto.png"
+                    rows={3}
+                  />
+                  <small className="device-edit-dialog__hint muted-text">
+                    Escribe una URL por línea; agregamos https:// automáticamente si falta y omitimos enlaces vacíos.
+                  </small>
+                </label>
+                <label>
+                  <span>Enlaces relacionados</span>
+                  <textarea
+                    value={form.enlaces}
+                    onChange={(event) => handleChange("enlaces", event.target.value)}
+                    placeholder="Manual|https://softmobile.test/manual.pdf"
+                    rows={3}
+                  />
+                  <small className="device-edit-dialog__hint muted-text">
+                    Usa «Título|URL» por línea o solo la URL; el título se normaliza y los espacios se eliminan.
+                  </small>
                 </label>
               </div>
               <label className="device-edit-dialog__reason">
